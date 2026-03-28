@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("VEIL_DATABASE_URL")
+}
+
+enum UserStatus {
+  active
+  locked
+  revoked
+}
+
+enum DevicePlatform {
+  ios
+  android
+}
+
+enum ConversationType {
+  direct
+}
+
+enum MessageType {
+  text
+  image
+  file
+  system
+}
+
+enum AttachmentUploadStatus {
+  pending
+  uploaded
+  failed
+}
+
+model User {
+  id               String               @id @default(uuid()) @db.Uuid
+  handle           String               @unique @db.VarChar(32)
+  displayName      String?              @map("display_name") @db.VarChar(80)
+  avatarPath       String?              @map("avatar_path")
+  status           UserStatus           @default(active)
+  activeDeviceId   String?              @map("active_device_id") @db.Uuid
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  devices          Device[]             @relation("UserDevices")
+  activeDevice     Device?              @relation("ActiveDevice", fields: [activeDeviceId], references: [id], onDelete: SetNull)
+  conversationRefs ConversationMember[]
+  receipts         MessageReceipt[]
+  transferSessions DeviceTransferSession[]
+
+  @@index([activeDeviceId])
+  @@map("users")
+}
+
+model Device {
+  id                String                  @id @default(uuid()) @db.Uuid
+  userId            String                  @map("user_id") @db.Uuid
+  platform          DevicePlatform
+  deviceName        String                  @map("device_name") @db.VarChar(80)
+  publicIdentityKey String                  @map("public_identity_key")
+  signedPrekeyBundle String                 @map("signed_prekey_bundle")
+  authPublicKey     String                  @map("auth_public_key")
+  pushToken         String?                 @map("push_token")
+  isActive          Boolean                 @default(true) @map("is_active")
+  revokedAt         DateTime?               @map("revoked_at")
+  createdAt         DateTime                @default(now()) @map("created_at")
+  lastSeenAt        DateTime                @default(now()) @map("last_seen_at")
+  user              User                    @relation("UserDevices", fields: [userId], references: [id], onDelete: Cascade)
+  activeForUsers    User[]                  @relation("ActiveDevice")
+  sentMessages      Message[]
+  attachments       Attachment[]
+  oldTransferSessions DeviceTransferSession[] @relation("OldDeviceTransfer")
+
+  @@index([userId, isActive])
+  @@map("devices")
+}
+
+model Conversation {
+  id        String               @id @default(uuid()) @db.Uuid
+  type      ConversationType     @default(direct)
+  createdAt DateTime             @default(now()) @map("created_at")
+  members   ConversationMember[]
+  messages  Message[]
+
+  @@map("conversations")
+}
+
+model ConversationMember {
+  id             String        @id @default(uuid()) @db.Uuid
+  conversationId String        @map("conversation_id") @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  joinedAt       DateTime      @default(now()) @map("joined_at")
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("conversation_members")
+}
+
+model Message {
+  id               String        @id @default(uuid()) @db.Uuid
+  conversationId   String        @map("conversation_id") @db.Uuid
+  senderDeviceId   String        @map("sender_device_id") @db.Uuid
+  ciphertext       String
+  nonce            String
+  messageType      MessageType   @map("message_type")
+  attachmentId     String?       @map("attachment_id") @db.Uuid
+  attachmentRef    Json?         @map("attachment_ref")
+  serverReceivedAt DateTime      @default(now()) @map("server_received_at")
+  deletedAt        DateTime?     @map("deleted_at")
+  expiresAt        DateTime?     @map("expires_at")
+  conversation     Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderDevice     Device        @relation(fields: [senderDeviceId], references: [id], onDelete: Restrict)
+  attachment       Attachment?   @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  receipts         MessageReceipt[]
+
+  @@index([conversationId, serverReceivedAt])
+  @@index([attachmentId])
+  @@map("messages")
+}
+
+model MessageReceipt {
+  id          String    @id @default(uuid()) @db.Uuid
+  messageId   String    @map("message_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  deliveredAt DateTime? @map("delivered_at")
+  readAt      DateTime? @map("read_at")
+  message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("message_receipts")
+}
+
+model Attachment {
+  id               String                 @id @default(uuid()) @db.Uuid
+  uploaderDeviceId String                 @map("uploader_device_id") @db.Uuid
+  storageKey       String                 @map("storage_key")
+  contentType      String                 @map("content_type")
+  sizeBytes        Int                    @map("size_bytes")
+  sha256           String
+  uploadStatus     AttachmentUploadStatus @default(pending) @map("upload_status")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  uploaderDevice   Device                 @relation(fields: [uploaderDeviceId], references: [id], onDelete: Restrict)
+  messages         Message[]
+
+  @@index([uploaderDeviceId, createdAt])
+  @@index([storageKey])
+  @@map("attachments")
+}
+
+model DeviceTransferSession {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  oldDeviceId String    @map("old_device_id") @db.Uuid
+  tokenHash   String    @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  oldDevice   Device    @relation("OldDeviceTransfer", fields: [oldDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([userId, expiresAt])
+  @@index([oldDeviceId])
+  @@map("device_transfer_sessions")
+}

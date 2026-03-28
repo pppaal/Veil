@@ -1,0 +1,133 @@
+import { Injectable } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import {
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+  WebSocketGateway,
+  WebSocketServer,
+} from '@nestjs/websockets';
+import type { Server, Socket } from 'socket.io';
+import type { RealtimeEventMap } from '@veil/contracts';
+
+import { AppConfigService } from '../../common/config/app-config.service';
+import { PrismaService } from '../../common/prisma.service';
+
+interface AccessTokenPayload {
+  sub: string;
+  deviceId: string;
+  handle: string;
+}
+
+@Injectable()
+@WebSocketGateway({
+  path: '/v1/realtime',
+  cors: {
+    origin: '*',
+  },
+})
+export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  @WebSocketServer()
+  server!: Server;
+
+  private readonly socketsByUserId = new Map<string, Set<string>>();
+
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly config: AppConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async handleConnection(client: Socket): Promise<void> {
+    const token =
+      (typeof client.handshake.auth.token === 'string' && client.handshake.auth.token) ||
+      (typeof client.handshake.query.token === 'string' && client.handshake.query.token) ||
+      null;
+
+    if (!token) {
+      client.disconnect(true);
+      return;
+    }
+
+    try {
+      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
+        secret: this.config.jwtSecret,
+        audience: this.config.jwtAudience,
+        issuer: this.config.jwtIssuer,
+      });
+
+      const device = await this.prisma.device.findUnique({
+        where: { id: payload.deviceId },
+        include: { user: true },
+      });
+
+      if (
+        !device ||
+        device.userId !== payload.sub ||
+        !device.isActive ||
+        device.revokedAt ||
+        device.user.activeDeviceId !== payload.deviceId
+      ) {
+        client.disconnect(true);
+        return;
+      }
+
+      client.data.userId = payload.sub;
+      client.data.deviceId = payload.deviceId;
+
+      const existing = this.socketsByUserId.get(payload.sub) ?? new Set<string>();
+      existing.add(client.id);
+      this.socketsByUserId.set(payload.sub, existing);
+
+      this.emitToUser(payload.sub, 'presence.update', {
+        userId: payload.sub,
+        status: 'online',
+        updatedAt: new Date().toISOString(),
+      });
+    } catch {
+      client.disconnect(true);
+    }
+  }
+
+  handleDisconnect(client: Socket): void {
+    const userId = client.data.userId as string | undefined;
+    if (!userId) {
+      return;
+    }
+
+    const sockets = this.socketsByUserId.get(userId);
+    if (!sockets) {
+      return;
+    }
+
+    sockets.delete(client.id);
+    if (sockets.size === 0) {
+      this.socketsByUserId.delete(userId);
+      this.emitToUser(userId, 'presence.update', {
+        userId,
+        status: 'offline',
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  emitToUser<K extends keyof RealtimeEventMap>(userId: string, event: K, payload: RealtimeEventMap[K]): void {
+    const socketIds = this.socketsByUserId.get(userId);
+    if (!socketIds) {
+      return;
+    }
+
+    for (const socketId of socketIds) {
+      this.server.to(socketId).emit(event, payload);
+    }
+  }
+
+  emitConversationMembers<K extends keyof RealtimeEventMap>(
+    members: Array<{ userId: string }>,
+    event: K,
+    payload: RealtimeEventMap[K],
+  ): void {
+    for (const member of members) {
+      this.emitToUser(member.userId, event, payload);
+    }
+  }
+}

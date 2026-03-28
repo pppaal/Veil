@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "composite": true,
+    "paths": {
+      "@veil/shared": [
+        "../shared/dist",
+        "../shared/src"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts"
+  ]
+}

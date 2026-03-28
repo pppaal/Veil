@@ -1,0 +1,28 @@
+{
+  "name": "veil-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.0",
+  "devDependencies": {
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "bootstrap": "pnpm install",
+    "build": "pnpm -C packages/shared build && pnpm -C packages/contracts build && pnpm -C apps/api build",
+    "lint": "pnpm -C packages/shared lint && pnpm -C packages/contracts lint && pnpm -C apps/api lint",
+    "test": "pnpm -C packages/shared test && pnpm -C packages/contracts test && pnpm -C apps/api test",
+    "dev:api": "pnpm -C apps/api start:dev",
+    "dev:mobile": "node ./scripts/flutterw.mjs run",
+    "dev:mobile:api": "node ./scripts/flutterw.mjs run --dart-define=VEIL_API_BASE_URL=http://10.0.2.2:3000/v1 --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000 --dart-define=VEIL_MOCK_AUTH_SHARED_SECRET=change-me-in-dev",
+    "dev:mobile:desktop": "node ./scripts/flutterw.mjs run -d windows --dart-define=VEIL_API_BASE_URL=http://127.0.0.1:3000/v1 --dart-define=VEIL_REALTIME_URL=http://127.0.0.1:3000 --dart-define=VEIL_MOCK_AUTH_SHARED_SECRET=change-me-in-dev",
+    "mobile:codegen": "node ./scripts/flutterw.mjs pub run build_runner build --delete-conflicting-outputs",
+    "mobile:analyze": "node ./scripts/flutterw.mjs analyze",
+    "mobile:test": "node ./scripts/flutterw.mjs test",
+    "db:generate": "pnpm -C apps/api prisma:generate",
+    "db:migrate": "pnpm -C apps/api prisma:migrate",
+    "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "docker:down": "docker compose -f infra/docker/docker-compose.yml down -v",
+    "format": "pnpm -r --filter './packages/*' --filter './apps/api' format"
+  }
+}

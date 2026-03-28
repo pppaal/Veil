@@ -1,1 +1,100 @@
-# Veil
+# VEIL
+
+Production-minded MVP scaffold for a privacy-first mobile messenger.
+
+Primary product line:
+`No backup. No recovery. No leaks.`
+
+## What this repo contains
+
+- `apps/mobile`: Flutter mobile app shell with premium dark UI scaffolds, Riverpod state, GoRouter navigation, API-backed auth/chat flows, realtime relay wiring, app lock, transfer scaffolding, and Drift-ready local cache definitions
+- `apps/api`: NestJS API with Prisma schema, challenge/verify device auth, encrypted envelope message relay, attachment ticket flow, WebSocket gateway, and old-device-required transfer flow
+- `packages/shared`: shared backend-side crypto/domain abstractions and the mock crypto adapter seam
+- `packages/contracts`: typed API and realtime contracts
+- `infra/docker`: local Postgres, Redis, and MinIO Compose stack
+- `docs`: architecture, threat model, no-recovery rationale, and system flow documentation
+
+## Product rules
+
+- The server never stores plaintext message bodies.
+- No cloud backup exists.
+- No account recovery path exists.
+- No password reset exists.
+- Identity is device-bound.
+- Device transfer succeeds only while the old device is still available.
+- Push payloads must not contain plaintext message content.
+- The current crypto adapter is mock-only and not production-ready.
+
+## Local development
+
+1. Copy `.env.example` to `.env` and `apps/api/.env.example` to `apps/api/.env`.
+2. Run `pnpm install`.
+3. Run `pnpm docker:up`.
+4. Run `pnpm db:generate`.
+5. Run `pnpm dev:api`.
+6. After installing Flutter locally, run `flutter pub get` inside `apps/mobile`.
+7. Run `pnpm mobile:codegen`.
+8. Run `pnpm dev:mobile:api` for Android emulator wiring, or `pnpm dev:mobile:desktop` for a local Windows desktop sanity run.
+
+For Windows desktop builds, enable Windows Developer Mode first so Flutter plugins can create symlinks.
+
+## Useful scripts
+
+- `pnpm build`
+- `pnpm lint`
+- `pnpm test`
+- `pnpm -C apps/api test:e2e`
+- `pnpm docker:up`
+- `pnpm docker:down`
+- `pnpm dev:mobile:api`
+- `pnpm dev:mobile:desktop`
+- `pnpm mobile:analyze`
+- `pnpm mobile:test`
+
+## CI
+
+GitHub Actions CI is defined in [`.github/workflows/ci.yml`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.github/workflows/ci.yml) and runs:
+
+- `pnpm build`
+- `pnpm lint`
+- `pnpm test`
+- `pnpm -C apps/api test:e2e`
+
+## Current implementation status
+
+- Handle registration, device registration, challenge/verify auth, conversation creation, conversation listing
+- Mobile register -> challenge -> verify -> token persistence flow
+- API-backed direct conversation create/list and encrypted envelope send/list flow
+- Attachment upload ticket, completion, message envelope, and download-ticket resolution scaffold
+- WebSocket realtime relay wiring in mobile
+- Device transfer init/approve/complete with active-old-device enforcement
+- Disappearing message metadata and local expiration scaffolding in mobile
+- App lock with PIN/biometric hooks and security status screens
+- Drift-ready conversation/message cache service wired behind the messenger controller
+- Docs, unit tests, and CI-friendly scripts
+
+## Mobile runtime configuration
+
+Flutter reads runtime endpoints through `--dart-define` flags.
+
+- `VEIL_API_BASE_URL`: default `http://localhost:3000/v1`
+- `VEIL_REALTIME_URL`: default `http://localhost:3000`
+- `VEIL_MOCK_AUTH_SHARED_SECRET`: must match the API `VEIL_MOCK_AUTH_SHARED_SECRET` in dev
+
+For Android emulators, use `10.0.2.2` instead of `localhost`.
+
+## Important warning
+
+The mock crypto adapter exists only to preserve architecture and developer workflows. It does not provide audited cryptographic security. Do not ship this code as a production messenger until the crypto layer is replaced and independently reviewed.
+
+## Docs
+
+- [Architecture](docs/architecture.md)
+- [Threat Model](docs/threat-model.md)
+- [No Recovery](docs/no-recovery.md)
+- [Message Flow](docs/message-flow.md)
+- [Attachment Flow](docs/attachment-flow.md)
+- [Device Transfer Flow](docs/device-transfer-flow.md)
+- [MVP Demo Runbook](docs/mvp-demo-runbook.md)
+- [Production Deployment Checklist](docs/production-deployment.md)
+- [Mock Crypto Replacement Plan](docs/mock-crypto-replacement.md)

@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: veil
+      POSTGRES_USER: veil
+      POSTGRES_PASSWORD: veil
+    ports:
+      - "5432:5432"
+    volumes:
+      - veil_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - veil_redis:/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-07T23-21-09Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - veil_minio:/data
+
+volumes:
+  veil_postgres:
+  veil_redis:
+  veil_minio:

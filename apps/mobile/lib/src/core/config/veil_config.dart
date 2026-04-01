@@ -11,9 +11,9 @@ class VeilConfig {
     defaultValue: 'http://localhost:3000',
   );
 
-  static const mockAuthSharedSecret = String.fromEnvironment(
-    'VEIL_MOCK_AUTH_SHARED_SECRET',
-    defaultValue: 'dev-device-auth-secret',
+  static const enableLocalCache = bool.fromEnvironment(
+    'VEIL_ENABLE_LOCAL_CACHE',
+    defaultValue: true,
   );
 
   static bool get hasApi => apiBaseUrl.isNotEmpty;

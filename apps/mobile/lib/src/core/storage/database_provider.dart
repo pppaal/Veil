@@ -8,6 +8,6 @@ import 'app_database.dart';
 
 Future<AppDatabase> createAppDatabase() async {
   final documentsDirectory = await getApplicationDocumentsDirectory();
-  final databaseFile = File(p.join(documentsDirectory.path, 'veil_cache.sqlite'));
+  final databaseFile = File(p.join(documentsDirectory.path, 'veil_cache_v2.sqlite'));
   return AppDatabase(NativeDatabase.createInBackground(databaseFile));
 }

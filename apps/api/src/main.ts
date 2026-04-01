@@ -29,6 +29,7 @@ async function bootstrap(): Promise<void> {
   SwaggerModule.setup('docs', app, swaggerDocument);
 
   const config = app.get(AppConfigService);
+  config.assertReleaseSafety();
   await app.listen(config.port);
 }
 

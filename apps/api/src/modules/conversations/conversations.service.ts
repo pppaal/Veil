@@ -9,11 +9,38 @@ import type { EncryptedAttachmentReference } from '@veil/shared';
 
 import { PrismaService } from '../../common/prisma.service';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
+
+type HydratedReceipt = {
+  userId: string;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+};
+
+type HydratedMessage = {
+  id: string;
+  clientMessageId: string;
+  conversationId: string;
+  senderDeviceId: string;
+  conversationOrder: number;
+  ciphertext: string;
+  nonce: string;
+  messageType: 'text' | 'image' | 'file' | 'system';
+  serverReceivedAt: Date;
+  deletedAt: Date | null;
+  expiresAt: Date | null;
+  attachmentRef?: unknown;
+  senderDevice: { userId: string };
+  receipts: HydratedReceipt[];
+};
 
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeGateway: RealtimeGateway,
+  ) {}
 
   async createDirect(
     currentUserId: string,
@@ -49,10 +76,7 @@ export class ConversationsService {
               user: true,
             },
           },
-          messages: {
-            orderBy: { serverReceivedAt: 'desc' },
-            take: 1,
-          },
+          messages: this.latestMessageInclude(),
         },
       });
 
@@ -62,7 +86,7 @@ export class ConversationsService {
       });
 
       if (found) {
-        return { conversation: this.toConversationSummary(found) };
+        return { conversation: this.toConversationSummary(found, currentUserId) };
       }
     }
 
@@ -77,15 +101,12 @@ export class ConversationsService {
         members: {
           include: { user: true },
         },
-        messages: {
-          orderBy: { serverReceivedAt: 'desc' },
-          take: 1,
-        },
+        messages: this.latestMessageInclude(),
       },
     });
 
     return {
-      conversation: this.toConversationSummary(created),
+      conversation: this.toConversationSummary(created, currentUserId),
     };
   }
 
@@ -98,19 +119,19 @@ export class ConversationsService {
             members: {
               include: { user: true },
             },
-            messages: {
-              orderBy: { serverReceivedAt: 'desc' },
-              take: 1,
-            },
+            messages: this.latestMessageInclude(),
           },
         },
       },
-      orderBy: {
-        conversation: { createdAt: 'desc' },
-      },
     });
 
-    return memberships.map((membership) => this.toConversationSummary(membership.conversation));
+    return memberships
+      .map((membership) => this.toConversationSummary(membership.conversation, userId))
+      .sort((a, b) => {
+        const aTime = a.lastMessage?.serverReceivedAt ?? a.createdAt;
+        const bTime = b.lastMessage?.serverReceivedAt ?? b.createdAt;
+        return bTime.localeCompare(aTime);
+      });
   }
 
   async listMessagesForUser(
@@ -118,6 +139,7 @@ export class ConversationsService {
     conversationId: string,
     query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
+    const limit = Number(query.limit ?? 50);
     const membership = await this.prisma.conversationMember.findUnique({
       where: {
         conversationId_userId: {
@@ -132,22 +154,95 @@ export class ConversationsService {
       throw new ForbiddenException('Conversation membership required');
     }
 
-    const messages = await this.prisma.message.findMany({
+    const members = await this.prisma.conversationMember.findMany({
       where: { conversationId },
-      orderBy: { serverReceivedAt: 'desc' },
-      take: query.limit,
+      select: { userId: true },
+    });
+
+    const messages = (await this.prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { conversationOrder: 'desc' },
+      take: limit,
       ...(query.cursor
         ? {
             cursor: { id: query.cursor },
             skip: 1,
           }
         : {}),
-    });
+      include: {
+        senderDevice: {
+          select: { userId: true },
+        },
+        receipts: true,
+      },
+    })) as HydratedMessage[];
 
-    const items = messages.map((message) => this.toMessageSummary(message)).reverse();
+    await this.markDeliveredForViewer(messages, members, userId);
+
     return {
-      items,
-      nextCursor: messages.length === query.limit ? messages.at(-1)?.id ?? null : null,
+      items: messages.map((message) => this.toMessageSummary(message, userId)).reverse(),
+      nextCursor: messages.length === limit ? messages.at(-1)?.id ?? null : null,
+    };
+  }
+
+  private async markDeliveredForViewer(
+    messages: HydratedMessage[],
+    members: Array<{ userId: string }>,
+    userId: string,
+  ): Promise<void> {
+    const deliveredAt = new Date();
+
+    for (const message of messages) {
+      const existingReceipt = message.receipts.find((receipt) => receipt.userId === userId) ?? null;
+      if (message.senderDevice.userId === userId || existingReceipt?.deliveredAt) {
+        continue;
+      }
+
+      await this.prisma.messageReceipt.upsert({
+        where: {
+          messageId_userId: {
+            messageId: message.id,
+            userId,
+          },
+        },
+        update: {
+          deliveredAt,
+        },
+        create: {
+          messageId: message.id,
+          userId,
+          deliveredAt,
+        },
+      });
+
+      if (existingReceipt) {
+        existingReceipt.deliveredAt = deliveredAt;
+      } else {
+        message.receipts.push({
+          userId,
+          deliveredAt,
+          readAt: null,
+        });
+      }
+
+      this.realtimeGateway.emitConversationMembers(members, 'message.delivered', {
+        messageId: message.id,
+        userId,
+        deliveredAt: deliveredAt.toISOString(),
+      });
+    }
+  }
+
+  private latestMessageInclude() {
+    return {
+      orderBy: { conversationOrder: 'desc' as const },
+      take: 1,
+      include: {
+        senderDevice: {
+          select: { userId: true },
+        },
+        receipts: true,
+      },
     };
   }
 
@@ -159,20 +254,8 @@ export class ConversationsService {
       userId: string;
       user: { handle: string; displayName: string | null };
     }>;
-      messages: Array<{
-        id: string;
-        conversationId: string;
-        senderDeviceId: string;
-        ciphertext: string;
-        nonce: string;
-        messageType: 'text' | 'image' | 'file' | 'system';
-        serverReceivedAt: Date;
-        deletedAt: Date | null;
-        expiresAt: Date | null;
-        attachmentId: string | null;
-        attachmentRef: unknown;
-      }>;
-  }): ConversationSummary {
+    messages: HydratedMessage[];
+  }, viewerUserId: string): ConversationSummary {
     return {
       id: conversation.id,
       type: conversation.type,
@@ -183,42 +266,19 @@ export class ConversationsService {
         displayName: member.user.displayName,
       })),
       lastMessage: conversation.messages[0]
-        ? {
-            id: conversation.messages[0].id,
-            conversationId: conversation.messages[0].conversationId,
-            senderDeviceId: conversation.messages[0].senderDeviceId,
-            ciphertext: conversation.messages[0].ciphertext,
-            nonce: conversation.messages[0].nonce,
-            messageType: conversation.messages[0].messageType,
-            attachment:
-              (conversation.messages[0].attachmentRef as
-                | EncryptedAttachmentReference
-                | null
-                | undefined) ?? null,
-            expiresAt: conversation.messages[0].expiresAt?.toISOString() ?? null,
-            serverReceivedAt: conversation.messages[0].serverReceivedAt.toISOString(),
-            deletedAt: conversation.messages[0].deletedAt?.toISOString() ?? null,
-          }
+        ? this.toMessageSummary(conversation.messages[0], viewerUserId)
         : null,
     };
   }
 
-  private toMessageSummary(message: {
-    id: string;
-    conversationId: string;
-    senderDeviceId: string;
-    ciphertext: string;
-    nonce: string;
-    messageType: 'text' | 'image' | 'file' | 'system';
-    serverReceivedAt: Date;
-    deletedAt: Date | null;
-    expiresAt: Date | null;
-    attachmentRef?: unknown;
-  }): ConversationMessageSummary {
+  private toMessageSummary(message: HydratedMessage, viewerUserId: string): ConversationMessageSummary {
+    const receipt = this.resolveReceiptForViewer(message, viewerUserId);
     return {
       id: message.id,
+      clientMessageId: message.clientMessageId,
       conversationId: message.conversationId,
       senderDeviceId: message.senderDeviceId,
+      conversationOrder: message.conversationOrder,
       ciphertext: message.ciphertext,
       nonce: message.nonce,
       messageType: message.messageType,
@@ -226,6 +286,16 @@ export class ConversationsService {
       expiresAt: message.expiresAt?.toISOString() ?? null,
       serverReceivedAt: message.serverReceivedAt.toISOString(),
       deletedAt: message.deletedAt?.toISOString() ?? null,
+      deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
+      readAt: receipt?.readAt?.toISOString() ?? null,
     };
+  }
+
+  private resolveReceiptForViewer(message: HydratedMessage, viewerUserId: string): HydratedReceipt | null {
+    if (message.senderDevice.userId === viewerUserId) {
+      return message.receipts.find((receipt) => receipt.userId !== viewerUserId) ?? null;
+    }
+
+    return message.receipts.find((receipt) => receipt.userId === viewerUserId) ?? null;
   }
 }

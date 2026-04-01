@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
+import { Ed25519DeviceAuthVerifier } from '../auth/device-auth-verifier';
 import { DeviceTransferService } from './device-transfer.service';
+import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeConfigService, FakeEphemeralStoreService } from '../../../test/support/fake-services';
 
@@ -9,10 +11,14 @@ describe('DeviceTransferService', () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
       config as never,
+      verifier,
     );
 
     prisma.users.push({
@@ -49,21 +55,29 @@ describe('DeviceTransferService', () => {
       .update(init.transferToken)
       .digest('hex');
 
-    await service.approve(
-      { userId: 'user-1', deviceId: 'device-old' },
-      {
-        sessionId: init.sessionId,
-        newDeviceName: 'iPhone',
-        platform: 'ios',
-        publicIdentityKey: 'pub-new',
-        signedPrekeyBundle: 'prekey-new',
-        authPublicKey: 'auth-new',
-      },
-    );
+    const claim = await service.claim({
+      sessionId: init.sessionId,
+      transferToken: init.transferToken,
+      newDeviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-new',
+      signedPrekeyBundle: 'prekey-new',
+      authPublicKey: keyPair.authPublicKey,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-claim:${init.sessionId}:${init.transferToken}`,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+
+    await service.approve({ userId: 'user-1', deviceId: 'device-old' }, {
+      sessionId: init.sessionId,
+      claimId: claim.claimId,
+    });
 
     const completed = await service.complete({
       sessionId: init.sessionId,
       transferToken: init.transferToken,
+      claimId: claim.claimId,
     });
 
     expect(completed.revokedDeviceId).toBe('device-old');

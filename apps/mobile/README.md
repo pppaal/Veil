@@ -12,8 +12,7 @@ After installing Flutter locally:
 ```bash
 flutter run \
   --dart-define=VEIL_API_BASE_URL=http://10.0.2.2:3000/v1 \
-  --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000 \
-  --dart-define=VEIL_MOCK_AUTH_SHARED_SECRET=change-me-in-dev
+  --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000
 ```
 
 Current mobile wiring includes:

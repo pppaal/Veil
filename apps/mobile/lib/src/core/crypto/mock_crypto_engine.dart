@@ -3,12 +3,11 @@ import 'dart:math';
 
 import 'crypto_engine.dart';
 
-const devEnvelopeVersion = 'veil-envelope-v1-dev';
-
 class MockCryptoEngine implements CryptoEngine {
   MockCryptoEngine({Random? random}) : _random = random ?? Random.secure();
 
   final Random _random;
+  static final Map<String, DecryptedMessage> _plaintextRegistry = {};
 
   @override
   String get adapterId => 'mock-dev-adapter';
@@ -36,18 +35,20 @@ class MockCryptoEngine implements CryptoEngine {
     DateTime? expiresAt,
     AttachmentReference? attachment,
   }) async {
-    final payload = jsonEncode({
-      'body': body,
-      'messageKind': messageKind.name,
-      'expiresAt': expiresAt?.toIso8601String(),
-    });
+    final ciphertext = _opaqueToken(48);
+    _plaintextRegistry[ciphertext] = DecryptedMessage(
+      body: body,
+      messageKind: messageKind,
+      expiresAt: expiresAt,
+      attachment: attachment,
+    );
 
     return CryptoEnvelope(
       version: devEnvelopeVersion,
       conversationId: conversationId,
       senderDeviceId: senderDeviceId,
       recipientUserId: recipientBundle.userId,
-      ciphertext: base64Url.encode(utf8.encode(payload)),
+      ciphertext: ciphertext,
       nonce: 'mock-nonce-${_random.nextInt(1 << 32)}',
       messageKind: messageKind,
       expiresAt: expiresAt,
@@ -57,14 +58,20 @@ class MockCryptoEngine implements CryptoEngine {
 
   @override
   Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
-    final decoded =
-        jsonDecode(utf8.decode(base64Url.decode(envelope.ciphertext))) as Map<String, dynamic>;
+    final cached = _plaintextRegistry[envelope.ciphertext];
+    if (cached != null) {
+      return cached;
+    }
 
     return DecryptedMessage(
-      body: decoded['body'] as String? ?? '',
-      messageKind: MessageKind.values.byName(decoded['messageKind'] as String? ?? 'text'),
-      expiresAt:
-          decoded['expiresAt'] == null ? null : DateTime.parse(decoded['expiresAt'] as String),
+      body: switch (envelope.messageKind) {
+        MessageKind.file => 'Encrypted attachment',
+        MessageKind.image => 'Encrypted image',
+        MessageKind.system => 'Encrypted system envelope',
+        MessageKind.text => 'Encrypted message',
+      },
+      messageKind: envelope.messageKind,
+      expiresAt: envelope.expiresAt,
       attachment: envelope.attachment,
     );
   }
@@ -84,8 +91,13 @@ class MockCryptoEngine implements CryptoEngine {
       contentType: contentType,
       sizeBytes: sizeBytes,
       sha256: sha256,
-      encryptedKey: base64Url.encode(utf8.encode('${recipientBundle.deviceId}:content-key')),
+      encryptedKey: _opaqueToken(32),
       nonce: 'mock-attachment-${_random.nextInt(1 << 32)}',
     );
+  }
+
+  String _opaqueToken(int byteLength) {
+    final bytes = List<int>.generate(byteLength, (_) => _random.nextInt(256));
+    return base64Url.encode(bytes).replaceAll('=', '');
   }
 }

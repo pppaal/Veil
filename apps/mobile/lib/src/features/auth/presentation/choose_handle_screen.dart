@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class ChooseHandleScreen extends ConsumerStatefulWidget {
   const ChooseHandleScreen({super.key});
@@ -26,37 +27,122 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
   Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
     final displayName = GoRouterState.of(context).extra as String?;
+    final handle = _handleController.text.trim();
 
     return VeilShell(
       title: 'Choose Handle',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
         children: [
-          const Text('Handles are the discovery layer. Phone numbers stay out.'),
-          const SizedBox(height: 24),
-          TextField(
-            controller: _handleController,
-            enabled: !_submitting,
-            decoration: const InputDecoration(labelText: 'Handle', hintText: 'cold.operator'),
+          const VeilHeroPanel(
+            eyebrow: 'HANDLE REGISTRATION',
+            title: 'Phone numbers stay out.',
+            body:
+                'Pick a direct handle for discovery. VEIL binds the handle to this device after local identity material is generated.',
           ),
-          const SizedBox(height: 12),
-          const Text('Lowercase. Minimal. Permanent enough to matter.'),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const VeilSectionLabel('HANDLE'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _handleController,
+                    enabled: !_submitting,
+                    onChanged: (_) => setState(() {}),
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Handle',
+                      hintText: 'cold.operator',
+                      prefixText: '@',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      VeilStatusPill(
+                        label: handle.isEmpty ? 'Choose a handle' : '@$handle',
+                        tone: handle.isEmpty ? VeilBannerTone.warn : VeilBannerTone.info,
+                      ),
+                      const VeilStatusPill(label: 'No contact sync'),
+                      const VeilStatusPill(label: 'Device-bound'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Lowercase. Minimal. Permanent enough to matter.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const VeilSectionLabel('BINDING FLOW'),
+                  const SizedBox(height: 16),
+                  VeilStepRow(
+                    step: 1,
+                    title: 'Generate local identity',
+                    body: 'Create device-bound material and keep the private side on this device.',
+                    active: session.authFlowStage == AuthFlowStage.generatingKeys,
+                    complete: session.authFlowStage.index > AuthFlowStage.generatingKeys.index,
+                  ),
+                  const SizedBox(height: 14),
+                  VeilStepRow(
+                    step: 2,
+                    title: 'Register handle',
+                    body: 'Publish only public device material and handle metadata.',
+                    active: session.authFlowStage == AuthFlowStage.registering,
+                    complete: session.authFlowStage.index > AuthFlowStage.registering.index,
+                  ),
+                  const SizedBox(height: 14),
+                  VeilStepRow(
+                    step: 3,
+                    title: 'Challenge device',
+                    body: 'Request a short-lived server challenge for this registered device.',
+                    active: session.authFlowStage == AuthFlowStage.requestingChallenge,
+                    complete: session.authFlowStage.index >
+                        AuthFlowStage.requestingChallenge.index,
+                  ),
+                  const SizedBox(height: 14),
+                  VeilStepRow(
+                    step: 4,
+                    title: 'Verify and bind',
+                    body: 'Complete verification and activate the device session.',
+                    active: session.authFlowStage == AuthFlowStage.verifying,
+                    complete: session.authFlowStage == AuthFlowStage.complete,
+                  ),
+                ],
+              ),
+            ),
+          ),
           if (session.errorMessage != null) ...[
             const SizedBox(height: 16),
-            Text(
-              session.errorMessage!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            VeilInlineBanner(
+              title: 'Binding failed',
+              message: session.errorMessage!,
+              tone: VeilBannerTone.danger,
             ),
           ],
-          const Spacer(),
+          const SizedBox(height: 28),
           FilledButton(
-            onPressed: _submitting
+            onPressed: _submitting || handle.isEmpty
                 ? null
                 : () async {
                     setState(() => _submitting = true);
                     try {
                       await ref.read(appSessionProvider.notifier).registerAndAuthenticate(
-                            handle: _handleController.text.trim(),
+                            handle: handle,
                             displayName: displayName?.isEmpty ?? true ? null : displayName,
                           );
                       if (context.mounted && ref.read(appSessionProvider).isAuthenticated) {
@@ -69,15 +155,17 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
                       }
                     }
                   },
-            child: SizedBox(
-              width: double.infinity,
-              child: Center(
-                child: Text(_submitting ? 'Binding device...' : 'Bind device'),
-              ),
-            ),
+            child: Text(_ctaLabelFor(session)),
           ),
         ],
       ),
     );
+  }
+
+  String _ctaLabelFor(AppSessionState session) {
+    if (_submitting || session.isAuthenticating) {
+      return session.authFlowStage.label;
+    }
+    return 'Bind this device';
   }
 }

@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SecureStorageService {
@@ -7,8 +11,10 @@ class SecureStorageService {
   final FlutterSecureStorage _storage;
 
   static const _identityKey = 'veil.identity.private_ref';
-  static const _authKey = 'veil.auth.private_ref';
-  static const _pinKey = 'veil.app_lock.pin';
+  static const _authPrivateKey = 'veil.auth.private_key';
+  static const _authPublicKey = 'veil.auth.public_key';
+  static const _pinKey = 'veil.app_lock.pin_verifier';
+  static const _cacheKey = 'veil.cache.encryption_key';
   static const _accessTokenKey = 'veil.session.access_token';
   static const _userIdKey = 'veil.session.user_id';
   static const _deviceIdKey = 'veil.session.device_id';
@@ -18,23 +24,74 @@ class SecureStorageService {
 
   Future<void> persistDeviceSecretRefs({
     required String identityPrivateRef,
-    required String authPrivateRef,
+    required String authPrivateKey,
+    required String authPublicKey,
   }) async {
     await _storage.write(key: _identityKey, value: identityPrivateRef);
-    await _storage.write(key: _authKey, value: authPrivateRef);
+    await _storage.write(key: _authPrivateKey, value: authPrivateKey);
+    await _storage.write(key: _authPublicKey, value: authPublicKey);
   }
 
   Future<bool> hasDeviceSecretRefs() async {
     final identityPrivateRef = await _storage.read(key: _identityKey);
-    final authPrivateRef = await _storage.read(key: _authKey);
-    return (identityPrivateRef?.isNotEmpty ?? false) && (authPrivateRef?.isNotEmpty ?? false);
+    final authPrivateKey = await _storage.read(key: _authPrivateKey);
+    return (identityPrivateRef?.isNotEmpty ?? false) && (authPrivateKey?.isNotEmpty ?? false);
   }
 
-  Future<void> persistPin(String pin) => _storage.write(key: _pinKey, value: pin);
+  Future<StoredAuthKeyMaterial?> readAuthKeyMaterial() async {
+    final privateKey = await _storage.read(key: _authPrivateKey);
+    final publicKey = await _storage.read(key: _authPublicKey);
 
-  Future<String?> readPin() => _storage.read(key: _pinKey);
+    if (privateKey == null || publicKey == null) {
+      return null;
+    }
 
-  Future<bool> hasPin() async => (await readPin())?.isNotEmpty ?? false;
+    return StoredAuthKeyMaterial(
+      privateKey: privateKey,
+      publicKey: publicKey,
+    );
+  }
+
+  Future<void> persistPin(String pin) async {
+    final salt = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final verifier = await _derivePinVerifier(pin, salt);
+    await _storage.write(
+      key: _pinKey,
+      value: 'v1.${_encodeBytes(salt)}.${_encodeBytes(verifier)}',
+    );
+  }
+
+  Future<bool> verifyPin(String pin) async {
+    final stored = await _storage.read(key: _pinKey);
+    if (stored == null || stored.isEmpty) {
+      return false;
+    }
+
+    final parts = stored.split('.');
+    if (parts.length != 3 || parts[0] != 'v1') {
+      return false;
+    }
+
+    final salt = _decodeBytes(parts[1]);
+    final expected = parts[2];
+    final derived = _encodeBytes(await _derivePinVerifier(pin, salt));
+    return derived == expected;
+  }
+
+  Future<bool> hasPin() async => (await _storage.read(key: _pinKey))?.isNotEmpty ?? false;
+
+  Future<String> readOrCreateCacheKey() async {
+    final existing = await _storage.read(key: _cacheKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+
+    final generated = _encodeBytes(
+      List<int>.generate(32, (_) => Random.secure().nextInt(256)),
+    );
+    await _storage.write(key: _cacheKey, value: generated);
+    return generated;
+  }
 
   Future<void> persistSession({
     required String accessToken,
@@ -88,6 +145,30 @@ class SecureStorageService {
   Future<bool> readOnboardingAccepted() async {
     return (await _storage.read(key: _onboardingAcceptedKey)) == 'true';
   }
+
+  static Future<List<int>> _derivePinVerifier(String pin, List<int> salt) async {
+    final pbkdf2 = Pbkdf2(
+      macAlgorithm: Hmac.sha256(),
+      iterations: 120000,
+      bits: 256,
+    );
+    final key = await pbkdf2.deriveKeyFromPassword(
+      password: pin,
+      nonce: salt,
+    );
+    return key.extractBytes();
+  }
+
+  static String _encodeBytes(List<int> bytes) =>
+      base64Url.encode(bytes).replaceAll('=', '');
+
+  static List<int> _decodeBytes(String value) {
+    final normalized = value.padRight(
+      value.length + ((4 - value.length % 4) % 4),
+      '=',
+    );
+    return base64Url.decode(normalized);
+  }
 }
 
 class StoredSession {
@@ -104,4 +185,14 @@ class StoredSession {
   final String deviceId;
   final String handle;
   final String? displayName;
+}
+
+class StoredAuthKeyMaterial {
+  const StoredAuthKeyMaterial({
+    required this.privateKey,
+    required this.publicKey,
+  });
+
+  final String privateKey;
+  final String publicKey;
 }

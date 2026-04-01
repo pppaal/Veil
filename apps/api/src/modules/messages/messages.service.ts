@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
+  ConversationMessageSummary,
   DeleteLocalMessageResponse,
   MarkMessageReadResponse,
   SendMessageResponse,
@@ -8,6 +9,7 @@ import type {
 import type { EncryptedAttachmentReference } from '@veil/shared';
 
 import { PrismaService } from '../../common/prisma.service';
+import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SendMessageDto } from './dto/send-message.dto';
 
@@ -15,6 +17,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly pushService: PushService,
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
@@ -74,45 +77,64 @@ export class MessagesService {
       throw new ForbiddenException('Envelope recipient does not match direct conversation peer');
     }
 
-    const created = await this.prisma.message.create({
-      data: {
-        conversationId: dto.conversationId,
+    const existing = await this.prisma.message.findFirst({
+      where: {
         senderDeviceId: auth.deviceId,
-        ciphertext: dto.envelope.ciphertext,
-        nonce: dto.envelope.nonce,
-        messageType: dto.envelope.messageType,
-        attachmentId,
-        attachmentRef: dto.envelope.attachment
-          ? (dto.envelope.attachment as unknown as Prisma.InputJsonValue)
-          : undefined,
-        expiresAt: dto.envelope.expiresAt ? new Date(dto.envelope.expiresAt) : null,
-        receipts: {
-          create: members
-            .filter((member) => member.userId !== auth.userId)
-            .map((member) => ({
-              userId: member.userId,
-              deliveredAt: new Date(),
-            })),
-        },
+        clientMessageId: dto.clientMessageId,
+      },
+      include: {
+        receipts: true,
       },
     });
 
-    const summary = {
-      id: created.id,
-      conversationId: created.conversationId,
-      senderDeviceId: created.senderDeviceId,
-      ciphertext: created.ciphertext,
-      nonce: created.nonce,
-      messageType: created.messageType,
-      attachment: (created.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
-      expiresAt: created.expiresAt?.toISOString() ?? null,
-      serverReceivedAt: created.serverReceivedAt.toISOString(),
-      deletedAt: created.deletedAt?.toISOString() ?? null,
-    };
+    if (existing) {
+      return {
+        message: this.toMessageSummary(existing),
+        idempotent: true,
+      };
+    }
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const lastMessage = await tx.message.findFirst({
+        where: { conversationId: dto.conversationId },
+        orderBy: { conversationOrder: 'desc' },
+        select: { conversationOrder: true },
+      });
+
+      return tx.message.create({
+        data: {
+          conversationId: dto.conversationId,
+          senderDeviceId: auth.deviceId,
+          clientMessageId: dto.clientMessageId,
+          conversationOrder: (lastMessage?.conversationOrder ?? 0) + 1,
+          ciphertext: dto.envelope.ciphertext,
+          nonce: dto.envelope.nonce,
+          messageType: dto.envelope.messageType,
+          attachmentId,
+          attachmentRef: dto.envelope.attachment
+            ? (dto.envelope.attachment as unknown as Prisma.InputJsonValue)
+            : undefined,
+          expiresAt: dto.envelope.expiresAt ? new Date(dto.envelope.expiresAt) : null,
+          receipts: {
+            create: members
+              .filter((member) => member.userId !== auth.userId)
+              .map((member) => ({
+                userId: member.userId,
+              })),
+          },
+        },
+        include: {
+          receipts: true,
+        },
+      });
+    });
+
+    const summary = this.toMessageSummary(created);
 
     for (const member of members) {
       if (member.userId !== auth.userId) {
         this.realtimeGateway.emitToUser(member.userId, 'message.new', summary);
+        await this.dispatchPushFallbackIfNeeded(member.userId, summary);
       }
       this.realtimeGateway.emitToUser(member.userId, 'conversation.sync', {
         conversationId: dto.conversationId,
@@ -120,7 +142,7 @@ export class MessagesService {
       });
     }
 
-    return { message: summary };
+    return { message: summary, idempotent: false };
   }
 
   async markRead(
@@ -160,6 +182,11 @@ export class MessagesService {
       },
     });
 
+    this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.delivered', {
+      messageId,
+      userId: auth.userId,
+      deliveredAt: now.toISOString(),
+    });
     this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.read', {
       messageId,
       userId: auth.userId,
@@ -191,5 +218,70 @@ export class MessagesService {
       messageId,
       acknowledged: true,
     };
+  }
+
+  private toMessageSummary(message: {
+    id: string;
+    clientMessageId: string;
+    conversationId: string;
+    senderDeviceId: string;
+    conversationOrder: number;
+    ciphertext: string;
+    nonce: string;
+    messageType: 'text' | 'image' | 'file' | 'system';
+    attachmentRef?: unknown;
+    expiresAt: Date | null;
+    serverReceivedAt: Date;
+    deletedAt: Date | null;
+    receipts?: Array<{ deliveredAt: Date | null; readAt: Date | null }>;
+  }): ConversationMessageSummary {
+    const receipt = message.receipts?.[0];
+    return {
+      id: message.id,
+      clientMessageId: message.clientMessageId,
+      conversationId: message.conversationId,
+      senderDeviceId: message.senderDeviceId,
+      conversationOrder: message.conversationOrder,
+      ciphertext: message.ciphertext,
+      nonce: message.nonce,
+      messageType: message.messageType,
+      attachment: (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
+      expiresAt: message.expiresAt?.toISOString() ?? null,
+      serverReceivedAt: message.serverReceivedAt.toISOString(),
+      deletedAt: message.deletedAt?.toISOString() ?? null,
+      deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
+      readAt: receipt?.readAt?.toISOString() ?? null,
+    };
+  }
+
+  private async dispatchPushFallbackIfNeeded(
+    recipientUserId: string,
+    summary: ConversationMessageSummary,
+  ): Promise<void> {
+    if (this.realtimeGateway.hasConnectedUser(recipientUserId)) {
+      return;
+    }
+
+    const recipient = await this.prisma.user.findUnique({
+      where: { id: recipientUserId },
+      include: {
+        activeDevice: {
+          select: { pushToken: true },
+        },
+      },
+    });
+
+    const pushToken = recipient?.activeDevice?.pushToken;
+    if (!pushToken) {
+      return;
+    }
+
+    await this.pushService.sendMessageHint(pushToken, {
+      kind: 'message.new',
+      messageId: summary.id,
+      conversationId: summary.conversationId,
+      senderDeviceId: summary.senderDeviceId,
+      serverReceivedAt: summary.serverReceivedAt,
+    });
   }
 }

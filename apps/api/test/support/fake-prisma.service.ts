@@ -12,7 +12,7 @@ type UserRecord = {
 type DeviceRecord = {
   id: string;
   userId: string;
-  platform: 'ios' | 'android';
+  platform: 'ios' | 'android' | 'windows' | 'macos' | 'linux';
   deviceName: string;
   publicIdentityKey: string;
   signedPrekeyBundle: string;
@@ -52,6 +52,8 @@ type MessageRecord = {
   id: string;
   conversationId: string;
   senderDeviceId: string;
+  clientMessageId: string;
+  conversationOrder: number;
   ciphertext: string;
   nonce: string;
   messageType: 'text' | 'image' | 'file' | 'system';
@@ -334,6 +336,8 @@ export class FakePrismaService {
         id: makeId('msg'),
         conversationId: data.conversationId,
         senderDeviceId: data.senderDeviceId,
+        clientMessageId: data.clientMessageId,
+        conversationOrder: data.conversationOrder,
         ciphertext: data.ciphertext,
         nonce: data.nonce,
         messageType: data.messageType,
@@ -359,7 +363,7 @@ export class FakePrismaService {
     this.message.findMany = async ({ where, take, cursor, include }: any) => {
       let records = this.messages
         .filter((item) => item.conversationId === where.conversationId)
-        .sort((a, b) => b.serverReceivedAt.getTime() - a.serverReceivedAt.getTime());
+        .sort((a, b) => b.conversationOrder - a.conversationOrder);
       if (cursor?.id) {
         const index = records.findIndex((item) => item.id === cursor.id);
         records = index >= 0 ? records.slice(index + 1) : records;
@@ -385,7 +389,16 @@ export class FakePrismaService {
     };
 
     this.message.findFirst = async ({ where, select }: any) => {
-      const record = this.messages.find((item) => {
+      const records = this.messages.filter((item) => {
+        if (where?.senderDeviceId && item.senderDeviceId !== where.senderDeviceId) {
+          return false;
+        }
+        if (where?.clientMessageId && item.clientMessageId !== where.clientMessageId) {
+          return false;
+        }
+        if (where?.conversationId && item.conversationId !== where.conversationId) {
+          return false;
+        }
         if (where?.attachmentId && item.attachmentId !== where.attachmentId) {
           return false;
         }
@@ -398,6 +411,7 @@ export class FakePrismaService {
         }
         return true;
       });
+      const record = records.sort((a, b) => b.conversationOrder - a.conversationOrder)[0];
 
       if (!record) {
         return null;
@@ -485,8 +499,9 @@ export class FakePrismaService {
       messages: include?.messages
         ? this.messages
             .filter((item) => item.conversationId === record.id)
-            .sort((a, b) => b.serverReceivedAt.getTime() - a.serverReceivedAt.getTime())
+            .sort((a, b) => b.conversationOrder - a.conversationOrder)
             .slice(0, include.messages.take ?? Number.MAX_SAFE_INTEGER)
+            .map((message) => this.hydrateMessage(message, include.messages.include))
         : undefined,
     };
   }
@@ -494,9 +509,15 @@ export class FakePrismaService {
   private hydrateMessage(record: MessageRecord, include?: any): any {
     return {
       ...record,
+      senderDevice: include?.senderDevice
+        ? this.pick(this.devices.find((item) => item.id === record.senderDeviceId)!, include.senderDevice.select)
+        : undefined,
       attachment: include?.attachment && record.attachmentId
         ? this.attachments.find((item) => item.id === record.attachmentId) ?? null
         : null,
+      receipts: include?.receipts
+        ? this.messageReceipts.filter((item) => item.messageId === record.id)
+        : undefined,
     };
   }
 

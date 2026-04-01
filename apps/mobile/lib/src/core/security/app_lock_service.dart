@@ -23,5 +23,5 @@ class AppLockService {
 
   Future<void> setPin(String pin) => _secureStorage.persistPin(pin);
 
-  Future<bool> validatePin(String pin) async => (await _secureStorage.readPin()) == pin;
+  Future<bool> validatePin(String pin) => _secureStorage.verifyPin(pin);
 }

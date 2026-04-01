@@ -2,7 +2,8 @@ import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 
 import { AuthService } from '../../src/modules/auth/auth.service';
-import { MockDeviceAuthVerifier } from '../../src/modules/auth/device-auth-verifier';
+import { Ed25519DeviceAuthVerifier } from '../../src/modules/auth/device-auth-verifier';
+import { DeviceAuthTestHelper } from '../support/device-auth-test-helper';
 import { FakePrismaService } from '../support/fake-prisma.service';
 import { FakeConfigService, FakeEphemeralStoreService } from '../support/fake-services';
 
@@ -11,7 +12,9 @@ describe('AuthService', () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
-    const verifier = new MockDeviceAuthVerifier(config as never);
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
     const service = new AuthService(
       prisma as never,
       store as never,
@@ -23,11 +26,11 @@ describe('AuthService', () => {
     const registered = await service.register({
       handle: 'icarus',
       displayName: 'Icarus',
-      deviceName: 'Pixel',
-      platform: 'android',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
       publicIdentityKey: 'pub-id',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth-pub',
+      authPublicKey: keyPair.authPublicKey,
       pushToken: undefined,
     });
 
@@ -39,10 +42,9 @@ describe('AuthService', () => {
       handle: 'icarus',
       deviceId: registered.deviceId,
     });
-    const signature = verifier.createProofForDev({
+    const signature = keyHelper.createProof({
       challenge: challenge.challenge,
-      authPublicKey: 'auth-pub',
-      deviceId: registered.deviceId,
+      authPrivateKey: keyPair.authPrivateKey,
     });
 
     const verified = await service.verify({
@@ -60,7 +62,9 @@ describe('AuthService', () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
-    const verifier = new MockDeviceAuthVerifier(config as never);
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
     const service = new AuthService(
       prisma as never,
       store as never,
@@ -76,7 +80,7 @@ describe('AuthService', () => {
       platform: 'ios',
       publicIdentityKey: 'pub-id',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth-pub',
+      authPublicKey: keyPair.authPublicKey,
       pushToken: undefined,
     });
 
@@ -84,10 +88,9 @@ describe('AuthService', () => {
       handle: 'selene',
       deviceId: registered.deviceId,
     });
-    const signature = verifier.createProofForDev({
+    const signature = keyHelper.createProof({
       challenge: challenge.challenge,
-      authPublicKey: 'auth-pub',
-      deviceId: registered.deviceId,
+      authPrivateKey: keyPair.authPrivateKey,
     });
 
     prisma.devices[0]!.isActive = false;

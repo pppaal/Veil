@@ -1,100 +1,631 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
-class DeviceTransferScreen extends ConsumerWidget {
+enum _TransferMode { oldDevice, newDevice }
+
+class DeviceTransferScreen extends ConsumerStatefulWidget {
   const DeviceTransferScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DeviceTransferScreen> createState() => _DeviceTransferScreenState();
+}
+
+class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
+  final _payloadController = TextEditingController();
+  final _sessionIdController = TextEditingController();
+  final _tokenController = TextEditingController();
+  final _deviceNameController = TextEditingController(text: 'VEIL New Device');
+  final _claimIdController = TextEditingController();
+
+  bool _isClaiming = false;
+  bool _isCompleting = false;
+  String? _claimId;
+  String? _claimFingerprint;
+  String? _completionMessage;
+  String? _completionError;
+  late _TransferMode _mode;
+
+  @override
+  void initState() {
+    super.initState();
+    final session = ref.read(appSessionProvider);
+    _mode = session.isAuthenticated ? _TransferMode.oldDevice : _TransferMode.newDevice;
+  }
+
+  @override
+  void dispose() {
+    _payloadController.dispose();
+    _sessionIdController.dispose();
+    _tokenController.dispose();
+    _deviceNameController.dispose();
+    _claimIdController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final session = ref.watch(appSessionProvider);
     final controller = ref.watch(messengerControllerProvider);
+    final transferPayload = controller.transferPayload;
+
+    if (_payloadController.text.isEmpty && transferPayload != null) {
+      _payloadController.text = transferPayload;
+    }
 
     return VeilShell(
       title: 'Device Transfer',
       child: ListView(
         children: [
-          const _TransferCard(
-            title: '1. Initiate on old device',
-            body: 'Generate a short-lived transfer token. No old device, no transfer.',
-          ),
-          FilledButton.tonal(
-            onPressed: controller.isBusy
-                ? null
-                : () => ref.read(messengerControllerProvider).initTransfer(),
-            child: const Text('Init transfer'),
-          ),
-          const SizedBox(height: 12),
-          _TransferCard(
-            title: '2. Scan on new device',
-            body: controller.transferToken == null
-                ? 'No transfer token issued yet.'
-                : 'Session ${controller.transferSessionId}\nToken ${controller.transferToken}',
-          ),
-          FilledButton.tonal(
-            onPressed: controller.isBusy || controller.transferSessionId == null
-                ? null
-                : () => ref.read(messengerControllerProvider).approveTransfer(),
-            child: const Text('Approve on old device'),
-          ),
-          const SizedBox(height: 12),
-          const _TransferCard(
-            title: '3. Complete and revoke',
-            body: 'Completion makes the new device active and revokes the old device.',
-          ),
-          FilledButton(
-            onPressed: controller.isBusy || controller.transferToken == null
-                ? null
-                : () async {
-                    await ref.read(messengerControllerProvider).completeTransfer();
-                    if (!context.mounted) {
-                      return;
-                    }
-                    if (ref.read(messengerControllerProvider).errorMessage == null &&
-                        ref.read(messengerControllerProvider).transferStatus ==
-                            'Transfer completed. Old device revoked.') {
-                      await ref.read(appSessionProvider.notifier).logout();
-                    }
-                  },
-            child: const Text('Complete transfer'),
+          const VeilHeroPanel(
+            eyebrow: 'TRANSFER',
+            title: 'Old device required.',
+            body:
+                'Transfer is a live handoff. The old device issues the session and approval. The new device completes the move and becomes active.',
           ),
           const SizedBox(height: 16),
-          if (controller.transferStatus != null)
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(controller.transferStatus!),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              ChoiceChip(
+                label: const Text('Old device'),
+                selected: _mode == _TransferMode.oldDevice,
+                onSelected: (_) => setState(() => _mode = _TransferMode.oldDevice),
               ),
+              ChoiceChip(
+                label: const Text('New device'),
+                selected: _mode == _TransferMode.newDevice,
+                onSelected: (_) => setState(() => _mode = _TransferMode.newDevice),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const VeilInlineBanner(
+            title: 'No fallback path',
+            message:
+                'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, or admin restore.',
+            tone: VeilBannerTone.warn,
+          ),
+          const SizedBox(height: 16),
+          if (_mode == _TransferMode.oldDevice)
+            _OldDevicePanel(
+              isAuthenticated: session.isAuthenticated,
+              isBusy: controller.isBusy,
+              transferSessionId: controller.transferSessionId,
+              transferToken: controller.transferToken,
+              transferPayload: transferPayload,
+              transferStatus: controller.transferStatus,
+              errorMessage: controller.errorMessage,
+              onInit: () => ref.read(messengerControllerProvider).initTransfer(),
+              claimIdController: _claimIdController,
+              onApprove: () => ref.read(messengerControllerProvider).approveTransfer(
+                    _claimIdController.text.trim(),
+                  ),
+              onCopyPayload: transferPayload == null
+                  ? null
+                  : () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await Clipboard.setData(ClipboardData(text: transferPayload));
+                      if (!mounted) {
+                        return;
+                      }
+                      messenger.showSnackBar(
+                        const SnackBar(content: Text('Transfer payload copied.')),
+                      );
+                    },
+              onClear: () => ref.read(messengerControllerProvider).clearTransferState(),
+            )
+          else
+            _NewDevicePanel(
+              payloadController: _payloadController,
+              sessionIdController: _sessionIdController,
+              tokenController: _tokenController,
+              deviceNameController: _deviceNameController,
+              isClaiming: _isClaiming,
+              isCompleting: _isCompleting,
+              claimId: _claimId,
+              claimFingerprint: _claimFingerprint,
+              completionMessage: _completionMessage,
+              completionError: _completionError ?? session.errorMessage,
+              onImportPayload: _importPayload,
+              onClaim: _claimTransfer,
+              onComplete: _completeTransfer,
             ),
-          if (controller.errorMessage != null) ...[
-            const SizedBox(height: 12),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Text(
-                  controller.errorMessage!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              ),
+          if (_mode == _TransferMode.newDevice && session.isAuthenticated) ...[
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: () => context.go('/conversations'),
+              child: const Text('Return to conversations'),
             ),
           ],
         ],
       ),
     );
   }
+
+  void _importPayload() {
+    final payload = _payloadController.text.trim();
+    final parsed = _parseTransferPayload(payload);
+    if (parsed == null) {
+      setState(() {
+        _completionError = 'Transfer payload format is invalid.';
+        _completionMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _sessionIdController.text = parsed.sessionId;
+      _tokenController.text = parsed.transferToken;
+      _completionError = null;
+      _completionMessage = 'Transfer payload imported. Complete on this new device.';
+    });
+  }
+
+  Future<void> _claimTransfer() async {
+    final sessionId = _sessionIdController.text.trim();
+    final transferToken = _tokenController.text.trim();
+    if (sessionId.isEmpty || transferToken.isEmpty) {
+      setState(() {
+        _completionError = 'Import a valid transfer payload first.';
+        _completionMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isClaiming = true;
+      _completionError = null;
+      _completionMessage = null;
+    });
+
+    try {
+      final result = await ref.read(appSessionProvider.notifier).claimTransfer(
+            sessionId: sessionId,
+            transferToken: transferToken,
+            deviceName: _deviceNameController.text.trim(),
+          );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _claimId = result.claimId;
+        _claimFingerprint = result.claimantFingerprint;
+        _completionMessage =
+            'Claim registered. Give this claim code to the old device and wait for approval.';
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _completionError = ref.read(appSessionProvider).errorMessage ?? 'Claim failed.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClaiming = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _completeTransfer() async {
+    final sessionId = _sessionIdController.text.trim();
+    final transferToken = _tokenController.text.trim();
+    if (sessionId.isEmpty || transferToken.isEmpty || _claimId == null) {
+      setState(() {
+        _completionError = 'Register this new-device claim before completion.';
+        _completionMessage = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isCompleting = true;
+      _completionError = null;
+      _completionMessage = null;
+    });
+
+    try {
+      await ref.read(appSessionProvider.notifier).completeTransferAndAuthenticate(
+            sessionId: sessionId,
+            transferToken: transferToken,
+            claimId: _claimId!,
+          );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _completionMessage = 'Transfer complete. This device is now active.';
+      });
+      context.go('/conversations');
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _completionError = ref.read(appSessionProvider).errorMessage ?? 'Transfer failed.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCompleting = false;
+        });
+      }
+    }
+  }
+
+  _ParsedTransferPayload? _parseTransferPayload(String raw) {
+    if (raw.isEmpty) {
+      return null;
+    }
+
+    if (raw.startsWith('VEIL_TRANSFER::')) {
+      final parts = raw.split('::');
+      if (parts.length == 3) {
+        return _ParsedTransferPayload(sessionId: parts[1], transferToken: parts[2]);
+      }
+    }
+
+    final lines = raw
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (lines.length >= 2) {
+      final sessionLine = lines.firstWhere(
+        (line) => line.toLowerCase().startsWith('session '),
+        orElse: () => '',
+      );
+      final tokenLine = lines.firstWhere(
+        (line) => line.toLowerCase().startsWith('token '),
+        orElse: () => '',
+      );
+      if (sessionLine.isNotEmpty && tokenLine.isNotEmpty) {
+        return _ParsedTransferPayload(
+          sessionId: sessionLine.substring('session '.length).trim(),
+          transferToken: tokenLine.substring('token '.length).trim(),
+        );
+      }
+    }
+
+    return null;
+  }
+}
+
+class _OldDevicePanel extends StatelessWidget {
+  const _OldDevicePanel({
+    required this.isAuthenticated,
+    required this.isBusy,
+    required this.transferSessionId,
+    required this.transferToken,
+    required this.transferPayload,
+    required this.transferStatus,
+    required this.errorMessage,
+    required this.onInit,
+    required this.claimIdController,
+    required this.onApprove,
+    required this.onCopyPayload,
+    required this.onClear,
+  });
+
+  final bool isAuthenticated;
+  final bool isBusy;
+  final String? transferSessionId;
+  final String? transferToken;
+  final String? transferPayload;
+  final String? transferStatus;
+  final String? errorMessage;
+  final VoidCallback onInit;
+  final TextEditingController claimIdController;
+  final VoidCallback onApprove;
+  final VoidCallback? onCopyPayload;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isAuthenticated) {
+      return const VeilEmptyState(
+        title: 'Old device session required',
+        body: 'Sign in on the currently active device to issue and approve a transfer.',
+        icon: Icons.phonelink_lock_outlined,
+      );
+    }
+
+    return Column(
+      children: [
+        _TransferCard(
+          title: '1. Initiate on old device',
+          body: 'Generate a short-lived session and token for the next device.',
+          status: transferSessionId == null ? 'Ready' : 'Issued',
+          tone: transferSessionId == null ? VeilBannerTone.info : VeilBannerTone.good,
+        ),
+        const SizedBox(height: 10),
+        FilledButton.tonal(
+          onPressed: isBusy ? null : onInit,
+          child: Text(isBusy && transferSessionId == null ? 'Issuing token' : 'Issue transfer token'),
+        ),
+        const SizedBox(height: 12),
+        _TransferCard(
+          title: '2. Approve on old device',
+          body: transferToken == null
+              ? 'No transfer session exists yet.'
+              : 'Wait for the new device to register its claim, then approve that specific claim code here.',
+          status: transferToken == null ? 'Waiting' : 'Awaiting claim',
+          tone: transferToken == null ? VeilBannerTone.warn : VeilBannerTone.info,
+        ),
+        const SizedBox(height: 10),
+        TextField(
+          controller: claimIdController,
+          decoration: const InputDecoration(
+            labelText: 'New-device claim code',
+            hintText: 'Paste the claim code shown on the new device',
+          ),
+        ),
+        const SizedBox(height: 10),
+        FilledButton.tonal(
+          onPressed: isBusy || transferSessionId == null ? null : onApprove,
+          child: const Text('Approve this claim'),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text('3. Hand payload to new device',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                    if (transferPayload != null)
+                      VeilStatusPill(
+                        label: 'Ready to copy',
+                        tone: VeilBannerTone.good,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  transferPayload ?? 'Issue a transfer token first.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Complete on the new device. Do not complete on the old one.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: onCopyPayload,
+                        child: const Text('Copy payload'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: isBusy ? null : onClear,
+                        child: const Text('Clear'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (transferStatus != null) ...[
+          const SizedBox(height: 16),
+          VeilInlineBanner(
+            title: 'Transfer status',
+            message: transferStatus!,
+            tone: VeilBannerTone.info,
+          ),
+        ],
+        if (errorMessage != null) ...[
+          const SizedBox(height: 12),
+          VeilInlineBanner(
+            title: 'Transfer failed',
+            message: errorMessage!,
+            tone: VeilBannerTone.danger,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _NewDevicePanel extends StatelessWidget {
+  const _NewDevicePanel({
+    required this.payloadController,
+    required this.sessionIdController,
+    required this.tokenController,
+    required this.deviceNameController,
+    required this.isClaiming,
+    required this.isCompleting,
+    required this.claimId,
+    required this.claimFingerprint,
+    required this.completionMessage,
+    required this.completionError,
+    required this.onImportPayload,
+    required this.onClaim,
+    required this.onComplete,
+  });
+
+  final TextEditingController payloadController;
+  final TextEditingController sessionIdController;
+  final TextEditingController tokenController;
+  final TextEditingController deviceNameController;
+  final bool isClaiming;
+  final bool isCompleting;
+  final String? claimId;
+  final String? claimFingerprint;
+  final String? completionMessage;
+  final String? completionError;
+  final VoidCallback onImportPayload;
+  final Future<void> Function() onClaim;
+  final Future<void> Function() onComplete;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const VeilSectionLabel('TRANSFER PAYLOAD'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: payloadController,
+                  minLines: 3,
+                  maxLines: 5,
+                  decoration: const InputDecoration(
+                    labelText: 'Paste transfer payload',
+                    hintText: 'VEIL_TRANSFER::<sessionId>::<token>',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: onImportPayload,
+                  child: const Text('Import payload'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const VeilSectionLabel('NEW DEVICE'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: deviceNameController,
+                  decoration: const InputDecoration(labelText: 'Device name'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: sessionIdController,
+                  decoration: const InputDecoration(labelText: 'Session id'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: tokenController,
+                  decoration: const InputDecoration(labelText: 'Transfer token'),
+                ),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    VeilStatusPill(
+                      label: claimId == null ? 'Claim not registered' : 'Claim registered',
+                      tone: claimId == null ? VeilBannerTone.warn : VeilBannerTone.good,
+                    ),
+                    const VeilStatusPill(label: 'Old device must approve specific claim'),
+                  ],
+                ),
+                if (claimId != null) ...[
+                  const SizedBox(height: 14),
+                  SelectableText('Claim code $claimId'),
+                  const SizedBox(height: 8),
+                  Text('Claim fingerprint ${claimFingerprint ?? 'Unavailable'}'),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          onPressed: isClaiming ? null : onClaim,
+          child: Text(isClaiming ? 'Registering claim' : 'Register this new device'),
+        ),
+        if (completionMessage != null) ...[
+          const SizedBox(height: 16),
+          VeilInlineBanner(
+            title: 'Transfer status',
+            message: completionMessage!,
+            tone: VeilBannerTone.good,
+          ),
+        ],
+        if (completionError != null) ...[
+          const SizedBox(height: 12),
+          VeilInlineBanner(
+            title: 'Transfer failed',
+            message: completionError!,
+            tone: VeilBannerTone.danger,
+          ),
+        ],
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: isCompleting || claimId == null ? null : onComplete,
+          child: Text(isCompleting ? 'Completing transfer' : 'Complete on this device'),
+        ),
+      ],
+    );
+  }
 }
 
 class _TransferCard extends StatelessWidget {
-  const _TransferCard({required this.title, required this.body});
+  const _TransferCard({
+    required this.title,
+    required this.body,
+    required this.status,
+    required this.tone,
+  });
 
   final String title;
   final String body;
+  final String status;
+  final VeilBannerTone tone;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ListTile(title: Text(title), subtitle: Text(body)),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+                VeilStatusPill(label: status, tone: tone),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SelectableText(body, style: Theme.of(context).textTheme.bodyMedium),
+          ],
+        ),
+      ),
     );
   }
+}
+
+class _ParsedTransferPayload {
+  const _ParsedTransferPayload({
+    required this.sessionId,
+    required this.transferToken,
+  });
+
+  final String sessionId;
+  final String transferToken;
 }

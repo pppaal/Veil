@@ -16,6 +16,7 @@ import { DeviceTransferModule } from './modules/device-transfer/device-transfer.
 import { DevicesModule } from './modules/devices/devices.module';
 import { HealthModule } from './modules/health/health.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { PushModule } from './modules/push/push.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -41,6 +42,7 @@ import { UsersModule } from './modules/users/users.module';
     ConversationsModule,
     MessagesModule,
     AttachmentsModule,
+    PushModule,
     RealtimeModule,
     DeviceTransferModule,
   ],

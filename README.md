@@ -46,6 +46,8 @@ For Windows desktop builds, enable Windows Developer Mode first so Flutter plugi
 - `pnpm -C apps/api test:e2e`
 - `pnpm docker:up`
 - `pnpm docker:down`
+- `pnpm docker:alpha:up`
+- `pnpm docker:alpha:down`
 - `pnpm dev:mobile:api`
 - `pnpm dev:mobile:desktop`
 - `pnpm mobile:analyze`
@@ -67,7 +69,7 @@ GitHub Actions CI is defined in [`.github/workflows/ci.yml`](c:/Users/pjyrh/OneD
 - API-backed direct conversation create/list and encrypted envelope send/list flow
 - Attachment upload ticket, completion, message envelope, and download-ticket resolution scaffold
 - WebSocket realtime relay wiring in mobile
-- Device transfer init/approve/complete with active-old-device enforcement
+- Device transfer init/approve on the old device plus complete-and-authenticate on the new device with active-old-device enforcement
 - Disappearing message metadata and local expiration scaffolding in mobile
 - App lock with PIN/biometric hooks and security status screens
 - Drift-ready conversation/message cache service wired behind the messenger controller
@@ -79,13 +81,14 @@ Flutter reads runtime endpoints through `--dart-define` flags.
 
 - `VEIL_API_BASE_URL`: default `http://localhost:3000/v1`
 - `VEIL_REALTIME_URL`: default `http://localhost:3000`
-- `VEIL_MOCK_AUTH_SHARED_SECRET`: must match the API `VEIL_MOCK_AUTH_SHARED_SECRET` in dev
 
 For Android emulators, use `10.0.2.2` instead of `localhost`.
 
 ## Important warning
 
 The mock crypto adapter exists only to preserve architecture and developer workflows. It does not provide audited cryptographic security. Do not ship this code as a production messenger until the crypto layer is replaced and independently reviewed.
+
+The API now refuses to boot with `VEIL_ENV=production` while the mock crypto boundary is still wired. Internal alpha deployment should stay on non-production environment modes.
 
 ## Docs
 
@@ -96,5 +99,9 @@ The mock crypto adapter exists only to preserve architecture and developer workf
 - [Attachment Flow](docs/attachment-flow.md)
 - [Device Transfer Flow](docs/device-transfer-flow.md)
 - [MVP Demo Runbook](docs/mvp-demo-runbook.md)
+- [Internal Alpha Deployment](docs/internal-alpha-deployment.md)
+- [Internal Alpha Runbook](docs/internal-alpha-runbook.md)
+- [Internal Alpha Test Checklist](docs/internal-alpha-test-checklist.md)
+- [Internal Alpha Desktop QA](docs/internal-alpha-desktop-qa.md)
 - [Production Deployment Checklist](docs/production-deployment.md)
 - [Mock Crypto Replacement Plan](docs/mock-crypto-replacement.md)

@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TYPE "UserStatus" AS ENUM ('active', 'locked', 'revoked');
-CREATE TYPE "DevicePlatform" AS ENUM ('ios', 'android');
+CREATE TYPE "DevicePlatform" AS ENUM ('ios', 'android', 'windows', 'macos', 'linux');
 CREATE TYPE "ConversationType" AS ENUM ('direct');
 CREATE TYPE "MessageType" AS ENUM ('text', 'image', 'file', 'system');
 CREATE TYPE "AttachmentUploadStatus" AS ENUM ('pending', 'uploaded', 'failed');
@@ -61,6 +61,8 @@ CREATE TABLE "messages" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   "conversation_id" UUID NOT NULL,
   "sender_device_id" UUID NOT NULL,
+  "client_message_id" VARCHAR(80) NOT NULL,
+  "conversation_order" INTEGER NOT NULL,
   "ciphertext" TEXT NOT NULL,
   "nonce" TEXT NOT NULL,
   "message_type" "MessageType" NOT NULL,
@@ -70,6 +72,10 @@ CREATE TABLE "messages" (
   "deleted_at" TIMESTAMPTZ,
   "expires_at" TIMESTAMPTZ
 );
+
+ALTER TABLE "messages"
+  ADD CONSTRAINT "messages_sender_device_id_client_message_id_key"
+  UNIQUE ("sender_device_id", "client_message_id");
 
 CREATE TABLE "message_receipts" (
   "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,6 +99,7 @@ CREATE TABLE "device_transfer_sessions" (
 CREATE INDEX "users_active_device_id_idx" ON "users" ("active_device_id");
 CREATE INDEX "devices_user_id_is_active_idx" ON "devices" ("user_id", "is_active");
 CREATE INDEX "conversation_members_user_id_idx" ON "conversation_members" ("user_id");
+CREATE INDEX "messages_conversation_id_conversation_order_idx" ON "messages" ("conversation_id", "conversation_order");
 CREATE INDEX "messages_conversation_id_server_received_at_idx" ON "messages" ("conversation_id", "server_received_at");
 CREATE INDEX "messages_attachment_id_idx" ON "messages" ("attachment_id");
 CREATE INDEX "message_receipts_user_id_idx" ON "message_receipts" ("user_id");

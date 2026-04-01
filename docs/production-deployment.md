@@ -2,6 +2,8 @@
 
 VEIL is not production-ready yet. This checklist is the minimum path to get there without violating the product philosophy.
 
+The current API intentionally blocks `VEIL_ENV=production` at startup because the mock device-auth verifier is still wired.
+
 ## 1. Replace mock crypto
 
 - Replace the mock `CryptoEngine` adapters on mobile with audited real messaging/session primitives.
@@ -44,6 +46,7 @@ VEIL is not production-ready yet. This checklist is the minimum path to get ther
 - Add migration automation for Prisma.
 - Publish API images from CI.
 - Add staged deployment with smoke checks against `/v1/health`.
+- Remove the production boot guard only after the mock auth and crypto adapters are fully replaced.
 
 ## 7. Security review
 

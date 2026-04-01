@@ -30,8 +30,7 @@ flutter pub get
 dart run build_runner build --delete-conflicting-outputs
 flutter run \
   --dart-define=VEIL_API_BASE_URL=http://10.0.2.2:3000/v1 \
-  --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000 \
-  --dart-define=VEIL_MOCK_AUTH_SHARED_SECRET=change-me-in-dev
+  --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000
 ```
 
 For iOS simulator, replace `10.0.2.2` with `localhost`.
@@ -49,8 +48,10 @@ For iOS simulator, replace `10.0.2.2` with `localhost`.
 9. Open security status and confirm no backup/no recovery messaging.
 10. Open device transfer and run:
    - init transfer
-   - approve transfer
-   - complete transfer
+   - import payload on the new device
+   - register the new-device claim
+   - approve that claim on the old device
+   - complete transfer on the new device
 11. Confirm the old device session is cleared after completion.
 12. On a fresh bound session, open settings and test `Revoke this device`.
 13. Confirm the app returns to account creation and the old bearer token no longer works.
@@ -60,7 +61,7 @@ For iOS simulator, replace `10.0.2.2` with `localhost`.
 - Crypto is mock-only.
 - Attachment upload uses encrypted placeholder bytes.
 - The new device side of transfer is scaffolded, not a separate running mobile instance.
-- Push notifications are not integrated.
+- Push fallback is metadata-only and the real APNs/FCM provider is not wired.
 - Drift cache requires local codegen before the app will compile.
 
 ## 5. Verification commands

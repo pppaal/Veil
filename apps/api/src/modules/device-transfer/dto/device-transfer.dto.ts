@@ -4,6 +4,7 @@ import { IsEnum, IsString, IsUUID, MaxLength } from 'class-validator';
 
 import type {
   DeviceTransferApproveRequest,
+  DeviceTransferClaimRequest,
   DeviceTransferCompleteRequest,
   DeviceTransferInitRequest,
 } from '@veil/contracts';
@@ -18,6 +19,21 @@ export class DeviceTransferApproveDto implements DeviceTransferApproveRequest {
   @ApiProperty()
   @IsUUID()
   sessionId!: string;
+
+  @ApiProperty()
+  @IsUUID()
+  claimId!: string;
+}
+
+export class DeviceTransferClaimDto implements DeviceTransferClaimRequest {
+  @ApiProperty()
+  @IsUUID()
+  sessionId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(256)
+  transferToken!: string;
 
   @ApiProperty()
   @IsString()
@@ -39,6 +55,10 @@ export class DeviceTransferApproveDto implements DeviceTransferApproveRequest {
   @ApiProperty()
   @IsString()
   authPublicKey!: string;
+
+  @ApiProperty()
+  @IsString()
+  authProof!: string;
 }
 
 export class DeviceTransferCompleteDto implements DeviceTransferCompleteRequest {
@@ -48,5 +68,10 @@ export class DeviceTransferCompleteDto implements DeviceTransferCompleteRequest 
 
   @ApiProperty()
   @IsString()
+  @MaxLength(256)
   transferToken!: string;
+
+  @ApiProperty()
+  @IsUUID()
+  claimId!: string;
 }

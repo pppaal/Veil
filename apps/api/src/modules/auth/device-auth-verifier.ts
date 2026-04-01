@@ -1,8 +1,5 @@
-import { createHash } from 'node:crypto';
-
-import { Inject, Injectable } from '@nestjs/common';
-
-import { AppConfigService } from '../../common/config/app-config.service';
+import { createPublicKey, verify } from 'node:crypto';
+import { Injectable } from '@nestjs/common';
 
 export interface DeviceAuthVerifier {
   verifyChallengeResponse(params: {
@@ -15,45 +12,35 @@ export interface DeviceAuthVerifier {
 
 export const DEVICE_AUTH_VERIFIER = Symbol('DEVICE_AUTH_VERIFIER');
 
-const buildMockProof = (
-  challenge: string,
-  authPublicKey: string,
-  deviceId: string,
-  sharedSecret: string,
-): string =>
-  createHash('sha256')
-    .update(`${challenge}:${authPublicKey}:${deviceId}:${sharedSecret}`)
-    .digest('base64url');
+export const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 
 @Injectable()
-export class MockDeviceAuthVerifier implements DeviceAuthVerifier {
-  constructor(@Inject(AppConfigService) private readonly config: AppConfigService) {}
-
+export class Ed25519DeviceAuthVerifier implements DeviceAuthVerifier {
   async verifyChallengeResponse(params: {
     challenge: string;
     proof: string;
     authPublicKey: string;
     deviceId: string;
   }): Promise<boolean> {
-    const expected = buildMockProof(
-      params.challenge,
-      params.authPublicKey,
-      params.deviceId,
-      this.config.mockAuthSharedSecret,
-    );
-    return expected === params.proof;
-  }
+    void params.deviceId;
 
-  createProofForDev(params: {
-    challenge: string;
-    authPublicKey: string;
-    deviceId: string;
-  }): string {
-    return buildMockProof(
-      params.challenge,
-      params.authPublicKey,
-      params.deviceId,
-      this.config.mockAuthSharedSecret,
-    );
+    try {
+      const publicKey = createPublicKey({
+        key: Buffer.concat([
+          ED25519_SPKI_PREFIX,
+          Buffer.from(params.authPublicKey, 'base64url'),
+        ]),
+        format: 'der',
+        type: 'spki',
+      });
+      return verify(
+        null,
+        Buffer.from(params.challenge, 'utf8'),
+        publicKey,
+        Buffer.from(params.proof, 'base64url'),
+      );
+    } catch {
+      return false;
+    }
   }
 }

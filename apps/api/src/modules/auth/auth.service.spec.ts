@@ -1,16 +1,19 @@
 import { JwtService } from '@nestjs/jwt';
 
 import { AuthService } from './auth.service';
-import { MockDeviceAuthVerifier } from './device-auth-verifier';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
+import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { FakeConfigService, FakeEphemeralStoreService } from '../../../test/support/fake-services';
+import { Ed25519DeviceAuthVerifier } from './device-auth-verifier';
 
 describe('AuthService', () => {
   it('registers a device-bound account and verifies a challenge', async () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
-    const verifier = new MockDeviceAuthVerifier(config as never);
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
     const service = new AuthService(
       prisma as never,
       store as never,
@@ -22,11 +25,11 @@ describe('AuthService', () => {
     const registered = await service.register({
       handle: 'icarus',
       displayName: 'Icarus',
-      deviceName: 'Pixel',
-      platform: 'android',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
       publicIdentityKey: 'pub-id',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth-pub',
+      authPublicKey: keyPair.authPublicKey,
       pushToken: undefined,
     });
 
@@ -38,10 +41,9 @@ describe('AuthService', () => {
       handle: 'icarus',
       deviceId: registered.deviceId,
     });
-    const signature = verifier.createProofForDev({
+    const signature = keyHelper.createProof({
       challenge: challenge.challenge,
-      authPublicKey: 'auth-pub',
-      deviceId: registered.deviceId,
+      authPrivateKey: keyPair.authPrivateKey,
     });
 
     const verified = await service.verify({

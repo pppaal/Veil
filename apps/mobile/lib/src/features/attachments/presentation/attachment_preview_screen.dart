@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class AttachmentPreviewScreen extends ConsumerStatefulWidget {
   const AttachmentPreviewScreen({super.key, required this.conversationId});
@@ -28,39 +29,63 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
 
     return VeilShell(
       title: 'Attachment Preview',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
         children: [
+          const VeilHeroPanel(
+            eyebrow: 'ATTACHMENT FLOW',
+            title: 'Encrypted blob only.',
+            body:
+                'The sender encrypts locally, uploads an opaque blob, and then sends an encrypted envelope with the attachment reference.',
+          ),
+          const SizedBox(height: 16),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Encrypted blob only'),
-                  const SizedBox(height: 10),
+                  const VeilSectionLabel('LOCAL ATTACHMENT LABEL'),
+                  const SizedBox(height: 12),
                   TextField(
                     controller: _filenameController,
                     decoration: const InputDecoration(labelText: 'Filename'),
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Payload: local mock ciphertext'),
-                  const Text('Server view: storage key + opaque metadata'),
-                  const Text('Client flow: upload ticket -> upload complete -> encrypted message'),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: const [
+                      VeilStatusPill(label: 'Payload: opaque dev blob'),
+                      VeilStatusPill(label: 'Server sees metadata only'),
+                      VeilStatusPill(label: 'No plaintext push'),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Client flow: upload ticket -> upload blob -> upload complete -> encrypted message.',
+                  ),
                 ],
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          const VeilInlineBanner(
+            title: 'Internal alpha note',
+            message:
+                'This build still uses the mock crypto adapter, but the attachment path preserves the encrypted-envelope architecture.',
+            tone: VeilBannerTone.info,
+          ),
           if (controller.errorMessage != null) ...[
             const SizedBox(height: 16),
-            Text(
-              controller.errorMessage!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            VeilInlineBanner(
+              title: 'Attachment send failed',
+              message: controller.errorMessage!,
+              tone: VeilBannerTone.danger,
             ),
           ],
-          const Spacer(),
+          const SizedBox(height: 28),
           FilledButton(
-            onPressed: controller.isBusy
+            onPressed: controller.isBusy || _filenameController.text.trim().isEmpty
                 ? null
                 : () async {
                     await ref.read(messengerControllerProvider).sendAttachmentPlaceholder(
@@ -72,12 +97,7 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
                       Navigator.of(context).pop();
                     }
                   },
-            child: SizedBox(
-              width: double.infinity,
-              child: Center(
-                child: Text(controller.isBusy ? 'Sending...' : 'Encrypt and send'),
-              ),
-            ),
+            child: Text(controller.isBusy ? 'Encrypting and sending' : 'Encrypt and send'),
           ),
         ],
       ),

@@ -3,15 +3,19 @@ import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
-  IsObject,
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
 
-import { DEV_ENVELOPE_VERSION, messageTypes } from '@veil/shared';
+import {
+  DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
+  SUPPORTED_ENVELOPE_VERSIONS,
+  messageTypes,
+} from '@veil/shared';
 
 class AttachmentEncryptionMaterialDto {
   @ApiProperty()
@@ -23,7 +27,7 @@ class AttachmentEncryptionMaterialDto {
   nonce!: string;
 
   @ApiProperty()
-  @IsString()
+  @IsIn([DEV_ATTACHMENT_WRAP_ALGORITHM_HINT])
   algorithmHint!: string;
 }
 
@@ -57,7 +61,7 @@ class AttachmentReferenceDto {
 
 class EnvelopeDto {
   @ApiProperty()
-  @IsIn([DEV_ENVELOPE_VERSION])
+  @IsIn(SUPPORTED_ENVELOPE_VERSIONS)
   version!: string;
 
   @ApiProperty()
@@ -100,6 +104,11 @@ export class SendMessageDto {
   @ApiProperty()
   @IsUUID()
   conversationId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @Matches(/^[a-zA-Z0-9._:-]{8,80}$/)
+  clientMessageId!: string;
 
   @ApiProperty({ type: EnvelopeDto })
   @ValidateNested()

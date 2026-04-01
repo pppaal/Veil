@@ -9,12 +9,20 @@ import type {
   PlaintextMessageInput,
   PublicKeyBundle,
 } from './types';
-import { DEV_ENVELOPE_VERSION } from '../domain/protocol';
+import {
+  DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
+  DEV_ENVELOPE_VERSION,
+} from '../domain/protocol';
 
 const toMockBlob = (value: string): string =>
   Buffer.from(value, 'utf8').toString('base64url');
 
 const fromMockBlob = (value: string): string => Buffer.from(value, 'base64url').toString('utf8');
+const plaintextRegistry = new Map<string, DecryptedMessage>();
+const opaqueToken = (byteLength: number): string =>
+  Buffer.from(Array.from({ length: byteLength }, () => Math.floor(Math.random() * 256))).toString(
+    'base64url',
+  );
 
 export class MockCryptoEngine implements CryptoEngine {
   readonly adapterId = 'mock-dev-adapter';
@@ -34,19 +42,20 @@ export class MockCryptoEngine implements CryptoEngine {
     input: PlaintextMessageInput,
     recipientBundle: PublicKeyBundle,
   ): Promise<CryptoEnvelope> {
+    const ciphertext = opaqueToken(48);
+    plaintextRegistry.set(ciphertext, {
+      body: input.body,
+      messageType: input.messageType,
+      expiresAt: input.expiresAt ?? null,
+      attachment: input.attachment ?? null,
+    });
+
     return {
       version: DEV_ENVELOPE_VERSION,
       conversationId: input.conversationId,
       senderDeviceId: input.senderDeviceId,
       recipientUserId: recipientBundle.userId,
-      ciphertext: toMockBlob(
-        JSON.stringify({
-          body: input.body,
-          messageType: input.messageType,
-          expiresAt: input.expiresAt ?? null,
-          attachment: input.attachment ?? null,
-        }),
-      ),
+      ciphertext,
       nonce: `mock-nonce-${randomUUID()}`,
       messageType: input.messageType,
       expiresAt: input.expiresAt ?? null,
@@ -55,12 +64,15 @@ export class MockCryptoEngine implements CryptoEngine {
   }
 
   async decryptMessage(envelope: CryptoEnvelope): Promise<DecryptedMessage> {
-    const parsed = JSON.parse(fromMockBlob(envelope.ciphertext)) as {
-      body: string;
-      messageType: DecryptedMessage['messageType'];
-      expiresAt?: string | null;
-      attachment?: DecryptedMessage['attachment'];
-    };
+    const parsed = plaintextRegistry.get(envelope.ciphertext);
+    if (!parsed) {
+      return {
+        body: envelope.messageType === 'file' ? 'Encrypted attachment' : 'Encrypted message',
+        messageType: envelope.messageType,
+        expiresAt: envelope.expiresAt ?? null,
+        attachment: envelope.attachment ?? null,
+      };
+    }
 
     return {
       body: parsed.body,
@@ -75,9 +87,9 @@ export class MockCryptoEngine implements CryptoEngine {
     recipientBundle: PublicKeyBundle,
   ): Promise<AttachmentEncryptionMaterial> {
     return {
-      encryptedKey: toMockBlob(`${recipientBundle.deviceId}:${contentKey}`),
+      encryptedKey: opaqueToken(32),
       nonce: `mock-attachment-nonce-${randomUUID()}`,
-      algorithmHint: 'mock-envelope-wrap',
+      algorithmHint: DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
     };
   }
 }

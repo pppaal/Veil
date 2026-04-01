@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -45,8 +47,20 @@ class VeilApiClient {
   Future<Map<String, dynamic>> getMessages(
     String accessToken,
     String conversationId,
+    {String? cursor,
+    int limit = 50,}
   ) async {
-    return _get('/conversations/$conversationId/messages', accessToken: accessToken);
+    final query = <String, String>{
+      'limit': '$limit',
+      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+    };
+    final uri = Uri.parse('$baseUrl/conversations/$conversationId/messages')
+        .replace(queryParameters: query);
+    final response = await _client.get(
+      uri,
+      headers: _headers(accessToken),
+    );
+    return _decodeMap(response);
   }
 
   Future<Map<String, dynamic>> sendMessage(
@@ -82,13 +96,12 @@ class VeilApiClient {
     required Map<String, dynamic> headers,
     required String filename,
   }) async {
+    final random = Random.secure();
+    final body = Uint8List.fromList(List<int>.generate(2048, (_) => random.nextInt(256)));
     final response = await _client.put(
       Uri.parse(uploadUrl),
-      headers: {
-        ...headers.map((key, value) => MapEntry(key, value.toString())),
-        'Content-Type': 'application/octet-stream',
-      },
-      body: utf8.encode('VEIL::$filename::encrypted-placeholder'),
+      headers: headers.map((key, value) => MapEntry(key, value.toString())),
+      body: body,
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -119,6 +132,10 @@ class VeilApiClient {
     Map<String, dynamic> body,
   ) async {
     return _post('/device-transfer/approve', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> claimTransfer(Map<String, dynamic> body) async {
+    return _post('/device-transfer/claim', body);
   }
 
   Future<Map<String, dynamic>> completeTransfer(Map<String, dynamic> body) async {
@@ -189,14 +206,55 @@ class VeilApiClient {
 
   dynamic _decode(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw VeilApiException(
-        'HTTP ${response.statusCode}: ${response.body}',
-      );
+      throw VeilApiException(_errorMessageFor(response));
     }
     if (response.body.isEmpty) {
       return <String, dynamic>{};
     }
     return jsonDecode(response.body);
+  }
+
+  String _errorMessageFor(http.Response response) {
+    final status = response.statusCode;
+    if (response.body.isEmpty) {
+      return 'Request failed: HTTP $status';
+    }
+
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message'];
+        if (message is String && message.trim().isNotEmpty) {
+          return _normalizeErrorMessage(message.trim(), status);
+        }
+        if (message is List && message.isNotEmpty) {
+          return _normalizeErrorMessage(message.first.toString(), status);
+        }
+        final error = decoded['error'];
+        if (error is String && error.trim().isNotEmpty) {
+          return _normalizeErrorMessage(error.trim(), status);
+        }
+      }
+    } catch (_) {
+      // Fall through to the generic message.
+    }
+
+    return 'Request failed: HTTP $status';
+  }
+
+  String _normalizeErrorMessage(String message, int status) {
+    if (message.contains('peer handle')) {
+      return 'That handle is not available for a direct chat.';
+    }
+    if (message.contains('already exists') || message.contains('has already been taken')) {
+      return 'That handle is already claimed.';
+    }
+    if (message.contains('Invalid handle') || message.contains('handle')) {
+      if (status == 400 || status == 422) {
+        return 'Choose a valid handle using letters, numbers, and underscores.';
+      }
+    }
+    return message;
   }
 }
 

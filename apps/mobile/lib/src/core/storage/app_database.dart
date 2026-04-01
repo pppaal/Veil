@@ -17,6 +17,9 @@ class CachedConversations extends Table {
   TextColumn get previewMessageType => text().nullable()();
   TextColumn get previewAttachmentJson => text().nullable()();
   DateTimeColumn get previewExpiresAt => dateTime().nullable()();
+  TextColumn get paginationCursor => text().nullable()();
+  BoolColumn get hasMoreHistory => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
@@ -25,23 +28,88 @@ class CachedConversations extends Table {
 class CachedMessages extends Table {
   TextColumn get id => text()();
   TextColumn get conversationId => text().references(CachedConversations, #id)();
+  TextColumn get clientMessageId => text().nullable()();
   TextColumn get senderDeviceId => text()();
   TextColumn get ciphertext => text()();
   TextColumn get nonce => text()();
   TextColumn get messageType => text()();
   TextColumn get attachmentJson => text().nullable()();
+  IntColumn get conversationOrder => integer().nullable()();
   DateTimeColumn get receivedAt => dateTime()();
   DateTimeColumn get expiresAt => dateTime().nullable()();
-  BoolColumn get isRead => boolean().withDefault(const Constant(false))();
+  TextColumn get deliveryState => text().withDefault(const Constant('sent'))();
+  DateTimeColumn get deliveredAt => dateTime().nullable()();
+  DateTimeColumn get readAt => dateTime().nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => {id};
 }
 
-@DriftDatabase(tables: [CachedConversations, CachedMessages])
+class PendingMessages extends Table {
+  TextColumn get clientMessageId => text()();
+  TextColumn get conversationId => text()();
+  TextColumn get senderDeviceId => text()();
+  TextColumn get recipientUserId => text()();
+  TextColumn get ciphertext => text()();
+  TextColumn get nonce => text()();
+  TextColumn get messageType => text()();
+  TextColumn get attachmentJson => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get expiresAt => dateTime().nullable()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get lastAttemptAt => dateTime().nullable()();
+  TextColumn get state => text().withDefault(const Constant('pending'))();
+  TextColumn get errorMessage => text().nullable()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {clientMessageId};
+}
+
+@DriftDatabase(tables: [CachedConversations, CachedMessages, PendingMessages])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (migrator) async {
+          await migrator.createAll();
+          await _createIndexes();
+        },
+        onUpgrade: (migrator, from, to) async {
+          if (from < 2) {
+            await migrator.createAll();
+          }
+          await _createIndexes();
+        },
+      );
+
+  Future<void> _createIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS cached_conversations_updated_idx '
+      'ON cached_conversations (updated_at DESC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS cached_messages_conversation_received_idx '
+      'ON cached_messages (conversation_id, received_at ASC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS cached_messages_conversation_order_idx '
+      'ON cached_messages (conversation_id, conversation_order ASC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS cached_messages_client_message_idx '
+      'ON cached_messages (client_message_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS pending_messages_state_created_idx '
+      'ON pending_messages (state, created_at ASC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS pending_messages_conversation_idx '
+      'ON pending_messages (conversation_id)',
+    );
+  }
 }

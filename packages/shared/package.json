@@ -15,5 +15,10 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node -e \"process.exit(0)\"",
     "format": "prettier --check \"src/**/*.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3"
   }
 }

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -63,9 +64,21 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('VEIL', style: TextStyle(fontSize: 42, fontWeight: FontWeight.w700)),
-            SizedBox(height: 12),
-            Text('No backup. No recovery. No leaks.'),
+            VeilHeroPanel(
+              eyebrow: 'INTERNAL ALPHA',
+              title: 'VEIL',
+              body: 'No backup. No recovery. No leaks.',
+              bottom: Column(
+                children: [
+                  VeilStatusPill(label: 'Device-bound messenger'),
+                  SizedBox(height: 20),
+                  VeilLoadingBlock(
+                    title: 'Preparing local state',
+                    body: 'Checking onboarding, session binding, and local security state.',
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

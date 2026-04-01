@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class AppLockScreen extends ConsumerStatefulWidget {
   const AppLockScreen({super.key});
@@ -46,29 +47,62 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     return VeilShell(
       title: 'App Lock',
       child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          ? const VeilLoadingBlock(
+              title: 'Checking local barrier',
+              body: 'Looking for a stored PIN and biometric availability.',
+            )
+          : ListView(
               children: [
-                Text('Local barrier only.', style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 12),
-                const Text('Biometric and PIN hooks belong on the device. The server never helps.'),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _pinController,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(labelText: _hasPin ? 'PIN' : 'Set PIN'),
+                const VeilHeroPanel(
+                  eyebrow: 'LOCAL BARRIER',
+                  title: 'The server never unlocks VEIL.',
+                  body:
+                      'PIN and biometrics are strictly local controls. No remote reset. No recovery fallback. No server override.',
+                ),
+                const SizedBox(height: 16),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const VeilSectionLabel('PIN'),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _pinController,
+                          obscureText: true,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(labelText: _hasPin ? 'PIN' : 'Set PIN'),
+                        ),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            VeilStatusPill(
+                              label: _hasPin ? 'PIN configured' : 'PIN not set',
+                              tone: _hasPin ? VeilBannerTone.good : VeilBannerTone.warn,
+                            ),
+                            const VeilStatusPill(label: 'No reset flow'),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
                 if (_status != null) ...[
                   const SizedBox(height: 16),
-                  Text(
-                    _status!,
-                    style: TextStyle(
-                      color: _status == 'Unlocked.'
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.error,
-                    ),
+                  VeilInlineBanner(
+                    title: _status == 'Unlocked.' ? 'Unlocked' : 'Lock status',
+                    message: _status!,
+                    tone: _status == 'Unlocked.'
+                        ? VeilBannerTone.good
+                        : _status == 'PIN mismatch.' ||
+                                _status == 'Enter a PIN first.' ||
+                                _status == 'Biometric unlock failed.'
+                            ? VeilBannerTone.danger
+                            : VeilBannerTone.info,
                   ),
                 ],
                 const SizedBox(height: 16),
@@ -102,54 +136,53 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                   },
                   child: const Text('Use biometrics'),
                 ),
-                const Spacer(),
+                const SizedBox(height: 12),
                 FilledButton(
-                  onPressed: () async {
-                    final pin = _pinController.text.trim();
-                    if (pin.isEmpty) {
-                      setState(() => _status = 'Enter a PIN first.');
-                      return;
-                    }
+                  onPressed: _pinController.text.trim().isEmpty
+                      ? null
+                      : () async {
+                          final pin = _pinController.text.trim();
+                          if (pin.isEmpty) {
+                            setState(() => _status = 'Enter a PIN first.');
+                            return;
+                          }
 
-                    final appLock = ref.read(appLockServiceProvider);
-                    if (!_hasPin) {
-                      await appLock.setPin(pin);
-                      if (!mounted) {
-                        return;
-                      }
-                      setState(() {
-                        _hasPin = true;
-                        _status = 'PIN set. Unlocking.';
-                      });
-                      ref.read(appSessionProvider.notifier).unlock();
-                      if (!context.mounted) {
-                        return;
-                      }
-                      context.go('/conversations');
-                      return;
-                    }
+                          final appLock = ref.read(appLockServiceProvider);
+                          if (!_hasPin) {
+                            await appLock.setPin(pin);
+                            if (!mounted) {
+                              return;
+                            }
+                            setState(() {
+                              _hasPin = true;
+                              _status = 'PIN set. Unlocking.';
+                            });
+                            ref.read(appSessionProvider.notifier).unlock();
+                            if (!context.mounted) {
+                              return;
+                            }
+                            context.go('/conversations');
+                            return;
+                          }
 
-                    final valid = await appLock.validatePin(pin);
-                    if (!mounted) {
-                      return;
-                    }
+                          final valid = await appLock.validatePin(pin);
+                          if (!mounted) {
+                            return;
+                          }
 
-                    if (valid) {
-                      ref.read(appSessionProvider.notifier).unlock();
-                      setState(() => _status = 'Unlocked.');
-                      if (!context.mounted) {
-                        return;
-                      }
-                      context.go('/conversations');
-                      return;
-                    }
+                          if (valid) {
+                            ref.read(appSessionProvider.notifier).unlock();
+                            setState(() => _status = 'Unlocked.');
+                            if (!context.mounted) {
+                              return;
+                            }
+                            context.go('/conversations');
+                            return;
+                          }
 
-                    setState(() => _status = 'PIN mismatch.');
-                  },
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: Center(child: Text(_hasPin ? 'Unlock' : 'Set PIN and unlock')),
-                  ),
+                          setState(() => _status = 'PIN mismatch.');
+                        },
+                  child: Text(_hasPin ? 'Unlock VEIL' : 'Set PIN and unlock'),
                 ),
               ],
             ),

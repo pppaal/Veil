@@ -130,4 +130,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       this.emitToUser(member.userId, event, payload);
     }
   }
+
+  hasConnectedUser(userId: string): boolean {
+    const sockets = this.socketsByUserId.get(userId);
+    return (sockets?.size ?? 0) > 0;
+  }
 }

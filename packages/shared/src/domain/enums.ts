@@ -1,7 +1,7 @@
 export const userStatuses = ['active', 'locked', 'revoked'] as const;
 export type UserStatus = (typeof userStatuses)[number];
 
-export const devicePlatforms = ['ios', 'android'] as const;
+export const devicePlatforms = ['ios', 'android', 'windows', 'macos', 'linux'] as const;
 export type DevicePlatform = (typeof devicePlatforms)[number];
 
 export const conversationTypes = ['direct'] as const;

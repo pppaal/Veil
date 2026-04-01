@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class StartDirectChatScreen extends ConsumerStatefulWidget {
   const StartDirectChatScreen({super.key});
@@ -27,25 +28,48 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
 
     return VeilShell(
       title: 'Find by Handle',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
         children: [
-          const Text('No contact sync. Enter the handle directly.'),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _handleController,
-            decoration: const InputDecoration(labelText: 'Handle', hintText: 'icarus'),
+          const VeilHeroPanel(
+            eyebrow: 'DIRECT DISCOVERY',
+            title: 'No contact sync.',
+            body: 'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.',
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const VeilSectionLabel('TARGET HANDLE'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _handleController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Handle',
+                      hintText: 'icarus',
+                      prefixText: '@',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Discovery stays manual. Direct channels only.'),
+                ],
+              ),
+            ),
           ),
           if (controller.errorMessage != null) ...[
             const SizedBox(height: 16),
-            Text(
-              controller.errorMessage!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            VeilInlineBanner(
+              title: 'Unable to open channel',
+              message: controller.errorMessage!,
+              tone: VeilBannerTone.danger,
             ),
           ],
-          const Spacer(),
+          const SizedBox(height: 28),
           FilledButton(
-            onPressed: controller.isBusy
+            onPressed: controller.isBusy || _handleController.text.trim().isEmpty
                 ? null
                 : () async {
                     await ref
@@ -56,12 +80,7 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
                       context.pop();
                     }
                   },
-            child: SizedBox(
-              width: double.infinity,
-              child: Center(
-                child: Text(controller.isBusy ? 'Opening...' : 'Open channel'),
-              ),
-            ),
+            child: Text(controller.isBusy ? 'Opening channel' : 'Open direct channel'),
           ),
         ],
       ),

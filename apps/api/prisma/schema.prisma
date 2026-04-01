@@ -16,6 +16,9 @@ enum UserStatus {
 enum DevicePlatform {
   ios
   android
+  windows
+  macos
+  linux
 }
 
 enum ConversationType {
@@ -104,6 +107,8 @@ model Message {
   id               String        @id @default(uuid()) @db.Uuid
   conversationId   String        @map("conversation_id") @db.Uuid
   senderDeviceId   String        @map("sender_device_id") @db.Uuid
+  clientMessageId  String        @map("client_message_id") @db.VarChar(80)
+  conversationOrder Int         @map("conversation_order")
   ciphertext       String
   nonce            String
   messageType      MessageType   @map("message_type")
@@ -117,6 +122,8 @@ model Message {
   attachment       Attachment?   @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
   receipts         MessageReceipt[]
 
+  @@unique([senderDeviceId, clientMessageId])
+  @@index([conversationId, conversationOrder])
   @@index([conversationId, serverReceivedAt])
   @@index([attachmentId])
   @@map("messages")

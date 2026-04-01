@@ -2,64 +2,7 @@ import 'dart:math';
 
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/crypto/mock_crypto_engine.dart';
-
-class ConversationPreview {
-  static const Object _unset = Object();
-
-  ConversationPreview({
-    required this.id,
-    required this.peerHandle,
-    required this.peerDisplayName,
-    required this.recipientBundle,
-    required this.lastEnvelope,
-    required this.updatedAt,
-  });
-
-  final String id;
-  final String peerHandle;
-  final String? peerDisplayName;
-  final KeyBundle recipientBundle;
-  final CryptoEnvelope? lastEnvelope;
-  final DateTime updatedAt;
-
-  ConversationPreview copyWith({
-    String? id,
-    String? peerHandle,
-    Object? peerDisplayName = _unset,
-    KeyBundle? recipientBundle,
-    Object? lastEnvelope = _unset,
-    DateTime? updatedAt,
-  }) {
-    return ConversationPreview(
-      id: id ?? this.id,
-      peerHandle: peerHandle ?? this.peerHandle,
-      peerDisplayName:
-          identical(peerDisplayName, _unset) ? this.peerDisplayName : peerDisplayName as String?,
-      recipientBundle: recipientBundle ?? this.recipientBundle,
-      lastEnvelope:
-          identical(lastEnvelope, _unset) ? this.lastEnvelope : lastEnvelope as CryptoEnvelope?,
-      updatedAt: updatedAt ?? this.updatedAt,
-    );
-  }
-}
-
-class ChatMessage {
-  ChatMessage({
-    required this.id,
-    required this.senderDeviceId,
-    required this.sentAt,
-    required this.envelope,
-    this.expiresAt,
-    this.isMine = false,
-  });
-
-  final String id;
-  final String senderDeviceId;
-  final DateTime sentAt;
-  final CryptoEnvelope envelope;
-  final DateTime? expiresAt;
-  final bool isMine;
-}
+import 'conversation_models.dart';
 
 class MockMessengerRepository {
   MockMessengerRepository({CryptoEngine? cryptoEngine})
@@ -107,9 +50,11 @@ class MockMessengerRepository {
     _messages[conversationId]!.add(
       ChatMessage(
         id: 'msg-${_random.nextInt(1 << 31)}',
+        clientMessageId: 'client-${_random.nextInt(1 << 31)}',
         senderDeviceId: currentDeviceId,
         sentAt: DateTime.now(),
         envelope: envelope,
+        conversationOrder: (_messages[conversationId]?.length ?? 0) + 1,
         expiresAt: expiresAt,
         isMine: true,
       ),
@@ -150,9 +95,11 @@ class MockMessengerRepository {
     _messages[conversationId]!.add(
       ChatMessage(
         id: 'msg-${_random.nextInt(1 << 31)}',
+        clientMessageId: 'client-${_random.nextInt(1 << 31)}',
         senderDeviceId: currentDeviceId,
         sentAt: DateTime.now(),
         envelope: envelope,
+        conversationOrder: (_messages[conversationId]?.length ?? 0) + 1,
         isMine: true,
       ),
     );

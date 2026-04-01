@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -16,36 +17,55 @@ class SettingsScreen extends ConsumerWidget {
       title: 'Settings',
       child: ListView(
         children: [
-          Card(
-            child: ListTile(
-              title: Text(session.displayName ?? '@${session.handle ?? 'unbound'}'),
-              subtitle: Text(session.deviceId ?? 'No active device'),
+          VeilHeroPanel(
+            eyebrow: 'LOCAL DEVICE',
+            title: session.displayName ?? '@${session.handle ?? 'unbound'}',
+            body: session.deviceId == null
+                ? 'No active device session is bound.'
+                : 'Current device session: ${session.deviceId}',
+            bottom: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: const [
+                VeilStatusPill(label: 'No recovery'),
+                VeilStatusPill(label: 'Device-bound'),
+                VeilStatusPill(label: 'Private by design'),
+              ],
             ),
           ),
+          const SizedBox(height: 16),
+          const VeilSectionLabel('SECURITY'),
+          const SizedBox(height: 12),
           Card(
-            child: ListTile(
-              title: const Text('App lock'),
-              subtitle: const Text('Biometric and PIN scaffold'),
-              onTap: () => context.push('/lock'),
+            child: Column(
+              children: [
+                ListTile(
+                  title: const Text('App lock'),
+                  subtitle: const Text('Biometric and PIN barrier on this device only'),
+                  onTap: () => context.push('/lock'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text('Device transfer'),
+                  subtitle: const Text('Old device must initiate and approve'),
+                  onTap: () => context.push('/device-transfer'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  title: const Text('Security status'),
+                  subtitle: const Text('Review local guardrails and runtime state'),
+                  onTap: () => context.push('/security-status'),
+                ),
+              ],
             ),
           ),
-          Card(
-            child: ListTile(
-              title: const Text('Device transfer'),
-              subtitle: const Text('Old device must approve'),
-              onTap: () => context.push('/device-transfer'),
-            ),
-          ),
-          Card(
-            child: ListTile(
-              title: const Text('Security status'),
-              subtitle: const Text('Mock crypto adapter visibility'),
-              onTap: () => context.push('/security-status'),
-            ),
-          ),
+          const SizedBox(height: 16),
+          const VeilSectionLabel('SESSION'),
+          const SizedBox(height: 12),
           Card(
             child: ListTile(
               title: const Text('Lock now'),
+              subtitle: const Text('Hide the current session behind the local barrier'),
               onTap: () {
                 ref.read(appSessionProvider.notifier).lock();
                 context.go('/lock');
@@ -92,7 +112,7 @@ class SettingsScreen extends ConsumerWidget {
           Card(
             child: ListTile(
               title: const Text('Log out'),
-              subtitle: const Text('Clears the local session only. No recovery exists.'),
+              subtitle: const Text('Clears this local session only. It does not create a recovery path.'),
               onTap: () async {
                 await ref.read(appSessionProvider.notifier).logout();
                 if (context.mounted) {

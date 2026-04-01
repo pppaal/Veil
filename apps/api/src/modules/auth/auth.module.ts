@@ -2,18 +2,18 @@ import { Module } from '@nestjs/common';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { DEVICE_AUTH_VERIFIER, MockDeviceAuthVerifier } from './device-auth-verifier';
+import { DEVICE_AUTH_VERIFIER, Ed25519DeviceAuthVerifier } from './device-auth-verifier';
 
 @Module({
   controllers: [AuthController],
   providers: [
     AuthService,
-    MockDeviceAuthVerifier,
+    Ed25519DeviceAuthVerifier,
     {
       provide: DEVICE_AUTH_VERIFIER,
-      useExisting: MockDeviceAuthVerifier,
+      useExisting: Ed25519DeviceAuthVerifier,
     },
   ],
-  exports: [AuthService],
+  exports: [AuthService, DEVICE_AUTH_VERIFIER],
 })
 export class AuthModule {}

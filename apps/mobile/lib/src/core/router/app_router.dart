@@ -36,7 +36,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (!session.isAuthenticated) {
-        if (path == '/create-account' || path == '/choose-handle' || path == '/splash') {
+        if (path == '/create-account' ||
+            path == '/choose-handle' ||
+            path == '/device-transfer' ||
+            path == '/splash') {
           return null;
         }
         return '/create-account';

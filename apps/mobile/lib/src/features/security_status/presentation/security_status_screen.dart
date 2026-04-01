@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/app_state.dart';
 import '../../../core/config/veil_config.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class SecurityStatusScreen extends ConsumerWidget {
   const SecurityStatusScreen({super.key});
@@ -13,8 +14,9 @@ class SecurityStatusScreen extends ConsumerWidget {
     final session = ref.watch(appSessionProvider);
     final messenger = ref.watch(messengerControllerProvider);
     final localSecurity = ref.watch(localSecuritySnapshotProvider);
+    final cacheConfigured = VeilConfig.enableLocalCache;
     final cacheReady = ref.watch(conversationCacheProvider).maybeWhen(
-          data: (_) => true,
+          data: (cache) => cache != null,
           orElse: () => false,
         );
 
@@ -68,10 +70,10 @@ class SecurityStatusScreen extends ConsumerWidget {
     final runtimeSignals = <_SecuritySignal>[
       _SecuritySignal(
         label: 'API mode',
-        value: VeilConfig.hasApi ? 'Attached' : 'Fallback mock',
+        value: VeilConfig.hasApi ? 'Attached' : 'Unavailable',
         detail: VeilConfig.hasApi
             ? 'REST API is configured for this build.'
-            : 'No API endpoint is configured. Local mock mode is active.',
+            : 'No API endpoint is configured. Messaging is unavailable.',
         tone: VeilConfig.hasApi ? _SignalTone.good : _SignalTone.warn,
       ),
       _SecuritySignal(
@@ -84,13 +86,23 @@ class SecurityStatusScreen extends ConsumerWidget {
       ),
       _SecuritySignal(
         label: 'Local cache',
-        value: cacheReady ? 'Ready' : 'Starting',
-        detail: 'Conversations and envelopes are cached locally for offline continuity.',
-        tone: cacheReady ? _SignalTone.good : _SignalTone.neutral,
+        value: !cacheConfigured
+            ? 'Disabled'
+            : cacheReady
+                ? 'Ready'
+                : 'Starting',
+        detail: !cacheConfigured
+            ? 'Message cache stays off until encrypted-at-rest storage is integrated.'
+            : 'Conversations and envelopes are cached locally behind the current alpha encrypted-at-rest layer.',
+        tone: !cacheConfigured
+            ? _SignalTone.warn
+            : cacheReady
+                ? _SignalTone.good
+                : _SignalTone.neutral,
       ),
     ];
 
-    const productSignals = <_SecuritySignal>[
+    final productSignals = <_SecuritySignal>[
       _SecuritySignal(
         label: 'Cloud backup',
         value: 'Disabled',
@@ -112,7 +124,7 @@ class SecurityStatusScreen extends ConsumerWidget {
       _SecuritySignal(
         label: 'Crypto adapter',
         value: 'Mock active',
-        detail: 'Architecture is correct, but audited production crypto is still required.',
+        detail: 'Dev-only opaque payloads are active. Audited production crypto is still required.',
         tone: _SignalTone.warn,
       ),
       _SecuritySignal(
@@ -121,28 +133,40 @@ class SecurityStatusScreen extends ConsumerWidget {
         detail: 'Push payloads must never contain plaintext message content.',
         tone: _SignalTone.good,
       ),
+      _SecuritySignal(
+        label: 'Push provider',
+        value: VeilConfig.hasApi ? 'Seam only' : 'Unavailable',
+        detail: VeilConfig.hasApi
+            ? 'The metadata-only wake-up path is defined, but a real APNs/FCM provider is not wired in this build.'
+            : 'No API endpoint is configured, so push delivery is unavailable in this build.',
+        tone: VeilConfig.hasApi ? _SignalTone.warn : _SignalTone.neutral,
+      ),
+      _SecuritySignal(
+        label: 'Push payloads',
+        value: VeilConfig.hasApi ? 'Metadata only' : 'Unavailable',
+        detail: VeilConfig.hasApi
+            ? 'If push is enabled later, wake-up hints must stay metadata-only. Message bodies remain out of push.'
+            : 'No API endpoint is configured, so push payload generation is unavailable in this build.',
+        tone: VeilConfig.hasApi ? _SignalTone.good : _SignalTone.neutral,
+      ),
     ];
 
     return VeilShell(
       title: 'Security Status',
       child: ListView(
         children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'No backup. No recovery. No leaks.',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'This panel reflects the current device state. If a guardrail is missing here, it is missing on the device.',
-                  ),
-                ],
-              ),
+          const VeilHeroPanel(
+            eyebrow: 'SECURITY STATUS',
+            title: 'No backup. No recovery. No leaks.',
+            body:
+                'This panel reflects the current device and runtime state. If a guardrail is missing here, it is missing on the device.',
+            bottom: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                VeilStatusPill(label: 'Internal alpha'),
+                VeilStatusPill(label: 'Mock crypto active', tone: VeilBannerTone.warn),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -177,7 +201,7 @@ class _SecuritySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8),
-      child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+      child: VeilSectionLabel(title.toUpperCase()),
     );
   }
 }

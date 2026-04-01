@@ -93,8 +93,10 @@ export interface CreateDirectConversationResponse {
 
 export interface ConversationMessageSummary {
   id: string;
+  clientMessageId?: string | null;
   conversationId: string;
   senderDeviceId: string;
+  conversationOrder: number;
   ciphertext: string;
   nonce: string;
   messageType: MessageType;
@@ -102,6 +104,8 @@ export interface ConversationMessageSummary {
   expiresAt?: string | null;
   serverReceivedAt: string;
   deletedAt?: string | null;
+  deliveredAt?: string | null;
+  readAt?: string | null;
 }
 
 export interface ListMessagesResponse {
@@ -111,11 +115,13 @@ export interface ListMessagesResponse {
 
 export interface SendMessageRequest {
   conversationId: string;
+  clientMessageId: string;
   envelope: CryptoEnvelope;
 }
 
 export interface SendMessageResponse {
   message: ConversationMessageSummary;
+  idempotent: boolean;
 }
 
 export interface MarkMessageReadResponse {
@@ -165,27 +171,46 @@ export interface DeviceTransferInitResponse {
 
 export interface DeviceTransferApproveRequest {
   sessionId: string;
+  claimId: string;
+}
+
+export interface DeviceTransferApproveResponse {
+  sessionId: string;
+  claimId: string;
+  approved: true;
+}
+
+export interface DeviceTransferClaimRequest {
+  sessionId: string;
+  transferToken: string;
   newDeviceName: string;
   platform: DevicePlatform;
   publicIdentityKey: string;
   signedPrekeyBundle: string;
   authPublicKey: string;
+  authProof: string;
 }
 
-export interface DeviceTransferApproveResponse {
+export interface DeviceTransferClaimResponse {
   sessionId: string;
-  approved: true;
+  claimId: string;
+  claimantFingerprint: string;
+  expiresAt: string;
 }
 
 export interface DeviceTransferCompleteRequest {
   sessionId: string;
   transferToken: string;
+  claimId: string;
 }
 
 export interface DeviceTransferCompleteResponse {
   sessionId: string;
+  claimId: string;
   newDeviceId: string;
   revokedDeviceId: string;
+  handle: string;
+  displayName?: string | null;
   completedAt: string;
 }
 

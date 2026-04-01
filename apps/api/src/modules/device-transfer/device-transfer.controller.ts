@@ -2,6 +2,7 @@ import { Body, Controller, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type {
   DeviceTransferApproveResponse,
+  DeviceTransferClaimResponse,
   DeviceTransferCompleteResponse,
   DeviceTransferInitResponse,
 } from '@veil/contracts';
@@ -11,6 +12,7 @@ import { Public } from '../../common/guards/public.decorator';
 import { DeviceTransferService } from './device-transfer.service';
 import {
   DeviceTransferApproveDto,
+  DeviceTransferClaimDto,
   DeviceTransferCompleteDto,
   DeviceTransferInitDto,
 } from './dto/device-transfer.dto';
@@ -35,6 +37,12 @@ export class DeviceTransferController {
     @Body() dto: DeviceTransferApproveDto,
   ): Promise<DeviceTransferApproveResponse> {
     return this.deviceTransferService.approve(request.auth, dto);
+  }
+
+  @Public()
+  @Post('claim')
+  claim(@Body() dto: DeviceTransferClaimDto): Promise<DeviceTransferClaimResponse> {
+    return this.deviceTransferService.claim(dto);
   }
 
   @Public()

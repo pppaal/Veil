@@ -1,14 +1,15 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../app/app_state.dart';
 import '../../../core/config/veil_config.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/network/veil_api_client.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
-import '../../../app/app_state.dart';
-import 'mock_messenger_repository.dart';
+import 'conversation_models.dart';
 
 class VeilMessengerController extends ChangeNotifier {
   VeilMessengerController({
@@ -16,12 +17,10 @@ class VeilMessengerController extends ChangeNotifier {
     required CryptoEngine cryptoEngine,
     required RealtimeService realtimeService,
     required ConversationCacheService? cacheService,
-    required MockMessengerRepository mockRepository,
   })  : _apiClient = apiClient,
         _cryptoEngine = cryptoEngine,
         _realtimeService = realtimeService,
-        _cacheService = cacheService,
-        _mockRepository = mockRepository {
+        _cacheService = cacheService {
     _expirationTicker = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_reconcileExpiringState()),
@@ -32,13 +31,18 @@ class VeilMessengerController extends ChangeNotifier {
   final CryptoEngine _cryptoEngine;
   final RealtimeService _realtimeService;
   final ConversationCacheService? _cacheService;
-  final MockMessengerRepository _mockRepository;
-  Timer? _expirationTicker;
+  final Random _random = Random.secure();
 
+  Timer? _expirationTicker;
   List<ConversationPreview> _conversations = [];
   final Map<String, List<ChatMessage>> _messagesByConversation = {};
+  final Map<String, ConversationPagingState> _pagingStateByConversation = {};
+  final Map<String, PendingMessageRecord> _pendingByClientMessageId = {};
+  final Set<String> _historyLoadingConversationIds = {};
+
   AppSessionState _session = const AppSessionState();
   bool _isBusy = false;
+  bool _isDrainingOutbox = false;
   bool _realtimeConnected = false;
   String? _activeConversationId;
   String? _errorMessage;
@@ -53,9 +57,25 @@ class VeilMessengerController extends ChangeNotifier {
   String? get transferSessionId => _transferSessionId;
   String? get transferToken => _transferToken;
   String? get transferStatus => _transferStatus;
+  bool get hasPendingWork => _pendingByClientMessageId.isNotEmpty;
+  String? get transferPayload =>
+      _transferSessionId == null || _transferToken == null
+          ? null
+          : 'VEIL_TRANSFER::${_transferSessionId!}::${_transferToken!}';
 
   List<ChatMessage> messagesFor(String conversationId) =>
-      _messagesByConversation[conversationId] ?? const [];
+      List.unmodifiable(_messagesByConversation[conversationId] ?? const []);
+
+  bool hasMoreHistoryFor(String conversationId) =>
+      _pagingStateByConversation[conversationId]?.hasMoreHistory ?? true;
+
+  bool isLoadingHistoryFor(String conversationId) =>
+      _historyLoadingConversationIds.contains(conversationId);
+
+  int pendingCountFor(String conversationId) => _messagesByConversation[conversationId]
+          ?.where((message) => message.isPending || message.hasFailed)
+          .length ??
+      0;
 
   Future<void> applySession(AppSessionState session) async {
     final sessionChanged =
@@ -70,15 +90,18 @@ class VeilMessengerController extends ChangeNotifier {
     _realtimeConnected = false;
 
     if (!_session.isAuthenticated) {
-      _conversations = _mockRepository.listConversations();
+      _conversations = [];
       _messagesByConversation.clear();
+      _pagingStateByConversation.clear();
+      _pendingByClientMessageId.clear();
       notifyListeners();
       return;
     }
 
     await _hydrateFromCache();
-    await refreshConversations();
+    await _refreshConversationsCore();
     await _connectRealtime();
+    unawaited(_drainOutbox());
   }
 
   void setActiveConversation(String conversationId) {
@@ -86,49 +109,43 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   Future<void> refreshConversations() async {
-    await _run(() async {
-      if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-      _conversations = _mockRepository.listConversations();
-      return;
-    }
-
-      final response = await _apiClient.getConversations(_session.accessToken!);
-      _conversations = response.map(_conversationFromApi).toList()
-        ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      await _cacheService?.storeConversations(_conversations);
-      await _reconcileExpiringState();
-    });
+    await _run(_refreshConversationsCore);
   }
 
   Future<void> loadConversationMessages(String conversationId) async {
-    await _run(() async {
-      if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-        _messagesByConversation[conversationId] = _mockRepository.listMessages(conversationId);
-        return;
-      }
+    await _run(() => _syncConversation(conversationId));
+  }
 
-      final response = await _apiClient.getMessages(_session.accessToken!, conversationId);
-      final items = (response['items'] as List<dynamic>? ?? const [])
-          .cast<Map<String, dynamic>>()
-          .map(_messageFromApi)
-          .toList();
-      _messagesByConversation[conversationId] = items;
-      _syncConversationPreviewFromMessages(conversationId);
-      await _cacheService?.storeMessages(conversationId, items);
-      await _cacheService?.storeConversations(_conversations);
-    });
+  Future<void> loadOlderConversationMessages(String conversationId) async {
+    if (_historyLoadingConversationIds.contains(conversationId) || !hasMoreHistoryFor(conversationId)) {
+      return;
+    }
+
+    _historyLoadingConversationIds.add(conversationId);
+    notifyListeners();
+    try {
+      await _syncConversation(conversationId, loadMore: true);
+    } catch (error) {
+      _errorMessage = formatUserFacingError(error);
+      notifyListeners();
+    } finally {
+      _historyLoadingConversationIds.remove(conversationId);
+      notifyListeners();
+    }
+  }
+
+  Future<void> retryPendingMessages([String? conversationId]) async {
+    await _drainOutbox(conversationId: conversationId, markFailuresAsRetrying: true);
   }
 
   Future<void> startConversationByHandle(String handle) async {
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-        await _mockRepository.startConversation(handle);
-        _conversations = _mockRepository.listConversations();
-        return;
+        throw StateError('Authenticated API session required.');
       }
 
       await _apiClient.createDirectConversation(_session.accessToken!, handle);
-      await refreshConversations();
+      await _refreshConversationsCore();
     });
   }
 
@@ -139,18 +156,12 @@ class VeilMessengerController extends ChangeNotifier {
   }) async {
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-        await _mockRepository.sendText(
-          conversationId: conversationId,
-          body: body,
-          disappearAfter: disappearAfter,
-        );
-        _messagesByConversation[conversationId] = _mockRepository.listMessages(conversationId);
-        _conversations = _mockRepository.listConversations();
-        return;
+        throw StateError('Authenticated API session required.');
       }
 
       final conversation = _conversations.firstWhere((item) => item.id == conversationId);
       final bundle = await _fetchPeerBundle(conversation.peerHandle);
+      final clientMessageId = _nextClientMessageId();
       final envelope = await _cryptoEngine.encryptMessage(
         conversationId: conversationId,
         senderDeviceId: _session.deviceId!,
@@ -161,12 +172,12 @@ class VeilMessengerController extends ChangeNotifier {
         expiresAt: disappearAfter == null ? null : DateTime.now().add(disappearAfter),
       );
 
-      await _apiClient.sendMessage(_session.accessToken!, {
-        'conversationId': conversationId,
-        'envelope': _envelopeToJson(envelope),
-      });
-      await loadConversationMessages(conversationId);
-      await refreshConversations();
+      await _enqueuePendingMessage(
+        conversation: conversation,
+        clientMessageId: clientMessageId,
+        envelope: envelope,
+      );
+      unawaited(_drainOutbox(conversationId: conversationId));
     });
   }
 
@@ -176,13 +187,7 @@ class VeilMessengerController extends ChangeNotifier {
   }) async {
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-        await _mockRepository.sendAttachment(
-          conversationId: conversationId,
-          filename: filename,
-        );
-        _messagesByConversation[conversationId] = _mockRepository.listMessages(conversationId);
-        _conversations = _mockRepository.listConversations();
-        return;
+        throw StateError('Authenticated API session required.');
       }
 
       final conversation = _conversations.firstWhere((item) => item.id == conversationId);
@@ -213,6 +218,8 @@ class VeilMessengerController extends ChangeNotifier {
         sha256: 'mock-sha256-$filename',
         recipientBundle: bundle,
       );
+
+      final clientMessageId = _nextClientMessageId();
       final envelope = await _cryptoEngine.encryptMessage(
         conversationId: conversationId,
         senderDeviceId: _session.deviceId!,
@@ -223,12 +230,12 @@ class VeilMessengerController extends ChangeNotifier {
         attachment: attachment,
       );
 
-      await _apiClient.sendMessage(_session.accessToken!, {
-        'conversationId': conversationId,
-        'envelope': _envelopeToJson(envelope),
-      });
-      await loadConversationMessages(conversationId);
-      await refreshConversations();
+      await _enqueuePendingMessage(
+        conversation: conversation,
+        clientMessageId: clientMessageId,
+        envelope: envelope,
+      );
+      unawaited(_drainOutbox(conversationId: conversationId));
     });
   }
 
@@ -236,7 +243,13 @@ class VeilMessengerController extends ChangeNotifier {
     if (!_session.isAuthenticated || !VeilConfig.hasApi) {
       return;
     }
-    await _apiClient.markRead(_session.accessToken!, messageId);
+
+    try {
+      await _apiClient.markRead(_session.accessToken!, messageId);
+      _applyReceiptEvent(messageId, readAt: DateTime.now());
+    } catch (_) {
+      // Server resync reconciles later.
+    }
   }
 
   Future<String?> getAttachmentDownloadUrl(String attachmentId) async {
@@ -263,55 +276,183 @@ class VeilMessengerController extends ChangeNotifier {
     });
   }
 
-  Future<void> approveTransfer() async {
+  Future<void> approveTransfer(String claimId) async {
     await _run(() async {
+      final trimmedClaimId = claimId.trim();
       if (_transferSessionId == null || !_session.isAuthenticated || !VeilConfig.hasApi) {
         _transferStatus = 'Start transfer first.';
         return;
       }
-
-      final newDeviceId = 'device-transfer-${DateTime.now().microsecondsSinceEpoch}';
-      final identity = await _cryptoEngine.generateDeviceIdentity(newDeviceId);
-      await _apiClient.approveTransfer(_session.accessToken!, {
-        'sessionId': _transferSessionId,
-        'newDeviceName': 'VEIL New Device',
-        'platform': 'android',
-        'publicIdentityKey': identity.identityPublicKey,
-        'signedPrekeyBundle': identity.signedPrekeyBundle,
-        'authPublicKey': identity.authPublicKey,
-      });
-      _transferStatus = 'Approved on old device.';
-    });
-  }
-
-  Future<void> completeTransfer() async {
-    await _run(() async {
-      if (_transferSessionId == null || _transferToken == null || !VeilConfig.hasApi) {
-        _transferStatus = 'Init and approve transfer first.';
+      if (trimmedClaimId.isEmpty) {
+        _transferStatus = 'Enter the new-device claim code first.';
         return;
       }
 
-      await _apiClient.completeTransfer({
+      await _apiClient.approveTransfer(_session.accessToken!, {
         'sessionId': _transferSessionId,
-        'transferToken': _transferToken,
+        'claimId': trimmedClaimId,
       });
-      _transferStatus = 'Transfer completed. Old device revoked.';
-      _session = _session.copyWith(
-        accessToken: null,
-        userId: null,
-        deviceId: null,
-        handle: null,
-        displayName: null,
-      );
-      _conversations = [];
-      _messagesByConversation.clear();
-      _realtimeService.disconnect();
-      _realtimeConnected = false;
+      _transferStatus = 'Approved claim $trimmedClaimId on old device.';
     });
+  }
+
+  void clearTransferState() {
+    _transferSessionId = null;
+    _transferToken = null;
+    _transferStatus = null;
+    notifyListeners();
   }
 
   Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) {
     return _cryptoEngine.decryptMessage(envelope);
+  }
+
+  Future<void> _refreshConversationsCore() async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      _conversations = [];
+      return;
+    }
+
+    final response = await _apiClient.getConversations(_session.accessToken!);
+    _conversations = response.map(_conversationFromApi).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    await _cacheService?.storeConversations(_conversations);
+    await _reconcileExpiringState();
+  }
+
+  Future<void> _syncConversation(
+    String conversationId, {
+    bool loadMore = false,
+  }) async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      _messagesByConversation[conversationId] = [];
+      return;
+    }
+
+    final pagingState = _pagingStateByConversation[conversationId] ?? const ConversationPagingState();
+    final response = await _apiClient.getMessages(
+      _session.accessToken!,
+      conversationId,
+      cursor: loadMore ? pagingState.nextCursor : null,
+      limit: 50,
+    );
+    final items = (response['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>()
+        .map(_messageFromApi)
+        .toList();
+
+    _mergeServerMessages(conversationId, items);
+
+    final nextCursor = response['nextCursor'] as String?;
+    final newPagingState = ConversationPagingState(
+      nextCursor: nextCursor,
+      hasMoreHistory: nextCursor != null,
+      lastSyncedAt: DateTime.now(),
+    );
+    _pagingStateByConversation[conversationId] = newPagingState;
+    await _cacheService?.storePagingState(
+      conversationId,
+      nextCursor: newPagingState.nextCursor,
+      hasMoreHistory: newPagingState.hasMoreHistory,
+      lastSyncedAt: newPagingState.lastSyncedAt,
+    );
+
+    _syncConversationPreviewFromMessages(conversationId);
+    await _persistConversationState(conversationId);
+    notifyListeners();
+  }
+
+  Future<void> _enqueuePendingMessage({
+    required ConversationPreview conversation,
+    required String clientMessageId,
+    required CryptoEnvelope envelope,
+  }) async {
+    final createdAt = DateTime.now();
+    final pending = PendingMessageRecord(
+      clientMessageId: clientMessageId,
+      conversationId: conversation.id,
+      senderDeviceId: _session.deviceId!,
+      recipientUserId: envelope.recipientUserId,
+      envelope: envelope,
+      createdAt: createdAt,
+    );
+
+    _pendingByClientMessageId[clientMessageId] = pending;
+    final optimisticMessage = ChatMessage(
+      id: 'local-$clientMessageId',
+      clientMessageId: clientMessageId,
+      senderDeviceId: _session.deviceId!,
+      sentAt: createdAt,
+      envelope: envelope,
+      deliveryState: MessageDeliveryState.pending,
+      expiresAt: envelope.expiresAt,
+      isMine: true,
+    );
+
+    _messagesByConversation.putIfAbsent(conversation.id, () => []);
+    _messagesByConversation[conversation.id] = _mergeMessageCollections(
+      _messagesByConversation[conversation.id] ?? const [],
+      <ChatMessage>[optimisticMessage],
+    );
+    _syncConversationPreviewFromMessages(conversation.id);
+    await _cacheService?.upsertPendingMessage(pending);
+    await _persistConversationState(conversation.id);
+    notifyListeners();
+  }
+
+  Future<void> _drainOutbox({
+    String? conversationId,
+    bool markFailuresAsRetrying = false,
+  }) async {
+    if (_isDrainingOutbox || !_session.isAuthenticated || !VeilConfig.hasApi) {
+      return;
+    }
+
+    _isDrainingOutbox = true;
+    try {
+      final pendingItems = _pendingByClientMessageId.values
+          .where((item) => conversationId == null || item.conversationId == conversationId)
+          .where((item) => markFailuresAsRetrying || item.state != MessageDeliveryState.failed)
+          .toList()
+        ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+      for (final pending in pendingItems) {
+        final marked = pending.copyWith(
+          retryCount: pending.retryCount + 1,
+          lastAttemptAt: DateTime.now(),
+          state: MessageDeliveryState.pending,
+          errorMessage: null,
+        );
+        _pendingByClientMessageId[pending.clientMessageId] = marked;
+        await _cacheService?.upsertPendingMessage(marked);
+
+        try {
+          final response = await _apiClient.sendMessage(_session.accessToken!, {
+            'conversationId': pending.conversationId,
+            'clientMessageId': pending.clientMessageId,
+            'envelope': _envelopeToJson(pending.envelope),
+          });
+          final serverMessage =
+              _messageFromApi(response['message'] as Map<String, dynamic>);
+          _pendingByClientMessageId.remove(pending.clientMessageId);
+          await _cacheService?.removePendingMessage(pending.clientMessageId);
+          _mergeServerMessages(pending.conversationId, <ChatMessage>[serverMessage]);
+          await _persistConversationState(pending.conversationId);
+        } catch (error) {
+          final failed = marked.copyWith(
+            state: MessageDeliveryState.failed,
+            errorMessage: formatUserFacingError(error),
+          );
+          _pendingByClientMessageId[pending.clientMessageId] = failed;
+          await _cacheService?.upsertPendingMessage(failed);
+          _markLocalMessageFailed(pending.clientMessageId);
+          _errorMessage = failed.errorMessage;
+        }
+      }
+    } finally {
+      _isDrainingOutbox = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _hydrateFromCache() async {
@@ -322,21 +463,42 @@ class VeilMessengerController extends ChangeNotifier {
 
     await cache.purgeExpiredMessages();
     _conversations = await cache.readConversations();
+    _messagesByConversation.clear();
+    _pagingStateByConversation.clear();
+    _pendingByClientMessageId.clear();
+
     for (final conversation in _conversations) {
       final cachedMessages = await cache.readMessages(conversation.id);
       _messagesByConversation[conversation.id] = cachedMessages
           .map(
-            (message) => ChatMessage(
-              id: message.id,
-              senderDeviceId: message.senderDeviceId,
-              sentAt: message.sentAt,
-              envelope: message.envelope,
-              expiresAt: message.expiresAt,
+            (message) => message.copyWith(
               isMine: message.senderDeviceId == _session.deviceId,
             ),
           )
           .toList();
+      _pagingStateByConversation[conversation.id] = await cache.readPagingState(conversation.id);
     }
+
+    final pendingMessages = await cache.readPendingMessages();
+    for (final pending in pendingMessages) {
+      _pendingByClientMessageId[pending.clientMessageId] = pending;
+      final optimisticMessage = ChatMessage(
+        id: 'local-${pending.clientMessageId}',
+        clientMessageId: pending.clientMessageId,
+        senderDeviceId: pending.senderDeviceId,
+        sentAt: pending.createdAt,
+        envelope: pending.envelope,
+        deliveryState: pending.state,
+        expiresAt: pending.envelope.expiresAt,
+        isMine: pending.senderDeviceId == _session.deviceId,
+      );
+      _messagesByConversation.putIfAbsent(pending.conversationId, () => []);
+      _messagesByConversation[pending.conversationId] = _mergeMessageCollections(
+        _messagesByConversation[pending.conversationId] ?? const [],
+        <ChatMessage>[optimisticMessage],
+      );
+    }
+
     await _reconcileExpiringState();
     notifyListeners();
   }
@@ -349,17 +511,168 @@ class VeilMessengerController extends ChangeNotifier {
     _realtimeService.connect(
       baseUrl: VeilConfig.realtimeUrl,
       accessToken: _session.accessToken!,
+      onConnectionChanged: (connected) {
+        _realtimeConnected = connected;
+        notifyListeners();
+        if (connected) {
+          unawaited(_syncAfterRealtimeHint());
+          unawaited(_drainOutbox());
+        }
+      },
       onEvent: (event, payload) async {
-        if (event == 'conversation.sync' || event == 'message.new' || event == 'message.read') {
-          await refreshConversations();
-          final activeConversationId = _activeConversationId;
-          if (activeConversationId != null) {
-            await loadConversationMessages(activeConversationId);
-          }
+        switch (event) {
+          case 'message.delivered':
+            final data = payload as Map<String, dynamic>;
+            _applyReceiptEvent(
+              data['messageId'] as String,
+              deliveredAt: DateTime.parse(data['deliveredAt'] as String),
+            );
+            break;
+          case 'message.read':
+            final data = payload as Map<String, dynamic>;
+            _applyReceiptEvent(
+              data['messageId'] as String,
+              readAt: DateTime.parse(data['readAt'] as String),
+            );
+            break;
+          case 'message.new':
+          case 'conversation.sync':
+            await _syncAfterRealtimeHint();
+            break;
+          default:
+            break;
         }
       },
     );
     _realtimeConnected = true;
+  }
+
+  Future<void> _syncAfterRealtimeHint() async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      return;
+    }
+
+    try {
+      await _refreshConversationsCore();
+      final activeConversationId = _activeConversationId;
+      if (activeConversationId != null) {
+        await _syncConversation(activeConversationId);
+      }
+      await _drainOutbox();
+    } catch (error) {
+      _errorMessage = formatUserFacingError(error);
+      notifyListeners();
+    }
+  }
+
+  void _mergeServerMessages(String conversationId, List<ChatMessage> serverMessages) {
+    final current = _messagesByConversation[conversationId] ?? const <ChatMessage>[];
+    _messagesByConversation[conversationId] = _mergeMessageCollections(current, serverMessages);
+    _syncConversationPreviewFromMessages(conversationId);
+  }
+
+  List<ChatMessage> _mergeMessageCollections(
+    List<ChatMessage> current,
+    List<ChatMessage> incoming,
+  ) {
+    final mergedServerMessages = <String, ChatMessage>{};
+    final currentPending = current.where((message) => message.isPending || message.hasFailed).toList();
+
+    for (final message in current.where((item) => !item.isPending && !item.hasFailed)) {
+      mergedServerMessages[message.id] = message;
+    }
+    for (final message in incoming) {
+      mergedServerMessages[message.id] = message;
+    }
+
+    final ackedClientIds = incoming
+        .map((message) => message.clientMessageId)
+        .whereType<String>()
+        .toSet();
+
+    final merged = <ChatMessage>[
+      ...mergedServerMessages.values,
+      ...currentPending.where((message) => !ackedClientIds.contains(message.clientMessageId)),
+    ];
+    merged.sort(_compareMessages);
+    return merged;
+  }
+
+  int _compareMessages(ChatMessage a, ChatMessage b) {
+    final aOrder = a.conversationOrder;
+    final bOrder = b.conversationOrder;
+    if (aOrder != null && bOrder != null) {
+      return aOrder.compareTo(bOrder);
+    }
+    if (aOrder != null) {
+      return -1;
+    }
+    if (bOrder != null) {
+      return 1;
+    }
+    return a.sentAt.compareTo(b.sentAt);
+  }
+
+  void _applyReceiptEvent(
+    String messageId, {
+    DateTime? deliveredAt,
+    DateTime? readAt,
+  }) {
+    for (final entry in _messagesByConversation.entries) {
+      var changed = false;
+      final updated = entry.value.map((message) {
+        if (message.id != messageId) {
+          return message;
+        }
+
+        changed = true;
+        return message.copyWith(
+          deliveryState: readAt != null
+              ? MessageDeliveryState.read
+              : deliveredAt != null
+                  ? MessageDeliveryState.delivered
+                  : message.deliveryState,
+          deliveredAt: deliveredAt ?? message.deliveredAt,
+          readAt: readAt ?? message.readAt,
+        );
+      }).toList();
+
+      if (changed) {
+        _messagesByConversation[entry.key] = updated;
+        unawaited(_persistConversationState(entry.key));
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  void _markLocalMessageFailed(String clientMessageId) {
+    for (final entry in _messagesByConversation.entries) {
+      var changed = false;
+      final updated = entry.value.map((message) {
+        if (message.clientMessageId != clientMessageId) {
+          return message;
+        }
+
+        changed = true;
+        return message.copyWith(deliveryState: MessageDeliveryState.failed);
+      }).toList();
+      if (changed) {
+        _messagesByConversation[entry.key] = updated;
+        unawaited(_persistConversationState(entry.key));
+        return;
+      }
+    }
+  }
+
+  Future<void> _persistConversationState(String conversationId) async {
+    final cache = _cacheService;
+    if (cache == null) {
+      return;
+    }
+
+    await cache.storeMessages(conversationId, _messagesByConversation[conversationId] ?? const []);
+    await cache.storeConversations(_conversations);
   }
 
   Future<void> _reconcileExpiringState() async {
@@ -481,67 +794,40 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   ChatMessage _messageFromApi(Map<String, dynamic> raw) {
+    final deliveredAt = raw['deliveredAt'] == null
+        ? null
+        : DateTime.parse(raw['deliveredAt'] as String);
+    final readAt = raw['readAt'] == null ? null : DateTime.parse(raw['readAt'] as String);
     return ChatMessage(
       id: raw['id'] as String,
+      clientMessageId: raw['clientMessageId'] as String?,
       senderDeviceId: raw['senderDeviceId'] as String,
       sentAt: DateTime.parse(raw['serverReceivedAt'] as String),
       envelope: _envelopeFromApi(raw),
+      conversationOrder: raw['conversationOrder'] as int?,
+      deliveryState: readAt != null
+          ? MessageDeliveryState.read
+          : deliveredAt != null
+              ? MessageDeliveryState.delivered
+              : MessageDeliveryState.sent,
+      deliveredAt: deliveredAt,
+      readAt: readAt,
       expiresAt: raw['expiresAt'] == null ? null : DateTime.parse(raw['expiresAt'] as String),
       isMine: raw['senderDeviceId'] == _session.deviceId,
     );
   }
 
   CryptoEnvelope _envelopeFromApi(Map<String, dynamic> raw) {
-    final attachment = raw['attachment'] as Map<String, dynamic>?;
-    return CryptoEnvelope(
-      version: raw['version'] as String? ?? 'veil-envelope-v1-dev',
-      conversationId: raw['conversationId'] as String,
-      senderDeviceId: raw['senderDeviceId'] as String,
-      recipientUserId: '',
-      ciphertext: raw['ciphertext'] as String,
-      nonce: raw['nonce'] as String,
-      messageKind: MessageKind.values.byName(raw['messageType'] as String),
-      expiresAt: raw['expiresAt'] == null ? null : DateTime.parse(raw['expiresAt'] as String),
-      attachment: attachment == null
-          ? null
-          : AttachmentReference(
-              attachmentId: attachment['attachmentId'] as String,
-              storageKey: attachment['storageKey'] as String,
-              contentType: attachment['contentType'] as String,
-              sizeBytes: attachment['sizeBytes'] as int,
-              sha256: attachment['sha256'] as String,
-              encryptedKey:
-                  (attachment['encryption'] as Map<String, dynamic>)['encryptedKey'] as String,
-              nonce: (attachment['encryption'] as Map<String, dynamic>)['nonce'] as String,
-            ),
-    );
+    return CryptoEnvelope.fromApiJson(raw);
   }
 
   Map<String, dynamic> _envelopeToJson(CryptoEnvelope envelope) {
-    return {
-      'version': envelope.version,
-      'conversationId': envelope.conversationId,
-      'senderDeviceId': envelope.senderDeviceId,
-      'recipientUserId': envelope.recipientUserId,
-      'ciphertext': envelope.ciphertext,
-      'nonce': envelope.nonce,
-      'messageType': envelope.messageKind.name,
-      'expiresAt': envelope.expiresAt?.toIso8601String(),
-      'attachment': envelope.attachment == null
-          ? null
-          : {
-              'attachmentId': envelope.attachment!.attachmentId,
-              'storageKey': envelope.attachment!.storageKey,
-              'contentType': envelope.attachment!.contentType,
-              'sizeBytes': envelope.attachment!.sizeBytes,
-              'sha256': envelope.attachment!.sha256,
-              'encryption': {
-                'encryptedKey': envelope.attachment!.encryptedKey,
-                'nonce': envelope.attachment!.nonce,
-                'algorithmHint': 'dev-wrap',
-              },
-            },
-    };
+    return envelope.toApiJson();
+  }
+
+  String _nextClientMessageId() {
+    final entropy = _random.nextInt(1 << 32).toRadixString(36);
+    return 'msg-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$entropy';
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -551,7 +837,7 @@ class VeilMessengerController extends ChangeNotifier {
     try {
       await action();
     } catch (error) {
-      _errorMessage = error.toString();
+      _errorMessage = formatUserFacingError(error);
     } finally {
       _isBusy = false;
       notifyListeners();

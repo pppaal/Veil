@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../chat/presentation/message_expiration.dart';
@@ -71,10 +72,15 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       title: 'VEIL',
       actions: [
         IconButton(
+          tooltip: 'Security status',
           onPressed: () => context.push('/security-status'),
           icon: const Icon(Icons.verified_user_outlined),
         ),
-        IconButton(onPressed: () => context.push('/settings'), icon: const Icon(Icons.tune)),
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: () => context.push('/settings'),
+          icon: const Icon(Icons.tune),
+        ),
       ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -103,16 +109,16 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
             ),
           ),
           if (controller.errorMessage != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
               title: 'Sync issue',
               message: controller.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const VeilSectionLabel('CONVERSATIONS'),
-          const SizedBox(height: 12),
+          const SizedBox(height: VeilSpace.sm),
           Expanded(
             child: RefreshIndicator(
               onRefresh: controller.refreshConversations,
@@ -136,110 +142,27 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                               ),
                             ),
                           ],
-                        )
+                    )
                   : ListView.separated(
                       itemCount: conversations.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      separatorBuilder: (_, __) => const SizedBox(height: VeilSpace.sm),
                       itemBuilder: (context, index) {
                         final item = conversations[index];
-                        return Card(
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(22),
-                            onTap: () => context.push('/chat/${item.id}'),
-                            child: Padding(
-                              padding: const EdgeInsets.all(18),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 48,
-                                    height: 48,
-                                    alignment: Alignment.center,
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(16),
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .primary
-                                          .withValues(alpha: 0.12),
-                                      border: Border.all(
-                                        color: Theme.of(context).colorScheme.outline,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      (item.peerDisplayName ?? item.peerHandle)
-                                          .characters
-                                          .first
-                                          .toUpperCase(),
-                                      style: Theme.of(context).textTheme.titleMedium,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          item.peerDisplayName ?? item.peerHandle,
-                                          style: Theme.of(context).textTheme.titleMedium,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '@${item.peerHandle}',
-                                          style: Theme.of(context).textTheme.bodyMedium,
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                _subtitleForConversation(item, controller),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            if (item.lastEnvelope?.expiresAt != null)
-                                              Padding(
-                                                padding: const EdgeInsets.only(left: 8),
-                                                child: VeilStatusPill(
-                                                  label: formatMessageExpiry(
-                                                    item.lastEnvelope!.expiresAt!,
-                                                  ),
-                                                  tone: VeilBannerTone.warn,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        _timeFormat.format(item.updatedAt),
-                                        style: Theme.of(context).textTheme.bodyMedium,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Icon(
-                                        Icons.arrow_forward_ios_rounded,
-                                        size: 14,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                            .withValues(alpha: 0.46),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
+                        return VeilConversationCard(
+                          title: item.peerDisplayName ?? item.peerHandle,
+                          handle: item.peerHandle,
+                          subtitle: _subtitleForConversation(item, controller),
+                          timestamp: _timeFormat.format(item.updatedAt),
+                          expiryLabel: item.lastEnvelope?.expiresAt == null
+                              ? null
+                              : formatMessageExpiry(item.lastEnvelope!.expiresAt!),
+                          onTap: () => context.push('/chat/${item.id}'),
                         );
                       },
                     ),
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: VeilSpace.sm),
           FilledButton.tonal(
             onPressed: () => context.push('/start-chat'),
             child: const Text('Start direct chat'),

@@ -11,18 +11,6 @@ export interface PublicKeyBundle {
   updatedAt: string;
 }
 
-export interface CryptoEnvelope {
-  version: string;
-  conversationId: string;
-  senderDeviceId: string;
-  recipientUserId: string;
-  ciphertext: string;
-  nonce: string;
-  messageType: MessageType;
-  expiresAt?: string | null;
-  attachment?: EncryptedAttachmentReference | null;
-}
-
 export interface AttachmentUploadTicket {
   attachmentId: string;
   storageKey: string;
@@ -52,6 +40,18 @@ export interface EncryptedAttachmentReference {
   encryption: AttachmentEncryptionMaterial;
 }
 
+export interface CryptoEnvelope {
+  version: string;
+  conversationId: string;
+  senderDeviceId: string;
+  recipientUserId: string;
+  ciphertext: string;
+  nonce: string;
+  messageType: MessageType;
+  expiresAt?: string | null;
+  attachment?: EncryptedAttachmentReference | null;
+}
+
 export interface PlaintextMessageInput {
   conversationId: string;
   senderDeviceId: string;
@@ -72,15 +72,60 @@ export interface DecryptedMessage {
 export interface DeviceIdentityMaterial {
   identityPublicKey: string;
   identityPrivateKeyRef: string;
-  authPublicKey: string;
-  authPrivateKeyRef: string;
   signedPrekeyBundle: string;
 }
 
-export interface CryptoEngine {
-  readonly adapterId: string;
+export interface DeviceAuthKeyMaterial {
+  publicKey: string;
+  privateKey: string;
+}
+
+export interface DeviceIdentityProvider {
   generateDeviceIdentity(deviceId: string): Promise<DeviceIdentityMaterial>;
-  encryptMessage(input: PlaintextMessageInput, recipientBundle: PublicKeyBundle): Promise<CryptoEnvelope>;
+}
+
+export interface DeviceAuthChallengeSigner {
+  generateAuthKeyMaterial(): Promise<DeviceAuthKeyMaterial>;
+  signChallenge(input: {
+    challenge: string;
+    keyMaterial: DeviceAuthKeyMaterial;
+  }): Promise<string>;
+}
+
+export interface KeyBundleCodec {
+  decodeDirectoryBundle(json: Record<string, unknown>): PublicKeyBundle;
+}
+
+export interface CryptoEnvelopeCodec {
+  readonly defaultEnvelopeVersion: string;
+  readonly defaultAttachmentWrapAlgorithmHint?: string;
+  decodeApiEnvelope(json: Record<string, unknown>): CryptoEnvelope;
+  encodeApiEnvelope(envelope: CryptoEnvelope): Record<string, unknown>;
+  decodeAttachmentReference(
+    json: Record<string, unknown> | null | undefined,
+  ): EncryptedAttachmentReference | null;
+  encodeAttachmentReference(
+    attachment: EncryptedAttachmentReference | null | undefined,
+  ): Record<string, unknown> | null;
+}
+
+export interface MessageCryptoEngine {
+  encryptMessage(
+    input: PlaintextMessageInput,
+    recipientBundle: PublicKeyBundle,
+  ): Promise<CryptoEnvelope>;
   decryptMessage(envelope: CryptoEnvelope): Promise<DecryptedMessage>;
-  encryptAttachmentKey(contentKey: string, recipientBundle: PublicKeyBundle): Promise<AttachmentEncryptionMaterial>;
+  encryptAttachmentKey(
+    contentKey: string,
+    recipientBundle: PublicKeyBundle,
+  ): Promise<AttachmentEncryptionMaterial>;
+}
+
+export interface CryptoAdapter {
+  readonly adapterId: string;
+  readonly identity: DeviceIdentityProvider;
+  readonly deviceAuth: DeviceAuthChallengeSigner;
+  readonly keyBundles: KeyBundleCodec;
+  readonly envelopeCodec: CryptoEnvelopeCodec;
+  readonly messaging: MessageCryptoEngine;
 }

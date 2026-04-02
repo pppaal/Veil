@@ -1,9 +1,6 @@
 import {
-  ForbiddenException,
   Inject,
   Injectable,
-  NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import type {
   DeviceTransferApproveResponse,
@@ -14,9 +11,15 @@ import type {
 import { createHash, randomUUID } from 'node:crypto';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import {
+  forbidden,
+  notFound,
+  unauthorized,
+} from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from '../auth/device-auth-verifier';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import {
   DeviceTransferApproveDto,
   DeviceTransferClaimDto,
@@ -33,6 +36,7 @@ interface PendingTransferClaim {
   authPublicKey: string;
   claimantFingerprint: string;
   approvedAt?: string;
+  claimProofVerifiedAt: string;
 }
 
 const buildClaimChallenge = (sessionId: string, transferToken: string): string =>
@@ -56,6 +60,7 @@ export class DeviceTransferService {
     private readonly config: AppConfigService,
     @Inject(DEVICE_AUTH_VERIFIER)
     private readonly deviceAuthVerifier: DeviceAuthVerifier,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async init(
@@ -63,7 +68,10 @@ export class DeviceTransferService {
     dto: DeviceTransferInitDto,
   ): Promise<DeviceTransferInitResponse> {
     if (auth.deviceId !== dto.oldDeviceId) {
-      throw new ForbiddenException('Transfer must be initiated from the active old device');
+      throw forbidden(
+        'device_forbidden',
+        'Transfer must be initiated from the active old device',
+      );
     }
 
     const user = await this.prisma.user.findUnique({
@@ -72,8 +80,10 @@ export class DeviceTransferService {
     });
 
     if (!user || user.activeDeviceId !== dto.oldDeviceId) {
-      throw new ForbiddenException('Old device is not the active bound device');
+      throw forbidden('device_forbidden', 'Old device is not the active bound device');
     }
+
+    await this.invalidateExistingSessions(auth.userId, dto.oldDeviceId);
 
     const transferToken = randomUUID();
     const expiresAt = new Date(Date.now() + this.config.transferTokenTtlSeconds * 1000);
@@ -103,16 +113,17 @@ export class DeviceTransferService {
     });
 
     if (!session || session.userId !== auth.userId || session.oldDeviceId !== auth.deviceId) {
-      throw new NotFoundException('Transfer session not found');
+      throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
     if (session.completedAt || session.expiresAt.getTime() <= Date.now()) {
-      throw new ForbiddenException('Transfer session is no longer active');
+      await this.ephemeralStore.delete(claimKey(dto.sessionId));
+      throw forbidden('transfer_session_inactive', 'Transfer session is no longer active');
     }
 
     const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(dto.sessionId));
     if (!pendingClaim || pendingClaim.claimId !== dto.claimId) {
-      throw new ForbiddenException('A matching new-device claim is required before approval');
+      throw forbidden('transfer_claim_required', 'A matching new-device claim is required before approval');
     }
 
     await this.ephemeralStore.setJson<PendingTransferClaim>(
@@ -141,23 +152,30 @@ export class DeviceTransferService {
     });
 
     if (!session) {
-      throw new NotFoundException('Transfer session not found');
+      throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
     if (session.completedAt || session.expiresAt.getTime() <= Date.now()) {
-      throw new ForbiddenException('Transfer session is no longer active');
+      await this.ephemeralStore.delete(claimKey(dto.sessionId));
+      throw forbidden('transfer_session_inactive', 'Transfer session is no longer active');
     }
 
     if (hashToken(dto.transferToken) !== session.tokenHash) {
-      throw new UnauthorizedException('Transfer token invalid');
+      throw unauthorized('transfer_token_invalid', 'Transfer token invalid');
     }
 
     if (!session.oldDevice.isActive || session.oldDevice.revokedAt) {
-      throw new ForbiddenException('Old device is unavailable; transfer cannot proceed');
+      throw forbidden(
+        'transfer_session_inactive',
+        'Old device is unavailable; transfer cannot proceed',
+      );
     }
 
     if (session.user.activeDeviceId !== session.oldDeviceId) {
-      throw new ForbiddenException('Old device is no longer active; transfer cannot proceed');
+      throw forbidden(
+        'transfer_session_inactive',
+        'Old device is no longer active; transfer cannot proceed',
+      );
     }
 
     const validProof = await this.deviceAuthVerifier.verifyChallengeResponse({
@@ -168,7 +186,7 @@ export class DeviceTransferService {
     });
 
     if (!validProof) {
-      throw new UnauthorizedException('New device claim proof is invalid');
+      throw unauthorized('transfer_claim_invalid', 'New device claim proof is invalid');
     }
 
     const claimId = randomUUID();
@@ -180,6 +198,7 @@ export class DeviceTransferService {
       signedPrekeyBundle: dto.signedPrekeyBundle,
       authPublicKey: dto.authPublicKey,
       claimantFingerprint: claimFingerprint(dto.authPublicKey),
+      claimProofVerifiedAt: new Date().toISOString(),
     };
 
     await this.ephemeralStore.setJson<PendingTransferClaim>(
@@ -206,37 +225,60 @@ export class DeviceTransferService {
     });
 
     if (!session) {
-      throw new NotFoundException('Transfer session not found');
+      throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
     if (session.completedAt) {
-      throw new ForbiddenException('Transfer session already completed');
+      throw forbidden('transfer_session_inactive', 'Transfer session already completed');
     }
 
     if (session.expiresAt.getTime() <= Date.now()) {
-      throw new ForbiddenException('Transfer session expired');
+      await this.ephemeralStore.delete(claimKey(dto.sessionId));
+      throw forbidden('transfer_session_inactive', 'Transfer session expired');
     }
 
     if (hashToken(dto.transferToken) !== session.tokenHash) {
-      throw new UnauthorizedException('Transfer token invalid');
+      throw unauthorized('transfer_token_invalid', 'Transfer token invalid');
     }
 
     if (!session.oldDevice.isActive || session.oldDevice.revokedAt) {
-      throw new ForbiddenException('Old device is unavailable; transfer cannot proceed');
+      throw forbidden(
+        'transfer_session_inactive',
+        'Old device is unavailable; transfer cannot proceed',
+      );
     }
 
     if (session.user.activeDeviceId !== session.oldDeviceId) {
-      throw new ForbiddenException('Old device is no longer active; transfer cannot proceed');
+      throw forbidden(
+        'transfer_session_inactive',
+        'Old device is no longer active; transfer cannot proceed',
+      );
     }
 
     const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(dto.sessionId));
 
     if (!pendingClaim || pendingClaim.claimId !== dto.claimId) {
-      throw new ForbiddenException('A matching approved claim is required before completion');
+      throw forbidden(
+        'transfer_claim_required',
+        'A matching approved claim is required before completion',
+      );
     }
 
     if (!pendingClaim.approvedAt) {
-      throw new ForbiddenException('Old device approval is required before completion');
+      throw forbidden(
+        'transfer_approval_required',
+        'Old device approval is required before completion',
+      );
+    }
+
+    const validCompletionProof = await this.deviceAuthVerifier.verifyChallengeResponse({
+      challenge: `transfer-complete:${dto.sessionId}:${dto.claimId}:${dto.transferToken}`,
+      proof: dto.authProof,
+      authPublicKey: pendingClaim.authPublicKey,
+      deviceId: dto.claimId,
+    });
+    if (!validCompletionProof) {
+      throw unauthorized('transfer_completion_invalid', 'New device completion proof is invalid');
     }
 
     const completedAt = new Date();
@@ -258,6 +300,7 @@ export class DeviceTransferService {
         data: {
           isActive: false,
           revokedAt: completedAt,
+          pushToken: null,
         },
       });
 
@@ -275,6 +318,7 @@ export class DeviceTransferService {
     });
 
     await this.ephemeralStore.delete(claimKey(dto.sessionId));
+    this.realtimeGateway.disconnectDevice(session.oldDeviceId);
 
     return {
       sessionId: session.id,
@@ -285,5 +329,33 @@ export class DeviceTransferService {
       displayName: session.user.displayName,
       completedAt: completedAt.toISOString(),
     };
+  }
+
+  private async invalidateExistingSessions(userId: string, oldDeviceId: string): Promise<void> {
+    const openSessions = await this.prisma.deviceTransferSession.findMany({
+      where: {
+        userId,
+        oldDeviceId,
+        completedAt: null,
+      },
+      select: { id: true, expiresAt: true },
+    });
+
+    for (const session of openSessions) {
+      await this.ephemeralStore.delete(claimKey(session.id));
+    }
+
+    if (openSessions.length > 0) {
+      await this.prisma.deviceTransferSession.updateMany({
+        where: {
+          userId,
+          oldDeviceId,
+          completedAt: null,
+        },
+        data: {
+          completedAt: new Date(),
+        },
+      });
+    }
   }
 }

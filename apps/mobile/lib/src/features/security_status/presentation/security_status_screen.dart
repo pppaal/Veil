@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/config/veil_config.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -65,9 +66,24 @@ class SecurityStatusScreen extends ConsumerWidget {
           orElse: () => _SignalTone.neutral,
         ),
       ),
+      const _SecuritySignal(
+        label: 'Privacy shield',
+        value: 'Enabled',
+        detail:
+            'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.',
+        tone: _SignalTone.good,
+      ),
     ];
 
     final runtimeSignals = <_SecuritySignal>[
+      _SecuritySignal(
+        label: 'Transport policy',
+        value: VeilConfig.runtimeConfigurationError == null ? 'Compliant' : 'Blocked',
+        detail: VeilConfig.runtimeConfigurationError == null
+            ? 'Configured endpoints satisfy the current private-beta transport policy.'
+            : VeilConfig.runtimeConfigurationError!,
+        tone: VeilConfig.runtimeConfigurationError == null ? _SignalTone.good : _SignalTone.warn,
+      ),
       _SecuritySignal(
         label: 'API mode',
         value: VeilConfig.hasApi ? 'Attached' : 'Unavailable',
@@ -93,7 +109,7 @@ class SecurityStatusScreen extends ConsumerWidget {
                 : 'Starting',
         detail: !cacheConfigured
             ? 'Message cache stays off until encrypted-at-rest storage is integrated.'
-            : 'Conversations and envelopes are cached locally behind the current alpha encrypted-at-rest layer.',
+            : 'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer and are wiped on destructive local lifecycle events.',
         tone: !cacheConfigured
             ? _SignalTone.warn
             : cacheReady
@@ -119,6 +135,13 @@ class SecurityStatusScreen extends ConsumerWidget {
         label: 'Device transfer',
         value: 'Old device required',
         detail: 'Transfer succeeds only while the old device can approve it.',
+        tone: _SignalTone.good,
+      ),
+      const _SecuritySignal(
+        label: 'Local wipe',
+        value: 'Available',
+        detail:
+            'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.',
         tone: _SignalTone.good,
       ),
       _SecuritySignal(
@@ -164,18 +187,18 @@ class SecurityStatusScreen extends ConsumerWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                VeilStatusPill(label: 'Internal alpha'),
+                VeilStatusPill(label: 'Private beta'),
                 VeilStatusPill(label: 'Mock crypto active', tone: VeilBannerTone.warn),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const _SecuritySection(title: 'Identity'),
           ...identitySignals.map((signal) => _SecurityRow(signal: signal)),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const _SecuritySection(title: 'Runtime'),
           ...runtimeSignals.map((signal) => _SecurityRow(signal: signal)),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const _SecuritySection(title: 'Product Rules'),
           ...productSignals.map((signal) => _SecurityRow(signal: signal)),
         ],
@@ -200,7 +223,7 @@ class _SecuritySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      padding: const EdgeInsets.only(left: 4, bottom: VeilSpace.xs),
       child: VeilSectionLabel(title.toUpperCase()),
     );
   }
@@ -213,49 +236,17 @@ class _SecurityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = switch (signal.tone) {
-      _SignalTone.good => const Color(0xFF8CB6FF),
-      _SignalTone.warn => const Color(0xFFFFC670),
-      _SignalTone.neutral => Theme.of(context).colorScheme.outline,
-    };
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(signal.label, style: Theme.of(context).textTheme.titleSmall),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: color.withValues(alpha: 0.32)),
-                  ),
-                  child: Text(
-                    signal.value,
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Text(
-              signal.detail,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.76),
-                  ),
-            ),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: VeilSpace.sm),
+      child: VeilValueRow(
+        label: signal.label,
+        value: signal.value,
+        valueTone: switch (signal.tone) {
+          _SignalTone.good => VeilBannerTone.good,
+          _SignalTone.warn => VeilBannerTone.warn,
+          _SignalTone.neutral => VeilBannerTone.info,
+        },
+        detail: signal.detail,
       ),
     );
   }

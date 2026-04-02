@@ -19,6 +19,38 @@ class ConversationPagingState {
   final DateTime? lastSyncedAt;
 }
 
+class AttachmentUploadDraft {
+  const AttachmentUploadDraft({
+    required this.filename,
+    required this.contentType,
+    required this.sizeBytes,
+    required this.sha256,
+  });
+
+  final String filename;
+  final String contentType;
+  final int sizeBytes;
+  final String sha256;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'filename': filename,
+      'contentType': contentType,
+      'sizeBytes': sizeBytes,
+      'sha256': sha256,
+    };
+  }
+
+  factory AttachmentUploadDraft.fromJson(Map<String, dynamic> json) {
+    return AttachmentUploadDraft(
+      filename: json['filename'] as String,
+      contentType: json['contentType'] as String,
+      sizeBytes: json['sizeBytes'] as int,
+      sha256: json['sha256'] as String,
+    );
+  }
+}
+
 class PendingMessageRecord {
   const PendingMessageRecord({
     required this.clientMessageId,
@@ -29,8 +61,10 @@ class PendingMessageRecord {
     required this.createdAt,
     this.retryCount = 0,
     this.lastAttemptAt,
+    this.nextRetryAt,
     this.state = MessageDeliveryState.pending,
     this.errorMessage,
+    this.attachmentUploadDraft,
   });
 
   final String clientMessageId;
@@ -41,28 +75,37 @@ class PendingMessageRecord {
   final DateTime createdAt;
   final int retryCount;
   final DateTime? lastAttemptAt;
+  final DateTime? nextRetryAt;
   final MessageDeliveryState state;
   final String? errorMessage;
+  final AttachmentUploadDraft? attachmentUploadDraft;
 
   PendingMessageRecord copyWith({
     int? retryCount,
     Object? lastAttemptAt = _unset,
+    Object? nextRetryAt = _unset,
     MessageDeliveryState? state,
     Object? errorMessage = _unset,
+    Object? attachmentUploadDraft = _unset,
+    CryptoEnvelope? envelope,
   }) {
     return PendingMessageRecord(
       clientMessageId: clientMessageId,
       conversationId: conversationId,
       senderDeviceId: senderDeviceId,
       recipientUserId: recipientUserId,
-      envelope: envelope,
+      envelope: envelope ?? this.envelope,
       createdAt: createdAt,
       retryCount: retryCount ?? this.retryCount,
       lastAttemptAt:
           identical(lastAttemptAt, _unset) ? this.lastAttemptAt : lastAttemptAt as DateTime?,
+      nextRetryAt: identical(nextRetryAt, _unset) ? this.nextRetryAt : nextRetryAt as DateTime?,
       state: state ?? this.state,
       errorMessage:
           identical(errorMessage, _unset) ? this.errorMessage : errorMessage as String?,
+      attachmentUploadDraft: identical(attachmentUploadDraft, _unset)
+          ? this.attachmentUploadDraft
+          : attachmentUploadDraft as AttachmentUploadDraft?,
     );
   }
 
@@ -94,16 +137,21 @@ abstract class ConversationCacheService {
   Future<void> removePendingMessage(String clientMessageId);
 
   Future<void> purgeExpiredMessages();
+
+  Future<void> clearAll();
 }
 
 class DriftConversationCacheService implements ConversationCacheService {
   DriftConversationCacheService(
     this._db, {
+    required CryptoEnvelopeCodec envelopeCodec,
     LocalDataCipher? cipher,
-  }) : _cipher = cipher;
+  })  : _cipher = cipher,
+        _envelopeCodec = envelopeCodec;
 
   final AppDatabase _db;
   final LocalDataCipher? _cipher;
+  final CryptoEnvelopeCodec _envelopeCodec;
 
   @override
   Future<List<ConversationPreview>> readConversations() async {
@@ -145,7 +193,7 @@ class DriftConversationCacheService implements ConversationCacheService {
                   previewNonce == null
               ? null
               : CryptoEnvelope(
-                  version: devEnvelopeVersion,
+                  version: _envelopeCodec.defaultEnvelopeVersion,
                   conversationId: row.id,
                   senderDeviceId: previewSenderDeviceId,
                   recipientUserId: peerUserId ?? '',
@@ -193,7 +241,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           senderDeviceId: senderDeviceId,
           sentAt: row.receivedAt,
           envelope: CryptoEnvelope(
-            version: devEnvelopeVersion,
+            version: _envelopeCodec.defaultEnvelopeVersion,
             conversationId: row.conversationId,
             senderDeviceId: senderDeviceId,
             recipientUserId: '',
@@ -372,7 +420,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           senderDeviceId: senderDeviceId,
           recipientUserId: recipientUserId,
           envelope: CryptoEnvelope(
-            version: devEnvelopeVersion,
+            version: _envelopeCodec.defaultEnvelopeVersion,
             conversationId: row.conversationId,
             senderDeviceId: senderDeviceId,
             recipientUserId: recipientUserId,
@@ -385,8 +433,10 @@ class DriftConversationCacheService implements ConversationCacheService {
           createdAt: row.createdAt,
           retryCount: row.retryCount,
           lastAttemptAt: row.lastAttemptAt,
+          nextRetryAt: row.nextRetryAt,
           state: _deliveryStateFromString(row.state),
           errorMessage: errorMessage,
+          attachmentUploadDraft: _decodeAttachmentUploadDraft(attachmentJson),
         ),
       );
     }
@@ -405,11 +455,12 @@ class DriftConversationCacheService implements ConversationCacheService {
             ciphertext: await _requireEncryptedValue(pending.envelope.ciphertext),
             nonce: await _requireEncryptedValue(pending.envelope.nonce),
             messageType: pending.envelope.messageKind.name,
-            attachmentJson: Value(await _encrypt(_encodeAttachment(pending.envelope.attachment))),
+            attachmentJson: Value(await _encrypt(_encodePendingAttachmentPayload(pending))),
             createdAt: pending.createdAt,
             expiresAt: Value(pending.envelope.expiresAt),
             retryCount: Value(pending.retryCount),
             lastAttemptAt: Value(pending.lastAttemptAt),
+            nextRetryAt: Value(pending.nextRetryAt),
             state: Value(pending.state.name),
             errorMessage: Value(await _encrypt(pending.errorMessage)),
           ),
@@ -435,12 +486,24 @@ class DriftConversationCacheService implements ConversationCacheService {
         .go();
   }
 
+  @override
+  Future<void> clearAll() async {
+    await _db.transaction(() async {
+      await _db.delete(_db.pendingMessages).go();
+      await _db.delete(_db.cachedMessages).go();
+      await _db.delete(_db.cachedConversations).go();
+    });
+  }
+
   String? _encodeAttachment(AttachmentReference? attachment) {
     if (attachment == null) {
       return null;
     }
 
-    return jsonEncode(attachment.toApiJson());
+    return jsonEncode({
+      'kind': 'reference',
+      'value': _envelopeCodec.encodeAttachmentReference(attachment),
+    });
   }
 
   AttachmentReference? _decodeAttachment(String? raw) {
@@ -449,8 +512,16 @@ class DriftConversationCacheService implements ConversationCacheService {
     }
 
     final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    if (decoded['kind'] == 'reference') {
+      return _envelopeCodec.decodeAttachmentReference(
+        decoded['value'] as Map<String, dynamic>,
+      );
+    }
+    if (decoded['kind'] == 'upload-draft') {
+      return null;
+    }
     if (decoded.containsKey('encryption')) {
-      return AttachmentReference.fromApiJson(decoded);
+      return _envelopeCodec.decodeAttachmentReference(decoded);
     }
 
     return AttachmentReference(
@@ -461,7 +532,31 @@ class DriftConversationCacheService implements ConversationCacheService {
       sha256: decoded['sha256'] as String,
       encryptedKey: decoded['encryptedKey'] as String,
       nonce: decoded['nonce'] as String,
+      algorithmHint: decoded['algorithmHint'] as String?,
     );
+  }
+
+  String? _encodePendingAttachmentPayload(PendingMessageRecord pending) {
+    if (pending.attachmentUploadDraft != null) {
+      return jsonEncode({
+        'kind': 'upload-draft',
+        'value': pending.attachmentUploadDraft!.toJson(),
+      });
+    }
+
+    return _encodeAttachment(pending.envelope.attachment);
+  }
+
+  AttachmentUploadDraft? _decodeAttachmentUploadDraft(String? raw) {
+    if (raw == null) {
+      return null;
+    }
+
+    final decoded = jsonDecode(raw) as Map<String, dynamic>;
+    if (decoded['kind'] == 'upload-draft') {
+      return AttachmentUploadDraft.fromJson(decoded['value'] as Map<String, dynamic>);
+    }
+    return null;
   }
 
   MessageDeliveryState _decodeDeliveryState({
@@ -498,7 +593,11 @@ class DriftConversationCacheService implements ConversationCacheService {
     if (cipher == null || value == null) {
       return value;
     }
-    return cipher.decryptString(value);
+    try {
+      return await cipher.decryptString(value);
+    } on FormatException {
+      return null;
+    }
   }
 
   Future<String> _requireEncryptedValue(String value) async {

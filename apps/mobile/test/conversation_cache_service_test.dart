@@ -1,6 +1,7 @@
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
@@ -11,7 +12,10 @@ void main() {
 
   setUp(() {
     database = AppDatabase(NativeDatabase.memory());
-    cache = DriftConversationCacheService(database);
+    cache = DriftConversationCacheService(
+      database,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
   });
 
   tearDown(() async {

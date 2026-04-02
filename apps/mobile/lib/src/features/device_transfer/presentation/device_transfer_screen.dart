@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -27,19 +31,30 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   bool _isCompleting = false;
   String? _claimId;
   String? _claimFingerprint;
+  DateTime? _claimExpiresAt;
   String? _completionMessage;
   String? _completionError;
   late _TransferMode _mode;
+  late Timer _ticker;
+  DateTime _now = DateTime.now();
 
   @override
   void initState() {
     super.initState();
     final session = ref.read(appSessionProvider);
     _mode = session.isAuthenticated ? _TransferMode.oldDevice : _TransferMode.newDevice;
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _now = DateTime.now();
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _ticker.cancel();
     _payloadController.dispose();
     _sessionIdController.dispose();
     _tokenController.dispose();
@@ -53,6 +68,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     final session = ref.watch(appSessionProvider);
     final controller = ref.watch(messengerControllerProvider);
     final transferPayload = controller.transferPayload;
+    final transferExpired = _isExpired(controller.transferExpiresAt);
+    final claimExpired = _isExpired(_claimExpiresAt);
 
     if (_payloadController.text.isEmpty && transferPayload != null) {
       _payloadController.text = transferPayload;
@@ -66,9 +83,9 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             eyebrow: 'TRANSFER',
             title: 'Old device required.',
             body:
-                'Transfer is a live handoff. The old device issues the session and approval. The new device completes the move and becomes active.',
+                'Transfer is a live handoff. The old device issues the session, approves the exact new-device claim, and is revoked when the new device becomes active.',
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -85,14 +102,24 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const VeilInlineBanner(
             title: 'No fallback path',
             message:
-                'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, or admin restore.',
+                'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.',
             tone: VeilBannerTone.warn,
           ),
-          const SizedBox(height: 16),
+          if (transferExpired || claimExpired) ...[
+            const SizedBox(height: VeilSpace.sm),
+            VeilInlineBanner(
+              title: 'Transfer window expired',
+              message: transferExpired
+                  ? 'The old-device transfer session expired. Issue a fresh session from the old device.'
+                  : 'This new-device claim expired. Register a fresh claim and request approval again.',
+              tone: VeilBannerTone.danger,
+            ),
+          ],
+          const SizedBox(height: VeilSpace.md),
           if (_mode == _TransferMode.oldDevice)
             _OldDevicePanel(
               isAuthenticated: session.isAuthenticated,
@@ -101,13 +128,15 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               transferToken: controller.transferToken,
               transferPayload: transferPayload,
               transferStatus: controller.transferStatus,
+              transferExpiresAt: controller.transferExpiresAt,
+              transferExpired: transferExpired,
               errorMessage: controller.errorMessage,
-              onInit: () => ref.read(messengerControllerProvider).initTransfer(),
               claimIdController: _claimIdController,
+              onInit: () => ref.read(messengerControllerProvider).initTransfer(),
               onApprove: () => ref.read(messengerControllerProvider).approveTransfer(
                     _claimIdController.text.trim(),
                   ),
-              onCopyPayload: transferPayload == null
+              onCopyPayload: transferPayload == null || transferExpired
                   ? null
                   : () async {
                       final messenger = ScaffoldMessenger.of(context);
@@ -120,6 +149,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
                       );
                     },
               onClear: () => ref.read(messengerControllerProvider).clearTransferState(),
+              now: _now,
             )
           else
             _NewDevicePanel(
@@ -131,14 +161,17 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               isCompleting: _isCompleting,
               claimId: _claimId,
               claimFingerprint: _claimFingerprint,
+              claimExpiresAt: _claimExpiresAt,
+              claimExpired: claimExpired,
               completionMessage: _completionMessage,
               completionError: _completionError ?? session.errorMessage,
               onImportPayload: _importPayload,
               onClaim: _claimTransfer,
               onComplete: _completeTransfer,
+              now: _now,
             ),
           if (_mode == _TransferMode.newDevice && session.isAuthenticated) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: VeilSpace.md),
             OutlinedButton(
               onPressed: () => context.go('/conversations'),
               child: const Text('Return to conversations'),
@@ -147,6 +180,13 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         ],
       ),
     );
+  }
+
+  bool _isExpired(DateTime? expiresAt) {
+    if (expiresAt == null) {
+      return false;
+    }
+    return !expiresAt.isAfter(_now);
   }
 
   void _importPayload() {
@@ -163,8 +203,12 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     setState(() {
       _sessionIdController.text = parsed.sessionId;
       _tokenController.text = parsed.transferToken;
+      _claimId = null;
+      _claimFingerprint = null;
+      _claimExpiresAt = null;
       _completionError = null;
-      _completionMessage = 'Transfer payload imported. Complete on this new device.';
+      _completionMessage =
+          'Transfer payload imported. Register this new device before the transfer window closes.';
     });
   }
 
@@ -197,8 +241,9 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       setState(() {
         _claimId = result.claimId;
         _claimFingerprint = result.claimantFingerprint;
+        _claimExpiresAt = result.expiresAt;
         _completionMessage =
-            'Claim registered. Give this claim code to the old device and wait for approval.';
+            'Claim registered. Give this claim code to the old device and request approval before it expires.';
       });
     } catch (_) {
       if (!mounted) {
@@ -222,6 +267,13 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     if (sessionId.isEmpty || transferToken.isEmpty || _claimId == null) {
       setState(() {
         _completionError = 'Register this new-device claim before completion.';
+        _completionMessage = null;
+      });
+      return;
+    }
+    if (_isExpired(_claimExpiresAt)) {
+      setState(() {
+        _completionError = 'This new-device claim has expired. Register a fresh claim first.';
         _completionMessage = null;
       });
       return;
@@ -251,7 +303,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         return;
       }
       setState(() {
-        _completionError = ref.read(appSessionProvider).errorMessage ?? 'Transfer failed.';
+        _completionError =
+            ref.read(appSessionProvider).errorMessage ?? 'Transfer failed.';
       });
     } finally {
       if (mounted) {
@@ -308,12 +361,15 @@ class _OldDevicePanel extends StatelessWidget {
     required this.transferToken,
     required this.transferPayload,
     required this.transferStatus,
+    required this.transferExpiresAt,
+    required this.transferExpired,
     required this.errorMessage,
     required this.onInit,
     required this.claimIdController,
     required this.onApprove,
     required this.onCopyPayload,
     required this.onClear,
+    required this.now,
   });
 
   final bool isAuthenticated;
@@ -322,12 +378,15 @@ class _OldDevicePanel extends StatelessWidget {
   final String? transferToken;
   final String? transferPayload;
   final String? transferStatus;
+  final DateTime? transferExpiresAt;
+  final bool transferExpired;
   final String? errorMessage;
   final VoidCallback onInit;
   final TextEditingController claimIdController;
   final VoidCallback onApprove;
   final VoidCallback? onCopyPayload;
   final VoidCallback onClear;
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
@@ -343,25 +402,45 @@ class _OldDevicePanel extends StatelessWidget {
       children: [
         _TransferCard(
           title: '1. Initiate on old device',
-          body: 'Generate a short-lived session and token for the next device.',
-          status: transferSessionId == null ? 'Ready' : 'Issued',
-          tone: transferSessionId == null ? VeilBannerTone.info : VeilBannerTone.good,
+          body: transferExpiresAt == null
+              ? 'Generate a short-lived session and token for the next device.'
+              : 'This transfer session expires ${_formatExpiry(transferExpiresAt!, now)}.',
+          status: transferSessionId == null
+              ? 'Ready'
+              : transferExpired
+                  ? 'Expired'
+                  : 'Issued',
+          tone: transferSessionId == null
+              ? VeilBannerTone.info
+              : transferExpired
+                  ? VeilBannerTone.danger
+                  : VeilBannerTone.good,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: VeilSpace.sm),
         FilledButton.tonal(
           onPressed: isBusy ? null : onInit,
           child: Text(isBusy && transferSessionId == null ? 'Issuing token' : 'Issue transfer token'),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: VeilSpace.sm),
         _TransferCard(
           title: '2. Approve on old device',
           body: transferToken == null
               ? 'No transfer session exists yet.'
-              : 'Wait for the new device to register its claim, then approve that specific claim code here.',
-          status: transferToken == null ? 'Waiting' : 'Awaiting claim',
-          tone: transferToken == null ? VeilBannerTone.warn : VeilBannerTone.info,
+              : transferExpired
+                  ? 'This transfer session expired. Clear it and issue a fresh one.'
+                  : 'Wait for the new device to register its claim, then approve that specific claim code here.',
+          status: transferToken == null
+              ? 'Waiting'
+              : transferExpired
+                  ? 'Expired'
+                  : 'Awaiting claim',
+          tone: transferToken == null
+              ? VeilBannerTone.warn
+              : transferExpired
+                  ? VeilBannerTone.danger
+                  : VeilBannerTone.info,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: VeilSpace.sm),
         TextField(
           controller: claimIdController,
           decoration: const InputDecoration(
@@ -369,73 +448,70 @@ class _OldDevicePanel extends StatelessWidget {
             hintText: 'Paste the claim code shown on the new device',
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: VeilSpace.sm),
         FilledButton.tonal(
-          onPressed: isBusy || transferSessionId == null ? null : onApprove,
+          onPressed: isBusy || transferSessionId == null || transferExpired ? null : onApprove,
           child: const Text('Approve this claim'),
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text('3. Hand payload to new device',
-                          style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: VeilSpace.sm),
+        VeilSurfaceCard(
+          padding: const EdgeInsets.all(VeilSpace.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '3. Hand payload to new device',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    if (transferPayload != null)
-                      VeilStatusPill(
-                        label: 'Ready to copy',
-                        tone: VeilBannerTone.good,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SelectableText(
-                  transferPayload ?? 'Issue a transfer token first.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Complete on the new device. Do not complete on the old one.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onCopyPayload,
-                        child: const Text('Copy payload'),
-                      ),
+                  ),
+                  if (transferPayload != null && !transferExpired)
+                    const VeilStatusPill(
+                      label: 'Ready to copy',
+                      tone: VeilBannerTone.good,
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: isBusy ? null : onClear,
-                        child: const Text('Clear'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                ],
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              SelectableText(
+                transferPayload ?? 'Issue a transfer token first.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              Text(
+                transferExpired
+                    ? 'This payload is no longer valid. Clear it and issue a fresh transfer session.'
+                    : 'Complete on the new device. Do not complete on the old one.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              VeilActionRow(
+                children: [
+                  OutlinedButton(
+                    onPressed: onCopyPayload,
+                    child: const Text('Copy payload'),
+                  ),
+                  OutlinedButton(
+                    onPressed: isBusy ? null : onClear,
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
         if (transferStatus != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           VeilInlineBanner(
             title: 'Transfer status',
             message: transferStatus!,
-            tone: VeilBannerTone.info,
+            tone: transferExpired ? VeilBannerTone.warn : VeilBannerTone.info,
           ),
         ],
         if (errorMessage != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
             title: 'Transfer failed',
             message: errorMessage!,
@@ -457,11 +533,14 @@ class _NewDevicePanel extends StatelessWidget {
     required this.isCompleting,
     required this.claimId,
     required this.claimFingerprint,
+    required this.claimExpiresAt,
+    required this.claimExpired,
     required this.completionMessage,
     required this.completionError,
     required this.onImportPayload,
     required this.onClaim,
     required this.onComplete,
+    required this.now,
   });
 
   final TextEditingController payloadController;
@@ -472,94 +551,103 @@ class _NewDevicePanel extends StatelessWidget {
   final bool isCompleting;
   final String? claimId;
   final String? claimFingerprint;
+  final DateTime? claimExpiresAt;
+  final bool claimExpired;
   final String? completionMessage;
   final String? completionError;
   final VoidCallback onImportPayload;
   final Future<void> Function() onClaim;
   final Future<void> Function() onComplete;
+  final DateTime now;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const VeilSectionLabel('TRANSFER PAYLOAD'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: payloadController,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: const InputDecoration(
-                    labelText: 'Paste transfer payload',
-                    hintText: 'VEIL_TRANSFER::<sessionId>::<token>',
-                  ),
+        VeilSurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const VeilSectionLabel('TRANSFER PAYLOAD'),
+              const SizedBox(height: VeilSpace.sm),
+              TextField(
+                controller: payloadController,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Paste transfer payload',
+                  hintText: 'VEIL_TRANSFER::<sessionId>::<token>',
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: onImportPayload,
-                  child: const Text('Import payload'),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              OutlinedButton(
+                onPressed: onImportPayload,
+                child: const Text('Import payload'),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const VeilSectionLabel('NEW DEVICE'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: deviceNameController,
-                  decoration: const InputDecoration(labelText: 'Device name'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: sessionIdController,
-                  decoration: const InputDecoration(labelText: 'Session id'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: tokenController,
-                  decoration: const InputDecoration(labelText: 'Transfer token'),
-                ),
-                const SizedBox(height: 14),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    VeilStatusPill(
-                      label: claimId == null ? 'Claim not registered' : 'Claim registered',
-                      tone: claimId == null ? VeilBannerTone.warn : VeilBannerTone.good,
-                    ),
-                    const VeilStatusPill(label: 'Old device must approve specific claim'),
-                  ],
-                ),
-                if (claimId != null) ...[
-                  const SizedBox(height: 14),
-                  SelectableText('Claim code $claimId'),
-                  const SizedBox(height: 8),
-                  Text('Claim fingerprint ${claimFingerprint ?? 'Unavailable'}'),
+        const SizedBox(height: VeilSpace.sm),
+        VeilSurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const VeilSectionLabel('NEW DEVICE'),
+              const SizedBox(height: VeilSpace.sm),
+              TextField(
+                controller: deviceNameController,
+                decoration: const InputDecoration(labelText: 'Device name'),
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              TextField(
+                controller: sessionIdController,
+                decoration: const InputDecoration(labelText: 'Session id'),
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              TextField(
+                controller: tokenController,
+                decoration: const InputDecoration(labelText: 'Transfer token'),
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  VeilStatusPill(
+                    label: claimId == null
+                        ? 'Claim not registered'
+                        : claimExpired
+                            ? 'Claim expired'
+                            : 'Claim registered',
+                    tone: claimId == null
+                        ? VeilBannerTone.warn
+                        : claimExpired
+                            ? VeilBannerTone.danger
+                            : VeilBannerTone.good,
+                  ),
+                  const VeilStatusPill(label: 'Old device must approve exact claim'),
+                ],
+              ),
+              if (claimId != null) ...[
+                const SizedBox(height: VeilSpace.sm),
+                SelectableText('Claim code $claimId'),
+                const SizedBox(height: VeilSpace.xs),
+                Text('Claim fingerprint ${claimFingerprint ?? 'Unavailable'}'),
+                if (claimExpiresAt != null) ...[
+                  const SizedBox(height: VeilSpace.xs),
+                  Text('Expires ${_formatExpiry(claimExpiresAt!, now)}'),
                 ],
               ],
-            ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: VeilSpace.md),
         OutlinedButton(
           onPressed: isClaiming ? null : onClaim,
           child: Text(isClaiming ? 'Registering claim' : 'Register this new device'),
         ),
         if (completionMessage != null) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           VeilInlineBanner(
             title: 'Transfer status',
             message: completionMessage!,
@@ -567,16 +655,16 @@ class _NewDevicePanel extends StatelessWidget {
           ),
         ],
         if (completionError != null) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
             title: 'Transfer failed',
             message: completionError!,
             tone: VeilBannerTone.danger,
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: VeilSpace.md),
         FilledButton(
-          onPressed: isCompleting || claimId == null ? null : onComplete,
+          onPressed: isCompleting || claimId == null || claimExpired ? null : onComplete,
           child: Text(isCompleting ? 'Completing transfer' : 'Complete on this device'),
         ),
       ],
@@ -601,7 +689,7 @@ class _TransferCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(VeilSpace.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -611,13 +699,29 @@ class _TransferCard extends StatelessWidget {
                 VeilStatusPill(label: status, tone: tone),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: VeilSpace.sm),
             SelectableText(body, style: Theme.of(context).textTheme.bodyMedium),
           ],
         ),
       ),
     );
   }
+}
+
+String _formatExpiry(DateTime expiresAt, DateTime now) {
+  if (!expiresAt.isAfter(now)) {
+    return 'now';
+  }
+
+  final remaining = expiresAt.difference(now);
+  if (remaining.inMinutes < 1) {
+    return 'in ${remaining.inSeconds}s';
+  }
+  if (remaining.inHours < 1) {
+    return 'in ${remaining.inMinutes}m';
+  }
+
+  return 'at ${DateFormat('MMM d, HH:mm').format(expiresAt.toLocal())}';
 }
 
 class _ParsedTransferPayload {

@@ -1,6 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 import type { RegisterRequest } from '@veil/contracts';
 
@@ -28,18 +35,23 @@ export class RegisterDto implements RegisterRequest {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(1024)
   publicIdentityKey!: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(2048)
   signedPrekeyBundle!: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(512)
+  @Matches(/^[A-Za-z0-9_-]+$/)
   authPublicKey!: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(512)
   pushToken?: string;
 }

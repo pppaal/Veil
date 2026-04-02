@@ -4,7 +4,11 @@ import { Ed25519DeviceAuthVerifier } from '../../src/modules/auth/device-auth-ve
 import { DeviceTransferService } from '../../src/modules/device-transfer/device-transfer.service';
 import { DeviceAuthTestHelper } from '../support/device-auth-test-helper';
 import { FakePrismaService } from '../support/fake-prisma.service';
-import { FakeConfigService, FakeEphemeralStoreService } from '../support/fake-services';
+import {
+  FakeConfigService,
+  FakeEphemeralStoreService,
+  FakeRealtimeGateway,
+} from '../support/fake-services';
 
 describe('DeviceTransferService', () => {
   it('requires the old active device and revokes it on completion', async () => {
@@ -13,12 +17,14 @@ describe('DeviceTransferService', () => {
     const config = new FakeConfigService();
     const verifier = new Ed25519DeviceAuthVerifier();
     const keyHelper = new DeviceAuthTestHelper();
+    const realtime = new FakeRealtimeGateway();
     const keyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
       config as never,
       verifier,
+      realtime as never,
     );
 
     prisma.users.push({
@@ -78,10 +84,15 @@ describe('DeviceTransferService', () => {
       sessionId: init.sessionId,
       transferToken: init.transferToken,
       claimId: claim.claimId,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-complete:${init.sessionId}:${claim.claimId}:${init.transferToken}`,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
     });
 
     expect(completed.revokedDeviceId).toBe('device-old');
     expect(prisma.users[0]!.activeDeviceId).toBe(completed.newDeviceId);
     expect(prisma.devices.find((item) => item.id == 'device-old')!.isActive).toBe(false);
+    expect(realtime.disconnectedDevices.has('device-old')).toBe(true);
   });
 });

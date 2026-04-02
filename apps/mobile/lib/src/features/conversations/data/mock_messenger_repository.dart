@@ -5,12 +5,13 @@ import '../../../core/crypto/mock_crypto_engine.dart';
 import 'conversation_models.dart';
 
 class MockMessengerRepository {
-  MockMessengerRepository({CryptoEngine? cryptoEngine})
-      : _cryptoEngine = cryptoEngine ?? MockCryptoEngine() {
+  MockMessengerRepository({MessageCryptoEngine? cryptoEngine})
+      : _cryptoEngine =
+            cryptoEngine ?? createDefaultCryptoAdapter().messaging {
     _seed();
   }
 
-  final CryptoEngine _cryptoEngine;
+  final MessageCryptoEngine _cryptoEngine;
   final _random = Random();
   final List<ConversationPreview> _conversations = [];
   final Map<String, List<ChatMessage>> _messages = {};

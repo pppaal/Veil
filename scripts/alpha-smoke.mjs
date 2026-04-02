@@ -227,6 +227,10 @@ async function run() {
       sessionId: transferInit.sessionId,
       transferToken: transferInit.transferToken,
       claimId: claim.claimId,
+      authProof: signChallenge(
+        `transfer-complete:${transferInit.sessionId}:${claim.claimId}:${transferInit.transferToken}`,
+        transferDevice.authPrivateKey,
+      ),
     },
   });
 

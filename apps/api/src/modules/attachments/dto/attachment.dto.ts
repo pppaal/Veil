@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { AttachmentUploadStatus } from '@prisma/client';
-import { IsEnum, IsInt, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 
 import type {
   CompleteAttachmentUploadRequest,
@@ -10,6 +10,8 @@ import type {
 export class CreateUploadTicketDto implements CreateUploadTicketRequest {
   @ApiProperty()
   @IsString()
+  @MaxLength(128)
+  @Matches(/^[\w.+-]+\/[\w.+-]+$/)
   contentType!: string;
 
   @ApiProperty()
@@ -20,6 +22,7 @@ export class CreateUploadTicketDto implements CreateUploadTicketRequest {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(128)
   sha256!: string;
 }
 

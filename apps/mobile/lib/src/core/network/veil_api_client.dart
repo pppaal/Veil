@@ -105,7 +105,11 @@ class VeilApiClient {
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw VeilApiException('Attachment upload failed: HTTP ${response.statusCode}');
+      throw VeilApiException(
+        'Attachment upload failed: HTTP ${response.statusCode}',
+        code: 'attachment_upload_failed',
+        statusCode: response.statusCode,
+      );
     }
   }
 
@@ -206,7 +210,7 @@ class VeilApiClient {
 
   dynamic _decode(http.Response response) {
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw VeilApiException(_errorMessageFor(response));
+      throw _errorFromResponse(response);
     }
     if (response.body.isEmpty) {
       return <String, dynamic>{};
@@ -214,35 +218,67 @@ class VeilApiClient {
     return jsonDecode(response.body);
   }
 
-  String _errorMessageFor(http.Response response) {
+  VeilApiException _errorFromResponse(http.Response response) {
     final status = response.statusCode;
     if (response.body.isEmpty) {
-      return 'Request failed: HTTP $status';
+      return VeilApiException('Request failed: HTTP $status', statusCode: status);
     }
 
     try {
       final decoded = jsonDecode(response.body);
       if (decoded is Map<String, dynamic>) {
+        final code = decoded['code'] as String?;
         final message = decoded['message'];
         if (message is String && message.trim().isNotEmpty) {
-          return _normalizeErrorMessage(message.trim(), status);
+          return VeilApiException(
+            _normalizeErrorMessage(message.trim(), status, code: code),
+            code: code,
+            statusCode: status,
+          );
         }
         if (message is List && message.isNotEmpty) {
-          return _normalizeErrorMessage(message.first.toString(), status);
+          return VeilApiException(
+            _normalizeErrorMessage(message.first.toString(), status, code: code),
+            code: code,
+            statusCode: status,
+          );
         }
         final error = decoded['error'];
         if (error is String && error.trim().isNotEmpty) {
-          return _normalizeErrorMessage(error.trim(), status);
+          return VeilApiException(
+            _normalizeErrorMessage(error.trim(), status, code: code),
+            code: code,
+            statusCode: status,
+          );
         }
       }
     } catch (_) {
       // Fall through to the generic message.
     }
 
-    return 'Request failed: HTTP $status';
+    return VeilApiException('Request failed: HTTP $status', statusCode: status);
   }
 
-  String _normalizeErrorMessage(String message, int status) {
+  String _normalizeErrorMessage(String message, int status, {String? code}) {
+    switch (code) {
+      case 'challenge_invalid':
+        return 'This challenge is no longer valid. Request a new one.';
+      case 'device_not_active':
+        return 'This device is no longer the active VEIL device.';
+      case 'invalid_device_signature':
+        return 'This device proof was rejected.';
+      case 'transfer_session_inactive':
+        return 'This transfer session is no longer active.';
+      case 'transfer_token_invalid':
+        return 'This transfer token is invalid.';
+      case 'transfer_claim_required':
+        return 'A matching new-device claim is required first.';
+      case 'transfer_approval_required':
+        return 'The old device must approve this exact new-device claim first.';
+      case 'transfer_completion_invalid':
+        return 'This new device could not prove the final transfer handoff.';
+    }
+
     if (message.contains('peer handle')) {
       return 'That handle is not available for a direct chat.';
     }
@@ -259,10 +295,19 @@ class VeilApiClient {
 }
 
 class VeilApiException implements Exception {
-  VeilApiException(this.message);
+  VeilApiException(this.message, {this.code, this.statusCode});
 
   final String message;
+  final String? code;
+  final int? statusCode;
 
   @override
   String toString() => message;
+}
+
+String? extractVeilApiErrorCode(Object error) {
+  if (error is VeilApiException) {
+    return error.code;
+  }
+  return null;
 }

@@ -1,9 +1,6 @@
 import {
-  ConflictException,
   Inject,
   Injectable,
-  NotFoundException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { UserStatus } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +12,11 @@ import type {
 import { JwtService } from '@nestjs/jwt';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import {
+  conflict,
+  notFound,
+  unauthorized,
+} from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { RegisterDto } from './dto/register.dto';
@@ -45,7 +47,7 @@ export class AuthService {
     });
 
     if (existing) {
-      throw new ConflictException('Handle is already taken');
+      throw conflict('handle_taken', 'Handle is already taken');
     }
 
     const created = await this.prisma.$transaction(async (tx) => {
@@ -93,7 +95,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new NotFoundException('Handle not found');
+      throw notFound('handle_not_found', 'Handle not found');
     }
 
     const device = await this.prisma.device.findFirst({
@@ -107,7 +109,7 @@ export class AuthService {
     });
 
     if (!device) {
-      throw new NotFoundException('Active device not found for handle');
+      throw notFound('active_device_not_found', 'Active device not found for handle');
     }
 
     const challengeId = randomUUID();
@@ -133,8 +135,10 @@ export class AuthService {
     );
 
     if (!stored || stored.deviceId !== dto.deviceId) {
-      throw new UnauthorizedException('Challenge expired or invalid');
+      throw unauthorized('challenge_invalid', 'Challenge expired or invalid');
     }
+
+    await this.ephemeralStore.delete(`auth:challenge:${dto.challengeId}`);
 
     const device = await this.prisma.device.findUnique({
       where: { id: dto.deviceId },
@@ -147,7 +151,7 @@ export class AuthService {
       device.revokedAt ||
       device.user.activeDeviceId !== device.id
     ) {
-      throw new UnauthorizedException('Device is not active');
+      throw unauthorized('device_not_active', 'Device is not active');
     }
 
     const isValid = await this.deviceAuthVerifier.verifyChallengeResponse({
@@ -157,10 +161,8 @@ export class AuthService {
       deviceId: device.id,
     });
     if (!isValid) {
-      throw new UnauthorizedException('Invalid device signature');
+      throw unauthorized('invalid_device_signature', 'Invalid device signature');
     }
-
-    await this.ephemeralStore.delete(`auth:challenge:${dto.challengeId}`);
 
     const expiresInSeconds = 60 * 60 * 12;
     const accessToken = await this.jwtService.signAsync(

@@ -17,6 +17,10 @@ class RealtimeService {
           .setTransports(['websocket'])
           .setPath('/v1/realtime')
           .enableReconnection()
+          .setReconnectionAttempts(999999)
+          .setReconnectionDelay(1000)
+          .setReconnectionDelayMax(5000)
+          .setTimeout(8000)
           .disableAutoConnect()
           .setAuth({'token': accessToken})
           .build(),
@@ -26,6 +30,9 @@ class RealtimeService {
     _socket!.onDisconnect((_) => onConnectionChanged?.call(false));
     _socket!.onReconnect((_) => onConnectionChanged?.call(true));
     _socket!.onReconnectAttempt((_) => onConnectionChanged?.call(false));
+    _socket!.onReconnectError((_) => onConnectionChanged?.call(false));
+    _socket!.onReconnectFailed((_) => onConnectionChanged?.call(false));
+    _socket!.onConnectError((_) => onConnectionChanged?.call(false));
     _socket!.onError((_) => onConnectionChanged?.call(false));
 
     for (final event in const [

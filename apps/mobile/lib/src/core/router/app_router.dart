@@ -27,6 +27,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return path == '/splash' ? null : '/splash';
       }
 
+      if (session.errorMessage != null) {
+        return path == '/splash' ? null : '/splash';
+      }
+
       if (session.locked && session.isAuthenticated) {
         return path == '/lock' ? null : '/lock';
       }

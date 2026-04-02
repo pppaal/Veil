@@ -12,9 +12,12 @@ void main() {
   test('sendText drains outbox and replaces optimistic message with server ack', () async {
     final api = _FakeVeilApiClient();
     final cache = _MemoryConversationCache();
+    final crypto = createDefaultCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
-      cryptoEngine: MockCryptoEngine(),
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
     );
@@ -67,10 +70,13 @@ void main() {
         ),
       ],
     );
+    final crypto = createDefaultCryptoAdapter();
 
     final controller = VeilMessengerController(
       apiClient: api,
-      cryptoEngine: MockCryptoEngine(),
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
     );
@@ -140,10 +146,13 @@ void main() {
         },
       },
     );
+    final crypto = createDefaultCryptoAdapter();
 
     final controller = VeilMessengerController(
       apiClient: api,
-      cryptoEngine: MockCryptoEngine(),
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
     );
@@ -170,16 +179,215 @@ void main() {
     );
     expect(controller.hasMoreHistoryFor('conv-1'), isFalse);
   });
+
+  test('reconnect after temporary network loss drains queued outbound messages', () async {
+    final api = _FakeVeilApiClient(failSendAttempts: 1);
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.sendText(conversationId: 'conv-1', body: 'hold the line');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+
+    expect(controller.pendingCountFor('conv-1'), 1);
+    expect(controller.messagesFor('conv-1').single.deliveryState, MessageDeliveryState.pending);
+
+    realtime.emitConnection(false);
+    realtime.emitConnection(true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(controller.pendingCountFor('conv-1'), 0);
+    expect(controller.messagesFor('conv-1').single.id, 'srv-1');
+    expect(api.sentPayloads, hasLength(1));
+  });
+
+  test('stale socket reconnect backfills latest page for the active conversation', () async {
+    final api = _FakeVeilApiClient(
+      pagedMessages: {
+        const _PagedQuery('conv-1', null): {
+          'items': [
+            _FakeVeilApiClient.messageJson(
+              id: 'srv-10',
+              clientMessageId: 'client-10',
+              conversationId: 'conv-1',
+              senderDeviceId: 'device-selene',
+              conversationOrder: 10,
+              ciphertext: 'opaque-10',
+              nonce: 'nonce-10',
+            ),
+          ],
+          'nextCursor': null,
+        },
+      },
+    );
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    controller.setActiveConversation('conv-1');
+    realtime.emitConnection(false);
+    realtime.emitConnection(true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(controller.messagesFor('conv-1').single.id, 'srv-10');
+    expect(api.messageFetches.where((entry) => entry.conversationId == 'conv-1').length, greaterThan(0));
+  });
+
+  test('failed attachment upload remains queued for retry and succeeds later', () async {
+    final api = _FakeVeilApiClient(failUploadAttempts: 1);
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(controller.pendingCountFor('conv-1'), 1);
+    expect(
+      controller.messagesFor('conv-1').single.deliveryState,
+      MessageDeliveryState.uploading,
+    );
+
+    await controller.retryPendingMessages('conv-1');
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(controller.pendingCountFor('conv-1'), 0);
+    expect(controller.messagesFor('conv-1').single.deliveryState, MessageDeliveryState.sent);
+    expect(api.completedUploads, hasLength(1));
+  });
+
+  test('late receipt updates are buffered until the message is available locally', () async {
+    final api = _FakeVeilApiClient(
+      pagedMessages: {
+        const _PagedQuery('conv-1', null): {
+          'items': [
+            _FakeVeilApiClient.messageJson(
+              id: 'srv-late',
+              clientMessageId: 'client-late',
+              conversationId: 'conv-1',
+              senderDeviceId: 'device-local',
+              conversationOrder: 4,
+              ciphertext: 'opaque-late',
+              nonce: 'nonce-late',
+            ),
+          ],
+          'nextCursor': null,
+        },
+      },
+    );
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    realtime.emit('message.read', {
+      'messageId': 'srv-late',
+      'readAt': DateTime.utc(2026, 3, 30, 12, 30, 0).toIso8601String(),
+    });
+
+    await controller.loadConversationMessages('conv-1');
+
+    final message = controller.messagesFor('conv-1').single;
+    expect(message.id, 'srv-late');
+    expect(message.deliveryState, MessageDeliveryState.read);
+    expect(message.readAt, isNotNull);
+  });
 }
 
 class _FakeVeilApiClient extends VeilApiClient {
   _FakeVeilApiClient({
     Map<_PagedQuery, Map<String, dynamic>>? pagedMessages,
+    this.failSendAttempts = 0,
+    this.failUploadAttempts = 0,
   })  : _pagedMessages = pagedMessages ?? {},
         super(baseUrl: 'http://localhost:3000/v1');
 
   final List<Map<String, dynamic>> sentPayloads = [];
+  final List<String> completedUploads = [];
+  final List<_PagedQuery> messageFetches = [];
   final Map<_PagedQuery, Map<String, dynamic>> _pagedMessages;
+  final String _defaultEnvelopeVersion =
+      createDefaultCryptoAdapter().envelopeCodec.defaultEnvelopeVersion;
+  int failSendAttempts;
+  int failUploadAttempts;
   int _serverCounter = 0;
 
   static Map<String, dynamic> messageJson({
@@ -216,7 +424,7 @@ class _FakeVeilApiClient extends VeilApiClient {
     required String nonce,
   }) {
     return CryptoEnvelope(
-      version: devEnvelopeVersion,
+      version: _defaultEnvelopeVersion,
       conversationId: conversationId,
       senderDeviceId: senderDeviceId,
       recipientUserId: recipientUserId,
@@ -270,6 +478,7 @@ class _FakeVeilApiClient extends VeilApiClient {
     String? cursor,
     int limit = 50,
   }) async {
+    messageFetches.add(_PagedQuery(conversationId, cursor));
     final paged = _pagedMessages[_PagedQuery(conversationId, cursor)];
     if (paged != null) {
       return paged;
@@ -286,6 +495,13 @@ class _FakeVeilApiClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
+    if (failSendAttempts > 0) {
+      failSendAttempts -= 1;
+      throw VeilApiException(
+        'The VEIL relay failed to complete the request. Try again shortly.',
+        statusCode: 503,
+      );
+    }
     sentPayloads.add(body);
     _serverCounter += 1;
     final envelope = body['envelope'] as Map<String, dynamic>;
@@ -307,6 +523,52 @@ class _FakeVeilApiClient extends VeilApiClient {
         'readAt': null,
       },
       'idempotent': false,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> createUploadTicket(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    final ticketId = 'attachment-${completedUploads.length + 1}';
+    return {
+      'attachmentId': ticketId,
+      'upload': {
+        'storageKey': 'attachments/$ticketId/blob',
+        'uploadUrl': 'https://signed-upload.invalid/$ticketId',
+        'headers': {
+          'Content-Type': body['contentType'],
+        },
+      },
+    };
+  }
+
+  @override
+  Future<void> uploadEncryptedPlaceholder({
+    required String uploadUrl,
+    required Map<String, dynamic> headers,
+    required String filename,
+  }) async {
+    if (failUploadAttempts > 0) {
+      failUploadAttempts -= 1;
+      throw VeilApiException(
+        'Attachment upload failed: HTTP 503',
+        code: 'attachment_upload_failed',
+        statusCode: 503,
+      );
+    }
+  }
+
+  @override
+  Future<Map<String, dynamic>> completeUpload(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    completedUploads.add(body['attachmentId'] as String);
+    return {
+      'attachmentId': body['attachmentId'],
+      'uploadStatus': body['uploadStatus'],
     };
   }
 }
@@ -335,6 +597,10 @@ class _FakeRealtimeService extends RealtimeService {
   void emit(String event, dynamic payload) {
     _onEvent?.call(event, payload);
   }
+
+  void emitConnection(bool connected) {
+    _onConnectionChanged?.call(connected);
+  }
 }
 
 class _MemoryConversationCache implements ConversationCacheService {
@@ -361,6 +627,14 @@ class _MemoryConversationCache implements ConversationCacheService {
 
   @override
   Future<void> purgeExpiredMessages() async {}
+
+  @override
+  Future<void> clearAll() async {
+    _conversations.clear();
+    _messages.clear();
+    _pendingMessages.clear();
+    _pagingStates.clear();
+  }
 
   @override
   Future<List<ConversationPreview>> readConversations() async {

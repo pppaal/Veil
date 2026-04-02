@@ -1,9 +1,6 @@
 import {
-  BadRequestException,
-  ForbiddenException,
   Inject,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
 import type {
   AttachmentDownloadTicketResponse,
@@ -13,6 +10,11 @@ import type {
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../common/prisma.service';
+import {
+  badRequest,
+  forbidden,
+  notFound,
+} from '../../common/errors/api-error';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
@@ -73,32 +75,42 @@ export class AttachmentsService {
     });
 
     if (!attachment) {
-      throw new NotFoundException('Attachment not found');
+      throw notFound('attachment_not_found', 'Attachment not found');
     }
 
     if (attachment.uploaderDeviceId !== deviceId) {
-      throw new ForbiddenException('Attachment does not belong to device');
+      throw forbidden('attachment_forbidden', 'Attachment does not belong to device');
     }
 
     if (dto.uploadStatus === 'uploaded') {
       const objectHead = await this.storageGateway.headObject(attachment.storageKey);
       if (!objectHead.exists) {
-        throw new BadRequestException('Encrypted blob is missing from object storage');
+        throw badRequest('attachment_upload_invalid', 'Encrypted blob is missing from object storage');
       }
 
       if (objectHead.sizeBytes !== attachment.sizeBytes) {
-        throw new BadRequestException('Encrypted blob size does not match upload ticket');
+        throw badRequest('attachment_upload_invalid', 'Encrypted blob size does not match upload ticket');
+      }
+
+      if (objectHead.contentType && objectHead.contentType !== attachment.contentType) {
+        throw badRequest(
+          'attachment_upload_invalid',
+          'Encrypted blob content type does not match upload ticket',
+        );
       }
 
       const metadata = objectHead.metadata ?? {};
       if (metadata.encrypted !== 'true') {
-        throw new BadRequestException('Encrypted blob metadata is missing');
+        throw badRequest('attachment_upload_invalid', 'Encrypted blob metadata is missing');
       }
       if (metadata.sha256 !== attachment.sha256) {
-        throw new BadRequestException('Encrypted blob hash metadata does not match upload ticket');
+        throw badRequest(
+          'attachment_upload_invalid',
+          'Encrypted blob hash metadata does not match upload ticket',
+        );
       }
       if (metadata['attachment-id'] !== attachment.id) {
-        throw new BadRequestException('Encrypted blob attachment binding is invalid');
+        throw badRequest('attachment_upload_invalid', 'Encrypted blob attachment binding is invalid');
       }
     }
 
@@ -127,7 +139,7 @@ export class AttachmentsService {
     });
 
     if (!attachment) {
-      throw new NotFoundException('Attachment not found');
+      throw notFound('attachment_not_found', 'Attachment not found');
     }
 
     if (attachment.uploaderDeviceId !== auth.deviceId) {
@@ -146,7 +158,7 @@ export class AttachmentsService {
       });
 
       if (!visibleMessage) {
-        throw new ForbiddenException('Attachment is not accessible to actor');
+        throw forbidden('attachment_forbidden', 'Attachment is not accessible to actor');
       }
     }
 

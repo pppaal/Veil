@@ -2,7 +2,7 @@
 
 VEIL is not production-ready yet. This checklist is the minimum path to get there without violating the product philosophy.
 
-The current API intentionally blocks `VEIL_ENV=production` at startup because the mock device-auth verifier is still wired.
+The current API intentionally blocks `VEIL_ENV=production` at startup because the mock crypto boundary is still wired.
 
 ## 1. Replace mock crypto
 
@@ -13,8 +13,9 @@ The current API intentionally blocks `VEIL_ENV=production` at startup because th
 
 ## 2. Harden device auth
 
-- Replace dev mock challenge proofs with real device-held signing keys.
-- Verify signatures against uploaded public auth keys only.
+- Keep challenge verification on uploaded device auth public keys only.
+- Add secure hardware or platform keystore integration where supported.
+- Add explicit device-key lifecycle review for revoke, transfer, and local wipe.
 - Keep device transfer dependent on old-device possession.
 - Rotate and invalidate bearer tokens on revoke/transfer in production infrastructure.
 
@@ -23,7 +24,7 @@ The current API intentionally blocks `VEIL_ENV=production` at startup because th
 - Move from local/dev object storage tickets to real presigned URL generation.
 - Enforce strict bucket policies for encrypted blobs only.
 - Add object retention, content-size controls, and abuse controls.
-- Encrypt the mobile local cache at rest.
+- Keep the mobile local cache encrypted at rest and review key lifecycle on logout/revoke.
 
 ## 4. Harden operations
 

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
   ConversationMessageSummary,
@@ -9,9 +9,29 @@ import type {
 import type { EncryptedAttachmentReference } from '@veil/shared';
 
 import { PrismaService } from '../../common/prisma.service';
+import {
+  forbidden,
+  notFound,
+} from '../../common/errors/api-error';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SendMessageDto } from './dto/send-message.dto';
+
+type PersistedMessage = {
+  id: string;
+  clientMessageId: string;
+  conversationId: string;
+  senderDeviceId: string;
+  conversationOrder: number;
+  ciphertext: string;
+  nonce: string;
+  messageType: 'text' | 'image' | 'file' | 'system';
+  attachmentRef?: unknown;
+  expiresAt: Date | null;
+  serverReceivedAt: Date;
+  deletedAt: Date | null;
+  receipts?: Array<{ deliveredAt: Date | null; readAt: Date | null }>;
+};
 
 @Injectable()
 export class MessagesService {
@@ -26,7 +46,7 @@ export class MessagesService {
     dto: SendMessageDto,
   ): Promise<SendMessageResponse> {
     if (dto.envelope.senderDeviceId !== auth.deviceId || dto.conversationId !== dto.envelope.conversationId) {
-      throw new ForbiddenException('Envelope sender context mismatch');
+      throw forbidden('envelope_context_mismatch', 'Envelope sender context mismatch');
     }
 
     const membership = await this.prisma.conversationMember.findUnique({
@@ -40,7 +60,7 @@ export class MessagesService {
     });
 
     if (!membership) {
-      throw new ForbiddenException('Conversation membership required');
+      throw forbidden('conversation_membership_required', 'Conversation membership required');
     }
 
     const attachmentId =
@@ -57,7 +77,7 @@ export class MessagesService {
       });
 
       if (!attachment || attachment.uploaderDeviceId !== auth.deviceId) {
-        throw new NotFoundException('Attachment not found for sender device');
+        throw notFound('attachment_not_found', 'Attachment not found for sender device');
       }
     }
 
@@ -74,19 +94,10 @@ export class MessagesService {
       recipientUserIds.length !== 1 ||
       dto.envelope.recipientUserId !== recipientUserIds[0]
     ) {
-      throw new ForbiddenException('Envelope recipient does not match direct conversation peer');
+      throw forbidden('direct_peer_mismatch', 'Envelope recipient does not match direct conversation peer');
     }
 
-    const existing = await this.prisma.message.findFirst({
-      where: {
-        senderDeviceId: auth.deviceId,
-        clientMessageId: dto.clientMessageId,
-      },
-      include: {
-        receipts: true,
-      },
-    });
-
+    const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
     if (existing) {
       return {
         message: this.toMessageSummary(existing),
@@ -94,42 +105,9 @@ export class MessagesService {
       };
     }
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const lastMessage = await tx.message.findFirst({
-        where: { conversationId: dto.conversationId },
-        orderBy: { conversationOrder: 'desc' },
-        select: { conversationOrder: true },
-      });
+    const created = await this.createMessageWithRetry(auth, dto, attachmentId, members);
 
-      return tx.message.create({
-        data: {
-          conversationId: dto.conversationId,
-          senderDeviceId: auth.deviceId,
-          clientMessageId: dto.clientMessageId,
-          conversationOrder: (lastMessage?.conversationOrder ?? 0) + 1,
-          ciphertext: dto.envelope.ciphertext,
-          nonce: dto.envelope.nonce,
-          messageType: dto.envelope.messageType,
-          attachmentId,
-          attachmentRef: dto.envelope.attachment
-            ? (dto.envelope.attachment as unknown as Prisma.InputJsonValue)
-            : undefined,
-          expiresAt: dto.envelope.expiresAt ? new Date(dto.envelope.expiresAt) : null,
-          receipts: {
-            create: members
-              .filter((member) => member.userId !== auth.userId)
-              .map((member) => ({
-                userId: member.userId,
-              })),
-          },
-        },
-        include: {
-          receipts: true,
-        },
-      });
-    });
-
-    const summary = this.toMessageSummary(created);
+    const summary = this.toMessageSummary(created.message);
 
     for (const member of members) {
       if (member.userId !== auth.userId) {
@@ -142,7 +120,93 @@ export class MessagesService {
       });
     }
 
-    return { message: summary, idempotent: false };
+    return { message: summary, idempotent: created.idempotent };
+  }
+
+  private async createMessageWithRetry(
+    auth: { userId: string; deviceId: string },
+    dto: SendMessageDto,
+    attachmentId: string | null,
+    members: Array<{ userId: string }>,
+  ): Promise<{ message: PersistedMessage; idempotent: boolean }> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const message = await this.prisma.$transaction(
+          async (tx) => {
+            const lastMessage = await tx.message.findFirst({
+              where: { conversationId: dto.conversationId },
+              orderBy: { conversationOrder: 'desc' },
+              select: { conversationOrder: true },
+            });
+
+            return tx.message.create({
+              data: {
+                conversationId: dto.conversationId,
+                senderDeviceId: auth.deviceId,
+                clientMessageId: dto.clientMessageId,
+                conversationOrder: (lastMessage?.conversationOrder ?? 0) + 1,
+                ciphertext: dto.envelope.ciphertext,
+                nonce: dto.envelope.nonce,
+                messageType: dto.envelope.messageType,
+                attachmentId,
+                attachmentRef: dto.envelope.attachment
+                  ? (dto.envelope.attachment as unknown as Prisma.InputJsonValue)
+                  : undefined,
+                expiresAt: dto.envelope.expiresAt ? new Date(dto.envelope.expiresAt) : null,
+                receipts: {
+                  create: members
+                    .filter((member) => member.userId !== auth.userId)
+                    .map((member) => ({
+                      userId: member.userId,
+                    })),
+                },
+              },
+              include: {
+                receipts: true,
+              },
+            });
+          },
+          {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          },
+        );
+        return { message, idempotent: false };
+        } catch (error) {
+          const code = this.prismaErrorCode(error);
+          if (code === 'P2002') {
+            const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
+            if (existing) {
+              return { message: existing as PersistedMessage, idempotent: true };
+            }
+          }
+        if (code === 'P2034' && attempt < 2) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    throw new Error('Message persistence retry budget exhausted');
+  }
+
+  private findExistingMessage(senderDeviceId: string, clientMessageId: string) {
+    return this.prisma.message.findFirst({
+      where: {
+        senderDeviceId,
+        clientMessageId,
+      },
+      include: {
+        receipts: true,
+      },
+    });
+  }
+
+  private prismaErrorCode(error: unknown): string | undefined {
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      const code = (error as { code?: unknown }).code;
+      return typeof code === 'string' ? code : undefined;
+    }
+    return undefined;
   }
 
   async markRead(
@@ -159,7 +223,7 @@ export class MessagesService {
     });
 
     if (!message || !message.conversation.members.some((member) => member.userId === auth.userId)) {
-      throw new NotFoundException('Message not found for actor');
+      throw notFound('message_not_found', 'Message not found for actor');
     }
 
     const now = new Date();
@@ -211,7 +275,7 @@ export class MessagesService {
     });
 
     if (!message || !message.conversation.members.some((member) => member.userId === auth.userId)) {
-      throw new NotFoundException('Message not found for actor');
+      throw notFound('message_not_found', 'Message not found for actor');
     }
 
     return {

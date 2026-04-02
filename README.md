@@ -1,6 +1,6 @@
 # VEIL
 
-Production-minded MVP scaffold for a privacy-first mobile messenger.
+Production-minded private beta scaffold for a privacy-first mobile messenger.
 
 Primary product line:
 `No backup. No recovery. No leaks.`
@@ -28,21 +28,31 @@ Primary product line:
 ## Local development
 
 1. Copy `.env.example` to `.env` and `apps/api/.env.example` to `apps/api/.env`.
-2. Run `pnpm install`.
-3. Run `pnpm docker:up`.
-4. Run `pnpm db:generate`.
-5. Run `pnpm dev:api`.
-6. After installing Flutter locally, run `flutter pub get` inside `apps/mobile`.
-7. Run `pnpm mobile:codegen`.
-8. Run `pnpm dev:mobile:api` for Android emulator wiring, or `pnpm dev:mobile:desktop` for a local Windows desktop sanity run.
+2. Use Node `22.20.0` from [`.nvmrc`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.nvmrc).
+3. Run `pnpm install`.
+4. Run `pnpm docker:up`.
+5. Run `pnpm db:generate`.
+6. Run `pnpm dev:api`.
+7. After installing Flutter locally, run `flutter pub get` inside `apps/mobile`.
+8. Run `pnpm mobile:codegen`.
+9. Run `pnpm dev:mobile:api` for Android emulator wiring, or `pnpm dev:mobile:desktop` for a local Windows desktop sanity run.
 
 For Windows desktop builds, enable Windows Developer Mode first so Flutter plugins can create symlinks.
+
+Environment separation:
+- `.env.example`: local development defaults
+- `apps/api/.env.alpha.example`: internal alpha / private-beta-like container wiring
+- `VEIL_ENV=production` remains intentionally blocked until audited crypto replaces the mock boundary
 
 ## Useful scripts
 
 - `pnpm build`
 - `pnpm lint`
 - `pnpm test`
+- `pnpm architecture:check`
+- `pnpm ci:api`
+- `pnpm ci:mobile`
+- `pnpm ci:verify`
 - `pnpm -C apps/api test:e2e`
 - `pnpm docker:up`
 - `pnpm docker:down`
@@ -57,10 +67,13 @@ For Windows desktop builds, enable Windows Developer Mode first so Flutter plugi
 
 GitHub Actions CI is defined in [`.github/workflows/ci.yml`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.github/workflows/ci.yml) and runs:
 
-- `pnpm build`
-- `pnpm lint`
-- `pnpm test`
-- `pnpm -C apps/api test:e2e`
+- `pnpm ci:api`
+- `pnpm ci:mobile`
+
+CI is treated as a private-beta gate:
+- policy checks fail on wildcard realtime CORS, missing security headers, plaintext-prone push fields, mobile console logging, and crash-reporting SDK drift
+- mobile codegen, analyze, and test all run in CI
+- API container builds on every main-branch and pull-request run
 
 ## Current implementation status
 
@@ -72,6 +85,7 @@ GitHub Actions CI is defined in [`.github/workflows/ci.yml`](c:/Users/pjyrh/OneD
 - Device transfer init/approve on the old device plus complete-and-authenticate on the new device with active-old-device enforcement
 - Disappearing message metadata and local expiration scaffolding in mobile
 - App lock with PIN/biometric hooks and security status screens
+- Local privacy shield, destructive local wipe flows, and old-device revoke cleanup on mobile
 - Drift-ready conversation/message cache service wired behind the messenger controller
 - Docs, unit tests, and CI-friendly scripts
 
@@ -88,7 +102,7 @@ For Android emulators, use `10.0.2.2` instead of `localhost`.
 
 The mock crypto adapter exists only to preserve architecture and developer workflows. It does not provide audited cryptographic security. Do not ship this code as a production messenger until the crypto layer is replaced and independently reviewed.
 
-The API now refuses to boot with `VEIL_ENV=production` while the mock crypto boundary is still wired. Internal alpha deployment should stay on non-production environment modes.
+The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundary is still wired. Private beta deployments must stay on non-production environment modes until audited crypto is integrated.
 
 ## Docs
 
@@ -103,5 +117,11 @@ The API now refuses to boot with `VEIL_ENV=production` while the mock crypto bou
 - [Internal Alpha Runbook](docs/internal-alpha-runbook.md)
 - [Internal Alpha Test Checklist](docs/internal-alpha-test-checklist.md)
 - [Internal Alpha Desktop QA](docs/internal-alpha-desktop-qa.md)
+- [Private Beta Audit](docs/private-beta-audit.md)
+- [Private Beta Release Process](docs/private-beta-release-process.md)
+- [Private Beta Readiness Report](docs/private-beta-readiness-report.md)
+- [Observability Hygiene](docs/observability-hygiene.md)
+- [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)
 - [Production Deployment Checklist](docs/production-deployment.md)
 - [Mock Crypto Replacement Plan](docs/mock-crypto-replacement.md)
+- [Mobile Device Security](docs/mobile-device-security.md)

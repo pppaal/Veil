@@ -82,7 +82,7 @@ type DeviceTransferSessionRecord = {
   createdAt: Date;
 };
 
-const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+const makeId = (_prefix: string) => randomUUID();
 
 export class FakePrismaService {
   users: UserRecord[] = [];
@@ -136,8 +136,10 @@ export class FakePrismaService {
 
   deviceTransferSession = {
     create: async (_args: any) => undefined as any,
+    findMany: async (_args: any) => [] as any[],
     findUnique: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
+    updateMany: async (_args: any) => ({ count: 0 }),
   };
 
   constructor() {
@@ -472,14 +474,48 @@ export class FakePrismaService {
       return record;
     };
 
+    this.deviceTransferSession.findMany = async ({ where }: any) => {
+      let records = [...this.transferSessions];
+      if (where?.userId) {
+        records = records.filter((item) => item.userId === where.userId);
+      }
+      if (where?.oldDeviceId) {
+        records = records.filter((item) => item.oldDeviceId === where.oldDeviceId);
+      }
+      if (where?.completedAt === null) {
+        records = records.filter((item) => item.completedAt === null);
+      }
+      return records;
+    };
+
     this.deviceTransferSession.update = async ({ where, data }: any) => {
       const record = this.transferSessions.find((item) => item.id === where.id)!;
       Object.assign(record, data);
       return record;
     };
+
+    this.deviceTransferSession.updateMany = async ({ where, data }: any) => {
+      let updated = 0;
+      for (const record of this.transferSessions) {
+        const matchesUser = !where?.userId || record.userId === where.userId;
+        const matchesOldDevice = !where?.oldDeviceId || record.oldDeviceId === where.oldDeviceId;
+        const matchesCompletedAt =
+          where?.completedAt === undefined ||
+          (where.completedAt === null ? record.completedAt === null : record.completedAt === where.completedAt);
+        if (!matchesUser || !matchesOldDevice || !matchesCompletedAt) {
+          continue;
+        }
+        Object.assign(record, data);
+        updated += 1;
+      }
+      return { count: updated };
+    };
   }
 
-  async $transaction<T>(callback: (tx: this) => Promise<T>): Promise<T> {
+  async $transaction<T>(
+    callback: (tx: this) => Promise<T>,
+    _options?: unknown,
+  ): Promise<T> {
     return callback(this);
   }
 
@@ -529,3 +565,4 @@ export class FakePrismaService {
     );
   }
 }
+import { randomUUID } from 'node:crypto';

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -39,57 +40,52 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
             body:
                 'Pick a direct handle for discovery. VEIL binds the handle to this device after local identity material is generated.',
           ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const VeilSectionLabel('HANDLE'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _handleController,
-                    enabled: !_submitting,
-                    onChanged: (_) => setState(() {}),
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: 'Handle',
-                      hintText: 'cold.operator',
-                      prefixText: '@',
+          const SizedBox(height: VeilSpace.md),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const VeilSectionLabel('HANDLE'),
+                const SizedBox(height: VeilSpace.sm),
+                TextField(
+                  controller: _handleController,
+                  enabled: !_submitting,
+                  onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(
+                    labelText: 'Handle',
+                    hintText: 'cold.operator',
+                    prefixText: '@',
+                  ),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    VeilStatusPill(
+                      label: handle.isEmpty ? 'Choose a handle' : '@$handle',
+                      tone: handle.isEmpty ? VeilBannerTone.warn : VeilBannerTone.info,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      VeilStatusPill(
-                        label: handle.isEmpty ? 'Choose a handle' : '@$handle',
-                        tone: handle.isEmpty ? VeilBannerTone.warn : VeilBannerTone.info,
-                      ),
-                      const VeilStatusPill(label: 'No contact sync'),
-                      const VeilStatusPill(label: 'Device-bound'),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Lowercase. Minimal. Permanent enough to matter.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
+                    const VeilStatusPill(label: 'No contact sync'),
+                    const VeilStatusPill(label: 'Device-bound'),
+                  ],
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Text(
+                  'Lowercase. Minimal. Permanent enough to matter.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const VeilSectionLabel('BINDING FLOW'),
-                  const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const VeilSectionLabel('BINDING FLOW'),
+                const SizedBox(height: VeilSpace.md),
                   VeilStepRow(
                     step: 1,
                     title: 'Generate local identity',
@@ -97,7 +93,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
                     active: session.authFlowStage == AuthFlowStage.generatingKeys,
                     complete: session.authFlowStage.index > AuthFlowStage.generatingKeys.index,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: VeilSpace.sm),
                   VeilStepRow(
                     step: 2,
                     title: 'Register handle',
@@ -105,7 +101,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
                     active: session.authFlowStage == AuthFlowStage.registering,
                     complete: session.authFlowStage.index > AuthFlowStage.registering.index,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: VeilSpace.sm),
                   VeilStepRow(
                     step: 3,
                     title: 'Challenge device',
@@ -114,7 +110,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
                     complete: session.authFlowStage.index >
                         AuthFlowStage.requestingChallenge.index,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: VeilSpace.sm),
                   VeilStepRow(
                     step: 4,
                     title: 'Verify and bind',
@@ -122,19 +118,18 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
                     active: session.authFlowStage == AuthFlowStage.verifying,
                     complete: session.authFlowStage == AuthFlowStage.complete,
                   ),
-                ],
-              ),
+              ],
             ),
           ),
           if (session.errorMessage != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
               title: 'Binding failed',
               message: session.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
           ],
-          const SizedBox(height: 28),
+          const SizedBox(height: VeilSpace.xl),
           FilledButton(
             onPressed: _submitting || handle.isEmpty
                 ? null

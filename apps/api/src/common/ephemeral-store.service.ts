@@ -21,6 +21,7 @@ export class EphemeralStoreService implements OnModuleDestroy {
   }
 
   async setJson<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    this.purgeExpiredFallbackEntries();
     const serialized = JSON.stringify(value);
     if (this.redis) {
       await this.redis.set(key, serialized, 'EX', ttlSeconds);
@@ -34,6 +35,7 @@ export class EphemeralStoreService implements OnModuleDestroy {
   }
 
   async getJson<T>(key: string): Promise<T | null> {
+    this.purgeExpiredFallbackEntries();
     if (this.redis) {
       const value = await this.redis.get(key);
       return value ? (JSON.parse(value) as T) : null;
@@ -51,11 +53,25 @@ export class EphemeralStoreService implements OnModuleDestroy {
   }
 
   async delete(key: string): Promise<void> {
+    this.purgeExpiredFallbackEntries();
     if (this.redis) {
       await this.redis.del(key);
       return;
     }
     this.fallback.delete(key);
+  }
+
+  private purgeExpiredFallbackEntries(): void {
+    if (this.redis || this.fallback.size === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    for (const [key, entry] of this.fallback.entries()) {
+      if (entry.expiresAt <= now) {
+        this.fallback.delete(key);
+      }
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

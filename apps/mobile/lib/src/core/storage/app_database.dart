@@ -58,6 +58,7 @@ class PendingMessages extends Table {
   DateTimeColumn get expiresAt => dateTime().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
   TextColumn get state => text().withDefault(const Constant('pending'))();
   TextColumn get errorMessage => text().nullable()();
 
@@ -67,10 +68,10 @@ class PendingMessages extends Table {
 
 @DriftDatabase(tables: [CachedConversations, CachedMessages, PendingMessages])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase(super.executor);
+  AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -81,6 +82,9 @@ class AppDatabase extends _$AppDatabase {
         onUpgrade: (migrator, from, to) async {
           if (from < 2) {
             await migrator.createAll();
+          }
+          if (from < 3) {
+            await migrator.addColumn(pendingMessages, pendingMessages.nextRetryAt);
           }
           await _createIndexes();
         },
@@ -106,6 +110,10 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS pending_messages_state_created_idx '
       'ON pending_messages (state, created_at ASC)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS pending_messages_next_retry_idx '
+      'ON pending_messages (next_retry_at ASC)',
     );
     await customStatement(
       'CREATE INDEX IF NOT EXISTS pending_messages_conversation_idx '

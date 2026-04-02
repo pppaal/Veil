@@ -202,6 +202,7 @@ export interface DeviceTransferCompleteRequest {
   sessionId: string;
   transferToken: string;
   claimId: string;
+  authProof: string;
 }
 
 export interface DeviceTransferCompleteResponse {

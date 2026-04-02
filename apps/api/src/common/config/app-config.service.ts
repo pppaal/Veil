@@ -35,6 +35,35 @@ export class AppConfigService {
     return this.configService.get('VEIL_REDIS_URL', { infer: true });
   }
 
+  get trustProxy(): boolean {
+    return this.configService.get('VEIL_TRUST_PROXY', { infer: true });
+  }
+
+  get swaggerEnabled(): boolean {
+    return this.configService.get('VEIL_ENABLE_SWAGGER', { infer: true });
+  }
+
+  get allowedOrigins(): string[] {
+    const configured = this.configService.get('VEIL_ALLOWED_ORIGINS', { infer: true });
+    if (configured?.trim()) {
+      return configured
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+    }
+
+    if (this.env === 'development' || this.env === 'test') {
+      return [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+      ];
+    }
+
+    return [];
+  }
+
   get transferTokenTtlSeconds(): number {
     return this.configService.get('VEIL_TRANSFER_TOKEN_TTL_SECONDS', { infer: true });
   }
@@ -65,6 +94,14 @@ export class AppConfigService {
 
   get s3Bucket(): string {
     return this.configService.get('VEIL_S3_BUCKET', { infer: true });
+  }
+
+  isOriginAllowed(origin?: string | null): boolean {
+    if (!origin) {
+      return true;
+    }
+
+    return this.allowedOrigins.includes(origin);
   }
 
   assertReleaseSafety(): void {

@@ -3,10 +3,12 @@ import { Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
+  IsISO8601,
   IsOptional,
   IsString,
   IsUUID,
   Matches,
+  MaxLength,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -20,10 +22,12 @@ import {
 class AttachmentEncryptionMaterialDto {
   @ApiProperty()
   @IsString()
+  @Matches(/^[A-Za-z0-9._:-]{1,512}$/)
   encryptedKey!: string;
 
   @ApiProperty()
   @IsString()
+  @Matches(/^[A-Za-z0-9._:-]{1,512}$/)
   nonce!: string;
 
   @ApiProperty()
@@ -38,10 +42,12 @@ class AttachmentReferenceDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(256)
   storageKey!: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(128)
   contentType!: string;
 
   @ApiProperty()
@@ -51,6 +57,7 @@ class AttachmentReferenceDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(128)
   sha256!: string;
 
   @ApiProperty({ type: AttachmentEncryptionMaterialDto })
@@ -78,10 +85,12 @@ class EnvelopeDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(16384)
   ciphertext!: string;
 
   @ApiProperty()
   @IsString()
+  @Matches(/^[A-Za-z0-9._:-]{1,512}$/)
   nonce!: string;
 
   @ApiProperty()
@@ -90,7 +99,7 @@ class EnvelopeDto {
 
   @ApiProperty({ required: false, nullable: true })
   @IsOptional()
-  @IsString()
+  @IsISO8601()
   expiresAt?: string | null;
 
   @ApiProperty({ required: false, nullable: true })

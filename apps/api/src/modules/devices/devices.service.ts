@@ -1,11 +1,16 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { RevokeDeviceResponse } from '@veil/contracts';
 
+import { forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
 export class DevicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeGateway: RealtimeGateway,
+  ) {}
 
   async revoke(userId: string, dto: { deviceId: string }): Promise<RevokeDeviceResponse> {
     const device = await this.prisma.device.findUnique({
@@ -13,11 +18,11 @@ export class DevicesService {
     });
 
     if (!device) {
-      throw new NotFoundException('Device not found');
+      throw notFound('device_not_found', 'Device not found');
     }
 
     if (device.userId !== userId) {
-      throw new ForbiddenException('Device does not belong to actor');
+      throw forbidden('device_forbidden', 'Device does not belong to actor');
     }
 
     const revokedAt = new Date();
@@ -27,6 +32,7 @@ export class DevicesService {
         data: {
           isActive: false,
           revokedAt,
+          pushToken: null,
         },
       });
 
@@ -42,6 +48,8 @@ export class DevicesService {
         });
       }
     });
+
+    this.realtimeGateway.disconnectDevice(dto.deviceId);
 
     return {
       deviceId: dto.deviceId,

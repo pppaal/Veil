@@ -69,7 +69,9 @@ class ChatMessage {
   final DateTime? expiresAt;
   final bool isMine;
 
-  bool get isPending => deliveryState == MessageDeliveryState.pending;
+  bool get isPending =>
+      deliveryState == MessageDeliveryState.pending ||
+      deliveryState == MessageDeliveryState.uploading;
   bool get hasFailed => deliveryState == MessageDeliveryState.failed;
 
   ChatMessage copyWith({
@@ -103,4 +105,4 @@ class ChatMessage {
   }
 }
 
-enum MessageDeliveryState { pending, sent, delivered, read, failed }
+enum MessageDeliveryState { uploading, pending, sent, delivered, read, failed }

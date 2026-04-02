@@ -21,6 +21,9 @@ export class FakeConfigService {
   jwtAudience = 'veil-mobile';
   jwtIssuer = 'veil-api';
   redisUrl: string | undefined = undefined;
+  trustProxy = false;
+  swaggerEnabled = true;
+  allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
   transferTokenTtlSeconds = 300;
   authChallengeTtlSeconds = 120;
   s3Endpoint = 'http://localhost:9000';
@@ -29,11 +32,19 @@ export class FakeConfigService {
   s3AccessKey = 'minioadmin';
   s3SecretKey = 'minioadmin';
   s3Bucket = 'veil-encrypted';
+
+  isOriginAllowed(origin?: string | null): boolean {
+    if (!origin) {
+      return true;
+    }
+    return this.allowedOrigins.includes(origin);
+  }
 }
 
 export class FakeRealtimeGateway {
   readonly emitted: Array<{ userId: string; event: string; payload: unknown }> = [];
   readonly connectedUsers = new Set<string>();
+  readonly disconnectedDevices = new Set<string>();
 
   emitToUser(userId: string, event: string, payload: unknown): void {
     this.emitted.push({ userId, event, payload });
@@ -51,6 +62,10 @@ export class FakeRealtimeGateway {
 
   hasConnectedUser(userId: string): boolean {
     return this.connectedUsers.has(userId);
+  }
+
+  disconnectDevice(deviceId: string): void {
+    this.disconnectedDevices.add(deviceId);
   }
 }
 

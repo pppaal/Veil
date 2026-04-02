@@ -29,14 +29,17 @@
 
 ## Lock And Session
 - Open App Lock with no PIN set and confirm the screen explains there is no remote reset path.
-- Set a PIN and confirm the app unlocks locally.
+- Set a PIN, confirm the second-entry check, and confirm the app unlocks locally.
 - Re-open the lock screen and confirm PIN unlock works.
 - If biometrics are available, verify biometric unlock works and failure states are readable.
+- Background the app and confirm the preview is obscured and the session returns behind the local barrier.
+- Use `Wipe local device state` and confirm session, PIN, and onboarding state are removed locally.
 
 ## Transfer And Settings
 - Open Device Transfer on the old device and confirm the flow makes the old-device requirement explicit.
 - Run init and approve on the old device and confirm a copyable transfer payload is produced.
 - On a fresh device, open `Transfer from old device`, import the payload, and complete transfer.
+- Let a transfer or claim expire and confirm the UI blocks completion and clearly requires a fresh session.
 - Confirm the new device becomes authenticated and the old device is logged out after completion.
 - Open Settings and confirm revoke and logout copy do not imply recovery.
 - Revoke the current device and confirm the session is cleared locally.
@@ -44,3 +47,10 @@
 ## Security Status
 - Open Security Status and confirm it accurately reflects device binding, local secret refs, app lock, runtime connectivity, and cache state.
 - Confirm the screen still warns that mock crypto is active in internal alpha.
+
+## Private Beta Release Gate
+- Run `pnpm ci:api` and confirm build, lint, policy checks, unit tests, and API e2e all pass.
+- Run `pnpm ci:mobile` and confirm codegen, analyze, and mobile tests all pass.
+- Run `pnpm alpha:smoke` against a running stack and confirm the smoke script succeeds end to end.
+- Confirm no crash-reporting SDK has been added and no mobile console logging is present.
+- Confirm release notes and tester instructions still state that mock crypto is active and production security claims are not yet valid.

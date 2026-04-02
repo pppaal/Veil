@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -30,6 +31,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
   void _route(AppSessionState session) {
     if (!mounted) {
+      return;
+    }
+
+    if (session.errorMessage != null) {
       return;
     }
 
@@ -59,23 +64,40 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       }
     });
 
-    return const VeilShell(
+    final session = ref.watch(appSessionProvider);
+
+    return VeilShell(
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             VeilHeroPanel(
-              eyebrow: 'INTERNAL ALPHA',
+              eyebrow: 'PRIVATE BETA',
               title: 'VEIL',
               body: 'No backup. No recovery. No leaks.',
               bottom: Column(
                 children: [
-                  VeilStatusPill(label: 'Device-bound messenger'),
-                  SizedBox(height: 20),
-                  VeilLoadingBlock(
-                    title: 'Preparing local state',
-                    body: 'Checking onboarding, session binding, and local security state.',
+                  const Wrap(
+                    spacing: VeilSpace.xs,
+                    runSpacing: VeilSpace.xs,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      VeilStatusPill(label: 'Device-bound messenger'),
+                      VeilStatusPill(label: 'Private beta'),
+                    ],
                   ),
+                  const SizedBox(height: VeilSpace.lg),
+                  if (session.errorMessage != null)
+                    VeilInlineBanner(
+                      title: 'Runtime configuration blocked',
+                      message: session.errorMessage!,
+                      tone: VeilBannerTone.danger,
+                    )
+                  else
+                    const VeilLoadingBlock(
+                      title: 'Preparing local state',
+                      body: 'Checking onboarding, session binding, and local security state.',
+                    ),
                 ],
               ),
             ),

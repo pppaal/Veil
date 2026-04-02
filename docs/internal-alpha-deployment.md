@@ -27,6 +27,7 @@ Set at least these values before boot:
 
 - `VEIL_JWT_SECRET`
 - `VEIL_S3_PUBLIC_ENDPOINT`
+- `VEIL_ALLOWED_ORIGINS`
 
 The alpha compose file expects service hostnames:
 
@@ -35,6 +36,7 @@ The alpha compose file expects service hostnames:
 - `minio`
 
 Use `VEIL_S3_ENDPOINT` for container-to-MinIO traffic and `VEIL_S3_PUBLIC_ENDPOINT` for the signed attachment URLs returned to the client. The default alpha example uses `http://127.0.0.1:9000` for host-side desktop smoke tests.
+Restrict `VEIL_ALLOWED_ORIGINS` to the exact private-beta web or desktop origins you expect. Do not leave wildcard browser origins in place.
 
 ## 2. Start the alpha stack
 
@@ -108,4 +110,5 @@ pnpm docker:alpha:down
 - Local mobile cache is encrypted at rest for this alpha path, but it still depends on the current dev crypto boundary and app-lock posture.
 - Attachment storage still uses alpha placeholder blobs.
 - Push fallback is metadata-only and the real APNs/FCM provider seam is still not wired.
+- External endpoints must use TLS in the mobile runtime. Non-local plain HTTP or WS endpoints are rejected at app startup.
 - This deployment path is for internal alpha only.

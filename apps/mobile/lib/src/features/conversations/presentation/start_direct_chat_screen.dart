@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -33,41 +34,53 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
           const VeilHeroPanel(
             eyebrow: 'DIRECT DISCOVERY',
             title: 'No contact sync.',
-            body: 'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.',
+            body:
+                'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.',
           ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const VeilSectionLabel('TARGET HANDLE'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _handleController,
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(
-                      labelText: 'Handle',
-                      hintText: 'icarus',
-                      prefixText: '@',
-                    ),
+          const SizedBox(height: VeilSpace.md),
+          const VeilInlineBanner(
+            title: 'Deliberate discovery',
+            message:
+                'Channels open only when you know the exact handle. There is no graph expansion layer here.',
+          ),
+          const SizedBox(height: VeilSpace.md),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                VeilSectionLabel(
+                  'TARGET HANDLE',
+                  trailing: _handleController.text.trim().isEmpty
+                      ? const VeilStatusPill(label: 'Awaiting input', tone: VeilBannerTone.warn)
+                      : VeilStatusPill(label: '@${_handleController.text.trim()}'),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                TextField(
+                  controller: _handleController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Handle',
+                    hintText: 'icarus',
+                    prefixText: '@',
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Discovery stays manual. Direct channels only.'),
-                ],
-              ),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Text(
+                  'Discovery stays manual. Direct channels only.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
           if (controller.errorMessage != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
               title: 'Unable to open channel',
               message: controller.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
           ],
-          const SizedBox(height: 28),
+          const SizedBox(height: VeilSpace.xl),
           FilledButton(
             onPressed: controller.isBusy || _handleController.text.trim().isEmpty
                 ? null

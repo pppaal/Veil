@@ -12,32 +12,50 @@ import '../../../core/storage/conversation_cache_service.dart';
 import 'conversation_models.dart';
 
 class VeilMessengerController extends ChangeNotifier {
+  static const _maxAutomaticRetryAttempts = 5;
+  static const _retrySweepInterval = Duration(seconds: 3);
+
   VeilMessengerController({
     required VeilApiClient apiClient,
-    required CryptoEngine cryptoEngine,
+    required MessageCryptoEngine cryptoEngine,
+    required KeyBundleCodec keyBundleCodec,
+    required CryptoEnvelopeCodec envelopeCodec,
     required RealtimeService realtimeService,
     required ConversationCacheService? cacheService,
+    Future<void> Function(Object error)? onSecurityException,
   })  : _apiClient = apiClient,
         _cryptoEngine = cryptoEngine,
+        _keyBundleCodec = keyBundleCodec,
+        _envelopeCodec = envelopeCodec,
         _realtimeService = realtimeService,
-        _cacheService = cacheService {
+        _cacheService = cacheService,
+        _onSecurityException = onSecurityException {
     _expirationTicker = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_reconcileExpiringState()),
     );
+    _retryTicker = Timer.periodic(
+      _retrySweepInterval,
+      (_) => unawaited(_drainOutbox()),
+    );
   }
 
   final VeilApiClient _apiClient;
-  final CryptoEngine _cryptoEngine;
+  final MessageCryptoEngine _cryptoEngine;
+  final KeyBundleCodec _keyBundleCodec;
+  final CryptoEnvelopeCodec _envelopeCodec;
   final RealtimeService _realtimeService;
   final ConversationCacheService? _cacheService;
+  final Future<void> Function(Object error)? _onSecurityException;
   final Random _random = Random.secure();
 
   Timer? _expirationTicker;
+  Timer? _retryTicker;
   List<ConversationPreview> _conversations = [];
   final Map<String, List<ChatMessage>> _messagesByConversation = {};
   final Map<String, ConversationPagingState> _pagingStateByConversation = {};
   final Map<String, PendingMessageRecord> _pendingByClientMessageId = {};
+  final Map<String, _PendingReceiptUpdate> _receiptBacklogByMessageId = {};
   final Set<String> _historyLoadingConversationIds = {};
 
   AppSessionState _session = const AppSessionState();
@@ -49,6 +67,7 @@ class VeilMessengerController extends ChangeNotifier {
   String? _transferSessionId;
   String? _transferToken;
   String? _transferStatus;
+  DateTime? _transferExpiresAt;
 
   List<ConversationPreview> get conversations => _conversations;
   bool get isBusy => _isBusy;
@@ -57,6 +76,7 @@ class VeilMessengerController extends ChangeNotifier {
   String? get transferSessionId => _transferSessionId;
   String? get transferToken => _transferToken;
   String? get transferStatus => _transferStatus;
+  DateTime? get transferExpiresAt => _transferExpiresAt;
   bool get hasPendingWork => _pendingByClientMessageId.isNotEmpty;
   String? get transferPayload =>
       _transferSessionId == null || _transferToken == null
@@ -94,6 +114,12 @@ class VeilMessengerController extends ChangeNotifier {
       _messagesByConversation.clear();
       _pagingStateByConversation.clear();
       _pendingByClientMessageId.clear();
+      _receiptBacklogByMessageId.clear();
+      _activeConversationId = null;
+      _transferSessionId = null;
+      _transferToken = null;
+      _transferStatus = null;
+      _transferExpiresAt = null;
       notifyListeners();
       return;
     }
@@ -135,7 +161,11 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   Future<void> retryPendingMessages([String? conversationId]) async {
-    await _drainOutbox(conversationId: conversationId, markFailuresAsRetrying: true);
+    await _drainOutbox(
+      conversationId: conversationId,
+      markFailuresAsRetrying: true,
+      ignoreRetrySchedule: true,
+    );
   }
 
   Future<void> startConversationByHandle(String handle) async {
@@ -191,49 +221,26 @@ class VeilMessengerController extends ChangeNotifier {
       }
 
       final conversation = _conversations.firstWhere((item) => item.id == conversationId);
-      final upload = await _apiClient.createUploadTicket(_session.accessToken!, {
-        'contentType': 'application/octet-stream',
-        'sizeBytes': 2048,
-        'sha256': 'mock-sha256-$filename',
-      });
-
-      final uploadPayload = upload['upload'] as Map<String, dynamic>;
-      await _apiClient.uploadEncryptedPlaceholder(
-        uploadUrl: uploadPayload['uploadUrl'] as String,
-        headers: (uploadPayload['headers'] as Map<String, dynamic>? ?? const {}),
-        filename: filename,
-      );
-
-      await _apiClient.completeUpload(_session.accessToken!, {
-        'attachmentId': upload['attachmentId'],
-        'uploadStatus': 'uploaded',
-      });
-
-      final bundle = await _fetchPeerBundle(conversation.peerHandle);
-      final attachment = await _cryptoEngine.encryptAttachment(
-        attachmentId: upload['attachmentId'] as String,
-        storageKey: uploadPayload['storageKey'] as String,
-        contentType: 'application/octet-stream',
-        sizeBytes: 2048,
-        sha256: 'mock-sha256-$filename',
-        recipientBundle: bundle,
-      );
-
       final clientMessageId = _nextClientMessageId();
       final envelope = await _cryptoEngine.encryptMessage(
         conversationId: conversationId,
         senderDeviceId: _session.deviceId!,
-        recipientUserId: bundle.userId,
+        recipientUserId: conversation.recipientBundle.userId,
         body: 'Encrypted attachment',
         messageKind: MessageKind.file,
-        recipientBundle: bundle,
-        attachment: attachment,
+        recipientBundle: conversation.recipientBundle,
       );
 
       await _enqueuePendingMessage(
         conversation: conversation,
         clientMessageId: clientMessageId,
         envelope: envelope,
+        attachmentUploadDraft: AttachmentUploadDraft(
+          filename: filename,
+          contentType: 'application/octet-stream',
+          sizeBytes: 2048,
+          sha256: 'mock-sha256-$filename',
+        ),
       );
       unawaited(_drainOutbox(conversationId: conversationId));
     });
@@ -257,8 +264,15 @@ class VeilMessengerController extends ChangeNotifier {
       return null;
     }
 
-    final response = await _apiClient.getDownloadTicket(_session.accessToken!, attachmentId);
-    return (response['ticket'] as Map<String, dynamic>)['downloadUrl'] as String;
+    try {
+      final response = await _apiClient.getDownloadTicket(_session.accessToken!, attachmentId);
+      return (response['ticket'] as Map<String, dynamic>)['downloadUrl'] as String;
+    } catch (error) {
+      await _handleSecurityException(error);
+      _errorMessage = formatUserFacingError(error);
+      notifyListeners();
+      return null;
+    }
   }
 
   Future<void> initTransfer() async {
@@ -272,6 +286,7 @@ class VeilMessengerController extends ChangeNotifier {
           await _apiClient.initTransfer(_session.accessToken!, _session.deviceId!);
       _transferSessionId = response['sessionId'] as String;
       _transferToken = response['transferToken'] as String;
+      _transferExpiresAt = DateTime.parse(response['expiresAt'] as String);
       _transferStatus = 'Init complete. Token ready.';
     });
   }
@@ -300,6 +315,7 @@ class VeilMessengerController extends ChangeNotifier {
     _transferSessionId = null;
     _transferToken = null;
     _transferStatus = null;
+    _transferExpiresAt = null;
     notifyListeners();
   }
 
@@ -366,6 +382,7 @@ class VeilMessengerController extends ChangeNotifier {
     required ConversationPreview conversation,
     required String clientMessageId,
     required CryptoEnvelope envelope,
+    AttachmentUploadDraft? attachmentUploadDraft,
   }) async {
     final createdAt = DateTime.now();
     final pending = PendingMessageRecord(
@@ -375,6 +392,10 @@ class VeilMessengerController extends ChangeNotifier {
       recipientUserId: envelope.recipientUserId,
       envelope: envelope,
       createdAt: createdAt,
+      state: attachmentUploadDraft == null
+          ? MessageDeliveryState.pending
+          : MessageDeliveryState.uploading,
+      attachmentUploadDraft: attachmentUploadDraft,
     );
 
     _pendingByClientMessageId[clientMessageId] = pending;
@@ -384,7 +405,7 @@ class VeilMessengerController extends ChangeNotifier {
       senderDeviceId: _session.deviceId!,
       sentAt: createdAt,
       envelope: envelope,
-      deliveryState: MessageDeliveryState.pending,
+      deliveryState: pending.state,
       expiresAt: envelope.expiresAt,
       isMine: true,
     );
@@ -403,6 +424,7 @@ class VeilMessengerController extends ChangeNotifier {
   Future<void> _drainOutbox({
     String? conversationId,
     bool markFailuresAsRetrying = false,
+    bool ignoreRetrySchedule = false,
   }) async {
     if (_isDrainingOutbox || !_session.isAuthenticated || !VeilConfig.hasApi) {
       return;
@@ -410,42 +432,81 @@ class VeilMessengerController extends ChangeNotifier {
 
     _isDrainingOutbox = true;
     try {
+      final now = DateTime.now();
       final pendingItems = _pendingByClientMessageId.values
           .where((item) => conversationId == null || item.conversationId == conversationId)
           .where((item) => markFailuresAsRetrying || item.state != MessageDeliveryState.failed)
+          .where(
+            (item) =>
+                ignoreRetrySchedule ||
+                item.nextRetryAt == null ||
+                !item.nextRetryAt!.isAfter(now),
+          )
           .toList()
         ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
       for (final pending in pendingItems) {
-        final marked = pending.copyWith(
+        var marked = pending.copyWith(
           retryCount: pending.retryCount + 1,
-          lastAttemptAt: DateTime.now(),
-          state: MessageDeliveryState.pending,
+          lastAttemptAt: now,
+          nextRetryAt: null,
+          state: pending.attachmentUploadDraft == null
+              ? MessageDeliveryState.pending
+              : MessageDeliveryState.uploading,
           errorMessage: null,
         );
         _pendingByClientMessageId[pending.clientMessageId] = marked;
         await _cacheService?.upsertPendingMessage(marked);
+        _updateLocalMessageState(
+          pending.clientMessageId,
+          state: marked.state,
+          errorMessage: null,
+        );
 
         try {
+          if (marked.attachmentUploadDraft != null) {
+            marked = await _preparePendingAttachment(marked);
+            _pendingByClientMessageId[marked.clientMessageId] = marked;
+            await _cacheService?.upsertPendingMessage(marked);
+            _updateLocalMessageState(
+              marked.clientMessageId,
+              state: MessageDeliveryState.pending,
+            );
+          }
+
           final response = await _apiClient.sendMessage(_session.accessToken!, {
-            'conversationId': pending.conversationId,
-            'clientMessageId': pending.clientMessageId,
-            'envelope': _envelopeToJson(pending.envelope),
+            'conversationId': marked.conversationId,
+            'clientMessageId': marked.clientMessageId,
+            'envelope': _envelopeToJson(marked.envelope),
           });
           final serverMessage =
               _messageFromApi(response['message'] as Map<String, dynamic>);
-          _pendingByClientMessageId.remove(pending.clientMessageId);
-          await _cacheService?.removePendingMessage(pending.clientMessageId);
-          _mergeServerMessages(pending.conversationId, <ChatMessage>[serverMessage]);
-          await _persistConversationState(pending.conversationId);
+          _pendingByClientMessageId.remove(marked.clientMessageId);
+          await _cacheService?.removePendingMessage(marked.clientMessageId);
+          _mergeServerMessages(marked.conversationId, <ChatMessage>[serverMessage]);
+          await _persistConversationState(marked.conversationId);
         } catch (error) {
+          await _handleSecurityException(error);
+          final isTransient = _shouldRetryAutomatically(error, marked.retryCount);
+          final nextRetryAt = isTransient
+              ? now.add(_retryDelayForAttempt(marked.retryCount))
+              : null;
           final failed = marked.copyWith(
-            state: MessageDeliveryState.failed,
+            state: isTransient
+                ? (marked.attachmentUploadDraft == null
+                    ? MessageDeliveryState.pending
+                    : MessageDeliveryState.uploading)
+                : MessageDeliveryState.failed,
+            nextRetryAt: nextRetryAt,
             errorMessage: formatUserFacingError(error),
           );
-          _pendingByClientMessageId[pending.clientMessageId] = failed;
+          _pendingByClientMessageId[marked.clientMessageId] = failed;
           await _cacheService?.upsertPendingMessage(failed);
-          _markLocalMessageFailed(pending.clientMessageId);
+          _updateLocalMessageState(
+            marked.clientMessageId,
+            state: failed.state,
+            errorMessage: failed.errorMessage,
+          );
           _errorMessage = failed.errorMessage;
         }
       }
@@ -516,7 +577,7 @@ class VeilMessengerController extends ChangeNotifier {
         notifyListeners();
         if (connected) {
           unawaited(_syncAfterRealtimeHint());
-          unawaited(_drainOutbox());
+          unawaited(_drainOutbox(ignoreRetrySchedule: true));
         }
       },
       onEvent: (event, payload) async {
@@ -536,30 +597,50 @@ class VeilMessengerController extends ChangeNotifier {
             );
             break;
           case 'message.new':
+            final data = payload as Map<String, dynamic>;
+            final message = _messageFromApi(data);
+            _mergeServerMessages(message.envelope.conversationId, <ChatMessage>[message]);
+            if (!message.isMine && message.envelope.conversationId == _activeConversationId) {
+              await markRead(message.id);
+            }
+            await _syncAfterRealtimeHint(conversationId: message.envelope.conversationId);
+            break;
           case 'conversation.sync':
-            await _syncAfterRealtimeHint();
+            final data = payload as Map<String, dynamic>;
+            await _syncAfterRealtimeHint(conversationId: data['conversationId'] as String?);
             break;
           default:
             break;
         }
       },
     );
-    _realtimeConnected = true;
   }
 
-  Future<void> _syncAfterRealtimeHint() async {
+  Future<void> _syncAfterRealtimeHint({String? conversationId}) async {
     if (!_session.isAuthenticated || !VeilConfig.hasApi) {
       return;
     }
 
     try {
       await _refreshConversationsCore();
+      final conversationsToSync = <String>{
+        ..._messagesByConversation.keys,
+        ..._pendingByClientMessageId.values.map((item) => item.conversationId),
+      };
       final activeConversationId = _activeConversationId;
       if (activeConversationId != null) {
-        await _syncConversation(activeConversationId);
+        conversationsToSync.add(activeConversationId);
       }
-      await _drainOutbox();
+      if (conversationId != null && conversationId.isNotEmpty) {
+        conversationsToSync.add(conversationId);
+      }
+
+      for (final targetConversationId in conversationsToSync) {
+        await _syncConversation(targetConversationId);
+      }
+      await _drainOutbox(ignoreRetrySchedule: true);
     } catch (error) {
+      await _handleSecurityException(error);
       _errorMessage = formatUserFacingError(error);
       notifyListeners();
     }
@@ -568,6 +649,7 @@ class VeilMessengerController extends ChangeNotifier {
   void _mergeServerMessages(String conversationId, List<ChatMessage> serverMessages) {
     final current = _messagesByConversation[conversationId] ?? const <ChatMessage>[];
     _messagesByConversation[conversationId] = _mergeMessageCollections(current, serverMessages);
+    _applyBufferedReceipts(conversationId);
     _syncConversationPreviewFromMessages(conversationId);
   }
 
@@ -582,7 +664,9 @@ class VeilMessengerController extends ChangeNotifier {
       mergedServerMessages[message.id] = message;
     }
     for (final message in incoming) {
-      mergedServerMessages[message.id] = message;
+      final existing = mergedServerMessages[message.id];
+      mergedServerMessages[message.id] =
+          existing == null ? message : _mergeServerMessage(existing, message);
     }
 
     final ackedClientIds = incoming
@@ -596,6 +680,22 @@ class VeilMessengerController extends ChangeNotifier {
     ];
     merged.sort(_compareMessages);
     return merged;
+  }
+
+  ChatMessage _mergeServerMessage(ChatMessage current, ChatMessage incoming) {
+    final deliveredAt = _laterOf(current.deliveredAt, incoming.deliveredAt);
+    final readAt = _laterOf(current.readAt, incoming.readAt);
+    return incoming.copyWith(
+      clientMessageId: incoming.clientMessageId ?? current.clientMessageId,
+      conversationOrder: incoming.conversationOrder ?? current.conversationOrder,
+      deliveredAt: deliveredAt,
+      readAt: readAt,
+      deliveryState: _resolveDeliveryState(
+        base: incoming.deliveryState,
+        deliveredAt: deliveredAt,
+        readAt: readAt,
+      ),
+    );
   }
 
   int _compareMessages(ChatMessage a, ChatMessage b) {
@@ -626,14 +726,16 @@ class VeilMessengerController extends ChangeNotifier {
         }
 
         changed = true;
+        final mergedDeliveredAt = _laterOf(message.deliveredAt, deliveredAt);
+        final mergedReadAt = _laterOf(message.readAt, readAt);
         return message.copyWith(
-          deliveryState: readAt != null
-              ? MessageDeliveryState.read
-              : deliveredAt != null
-                  ? MessageDeliveryState.delivered
-                  : message.deliveryState,
-          deliveredAt: deliveredAt ?? message.deliveredAt,
-          readAt: readAt ?? message.readAt,
+          deliveryState: _resolveDeliveryState(
+            base: message.deliveryState,
+            deliveredAt: mergedDeliveredAt,
+            readAt: mergedReadAt,
+          ),
+          deliveredAt: mergedDeliveredAt,
+          readAt: mergedReadAt,
         );
       }).toList();
 
@@ -644,9 +746,19 @@ class VeilMessengerController extends ChangeNotifier {
         return;
       }
     }
+
+    final existing = _receiptBacklogByMessageId[messageId];
+    _receiptBacklogByMessageId[messageId] = _PendingReceiptUpdate(
+      deliveredAt: _laterOf(existing?.deliveredAt, deliveredAt),
+      readAt: _laterOf(existing?.readAt, readAt),
+    );
   }
 
-  void _markLocalMessageFailed(String clientMessageId) {
+  void _updateLocalMessageState(
+    String clientMessageId, {
+    required MessageDeliveryState state,
+    String? errorMessage,
+  }) {
     for (final entry in _messagesByConversation.entries) {
       var changed = false;
       final updated = entry.value.map((message) {
@@ -655,14 +767,171 @@ class VeilMessengerController extends ChangeNotifier {
         }
 
         changed = true;
-        return message.copyWith(deliveryState: MessageDeliveryState.failed);
+        return message.copyWith(deliveryState: state);
       }).toList();
       if (changed) {
         _messagesByConversation[entry.key] = updated;
         unawaited(_persistConversationState(entry.key));
+        if (errorMessage != null) {
+          _errorMessage = errorMessage;
+        }
         return;
       }
     }
+  }
+
+  Future<PendingMessageRecord> _preparePendingAttachment(
+    PendingMessageRecord pending,
+  ) async {
+    final draft = pending.attachmentUploadDraft;
+    if (draft == null) {
+      return pending;
+    }
+
+    final conversation = _findConversation(pending.conversationId);
+    if (conversation == null) {
+      throw StateError('The target conversation is no longer available.');
+    }
+
+    final upload = await _apiClient.createUploadTicket(_session.accessToken!, {
+      'contentType': draft.contentType,
+      'sizeBytes': draft.sizeBytes,
+      'sha256': draft.sha256,
+    });
+
+    final uploadPayload = upload['upload'] as Map<String, dynamic>;
+    await _apiClient.uploadEncryptedPlaceholder(
+      uploadUrl: uploadPayload['uploadUrl'] as String,
+      headers: (uploadPayload['headers'] as Map<String, dynamic>? ?? const {}),
+      filename: draft.filename,
+    );
+
+    await _apiClient.completeUpload(_session.accessToken!, {
+      'attachmentId': upload['attachmentId'],
+      'uploadStatus': 'uploaded',
+    });
+
+    final bundle = await _fetchPeerBundle(conversation.peerHandle);
+    final attachment = await _cryptoEngine.encryptAttachment(
+      attachmentId: upload['attachmentId'] as String,
+      storageKey: uploadPayload['storageKey'] as String,
+      contentType: draft.contentType,
+      sizeBytes: draft.sizeBytes,
+      sha256: draft.sha256,
+      recipientBundle: bundle,
+    );
+
+    final updatedEnvelope = await _cryptoEngine.encryptMessage(
+      conversationId: pending.conversationId,
+      senderDeviceId: pending.senderDeviceId,
+      recipientUserId: bundle.userId,
+      body: 'Encrypted attachment',
+      messageKind: MessageKind.file,
+      recipientBundle: bundle,
+      expiresAt: pending.envelope.expiresAt,
+      attachment: attachment,
+    );
+
+    return pending.copyWith(
+      envelope: updatedEnvelope,
+      attachmentUploadDraft: null,
+      state: MessageDeliveryState.pending,
+    );
+  }
+
+  ConversationPreview? _findConversation(String conversationId) {
+    for (final conversation in _conversations) {
+      if (conversation.id == conversationId) {
+        return conversation;
+      }
+    }
+    return null;
+  }
+
+  bool _shouldRetryAutomatically(Object error, int retryCount) {
+    if (retryCount >= _maxAutomaticRetryAttempts) {
+      return false;
+    }
+    if (error is VeilApiException) {
+      if (error.code == 'device_not_active' ||
+          error.code == 'attachment_not_found' ||
+          error.code == 'attachment_upload_invalid' ||
+          error.code == 'conversation_membership_required' ||
+          error.code == 'direct_peer_mismatch') {
+        return false;
+      }
+
+      final statusCode = error.statusCode;
+      if (statusCode != null) {
+        return statusCode >= 500 || statusCode == 408 || statusCode == 409 || statusCode == 429;
+      }
+      return error.code == 'attachment_upload_failed';
+    }
+
+    return true;
+  }
+
+  Duration _retryDelayForAttempt(int retryCount) {
+    final seconds = min<int>(30, 1 << (retryCount.clamp(1, 5) - 1));
+    return Duration(seconds: seconds);
+  }
+
+  void _applyBufferedReceipts(String conversationId) {
+    final messages = _messagesByConversation[conversationId];
+    if (messages == null || messages.isEmpty || _receiptBacklogByMessageId.isEmpty) {
+      return;
+    }
+
+    var changed = false;
+    final updated = messages.map((message) {
+      final backlog = _receiptBacklogByMessageId[message.id];
+      if (backlog == null) {
+        return message;
+      }
+
+      changed = true;
+      _receiptBacklogByMessageId.remove(message.id);
+      final deliveredAt = _laterOf(message.deliveredAt, backlog.deliveredAt);
+      final readAt = _laterOf(message.readAt, backlog.readAt);
+      return message.copyWith(
+        deliveredAt: deliveredAt,
+        readAt: readAt,
+        deliveryState: _resolveDeliveryState(
+          base: message.deliveryState,
+          deliveredAt: deliveredAt,
+          readAt: readAt,
+        ),
+      );
+    }).toList();
+
+    if (changed) {
+      _messagesByConversation[conversationId] = updated;
+      unawaited(_persistConversationState(conversationId));
+    }
+  }
+
+  DateTime? _laterOf(DateTime? left, DateTime? right) {
+    if (left == null) {
+      return right;
+    }
+    if (right == null) {
+      return left;
+    }
+    return left.isAfter(right) ? left : right;
+  }
+
+  MessageDeliveryState _resolveDeliveryState({
+    required MessageDeliveryState base,
+    required DateTime? deliveredAt,
+    required DateTime? readAt,
+  }) {
+    if (readAt != null) {
+      return MessageDeliveryState.read;
+    }
+    if (deliveredAt != null) {
+      return MessageDeliveryState.delivered;
+    }
+    return base;
   }
 
   Future<void> _persistConversationState(String conversationId) async {
@@ -755,13 +1024,7 @@ class VeilMessengerController extends ChangeNotifier {
   Future<KeyBundle> _fetchPeerBundle(String handle) async {
     final response = await _apiClient.getKeyBundle(handle);
     final bundle = response['bundle'] as Map<String, dynamic>;
-    return KeyBundle(
-      userId: bundle['userId'] as String,
-      deviceId: bundle['deviceId'] as String,
-      handle: bundle['handle'] as String,
-      identityPublicKey: bundle['identityPublicKey'] as String,
-      signedPrekeyBundle: bundle['signedPrekeyBundle'] as String,
-    );
+    return _keyBundleCodec.decodeDirectoryBundle(bundle);
   }
 
   ConversationPreview _conversationFromApi(dynamic raw) {
@@ -818,11 +1081,11 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   CryptoEnvelope _envelopeFromApi(Map<String, dynamic> raw) {
-    return CryptoEnvelope.fromApiJson(raw);
+    return _envelopeCodec.decodeApiEnvelope(raw);
   }
 
   Map<String, dynamic> _envelopeToJson(CryptoEnvelope envelope) {
-    return envelope.toApiJson();
+    return _envelopeCodec.encodeApiEnvelope(envelope);
   }
 
   String _nextClientMessageId() {
@@ -837,6 +1100,7 @@ class VeilMessengerController extends ChangeNotifier {
     try {
       await action();
     } catch (error) {
+      await _handleSecurityException(error);
       _errorMessage = formatUserFacingError(error);
     } finally {
       _isBusy = false;
@@ -847,7 +1111,25 @@ class VeilMessengerController extends ChangeNotifier {
   @override
   void dispose() {
     _expirationTicker?.cancel();
+    _retryTicker?.cancel();
     _realtimeService.disconnect();
     super.dispose();
   }
+
+  Future<void> _handleSecurityException(Object error) async {
+    if (_onSecurityException == null) {
+      return;
+    }
+    await _onSecurityException(error);
+  }
+}
+
+class _PendingReceiptUpdate {
+  const _PendingReceiptUpdate({
+    this.deliveredAt,
+    this.readAt,
+  });
+
+  final DateTime? deliveredAt;
+  final DateTime? readAt;
 }

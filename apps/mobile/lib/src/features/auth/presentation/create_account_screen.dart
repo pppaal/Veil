@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -32,47 +33,47 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             body:
                 'VEIL binds access to the hardware in your hand. If the device is lost, the account is lost with it.',
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const VeilInlineBanner(
             title: 'No restore path',
             message:
-                'If you lose this device, your account and messages are gone. This is intentional.',
+                'If you lose this device, your account and messages are gone. VEIL cannot restore access. This is intentional.',
             tone: VeilBannerTone.warn,
           ),
-          const SizedBox(height: 20),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const VeilSectionLabel('PROFILE LABEL'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _displayNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Display name',
-                      hintText: 'Optional label for this account',
-                    ),
+          const SizedBox(height: VeilSpace.lg),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const VeilSectionLabel('PROFILE LABEL'),
+                const SizedBox(height: VeilSpace.sm),
+                TextField(
+                  controller: _displayNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Display name',
+                    hintText: 'Optional label for this account',
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Handles are the discovery layer. This label is only presentation.',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Text(
+                  'Handles are the discovery layer. This label is presentation only.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 28),
-          FilledButton(
-            onPressed: () => context.go('/choose-handle', extra: _displayNameController.text.trim()),
-            child: const Text('Continue'),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: () => context.push('/device-transfer'),
-            child: const Text('Transfer from old device'),
+          const SizedBox(height: VeilSpace.xl),
+          VeilActionCluster(
+            children: [
+              FilledButton(
+                onPressed: () => context.go('/choose-handle', extra: _displayNameController.text.trim()),
+                child: const Text('Continue'),
+              ),
+              OutlinedButton(
+                onPressed: () => context.push('/device-transfer'),
+                child: const Text('Transfer from old device'),
+              ),
+            ],
           ),
         ],
       ),

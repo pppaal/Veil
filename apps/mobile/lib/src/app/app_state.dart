@@ -1,16 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../core/config/veil_config.dart';
+import '../core/crypto/crypto_adapter_registry.dart';
 import '../core/crypto/crypto_engine.dart';
-import '../core/crypto/mock_crypto_engine.dart';
 import '../core/network/veil_api_client.dart';
 import '../core/realtime/realtime_service.dart';
 import '../core/security/app_lock_service.dart';
-import '../core/security/device_auth_signer.dart';
 import '../core/security/local_data_cipher.dart';
 import '../core/storage/app_database.dart';
 import '../core/storage/conversation_cache_service.dart';
@@ -28,7 +28,10 @@ final appDatabaseFutureProvider = FutureProvider<AppDatabase>((ref) async {
   return database;
 });
 
+final cacheEpochProvider = StateProvider<int>((ref) => 0);
+
 final conversationCacheProvider = FutureProvider<ConversationCacheService?>((ref) async {
+  ref.watch(cacheEpochProvider);
   if (!VeilConfig.enableLocalCache) {
     return null;
   }
@@ -37,15 +40,23 @@ final conversationCacheProvider = FutureProvider<ConversationCacheService?>((ref
   final secureStorage = ref.read(secureStorageProvider);
   final cacheKey = await secureStorage.readOrCreateCacheKey();
   final cipher = await LocalDataCipher.fromBase64Key(cacheKey);
-  return DriftConversationCacheService(database, cipher: cipher);
+  return DriftConversationCacheService(
+    database,
+    envelopeCodec: ref.read(cryptoAdapterProvider).envelopeCodec,
+    cipher: cipher,
+  );
 });
 
 final apiClientProvider = Provider<VeilApiClient>((ref) {
   return VeilApiClient(baseUrl: VeilConfig.apiBaseUrl);
 });
 
-final cryptoEngineProvider = Provider<CryptoEngine>((ref) {
-  return MockCryptoEngine();
+final cryptoAdapterProvider = Provider<CryptoAdapter>((ref) {
+  return createConfiguredCryptoAdapter();
+});
+
+final messagingCryptoProvider = Provider<MessageCryptoEngine>((ref) {
+  return ref.read(cryptoAdapterProvider).messaging;
 });
 
 final realtimeServiceProvider = Provider<RealtimeService>((ref) {
@@ -53,7 +64,10 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
 });
 
 final appLockServiceProvider = Provider<AppLockService>((ref) {
-  return AppLockService(LocalAuthentication(), ref.read(secureStorageProvider));
+  return AppLockService(
+    DeviceLocalUnlockAuthenticator(LocalAuthentication()),
+    ref.read(secureStorageProvider),
+  );
 });
 
 enum AuthFlowStage {
@@ -157,12 +171,21 @@ class AppSessionState {
 }
 
 class AppSessionController extends StateNotifier<AppSessionState> {
-  AppSessionController(this._storage, this._apiClient, this._cryptoEngine)
-      : super(const AppSessionState());
+  AppSessionController(
+    this._storage,
+    this._apiClient,
+    this._cryptoAdapter, {
+    ConversationCacheService? cacheService,
+    VoidCallback? onLocalCacheMaterialChanged,
+  })  : _cacheService = cacheService,
+        _onLocalCacheMaterialChanged = onLocalCacheMaterialChanged,
+        super(const AppSessionState());
 
   final SecureStorageService _storage;
   final VeilApiClient _apiClient;
-  final CryptoEngine _cryptoEngine;
+  final CryptoAdapter _cryptoAdapter;
+  final ConversationCacheService? _cacheService;
+  final VoidCallback? _onLocalCacheMaterialChanged;
   DeviceIdentityMaterial? _pendingTransferIdentity;
   DeviceAuthKeyMaterial? _pendingTransferAuthKey;
   String? _pendingTransferSessionId;
@@ -170,6 +193,17 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   String? _pendingTransferClaimId;
 
   Future<void> bootstrap() async {
+    final runtimeConfigurationError = VeilConfig.runtimeConfigurationError;
+    if (runtimeConfigurationError != null) {
+      state = AppSessionState(
+        onboardingAccepted: await _storage.readOnboardingAccepted(),
+        locked: true,
+        initializing: false,
+        errorMessage: runtimeConfigurationError,
+      );
+      return;
+    }
+
     final session = await _storage.readSession();
     final onboardingAccepted = await _storage.readOnboardingAccepted();
     state = AppSessionState(
@@ -197,8 +231,10 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
     try {
       final materialSeed = 'device-material-${DateTime.now().microsecondsSinceEpoch}';
-      final identity = await _cryptoEngine.generateDeviceIdentity(materialSeed);
-      final authKeyMaterial = await DeviceAuthSigner.generate();
+      final identity =
+          await _cryptoAdapter.identity.generateDeviceIdentity(materialSeed);
+      final authKeyMaterial =
+          await _cryptoAdapter.deviceAuth.generateAuthKeyMaterial();
 
       await _storage.persistDeviceSecretRefs(
         identityPrivateRef: identity.identityPrivateKeyRef,
@@ -224,7 +260,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         'deviceId': registeredDeviceId,
       });
       state = state.copyWith(authFlowStage: AuthFlowStage.verifying);
-      final proof = await DeviceAuthSigner.signChallenge(
+      final proof = await _cryptoAdapter.deviceAuth.signChallenge(
         challenge: challenge['challenge'] as String,
         keyMaterial: authKeyMaterial,
       );
@@ -254,8 +290,9 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         errorMessage: null,
       );
     } catch (error) {
+      final handled = await handleSecurityException(error);
       state = state.copyWith(
-        errorMessage: _formatUserFacingError(error),
+        errorMessage: handled ? null : _formatUserFacingError(error),
         initializing: false,
         authFlowStage: AuthFlowStage.idle,
       );
@@ -281,12 +318,62 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     try {
       await _apiClient.revokeDevice(accessToken, deviceId);
     } finally {
-      await logout();
+      await _clearLocalState(
+        preserveOnboardingAccepted: true,
+        preservePin: false,
+      );
     }
   }
 
   Future<void> logout() async {
-    await _storage.clearSession();
+    await _clearLocalState(
+      preserveOnboardingAccepted: true,
+      preservePin: true,
+    );
+  }
+
+  Future<void> wipeLocalDeviceState() async {
+    await _clearLocalState(
+      preserveOnboardingAccepted: false,
+      preservePin: false,
+    );
+  }
+
+  Future<bool> handleSecurityException(Object error) async {
+    final code = extractVeilApiErrorCode(error);
+    if (code == 'device_not_active') {
+      await _clearLocalState(
+        preserveOnboardingAccepted: true,
+        preservePin: false,
+      );
+      return true;
+    }
+
+    if (code == 'transfer_session_inactive' ||
+        code == 'transfer_token_invalid' ||
+        code == 'transfer_claim_required' ||
+        code == 'transfer_approval_required' ||
+        code == 'transfer_completion_invalid') {
+      _clearPendingTransferClaim();
+      state = state.copyWith(
+        errorMessage: _formatUserFacingError(error),
+      );
+      return false;
+    }
+
+    return false;
+  }
+
+  Future<void> _clearLocalState({
+    required bool preserveOnboardingAccepted,
+    required bool preservePin,
+  }) async {
+    await _storage.wipeLocalDeviceState(
+      preserveOnboardingAccepted: preserveOnboardingAccepted,
+      preservePin: preservePin,
+    );
+    await _cacheService?.clearAll();
+    _onLocalCacheMaterialChanged?.call();
     _clearPendingTransferClaim();
     state = state.copyWith(
       accessToken: null,
@@ -296,6 +383,9 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       displayName: null,
       errorMessage: null,
       locked: true,
+      onboardingAccepted: preserveOnboardingAccepted
+          ? state.onboardingAccepted
+          : false,
       authFlowStage: AuthFlowStage.idle,
     );
   }
@@ -313,9 +403,11 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       }
 
       final materialSeed = 'device-transfer-${DateTime.now().microsecondsSinceEpoch}';
-      final identity = await _cryptoEngine.generateDeviceIdentity(materialSeed);
-      final authKeyMaterial = await DeviceAuthSigner.generate();
-      final authProof = await DeviceAuthSigner.signChallenge(
+      final identity =
+          await _cryptoAdapter.identity.generateDeviceIdentity(materialSeed);
+      final authKeyMaterial =
+          await _cryptoAdapter.deviceAuth.generateAuthKeyMaterial();
+      final authProof = await _cryptoAdapter.deviceAuth.signChallenge(
         challenge: 'transfer-claim:$sessionId:$transferToken',
         keyMaterial: authKeyMaterial,
       );
@@ -345,7 +437,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         expiresAt: DateTime.parse(claimed['expiresAt'] as String),
       );
     } catch (error) {
-      state = state.copyWith(errorMessage: _formatUserFacingError(error));
+      final handled = await handleSecurityException(error);
+      state = state.copyWith(errorMessage: handled ? null : _formatUserFacingError(error));
       rethrow;
     }
   }
@@ -372,11 +465,16 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
       final identity = _pendingTransferIdentity!;
       final authKeyMaterial = _pendingTransferAuthKey!;
+      final completionProof = await _cryptoAdapter.deviceAuth.signChallenge(
+        challenge: 'transfer-complete:$sessionId:$claimId:$transferToken',
+        keyMaterial: authKeyMaterial,
+      );
 
       final completed = await _apiClient.completeTransfer({
         'sessionId': sessionId,
         'transferToken': transferToken,
         'claimId': claimId,
+        'authProof': completionProof,
       });
 
       final newDeviceId = completed['newDeviceId'] as String;
@@ -385,7 +483,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         'handle': handle,
         'deviceId': newDeviceId,
       });
-      final proof = await DeviceAuthSigner.signChallenge(
+      final proof = await _cryptoAdapter.deviceAuth.signChallenge(
         challenge: challenge['challenge'] as String,
         keyMaterial: authKeyMaterial,
       );
@@ -421,7 +519,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       );
       _clearPendingTransferClaim();
     } catch (error) {
-      state = state.copyWith(errorMessage: _formatUserFacingError(error));
+      final handled = await handleSecurityException(error);
+      state = state.copyWith(errorMessage: handled ? null : _formatUserFacingError(error));
       rethrow;
     }
   }
@@ -440,7 +539,15 @@ final appSessionProvider =
   return AppSessionController(
     ref.read(secureStorageProvider),
     ref.read(apiClientProvider),
-    ref.read(cryptoEngineProvider),
+    ref.read(cryptoAdapterProvider),
+    cacheService: ref.watch(conversationCacheProvider).maybeWhen(
+          data: (cache) => cache,
+          orElse: () => null,
+        ),
+    onLocalCacheMaterialChanged: () {
+      ref.read(cacheEpochProvider.notifier).state++;
+      ref.invalidate(conversationCacheProvider);
+    },
   );
 });
 
@@ -448,12 +555,17 @@ final messengerControllerProvider =
     ChangeNotifierProvider<VeilMessengerController>((ref) {
   final controller = VeilMessengerController(
     apiClient: ref.read(apiClientProvider),
-    cryptoEngine: ref.read(cryptoEngineProvider),
+    cryptoEngine: ref.read(messagingCryptoProvider),
+    keyBundleCodec: ref.read(cryptoAdapterProvider).keyBundles,
+    envelopeCodec: ref.read(cryptoAdapterProvider).envelopeCodec,
     realtimeService: ref.read(realtimeServiceProvider),
     cacheService: ref.watch(conversationCacheProvider).maybeWhen(
           data: (cache) => cache,
           orElse: () => null,
         ),
+    onSecurityException: (error) async {
+      await ref.read(appSessionProvider.notifier).handleSecurityException(error);
+    },
   );
 
   ref.listen<AppSessionState>(appSessionProvider, (_, next) {
@@ -509,6 +621,12 @@ String _formatUserFacingError(Object error) {
   }
   if (normalized.startsWith('Request failed: HTTP 5')) {
     return 'The VEIL relay failed to complete the request. Try again shortly.';
+  }
+  if (normalized == 'API endpoint must use TLS outside local development.') {
+    return 'The VEIL API endpoint must use TLS outside local development.';
+  }
+  if (normalized == 'Realtime endpoint must use TLS outside local development.') {
+    return 'The VEIL realtime endpoint must use TLS outside local development.';
   }
 
   return normalized;

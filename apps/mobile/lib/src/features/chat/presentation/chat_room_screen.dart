@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../conversations/data/conversation_models.dart';
 import 'message_expiration.dart';
@@ -66,6 +67,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final isLoadingHistory = controller.isLoadingHistoryFor(widget.conversationId);
     final pendingCount = controller.pendingCountFor(widget.conversationId);
     final failedCount = messages.where((message) => message.hasFailed).length;
+    final uploadingCount = messages
+        .where((message) => message.deliveryState == MessageDeliveryState.uploading)
+        .length;
+    final queuedCount = messages
+        .where((message) => message.deliveryState == MessageDeliveryState.pending)
+        .length;
 
     return VeilShell(
       title: conversation?.peerDisplayName ?? conversation?.peerHandle ?? 'Secure channel',
@@ -94,38 +101,36 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Disappearing messages', style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 4),
-                        Text(
-                          _disappearing
-                              ? 'Messages in this channel expire 30 seconds after send.'
-                              : 'Messages stay until this device deletes them locally.',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ],
-                    ),
+          const SizedBox(height: VeilSpace.sm),
+          VeilSurfaceCard(
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.lg, vertical: VeilSpace.md),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Disappearing messages', style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: VeilSpace.xxs),
+                      Text(
+                        _disappearing
+                            ? 'Messages in this channel expire 30 seconds after send.'
+                            : 'Messages stay until this device deletes them locally.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Switch(
-                    value: _disappearing,
-                    onChanged: (value) => setState(() => _disappearing = value),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: VeilSpace.sm),
+                Switch(
+                  value: _disappearing,
+                  onChanged: (value) => setState(() => _disappearing = value),
+                ),
+              ],
             ),
           ),
           if (controller.errorMessage != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: VeilSpace.sm),
             VeilInlineBanner(
               title: 'Channel issue',
               message: controller.errorMessage!,
@@ -133,19 +138,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             ),
           ],
           if (pendingCount > 0) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: VeilSpace.sm),
             VeilInlineBanner(
               title: failedCount > 0 ? 'Delivery stalled' : 'Queued locally',
               message: failedCount > 0
                   ? '$failedCount message(s) failed to send. Retry when the relay is reachable.'
-                  : '$pendingCount message(s) are staged locally and will retry after reconnect.',
+                  : uploadingCount > 0
+                      ? '$uploadingCount attachment message(s) are uploading opaque blobs before send.'
+                      : '$queuedCount message(s) are staged locally and will retry after reconnect.',
               tone: failedCount > 0 ? VeilBannerTone.warn : VeilBannerTone.info,
             ),
             if (failedCount > 0)
               Align(
                 alignment: Alignment.centerLeft,
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 8),
+                  padding: const EdgeInsets.only(top: VeilSpace.xs),
                   child: TextButton(
                     onPressed: () => ref
                         .read(messengerControllerProvider)
@@ -155,7 +162,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 ),
               ),
           ],
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           Expanded(
             child: messages.isEmpty && controller.isBusy
                 ? const VeilLoadingBlock(
@@ -189,7 +196,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                                           .loadOlderConversationMessages(widget.conversationId),
                                   child: Text(isLoadingHistory ? 'Loading older' : 'Load older'),
                                 ),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: VeilSpace.sm),
                                 _MessageBubble(
                                   message: messages[index],
                                   sentAtFormat: _sentAtFormat,
@@ -249,43 +256,41 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                         },
                       ),
           ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _messageController,
-                    focusNode: _composerFocusNode,
-                    minLines: 1,
-                    maxLines: 5,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
-                    decoration: const InputDecoration(
-                      hintText: 'Send opaque text',
+          const SizedBox(height: VeilSpace.md),
+          VeilSurfaceCard(
+            padding: const EdgeInsets.all(VeilSpace.md),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _messageController,
+                  focusNode: _composerFocusNode,
+                  minLines: 1,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _sendMessage(),
+                  decoration: const InputDecoration(
+                    hintText: 'Send opaque text',
+                  ),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _disappearing
+                            ? 'This send expires in 30 seconds.'
+                            : 'This send does not expire.',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _disappearing
-                              ? 'This send expires in 30 seconds.'
-                              : 'This send does not expire.',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      FilledButton(
-                        onPressed: controller.isBusy ? null : _sendMessage,
-                        child: Text(controller.isBusy ? 'Sending' : 'Send'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+                    const SizedBox(width: VeilSpace.sm),
+                    FilledButton(
+                      onPressed: controller.isBusy ? null : _sendMessage,
+                      child: Text(controller.isBusy ? 'Sending' : 'Send'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -324,89 +329,85 @@ class _MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final alignment = message.isMine ? Alignment.centerRight : Alignment.centerLeft;
-    final color = message.isMine
-        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.17)
-        : Theme.of(context).cardColor;
 
     return Align(
       alignment: alignment,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 340),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Theme.of(context).dividerColor),
-        ),
-        child: FutureBuilder<DecryptedMessage>(
-          future: decryptFuture,
-          builder: (context, snapshot) {
-            final decrypted = snapshot.data;
-            final body = decrypted?.body ?? 'Decrypting envelope...';
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(body),
-                if (decrypted?.attachment != null) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
-                            alpha: 0.24,
+      child: Semantics(
+        label: message.isMine ? 'Sent message bubble' : 'Received message bubble',
+        child: VeilMessageBubbleCard(
+          isMine: message.isMine,
+          child: FutureBuilder<DecryptedMessage>(
+            future: decryptFuture,
+            builder: (context, snapshot) {
+              final decrypted = snapshot.data;
+              final body = decrypted?.body ?? 'Decrypting envelope...';
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(body),
+                  if (decrypted?.attachment != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(
+                              alpha: 0.24,
+                            ),
+                        border: Border.all(color: Theme.of(context).colorScheme.outline),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Encrypted attachment', style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${decrypted!.attachment!.contentType} - ${decrypted.attachment!.sizeBytes} bytes',
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                      border: Border.all(color: Theme.of(context).colorScheme.outline),
+                          const SizedBox(height: 10),
+                          OutlinedButton(
+                            onPressed: () => onResolveAttachment(decrypted.attachment!.attachmentId),
+                            child: const Text('Resolve download ticket'),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Encrypted attachment', style: Theme.of(context).textTheme.titleSmall),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${decrypted!.attachment!.contentType} - ${decrypted.attachment!.sizeBytes} bytes',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 10),
-                        OutlinedButton(
-                          onPressed: () => onResolveAttachment(decrypted.attachment!.attachmentId),
-                          child: const Text('Resolve download ticket'),
+                  ],
+                  const SizedBox(height: VeilSpace.sm),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        sentAtFormat.format(message.sentAt),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      if (message.isMine) ...[
+                        const SizedBox(width: VeilSpace.xs),
+                        Flexible(
+                          child: Text(
+                            _deliveryLabel(message),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       ],
-                    ),
+                      if (message.expiresAt != null) ...[
+                        const SizedBox(width: VeilSpace.xs),
+                        Flexible(
+                          child: Text(
+                            formatMessageExpiry(message.expiresAt!),
+                            style: Theme.of(context).textTheme.bodyMedium,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(sentAtFormat.format(message.sentAt),
-                        style: Theme.of(context).textTheme.bodyMedium),
-                    if (message.isMine) ...[
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          _deliveryLabel(message),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                    if (message.expiresAt != null) ...[
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          formatMessageExpiry(message.expiresAt!),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -416,6 +417,8 @@ class _MessageBubble extends StatelessWidget {
     switch (message.deliveryState) {
       case MessageDeliveryState.pending:
         return 'Queued';
+      case MessageDeliveryState.uploading:
+        return 'Uploading';
       case MessageDeliveryState.failed:
         return 'Retry required';
       case MessageDeliveryState.sent:

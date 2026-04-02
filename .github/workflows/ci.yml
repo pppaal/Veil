@@ -1,4 +1,4 @@
-name: ci
+name: private-beta-ci
 
 on:
   push:
@@ -6,10 +6,22 @@ on:
       - main
       - master
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: veil-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CI: true
 
 jobs:
   api-and-packages:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -29,48 +41,39 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm build
-
-      - name: Lint
-        run: pnpm lint
-
-      - name: Policy Check
-        run: pnpm policy:check
-
-      - name: Test
-        run: pnpm test
-
-      - name: API e2e
-        run: pnpm -C apps/api test:e2e
+      - name: Verify API and packages
+        run: pnpm ci:api
 
       - name: Build API container
         run: docker build -f apps/api/Dockerfile .
 
   mobile:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
 
-      - name: Flutter pub get
-        working-directory: apps/mobile
-        run: flutter pub get
-
-      - name: Drift codegen
-        working-directory: apps/mobile
-        run: dart run build_runner build --delete-conflicting-outputs
-
-      - name: Flutter analyze
-        working-directory: apps/mobile
-        run: flutter analyze
-
-      - name: Flutter test
-        working-directory: apps/mobile
-        run: flutter test
+      - name: Verify mobile
+        run: pnpm ci:mobile

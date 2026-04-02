@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -37,53 +38,51 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
             body:
                 'The sender encrypts locally, uploads an opaque blob, and then sends an encrypted envelope with the attachment reference.',
           ),
-          const SizedBox(height: 16),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const VeilSectionLabel('LOCAL ATTACHMENT LABEL'),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _filenameController,
-                    decoration: const InputDecoration(labelText: 'Filename'),
-                  ),
-                  const SizedBox(height: 14),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: const [
-                      VeilStatusPill(label: 'Payload: opaque dev blob'),
-                      VeilStatusPill(label: 'Server sees metadata only'),
-                      VeilStatusPill(label: 'No plaintext push'),
-                    ],
-                  ),
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Client flow: upload ticket -> upload blob -> upload complete -> encrypted message.',
-                  ),
-                ],
-              ),
+          const SizedBox(height: VeilSpace.md),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const VeilSectionLabel('LOCAL ATTACHMENT LABEL'),
+                const SizedBox(height: VeilSpace.sm),
+                TextField(
+                  controller: _filenameController,
+                  decoration: const InputDecoration(labelText: 'Filename'),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: const [
+                    VeilStatusPill(label: 'Opaque payload'),
+                    VeilStatusPill(label: 'Metadata-only relay'),
+                    VeilStatusPill(label: 'No plaintext push'),
+                  ],
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Text(
+                  'Client flow: upload ticket, blob upload, upload complete, encrypted message.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const VeilInlineBanner(
-            title: 'Internal alpha note',
+            title: 'Private beta note',
             message:
                 'This build still uses the mock crypto adapter, but the attachment path preserves the encrypted-envelope architecture.',
             tone: VeilBannerTone.info,
           ),
           if (controller.errorMessage != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
               title: 'Attachment send failed',
               message: controller.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
           ],
-          const SizedBox(height: 28),
+          const SizedBox(height: VeilSpace.xl),
           FilledButton(
             onPressed: controller.isBusy || _filenameController.text.trim().isEmpty
                 ? null

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
-import { IsEnum, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsEnum, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 import type {
   DeviceTransferApproveRequest,
@@ -33,6 +33,7 @@ export class DeviceTransferClaimDto implements DeviceTransferClaimRequest {
   @ApiProperty()
   @IsString()
   @MaxLength(256)
+  @Matches(/^[A-Za-z0-9._-]+$/)
   transferToken!: string;
 
   @ApiProperty()
@@ -46,18 +47,22 @@ export class DeviceTransferClaimDto implements DeviceTransferClaimRequest {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(1024)
   publicIdentityKey!: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(2048)
   signedPrekeyBundle!: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(512)
   authPublicKey!: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(1024)
   authProof!: string;
 }
 
@@ -69,9 +74,15 @@ export class DeviceTransferCompleteDto implements DeviceTransferCompleteRequest 
   @ApiProperty()
   @IsString()
   @MaxLength(256)
+  @Matches(/^[A-Za-z0-9._-]+$/)
   transferToken!: string;
 
   @ApiProperty()
   @IsUUID()
   claimId!: string;
+
+  @ApiProperty()
+  @IsString()
+  @MaxLength(1024)
+  authProof!: string;
 }

@@ -103,4 +103,59 @@ describe('AuthService', () => {
       }),
     ).rejects.toBeInstanceOf(UnauthorizedException);
   });
+
+  it('burns the challenge after a failed verification attempt', async () => {
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
+    const wrongKeyPair = keyHelper.createKeyPair();
+    const service = new AuthService(
+      prisma as never,
+      store as never,
+      new JwtService(),
+      config as never,
+      verifier,
+    );
+
+    const registered = await service.register({
+      handle: 'burnonce',
+      displayName: 'Burn Once',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: keyPair.authPublicKey,
+      pushToken: undefined,
+    });
+
+    const challenge = await service.createChallenge({
+      handle: 'burnonce',
+      deviceId: registered.deviceId,
+    });
+
+    await expect(
+      service.verify({
+        challengeId: challenge.challengeId,
+        deviceId: registered.deviceId,
+        signature: keyHelper.createProof({
+          challenge: challenge.challenge,
+          authPrivateKey: wrongKeyPair.authPrivateKey,
+        }),
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    await expect(
+      service.verify({
+        challengeId: challenge.challengeId,
+        deviceId: registered.deviceId,
+        signature: keyHelper.createProof({
+          challenge: challenge.challenge,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
+      }),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
 });

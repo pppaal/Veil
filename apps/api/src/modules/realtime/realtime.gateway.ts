@@ -21,15 +21,14 @@ interface AccessTokenPayload {
 @Injectable()
 @WebSocketGateway({
   path: '/v1/realtime',
-  cors: {
-    origin: '*',
-  },
+  cors: false,
 })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server!: Server;
 
   private readonly socketsByUserId = new Map<string, Set<string>>();
+  private readonly socketsByDeviceId = new Map<string, Set<string>>();
 
   constructor(
     private readonly jwtService: JwtService,
@@ -38,6 +37,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
+    const originHeader = client.handshake.headers.origin;
+    const origin = typeof originHeader === 'string' ? originHeader : null;
+    if (!this.config.isOriginAllowed(origin)) {
+      client.disconnect(true);
+      return;
+    }
+
     const token =
       (typeof client.handshake.auth.token === 'string' && client.handshake.auth.token) ||
       (typeof client.handshake.query.token === 'string' && client.handshake.query.token) ||
@@ -78,6 +84,10 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       existing.add(client.id);
       this.socketsByUserId.set(payload.sub, existing);
 
+      const deviceSockets = this.socketsByDeviceId.get(payload.deviceId) ?? new Set<string>();
+      deviceSockets.add(client.id);
+      this.socketsByDeviceId.set(payload.deviceId, deviceSockets);
+
       this.emitToUser(payload.sub, 'presence.update', {
         userId: payload.sub,
         status: 'online',
@@ -90,6 +100,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   handleDisconnect(client: Socket): void {
     const userId = client.data.userId as string | undefined;
+    const deviceId = client.data.deviceId as string | undefined;
     if (!userId) {
       return;
     }
@@ -107,6 +118,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         status: 'offline',
         updatedAt: new Date().toISOString(),
       });
+    }
+
+    if (deviceId) {
+      const deviceSockets = this.socketsByDeviceId.get(deviceId);
+      if (deviceSockets) {
+        deviceSockets.delete(client.id);
+        if (deviceSockets.size === 0) {
+          this.socketsByDeviceId.delete(deviceId);
+        }
+      }
     }
   }
 
@@ -134,5 +155,18 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   hasConnectedUser(userId: string): boolean {
     const sockets = this.socketsByUserId.get(userId);
     return (sockets?.size ?? 0) > 0;
+  }
+
+  disconnectDevice(deviceId: string): void {
+    const socketIds = this.socketsByDeviceId.get(deviceId);
+    if (!socketIds) {
+      return;
+    }
+
+    for (const socketId of socketIds) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      socket?.disconnect(true);
+    }
+    this.socketsByDeviceId.delete(deviceId);
   }
 }

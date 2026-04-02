@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import type { AuthenticatedRequest } from './authenticated-request';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { AppConfigService } from '../config/app-config.service';
+import { unauthorized } from '../errors/api-error';
 import { PrismaService } from '../prisma.service';
 
 interface AccessTokenPayload {
@@ -46,7 +47,7 @@ export class JwtAuthGuard implements CanActivate {
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
 
     if (!token) {
-      throw new UnauthorizedException('Missing bearer token');
+      throw unauthorized('unauthorized', 'Missing bearer token');
     }
 
     try {
@@ -68,7 +69,7 @@ export class JwtAuthGuard implements CanActivate {
         device.revokedAt ||
         device.user.activeDeviceId !== payload.deviceId
       ) {
-        throw new UnauthorizedException('Device is not active');
+        throw unauthorized('device_not_active', 'Device is not active');
       }
 
       request.auth = {
@@ -77,8 +78,11 @@ export class JwtAuthGuard implements CanActivate {
         handle: payload.handle,
       };
       return true;
-    } catch {
-      throw new UnauthorizedException('Invalid access token');
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      throw unauthorized('unauthorized', 'Invalid access token');
     }
   }
 }

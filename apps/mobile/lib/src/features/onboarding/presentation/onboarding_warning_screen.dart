@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -33,14 +34,14 @@ class OnboardingWarningScreen extends ConsumerWidget {
               child: Icon(Icons.shield_outlined, color: theme.colorScheme.primary),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: VeilSpace.lg),
           const VeilInlineBanner(
             title: 'Unrecoverable by design',
             message:
                 'If you lose your device, your account and messages are gone. VEIL cannot restore your access.',
             tone: VeilBannerTone.warn,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           const _WarningCard(
             title: 'Identity',
             lines: [
@@ -49,7 +50,7 @@ class OnboardingWarningScreen extends ConsumerWidget {
               'There is no password reset path.',
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: VeilSpace.sm),
           const _WarningCard(
             title: 'Transfer',
             lines: [
@@ -58,7 +59,7 @@ class OnboardingWarningScreen extends ConsumerWidget {
               'No old device means no transfer.',
             ],
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: VeilSpace.xl),
           FilledButton(
             onPressed: () async {
               await ref.read(appSessionProvider.notifier).acceptOnboarding();
@@ -85,26 +86,26 @@ class _WarningCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(VeilSpace.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 14),
+            const SizedBox(height: VeilSpace.sm),
             for (final line in lines) ...[
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Icon(
                     Icons.remove,
-                    size: 18,
+                    size: VeilIconSize.sm,
                     color: Theme.of(context).colorScheme.primary,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: VeilSpace.xs),
                   Expanded(child: Text(line)),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: VeilSpace.sm),
             ],
           ],
         ),

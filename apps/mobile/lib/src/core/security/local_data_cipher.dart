@@ -51,7 +51,7 @@ class LocalDataCipher {
 
   Future<String> decryptString(String value) async {
     if (!value.startsWith(_encodingPrefix)) {
-      return value;
+      throw const FormatException('Unencrypted payload is not accepted');
     }
 
     final parts = value.split(':');

@@ -1,8 +1,10 @@
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppConfigService } from '../src/common/config/app-config.service';
+import { ApiExceptionFilter } from '../src/common/filters/api-exception.filter';
+import { AppLoggerService } from '../src/common/logger/app-logger.service';
 import { EphemeralStoreService } from '../src/common/ephemeral-store.service';
 import { Ed25519DeviceAuthVerifier } from '../src/modules/auth/device-auth-verifier';
 import { ATTACHMENT_STORAGE_GATEWAY } from '../src/modules/attachments/attachment-storage.gateway';
@@ -56,6 +58,14 @@ describe('VEIL API (e2e)', () => {
     keyHelper = new DeviceAuthTestHelper();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('v1');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
+    app.useGlobalFilters(new ApiExceptionFilter(moduleRef.get(AppLoggerService)));
     await app.init();
   });
 
@@ -245,6 +255,10 @@ describe('VEIL API (e2e)', () => {
       sessionId: transferInit.body.sessionId,
       transferToken: transferInit.body.transferToken,
       claimId: transferClaim.body.claimId,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-complete:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferInit.body.transferToken}`,
+        authPrivateKey: transferKeyPair.authPrivateKey,
+      }),
     });
     expect(transferComplete.status).toBe(201);
     expect(transferComplete.body.handle).toBe('icarus');
@@ -254,6 +268,7 @@ describe('VEIL API (e2e)', () => {
       .get('/v1/conversations')
       .set('Authorization', bearer);
     expect(oldBearerAfterTransfer.status).toBe(401);
+    expect(oldBearerAfterTransfer.body.code).toBe('device_not_active');
   });
 
   it('blocks unrelated attachment download tickets and invalidates revoked device tokens', async () => {
@@ -343,6 +358,104 @@ describe('VEIL API (e2e)', () => {
       .get('/v1/conversations')
       .set('Authorization', bearerA);
     expect(revokedBearer.status).toBe(401);
+    expect(revokedBearer.body.code).toBe('device_not_active');
+  });
+
+  it('returns explicit error codes and rejects transfer completion replay without new-device proof', async () => {
+    const api = request(app.getHttpServer());
+    const keyPair = keyHelper.createKeyPair();
+    const transferKeyPair = keyHelper.createKeyPair();
+
+    const register = await api.post('/v1/auth/register').send({
+      handle: 'replaytest',
+      displayName: 'Replay Test',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-a',
+      signedPrekeyBundle: 'prekey-a',
+      authPublicKey: keyPair.authPublicKey,
+    });
+
+    const challenge = await api.post('/v1/auth/challenge').send({
+      handle: 'replaytest',
+      deviceId: register.body.deviceId,
+    });
+
+    const invalidVerify = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: transferKeyPair.authPrivateKey,
+      }),
+    });
+    expect(invalidVerify.status).toBe(401);
+    expect(invalidVerify.body.code).toBe('invalid_device_signature');
+
+    const reusedChallenge = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    expect(reusedChallenge.status).toBe(401);
+    expect(reusedChallenge.body.code).toBe('challenge_invalid');
+
+    const validChallenge = await api.post('/v1/auth/challenge').send({
+      handle: 'replaytest',
+      deviceId: register.body.deviceId,
+    });
+    const verify = await api.post('/v1/auth/verify').send({
+      challengeId: validChallenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: validChallenge.body.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    const bearer = `Bearer ${verify.body.accessToken}`;
+
+    const transferInit = await api
+      .post('/v1/device-transfer/init')
+      .set('Authorization', bearer)
+      .send({ oldDeviceId: register.body.deviceId });
+
+    const transferClaim = await api.post('/v1/device-transfer/claim').send({
+      sessionId: transferInit.body.sessionId,
+      transferToken: transferInit.body.transferToken,
+      newDeviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-new',
+      signedPrekeyBundle: 'prekey-new',
+      authPublicKey: transferKeyPair.authPublicKey,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-claim:${transferInit.body.sessionId}:${transferInit.body.transferToken}`,
+        authPrivateKey: transferKeyPair.authPrivateKey,
+      }),
+    });
+
+    await api
+      .post('/v1/device-transfer/approve')
+      .set('Authorization', bearer)
+      .send({
+        sessionId: transferInit.body.sessionId,
+        claimId: transferClaim.body.claimId,
+      })
+      .expect(201);
+
+    const invalidComplete = await api.post('/v1/device-transfer/complete').send({
+      sessionId: transferInit.body.sessionId,
+      transferToken: transferInit.body.transferToken,
+      claimId: transferClaim.body.claimId,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-complete:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferInit.body.transferToken}`,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    expect(invalidComplete.status).toBe(401);
+    expect(invalidComplete.body.code).toBe('transfer_completion_invalid');
   });
 
   it('paginates messages and reconciles delivery/read receipts', async () => {

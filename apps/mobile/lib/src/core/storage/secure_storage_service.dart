@@ -4,11 +4,53 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-class SecureStorageService {
-  SecureStorageService([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+abstract class SecureKeyValueStore {
+  Future<void> write({required String key, required String? value});
+
+  Future<String?> read({required String key});
+
+  Future<void> delete({required String key});
+}
+
+class FlutterSecureKeyValueStore implements SecureKeyValueStore {
+  const FlutterSecureKeyValueStore(this._storage);
 
   final FlutterSecureStorage _storage;
+
+  @override
+  Future<void> write({required String key, required String? value}) {
+    return _storage.write(key: key, value: value);
+  }
+
+  @override
+  Future<String?> read({required String key}) {
+    return _storage.read(key: key);
+  }
+
+  @override
+  Future<void> delete({required String key}) {
+    return _storage.delete(key: key);
+  }
+}
+
+class SecureStorageService {
+  SecureStorageService([SecureKeyValueStore? storage])
+      : _storage = storage ??
+            const FlutterSecureKeyValueStore(
+              FlutterSecureStorage(
+                aOptions: AndroidOptions(encryptedSharedPreferences: true),
+                iOptions: IOSOptions(
+                  accessibility: KeychainAccessibility.first_unlock_this_device,
+                  synchronizable: false,
+                ),
+                mOptions: MacOsOptions(
+                  accessibility: KeychainAccessibility.first_unlock_this_device,
+                  synchronizable: false,
+                ),
+              ),
+            );
+
+  final SecureKeyValueStore _storage;
 
   static const _identityKey = 'veil.identity.private_ref';
   static const _authPrivateKey = 'veil.auth.private_key';
@@ -80,6 +122,10 @@ class SecureStorageService {
 
   Future<bool> hasPin() async => (await _storage.read(key: _pinKey))?.isNotEmpty ?? false;
 
+  Future<void> clearPin() async {
+    await _storage.delete(key: _pinKey);
+  }
+
   Future<String> readOrCreateCacheKey() async {
     final existing = await _storage.read(key: _cacheKey);
     if (existing != null && existing.isNotEmpty) {
@@ -135,6 +181,16 @@ class SecureStorageService {
     await _storage.delete(key: _displayNameKey);
   }
 
+  Future<void> clearDeviceSecrets() async {
+    await _storage.delete(key: _identityKey);
+    await _storage.delete(key: _authPrivateKey);
+    await _storage.delete(key: _authPublicKey);
+  }
+
+  Future<void> clearCacheKey() async {
+    await _storage.delete(key: _cacheKey);
+  }
+
   Future<void> persistOnboardingAccepted(bool accepted) {
     return _storage.write(
       key: _onboardingAcceptedKey,
@@ -142,8 +198,27 @@ class SecureStorageService {
     );
   }
 
+  Future<void> clearOnboardingAccepted() async {
+    await _storage.delete(key: _onboardingAcceptedKey);
+  }
+
   Future<bool> readOnboardingAccepted() async {
     return (await _storage.read(key: _onboardingAcceptedKey)) == 'true';
+  }
+
+  Future<void> wipeLocalDeviceState({
+    bool preserveOnboardingAccepted = true,
+    bool preservePin = false,
+  }) async {
+    await clearSession();
+    await clearDeviceSecrets();
+    await clearCacheKey();
+    if (!preservePin) {
+      await clearPin();
+    }
+    if (!preserveOnboardingAccepted) {
+      await clearOnboardingAccepted();
+    }
   }
 
   static Future<List<int>> _derivePinVerifier(String pin, List<int> salt) async {

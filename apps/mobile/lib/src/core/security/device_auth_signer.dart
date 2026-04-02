@@ -2,22 +2,15 @@ import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
 
-class DeviceAuthKeyMaterial {
-  const DeviceAuthKeyMaterial({
-    required this.publicKey,
-    required this.privateKey,
-  });
+import '../crypto/crypto_engine.dart';
 
-  final String publicKey;
-  final String privateKey;
-}
-
-class DeviceAuthSigner {
-  const DeviceAuthSigner._();
+class Ed25519DeviceAuthChallengeSigner implements DeviceAuthChallengeSigner {
+  const Ed25519DeviceAuthChallengeSigner();
 
   static final Ed25519 _algorithm = Ed25519();
 
-  static Future<DeviceAuthKeyMaterial> generate() async {
+  @override
+  Future<DeviceAuthKeyMaterial> generateAuthKeyMaterial() async {
     final keyPair = await _algorithm.newKeyPair();
     final keyPairData = await keyPair.extract();
     final publicKey = await keyPair.extractPublicKey();
@@ -28,7 +21,8 @@ class DeviceAuthSigner {
     );
   }
 
-  static Future<String> signChallenge({
+  @override
+  Future<String> signChallenge({
     required String challenge,
     required DeviceAuthKeyMaterial keyMaterial,
   }) async {

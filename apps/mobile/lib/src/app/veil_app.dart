@@ -42,6 +42,9 @@ class _PrivacyLifecycleBoundaryState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _refreshPlatformSecurity();
+    });
   }
 
   @override
@@ -59,13 +62,18 @@ class _PrivacyLifecycleBoundaryState
         _engagePrivacyShield();
         break;
       case AppLifecycleState.resumed:
-        if (mounted) {
+        _refreshPlatformSecurity();
+        Future<void>.delayed(const Duration(milliseconds: 180), () {
+          if (!mounted) {
+            return;
+          }
           setState(() {
             _obscured = false;
           });
-        }
+        });
         break;
       case AppLifecycleState.detached:
+        _engagePrivacyShield();
         break;
     }
   }
@@ -79,6 +87,24 @@ class _PrivacyLifecycleBoundaryState
       setState(() {
         _obscured = true;
       });
+    }
+  }
+
+  Future<void> _refreshPlatformSecurity() async {
+    final service = ref.read(platformSecurityServiceProvider);
+    await service.applyPrivacyProtections();
+    final status = await service.getStatus();
+    if (!mounted) {
+      return;
+    }
+
+    if (!status.integrityCompromised) {
+      return;
+    }
+
+    final session = ref.read(appSessionProvider);
+    if (session.isAuthenticated && !session.locked) {
+      ref.read(appSessionProvider.notifier).lock();
     }
   }
 

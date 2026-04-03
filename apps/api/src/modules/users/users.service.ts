@@ -29,12 +29,37 @@ export class UsersService {
   async getKeyBundle(handle: string): Promise<KeyBundleResponse> {
     const user = await this.prisma.user.findUnique({
       where: { handle: handle.toLowerCase() },
-      include: {
-        activeDevice: true,
+      select: {
+        id: true,
+        handle: true,
+        displayName: true,
+        avatarPath: true,
+        status: true,
+        activeDeviceId: true,
+        updatedAt: true,
       },
     });
 
-    if (!user || !user.activeDevice) {
+    if (!user) {
+      throw new NotFoundException('Active device bundle not found');
+    }
+
+    const trustedDevices = await this.prisma.device.findMany({
+      where: {
+        userId: user.id,
+        isActive: true,
+        revokedAt: null,
+      },
+      orderBy: [
+        { trustedAt: 'desc' },
+        { lastSeenAt: 'desc' },
+      ],
+    });
+
+    const resolvedDevice =
+      trustedDevices.find((device) => device.id === user.activeDeviceId) ?? trustedDevices[0];
+
+    if (!resolvedDevice || !resolvedDevice.isActive || resolvedDevice.revokedAt) {
       throw new NotFoundException('Active device bundle not found');
     }
 
@@ -49,12 +74,12 @@ export class UsersService {
       },
       bundle: {
         userId: user.id,
-        deviceId: user.activeDevice.id,
+        deviceId: resolvedDevice.id,
         handle: user.handle,
-        identityPublicKey: user.activeDevice.publicIdentityKey,
-        signedPrekeyBundle: user.activeDevice.signedPrekeyBundle,
-        platform: user.activeDevice.platform,
-        isActive: user.activeDevice.isActive,
+        identityPublicKey: resolvedDevice.publicIdentityKey,
+        signedPrekeyBundle: resolvedDevice.signedPrekeyBundle,
+        platform: resolvedDevice.platform,
+        isActive: resolvedDevice.isActive,
         updatedAt: user.updatedAt.toISOString(),
       },
     };

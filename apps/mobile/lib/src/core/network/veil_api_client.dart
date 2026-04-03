@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
-import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -91,18 +91,62 @@ class VeilApiClient {
     return _post('/attachments/complete', body, accessToken: accessToken);
   }
 
-  Future<void> uploadEncryptedPlaceholder({
+  Future<void> uploadEncryptedBlobFile({
     required String uploadUrl,
     required Map<String, dynamic> headers,
-    required String filename,
+    required File file,
+    void Function(int sentBytes, int totalBytes)? onProgress,
+    AttachmentUploadCancellationSignal? cancellationSignal,
   }) async {
-    final random = Random.secure();
-    final body = Uint8List.fromList(List<int>.generate(2048, (_) => random.nextInt(256)));
-    final response = await _client.put(
-      Uri.parse(uploadUrl),
-      headers: headers.map((key, value) => MapEntry(key, value.toString())),
-      body: body,
-    );
+    final dedicatedClient = http.Client();
+    var canceled = false;
+    cancellationSignal?.register(() {
+      canceled = true;
+      dedicatedClient.close();
+    });
+    final totalBytes = await file.length();
+    final request = http.StreamedRequest('PUT', Uri.parse(uploadUrl));
+    request.headers.addAll(headers.map((key, value) => MapEntry(key, value.toString())));
+    request.headers.putIfAbsent('Content-Length', () => '$totalBytes');
+    request.contentLength = totalBytes;
+
+    unawaited(() async {
+      var sentBytes = 0;
+      try {
+        await for (final chunk in file.openRead()) {
+          if (canceled) {
+            throw const _AttachmentUploadCanceled();
+          }
+          request.sink.add(chunk);
+          sentBytes += chunk.length;
+          onProgress?.call(sentBytes, totalBytes);
+        }
+      } catch (_) {
+        // The client side maps cancellation/transport errors from send().
+      } finally {
+        await request.sink.close();
+      }
+    }());
+
+    late final http.StreamedResponse streamedResponse;
+    try {
+      streamedResponse = await dedicatedClient.send(request);
+    } catch (_) {
+      dedicatedClient.close();
+      if (canceled || (cancellationSignal?.isCanceled ?? false)) {
+        throw VeilApiException(
+          'Attachment upload canceled.',
+          code: 'attachment_upload_canceled',
+        );
+      }
+      throw VeilApiException(
+        'Attachment upload failed: network unavailable',
+        code: 'attachment_upload_failed',
+      );
+    }
+
+    final response = await http.Response.fromStream(streamedResponse);
+    dedicatedClient.close();
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw VeilApiException(
@@ -155,6 +199,10 @@ class VeilApiClient {
       {'deviceId': deviceId},
       accessToken: accessToken,
     );
+  }
+
+  Future<Map<String, dynamic>> listDevices(String accessToken) async {
+    return _get('/devices', accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> _get(
@@ -264,7 +312,7 @@ class VeilApiClient {
       case 'challenge_invalid':
         return 'This challenge is no longer valid. Request a new one.';
       case 'device_not_active':
-        return 'This device is no longer the active VEIL device.';
+        return 'This device is no longer trusted for this VEIL account.';
       case 'invalid_device_signature':
         return 'This device proof was rejected.';
       case 'transfer_session_inactive':
@@ -277,6 +325,10 @@ class VeilApiClient {
         return 'The old device must approve this exact new-device claim first.';
       case 'transfer_completion_invalid':
         return 'This new device could not prove the final transfer handoff.';
+      case 'attachment_upload_canceled':
+        return 'Attachment upload was canceled on this device.';
+      case 'attachment_upload_invalid':
+        return 'This attachment was rejected by the relay policy.';
     }
 
     if (message.contains('peer handle')) {
@@ -292,6 +344,36 @@ class VeilApiClient {
     }
     return message;
   }
+}
+
+class AttachmentUploadCancellationSignal {
+  final List<void Function()> _listeners = <void Function()>[];
+  bool _canceled = false;
+
+  bool get isCanceled => _canceled;
+
+  void register(void Function() listener) {
+    if (_canceled) {
+      listener();
+      return;
+    }
+    _listeners.add(listener);
+  }
+
+  void cancel() {
+    if (_canceled) {
+      return;
+    }
+    _canceled = true;
+    for (final listener in List<void Function()>.from(_listeners)) {
+      listener();
+    }
+    _listeners.clear();
+  }
+}
+
+class _AttachmentUploadCanceled implements Exception {
+  const _AttachmentUploadCanceled();
 }
 
 class VeilApiException implements Exception {

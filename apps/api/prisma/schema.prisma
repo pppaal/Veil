@@ -68,15 +68,22 @@ model Device {
   pushToken         String?                 @map("push_token")
   isActive          Boolean                 @default(true) @map("is_active")
   revokedAt         DateTime?               @map("revoked_at")
+  trustedAt         DateTime                @default(now()) @map("trusted_at")
+  joinedFromDeviceId String?                @map("joined_from_device_id") @db.Uuid
   createdAt         DateTime                @default(now()) @map("created_at")
   lastSeenAt        DateTime                @default(now()) @map("last_seen_at")
+  lastSyncAt        DateTime?               @map("last_sync_at")
   user              User                    @relation("UserDevices", fields: [userId], references: [id], onDelete: Cascade)
   activeForUsers    User[]                  @relation("ActiveDevice")
   sentMessages      Message[]
   attachments       Attachment[]
   oldTransferSessions DeviceTransferSession[] @relation("OldDeviceTransfer")
+  joinedFromDevice  Device?                 @relation("JoinedDeviceGraph", fields: [joinedFromDeviceId], references: [id], onDelete: SetNull)
+  joinedDevices     Device[]                @relation("JoinedDeviceGraph")
+  conversationStates DeviceConversationState[]
 
   @@index([userId, isActive])
+  @@index([joinedFromDeviceId])
   @@map("devices")
 }
 
@@ -86,6 +93,7 @@ model Conversation {
   createdAt DateTime             @default(now()) @map("created_at")
   members   ConversationMember[]
   messages  Message[]
+  deviceStates DeviceConversationState[]
 
   @@map("conversations")
 }
@@ -101,6 +109,22 @@ model ConversationMember {
   @@unique([conversationId, userId])
   @@index([userId])
   @@map("conversation_members")
+}
+
+model DeviceConversationState {
+  id                        String       @id @default(uuid()) @db.Uuid
+  deviceId                  String       @map("device_id") @db.Uuid
+  conversationId            String       @map("conversation_id") @db.Uuid
+  lastSyncedConversationOrder Int?       @map("last_synced_conversation_order")
+  lastReadConversationOrder Int?         @map("last_read_conversation_order")
+  updatedAt                 DateTime     @updatedAt @map("updated_at")
+  device                    Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  conversation              Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, conversationId])
+  @@index([deviceId, updatedAt])
+  @@index([conversationId, updatedAt])
+  @@map("device_conversation_states")
 }
 
 model Message {

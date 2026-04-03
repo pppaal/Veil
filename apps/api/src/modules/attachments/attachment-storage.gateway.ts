@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { AppConfigService } from '../../common/config/app-config.service';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
@@ -11,6 +12,8 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 export interface AttachmentUploadTarget {
   url: string;
   headers: Record<string, string>;
+  contentType: string;
+  sizeBytes: number;
   expiresAt: string;
 }
 
@@ -42,6 +45,8 @@ export interface AttachmentStorageGateway {
   ): Promise<AttachmentUploadTarget>;
 
   headObject(storageKey: string): Promise<AttachmentObjectHead>;
+
+  deleteObject(storageKey: string): Promise<void>;
 
   createDownloadTarget(storageKey: string): Promise<AttachmentDownloadTarget>;
 }
@@ -80,6 +85,9 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
     const command = new PutObjectCommand({
       Bucket: this.config.s3Bucket,
       Key: storageKey,
+      ContentType: metadata.contentType,
+      ContentLength: metadata.sizeBytes,
+      CacheControl: 'no-store',
       Metadata: {
         encrypted: 'true',
         sha256: metadata.sha256,
@@ -94,7 +102,16 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
       url: await getSignedUrl(this.publicClient, command, {
         expiresIn: S3AttachmentStorageGateway.expirySeconds,
       }),
-      headers: {},
+      headers: {
+        'Content-Type': metadata.contentType,
+        'Content-Length': String(metadata.sizeBytes),
+        'Cache-Control': 'no-store',
+        'x-amz-meta-encrypted': 'true',
+        'x-amz-meta-sha256': metadata.sha256,
+        'x-amz-meta-attachment-id': metadata.attachmentId,
+      },
+      contentType: metadata.contentType,
+      sizeBytes: metadata.sizeBytes,
       expiresAt,
     };
   }
@@ -139,6 +156,15 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
       url,
       expiresAt,
     };
+  }
+
+  async deleteObject(storageKey: string): Promise<void> {
+    await this.internalClient.send(
+      new DeleteObjectCommand({
+        Bucket: this.config.s3Bucket,
+        Key: storageKey,
+      }),
+    );
   }
 
   private isNotFound(error: unknown): boolean {

@@ -32,6 +32,15 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             title: 'This device becomes your identity.',
             body:
                 'VEIL binds access to the hardware in your hand. If the device is lost, the account is lost with it.',
+            bottom: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                VeilStatusPill(label: 'No recovery'),
+                VeilStatusPill(label: 'Device-bound'),
+                VeilStatusPill(label: 'Private beta', tone: VeilBannerTone.info),
+              ],
+            ),
           ),
           const SizedBox(height: VeilSpace.md),
           const VeilInlineBanner(
@@ -41,37 +50,30 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             tone: VeilBannerTone.warn,
           ),
           const SizedBox(height: VeilSpace.lg),
-          VeilSurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const VeilSectionLabel('PROFILE LABEL'),
-                const SizedBox(height: VeilSpace.sm),
-                TextField(
-                  controller: _displayNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display name',
-                    hintText: 'Optional label for this account',
-                  ),
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                Text(
-                  'Handles are the discovery layer. This label is presentation only.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
+          VeilFieldBlock(
+            label: 'PROFILE LABEL',
+            caption: 'Handles are the discovery layer. This label is presentation only.',
+            child: TextField(
+              controller: _displayNameController,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                hintText: 'Optional label for this account',
+              ),
             ),
           ),
           const SizedBox(height: VeilSpace.xl),
           VeilActionCluster(
             children: [
-              FilledButton(
+              VeilButton(
                 onPressed: () => context.go('/choose-handle', extra: _displayNameController.text.trim()),
-                child: const Text('Continue'),
+                label: 'Continue',
+                icon: Icons.arrow_forward_rounded,
               ),
-              OutlinedButton(
+              VeilButton(
                 onPressed: () => context.push('/device-transfer'),
-                child: const Text('Transfer from old device'),
+                tone: VeilButtonTone.secondary,
+                label: 'Transfer from old device',
+                icon: Icons.phonelink_lock_outlined,
               ),
             ],
           ),

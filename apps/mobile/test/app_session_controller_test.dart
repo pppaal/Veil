@@ -4,17 +4,22 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 
 void main() {
-  test('device_not_active clears session, secrets, pin, and cache while preserving onboarding', () async {
+  test(
+      'device_not_active clears session, secrets, pin, and cache while preserving onboarding',
+      () async {
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final cache = _MemoryConversationCache();
+    final tempStore = _MemoryAttachmentTempFileStore();
     final controller = AppSessionController(
       storage,
       VeilApiClient(baseUrl: 'http://localhost:3000/v1'),
       createDefaultCryptoAdapter(),
       cacheService: cache,
+      attachmentTempFileStore: tempStore,
     );
 
     await storage.persistOnboardingAccepted(true);
@@ -48,6 +53,7 @@ void main() {
     expect(await storage.hasPin(), isFalse);
     expect(await storage.hasDeviceSecretRefs(), isFalse);
     expect(cache.clearAllCalls, 1);
+    expect(tempStore.purgeAllCalls, 1);
   });
 
   test('explicit local wipe clears onboarding and local barrier', () async {
@@ -77,7 +83,9 @@ void main() {
     expect(await storage.readOnboardingAccepted(), isFalse);
   });
 
-  test('registerAndAuthenticate persists a bound session and local device secrets', () async {
+  test(
+      'registerAndAuthenticate persists a bound session and local device secrets',
+      () async {
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final api = _FakeSessionApiClient();
     final controller = AppSessionController(
@@ -103,7 +111,9 @@ void main() {
     expect(api.verifyDeviceIds, contains('device-registered'));
   });
 
-  test('claimTransfer and completeTransferAndAuthenticate bind the new active device', () async {
+  test(
+      'claimTransfer and completeTransferAndAuthenticate bind the new active device',
+      () async {
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final api = _FakeSessionApiClient();
     final controller = AppSessionController(
@@ -135,7 +145,9 @@ void main() {
     expect(await storage.readSession(), isNotNull);
   });
 
-  test('transfer failure clears the pending claim and requires a fresh registration', () async {
+  test(
+      'transfer failure clears the pending claim and requires a fresh registration',
+      () async {
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final api = _FakeSessionApiClient()
       ..completeTransferError = VeilApiException(
@@ -217,23 +229,48 @@ class _MemoryConversationCache implements ConversationCacheService {
   Future<List<ConversationPreview>> readConversations() async => const [];
 
   @override
-  Future<List<ChatMessage>> readMessages(String conversationId) async => const [];
+  Future<List<ChatMessage>> readMessages(String conversationId) async =>
+      const [];
 
   @override
   Future<List<PendingMessageRecord>> readPendingMessages() async => const [];
 
   @override
-  Future<ConversationPagingState> readPagingState(String conversationId) async =>
+  Future<ConversationPagingState> readPagingState(
+          String conversationId) async =>
       const ConversationPagingState();
 
   @override
   Future<void> removePendingMessage(String clientMessageId) async {}
 
   @override
-  Future<void> storeConversations(List<ConversationPreview> conversations) async {}
+  Future<void> indexMessageBody({
+    required String conversationId,
+    required String messageId,
+    required String searchableBody,
+  }) async {}
 
   @override
-  Future<void> storeMessages(String conversationId, List<ChatMessage> messages) async {}
+  Future<List<String>> searchCachedMessageIds({
+    required String conversationId,
+    required String query,
+  }) async =>
+      const [];
+
+  @override
+  Future<MessageSearchPage> searchMessageArchive({
+    required MessageSearchQuery query,
+    required String currentDeviceId,
+  }) async =>
+      const MessageSearchPage(items: <MessageSearchResult>[]);
+
+  @override
+  Future<void> storeConversations(
+      List<ConversationPreview> conversations) async {}
+
+  @override
+  Future<void> storeMessages(
+      String conversationId, List<ChatMessage> messages) async {}
 
   @override
   Future<void> storePagingState(
@@ -293,7 +330,8 @@ class _FakeSessionApiClient extends VeilApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> completeTransfer(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> completeTransfer(
+      Map<String, dynamic> body) async {
     final error = completeTransferError;
     if (error != null) {
       throw error;
@@ -304,5 +342,39 @@ class _FakeSessionApiClient extends VeilApiClient {
       'handle': 'atlas',
       'displayName': 'Atlas',
     };
+  }
+}
+
+class _MemoryAttachmentTempFileStore implements AttachmentTempFileStore {
+  int purgeAllCalls = 0;
+
+  @override
+  Future<void> cleanupOrphanedFiles({
+    Iterable<String> keepPaths = const <String>[],
+    Duration maxAge = DefaultAttachmentTempFileStore.defaultMaxAge,
+    int maxFileCount = DefaultAttachmentTempFileStore.defaultMaxFileCount,
+  }) async {}
+
+  @override
+  Future<AttachmentTempBlob> createOpaqueBlob({
+    required String filename,
+    required int sizeBytes,
+    String? existingPath,
+  }) async {
+    return AttachmentTempBlob(
+      path: existingPath ?? 'temp://$filename',
+      filename: filename,
+      sizeBytes: sizeBytes,
+      sha256: 'sha256-$filename',
+      createdAt: DateTime.utc(2026, 4, 1),
+    );
+  }
+
+  @override
+  Future<void> deleteTempFile(String? path) async {}
+
+  @override
+  Future<void> purgeAll() async {
+    purgeAllCalls += 1;
   }
 }

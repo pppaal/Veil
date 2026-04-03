@@ -1,0 +1,113 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+
+void main() {
+  test('filterConversationPreviews matches handle and display name locally', () {
+    final conversations = [
+      _conversation('conv-1', 'selene', 'Selene'),
+      _conversation('conv-2', 'orion', 'Orion'),
+    ];
+
+    expect(
+      filterConversationPreviews(conversations, 'sel'),
+      hasLength(1),
+    );
+    expect(
+      filterConversationPreviews(conversations, 'sel').single.peerHandle,
+      'selene',
+    );
+    expect(
+      filterConversationPreviews(conversations, 'orion').single.peerHandle,
+      'orion',
+    );
+    expect(
+      filterConversationPreviews(conversations, '   '),
+      hasLength(2),
+    );
+  });
+
+  test('shouldUseWideConversationLayout switches at desktop breakpoint', () {
+    expect(shouldUseWideConversationLayout(1119), isFalse);
+    expect(shouldUseWideConversationLayout(1120), isTrue);
+    expect(shouldUseWideConversationLayout(1440), isTrue);
+  });
+
+  test('issueMessageNavigationTarget emits a fresh replayable request id', () {
+    final first = issueMessageNavigationTarget(
+      messageId: 'msg-42',
+      query: '  orbit  ',
+      requestId: 1,
+    );
+    final second = issueMessageNavigationTarget(
+      messageId: 'msg-42',
+      query: 'orbit',
+      requestId: 2,
+    );
+
+    expect(first.messageId, 'msg-42');
+    expect(first.query, 'orbit');
+    expect(first.requestId, 1);
+    expect(second.messageId, 'msg-42');
+    expect(second.query, 'orbit');
+    expect(second.requestId, 2);
+  });
+
+  test('conversation list view state round-trips through local storage shape',
+      () {
+    const state = ConversationListViewState(
+      query: '  orbit  ',
+      selectedConversationId: 'conv-9',
+      senderFilter: MessageSearchSenderFilter.theirs,
+      typeFilter: MessageSearchTypeFilter.file,
+      dateFilter: MessageSearchDateFilter.last30Days,
+      lastNavigationRequestId: 7,
+    );
+
+    final encoded = encodeConversationListViewState(state);
+    final decoded = decodeConversationListViewState(encoded);
+
+    expect(decoded, isNotNull);
+    expect(decoded!.query, 'orbit');
+    expect(decoded.selectedConversationId, 'conv-9');
+    expect(decoded.senderFilter, MessageSearchSenderFilter.theirs);
+    expect(decoded.typeFilter, MessageSearchTypeFilter.file);
+    expect(decoded.dateFilter, MessageSearchDateFilter.last30Days);
+    expect(decoded.lastNavigationRequestId, 7);
+  });
+
+  test('conversation list view state decoder rejects invalid payloads', () {
+    expect(decodeConversationListViewState(null), isNull);
+    expect(
+      decodeConversationListViewState(const <String, Object?>{
+        'query': 'orbit',
+        'senderFilter': 'invalid',
+        'typeFilter': 'file',
+        'dateFilter': 'last30Days',
+      }),
+      isNull,
+    );
+  });
+}
+
+ConversationPreview _conversation(
+  String id,
+  String handle,
+  String displayName,
+) {
+  return ConversationPreview(
+    id: id,
+    peerHandle: handle,
+    peerDisplayName: displayName,
+    recipientBundle: const KeyBundle(
+      userId: 'user',
+      deviceId: 'device',
+      handle: 'handle',
+      identityPublicKey: 'pub',
+      signedPrekeyBundle: 'bundle',
+    ),
+    lastEnvelope: null,
+    updatedAt: DateTime.utc(2026, 4, 2),
+  );
+}

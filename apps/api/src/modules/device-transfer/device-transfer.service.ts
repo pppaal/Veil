@@ -70,17 +70,22 @@ export class DeviceTransferService {
     if (auth.deviceId !== dto.oldDeviceId) {
       throw forbidden(
         'device_forbidden',
-        'Transfer must be initiated from the active old device',
+        'Transfer must be initiated from the trusted old device',
       );
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: auth.userId },
-      select: { activeDeviceId: true },
+    const oldDevice = await this.prisma.device.findUnique({
+      where: { id: dto.oldDeviceId },
+      select: {
+        id: true,
+        userId: true,
+        isActive: true,
+        revokedAt: true,
+      },
     });
 
-    if (!user || user.activeDeviceId !== dto.oldDeviceId) {
-      throw forbidden('device_forbidden', 'Old device is not the active bound device');
+    if (!oldDevice || oldDevice.userId !== auth.userId || !oldDevice.isActive || oldDevice.revokedAt) {
+      throw forbidden('device_forbidden', 'Old device is not part of the trusted device graph');
     }
 
     await this.invalidateExistingSessions(auth.userId, dto.oldDeviceId);
@@ -167,14 +172,7 @@ export class DeviceTransferService {
     if (!session.oldDevice.isActive || session.oldDevice.revokedAt) {
       throw forbidden(
         'transfer_session_inactive',
-        'Old device is unavailable; transfer cannot proceed',
-      );
-    }
-
-    if (session.user.activeDeviceId !== session.oldDeviceId) {
-      throw forbidden(
-        'transfer_session_inactive',
-        'Old device is no longer active; transfer cannot proceed',
+        'Old trusted device is unavailable; transfer cannot proceed',
       );
     }
 
@@ -244,14 +242,7 @@ export class DeviceTransferService {
     if (!session.oldDevice.isActive || session.oldDevice.revokedAt) {
       throw forbidden(
         'transfer_session_inactive',
-        'Old device is unavailable; transfer cannot proceed',
-      );
-    }
-
-    if (session.user.activeDeviceId !== session.oldDeviceId) {
-      throw forbidden(
-        'transfer_session_inactive',
-        'Old device is no longer active; transfer cannot proceed',
+        'Old trusted device is unavailable; transfer cannot proceed',
       );
     }
 
@@ -292,15 +283,8 @@ export class DeviceTransferService {
           signedPrekeyBundle: pendingClaim.signedPrekeyBundle,
           authPublicKey: pendingClaim.authPublicKey,
           isActive: true,
-        },
-      });
-
-      await tx.device.update({
-        where: { id: session.oldDeviceId },
-        data: {
-          isActive: false,
-          revokedAt: completedAt,
-          pushToken: null,
+          trustedAt: completedAt,
+          joinedFromDeviceId: session.oldDeviceId,
         },
       });
 
@@ -318,13 +302,13 @@ export class DeviceTransferService {
     });
 
     await this.ephemeralStore.delete(claimKey(dto.sessionId));
-    this.realtimeGateway.disconnectDevice(session.oldDeviceId);
 
     return {
       sessionId: session.id,
       claimId: dto.claimId,
       newDeviceId: result.id,
-      revokedDeviceId: session.oldDeviceId,
+      revokedDeviceId: null,
+      preferredDeviceId: result.id,
       handle: session.user.handle,
       displayName: session.user.displayName,
       completedAt: completedAt.toISOString(),

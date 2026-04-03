@@ -24,7 +24,8 @@ class SecurityStatusScreen extends ConsumerWidget {
     final identitySignals = <_SecuritySignal>[
       _SecuritySignal(
         label: 'Bound device',
-        value: session.deviceId == null ? 'Unbound' : _shortId(session.deviceId!),
+        value:
+            session.deviceId == null ? 'Unbound' : _shortId(session.deviceId!),
         detail: session.deviceId == null
             ? 'No active device session is present.'
             : 'This device currently holds the active VEIL session.',
@@ -36,9 +37,11 @@ class SecurityStatusScreen extends ConsumerWidget {
           data: (state) => state.hasDeviceSecretRefs ? 'Present' : 'Missing',
           orElse: () => 'Checking',
         ),
-        detail: 'Private device material stays on the device. The server never receives it.',
+        detail:
+            'Private device material stays on the device. The server never receives it.',
         tone: localSecurity.maybeWhen(
-          data: (state) => state.hasDeviceSecretRefs ? _SignalTone.good : _SignalTone.warn,
+          data: (state) =>
+              state.hasDeviceSecretRefs ? _SignalTone.good : _SignalTone.warn,
           orElse: () => _SignalTone.neutral,
         ),
       ),
@@ -57,12 +60,16 @@ class SecurityStatusScreen extends ConsumerWidget {
       _SecuritySignal(
         label: 'Biometrics',
         value: localSecurity.maybeWhen(
-          data: (state) => state.biometricsAvailable ? 'Available' : 'Unavailable',
+          data: (state) =>
+              state.biometricsAvailable ? 'Available' : 'Unavailable',
           orElse: () => 'Checking',
         ),
-        detail: 'Device-level biometric unlock only. No remote fallback exists.',
+        detail:
+            'Device-level biometric unlock only. No remote fallback exists.',
         tone: localSecurity.maybeWhen(
-          data: (state) => state.biometricsAvailable ? _SignalTone.good : _SignalTone.neutral,
+          data: (state) => state.biometricsAvailable
+              ? _SignalTone.good
+              : _SignalTone.neutral,
           orElse: () => _SignalTone.neutral,
         ),
       ),
@@ -73,16 +80,68 @@ class SecurityStatusScreen extends ConsumerWidget {
             'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.',
         tone: _SignalTone.good,
       ),
+      _SecuritySignal(
+        label: 'Recent-app preview',
+        value: localSecurity.maybeWhen(
+          data: (state) =>
+              state.appPreviewProtectionEnabled ? 'Protected' : 'Partial',
+          orElse: () => 'Checking',
+        ),
+        detail:
+            'Native and Flutter privacy shields are used to hide app-switcher content while VEIL is backgrounded.',
+        tone: localSecurity.maybeWhen(
+          data: (state) => state.appPreviewProtectionEnabled
+              ? _SignalTone.good
+              : _SignalTone.warn,
+          orElse: () => _SignalTone.neutral,
+        ),
+      ),
+      _SecuritySignal(
+        label: 'Screen capture',
+        value: localSecurity.maybeWhen(
+          data: (state) => !state.screenCaptureProtectionSupported
+              ? 'Platform-limited'
+              : state.screenCaptureProtectionEnabled
+                  ? 'Blocked'
+                  : 'Not blocked',
+          orElse: () => 'Checking',
+        ),
+        detail: localSecurity.maybeWhen(
+          data: (state) => state.screenCaptureProtectionSupported
+              ? 'Android blocks screenshots with secure-window flags when enabled.'
+              : 'This platform has no public API for full screenshot blocking, so VEIL relies on preview shielding and rapid relocking instead.',
+          orElse: () => 'Checking native screen-capture policy.',
+        ),
+        tone: localSecurity.maybeWhen(
+          data: (state) => !state.screenCaptureProtectionSupported
+              ? _SignalTone.neutral
+              : state.screenCaptureProtectionEnabled
+                  ? _SignalTone.good
+                  : _SignalTone.warn,
+          orElse: () => _SignalTone.neutral,
+        ),
+      ),
+      const _SecuritySignal(
+        label: 'Clipboard hygiene',
+        value: 'Restricted',
+        detail:
+            'Sensitive attachment tickets are summarized locally instead of exposing raw signed URLs for copy/share.',
+        tone: _SignalTone.good,
+      ),
     ];
 
     final runtimeSignals = <_SecuritySignal>[
       _SecuritySignal(
         label: 'Transport policy',
-        value: VeilConfig.runtimeConfigurationError == null ? 'Compliant' : 'Blocked',
+        value: VeilConfig.runtimeConfigurationError == null
+            ? 'Compliant'
+            : 'Blocked',
         detail: VeilConfig.runtimeConfigurationError == null
             ? 'Configured endpoints satisfy the current private-beta transport policy.'
             : VeilConfig.runtimeConfigurationError!,
-        tone: VeilConfig.runtimeConfigurationError == null ? _SignalTone.good : _SignalTone.warn,
+        tone: VeilConfig.runtimeConfigurationError == null
+            ? _SignalTone.good
+            : _SignalTone.warn,
       ),
       _SecuritySignal(
         label: 'API mode',
@@ -98,7 +157,9 @@ class SecurityStatusScreen extends ConsumerWidget {
         detail: messenger.realtimeConnected
             ? 'Realtime relay is connected with opaque event payloads.'
             : 'Realtime relay is disconnected or still syncing.',
-        tone: messenger.realtimeConnected ? _SignalTone.good : _SignalTone.neutral,
+        tone: messenger.realtimeConnected
+            ? _SignalTone.good
+            : _SignalTone.neutral,
       ),
       _SecuritySignal(
         label: 'Local cache',
@@ -108,13 +169,33 @@ class SecurityStatusScreen extends ConsumerWidget {
                 ? 'Ready'
                 : 'Starting',
         detail: !cacheConfigured
-            ? 'Message cache stays off until encrypted-at-rest storage is integrated.'
-            : 'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer and are wiped on destructive local lifecycle events.',
+            ? 'Local message cache is disabled in this build.'
+            : 'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer, scrubbed from app-switcher previews, and wiped on destructive local lifecycle events.',
         tone: !cacheConfigured
             ? _SignalTone.warn
             : cacheReady
                 ? _SignalTone.good
                 : _SignalTone.neutral,
+      ),
+      _SecuritySignal(
+        label: 'Device integrity',
+        value: localSecurity.maybeWhen(
+          data: (state) => state.integrityCompromised ? 'Compromised' : 'Clean',
+          orElse: () => 'Checking',
+        ),
+        detail: localSecurity.maybeWhen(
+          data: (state) => state.integrityCompromised
+              ? state.integrityReasons.isEmpty
+                  ? 'This device matched rooted or jailbroken heuristics. VEIL blocks local unlock in this state.'
+                  : 'This device matched rooted or jailbroken heuristics. ${state.integrityReasons.join(' | ')}'
+              : 'Native rooted and jailbroken heuristics did not trigger on this device.',
+          orElse: () => 'Checking native integrity heuristics.',
+        ),
+        tone: localSecurity.maybeWhen(
+          data: (state) =>
+              state.integrityCompromised ? _SignalTone.warn : _SignalTone.good,
+          orElse: () => _SignalTone.neutral,
+        ),
       ),
     ];
 
@@ -147,7 +228,8 @@ class SecurityStatusScreen extends ConsumerWidget {
       _SecuritySignal(
         label: 'Crypto adapter',
         value: 'Mock active',
-        detail: 'Dev-only opaque payloads are active. Audited production crypto is still required.',
+        detail:
+            'Dev-only opaque payloads are active. Audited production crypto is still required.',
         tone: _SignalTone.warn,
       ),
       _SecuritySignal(
@@ -188,7 +270,8 @@ class SecurityStatusScreen extends ConsumerWidget {
               runSpacing: 8,
               children: [
                 VeilStatusPill(label: 'Private beta'),
-                VeilStatusPill(label: 'Mock crypto active', tone: VeilBannerTone.warn),
+                VeilStatusPill(
+                    label: 'Mock crypto active', tone: VeilBannerTone.warn),
               ],
             ),
           ),

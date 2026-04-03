@@ -33,6 +33,15 @@ class OnboardingWarningScreen extends ConsumerWidget {
               ),
               child: Icon(Icons.shield_outlined, color: theme.colorScheme.primary),
             ),
+            bottom: const Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                VeilStatusPill(label: 'Device-bound'),
+                VeilStatusPill(label: 'No password reset'),
+                VeilStatusPill(label: 'Old device required'),
+              ],
+            ),
           ),
           const SizedBox(height: VeilSpace.lg),
           const VeilInlineBanner(
@@ -60,7 +69,7 @@ class OnboardingWarningScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: VeilSpace.xl),
-          FilledButton(
+          VeilButton(
             onPressed: () async {
               await ref.read(appSessionProvider.notifier).acceptOnboarding();
               if (!context.mounted) {
@@ -68,7 +77,8 @@ class OnboardingWarningScreen extends ConsumerWidget {
               }
               context.go('/create-account');
             },
-            child: const Text('I understand'),
+            label: 'I understand',
+            icon: Icons.arrow_forward_rounded,
           ),
         ],
       ),
@@ -84,31 +94,29 @@ class _WarningCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(VeilSpace.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium),
+    return VeilSurfaceCard(
+      toned: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: VeilSpace.sm),
+          for (final line in lines) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.remove,
+                  size: VeilIconSize.sm,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: VeilSpace.xs),
+                Expanded(child: Text(line)),
+              ],
+            ),
             const SizedBox(height: VeilSpace.sm),
-            for (final line in lines) ...[
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.remove,
-                    size: VeilIconSize.sm,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: VeilSpace.xs),
-                  Expanded(child: Text(line)),
-                ],
-              ),
-              const SizedBox(height: VeilSpace.sm),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }

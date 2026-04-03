@@ -90,13 +90,28 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   if (session.errorMessage != null)
                     VeilInlineBanner(
                       title: 'Runtime configuration blocked',
-                      message: session.errorMessage!,
-                      tone: VeilBannerTone.danger,
-                    )
+                        message: session.errorMessage!,
+                        tone: VeilBannerTone.danger,
+                      )
                   else
-                    const VeilLoadingBlock(
-                      title: 'Preparing local state',
-                      body: 'Checking onboarding, session binding, and local security state.',
+                    const VeilSurfaceCard(
+                      toned: true,
+                      child: Column(
+                        children: [
+                          VeilLoadingBlock(
+                            title: 'Preparing local state',
+                            body: 'Checking onboarding, session binding, and local security state.',
+                          ),
+                          SizedBox(height: VeilSpace.md),
+                          Row(
+                            children: [
+                              Expanded(child: VeilSkeletonLine()),
+                              SizedBox(width: VeilSpace.sm),
+                              VeilSkeletonLine(width: 72),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                 ],
               ),

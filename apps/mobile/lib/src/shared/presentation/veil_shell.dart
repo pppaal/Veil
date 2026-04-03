@@ -9,6 +9,7 @@ class VeilShell extends StatelessWidget {
     required this.child,
     this.title,
     this.actions,
+    this.maxWidth = 840,
     this.padding = const EdgeInsets.fromLTRB(
       VeilSpace.lg,
       VeilSpace.lg,
@@ -20,6 +21,7 @@ class VeilShell extends StatelessWidget {
   final Widget child;
   final String? title;
   final List<Widget>? actions;
+  final double? maxWidth;
   final EdgeInsetsGeometry padding;
 
   @override
@@ -69,6 +71,25 @@ class VeilShell extends StatelessWidget {
                 ),
               ),
               Positioned(
+                top: 120,
+                left: -140,
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: palette.primary.withValues(alpha: 0.03),
+                          blurRadius: 120,
+                          spreadRadius: 30,
+                        ),
+                      ],
+                    ),
+                    child: const SizedBox(width: 360, height: 360),
+                  ),
+                ),
+              ),
+              Positioned(
                 bottom: -160,
                 left: -120,
                 child: IgnorePointer(
@@ -89,13 +110,18 @@ class VeilShell extends StatelessWidget {
               ),
               Align(
                 alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
-                  child: Padding(
-                    padding: padding,
-                    child: child,
+                child: maxWidth == null
+                    ? Padding(
+                        padding: padding,
+                        child: child,
+                      )
+                    : ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxWidth!),
+                        child: Padding(
+                          padding: padding,
+                          child: child,
+                        ),
                   ),
-                ),
               ),
             ],
           ),

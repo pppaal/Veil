@@ -12,9 +12,11 @@ import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.d
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
+import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 
 void main() {
-  testWidgets('onboarding warning keeps no-recovery copy explicit', (tester) async {
+  testWidgets('onboarding warning keeps no-recovery copy explicit',
+      (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: _TestApp(
@@ -26,7 +28,8 @@ void main() {
     expect(find.text('No backup.\nNo recovery.\nNo leaks.'), findsOneWidget);
     expect(find.text('Unrecoverable by design'), findsOneWidget);
     expect(
-      find.textContaining('If you lose your device, your account and messages are gone.'),
+      find.textContaining(
+          'If you lose your device, your account and messages are gone.'),
       findsOneWidget,
     );
     await tester.scrollUntilVisible(
@@ -37,7 +40,9 @@ void main() {
     expect(find.text('I understand'), findsOneWidget);
   });
 
-  testWidgets('create account screen keeps transfer and no-restore copy visible', (tester) async {
+  testWidgets(
+      'create account screen keeps transfer and no-restore copy visible',
+      (tester) async {
     await tester.pumpWidget(
       const ProviderScope(
         child: _TestApp(
@@ -57,7 +62,8 @@ void main() {
     expect(find.text('Transfer from old device'), findsOneWidget);
   });
 
-  testWidgets('app lock screen surfaces local-only barrier status', (tester) async {
+  testWidgets('app lock screen surfaces local-only barrier status',
+      (tester) async {
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final sessionController = AppSessionController(
       storage,
@@ -94,6 +100,50 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('Use biometrics'), findsOneWidget);
+  });
+
+  testWidgets('settings screen shows the trusted device graph', (tester) async {
+    final storage = SecureStorageService(_MemorySecureKeyValueStore());
+    final sessionController = AppSessionController(
+      storage,
+      VeilApiClient(baseUrl: 'http://localhost:3000/v1'),
+      createDefaultCryptoAdapter(),
+      cacheService: _MemoryConversationCache(),
+    );
+    sessionController.state = const AppSessionState(
+      accessToken: 'token',
+      userId: 'user-1',
+      deviceId: 'device-current',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appSessionProvider.overrideWith((ref) => sessionController),
+          apiClientProvider.overrideWithValue(_FakeSettingsApiClient()),
+        ],
+        child: const _TestApp(
+          child: SettingsScreen(),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('TRUSTED DEVICE GRAPH'), findsOneWidget);
+    expect(find.text('Pixel Fold'), findsOneWidget);
+    expect(find.text('Old iPhone'), findsOneWidget);
+    expect(find.text('MacBook Air'), findsOneWidget);
+    expect(find.text('GRAPH SUMMARY'), findsOneWidget);
+    expect(find.textContaining('stale'), findsWidgets);
+    expect(find.text('This device'), findsOneWidget);
+    expect(find.text('Revoked'), findsOneWidget);
+    expect(find.text('Revoke'), findsOneWidget);
   });
 }
 
@@ -155,23 +205,48 @@ class _MemoryConversationCache implements ConversationCacheService {
   Future<List<ConversationPreview>> readConversations() async => const [];
 
   @override
-  Future<List<ChatMessage>> readMessages(String conversationId) async => const [];
+  Future<List<ChatMessage>> readMessages(String conversationId) async =>
+      const [];
 
   @override
   Future<List<PendingMessageRecord>> readPendingMessages() async => const [];
 
   @override
-  Future<ConversationPagingState> readPagingState(String conversationId) async =>
+  Future<ConversationPagingState> readPagingState(
+          String conversationId) async =>
       const ConversationPagingState();
 
   @override
   Future<void> removePendingMessage(String clientMessageId) async {}
 
   @override
-  Future<void> storeConversations(List<ConversationPreview> conversations) async {}
+  Future<void> indexMessageBody({
+    required String conversationId,
+    required String messageId,
+    required String searchableBody,
+  }) async {}
 
   @override
-  Future<void> storeMessages(String conversationId, List<ChatMessage> messages) async {}
+  Future<List<String>> searchCachedMessageIds({
+    required String conversationId,
+    required String query,
+  }) async =>
+      const [];
+
+  @override
+  Future<MessageSearchPage> searchMessageArchive({
+    required MessageSearchQuery query,
+    required String currentDeviceId,
+  }) async =>
+      const MessageSearchPage(items: <MessageSearchResult>[]);
+
+  @override
+  Future<void> storeConversations(
+      List<ConversationPreview> conversations) async {}
+
+  @override
+  Future<void> storeMessages(
+      String conversationId, List<ChatMessage> messages) async {}
 
   @override
   Future<void> storePagingState(
@@ -183,4 +258,62 @@ class _MemoryConversationCache implements ConversationCacheService {
 
   @override
   Future<void> upsertPendingMessage(PendingMessageRecord pending) async {}
+}
+
+class _FakeSettingsApiClient extends VeilApiClient {
+  _FakeSettingsApiClient() : super(baseUrl: 'http://localhost:3000/v1');
+
+  @override
+  Future<Map<String, dynamic>> listDevices(String accessToken) async {
+    return {
+      'activeDeviceId': 'device-current',
+      'items': [
+        {
+          'id': 'device-current',
+          'deviceName': 'Pixel Fold',
+          'platform': 'android',
+          'isActive': true,
+          'trustState': 'current',
+          'revokedAt': null,
+          'trustedAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
+          'joinedFromDeviceId': null,
+          'joinedFromDeviceName': null,
+          'joinedFromPlatform': null,
+          'createdAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
+          'lastSeenAt': DateTime.utc(2026, 4, 2, 8, 0, 0).toIso8601String(),
+          'lastSyncAt': DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
+        },
+        {
+          'id': 'device-old',
+          'deviceName': 'Old iPhone',
+          'platform': 'ios',
+          'isActive': false,
+          'trustState': 'revoked',
+          'revokedAt': DateTime.utc(2026, 4, 1, 9, 0, 0).toIso8601String(),
+          'trustedAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
+          'joinedFromDeviceId': null,
+          'joinedFromDeviceName': null,
+          'joinedFromPlatform': null,
+          'createdAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
+          'lastSeenAt': DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
+          'lastSyncAt': null,
+        },
+        {
+          'id': 'device-laptop',
+          'deviceName': 'MacBook Air',
+          'platform': 'macos',
+          'isActive': true,
+          'trustState': 'stale',
+          'revokedAt': null,
+          'trustedAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
+          'joinedFromDeviceId': 'device-current',
+          'joinedFromDeviceName': 'Pixel Fold',
+          'joinedFromPlatform': 'android',
+          'createdAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
+          'lastSeenAt': DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
+          'lastSyncAt': DateTime.utc(2026, 3, 30, 7, 45, 0).toIso8601String(),
+        },
+      ],
+    };
+  }
 }

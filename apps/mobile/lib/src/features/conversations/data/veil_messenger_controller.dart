@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:collection';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -9,11 +11,15 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/network/veil_api_client.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
+import '../../attachments/data/attachment_temp_file_store.dart';
 import 'conversation_models.dart';
 
 class VeilMessengerController extends ChangeNotifier {
   static const _maxAutomaticRetryAttempts = 5;
   static const _retrySweepInterval = Duration(seconds: 3);
+  static const _syncHintDebounceDuration = Duration(milliseconds: 180);
+  static const _maxDecryptedCacheEntries = 600;
+  static const _maxSearchBodyEntries = 1200;
 
   VeilMessengerController({
     required VeilApiClient apiClient,
@@ -22,6 +28,7 @@ class VeilMessengerController extends ChangeNotifier {
     required CryptoEnvelopeCodec envelopeCodec,
     required RealtimeService realtimeService,
     required ConversationCacheService? cacheService,
+    AttachmentTempFileStore? attachmentTempFileStore,
     Future<void> Function(Object error)? onSecurityException,
   })  : _apiClient = apiClient,
         _cryptoEngine = cryptoEngine,
@@ -29,6 +36,7 @@ class VeilMessengerController extends ChangeNotifier {
         _envelopeCodec = envelopeCodec,
         _realtimeService = realtimeService,
         _cacheService = cacheService,
+        _attachmentTempFileStore = attachmentTempFileStore,
         _onSecurityException = onSecurityException {
     _expirationTicker = Timer.periodic(
       const Duration(seconds: 1),
@@ -46,6 +54,7 @@ class VeilMessengerController extends ChangeNotifier {
   final CryptoEnvelopeCodec _envelopeCodec;
   final RealtimeService _realtimeService;
   final ConversationCacheService? _cacheService;
+  final AttachmentTempFileStore? _attachmentTempFileStore;
   final Future<void> Function(Object error)? _onSecurityException;
   final Random _random = Random.secure();
 
@@ -57,6 +66,15 @@ class VeilMessengerController extends ChangeNotifier {
   final Map<String, PendingMessageRecord> _pendingByClientMessageId = {};
   final Map<String, _PendingReceiptUpdate> _receiptBacklogByMessageId = {};
   final Set<String> _historyLoadingConversationIds = {};
+  final Set<String> _resolvingAttachmentIds = {};
+  final Set<String> _queuedSyncConversationIds = {};
+  final LinkedHashMap<String, Future<DecryptedMessage>> _decryptedMessageCache =
+      LinkedHashMap<String, Future<DecryptedMessage>>();
+  final LinkedHashMap<String, String> _searchableBodyByMessageKey =
+      LinkedHashMap<String, String>();
+  final Map<String, AttachmentTransferSnapshot> _attachmentTransfersByClientMessageId = {};
+  final Map<String, String> _attachmentDownloadErrors = {};
+  final Map<String, AttachmentUploadCancellationSignal> _activeUploadSignals = {};
 
   AppSessionState _session = const AppSessionState();
   bool _isBusy = false;
@@ -68,11 +86,17 @@ class VeilMessengerController extends ChangeNotifier {
   String? _transferToken;
   String? _transferStatus;
   DateTime? _transferExpiresAt;
+  Timer? _syncHintDebounce;
+  bool _syncAfterHintInFlight = false;
 
   List<ConversationPreview> get conversations => _conversations;
   bool get isBusy => _isBusy;
   bool get realtimeConnected => _realtimeConnected;
   String? get errorMessage => _errorMessage;
+  bool isResolvingAttachment(String attachmentId) => _resolvingAttachmentIds.contains(attachmentId);
+  String? attachmentDownloadError(String attachmentId) => _attachmentDownloadErrors[attachmentId];
+  AttachmentTransferSnapshot? attachmentTransferForMessage(String clientMessageId) =>
+      _attachmentTransfersByClientMessageId[clientMessageId];
   String? get transferSessionId => _transferSessionId;
   String? get transferToken => _transferToken;
   String? get transferStatus => _transferStatus;
@@ -110,11 +134,21 @@ class VeilMessengerController extends ChangeNotifier {
     _realtimeConnected = false;
 
     if (!_session.isAuthenticated) {
+      for (final signal in _activeUploadSignals.values) {
+        signal.cancel();
+      }
+      _activeUploadSignals.clear();
       _conversations = [];
       _messagesByConversation.clear();
       _pagingStateByConversation.clear();
       _pendingByClientMessageId.clear();
       _receiptBacklogByMessageId.clear();
+      _resolvingAttachmentIds.clear();
+      _attachmentDownloadErrors.clear();
+      _attachmentTransfersByClientMessageId.clear();
+      _queuedSyncConversationIds.clear();
+      _decryptedMessageCache.clear();
+      _searchableBodyByMessageKey.clear();
       _activeConversationId = null;
       _transferSessionId = null;
       _transferToken = null;
@@ -222,6 +256,7 @@ class VeilMessengerController extends ChangeNotifier {
 
       final conversation = _conversations.firstWhere((item) => item.id == conversationId);
       final clientMessageId = _nextClientMessageId();
+      final tempBlob = await _stageAttachmentBlob(filename: filename);
       final envelope = await _cryptoEngine.encryptMessage(
         conversationId: conversationId,
         senderDeviceId: _session.deviceId!,
@@ -237,9 +272,11 @@ class VeilMessengerController extends ChangeNotifier {
         envelope: envelope,
         attachmentUploadDraft: AttachmentUploadDraft(
           filename: filename,
-          contentType: 'application/octet-stream',
-          sizeBytes: 2048,
-          sha256: 'mock-sha256-$filename',
+          contentType: _guessContentType(filename),
+          sizeBytes: tempBlob.sizeBytes,
+          sha256: tempBlob.sha256,
+          tempFilePath: tempBlob.path,
+          lastUpdatedAt: tempBlob.createdAt,
         ),
       );
       unawaited(_drainOutbox(conversationId: conversationId));
@@ -264,15 +301,60 @@ class VeilMessengerController extends ChangeNotifier {
       return null;
     }
 
+    _attachmentDownloadErrors.remove(attachmentId);
+    _resolvingAttachmentIds.add(attachmentId);
+    notifyListeners();
     try {
       final response = await _apiClient.getDownloadTicket(_session.accessToken!, attachmentId);
       return (response['ticket'] as Map<String, dynamic>)['downloadUrl'] as String;
     } catch (error) {
       await _handleSecurityException(error);
-      _errorMessage = formatUserFacingError(error);
-      notifyListeners();
+      final message = formatUserFacingError(error);
+      _attachmentDownloadErrors[attachmentId] = message;
+      _errorMessage = message;
       return null;
+    } finally {
+      _resolvingAttachmentIds.remove(attachmentId);
+      notifyListeners();
     }
+  }
+
+  Future<void> cancelPendingAttachment(String clientMessageId) async {
+    final pending = _pendingByClientMessageId[clientMessageId];
+    if (pending == null || pending.attachmentUploadDraft == null) {
+      return;
+    }
+
+    _activeUploadSignals.remove(clientMessageId)?.cancel();
+    final failed = pending.copyWith(
+      state: MessageDeliveryState.failed,
+      errorMessage: 'Attachment upload was canceled on this device.',
+      nextRetryAt: null,
+      lastAttemptAt: DateTime.now(),
+    );
+    _pendingByClientMessageId[clientMessageId] = failed;
+    await _cacheService?.upsertPendingMessage(failed);
+    _updateLocalMessageState(
+      clientMessageId,
+      state: MessageDeliveryState.failed,
+      errorMessage: failed.errorMessage,
+    );
+    _updateAttachmentTransfer(
+      clientMessageId,
+      phase: AttachmentTransferPhase.canceled,
+      progress: failed.attachmentUploadDraft?.sizeBytes == null
+          ? 0
+          : ((failed.attachmentUploadDraft!.bytesUploaded / failed.attachmentUploadDraft!.sizeBytes)
+                  .clamp(0, 1))
+              .toDouble(),
+      errorMessage: failed.errorMessage,
+      filename: failed.attachmentUploadDraft?.filename,
+      contentType: failed.attachmentUploadDraft?.contentType,
+      sizeBytes: failed.attachmentUploadDraft?.sizeBytes,
+      canRetry: true,
+      canCancel: false,
+    );
+    notifyListeners();
   }
 
   Future<void> initTransfer() async {
@@ -321,6 +403,91 @@ class VeilMessengerController extends ChangeNotifier {
 
   Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) {
     return _cryptoEngine.decryptMessage(envelope);
+  }
+
+  Future<DecryptedMessage> decryptMessage(ChatMessage message) {
+    final cacheKey = _messageCacheKey(message);
+    final existing = _decryptedMessageCache.remove(cacheKey);
+    if (existing != null) {
+      _decryptedMessageCache[cacheKey] = existing;
+      return existing;
+    }
+
+    final future = () async {
+      final decrypted = await _cryptoEngine.decryptMessage(message.envelope);
+      final searchableBody = _searchableMessageBody(decrypted);
+      _rememberSearchableBody(cacheKey, searchableBody);
+      _setMessageSearchableBody(
+        message.envelope.conversationId,
+        message.id,
+        searchableBody,
+      );
+      await _cacheService?.indexMessageBody(
+        conversationId: message.envelope.conversationId,
+        messageId: message.id,
+        searchableBody: searchableBody,
+      );
+      return decrypted;
+    }();
+    _decryptedMessageCache[cacheKey] = future;
+    _trimMessageCaches();
+    return future;
+  }
+
+  Future<List<String>> searchLoadedMessageIds(
+    String conversationId, {
+    required String query,
+  }) async {
+    final normalizedQuery = _normalizeSearchQuery(query);
+    if (normalizedQuery.isEmpty) {
+      return messagesFor(conversationId).map((message) => message.id).toList();
+    }
+
+    final matchedIds = <String>{};
+    for (final message in messagesFor(conversationId)) {
+      final cacheKey = _messageCacheKey(message);
+      final searchableBody = _searchableBodyByMessageKey[cacheKey] ??
+          _searchableMessageBody(await decryptMessage(message));
+      if (searchableBody.contains(normalizedQuery)) {
+        matchedIds.add(message.id);
+      }
+    }
+
+    final cachedMatches = await _cacheService?.searchCachedMessageIds(
+          conversationId: conversationId,
+          query: normalizedQuery,
+        ) ??
+        const <String>[];
+    matchedIds.addAll(cachedMatches);
+    return matchedIds.toList(growable: false);
+  }
+
+  Future<MessageSearchPage> searchMessageArchive({
+    required MessageSearchQuery query,
+  }) async {
+    final normalizedQuery = _normalizeSearchQuery(query.query);
+    if (normalizedQuery.isEmpty) {
+      return const MessageSearchPage(items: <MessageSearchResult>[]);
+    }
+
+    final cache = _cacheService;
+    if (cache == null || _session.deviceId == null) {
+      return const MessageSearchPage(items: <MessageSearchResult>[]);
+    }
+
+    return cache.searchMessageArchive(
+      query: MessageSearchQuery(
+        query: normalizedQuery,
+        conversationId: query.conversationId,
+        senderFilter: query.senderFilter,
+        typeFilter: query.typeFilter,
+        dateFilter: query.dateFilter,
+        limit: query.limit,
+        beforeSentAt: query.beforeSentAt,
+        beforeMessageId: query.beforeMessageId,
+      ),
+      currentDeviceId: _session.deviceId!,
+    );
   }
 
   Future<void> _refreshConversationsCore() async {
@@ -415,6 +582,18 @@ class VeilMessengerController extends ChangeNotifier {
       _messagesByConversation[conversation.id] ?? const [],
       <ChatMessage>[optimisticMessage],
     );
+    if (attachmentUploadDraft != null) {
+      _updateAttachmentTransfer(
+        clientMessageId,
+        phase: AttachmentTransferPhase.staged,
+        progress: 0,
+        filename: attachmentUploadDraft.filename,
+        contentType: attachmentUploadDraft.contentType,
+        sizeBytes: attachmentUploadDraft.sizeBytes,
+        canRetry: false,
+        canCancel: true,
+      );
+    }
     _syncConversationPreviewFromMessages(conversation.id);
     await _cacheService?.upsertPendingMessage(pending);
     await _persistConversationState(conversation.id);
@@ -462,6 +641,18 @@ class VeilMessengerController extends ChangeNotifier {
           state: marked.state,
           errorMessage: null,
         );
+        if (marked.attachmentUploadDraft != null) {
+          _updateAttachmentTransfer(
+            marked.clientMessageId,
+            phase: AttachmentTransferPhase.preparing,
+            progress: _progressForDraft(marked.attachmentUploadDraft),
+            filename: marked.attachmentUploadDraft?.filename,
+            contentType: marked.attachmentUploadDraft?.contentType,
+            sizeBytes: marked.attachmentUploadDraft?.sizeBytes,
+            canRetry: false,
+            canCancel: true,
+          );
+        }
 
         try {
           if (marked.attachmentUploadDraft != null) {
@@ -472,6 +663,7 @@ class VeilMessengerController extends ChangeNotifier {
               marked.clientMessageId,
               state: MessageDeliveryState.pending,
             );
+            _attachmentTransfersByClientMessageId.remove(marked.clientMessageId);
           }
 
           final response = await _apiClient.sendMessage(_session.accessToken!, {
@@ -485,6 +677,7 @@ class VeilMessengerController extends ChangeNotifier {
           await _cacheService?.removePendingMessage(marked.clientMessageId);
           _mergeServerMessages(marked.conversationId, <ChatMessage>[serverMessage]);
           await _persistConversationState(marked.conversationId);
+          _attachmentTransfersByClientMessageId.remove(marked.clientMessageId);
         } catch (error) {
           await _handleSecurityException(error);
           final isTransient = _shouldRetryAutomatically(error, marked.retryCount);
@@ -507,6 +700,21 @@ class VeilMessengerController extends ChangeNotifier {
             state: failed.state,
             errorMessage: failed.errorMessage,
           );
+          if (failed.attachmentUploadDraft != null) {
+            _updateAttachmentTransfer(
+              failed.clientMessageId,
+              phase: extractVeilApiErrorCode(error) == 'attachment_upload_canceled'
+                  ? AttachmentTransferPhase.canceled
+                  : AttachmentTransferPhase.failed,
+              progress: _progressForDraft(failed.attachmentUploadDraft),
+              errorMessage: failed.errorMessage,
+              filename: failed.attachmentUploadDraft?.filename,
+              contentType: failed.attachmentUploadDraft?.contentType,
+              sizeBytes: failed.attachmentUploadDraft?.sizeBytes,
+              canRetry: true,
+              canCancel: false,
+            );
+          }
           _errorMessage = failed.errorMessage;
         }
       }
@@ -527,6 +735,9 @@ class VeilMessengerController extends ChangeNotifier {
     _messagesByConversation.clear();
     _pagingStateByConversation.clear();
     _pendingByClientMessageId.clear();
+    _decryptedMessageCache.clear();
+    _searchableBodyByMessageKey.clear();
+    _attachmentTransfersByClientMessageId.clear();
 
     for (final conversation in _conversations) {
       final cachedMessages = await cache.readMessages(conversation.id);
@@ -537,12 +748,37 @@ class VeilMessengerController extends ChangeNotifier {
             ),
           )
           .toList();
+      for (final message in _messagesByConversation[conversation.id] ?? const <ChatMessage>[]) {
+        if (message.searchableBody case final body?) {
+          _rememberSearchableBody(_messageCacheKey(message), body);
+        }
+      }
       _pagingStateByConversation[conversation.id] = await cache.readPagingState(conversation.id);
     }
 
     final pendingMessages = await cache.readPendingMessages();
+    final keepTempPaths = <String>{};
     for (final pending in pendingMessages) {
       _pendingByClientMessageId[pending.clientMessageId] = pending;
+      final draft = pending.attachmentUploadDraft;
+      if (draft?.tempFilePath case final path?) {
+        keepTempPaths.add(path);
+      }
+      if (draft != null) {
+        _updateAttachmentTransfer(
+          pending.clientMessageId,
+          phase: pending.state == MessageDeliveryState.failed
+              ? AttachmentTransferPhase.failed
+              : AttachmentTransferPhase.staged,
+          progress: _progressForDraft(draft),
+          errorMessage: pending.errorMessage,
+          filename: draft.filename,
+          contentType: draft.contentType,
+          sizeBytes: draft.sizeBytes,
+          canRetry: pending.state == MessageDeliveryState.failed,
+          canCancel: pending.state != MessageDeliveryState.failed,
+        );
+      }
       final optimisticMessage = ChatMessage(
         id: 'local-${pending.clientMessageId}',
         clientMessageId: pending.clientMessageId,
@@ -560,6 +796,8 @@ class VeilMessengerController extends ChangeNotifier {
       );
     }
 
+    await _attachmentTempFileStore?.cleanupOrphanedFiles(keepPaths: keepTempPaths);
+    _pruneDecryptedCache();
     await _reconcileExpiringState();
     notifyListeners();
   }
@@ -576,7 +814,7 @@ class VeilMessengerController extends ChangeNotifier {
         _realtimeConnected = connected;
         notifyListeners();
         if (connected) {
-          unawaited(_syncAfterRealtimeHint());
+          _scheduleSyncAfterRealtimeHint();
           unawaited(_drainOutbox(ignoreRetrySchedule: true));
         }
       },
@@ -603,11 +841,11 @@ class VeilMessengerController extends ChangeNotifier {
             if (!message.isMine && message.envelope.conversationId == _activeConversationId) {
               await markRead(message.id);
             }
-            await _syncAfterRealtimeHint(conversationId: message.envelope.conversationId);
+            _scheduleSyncAfterRealtimeHint(conversationId: message.envelope.conversationId);
             break;
           case 'conversation.sync':
             final data = payload as Map<String, dynamic>;
-            await _syncAfterRealtimeHint(conversationId: data['conversationId'] as String?);
+            _scheduleSyncAfterRealtimeHint(conversationId: data['conversationId'] as String?);
             break;
           default:
             break;
@@ -616,23 +854,38 @@ class VeilMessengerController extends ChangeNotifier {
     );
   }
 
-  Future<void> _syncAfterRealtimeHint({String? conversationId}) async {
+  void _scheduleSyncAfterRealtimeHint({String? conversationId}) {
+    if (conversationId != null && conversationId.isNotEmpty) {
+      _queuedSyncConversationIds.add(conversationId);
+    }
+    _syncHintDebounce?.cancel();
+    _syncHintDebounce = Timer(
+      _syncHintDebounceDuration,
+      () => unawaited(_flushQueuedSyncHints()),
+    );
+  }
+
+  Future<void> _flushQueuedSyncHints() async {
     if (!_session.isAuthenticated || !VeilConfig.hasApi) {
       return;
     }
+    if (_syncAfterHintInFlight) {
+      return;
+    }
 
+    _syncAfterHintInFlight = true;
     try {
       await _refreshConversationsCore();
+      final queuedConversationIds = Set<String>.from(_queuedSyncConversationIds);
+      _queuedSyncConversationIds.clear();
       final conversationsToSync = <String>{
         ..._messagesByConversation.keys,
         ..._pendingByClientMessageId.values.map((item) => item.conversationId),
+        ...queuedConversationIds,
       };
       final activeConversationId = _activeConversationId;
       if (activeConversationId != null) {
         conversationsToSync.add(activeConversationId);
-      }
-      if (conversationId != null && conversationId.isNotEmpty) {
-        conversationsToSync.add(conversationId);
       }
 
       for (final targetConversationId in conversationsToSync) {
@@ -643,12 +896,18 @@ class VeilMessengerController extends ChangeNotifier {
       await _handleSecurityException(error);
       _errorMessage = formatUserFacingError(error);
       notifyListeners();
+    } finally {
+      _syncAfterHintInFlight = false;
+      if (_queuedSyncConversationIds.isNotEmpty) {
+        _scheduleSyncAfterRealtimeHint();
+      }
     }
   }
 
   void _mergeServerMessages(String conversationId, List<ChatMessage> serverMessages) {
     final current = _messagesByConversation[conversationId] ?? const <ChatMessage>[];
     _messagesByConversation[conversationId] = _mergeMessageCollections(current, serverMessages);
+    _pruneDecryptedCache();
     _applyBufferedReceipts(conversationId);
     _syncConversationPreviewFromMessages(conversationId);
   }
@@ -688,6 +947,7 @@ class VeilMessengerController extends ChangeNotifier {
     return incoming.copyWith(
       clientMessageId: incoming.clientMessageId ?? current.clientMessageId,
       conversationOrder: incoming.conversationOrder ?? current.conversationOrder,
+      searchableBody: incoming.searchableBody ?? current.searchableBody,
       deliveredAt: deliveredAt,
       readAt: readAt,
       deliveryState: _resolveDeliveryState(
@@ -780,12 +1040,42 @@ class VeilMessengerController extends ChangeNotifier {
     }
   }
 
+  void _setMessageSearchableBody(
+    String conversationId,
+    String messageId,
+    String searchableBody,
+  ) {
+    final messages = _messagesByConversation[conversationId];
+    if (messages == null) {
+      return;
+    }
+
+    var changed = false;
+    final updated = messages.map((message) {
+      if (message.id != messageId || message.searchableBody == searchableBody) {
+        return message;
+      }
+      changed = true;
+      return message.copyWith(searchableBody: searchableBody);
+    }).toList(growable: false);
+
+    if (changed) {
+      _messagesByConversation[conversationId] = updated;
+      unawaited(_persistConversationState(conversationId));
+      notifyListeners();
+    }
+  }
+
   Future<PendingMessageRecord> _preparePendingAttachment(
     PendingMessageRecord pending,
   ) async {
-    final draft = pending.attachmentUploadDraft;
+    var draft = pending.attachmentUploadDraft;
     if (draft == null) {
       return pending;
+    }
+    final tempStore = _attachmentTempFileStore;
+    if (tempStore == null) {
+      throw StateError('Local attachment staging is unavailable on this device.');
     }
 
     final conversation = _findConversation(pending.conversationId);
@@ -793,28 +1083,100 @@ class VeilMessengerController extends ChangeNotifier {
       throw StateError('The target conversation is no longer available.');
     }
 
-    final upload = await _apiClient.createUploadTicket(_session.accessToken!, {
-      'contentType': draft.contentType,
-      'sizeBytes': draft.sizeBytes,
-      'sha256': draft.sha256,
-    });
-
-    final uploadPayload = upload['upload'] as Map<String, dynamic>;
-    await _apiClient.uploadEncryptedPlaceholder(
-      uploadUrl: uploadPayload['uploadUrl'] as String,
-      headers: (uploadPayload['headers'] as Map<String, dynamic>? ?? const {}),
+    final tempBlob = await tempStore.createOpaqueBlob(
       filename: draft.filename,
+      sizeBytes: draft.sizeBytes,
+      existingPath: draft.tempFilePath,
+    );
+    draft = draft.copyWith(
+      tempFilePath: tempBlob.path,
+      sizeBytes: tempBlob.sizeBytes,
+      sha256: tempBlob.sha256,
+      lastUpdatedAt: DateTime.now(),
+    );
+    pending = pending.copyWith(attachmentUploadDraft: draft);
+    _pendingByClientMessageId[pending.clientMessageId] = pending;
+    await _cacheService?.upsertPendingMessage(pending);
+
+    draft = await _ensureUploadTicket(pending, draft);
+    pending = pending.copyWith(attachmentUploadDraft: draft);
+    _pendingByClientMessageId[pending.clientMessageId] = pending;
+    await _cacheService?.upsertPendingMessage(pending);
+
+    final signal = AttachmentUploadCancellationSignal();
+    _activeUploadSignals[pending.clientMessageId] = signal;
+    _updateAttachmentTransfer(
+      pending.clientMessageId,
+      phase: AttachmentTransferPhase.uploading,
+      progress: _progressForDraft(draft),
+      filename: draft.filename,
+      contentType: draft.contentType,
+      sizeBytes: draft.sizeBytes,
+      canRetry: false,
+      canCancel: true,
     );
 
+    try {
+      await _apiClient.uploadEncryptedBlobFile(
+        uploadUrl: draft.uploadUrl!,
+        headers: draft.uploadHeaders,
+        file: File(tempBlob.path),
+        cancellationSignal: signal,
+        onProgress: (sentBytes, totalBytes) {
+          final current = _pendingByClientMessageId[pending.clientMessageId];
+          final currentDraft = current?.attachmentUploadDraft;
+          if (currentDraft == null) {
+            return;
+          }
+          final updatedDraft = currentDraft.copyWith(
+            bytesUploaded: sentBytes,
+            lastUpdatedAt: DateTime.now(),
+          );
+          final updatedPending = current!.copyWith(attachmentUploadDraft: updatedDraft);
+          _pendingByClientMessageId[pending.clientMessageId] = updatedPending;
+          unawaited(_cacheService?.upsertPendingMessage(updatedPending) ?? Future<void>.value());
+          _updateAttachmentTransfer(
+            pending.clientMessageId,
+            phase: AttachmentTransferPhase.uploading,
+            progress: totalBytes == 0 ? 0 : sentBytes / totalBytes,
+            filename: updatedDraft.filename,
+            contentType: updatedDraft.contentType,
+            sizeBytes: updatedDraft.sizeBytes,
+            canRetry: false,
+            canCancel: true,
+          );
+          notifyListeners();
+        },
+      );
+    } catch (error) {
+      _activeUploadSignals.remove(pending.clientMessageId);
+      draft = await _markAttachmentTicketFailed(draft);
+      pending = pending.copyWith(attachmentUploadDraft: draft);
+      _pendingByClientMessageId[pending.clientMessageId] = pending;
+      await _cacheService?.upsertPendingMessage(pending);
+      rethrow;
+    }
+
     await _apiClient.completeUpload(_session.accessToken!, {
-      'attachmentId': upload['attachmentId'],
+      'attachmentId': draft.attachmentId,
       'uploadStatus': 'uploaded',
     });
+    _activeUploadSignals.remove(pending.clientMessageId);
+    _updateAttachmentTransfer(
+      pending.clientMessageId,
+      phase: AttachmentTransferPhase.finalizing,
+      progress: 1,
+      filename: draft.filename,
+      contentType: draft.contentType,
+      sizeBytes: draft.sizeBytes,
+      canRetry: false,
+      canCancel: false,
+    );
 
     final bundle = await _fetchPeerBundle(conversation.peerHandle);
     final attachment = await _cryptoEngine.encryptAttachment(
-      attachmentId: upload['attachmentId'] as String,
-      storageKey: uploadPayload['storageKey'] as String,
+      attachmentId: draft.attachmentId!,
+      storageKey: draft.storageKey!,
       contentType: draft.contentType,
       sizeBytes: draft.sizeBytes,
       sha256: draft.sha256,
@@ -832,10 +1194,72 @@ class VeilMessengerController extends ChangeNotifier {
       attachment: attachment,
     );
 
+    await tempStore.deleteTempFile(draft.tempFilePath);
     return pending.copyWith(
       envelope: updatedEnvelope,
       attachmentUploadDraft: null,
       state: MessageDeliveryState.pending,
+    );
+  }
+
+  Future<AttachmentUploadDraft> _ensureUploadTicket(
+    PendingMessageRecord pending,
+    AttachmentUploadDraft draft,
+  ) async {
+    if (draft.hasUploadTicket && !draft.uploadTicketExpired) {
+      return draft;
+    }
+    final resetDraft = await _markAttachmentTicketFailed(draft, deleteRemoteObject: draft.hasUploadTicket);
+    final upload = await _apiClient.createUploadTicket(_session.accessToken!, {
+      'contentType': resetDraft.contentType,
+      'sizeBytes': resetDraft.sizeBytes,
+      'sha256': resetDraft.sha256,
+    });
+    final uploadPayload = upload['upload'] as Map<String, dynamic>;
+    return resetDraft.copyWith(
+      attachmentId: upload['attachmentId'] as String,
+      storageKey: uploadPayload['storageKey'] as String,
+      uploadUrl: uploadPayload['uploadUrl'] as String,
+      uploadHeaders: (uploadPayload['headers'] as Map<String, dynamic>? ?? const <String, dynamic>{})
+          .map((key, value) => MapEntry(key, value.toString())),
+      uploadExpiresAt: DateTime.parse(uploadPayload['expiresAt'] as String),
+      bytesUploaded: 0,
+      lastUpdatedAt: DateTime.now(),
+    );
+  }
+
+  Future<AttachmentUploadDraft> _markAttachmentTicketFailed(
+    AttachmentUploadDraft draft, {
+    bool deleteRemoteObject = true,
+  }) async {
+    if (!deleteRemoteObject || draft.attachmentId == null || !_session.isAuthenticated || !VeilConfig.hasApi) {
+      return draft.copyWith(
+        attachmentId: null,
+        storageKey: null,
+        uploadUrl: null,
+        uploadHeaders: const <String, String>{},
+        uploadExpiresAt: null,
+        bytesUploaded: 0,
+        lastUpdatedAt: DateTime.now(),
+      );
+    }
+
+    try {
+      await _apiClient.completeUpload(_session.accessToken!, {
+        'attachmentId': draft.attachmentId,
+        'uploadStatus': 'failed',
+      });
+    } catch (_) {
+      // Cleanup is best-effort. A later backend sweep still marks stale pending uploads failed.
+    }
+    return draft.copyWith(
+      attachmentId: null,
+      storageKey: null,
+      uploadUrl: null,
+      uploadHeaders: const <String, String>{},
+      uploadExpiresAt: null,
+      bytesUploaded: 0,
+      lastUpdatedAt: DateTime.now(),
     );
   }
 
@@ -856,6 +1280,7 @@ class VeilMessengerController extends ChangeNotifier {
       if (error.code == 'device_not_active' ||
           error.code == 'attachment_not_found' ||
           error.code == 'attachment_upload_invalid' ||
+          error.code == 'attachment_upload_canceled' ||
           error.code == 'conversation_membership_required' ||
           error.code == 'direct_peer_mismatch') {
         return false;
@@ -951,7 +1376,15 @@ class VeilMessengerController extends ChangeNotifier {
 
     for (final entry in _messagesByConversation.entries) {
       final beforeLength = entry.value.length;
-      entry.value.removeWhere((message) => _isExpired(message.expiresAt, now));
+      entry.value.removeWhere((message) {
+        final expired = _isExpired(message.expiresAt, now);
+        if (expired) {
+          final cacheKey = _messageCacheKey(message);
+          _decryptedMessageCache.remove(cacheKey);
+          _searchableBodyByMessageKey.remove(cacheKey);
+        }
+        return expired;
+      });
       if (entry.value.length != beforeLength) {
         changedMessageConversations.add(entry.key);
         _syncConversationPreviewFromMessages(entry.key);
@@ -1093,6 +1526,120 @@ class VeilMessengerController extends ChangeNotifier {
     return 'msg-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$entropy';
   }
 
+  Future<AttachmentTempBlob> _stageAttachmentBlob({
+    required String filename,
+    int sizeBytes = 2048,
+  }) async {
+    final tempStore = _attachmentTempFileStore;
+    if (tempStore == null) {
+      throw StateError('Local attachment staging is unavailable on this device.');
+    }
+    return tempStore.createOpaqueBlob(
+      filename: filename,
+      sizeBytes: sizeBytes,
+    );
+  }
+
+  double _progressForDraft(AttachmentUploadDraft? draft) {
+    if (draft == null || draft.sizeBytes <= 0) {
+      return 0;
+    }
+    return (draft.bytesUploaded / draft.sizeBytes).clamp(0, 1).toDouble();
+  }
+
+  void _updateAttachmentTransfer(
+    String clientMessageId, {
+    required AttachmentTransferPhase phase,
+    required double progress,
+    String? errorMessage,
+    String? filename,
+    String? contentType,
+    int? sizeBytes,
+    required bool canRetry,
+    required bool canCancel,
+  }) {
+    _attachmentTransfersByClientMessageId[clientMessageId] = AttachmentTransferSnapshot(
+      clientMessageId: clientMessageId,
+      phase: phase,
+      progress: progress.clamp(0, 1).toDouble(),
+      errorMessage: errorMessage,
+      filename: filename,
+      contentType: contentType,
+      sizeBytes: sizeBytes,
+      canRetry: canRetry,
+      canCancel: canCancel,
+    );
+  }
+
+  String _guessContentType(String filename) {
+    final normalized = filename.toLowerCase();
+    if (normalized.endsWith('.jpg') || normalized.endsWith('.jpeg')) {
+      return 'image/jpeg';
+    }
+    if (normalized.endsWith('.png')) {
+      return 'image/png';
+    }
+    if (normalized.endsWith('.webp')) {
+      return 'image/webp';
+    }
+    if (normalized.endsWith('.pdf')) {
+      return 'application/pdf';
+    }
+    return 'application/octet-stream';
+  }
+
+  String _messageCacheKey(ChatMessage message) {
+    return '${message.id}:${message.envelope.ciphertext}:${message.envelope.nonce}';
+  }
+
+  String _searchableMessageBody(DecryptedMessage message) {
+    final attachment = message.attachment;
+    return _normalizeSearchQuery([
+      message.body,
+      message.messageKind.name,
+      if (attachment != null) attachment.contentType,
+      if (attachment != null) attachment.attachmentId,
+    ].join(' '));
+  }
+
+  String _normalizeSearchQuery(String value) {
+    return value.trim().toLowerCase();
+  }
+
+  void _pruneDecryptedCache() {
+    final validKeys = _messagesByConversation.values
+        .expand((messages) => messages)
+        .map(_messageCacheKey)
+        .toSet();
+    final keysToRemove = _decryptedMessageCache.keys
+        .where((key) => !validKeys.contains(key))
+        .toList(growable: false);
+    for (final key in keysToRemove) {
+      _decryptedMessageCache.remove(key);
+      _searchableBodyByMessageKey.remove(key);
+    }
+    _trimMessageCaches();
+  }
+
+  void _rememberSearchableBody(String cacheKey, String searchableBody) {
+    _searchableBodyByMessageKey.remove(cacheKey);
+    _searchableBodyByMessageKey[cacheKey] = searchableBody;
+    _trimMessageCaches();
+  }
+
+  void _trimMessageCaches() {
+    while (_decryptedMessageCache.length > _maxDecryptedCacheEntries) {
+      final oldestKey = _decryptedMessageCache.keys.first;
+      _decryptedMessageCache.remove(oldestKey);
+      _searchableBodyByMessageKey.remove(oldestKey);
+    }
+    while (_searchableBodyByMessageKey.length > _maxSearchBodyEntries) {
+      final oldestKey = _searchableBodyByMessageKey.keys.first;
+      _searchableBodyByMessageKey.remove(oldestKey);
+      _decryptedMessageCache.remove(oldestKey);
+    }
+  }
+
   Future<void> _run(Future<void> Function() action) async {
     _isBusy = true;
     _errorMessage = null;
@@ -1112,6 +1659,10 @@ class VeilMessengerController extends ChangeNotifier {
   void dispose() {
     _expirationTicker?.cancel();
     _retryTicker?.cancel();
+    _syncHintDebounce?.cancel();
+    for (final signal in _activeUploadSignals.values) {
+      signal.cancel();
+    }
     _realtimeService.disconnect();
     super.dispose();
   }
@@ -1132,4 +1683,37 @@ class _PendingReceiptUpdate {
 
   final DateTime? deliveredAt;
   final DateTime? readAt;
+}
+
+enum AttachmentTransferPhase {
+  staged,
+  preparing,
+  uploading,
+  finalizing,
+  failed,
+  canceled,
+}
+
+class AttachmentTransferSnapshot {
+  const AttachmentTransferSnapshot({
+    required this.clientMessageId,
+    required this.phase,
+    required this.progress,
+    this.errorMessage,
+    this.filename,
+    this.contentType,
+    this.sizeBytes,
+    required this.canRetry,
+    required this.canCancel,
+  });
+
+  final String clientMessageId;
+  final AttachmentTransferPhase phase;
+  final double progress;
+  final String? errorMessage;
+  final String? filename;
+  final String? contentType;
+  final int? sizeBytes;
+  final bool canRetry;
+  final bool canCancel;
 }

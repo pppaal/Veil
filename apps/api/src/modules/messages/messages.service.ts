@@ -108,6 +108,26 @@ export class MessagesService {
     const created = await this.createMessageWithRetry(auth, dto, attachmentId, members);
 
     const summary = this.toMessageSummary(created.message);
+    await this.prisma.deviceConversationState.upsert({
+      where: {
+        deviceId_conversationId: {
+          deviceId: auth.deviceId,
+          conversationId: dto.conversationId,
+        },
+      },
+      update: {
+        lastSyncedConversationOrder: summary.conversationOrder,
+      },
+      create: {
+        deviceId: auth.deviceId,
+        conversationId: dto.conversationId,
+        lastSyncedConversationOrder: summary.conversationOrder,
+      },
+    });
+    await this.prisma.device.update({
+      where: { id: auth.deviceId },
+      data: { lastSyncAt: new Date() },
+    });
 
     for (const member of members) {
       if (member.userId !== auth.userId) {
@@ -210,7 +230,7 @@ export class MessagesService {
   }
 
   async markRead(
-    auth: { userId: string },
+    auth: { userId: string; deviceId: string },
     messageId: string,
   ): Promise<MarkMessageReadResponse> {
     const message = await this.prisma.message.findUnique({
@@ -227,7 +247,18 @@ export class MessagesService {
     }
 
     const now = new Date();
-    await this.prisma.messageReceipt.upsert({
+    const existingReceipt = await this.prisma.messageReceipt.findUnique({
+      where: {
+        messageId_userId: {
+          messageId,
+          userId: auth.userId,
+        },
+      },
+    });
+    const hadDelivered = Boolean(existingReceipt?.deliveredAt);
+    const hadRead = Boolean(existingReceipt?.readAt);
+
+    const updatedReceipt = await this.prisma.messageReceipt.upsert({
       where: {
         messageId_userId: {
           messageId,
@@ -246,20 +277,47 @@ export class MessagesService {
       },
     });
 
-    this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.delivered', {
-      messageId,
-      userId: auth.userId,
-      deliveredAt: now.toISOString(),
+    if (!hadDelivered) {
+      this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.delivered', {
+        messageId,
+        userId: auth.userId,
+        deliveredAt: updatedReceipt.deliveredAt?.toISOString() ?? now.toISOString(),
+      });
+    }
+    if (!hadRead) {
+      this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.read', {
+        messageId,
+        userId: auth.userId,
+        readAt: updatedReceipt.readAt?.toISOString() ?? now.toISOString(),
+      });
+    }
+
+    await this.prisma.deviceConversationState.upsert({
+      where: {
+        deviceId_conversationId: {
+          deviceId: auth.deviceId,
+          conversationId: message.conversationId,
+        },
+      },
+      update: {
+        lastSyncedConversationOrder: message.conversationOrder,
+        lastReadConversationOrder: message.conversationOrder,
+      },
+      create: {
+        deviceId: auth.deviceId,
+        conversationId: message.conversationId,
+        lastSyncedConversationOrder: message.conversationOrder,
+        lastReadConversationOrder: message.conversationOrder,
+      },
     });
-    this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.read', {
-      messageId,
-      userId: auth.userId,
-      readAt: now.toISOString(),
+    await this.prisma.device.update({
+      where: { id: auth.deviceId },
+      data: { lastSyncAt: now },
     });
 
     return {
       messageId,
-      readAt: now.toISOString(),
+      readAt: updatedReceipt.readAt?.toISOString() ?? now.toISOString(),
     };
   }
 
@@ -322,30 +380,34 @@ export class MessagesService {
     recipientUserId: string,
     summary: ConversationMessageSummary,
   ): Promise<void> {
-    if (this.realtimeGateway.hasConnectedUser(recipientUserId)) {
-      return;
-    }
-
-    const recipient = await this.prisma.user.findUnique({
-      where: { id: recipientUserId },
-      include: {
-        activeDevice: {
-          select: { pushToken: true },
+    const connectedDeviceIds = new Set(this.realtimeGateway.connectedDeviceIdsForUser(recipientUserId));
+    const recipientDevices = await this.prisma.device.findMany({
+      where: {
+        userId: recipientUserId,
+        isActive: true,
+        revokedAt: null,
+        pushToken: {
+          not: null,
         },
+      },
+      select: {
+        id: true,
+        pushToken: true,
       },
     });
 
-    const pushToken = recipient?.activeDevice?.pushToken;
-    if (!pushToken) {
-      return;
-    }
+    for (const device of recipientDevices) {
+      if (!device.pushToken || connectedDeviceIds.has(device.id)) {
+        continue;
+      }
 
-    await this.pushService.sendMessageHint(pushToken, {
-      kind: 'message.new',
-      messageId: summary.id,
-      conversationId: summary.conversationId,
-      senderDeviceId: summary.senderDeviceId,
-      serverReceivedAt: summary.serverReceivedAt,
-    });
+      await this.pushService.sendMessageHint(device.pushToken, {
+        kind: 'message.new',
+        messageId: summary.id,
+        conversationId: summary.conversationId,
+        senderDeviceId: summary.senderDeviceId,
+        serverReceivedAt: summary.serverReceivedAt,
+      });
+    }
   }
 }

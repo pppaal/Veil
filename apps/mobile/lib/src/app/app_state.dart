@@ -12,25 +12,44 @@ import '../core/network/veil_api_client.dart';
 import '../core/realtime/realtime_service.dart';
 import '../core/security/app_lock_service.dart';
 import '../core/security/local_data_cipher.dart';
+import '../core/security/platform_security_service.dart';
+import '../core/security/sensitive_text_redactor.dart';
 import '../core/storage/app_database.dart';
 import '../core/storage/conversation_cache_service.dart';
 import '../core/storage/database_provider.dart';
 import '../core/storage/secure_storage_service.dart';
+import '../features/attachments/data/attachment_temp_file_store.dart';
 import '../features/conversations/data/veil_messenger_controller.dart';
 
 final secureStorageProvider = Provider<SecureStorageService>((ref) {
   return SecureStorageService();
 });
 
+final platformSecurityServiceProvider =
+    Provider<PlatformSecurityService>((ref) {
+  return const MethodChannelPlatformSecurityService();
+});
+
+final platformSecurityStatusProvider =
+    FutureProvider<PlatformSecurityStatus>((ref) async {
+  final service = ref.read(platformSecurityServiceProvider);
+  await service.applyPrivacyProtections();
+  return service.getStatus();
+});
+
 final appDatabaseFutureProvider = FutureProvider<AppDatabase>((ref) async {
-  final database = await createAppDatabase();
+  final database = await createAppDatabase(
+    secureStorage: ref.read(secureStorageProvider),
+    platformSecurityService: ref.read(platformSecurityServiceProvider),
+  );
   ref.onDispose(database.close);
   return database;
 });
 
 final cacheEpochProvider = StateProvider<int>((ref) => 0);
 
-final conversationCacheProvider = FutureProvider<ConversationCacheService?>((ref) async {
+final conversationCacheProvider =
+    FutureProvider<ConversationCacheService?>((ref) async {
   ref.watch(cacheEpochProvider);
   if (!VeilConfig.enableLocalCache) {
     return null;
@@ -49,6 +68,14 @@ final conversationCacheProvider = FutureProvider<ConversationCacheService?>((ref
 
 final apiClientProvider = Provider<VeilApiClient>((ref) {
   return VeilApiClient(baseUrl: VeilConfig.apiBaseUrl);
+});
+
+final attachmentTempFileStoreProvider =
+    Provider<AttachmentTempFileStore>((ref) {
+  return DefaultAttachmentTempFileStore(
+    onDirectoryPrepared: (path) =>
+        ref.read(platformSecurityServiceProvider).excludePathFromBackup(path),
+  );
 });
 
 final cryptoAdapterProvider = Provider<CryptoAdapter>((ref) {
@@ -88,16 +115,30 @@ class LocalSecuritySnapshot {
     required this.hasDeviceSecretRefs,
     required this.hasPin,
     required this.biometricsAvailable,
+    required this.integrityCompromised,
+    required this.integrityReasons,
+    required this.screenCaptureProtectionSupported,
+    required this.screenCaptureProtectionEnabled,
+    required this.appPreviewProtectionEnabled,
   });
 
   final bool hasDeviceSecretRefs;
   final bool hasPin;
   final bool biometricsAvailable;
+  final bool integrityCompromised;
+  final List<String> integrityReasons;
+  final bool screenCaptureProtectionSupported;
+  final bool screenCaptureProtectionEnabled;
+  final bool appPreviewProtectionEnabled;
 }
 
-final localSecuritySnapshotProvider = FutureProvider<LocalSecuritySnapshot>((ref) async {
+final localSecuritySnapshotProvider =
+    FutureProvider<LocalSecuritySnapshot>((ref) async {
   final storage = ref.read(secureStorageProvider);
   final appLock = ref.read(appLockServiceProvider);
+  final platformSecurityService = ref.read(platformSecurityServiceProvider);
+  await platformSecurityService.applyPrivacyProtections();
+  final platformSecurity = await platformSecurityService.getStatus();
   final values = await Future.wait<bool>([
     storage.hasDeviceSecretRefs(),
     appLock.hasPin(),
@@ -108,6 +149,13 @@ final localSecuritySnapshotProvider = FutureProvider<LocalSecuritySnapshot>((ref
     hasDeviceSecretRefs: values[0],
     hasPin: values[1],
     biometricsAvailable: values[2],
+    integrityCompromised: platformSecurity.integrityCompromised,
+    integrityReasons: platformSecurity.integrityReasons,
+    screenCaptureProtectionSupported:
+        platformSecurity.screenCaptureProtectionSupported,
+    screenCaptureProtectionEnabled:
+        platformSecurity.screenCaptureProtectionEnabled,
+    appPreviewProtectionEnabled: platformSecurity.appPreviewProtectionEnabled,
   );
 });
 
@@ -139,9 +187,14 @@ class AppSessionState {
   final String? errorMessage;
 
   bool get isAuthenticated =>
-      accessToken != null && userId != null && deviceId != null && handle != null;
+      accessToken != null &&
+      userId != null &&
+      deviceId != null &&
+      handle != null;
 
-  bool get isAuthenticating => authFlowStage != AuthFlowStage.idle && authFlowStage != AuthFlowStage.complete;
+  bool get isAuthenticating =>
+      authFlowStage != AuthFlowStage.idle &&
+      authFlowStage != AuthFlowStage.complete;
 
   AppSessionState copyWith({
     Object? accessToken = _unset,
@@ -156,16 +209,23 @@ class AppSessionState {
     Object? errorMessage = _unset,
   }) {
     return AppSessionState(
-      accessToken: identical(accessToken, _unset) ? this.accessToken : accessToken as String?,
+      accessToken: identical(accessToken, _unset)
+          ? this.accessToken
+          : accessToken as String?,
       userId: identical(userId, _unset) ? this.userId : userId as String?,
-      deviceId: identical(deviceId, _unset) ? this.deviceId : deviceId as String?,
+      deviceId:
+          identical(deviceId, _unset) ? this.deviceId : deviceId as String?,
       handle: identical(handle, _unset) ? this.handle : handle as String?,
-      displayName: identical(displayName, _unset) ? this.displayName : displayName as String?,
+      displayName: identical(displayName, _unset)
+          ? this.displayName
+          : displayName as String?,
       onboardingAccepted: onboardingAccepted ?? this.onboardingAccepted,
       locked: locked ?? this.locked,
       initializing: initializing ?? this.initializing,
       authFlowStage: authFlowStage ?? this.authFlowStage,
-      errorMessage: identical(errorMessage, _unset) ? this.errorMessage : errorMessage as String?,
+      errorMessage: identical(errorMessage, _unset)
+          ? this.errorMessage
+          : errorMessage as String?,
     );
   }
 }
@@ -176,8 +236,10 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     this._apiClient,
     this._cryptoAdapter, {
     ConversationCacheService? cacheService,
+    AttachmentTempFileStore? attachmentTempFileStore,
     VoidCallback? onLocalCacheMaterialChanged,
   })  : _cacheService = cacheService,
+        _attachmentTempFileStore = attachmentTempFileStore,
         _onLocalCacheMaterialChanged = onLocalCacheMaterialChanged,
         super(const AppSessionState());
 
@@ -185,6 +247,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   final VeilApiClient _apiClient;
   final CryptoAdapter _cryptoAdapter;
   final ConversationCacheService? _cacheService;
+  final AttachmentTempFileStore? _attachmentTempFileStore;
   final VoidCallback? _onLocalCacheMaterialChanged;
   DeviceIdentityMaterial? _pendingTransferIdentity;
   DeviceAuthKeyMaterial? _pendingTransferAuthKey;
@@ -227,10 +290,12 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     required String handle,
     String? displayName,
   }) async {
-    state = state.copyWith(errorMessage: null, authFlowStage: AuthFlowStage.generatingKeys);
+    state = state.copyWith(
+        errorMessage: null, authFlowStage: AuthFlowStage.generatingKeys);
 
     try {
-      final materialSeed = 'device-material-${DateTime.now().microsecondsSinceEpoch}';
+      final materialSeed =
+          'device-material-${DateTime.now().microsecondsSinceEpoch}';
       final identity =
           await _cryptoAdapter.identity.generateDeviceIdentity(materialSeed);
       final authKeyMaterial =
@@ -325,6 +390,21 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     }
   }
 
+  Future<void> revokeListedDevice(String deviceId) async {
+    final accessToken = state.accessToken;
+    final currentDeviceId = state.deviceId;
+    if (accessToken == null || deviceId.isEmpty) {
+      return;
+    }
+
+    if (currentDeviceId == deviceId) {
+      await revokeCurrentDevice();
+      return;
+    }
+
+    await _apiClient.revokeDevice(accessToken, deviceId);
+  }
+
   Future<void> logout() async {
     await _clearLocalState(
       preserveOnboardingAccepted: true,
@@ -373,6 +453,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       preservePin: preservePin,
     );
     await _cacheService?.clearAll();
+    await _attachmentTempFileStore?.purgeAll();
     _onLocalCacheMaterialChanged?.call();
     _clearPendingTransferClaim();
     state = state.copyWith(
@@ -383,9 +464,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       displayName: null,
       errorMessage: null,
       locked: true,
-      onboardingAccepted: preserveOnboardingAccepted
-          ? state.onboardingAccepted
-          : false,
+      onboardingAccepted:
+          preserveOnboardingAccepted ? state.onboardingAccepted : false,
       authFlowStage: AuthFlowStage.idle,
     );
   }
@@ -402,7 +482,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         throw StateError('API mode is required for device transfer.');
       }
 
-      final materialSeed = 'device-transfer-${DateTime.now().microsecondsSinceEpoch}';
+      final materialSeed =
+          'device-transfer-${DateTime.now().microsecondsSinceEpoch}';
       final identity =
           await _cryptoAdapter.identity.generateDeviceIdentity(materialSeed);
       final authKeyMaterial =
@@ -438,7 +519,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       );
     } catch (error) {
       final handled = await handleSecurityException(error);
-      state = state.copyWith(errorMessage: handled ? null : _formatUserFacingError(error));
+      state = state.copyWith(
+          errorMessage: handled ? null : _formatUserFacingError(error));
       rethrow;
     }
   }
@@ -520,7 +602,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       _clearPendingTransferClaim();
     } catch (error) {
       final handled = await handleSecurityException(error);
-      state = state.copyWith(errorMessage: handled ? null : _formatUserFacingError(error));
+      state = state.copyWith(
+          errorMessage: handled ? null : _formatUserFacingError(error));
       rethrow;
     }
   }
@@ -544,6 +627,7 @@ final appSessionProvider =
           data: (cache) => cache,
           orElse: () => null,
         ),
+    attachmentTempFileStore: ref.read(attachmentTempFileStoreProvider),
     onLocalCacheMaterialChanged: () {
       ref.read(cacheEpochProvider.notifier).state++;
       ref.invalidate(conversationCacheProvider);
@@ -563,8 +647,11 @@ final messengerControllerProvider =
           data: (cache) => cache,
           orElse: () => null,
         ),
+    attachmentTempFileStore: ref.read(attachmentTempFileStoreProvider),
     onSecurityException: (error) async {
-      await ref.read(appSessionProvider.notifier).handleSecurityException(error);
+      await ref
+          .read(appSessionProvider.notifier)
+          .handleSecurityException(error);
     },
   );
 
@@ -592,7 +679,7 @@ String _formatUserFacingError(Object error) {
 
   switch (normalized) {
     case 'Authenticated API session required.':
-      return 'This device is no longer bound. Sign in again on the active device.';
+      return 'This device no longer has a trusted VEIL session.';
     case 'API mode is required for device transfer.':
       return 'Device transfer is available only while connected to the VEIL API.';
     case 'Claim this new device before completion.':
@@ -625,11 +712,12 @@ String _formatUserFacingError(Object error) {
   if (normalized == 'API endpoint must use TLS outside local development.') {
     return 'The VEIL API endpoint must use TLS outside local development.';
   }
-  if (normalized == 'Realtime endpoint must use TLS outside local development.') {
+  if (normalized ==
+      'Realtime endpoint must use TLS outside local development.') {
     return 'The VEIL realtime endpoint must use TLS outside local development.';
   }
 
-  return normalized;
+  return redactSensitiveText(normalized);
 }
 
 String _platformName() {

@@ -34,18 +34,25 @@ class FlutterSecureKeyValueStore implements SecureKeyValueStore {
 }
 
 class SecureStorageService {
+  static const int currentPinIterations = 210000;
+
   SecureStorageService([SecureKeyValueStore? storage])
       : _storage = storage ??
             const FlutterSecureKeyValueStore(
               FlutterSecureStorage(
-                aOptions: AndroidOptions(encryptedSharedPreferences: true),
+                aOptions: AndroidOptions(
+                  encryptedSharedPreferences: true,
+                  resetOnError: true,
+                ),
                 iOptions: IOSOptions(
-                  accessibility: KeychainAccessibility.first_unlock_this_device,
+                  accessibility: KeychainAccessibility.unlocked_this_device,
                   synchronizable: false,
+                  accountName: 'veil.mobile.secure_storage',
                 ),
                 mOptions: MacOsOptions(
-                  accessibility: KeychainAccessibility.first_unlock_this_device,
+                  accessibility: KeychainAccessibility.unlocked_this_device,
                   synchronizable: false,
+                  accountName: 'veil.mobile.secure_storage',
                 ),
               ),
             );
@@ -56,6 +63,8 @@ class SecureStorageService {
   static const _authPrivateKey = 'veil.auth.private_key';
   static const _authPublicKey = 'veil.auth.public_key';
   static const _pinKey = 'veil.app_lock.pin_verifier';
+  static const _pinFailuresKey = 'veil.app_lock.pin_failures';
+  static const _pinLockoutUntilKey = 'veil.app_lock.pin_lockout_until';
   static const _cacheKey = 'veil.cache.encryption_key';
   static const _accessTokenKey = 'veil.session.access_token';
   static const _userIdKey = 'veil.session.user_id';
@@ -77,7 +86,8 @@ class SecureStorageService {
   Future<bool> hasDeviceSecretRefs() async {
     final identityPrivateRef = await _storage.read(key: _identityKey);
     final authPrivateKey = await _storage.read(key: _authPrivateKey);
-    return (identityPrivateRef?.isNotEmpty ?? false) && (authPrivateKey?.isNotEmpty ?? false);
+    return (identityPrivateRef?.isNotEmpty ?? false) &&
+        (authPrivateKey?.isNotEmpty ?? false);
   }
 
   Future<StoredAuthKeyMaterial?> readAuthKeyMaterial() async {
@@ -96,11 +106,17 @@ class SecureStorageService {
 
   Future<void> persistPin(String pin) async {
     final salt = List<int>.generate(16, (_) => Random.secure().nextInt(256));
-    final verifier = await _derivePinVerifier(pin, salt);
+    final verifier = await _derivePinVerifier(
+      pin,
+      salt,
+      iterations: currentPinIterations,
+    );
     await _storage.write(
       key: _pinKey,
-      value: 'v1.${_encodeBytes(salt)}.${_encodeBytes(verifier)}',
+      value:
+          'v2.$currentPinIterations.${_encodeBytes(salt)}.${_encodeBytes(verifier)}',
     );
+    await clearPinThrottleState();
   }
 
   Future<bool> verifyPin(String pin) async {
@@ -110,20 +126,56 @@ class SecureStorageService {
     }
 
     final parts = stored.split('.');
-    if (parts.length != 3 || parts[0] != 'v1') {
+    if (parts.isEmpty) {
       return false;
     }
 
-    final salt = _decodeBytes(parts[1]);
-    final expected = parts[2];
-    final derived = _encodeBytes(await _derivePinVerifier(pin, salt));
-    return derived == expected;
+    switch (parts[0]) {
+      case 'v1':
+        if (parts.length != 3) {
+          return false;
+        }
+
+        final salt = _decodeBytes(parts[1]);
+        final expected = _decodeBytes(parts[2]);
+        final derived = await _derivePinVerifier(
+          pin,
+          salt,
+          iterations: 120000,
+        );
+        final valid = _constantTimeEquals(derived, expected);
+        if (valid) {
+          await persistPin(pin);
+        }
+        return valid;
+      case 'v2':
+        if (parts.length != 4) {
+          return false;
+        }
+
+        final iterations = int.tryParse(parts[1]);
+        if (iterations == null || iterations < 120000) {
+          return false;
+        }
+        final salt = _decodeBytes(parts[2]);
+        final expected = _decodeBytes(parts[3]);
+        final derived = await _derivePinVerifier(
+          pin,
+          salt,
+          iterations: iterations,
+        );
+        return _constantTimeEquals(derived, expected);
+      default:
+        return false;
+    }
   }
 
-  Future<bool> hasPin() async => (await _storage.read(key: _pinKey))?.isNotEmpty ?? false;
+  Future<bool> hasPin() async =>
+      (await _storage.read(key: _pinKey))?.isNotEmpty ?? false;
 
   Future<void> clearPin() async {
     await _storage.delete(key: _pinKey);
+    await clearPinThrottleState();
   }
 
   Future<String> readOrCreateCacheKey() async {
@@ -137,6 +189,15 @@ class SecureStorageService {
     );
     await _storage.write(key: _cacheKey, value: generated);
     return generated;
+  }
+
+  Future<String> readOrCreateDatabaseKeyHex() async {
+    final cacheKey = await readOrCreateCacheKey();
+    final derived = await _deriveScopedKey(
+      _decodeBytes(cacheKey),
+      'veil.local-database.v1',
+    );
+    return _encodeHex(derived);
   }
 
   Future<void> persistSession({
@@ -160,7 +221,10 @@ class SecureStorageService {
     final handle = await _storage.read(key: _handleKey);
     final displayName = await _storage.read(key: _displayNameKey);
 
-    if (accessToken == null || userId == null || deviceId == null || handle == null) {
+    if (accessToken == null ||
+        userId == null ||
+        deviceId == null ||
+        handle == null) {
       return null;
     }
 
@@ -206,6 +270,35 @@ class SecureStorageService {
     return (await _storage.read(key: _onboardingAcceptedKey)) == 'true';
   }
 
+  Future<PinThrottleState> readPinThrottleState() async {
+    final failuresRaw = await _storage.read(key: _pinFailuresKey);
+    final lockoutUntilRaw = await _storage.read(key: _pinLockoutUntilKey);
+    final failures = int.tryParse(failuresRaw ?? '') ?? 0;
+    final lockoutUntil = lockoutUntilRaw == null || lockoutUntilRaw.isEmpty
+        ? null
+        : DateTime.tryParse(lockoutUntilRaw)?.toUtc();
+    return PinThrottleState(
+      failedAttempts: failures < 0 ? 0 : failures,
+      lockoutUntil: lockoutUntil,
+    );
+  }
+
+  Future<void> persistPinThrottleState(PinThrottleState state) async {
+    await _storage.write(
+      key: _pinFailuresKey,
+      value: '${state.failedAttempts < 0 ? 0 : state.failedAttempts}',
+    );
+    await _storage.write(
+      key: _pinLockoutUntilKey,
+      value: state.lockoutUntil?.toUtc().toIso8601String(),
+    );
+  }
+
+  Future<void> clearPinThrottleState() async {
+    await _storage.delete(key: _pinFailuresKey);
+    await _storage.delete(key: _pinLockoutUntilKey);
+  }
+
   Future<void> wipeLocalDeviceState({
     bool preserveOnboardingAccepted = true,
     bool preservePin = false,
@@ -213,6 +306,7 @@ class SecureStorageService {
     await clearSession();
     await clearDeviceSecrets();
     await clearCacheKey();
+    await clearPinThrottleState();
     if (!preservePin) {
       await clearPin();
     }
@@ -221,10 +315,14 @@ class SecureStorageService {
     }
   }
 
-  static Future<List<int>> _derivePinVerifier(String pin, List<int> salt) async {
+  static Future<List<int>> _derivePinVerifier(
+    String pin,
+    List<int> salt, {
+    required int iterations,
+  }) async {
     final pbkdf2 = Pbkdf2(
       macAlgorithm: Hmac.sha256(),
-      iterations: 120000,
+      iterations: iterations,
       bits: 256,
     );
     final key = await pbkdf2.deriveKeyFromPassword(
@@ -243,6 +341,42 @@ class SecureStorageService {
       '=',
     );
     return base64Url.decode(normalized);
+  }
+
+  static bool _constantTimeEquals(List<int> left, List<int> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    var difference = 0;
+    for (var index = 0; index < left.length; index++) {
+      difference |= left[index] ^ right[index];
+    }
+    return difference == 0;
+  }
+
+  static Future<List<int>> _deriveScopedKey(
+    List<int> seed,
+    String context,
+  ) async {
+    final hkdf = Hkdf(
+      hmac: Hmac.sha256(),
+      outputLength: 32,
+    );
+    final key = await hkdf.deriveKey(
+      secretKey: SecretKey(seed),
+      nonce: utf8.encode('veil-device-scope'),
+      info: utf8.encode(context),
+    );
+    return key.extractBytes();
+  }
+
+  static String _encodeHex(List<int> bytes) {
+    final buffer = StringBuffer();
+    for (final byte in bytes) {
+      buffer.write(byte.toRadixString(16).padLeft(2, '0'));
+    }
+    return buffer.toString();
   }
 }
 
@@ -270,4 +404,17 @@ class StoredAuthKeyMaterial {
 
   final String privateKey;
   final String publicKey;
+}
+
+class PinThrottleState {
+  const PinThrottleState({
+    this.failedAttempts = 0,
+    this.lockoutUntil,
+  });
+
+  final int failedAttempts;
+  final DateTime? lockoutUntil;
+
+  bool get isLockedOut =>
+      lockoutUntil != null && lockoutUntil!.isAfter(DateTime.now().toUtc());
 }

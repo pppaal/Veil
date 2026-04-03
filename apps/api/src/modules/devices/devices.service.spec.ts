@@ -5,7 +5,71 @@ import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeRealtimeGateway } from '../../../test/support/fake-services';
 
 describe('DevicesService', () => {
-  it('revokes the current device and clears activeDeviceId when needed', async () => {
+  it('lists the device graph ordered by active and recent usage', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+
+    prisma.users.push({
+      id: 'user-1',
+      handle: 'icarus',
+      displayName: null,
+      avatarPath: null,
+      status: 'active',
+      activeDeviceId: 'device-2',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    prisma.devices.push(
+      {
+        id: 'device-1',
+        userId: 'user-1',
+        platform: 'ios',
+        deviceName: 'Old iPhone',
+        publicIdentityKey: 'pub-1',
+        signedPrekeyBundle: 'prekey-1',
+        authPublicKey: 'auth-1',
+        pushToken: null,
+        isActive: false,
+        revokedAt: new Date('2026-04-01T09:00:00.000Z'),
+        trustedAt: new Date('2026-03-01T09:00:00.000Z'),
+        joinedFromDeviceId: null,
+        createdAt: new Date('2026-03-01T09:00:00.000Z'),
+        lastSeenAt: new Date('2026-03-31T09:00:00.000Z'),
+        lastSyncAt: null,
+      },
+      {
+        id: 'device-2',
+        userId: 'user-1',
+        platform: 'android',
+        deviceName: 'Pixel Fold',
+        publicIdentityKey: 'pub-2',
+        signedPrekeyBundle: 'prekey-2',
+        authPublicKey: 'auth-2',
+        pushToken: 'push-2',
+        isActive: true,
+        revokedAt: null,
+        trustedAt: new Date('2026-03-15T09:00:00.000Z'),
+        joinedFromDeviceId: null,
+        createdAt: new Date('2026-03-15T09:00:00.000Z'),
+        lastSeenAt: new Date('2026-04-02T09:00:00.000Z'),
+        lastSyncAt: new Date('2026-04-02T08:55:00.000Z'),
+      },
+    );
+
+    const listed = await service.list('user-1', 'device-2');
+
+    expect(listed.activeDeviceId).toBe('device-2');
+    expect(listed.items.map((item) => item.id)).toEqual(['device-2', 'device-1']);
+    expect(listed.items[0]).toMatchObject({
+      id: 'device-2',
+      deviceName: 'Pixel Fold',
+      platform: 'android',
+      isActive: true,
+      trustState: 'current',
+    });
+  });
+
+  it('revokes the current preferred device and promotes another trusted device when available', async () => {
     const prisma = new FakePrismaService();
     const realtime = new FakeRealtimeGateway();
     const service = new DevicesService(prisma as never, realtime as never);
@@ -31,8 +95,28 @@ describe('DevicesService', () => {
       pushToken: 'push-token',
       isActive: true,
       revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
       createdAt: new Date(),
       lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+    prisma.devices.push({
+      id: 'device-2',
+      userId: 'user-1',
+      platform: 'windows',
+      deviceName: 'Desktop',
+      publicIdentityKey: 'pub-2',
+      signedPrekeyBundle: 'prekey-2',
+      authPublicKey: 'auth-2',
+      pushToken: 'push-2',
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(Date.now() - 1000),
+      joinedFromDeviceId: 'device-1',
+      createdAt: new Date(),
+      lastSeenAt: new Date(Date.now() + 1000),
+      lastSyncAt: new Date(),
     });
 
     const revoked = await service.revoke('user-1', { deviceId: 'device-1' });
@@ -41,7 +125,7 @@ describe('DevicesService', () => {
     expect(prisma.devices[0]!.isActive).toBe(false);
     expect(prisma.devices[0]!.revokedAt).not.toBeNull();
     expect(prisma.devices[0]!.pushToken).toBeNull();
-    expect(prisma.users[0]!.activeDeviceId).toBeNull();
+    expect(prisma.users[0]!.activeDeviceId).toBe('device-2');
     expect(realtime.disconnectedDevices.has('device-1')).toBe(true);
   });
 
@@ -60,8 +144,11 @@ describe('DevicesService', () => {
       pushToken: null,
       isActive: true,
       revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
       createdAt: new Date(),
       lastSeenAt: new Date(),
+      lastSyncAt: null,
     });
 
     await expect(service.revoke('user-1', { deviceId: 'device-2' })).rejects.toBeInstanceOf(

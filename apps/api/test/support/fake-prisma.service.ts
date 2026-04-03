@@ -20,8 +20,11 @@ type DeviceRecord = {
   pushToken: string | null;
   isActive: boolean;
   revokedAt: Date | null;
+  trustedAt: Date;
+  joinedFromDeviceId: string | null;
   createdAt: Date;
   lastSeenAt: Date;
+  lastSyncAt: Date | null;
 };
 
 type ConversationRecord = {
@@ -72,6 +75,15 @@ type MessageReceiptRecord = {
   readAt: Date | null;
 };
 
+type DeviceConversationStateRecord = {
+  id: string;
+  deviceId: string;
+  conversationId: string;
+  lastSyncedConversationOrder: number | null;
+  lastReadConversationOrder: number | null;
+  updatedAt: Date;
+};
+
 type DeviceTransferSessionRecord = {
   id: string;
   userId: string;
@@ -92,6 +104,7 @@ export class FakePrismaService {
   attachments: AttachmentRecord[] = [];
   messages: MessageRecord[] = [];
   messageReceipts: MessageReceiptRecord[] = [];
+  deviceConversationStates: DeviceConversationStateRecord[] = [];
   transferSessions: DeviceTransferSessionRecord[] = [];
 
   user = {
@@ -103,6 +116,7 @@ export class FakePrismaService {
   device = {
     findUnique: async (_args: any) => undefined as any,
     findFirst: async (_args: any) => undefined as any,
+    findMany: async (_args: any) => [] as any[],
     create: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
   };
@@ -120,6 +134,7 @@ export class FakePrismaService {
   attachment = {
     create: async (_args: any) => undefined as any,
     findUnique: async (_args: any) => undefined as any,
+    findMany: async (_args: any) => [] as any[],
     update: async (_args: any) => undefined as any,
   };
 
@@ -131,6 +146,12 @@ export class FakePrismaService {
   };
 
   messageReceipt = {
+    findUnique: async (_args: any) => undefined as any,
+    upsert: async (_args: any) => undefined as any,
+  };
+
+  deviceConversationState = {
+    findUnique: async (_args: any) => undefined as any,
     upsert: async (_args: any) => undefined as any,
   };
 
@@ -217,6 +238,69 @@ export class FakePrismaService {
       return select ? this.pick(record, select) : record;
     };
 
+    this.device.findMany = async ({ where, orderBy, select, include }: any) => {
+      let records = [...this.devices];
+      if (where?.userId) {
+        records = records.filter((item) => item.userId === where.userId);
+      }
+      if (where?.isActive !== undefined) {
+        records = records.filter((item) => item.isActive === where.isActive);
+      }
+      if (where?.revokedAt === null) {
+        records = records.filter((item) => item.revokedAt === null);
+      }
+      if (where?.pushToken?.not === null) {
+        records = records.filter((item) => item.pushToken !== null);
+      }
+      if (where?.id?.notIn) {
+        records = records.filter((item) => !where.id.notIn.includes(item.id));
+      }
+
+      if (orderBy) {
+        const orderRules = Array.isArray(orderBy) ? orderBy : [orderBy];
+        records.sort((left, right) => {
+          for (const rule of orderRules) {
+            const entry = Object.entries(rule)[0];
+            if (entry == null) {
+              continue;
+            }
+            const key = entry[0] as keyof DeviceRecord;
+            const direction = entry[1];
+            const leftValue = left[key];
+            const rightValue = right[key];
+            let comparison = 0;
+            if (typeof leftValue === 'boolean' && typeof rightValue === 'boolean') {
+              comparison = Number(leftValue) - Number(rightValue);
+            } else if (leftValue instanceof Date && rightValue instanceof Date) {
+              comparison = leftValue.getTime() - rightValue.getTime();
+            } else {
+              comparison = String(leftValue).localeCompare(String(rightValue));
+            }
+            if (comparison != 0) {
+              return direction === 'desc' ? -comparison : comparison;
+            }
+          }
+          return 0;
+        });
+      }
+
+      if (select) {
+        return records.map((record) => this.pick(record, select));
+      }
+      if (include?.joinedFromDevice) {
+        return records.map((record) => ({
+          ...record,
+          joinedFromDevice: record.joinedFromDeviceId
+            ? this.pick(
+                this.devices.find((item) => item.id === record.joinedFromDeviceId)!,
+                include.joinedFromDevice.select,
+              )
+            : null,
+        }));
+      }
+      return records;
+    };
+
     this.device.create = async ({ data }: any) => {
       const record: DeviceRecord = {
         id: makeId('device'),
@@ -229,8 +313,11 @@ export class FakePrismaService {
         pushToken: data.pushToken ?? null,
         isActive: data.isActive ?? true,
         revokedAt: data.revokedAt ?? null,
+        trustedAt: data.trustedAt ?? new Date(),
+        joinedFromDeviceId: data.joinedFromDeviceId ?? null,
         createdAt: new Date(),
         lastSeenAt: data.lastSeenAt ?? new Date(),
+        lastSyncAt: data.lastSyncAt ?? null,
       };
       this.devices.push(record);
       return record;
@@ -327,6 +414,20 @@ export class FakePrismaService {
       return select ? this.pick(record, select) : record;
     };
 
+    this.attachment.findMany = async ({ where, select }: any = {}) => {
+      let records = [...this.attachments];
+      if (where?.uploaderDeviceId) {
+        records = records.filter((item) => item.uploaderDeviceId === where.uploaderDeviceId);
+      }
+      if (where?.uploadStatus) {
+        records = records.filter((item) => item.uploadStatus === where.uploadStatus);
+      }
+      if (where?.createdAt?.lt) {
+        records = records.filter((item) => item.createdAt < where.createdAt.lt);
+      }
+      return select ? records.map((record) => this.pick(record, select)) : records;
+    };
+
     this.attachment.update = async ({ where, data }: any) => {
       const record = this.attachments.find((item) => item.id === where.id)!;
       Object.assign(record, data);
@@ -365,6 +466,11 @@ export class FakePrismaService {
     this.message.findMany = async ({ where, take, cursor, include }: any) => {
       let records = this.messages
         .filter((item) => item.conversationId === where.conversationId)
+        .filter((item) =>
+          where?.conversationOrder?.lt === undefined
+            ? true
+            : item.conversationOrder < where.conversationOrder.lt,
+        )
         .sort((a, b) => b.conversationOrder - a.conversationOrder);
       if (cursor?.id) {
         const index = records.findIndex((item) => item.id === cursor.id);
@@ -373,10 +479,13 @@ export class FakePrismaService {
       return records.slice(0, take ?? records.length).map((record) => this.hydrateMessage(record, include));
     };
 
-    this.message.findUnique = async ({ where, include }: any) => {
+    this.message.findUnique = async ({ where, include, select }: any) => {
       const record = this.messages.find((item) => item.id === where.id);
       if (!record) {
         return null;
+      }
+      if (select) {
+        return this.pick(record as unknown as Record<string, any>, select);
       }
       const conversation = this.conversations.find((item) => item.id === record.conversationId)!;
       return {
@@ -441,6 +550,50 @@ export class FakePrismaService {
       };
       this.messageReceipts.push(created);
       return created;
+    };
+
+    this.messageReceipt.findUnique = async ({ where }: any) => {
+      return (
+        this.messageReceipts.find(
+          (item) =>
+            item.messageId === where.messageId_userId.messageId &&
+            item.userId === where.messageId_userId.userId,
+        ) ?? null
+      );
+    };
+
+    this.deviceConversationState.findUnique = async ({ where }: any) => {
+      return (
+        this.deviceConversationStates.find(
+          (item) =>
+            item.deviceId === where.deviceId_conversationId.deviceId &&
+            item.conversationId === where.deviceId_conversationId.conversationId,
+        ) ?? null
+      );
+    };
+
+    this.deviceConversationState.upsert = async ({ where, update, create }: any) => {
+      const record = this.deviceConversationStates.find(
+        (item) =>
+          item.deviceId === where.deviceId_conversationId.deviceId &&
+          item.conversationId === where.deviceId_conversationId.conversationId,
+      );
+
+      if (record) {
+        Object.assign(record, update, { updatedAt: new Date() });
+        return record;
+      }
+
+      const createdRecord: DeviceConversationStateRecord = {
+        id: makeId('device-state'),
+        deviceId: create.deviceId,
+        conversationId: create.conversationId,
+        lastSyncedConversationOrder: create.lastSyncedConversationOrder ?? null,
+        lastReadConversationOrder: create.lastReadConversationOrder ?? null,
+        updatedAt: new Date(),
+      };
+      this.deviceConversationStates.push(createdRecord);
+      return createdRecord;
     };
 
     this.deviceTransferSession.create = async ({ data }: any) => {

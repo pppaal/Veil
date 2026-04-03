@@ -148,8 +148,7 @@ export class AuthService {
     if (
       !device ||
       !device.isActive ||
-      device.revokedAt ||
-      device.user.activeDeviceId !== device.id
+      device.revokedAt
     ) {
       throw unauthorized('device_not_active', 'Device is not active');
     }

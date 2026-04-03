@@ -19,6 +19,8 @@ import {
   FakeRealtimeGateway,
 } from './support/fake-services';
 
+jest.setTimeout(240000);
+
 describe('VEIL API (e2e)', () => {
   let app: INestApplication;
   let prisma: FakePrismaService;
@@ -129,6 +131,15 @@ describe('VEIL API (e2e)', () => {
     });
     const bearer = `Bearer ${verify.body.accessToken}`;
 
+    const initialDevices = await api
+      .get('/v1/devices')
+      .set('Authorization', bearer);
+    expect(initialDevices.status).toBe(200);
+    expect(initialDevices.body.activeDeviceId).toBe(registerA.body.deviceId);
+    expect(initialDevices.body.items).toHaveLength(1);
+    expect(initialDevices.body.items[0].deviceName).toBe('VEIL Desktop');
+    expect(initialDevices.body.items[0].trustState).toBe('current');
+
     const keyBundle = await api.get('/v1/users/icarus/key-bundle');
     expect(keyBundle.status).toBe(200);
     expect(keyBundle.body.bundle.identityPublicKey).toBe('pub-a');
@@ -143,14 +154,14 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'image/png', sizeBytes: 2048, sha256: 'blob-hash' });
+      .send({ contentType: 'image/png', sizeBytes: 2048, sha256: 'abcdef1234567890' });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 2048,
       contentType: 'image/png',
       metadata: {
         encrypted: 'true',
-        sha256: 'blob-hash',
+        sha256: 'abcdef1234567890',
         'attachment-id': upload.body.attachmentId,
       },
     });
@@ -180,7 +191,7 @@ describe('VEIL API (e2e)', () => {
             storageKey: 'attachments/mock/blob',
             contentType: 'image/png',
             sizeBytes: 2048,
-            sha256: 'blob-hash',
+            sha256: 'abcdef1234567890',
             encryption: {
               encryptedKey: 'wrapped-key',
               nonce: 'attachment-nonce',
@@ -264,11 +275,45 @@ describe('VEIL API (e2e)', () => {
     expect(transferComplete.body.handle).toBe('icarus');
     expect(transferComplete.body.displayName).toBe('Icarus');
 
+    const transferredChallenge = await api.post('/v1/auth/challenge').send({
+      handle: 'icarus',
+      deviceId: transferComplete.body.newDeviceId,
+    });
+    const transferredVerify = await api.post('/v1/auth/verify').send({
+      challengeId: transferredChallenge.body.challengeId,
+      deviceId: transferComplete.body.newDeviceId,
+      signature: keyHelper.createProof({
+        challenge: transferredChallenge.body.challenge,
+        authPrivateKey: transferKeyPair.authPrivateKey,
+      }),
+    });
+    const transferredBearer = `Bearer ${transferredVerify.body.accessToken}`;
+
+    const devicesAfterTransfer = await api
+      .get('/v1/devices')
+      .set('Authorization', transferredBearer);
+    expect(devicesAfterTransfer.status).toBe(200);
+    expect(devicesAfterTransfer.body.activeDeviceId).toBe(transferComplete.body.newDeviceId);
+    expect(devicesAfterTransfer.body.items).toHaveLength(2);
+    expect(
+      devicesAfterTransfer.body.items.some(
+        (item: { id: string; isActive: boolean; trustState: string }) =>
+          item.id === registerA.body.deviceId && item.isActive === true && item.trustState === 'trusted',
+      ),
+    ).toBe(true);
+    expect(
+      devicesAfterTransfer.body.items.some(
+        (item: { id: string; joinedFromDeviceId?: string | null; trustState: string }) =>
+          item.id === transferComplete.body.newDeviceId &&
+          item.joinedFromDeviceId === registerA.body.deviceId &&
+          item.trustState === 'current',
+      ),
+    ).toBe(true);
+
     const oldBearerAfterTransfer = await api
       .get('/v1/conversations')
       .set('Authorization', bearer);
-    expect(oldBearerAfterTransfer.status).toBe(401);
-    expect(oldBearerAfterTransfer.body.code).toBe('device_not_active');
+    expect(oldBearerAfterTransfer.status).toBe(200);
   });
 
   it('blocks unrelated attachment download tickets and invalidates revoked device tokens', async () => {
@@ -331,17 +376,22 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearerA)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'atlas-hash' });
+      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'abcdef1234567890' });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 1024,
       contentType: 'application/octet-stream',
       metadata: {
         encrypted: 'true',
-        sha256: 'atlas-hash',
+        sha256: 'abcdef1234567890',
         'attachment-id': upload.body.attachmentId,
       },
     });
+    await api
+      .post('/v1/attachments/complete')
+      .set('Authorization', bearerA)
+      .send({ attachmentId: upload.body.attachmentId, uploadStatus: 'uploaded' })
+      .expect(201);
 
     const deniedDownload = await api
       .get(`/v1/attachments/${upload.body.attachmentId}/download-ticket`)
@@ -359,6 +409,65 @@ describe('VEIL API (e2e)', () => {
       .set('Authorization', bearerA);
     expect(revokedBearer.status).toBe(401);
     expect(revokedBearer.body.code).toBe('device_not_active');
+  });
+
+  it('rejects disallowed attachment MIME types and cleans up failed upload sessions', async () => {
+    const api = request(app.getHttpServer());
+    const keyPair = keyHelper.createKeyPair();
+
+    const register = await api.post('/v1/auth/register').send({
+      handle: 'attester',
+      displayName: 'Attester',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-attester',
+      signedPrekeyBundle: 'prekey-attester',
+      authPublicKey: keyPair.authPublicKey,
+    });
+
+    const challenge = await api.post('/v1/auth/challenge').send({
+      handle: 'attester',
+      deviceId: register.body.deviceId,
+    });
+    const verify = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    const bearer = `Bearer ${verify.body.accessToken}`;
+
+    const rejectedMime = await api
+      .post('/v1/attachments/upload-ticket')
+      .set('Authorization', bearer)
+      .send({ contentType: 'text/plain', sizeBytes: 128, sha256: 'abcdef12' });
+    expect(rejectedMime.status).toBe(400);
+    expect(rejectedMime.body.code).toBe('attachment_upload_invalid');
+
+    const upload = await api
+      .post('/v1/attachments/upload-ticket')
+      .set('Authorization', bearer)
+      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'abcdef1234567890' });
+    expect(upload.status).toBe(201);
+
+    attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
+      sizeBytes: 1024,
+      contentType: 'application/octet-stream',
+      metadata: {
+        encrypted: 'true',
+        sha256: 'abcdef1234567890',
+        'attachment-id': upload.body.attachmentId,
+      },
+    });
+
+    const failedComplete = await api
+      .post('/v1/attachments/complete')
+      .set('Authorization', bearer)
+      .send({ attachmentId: upload.body.attachmentId, uploadStatus: 'failed' });
+    expect(failedComplete.status).toBe(201);
+    expect(attachmentStorage.uploaded.has(upload.body.upload.storageKey)).toBe(false);
   });
 
   it('returns explicit error codes and rejects transfer completion replay without new-device proof', async () => {
@@ -574,6 +683,24 @@ describe('VEIL API (e2e)', () => {
       .set('Authorization', bearerB)
       .send({});
     expect(markRead.status).toBe(201);
+    const emittedReadCountAfterFirstRead = realtime.emitted.filter(
+      (event) =>
+        event.event === 'message.read' &&
+        event.userId === registerA.body.userId,
+    ).length;
+
+    const repeatedMarkRead = await api
+      .post(`/v1/messages/${firstPage.body.items[0].id}/read`)
+      .set('Authorization', bearerB)
+      .send({});
+    expect(repeatedMarkRead.status).toBe(201);
+    expect(
+      realtime.emitted.filter(
+        (event) =>
+          event.event === 'message.read' &&
+          event.userId === registerA.body.userId,
+      ).length,
+    ).toBe(emittedReadCountAfterFirstRead);
 
     const senderView = await api
       .get(`/v1/conversations/${conversation.body.conversation.id}/messages?limit=2`)

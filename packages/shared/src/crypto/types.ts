@@ -16,6 +16,8 @@ export interface AttachmentUploadTicket {
   storageKey: string;
   uploadUrl: string;
   headers: Record<string, string>;
+  contentType: string;
+  sizeBytes: number;
   expiresAt: string;
 }
 

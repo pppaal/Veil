@@ -9,8 +9,10 @@
 
 ## Conversation Flow
 - Open the conversation list with an empty account and confirm the empty state is clear and actionable.
-- Start a direct chat by handle and confirm the list refreshes after channel creation.
+- Start a direct chat by handle and confirm the list refreshes after conversation creation.
+- Use local conversation search and confirm matches are filtered by handle or display name without any server-side search dependency.
 - Open a chat room and confirm loading, empty, and populated states are visually distinct.
+- Use local message search inside a populated chat room and confirm results come only from the device-local cached archive.
 - Send a text message with disappearing mode off and confirm it first appears as `Queued` and then settles to `Sent`.
 - Send the same message again only by forcing a retry path and confirm it does not duplicate after the relay ack returns.
 - Send a text message with disappearing mode on and confirm the chat bubble shows the remaining lifetime.
@@ -21,10 +23,13 @@
 - Keep the recipient offline with no active socket, send a message, then confirm only metadata wake-up behavior is assumed and the full envelope arrives after reconnect/sync.
 - In a long thread, use `Load older` repeatedly and confirm older pages append without reordering or duplicating messages.
 - Confirm sender-side delivery labels move through `Queued`, `Sent`, `Delivered`, and `Read` with no backwards regressions.
+- On wide desktop or tablet layouts, confirm the conversation list stays visible beside the active chat.
 
 ## Attachment Flow
 - Open the attachment screen and confirm the flow copy matches the encrypted-envelope architecture.
-- Send an attachment placeholder and confirm it queues locally, uploads, then resolves into an encrypted attachment card.
+- Send an attachment placeholder and confirm it stages locally, uploads with visible progress, then resolves into an encrypted attachment card.
+- Cancel an in-flight attachment upload and confirm the message enters a retryable failed state without losing the local draft.
+- Retry the failed attachment upload and confirm the staged blob is reused and the send succeeds.
 - Resolve a download ticket from the attachment card and confirm the dialog returns the opaque ticket URL.
 
 ## Lock And Session
@@ -38,9 +43,11 @@
 ## Transfer And Settings
 - Open Device Transfer on the old device and confirm the flow makes the old-device requirement explicit.
 - Run init and approve on the old device and confirm a copyable transfer payload is produced.
-- On a fresh device, open `Transfer from old device`, import the payload, and complete transfer.
+- On a fresh device, open `Transfer from old device`, import the payload, register the claim, and complete the trusted-device join.
 - Let a transfer or claim expire and confirm the UI blocks completion and clearly requires a fresh session.
 - Confirm the new device becomes authenticated and the old device is logged out after completion.
+- Open Settings and confirm the trusted device graph shows current, preferred, trusted, stale, and revoked device states clearly where applicable.
+- If another trusted device is still listed, confirm it can be explicitly revoked without implying any recovery path.
 - Open Settings and confirm revoke and logout copy do not imply recovery.
 - Revoke the current device and confirm the session is cleared locally.
 

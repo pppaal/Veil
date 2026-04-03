@@ -70,8 +70,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         !device ||
         device.userId !== payload.sub ||
         !device.isActive ||
-        device.revokedAt ||
-        device.user.activeDeviceId !== payload.deviceId
+        device.revokedAt
       ) {
         client.disconnect(true);
         return;
@@ -155,6 +154,29 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   hasConnectedUser(userId: string): boolean {
     const sockets = this.socketsByUserId.get(userId);
     return (sockets?.size ?? 0) > 0;
+  }
+
+  hasConnectedDevice(deviceId: string): boolean {
+    const sockets = this.socketsByDeviceId.get(deviceId);
+    return (sockets?.size ?? 0) > 0;
+  }
+
+  connectedDeviceIdsForUser(userId: string): string[] {
+    const userSockets = this.socketsByUserId.get(userId);
+    if (!userSockets || userSockets.size === 0) {
+      return [];
+    }
+
+    const connectedDeviceIds = new Set<string>();
+    for (const socketId of userSockets) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      const deviceId = socket?.data.deviceId as string | undefined;
+      if (deviceId) {
+        connectedDeviceIds.add(deviceId);
+      }
+    }
+
+    return [...connectedDeviceIds];
   }
 
   disconnectDevice(deviceId: string): void {

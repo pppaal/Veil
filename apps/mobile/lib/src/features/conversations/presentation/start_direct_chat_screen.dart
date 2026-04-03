@@ -36,52 +36,49 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
             title: 'No contact sync.',
             body:
                 'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.',
+            bottom: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                VeilStatusPill(label: 'Manual discovery'),
+                VeilStatusPill(label: 'No social graph'),
+                VeilStatusPill(label: 'Direct only'),
+              ],
+            ),
           ),
           const SizedBox(height: VeilSpace.md),
           const VeilInlineBanner(
             title: 'Deliberate discovery',
             message:
-                'Channels open only when you know the exact handle. There is no graph expansion layer here.',
+                'Conversations open only when you know the exact handle. There is no graph expansion layer here.',
           ),
           const SizedBox(height: VeilSpace.md),
-          VeilSurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                VeilSectionLabel(
-                  'TARGET HANDLE',
-                  trailing: _handleController.text.trim().isEmpty
-                      ? const VeilStatusPill(label: 'Awaiting input', tone: VeilBannerTone.warn)
-                      : VeilStatusPill(label: '@${_handleController.text.trim()}'),
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                TextField(
-                  controller: _handleController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'Handle',
-                    hintText: 'icarus',
-                    prefixText: '@',
-                  ),
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                Text(
-                  'Discovery stays manual. Direct channels only.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
+          VeilFieldBlock(
+            label: 'TARGET HANDLE',
+            trailing: _handleController.text.trim().isEmpty
+                ? const VeilStatusPill(label: 'Awaiting input', tone: VeilBannerTone.warn)
+                : VeilStatusPill(label: '@${_handleController.text.trim()}'),
+            caption: 'Discovery stays manual. Direct conversations only.',
+            child: TextField(
+              controller: _handleController,
+              onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(
+                labelText: 'Handle',
+                hintText: 'icarus',
+                prefixText: '@',
+              ),
             ),
           ),
           if (controller.errorMessage != null) ...[
             const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
-              title: 'Unable to open channel',
+              title: 'Unable to open conversation',
               message: controller.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
           ],
           const SizedBox(height: VeilSpace.xl),
-          FilledButton(
+          VeilButton(
             onPressed: controller.isBusy || _handleController.text.trim().isEmpty
                 ? null
                 : () async {
@@ -93,7 +90,8 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
                       context.pop();
                     }
                   },
-            child: Text(controller.isBusy ? 'Opening channel' : 'Open direct channel'),
+            label: controller.isBusy ? 'Opening conversation' : 'Open direct conversation',
+            icon: Icons.arrow_forward_rounded,
           ),
         ],
       ),

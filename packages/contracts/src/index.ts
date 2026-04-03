@@ -143,6 +143,10 @@ export interface CreateUploadTicketRequest {
 export interface CreateUploadTicketResponse {
   attachmentId: string;
   upload: AttachmentUploadTicket;
+  constraints: {
+    maxSizeBytes: number;
+    allowedMimeTypes: string[];
+  };
 }
 
 export interface CompleteAttachmentUploadRequest {
@@ -209,14 +213,38 @@ export interface DeviceTransferCompleteResponse {
   sessionId: string;
   claimId: string;
   newDeviceId: string;
-  revokedDeviceId: string;
+  revokedDeviceId?: string | null;
+  preferredDeviceId?: string | null;
   handle: string;
   displayName?: string | null;
   completedAt: string;
 }
 
+export type DeviceTrustState = 'current' | 'preferred' | 'trusted' | 'stale' | 'revoked';
+
 export interface RevokeDeviceRequest {
   deviceId: string;
+}
+
+export interface DeviceSummary {
+  id: string;
+  deviceName: string;
+  platform: DevicePlatform;
+  isActive: boolean;
+  trustState: DeviceTrustState;
+  revokedAt?: string | null;
+  trustedAt?: string | null;
+  joinedFromDeviceId?: string | null;
+  joinedFromDeviceName?: string | null;
+  joinedFromPlatform?: DevicePlatform | null;
+  createdAt: string;
+  lastSeenAt: string;
+  lastSyncAt?: string | null;
+}
+
+export interface ListDevicesResponse {
+  items: DeviceSummary[];
+  activeDeviceId?: string | null;
 }
 
 export interface RevokeDeviceResponse {

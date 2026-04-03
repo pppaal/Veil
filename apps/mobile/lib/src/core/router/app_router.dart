@@ -7,6 +7,7 @@ import '../../features/attachments/presentation/attachment_preview_screen.dart';
 import '../../features/auth/presentation/choose_handle_screen.dart';
 import '../../features/auth/presentation/create_account_screen.dart';
 import '../../features/chat/presentation/chat_room_screen.dart';
+import '../../features/conversations/data/conversation_models.dart';
 import '../../features/conversations/presentation/conversation_list_screen.dart';
 import '../../features/conversations/presentation/start_direct_chat_screen.dart';
 import '../../features/device_transfer/presentation/device_transfer_screen.dart';
@@ -67,8 +68,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/start-chat', builder: (context, state) => const StartDirectChatScreen()),
       GoRoute(
         path: '/chat/:conversationId',
-        builder: (context, state) =>
-            ChatRoomScreen(conversationId: state.pathParameters['conversationId']!),
+        builder: (context, state) => ChatRoomScreen(
+          conversationId: state.pathParameters['conversationId']!,
+          navigationTarget: state.extra is MessageNavigationTarget
+              ? state.extra as MessageNavigationTarget
+              : null,
+        ),
       ),
       GoRoute(
         path: '/attachment/:conversationId',

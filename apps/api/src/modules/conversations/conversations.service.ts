@@ -135,16 +135,19 @@ export class ConversationsService {
   }
 
   async listMessagesForUser(
-    userId: string,
+    auth: { userId: string; deviceId: string },
     conversationId: string,
     query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
-    const limit = Number(query.limit ?? 50);
+    const requestedLimit = Number(query.limit ?? 50);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(100, Math.max(1, requestedLimit))
+      : 50;
     const membership = await this.prisma.conversationMember.findUnique({
       where: {
         conversationId_userId: {
           conversationId,
-          userId,
+          userId: auth.userId,
         },
       },
       select: { id: true },
@@ -159,16 +162,34 @@ export class ConversationsService {
       select: { userId: true },
     });
 
+    const cursorMessage = query.cursor
+      ? await this.prisma.message.findUnique({
+          where: { id: query.cursor },
+          select: {
+            id: true,
+            conversationId: true,
+            conversationOrder: true,
+          },
+        })
+      : null;
+
+    if (query.cursor && (!cursorMessage || cursorMessage.conversationId !== conversationId)) {
+      throw new NotFoundException('Pagination cursor not found');
+    }
+
     const messages = (await this.prisma.message.findMany({
-      where: { conversationId },
+      where: {
+        conversationId,
+        ...(cursorMessage
+          ? {
+              conversationOrder: {
+                lt: cursorMessage.conversationOrder,
+              },
+            }
+          : {}),
+      },
       orderBy: { conversationOrder: 'desc' },
       take: limit,
-      ...(query.cursor
-        ? {
-            cursor: { id: query.cursor },
-            skip: 1,
-          }
-        : {}),
       include: {
         senderDevice: {
           select: { userId: true },
@@ -177,10 +198,21 @@ export class ConversationsService {
       },
     })) as HydratedMessage[];
 
-    await this.markDeliveredForViewer(messages, members, userId);
+    await this.markDeliveredForViewer(messages, members, auth.userId);
+
+    const highestConversationOrder =
+      messages.length > 0
+        ? Math.max(...messages.map((message) => message.conversationOrder))
+        : cursorMessage?.conversationOrder ?? null;
+
+    await this.updateDeviceConversationState({
+      deviceId: auth.deviceId,
+      conversationId,
+      lastSyncedConversationOrder: highestConversationOrder,
+    });
 
     return {
-      items: messages.map((message) => this.toMessageSummary(message, userId)).reverse(),
+      items: messages.map((message) => this.toMessageSummary(message, auth.userId)).reverse(),
       nextCursor: messages.length === limit ? messages.at(-1)?.id ?? null : null,
     };
   }
@@ -297,5 +329,48 @@ export class ConversationsService {
     }
 
     return message.receipts.find((receipt) => receipt.userId === viewerUserId) ?? null;
+  }
+
+  private async updateDeviceConversationState(args: {
+    deviceId: string;
+    conversationId: string;
+    lastSyncedConversationOrder?: number | null;
+    lastReadConversationOrder?: number | null;
+  }): Promise<void> {
+    const current = await this.prisma.deviceConversationState.findUnique({
+      where: {
+        deviceId_conversationId: {
+          deviceId: args.deviceId,
+          conversationId: args.conversationId,
+        },
+      },
+    });
+
+    const lastSyncedConversationOrder = args.lastSyncedConversationOrder ?? current?.lastSyncedConversationOrder ?? null;
+    const lastReadConversationOrder = args.lastReadConversationOrder ?? current?.lastReadConversationOrder ?? null;
+
+    await this.prisma.deviceConversationState.upsert({
+      where: {
+        deviceId_conversationId: {
+          deviceId: args.deviceId,
+          conversationId: args.conversationId,
+        },
+      },
+      update: {
+        lastSyncedConversationOrder,
+        lastReadConversationOrder,
+      },
+      create: {
+        deviceId: args.deviceId,
+        conversationId: args.conversationId,
+        lastSyncedConversationOrder,
+        lastReadConversationOrder,
+      },
+    });
+
+    await this.prisma.device.update({
+      where: { id: args.deviceId },
+      data: { lastSyncAt: new Date() },
+    });
   }
 }

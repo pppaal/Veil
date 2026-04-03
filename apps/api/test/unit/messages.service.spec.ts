@@ -48,8 +48,11 @@ describe('MessagesService', () => {
         pushToken: 'push-a',
         isActive: true,
         revokedAt: null,
+        trustedAt: new Date(),
+        joinedFromDeviceId: null,
         createdAt: new Date(),
         lastSeenAt: new Date(),
+        lastSyncAt: null,
       },
       {
         id: 'device-b',
@@ -62,8 +65,11 @@ describe('MessagesService', () => {
         pushToken: 'push-b',
         isActive: true,
         revokedAt: null,
+        trustedAt: new Date(),
+        joinedFromDeviceId: null,
         createdAt: new Date(),
         lastSeenAt: new Date(),
+        lastSyncAt: null,
       },
     );
 
@@ -143,6 +149,7 @@ describe('MessagesService', () => {
   it('skips push fallback when the recipient already has an active socket', async () => {
     const { realtime, push, service } = createFixture();
     realtime.connectedUsers.add('user-b');
+    realtime.connectedDevices.add('device-b');
 
     await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
 

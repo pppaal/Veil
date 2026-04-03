@@ -16,7 +16,9 @@ void main() {
     expect(service.isValidPinFormat('12ab56'), isFalse);
   });
 
-  test('setPin persists verifier and validatePin succeeds only for the same PIN', () async {
+  test(
+      'setPin persists verifier and validatePin succeeds only for the same PIN',
+      () async {
     final service = AppLockService(
       _FakeAuthenticator(),
       SecureStorageService(_MemorySecureKeyValueStore()),
@@ -29,7 +31,8 @@ void main() {
     expect(await service.validatePin('654321'), isFalse);
   });
 
-  test('hasLocalUnlockMethod becomes true when biometrics or PIN is available', () async {
+  test('hasLocalUnlockMethod becomes true when biometrics or PIN is available',
+      () async {
     final noUnlock = AppLockService(
       _FakeAuthenticator(biometricsAvailable: false),
       SecureStorageService(_MemorySecureKeyValueStore()),
@@ -62,6 +65,28 @@ void main() {
 
     expect(await success.authenticateBiometric(), isTrue);
     expect(await failure.authenticateBiometric(), isFalse);
+  });
+
+  test('temporary PIN lockout engages after repeated failed attempts',
+      () async {
+    final service = AppLockService(
+      _FakeAuthenticator(),
+      SecureStorageService(_MemorySecureKeyValueStore()),
+    );
+
+    await service.setPin('123456');
+
+    for (var attempt = 0;
+        attempt < AppLockService.maxFailedPinAttempts - 1;
+        attempt++) {
+      final result = await service.validatePinAttempt('654321');
+      expect(result.isLockedOut, isFalse);
+    }
+
+    final lockedOut = await service.validatePinAttempt('654321');
+    expect(lockedOut.isLockedOut, isTrue);
+    expect(await service.remainingPinLockout(), isNotNull);
+    expect(await service.validatePin('123456'), isFalse);
   });
 }
 

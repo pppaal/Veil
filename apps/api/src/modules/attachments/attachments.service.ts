@@ -15,6 +15,7 @@ import {
   forbidden,
   notFound,
 } from '../../common/errors/api-error';
+import { AppConfigService } from '../../common/config/app-config.service';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
@@ -28,6 +29,7 @@ import {
 export class AttachmentsService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly config: AppConfigService,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly storageGateway: AttachmentStorageGateway,
   ) {}
@@ -36,6 +38,9 @@ export class AttachmentsService {
     deviceId: string,
     dto: CreateUploadTicketDto,
   ): Promise<CreateUploadTicketResponse> {
+    await this.cleanupExpiredPendingUploads(deviceId);
+    this.assertUploadPolicy(dto);
+
     const attachment = await this.prisma.attachment.create({
       data: {
         uploaderDeviceId: deviceId,
@@ -61,7 +66,13 @@ export class AttachmentsService {
         storageKey: attachment.storageKey,
         uploadUrl: upload.url,
         headers: upload.headers,
+        contentType: upload.contentType,
+        sizeBytes: upload.sizeBytes,
         expiresAt: upload.expiresAt,
+      },
+      constraints: {
+        maxSizeBytes: this.config.attachmentMaxBytes,
+        allowedMimeTypes: this.config.attachmentAllowedMimeTypes,
       },
     };
   }
@@ -80,6 +91,10 @@ export class AttachmentsService {
 
     if (attachment.uploaderDeviceId !== deviceId) {
       throw forbidden('attachment_forbidden', 'Attachment does not belong to device');
+    }
+
+    if (dto.uploadStatus === 'failed') {
+      await this.storageGateway.deleteObject(attachment.storageKey);
     }
 
     if (dto.uploadStatus === 'uploaded') {
@@ -135,11 +150,16 @@ export class AttachmentsService {
         id: true,
         uploaderDeviceId: true,
         storageKey: true,
+        uploadStatus: true,
       },
     });
 
     if (!attachment) {
       throw notFound('attachment_not_found', 'Attachment not found');
+    }
+
+    if (attachment.uploadStatus !== 'uploaded') {
+      throw badRequest('attachment_upload_invalid', 'Attachment blob is not available for download');
     }
 
     if (attachment.uploaderDeviceId !== auth.deviceId) {
@@ -171,5 +191,46 @@ export class AttachmentsService {
         expiresAt: download.expiresAt,
       },
     };
+  }
+
+  private assertUploadPolicy(dto: CreateUploadTicketDto): void {
+    const normalizedMime = dto.contentType.trim().toLowerCase();
+    if (!this.config.attachmentAllowedMimeTypes.includes(normalizedMime)) {
+      throw badRequest(
+        'attachment_upload_invalid',
+        'Attachment MIME type is not allowed for this relay',
+      );
+    }
+    if (dto.sizeBytes > this.config.attachmentMaxBytes) {
+      throw badRequest(
+        'attachment_upload_invalid',
+        'Attachment size exceeds the current relay limit',
+      );
+    }
+  }
+
+  private async cleanupExpiredPendingUploads(deviceId: string): Promise<void> {
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+    const expiredPending = await this.prisma.attachment.findMany({
+      where: {
+        uploaderDeviceId: deviceId,
+        uploadStatus: 'pending',
+        createdAt: {
+          lt: cutoff,
+        },
+      },
+      select: {
+        id: true,
+        storageKey: true,
+      },
+    });
+
+    for (const attachment of expiredPending) {
+      await this.storageGateway.deleteObject(attachment.storageKey);
+      await this.prisma.attachment.update({
+        where: { id: attachment.id },
+        data: { uploadStatus: 'failed' },
+      });
+    }
   }
 }

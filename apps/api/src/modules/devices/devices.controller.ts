@@ -1,6 +1,6 @@
-import { Body, Controller, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import type { RevokeDeviceResponse } from '@veil/contracts';
+import type { ListDevicesResponse, RevokeDeviceResponse } from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { DevicesService } from './devices.service';
@@ -11,6 +11,13 @@ import { RevokeDeviceDto } from './dto/revoke-device.dto';
 @Controller('devices')
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
+
+  @Get()
+  list(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ListDevicesResponse> {
+    return this.devicesService.list(request.auth.userId, request.auth.deviceId);
+  }
 
   @Post('revoke')
   revoke(

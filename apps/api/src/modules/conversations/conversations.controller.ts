@@ -36,6 +36,6 @@ export class ConversationsController {
     @Param('id') id: string,
     @Query() query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
-    return this.conversationsService.listMessagesForUser(request.auth.userId, id, query);
+    return this.conversationsService.listMessagesForUser(request.auth, id, query);
   }
 }

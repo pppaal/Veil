@@ -83,7 +83,16 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             eyebrow: 'TRANSFER',
             title: 'Old device required.',
             body:
-                'Transfer is a live handoff. The old device issues the session, approves the exact new-device claim, and is revoked when the new device becomes active.',
+                'Transfer is a live trusted-device join. The old device issues the session and approves the exact new-device claim. VEIL does not create recovery.',
+            bottom: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                VeilStatusPill(label: 'Trusted-device join'),
+                VeilStatusPill(label: 'No fallback'),
+                VeilStatusPill(label: 'No cloud recovery'),
+              ],
+            ),
           ),
           const SizedBox(height: VeilSpace.md),
           Wrap(
@@ -172,9 +181,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             ),
           if (_mode == _TransferMode.newDevice && session.isAuthenticated) ...[
             const SizedBox(height: VeilSpace.md),
-            OutlinedButton(
+            VeilButton(
               onPressed: () => context.go('/conversations'),
-              child: const Text('Return to conversations'),
+              tone: VeilButtonTone.secondary,
+              label: 'Return to conversations',
             ),
           ],
         ],
@@ -295,7 +305,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         return;
       }
       setState(() {
-        _completionMessage = 'Transfer complete. This device is now active.';
+        _completionMessage = 'Transfer complete. This device joined the trusted graph.';
       });
       context.go('/conversations');
     } catch (_) {
@@ -393,7 +403,7 @@ class _OldDevicePanel extends StatelessWidget {
     if (!isAuthenticated) {
       return const VeilEmptyState(
         title: 'Old device session required',
-        body: 'Sign in on the currently active device to issue and approve a transfer.',
+        body: 'Sign in on a currently trusted device to issue and approve a transfer.',
         icon: Icons.phonelink_lock_outlined,
       );
     }
@@ -417,9 +427,10 @@ class _OldDevicePanel extends StatelessWidget {
                   : VeilBannerTone.good,
         ),
         const SizedBox(height: VeilSpace.sm),
-        FilledButton.tonal(
+        VeilButton(
           onPressed: isBusy ? null : onInit,
-          child: Text(isBusy && transferSessionId == null ? 'Issuing token' : 'Issue transfer token'),
+          tone: VeilButtonTone.secondary,
+          label: isBusy && transferSessionId == null ? 'Issuing token' : 'Issue transfer token',
         ),
         const SizedBox(height: VeilSpace.sm),
         _TransferCard(
@@ -441,20 +452,26 @@ class _OldDevicePanel extends StatelessWidget {
                   : VeilBannerTone.info,
         ),
         const SizedBox(height: VeilSpace.sm),
-        TextField(
-          controller: claimIdController,
-          decoration: const InputDecoration(
-            labelText: 'New-device claim code',
-            hintText: 'Paste the claim code shown on the new device',
+        VeilFieldBlock(
+          label: 'NEW-DEVICE CLAIM',
+          caption: 'Approve only the exact claim code shown on the new device you trust.',
+          child: TextField(
+            controller: claimIdController,
+            decoration: const InputDecoration(
+              labelText: 'New-device claim code',
+              hintText: 'Paste the claim code shown on the new device',
+            ),
           ),
         ),
         const SizedBox(height: VeilSpace.sm),
-        FilledButton.tonal(
+        VeilButton(
           onPressed: isBusy || transferSessionId == null || transferExpired ? null : onApprove,
-          child: const Text('Approve this claim'),
+          tone: VeilButtonTone.secondary,
+          label: 'Approve this claim',
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilSurfaceCard(
+          toned: true,
           padding: const EdgeInsets.all(VeilSpace.lg),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -483,19 +500,21 @@ class _OldDevicePanel extends StatelessWidget {
               Text(
                 transferExpired
                     ? 'This payload is no longer valid. Clear it and issue a fresh transfer session.'
-                    : 'Complete on the new device. Do not complete on the old one.',
+                    : 'Complete on the new device. The old device remains trusted until you revoke it explicitly.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: VeilSpace.sm),
               VeilActionRow(
                 children: [
-                  OutlinedButton(
+                  VeilButton(
                     onPressed: onCopyPayload,
-                    child: const Text('Copy payload'),
+                    tone: VeilButtonTone.secondary,
+                    label: 'Copy payload',
                   ),
-                  OutlinedButton(
+                  VeilButton(
                     onPressed: isBusy ? null : onClear,
-                    child: const Text('Clear'),
+                    tone: VeilButtonTone.secondary,
+                    label: 'Clear',
                   ),
                 ],
               ),
@@ -564,12 +583,12 @@ class _NewDevicePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        VeilSurfaceCard(
+        VeilFieldBlock(
+          label: 'TRANSFER PAYLOAD',
+          caption: 'Import the short-lived session and token issued by the trusted old device.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const VeilSectionLabel('TRANSFER PAYLOAD'),
-              const SizedBox(height: VeilSpace.sm),
               TextField(
                 controller: payloadController,
                 minLines: 3,
@@ -580,20 +599,22 @@ class _NewDevicePanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: VeilSpace.sm),
-              OutlinedButton(
+              VeilButton(
+                expanded: false,
+                tone: VeilButtonTone.secondary,
                 onPressed: onImportPayload,
-                child: const Text('Import payload'),
+                label: 'Import payload',
               ),
             ],
           ),
         ),
         const SizedBox(height: VeilSpace.sm),
-        VeilSurfaceCard(
+        VeilFieldBlock(
+          label: 'NEW DEVICE',
+          caption: 'This device proves its own claim. The old device only approves that exact claim.',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const VeilSectionLabel('NEW DEVICE'),
-              const SizedBox(height: VeilSpace.sm),
               TextField(
                 controller: deviceNameController,
                 decoration: const InputDecoration(labelText: 'Device name'),
@@ -625,7 +646,7 @@ class _NewDevicePanel extends StatelessWidget {
                             ? VeilBannerTone.danger
                             : VeilBannerTone.good,
                   ),
-                  const VeilStatusPill(label: 'Old device must approve exact claim'),
+                  const VeilStatusPill(label: 'Old device approves exact claim'),
                 ],
               ),
               if (claimId != null) ...[
@@ -642,9 +663,10 @@ class _NewDevicePanel extends StatelessWidget {
           ),
         ),
         const SizedBox(height: VeilSpace.md),
-        OutlinedButton(
+        VeilButton(
           onPressed: isClaiming ? null : onClaim,
-          child: Text(isClaiming ? 'Registering claim' : 'Register this new device'),
+          tone: VeilButtonTone.secondary,
+          label: isClaiming ? 'Registering claim' : 'Register this new device',
         ),
         if (completionMessage != null) ...[
           const SizedBox(height: VeilSpace.md),
@@ -663,9 +685,10 @@ class _NewDevicePanel extends StatelessWidget {
           ),
         ],
         const SizedBox(height: VeilSpace.md),
-        FilledButton(
+        VeilButton(
           onPressed: isCompleting || claimId == null || claimExpired ? null : onComplete,
-          child: Text(isCompleting ? 'Completing transfer' : 'Complete on this device'),
+          label: isCompleting ? 'Completing transfer' : 'Complete on this device',
+          icon: Icons.arrow_forward_rounded,
         ),
       ],
     );
@@ -687,22 +710,20 @@ class _TransferCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(VeilSpace.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
-                VeilStatusPill(label: status, tone: tone),
-              ],
-            ),
-            const SizedBox(height: VeilSpace.sm),
-            SelectableText(body, style: Theme.of(context).textTheme.bodyMedium),
-          ],
-        ),
+    return VeilSurfaceCard(
+      toned: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(title, style: Theme.of(context).textTheme.titleMedium)),
+              VeilStatusPill(label: status, tone: tone),
+            ],
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          SelectableText(body, style: Theme.of(context).textTheme.bodyMedium),
+        ],
       ),
     );
   }

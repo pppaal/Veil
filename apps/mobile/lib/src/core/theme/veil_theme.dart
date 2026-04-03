@@ -9,16 +9,20 @@ class VeilSpace {
   static const double xl = 24;
   static const double xxl = 32;
   static const double xxxl = 40;
+  static const double hero = 56;
 }
 
 class VeilRadius {
+  static const double xs = 10;
   static const double sm = 14;
   static const double md = 18;
   static const double lg = 24;
+  static const double xl = 30;
   static const double pill = 999;
 }
 
 class VeilIconSize {
+  static const double xs = 14;
   static const double sm = 18;
   static const double md = 22;
   static const double lg = 28;
@@ -29,6 +33,26 @@ class VeilMotion {
   static const Duration fast = Duration(milliseconds: 160);
   static const Duration normal = Duration(milliseconds: 240);
   static const Duration slow = Duration(milliseconds: 360);
+  static const Curve emphasize = Curves.easeOutCubic;
+  static const Curve smooth = Curves.easeInOutCubic;
+}
+
+class VeilElevation {
+  static const List<BoxShadow> raised = [
+    BoxShadow(
+      color: Color(0x22000000),
+      blurRadius: 28,
+      offset: Offset(0, 14),
+    ),
+  ];
+
+  static const List<BoxShadow> modal = [
+    BoxShadow(
+      color: Color(0x38000000),
+      blurRadius: 36,
+      offset: Offset(0, 18),
+    ),
+  ];
 }
 
 class VeilPalette {
@@ -38,9 +62,11 @@ class VeilPalette {
     required this.surface,
     required this.surfaceAlt,
     required this.surfaceRaised,
+    required this.surfaceOverlay,
     required this.stroke,
     required this.strokeStrong,
     required this.primary,
+    required this.primaryStrong,
     required this.primarySoft,
     required this.text,
     required this.textMuted,
@@ -55,9 +81,11 @@ class VeilPalette {
   final Color surface;
   final Color surfaceAlt;
   final Color surfaceRaised;
+  final Color surfaceOverlay;
   final Color stroke;
   final Color strokeStrong;
   final Color primary;
+  final Color primaryStrong;
   final Color primarySoft;
   final Color text;
   final Color textMuted;
@@ -72,9 +100,11 @@ class VeilPalette {
     surface: Color(0xFF10161D),
     surfaceAlt: Color(0xFF151D27),
     surfaceRaised: Color(0xFF1B2430),
+    surfaceOverlay: Color(0xFF212C38),
     stroke: Color(0xFF263445),
     strokeStrong: Color(0xFF355069),
     primary: Color(0xFF88A9C4),
+    primaryStrong: Color(0xFFA7C1D7),
     primarySoft: Color(0x1F88A9C4),
     text: Color(0xFFF3F6FA),
     textMuted: Color(0xFFA3AFBC),
@@ -118,6 +148,15 @@ class VeilTheme {
       splashFactory: InkSparkle.splashFactory,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: <TargetPlatform, PageTransitionsBuilder>{
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+        },
+      ),
     );
 
     return base.copyWith(
@@ -139,6 +178,12 @@ class VeilTheme {
           height: 1.12,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.6,
+        ),
+        headlineSmall: TextStyle(
+          fontSize: 22,
+          height: 1.15,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.45,
         ),
         titleLarge: TextStyle(
           fontSize: 19,
@@ -212,6 +257,7 @@ class VeilTheme {
           borderRadius: BorderRadius.circular(VeilRadius.lg),
           side: BorderSide(color: palette.stroke),
         ),
+        shadowColor: Colors.black,
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: palette.surfaceRaised,
@@ -233,6 +279,9 @@ class VeilTheme {
         labelStyle: TextStyle(color: palette.textMuted),
         helperStyle: TextStyle(color: palette.textSubtle),
         errorStyle: TextStyle(color: palette.danger),
+        floatingLabelStyle: TextStyle(color: palette.primaryStrong),
+        prefixIconColor: palette.textMuted,
+        suffixIconColor: palette.textMuted,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: VeilSpace.lg,
           vertical: VeilSpace.md,
@@ -260,13 +309,15 @@ class VeilTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
+          minimumSize: const Size(0, 56),
           padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xl, vertical: VeilSpace.md),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(VeilRadius.md),
           ),
           backgroundColor: palette.primary,
           foregroundColor: palette.canvas,
+          disabledBackgroundColor: palette.surfaceOverlay,
+          disabledForegroundColor: palette.textSubtle,
           textStyle: const TextStyle(
             fontWeight: FontWeight.w700,
             fontSize: 14,
@@ -276,10 +327,11 @@ class VeilTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(52),
+          minimumSize: const Size(0, 52),
           padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xl, vertical: VeilSpace.md),
           side: BorderSide(color: palette.stroke),
           foregroundColor: palette.text,
+          backgroundColor: palette.surfaceAlt,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(VeilRadius.md),
           ),
@@ -292,6 +344,10 @@ class VeilTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: palette.primary,
+          minimumSize: const Size(0, 44),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(VeilRadius.sm),
+          ),
           textStyle: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 14,
@@ -308,6 +364,29 @@ class VeilTheme {
         ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(VeilRadius.md),
+        ),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: palette.surfaceAlt,
+        selectedColor: palette.primarySoft,
+        disabledColor: palette.surface,
+        side: BorderSide(color: palette.stroke),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(VeilRadius.pill),
+        ),
+        labelStyle: TextStyle(
+          color: palette.text,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        secondaryLabelStyle: TextStyle(
+          color: palette.canvas,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: VeilSpace.sm,
+          vertical: VeilSpace.xs,
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -350,6 +429,16 @@ class VeilTheme {
       iconTheme: IconThemeData(
         color: palette.textMuted,
         size: VeilIconSize.md,
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          foregroundColor: palette.textMuted,
+          backgroundColor: palette.surfaceAlt.withValues(alpha: 0.4),
+          minimumSize: const Size(44, 44),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(VeilRadius.md),
+          ),
+        ),
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(

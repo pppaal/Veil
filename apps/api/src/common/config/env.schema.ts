@@ -14,6 +14,18 @@ export const envSchema = z.object({
   VEIL_S3_ACCESS_KEY: z.string().min(1),
   VEIL_S3_SECRET_KEY: z.string().min(1),
   VEIL_S3_BUCKET: z.string().min(1),
+  VEIL_ATTACHMENT_MAX_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
+  VEIL_ATTACHMENT_ALLOWED_MIME_TYPES: z
+    .string()
+    .default(
+      [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'application/pdf',
+        'application/octet-stream',
+      ].join(','),
+    ),
   VEIL_JWT_SECRET: z.string().min(1),
   VEIL_JWT_AUDIENCE: z.string().min(1).default('veil-mobile'),
   VEIL_JWT_ISSUER: z.string().min(1).default('veil-api'),

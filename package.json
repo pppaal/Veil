@@ -25,7 +25,7 @@
     "dev:mobile:desktop": "node ./scripts/flutterw.mjs run -d windows --dart-define=VEIL_API_BASE_URL=http://127.0.0.1:3000/v1 --dart-define=VEIL_REALTIME_URL=http://127.0.0.1:3000",
     "mobile:codegen": "node ./scripts/flutterw.mjs pub run build_runner build --delete-conflicting-outputs",
     "mobile:analyze": "node ./scripts/flutterw.mjs analyze",
-    "mobile:test": "node ./scripts/flutterw.mjs test",
+    "mobile:test": "node ./scripts/flutterw.mjs test --concurrency=1",
     "db:generate": "pnpm -C apps/api prisma:generate",
     "db:migrate": "pnpm -C apps/api prisma:migrate",
     "docker:up": "docker compose -f infra/docker/docker-compose.yml up -d",

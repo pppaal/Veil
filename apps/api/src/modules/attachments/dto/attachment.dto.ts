@@ -23,6 +23,7 @@ export class CreateUploadTicketDto implements CreateUploadTicketRequest {
   @ApiProperty()
   @IsString()
   @MaxLength(128)
+  @Matches(/^[a-fA-F0-9-]{8,128}$/)
   sha256!: string;
 }
 

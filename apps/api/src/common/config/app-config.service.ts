@@ -96,6 +96,20 @@ export class AppConfigService {
     return this.configService.get('VEIL_S3_BUCKET', { infer: true });
   }
 
+  get attachmentMaxBytes(): number {
+    return this.configService.get('VEIL_ATTACHMENT_MAX_BYTES', { infer: true });
+  }
+
+  get attachmentAllowedMimeTypes(): string[] {
+    const configured = this.configService.get('VEIL_ATTACHMENT_ALLOWED_MIME_TYPES', {
+      infer: true,
+    });
+    return configured
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
   isOriginAllowed(origin?: string | null): boolean {
     if (!origin) {
       return true;

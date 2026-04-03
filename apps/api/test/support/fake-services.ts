@@ -32,6 +32,14 @@ export class FakeConfigService {
   s3AccessKey = 'minioadmin';
   s3SecretKey = 'minioadmin';
   s3Bucket = 'veil-encrypted';
+  attachmentMaxBytes = 50 * 1024 * 1024;
+  attachmentAllowedMimeTypes = [
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'application/pdf',
+    'application/octet-stream',
+  ];
 
   isOriginAllowed(origin?: string | null): boolean {
     if (!origin) {
@@ -44,6 +52,7 @@ export class FakeConfigService {
 export class FakeRealtimeGateway {
   readonly emitted: Array<{ userId: string; event: string; payload: unknown }> = [];
   readonly connectedUsers = new Set<string>();
+  readonly connectedDevices = new Set<string>();
   readonly disconnectedDevices = new Set<string>();
 
   emitToUser(userId: string, event: string, payload: unknown): void {
@@ -62,6 +71,14 @@ export class FakeRealtimeGateway {
 
   hasConnectedUser(userId: string): boolean {
     return this.connectedUsers.has(userId);
+  }
+
+  hasConnectedDevice(deviceId: string): boolean {
+    return this.connectedDevices.has(deviceId);
+  }
+
+  connectedDeviceIdsForUser(userId: string): string[] {
+    return this.connectedUsers.has(userId) ? [...this.connectedDevices] : [];
   }
 
   disconnectDevice(deviceId: string): void {
@@ -92,15 +109,19 @@ export class FakeAttachmentStorageGateway {
     sha256: string;
     sizeBytes: number;
     contentType: string;
-  }): Promise<{ url: string; headers: Record<string, string>; expiresAt: string }> {
+  }): Promise<{ url: string; headers: Record<string, string>; contentType: string; sizeBytes: number; expiresAt: string }> {
     return {
       url: `https://signed-upload.invalid/${storageKey}`,
       headers: {
         'Content-Type': metadata.contentType,
+        'Content-Length': String(metadata.sizeBytes),
+        'Cache-Control': 'no-store',
         'x-amz-meta-encrypted': 'true',
         'x-amz-meta-sha256': metadata.sha256,
         'x-amz-meta-attachment-id': metadata.attachmentId,
       },
+      contentType: metadata.contentType,
+      sizeBytes: metadata.sizeBytes,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     };
   }
@@ -140,5 +161,9 @@ export class FakeAttachmentStorageGateway {
       url: `https://signed-download.invalid/${storageKey}`,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     };
+  }
+
+  async deleteObject(storageKey: string): Promise<void> {
+    this.uploaded.delete(storageKey);
   }
 }

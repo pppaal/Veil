@@ -18,7 +18,8 @@ class CachedConversations extends Table {
   TextColumn get previewAttachmentJson => text().nullable()();
   DateTimeColumn get previewExpiresAt => dateTime().nullable()();
   TextColumn get paginationCursor => text().nullable()();
-  BoolColumn get hasMoreHistory => boolean().withDefault(const Constant(true))();
+  BoolColumn get hasMoreHistory =>
+      boolean().withDefault(const Constant(true))();
   DateTimeColumn get lastSyncedAt => dateTime().nullable()();
 
   @override
@@ -27,13 +28,15 @@ class CachedConversations extends Table {
 
 class CachedMessages extends Table {
   TextColumn get id => text()();
-  TextColumn get conversationId => text().references(CachedConversations, #id)();
+  TextColumn get conversationId =>
+      text().references(CachedConversations, #id)();
   TextColumn get clientMessageId => text().nullable()();
   TextColumn get senderDeviceId => text()();
   TextColumn get ciphertext => text()();
   TextColumn get nonce => text()();
   TextColumn get messageType => text()();
   TextColumn get attachmentJson => text().nullable()();
+  TextColumn get searchBody => text().nullable()();
   IntColumn get conversationOrder => integer().nullable()();
   DateTimeColumn get receivedAt => dateTime()();
   DateTimeColumn get expiresAt => dateTime().nullable()();
@@ -71,7 +74,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -84,9 +87,25 @@ class AppDatabase extends _$AppDatabase {
             await migrator.createAll();
           }
           if (from < 3) {
-            await migrator.addColumn(pendingMessages, pendingMessages.nextRetryAt);
+            await migrator.addColumn(
+                pendingMessages, pendingMessages.nextRetryAt);
+          }
+          if (from < 4) {
+            await customStatement(
+              'ALTER TABLE cached_messages ADD COLUMN search_body TEXT',
+            );
+          }
+          if (from < 5) {
+            await customStatement('DROP TABLE IF EXISTS pending_messages');
+            await customStatement('DROP TABLE IF EXISTS cached_messages');
+            await customStatement('DROP TABLE IF EXISTS cached_conversations');
+            await migrator.createAll();
           }
           await _createIndexes();
+        },
+        beforeOpen: (details) async {
+          await customStatement('PRAGMA foreign_keys = ON');
+          await customStatement('PRAGMA secure_delete = ON');
         },
       );
 

@@ -153,6 +153,34 @@ void main() {
     expect(find.text('Review runtime configuration and try again.'), findsOneWidget);
     expect(find.byType(VeilSkeletonLine), findsNWidgets(2));
   });
+
+  testWidgets('list tile card supports richer subtitle content', (tester) async {
+    await tester.pumpWidget(
+      const _DesignTestApp(
+        child: Scaffold(
+          body: Padding(
+            padding: EdgeInsets.all(24),
+            child: VeilListTileCard(
+              title: 'Selene',
+              subtitle: 'fallback',
+              subtitleWidget: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Peer | Text | Apr 3'),
+                  SizedBox(height: 4),
+                  Text('... orbit relay window ...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Selene'), findsOneWidget);
+    expect(find.text('Peer | Text | Apr 3'), findsOneWidget);
+    expect(find.text('... orbit relay window ...'), findsOneWidget);
+  });
 }
 
 class _DesignTestApp extends StatelessWidget {

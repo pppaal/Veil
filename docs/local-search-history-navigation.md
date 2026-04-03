@@ -21,6 +21,7 @@ The relay remains ciphertext-only. Search, snippets, and jump-to-context behavio
   - open the target conversation
   - jump to the matching cached message
   - keep surrounding message context visible
+  - render result metadata and query-highlighted local snippets without sending search text to the relay
 - History navigation:
   - cursor-based older-page loading
   - local scroll restoration

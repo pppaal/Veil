@@ -487,6 +487,7 @@ class VeilListTileCard extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
+    this.subtitleWidget,
     this.leading,
     this.trailing,
     this.destructive = false,
@@ -495,6 +496,7 @@ class VeilListTileCard extends StatelessWidget {
 
   final String title;
   final String subtitle;
+  final Widget? subtitleWidget;
   final Widget? leading;
   final Widget? trailing;
   final bool destructive;
@@ -513,20 +515,21 @@ class VeilListTileCard extends StatelessWidget {
           minTileHeight: 72,
           leading: leading,
           trailing: trailing,
-          title: Text(
-            title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(color: titleColor),
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: VeilSpace.xxs),
-            child: Text(
-              subtitle,
-              style: Theme.of(context).textTheme.bodyMedium,
+            title: Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: titleColor),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: VeilSpace.xxs),
+              child: subtitleWidget ??
+                  Text(
+                    subtitle,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 

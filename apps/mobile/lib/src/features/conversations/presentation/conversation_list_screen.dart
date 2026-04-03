@@ -863,8 +863,12 @@ class _ConversationListPane extends StatelessWidget {
                   },
                 ),
                 title: result.title,
-                  subtitle:
-                    '${result.isMine ? 'You' : 'Peer'} · ${_messageTypeLabel(result.messageKind)} · ${_messageDateLabel(result.sentAt, timeFormat)}\n${result.bodySnippet}',
+                subtitle: result.bodySnippet,
+                subtitleWidget: _MessageSearchResultSubtitle(
+                  result: result,
+                  query: searchController.text,
+                  timeFormat: timeFormat,
+                ),
                 trailing: const Icon(Icons.north_east_rounded, size: 18),
                 onTap: () => onSelectMessageResult(result),
               ),
@@ -956,4 +960,86 @@ class _SearchChip<T> extends StatelessWidget {
       onSelected: (_) => onSelected(value),
     );
   }
+}
+
+class _MessageSearchResultSubtitle extends StatelessWidget {
+  const _MessageSearchResultSubtitle({
+    required this.result,
+    required this.query,
+    required this.timeFormat,
+  });
+
+  final MessageSearchResult result;
+  final String query;
+  final DateFormat timeFormat;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${result.isMine ? 'You' : 'Peer'} | ${_messageTypeLabel(result.messageKind)} | ${_messageDateLabel(result.sentAt, timeFormat)}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: palette.textSubtle,
+          ),
+        ),
+        const SizedBox(height: VeilSpace.xxs),
+        RichText(
+          text: TextSpan(
+            style: theme.textTheme.bodyMedium,
+            children: buildSearchHighlightTextSpans(
+              text: result.bodySnippet,
+              query: query,
+              highlightStyle: theme.textTheme.bodyMedium?.copyWith(
+                color: palette.text,
+                fontWeight: FontWeight.w700,
+              ),
+              baseStyle: theme.textTheme.bodyMedium,
+            ),
+          ),
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
+List<TextSpan> buildSearchHighlightTextSpans({
+  required String text,
+  required String query,
+  TextStyle? baseStyle,
+  TextStyle? highlightStyle,
+}) {
+  final normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery.isEmpty) {
+    return <TextSpan>[TextSpan(text: text, style: baseStyle)];
+  }
+
+  final spans = <TextSpan>[];
+  final lowerText = text.toLowerCase();
+  var cursor = 0;
+  while (cursor < text.length) {
+    final matchIndex = lowerText.indexOf(normalizedQuery, cursor);
+    if (matchIndex < 0) {
+      spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
+      break;
+    }
+    if (matchIndex > cursor) {
+      spans.add(
+        TextSpan(text: text.substring(cursor, matchIndex), style: baseStyle),
+      );
+    }
+    spans.add(
+      TextSpan(
+        text: text.substring(matchIndex, matchIndex + normalizedQuery.length),
+        style: highlightStyle ?? baseStyle,
+      ),
+    );
+    cursor = matchIndex + normalizedQuery.length;
+  }
+  return spans;
 }

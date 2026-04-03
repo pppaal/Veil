@@ -89,6 +89,19 @@ void main() {
       isNull,
     );
   });
+
+  test('buildSearchHighlightTextSpans isolates repeated local matches', () {
+    final spans = buildSearchHighlightTextSpans(
+      text: '... orbit relay orbit window ...',
+      query: 'orbit',
+    );
+
+    expect(spans.map((span) => span.text).join(), '... orbit relay orbit window ...');
+    expect(
+      spans.where((span) => span.text == 'orbit').length,
+      2,
+    );
+  });
 }
 
 ConversationPreview _conversation(

@@ -350,11 +350,15 @@ void main() {
       currentDeviceId: 'device-local',
     );
 
-    expect(mineResults.items.map((item) => item.messageId).toList(), ['msg-mine']);
-    expect(fileResults.items.map((item) => item.messageId).toList(),
-        ['msg-theirs-file']);
-    expect(fileResults.items.single.isMine, isFalse);
-  });
+      expect(mineResults.items.map((item) => item.messageId).toList(), ['msg-mine']);
+      expect(fileResults.items.map((item) => item.messageId).toList(),
+          ['msg-theirs-file']);
+      expect(fileResults.items.single.isMine, isFalse);
+      expect(
+        fileResults.items.single.bodySnippet.toLowerCase(),
+        contains('meeting'),
+      );
+    });
 
   test('searchMessageArchive returns paged results for larger local archives',
       () async {

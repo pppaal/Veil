@@ -7,6 +7,22 @@ import '../crypto/crypto_engine.dart';
 import '../security/local_data_cipher.dart';
 import 'app_database.dart';
 
+String buildArchiveQuerySnippet(String searchBody, String normalizedQuery) {
+  final compactBody = searchBody.replaceAll(RegExp(r'\s+'), ' ').trim();
+  final matchIndex = compactBody.indexOf(normalizedQuery);
+  if (matchIndex < 0) {
+    return compactBody.length <= 96
+        ? compactBody
+        : '${compactBody.substring(0, 96).trim()}...';
+  }
+  final start = (matchIndex - 24).clamp(0, compactBody.length);
+  final end =
+      (matchIndex + normalizedQuery.length + 56).clamp(0, compactBody.length);
+  final prefix = start > 0 ? '... ' : '';
+  final suffix = end < compactBody.length ? ' ...' : '';
+  return '$prefix${compactBody.substring(start, end).trim()}$suffix';
+}
+
 class ConversationPagingState {
   const ConversationPagingState({
     this.nextCursor,
@@ -149,6 +165,24 @@ class AttachmentUploadDraft {
           : DateTime.parse(json['lastUpdatedAt'] as String),
     );
   }
+
+  // ignore: unused_element
+  String _unusedDraftQuerySnippet(String searchBody, String normalizedQuery) {
+    final compactBody = searchBody.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final matchIndex = compactBody.indexOf(normalizedQuery);
+    if (matchIndex < 0) {
+      return compactBody.length <= 96
+          ? compactBody
+          : '${compactBody.substring(0, 96).trim()}...';
+    }
+    final start = (matchIndex - 24).clamp(0, compactBody.length);
+    final end = (matchIndex + normalizedQuery.length + 56)
+        .clamp(0, compactBody.length);
+    final prefix = start > 0 ? '... ' : '';
+    final suffix = end < compactBody.length ? ' ...' : '';
+    return '$prefix${compactBody.substring(start, end).trim()}$suffix';
+  }
+
 }
 
 class PendingMessageRecord {
@@ -771,7 +805,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           sentAt: row.receivedAt,
           messageKind: MessageKind.values.byName(messageType),
           isMine: isMine,
-          bodySnippet: _snippetForQuery(searchBody, normalizedQuery),
+          bodySnippet: buildArchiveQuerySnippet(searchBody, normalizedQuery),
           conversationOrder: row.conversationOrder,
         ),
       );
@@ -944,7 +978,8 @@ class DriftConversationCacheService implements ConversationCacheService {
     return encrypted ?? value;
   }
 
-  String _snippetForQuery(String searchBody, String normalizedQuery) {
+  // ignore: unused_element
+  String _legacySnippetForQuery(String searchBody, String normalizedQuery) {
     final matchIndex = searchBody.indexOf(normalizedQuery);
     if (matchIndex < 0) {
       return searchBody.length <= 96

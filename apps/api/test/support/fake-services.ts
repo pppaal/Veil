@@ -87,6 +87,7 @@ export class FakeRealtimeGateway {
 }
 
 export class FakePushService {
+  readonly providerKind = 'none' as const;
   readonly sentHints: Array<{ pushToken: string; hint: unknown }> = [];
 
   async sendMessageHint(pushToken: string, hint: unknown): Promise<void> {

@@ -22,6 +22,40 @@ class DeviceAuthKeyMaterial {
   final String privateKey;
 }
 
+class SessionBootstrapRequest {
+  const SessionBootstrapRequest({
+    required this.conversationId,
+    required this.localDeviceId,
+    required this.localUserId,
+    required this.remoteUserId,
+    required this.remoteDeviceId,
+    required this.remoteIdentityPublicKey,
+    required this.remoteSignedPrekeyBundle,
+  });
+
+  final String conversationId;
+  final String localDeviceId;
+  final String localUserId;
+  final String remoteUserId;
+  final String remoteDeviceId;
+  final String remoteIdentityPublicKey;
+  final String remoteSignedPrekeyBundle;
+}
+
+class SessionBootstrapMaterial {
+  const SessionBootstrapMaterial({
+    required this.sessionLocator,
+    required this.sessionEnvelopeVersion,
+    required this.requiresLocalPersistence,
+    this.auditHint,
+  });
+
+  final String sessionLocator;
+  final String sessionEnvelopeVersion;
+  final bool requiresLocalPersistence;
+  final String? auditHint;
+}
+
 class KeyBundle {
   const KeyBundle({
     required this.userId,
@@ -178,6 +212,12 @@ abstract class MessageCryptoEngine {
   });
 }
 
+abstract class ConversationSessionBootstrapper {
+  Future<SessionBootstrapMaterial> bootstrapSession(
+    SessionBootstrapRequest request,
+  );
+}
+
 abstract class CryptoAdapter {
   String get adapterId;
 
@@ -190,4 +230,6 @@ abstract class CryptoAdapter {
   CryptoEnvelopeCodec get envelopeCodec;
 
   MessageCryptoEngine get messaging;
+
+  ConversationSessionBootstrapper get sessions;
 }

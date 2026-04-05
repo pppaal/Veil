@@ -57,6 +57,8 @@ Automated coverage now includes:
 The release gate is now documented in:
 
 - [Private Beta Release Process](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-release-process.md)
+- [Private Beta Performance Profile](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)
+- [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
 - [Observability Hygiene](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
 - [Internal Alpha Test Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-test-checklist.md)
 

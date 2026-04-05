@@ -17,6 +17,7 @@
     "ci:api": "pnpm build && pnpm lint && pnpm policy:check && pnpm architecture:check && pnpm test && pnpm -C apps/api test:e2e",
     "ci:mobile": "pnpm mobile:codegen && pnpm mobile:analyze && pnpm mobile:test",
     "ci:verify": "pnpm ci:api && pnpm ci:mobile",
+    "beta:release:check": "pnpm ci:verify && pnpm alpha:smoke",
     "alpha:smoke": "node ./scripts/alpha-smoke.mjs",
     "policy:check": "node ./scripts/policy-check.mjs",
     "dev:api": "pnpm -C apps/api start:dev",

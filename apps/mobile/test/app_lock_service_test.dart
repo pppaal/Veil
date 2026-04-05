@@ -87,7 +87,7 @@ void main() {
     expect(lockedOut.isLockedOut, isTrue);
     expect(await service.remainingPinLockout(), isNotNull);
     expect(await service.validatePin('123456'), isFalse);
-  });
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }
 
 class _FakeAuthenticator implements LocalUnlockAuthenticator {

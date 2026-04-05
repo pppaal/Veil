@@ -42,6 +42,8 @@ For Windows desktop builds, enable Windows Developer Mode first so Flutter plugi
 Environment separation:
 - `.env.example`: local development defaults
 - `apps/api/.env.alpha.example`: internal alpha / private-beta-like container wiring
+- `VEIL_PUSH_PROVIDER`: `none` by default, with `apns` or `fcm` reserved for future
+  metadata-only provider wiring behind the current seam
 - `VEIL_ENV=production` remains intentionally blocked until audited crypto replaces the mock boundary
 
 ## Useful scripts
@@ -53,6 +55,7 @@ Environment separation:
 - `pnpm ci:api`
 - `pnpm ci:mobile`
 - `pnpm ci:verify`
+- `pnpm beta:release:check`
 - `pnpm -C apps/api test:e2e`
 - `pnpm docker:up`
 - `pnpm docker:down`
@@ -121,9 +124,12 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Private Beta Audit](docs/private-beta-audit.md)
 - [Private Beta Release Process](docs/private-beta-release-process.md)
 - [Private Beta Readiness Report](docs/private-beta-readiness-report.md)
+- [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
+- [External Security Review Packet](docs/external-security-review-packet.md)
 - [Telegram-Grade Private Beta Gap Analysis](docs/telegram-grade-private-beta-gap-analysis.md)
 - [Observability Hygiene](docs/observability-hygiene.md)
 - [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)
+- [Crypto Interoperability Fixtures](docs/crypto-interoperability-fixtures.md)
 - [Trusted Device Graph](docs/trusted-device-graph.md)
 - [Production Deployment Checklist](docs/production-deployment.md)
 - [Mock Crypto Replacement Plan](docs/mock-crypto-replacement.md)

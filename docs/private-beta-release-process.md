@@ -22,6 +22,7 @@ Run all of the following from the repo root:
 pnpm ci:api
 pnpm ci:mobile
 pnpm alpha:smoke
+pnpm beta:release:check
 ```
 
 Required outcomes:
@@ -33,6 +34,7 @@ Required outcomes:
 - API e2e passes
 - mobile codegen/analyze/test passes
 - alpha smoke passes against a running stack
+- the combined release gate passes
 
 ## 4. QA gate
 
@@ -94,3 +96,8 @@ Do not claim any of the following in private beta:
 - production-ready recovery safety
 - external security review completion
 - push-provider privacy review completion
+
+## 9. Required handoff docs
+
+- [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
+- [Private Beta Performance Profile](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)

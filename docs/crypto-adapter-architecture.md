@@ -30,6 +30,7 @@ The current mobile boundary is split into:
 - `DeviceIdentityProvider`
 - `DeviceAuthChallengeSigner`
 - `KeyBundleCodec`
+- `ConversationSessionBootstrapper`
 - `CryptoEnvelopeCodec`
 - `MessageCryptoEngine`
 - `CryptoAdapter`
@@ -62,6 +63,7 @@ What should not change:
 When real crypto is integrated, these tests must expand:
 
 - cross-device interoperability tests
+- fixture compatibility tests against a versioned interoperability fixture contract
 - serialization compatibility tests across mobile and API
 - attachment wrap/unwrap compatibility tests
 - migration tests from mock-cache state to real session state
@@ -90,3 +92,8 @@ Current architecture checks already assert:
 4. Add interoperability fixtures for sender, receiver, attachment, and transfer flows.
 5. Review secure storage lifecycle for revoke, logout, wipe, and transfer.
 6. Run external security review before any production claim or production boot enablement.
+
+The future fixture contract is defined in:
+
+- [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
+- [crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)

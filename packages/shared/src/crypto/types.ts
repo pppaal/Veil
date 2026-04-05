@@ -82,6 +82,23 @@ export interface DeviceAuthKeyMaterial {
   privateKey: string;
 }
 
+export interface SessionBootstrapRequest {
+  conversationId: string;
+  localDeviceId: string;
+  localUserId: string;
+  remoteUserId: string;
+  remoteDeviceId: string;
+  remoteIdentityPublicKey: string;
+  remoteSignedPrekeyBundle: string;
+}
+
+export interface SessionBootstrapMaterial {
+  sessionLocator: string;
+  sessionEnvelopeVersion: string;
+  requiresLocalPersistence: boolean;
+  auditHint?: string;
+}
+
 export interface DeviceIdentityProvider {
   generateDeviceIdentity(deviceId: string): Promise<DeviceIdentityMaterial>;
 }
@@ -123,6 +140,12 @@ export interface MessageCryptoEngine {
   ): Promise<AttachmentEncryptionMaterial>;
 }
 
+export interface ConversationSessionBootstrapper {
+  bootstrapSession(
+    request: SessionBootstrapRequest,
+  ): Promise<SessionBootstrapMaterial>;
+}
+
 export interface CryptoAdapter {
   readonly adapterId: string;
   readonly identity: DeviceIdentityProvider;
@@ -130,4 +153,5 @@ export interface CryptoAdapter {
   readonly keyBundles: KeyBundleCodec;
   readonly envelopeCodec: CryptoEnvelopeCodec;
   readonly messaging: MessageCryptoEngine;
+  readonly sessions: ConversationSessionBootstrapper;
 }

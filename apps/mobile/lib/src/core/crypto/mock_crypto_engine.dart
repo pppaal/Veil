@@ -14,6 +14,7 @@ class MockCryptoAdapter implements CryptoAdapter {
     keyBundles = const _MockKeyBundleCodec();
     envelopeCodec = const _MockCryptoEnvelopeCodec();
     messaging = _MockMessageCryptoEngine(_random, envelopeCodec);
+    sessions = _MockConversationSessionBootstrapper(_random, envelopeCodec);
   }
 
   final Random _random;
@@ -36,6 +37,9 @@ class MockCryptoAdapter implements CryptoAdapter {
 
   @override
   late final MessageCryptoEngine messaging;
+
+  @override
+  late final ConversationSessionBootstrapper sessions;
 }
 
 CryptoAdapter createDefaultCryptoAdapter() => MockCryptoAdapter();
@@ -231,6 +235,28 @@ class _MockMessageCryptoEngine implements MessageCryptoEngine {
       encryptedKey: _opaqueToken(_random, 32),
       nonce: 'mock-attachment-${_random.nextInt(1 << 32)}',
       algorithmHint: _codec.defaultAttachmentWrapAlgorithmHint,
+    );
+  }
+}
+
+class _MockConversationSessionBootstrapper
+    implements ConversationSessionBootstrapper {
+  const _MockConversationSessionBootstrapper(this._random, this._codec);
+
+  final Random _random;
+  final CryptoEnvelopeCodec _codec;
+
+  @override
+  Future<SessionBootstrapMaterial> bootstrapSession(
+    SessionBootstrapRequest request,
+  ) async {
+    // TODO(security): Replace this opaque session locator with audited
+    // per-peer session state once a production adapter is introduced.
+    return SessionBootstrapMaterial(
+      sessionLocator: 'session://${request.conversationId}/${_opaqueToken(_random, 18)}',
+      sessionEnvelopeVersion: _codec.defaultEnvelopeVersion,
+      requiresLocalPersistence: true,
+      auditHint: 'mock-session-bootstrap',
     );
   }
 }

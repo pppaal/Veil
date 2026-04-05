@@ -43,6 +43,10 @@ export class AppConfigService {
     return this.configService.get('VEIL_ENABLE_SWAGGER', { infer: true });
   }
 
+  get pushProvider(): EnvConfig['VEIL_PUSH_PROVIDER'] {
+    return this.configService.get('VEIL_PUSH_PROVIDER', { infer: true });
+  }
+
   get allowedOrigins(): string[] {
     const configured = this.configService.get('VEIL_ALLOWED_ORIGINS', { infer: true });
     if (configured?.trim()) {

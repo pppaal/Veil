@@ -8,6 +8,7 @@ export const envSchema = z.object({
   VEIL_ALLOWED_ORIGINS: z.string().optional(),
   VEIL_TRUST_PROXY: z.coerce.boolean().default(false),
   VEIL_ENABLE_SWAGGER: z.coerce.boolean().default(true),
+  VEIL_PUSH_PROVIDER: z.enum(['none', 'apns', 'fcm']).default('none'),
   VEIL_S3_ENDPOINT: z.string().url(),
   VEIL_S3_PUBLIC_ENDPOINT: z.string().url().optional(),
   VEIL_S3_REGION: z.string().min(1),

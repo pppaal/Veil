@@ -1,4 +1,5 @@
 export * from './crypto/types';
+export * from './crypto/fixtures';
 export * from './domain/enums';
 export * from './domain/protocol';
 export * from './utils/redact';

@@ -66,8 +66,20 @@ assertMatch(
 
 assertMatch(
   'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
+  /abstract class ConversationSessionBootstrapper/,
+  'Crypto boundary must expose a session bootstrap interface',
+);
+
+assertMatch(
+  'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
   /abstract class CryptoAdapter/,
   'Crypto boundary must expose an adapter facade',
+);
+
+assertMatch(
+  'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
+  /ConversationSessionBootstrapper get sessions/,
+  'Crypto adapter facade must expose session bootstrap services',
 );
 
 assertNoMatch(

@@ -4,6 +4,7 @@ import type {
   CryptoEnvelope,
   CryptoEnvelopeCodec,
   DecryptedMessage,
+  ConversationSessionBootstrapper,
   DeviceAuthChallengeSigner,
   DeviceAuthKeyMaterial,
   DeviceIdentityMaterial,
@@ -13,6 +14,8 @@ import type {
   MessageCryptoEngine,
   PlaintextMessageInput,
   PublicKeyBundle,
+  SessionBootstrapMaterial,
+  SessionBootstrapRequest,
 } from './types';
 import {
   DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
@@ -208,6 +211,21 @@ class MockMessageCryptoEngine implements MessageCryptoEngine {
   }
 }
 
+class MockConversationSessionBootstrapper
+  implements ConversationSessionBootstrapper
+{
+  async bootstrapSession(
+    request: SessionBootstrapRequest,
+  ): Promise<SessionBootstrapMaterial> {
+    return {
+      sessionLocator: `session://${request.conversationId}/${opaqueToken(18)}`,
+      sessionEnvelopeVersion: DEV_ENVELOPE_VERSION,
+      requiresLocalPersistence: true,
+      auditHint: 'mock-session-bootstrap',
+    };
+  }
+}
+
 export class MockCryptoAdapter implements CryptoAdapter {
   readonly adapterId = 'mock-dev-adapter';
   readonly identity = new MockDeviceIdentityProvider();
@@ -215,4 +233,5 @@ export class MockCryptoAdapter implements CryptoAdapter {
   readonly keyBundles = new MockKeyBundleCodec();
   readonly envelopeCodec = new MockCryptoEnvelopeCodec();
   readonly messaging = new MockMessageCryptoEngine();
+  readonly sessions = new MockConversationSessionBootstrapper();
 }

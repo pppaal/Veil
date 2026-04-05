@@ -47,6 +47,12 @@ assertNoMatch(
   'Push payload must remain metadata-only',
 );
 
+assertMatch(
+  'apps/api/src/modules/push/push.service.ts',
+  /PUSH_PROVIDER|PushProvider/,
+  'Push service must remain behind a provider seam',
+);
+
 assertNoMatch(
   'apps/api/src/modules/realtime/realtime.gateway.ts',
   /origin:\s*['"`]\*['"`]/,

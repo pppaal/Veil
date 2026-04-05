@@ -86,6 +86,10 @@ describe('VEIL API (e2e)', () => {
       status: 'ok',
       service: 'veil-api',
     });
+
+    const missingBundle = await api.get('/v1/users/unknown/key-bundle');
+    expect(missingBundle.status).toBe(404);
+    expect(missingBundle.body.code).toBe('active_device_not_found');
   });
 
   it('covers registration, conversations, messages, attachments, and device transfer', async () => {
@@ -143,6 +147,9 @@ describe('VEIL API (e2e)', () => {
     const keyBundle = await api.get('/v1/users/icarus/key-bundle');
     expect(keyBundle.status).toBe(200);
     expect(keyBundle.body.bundle.identityPublicKey).toBe('pub-a');
+    expect(Array.isArray(keyBundle.body.deviceBundles)).toBe(true);
+    expect(keyBundle.body.deviceBundles.length).toBeGreaterThan(0);
+    expect(keyBundle.body.deviceBundles[0].deviceId).toBeDefined();
     expect(keyBundle.body.bundle.authPublicKey).toBeUndefined();
 
     const conversation = await api

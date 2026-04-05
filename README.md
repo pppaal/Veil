@@ -44,7 +44,17 @@ Environment separation:
 - `apps/api/.env.alpha.example`: internal alpha / private-beta-like container wiring
 - `VEIL_PUSH_PROVIDER`: `none` by default, with `apns` or `fcm` reserved for future
   metadata-only provider wiring behind the current seam
+- `VEIL_PUSH_ENABLE_DELIVERY`: `false` by default. Turning it on requires
+  provider credentials and a separate privacy review.
+- `VEIL_APNS_*` and `VEIL_FCM_*`: reserved provider credentials for metadata-only push wiring.
 - `VEIL_ENV=production` remains intentionally blocked until audited crypto replaces the mock boundary
+
+Mobile release identity:
+- Android package: `io.veil.mobile`
+- iOS bundle identifier: `io.veil.mobile`
+- Android release signing reads optional `apps/mobile/android/keystore.properties`
+  shaped like [keystore.properties.example](apps/mobile/android/keystore.properties.example)
+  and falls back to debug signing only for local non-distributed builds
 
 ## Useful scripts
 
@@ -56,6 +66,9 @@ Environment separation:
 - `pnpm ci:mobile`
 - `pnpm ci:verify`
 - `pnpm beta:release:check`
+- `pnpm beta:release:evidence`
+- `pnpm beta:perf:template`
+- `pnpm beta:review:manifest`
 - `pnpm -C apps/api test:e2e`
 - `pnpm docker:up`
 - `pnpm docker:down`

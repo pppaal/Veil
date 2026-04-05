@@ -26,6 +26,7 @@ class VeilMessengerController extends ChangeNotifier {
     required MessageCryptoEngine cryptoEngine,
     required KeyBundleCodec keyBundleCodec,
     required CryptoEnvelopeCodec envelopeCodec,
+    required ConversationSessionBootstrapper sessionBootstrapper,
     required RealtimeService realtimeService,
     required ConversationCacheService? cacheService,
     AttachmentTempFileStore? attachmentTempFileStore,
@@ -34,6 +35,7 @@ class VeilMessengerController extends ChangeNotifier {
         _cryptoEngine = cryptoEngine,
         _keyBundleCodec = keyBundleCodec,
         _envelopeCodec = envelopeCodec,
+        _sessionBootstrapper = sessionBootstrapper,
         _realtimeService = realtimeService,
         _cacheService = cacheService,
         _attachmentTempFileStore = attachmentTempFileStore,
@@ -52,6 +54,7 @@ class VeilMessengerController extends ChangeNotifier {
   final MessageCryptoEngine _cryptoEngine;
   final KeyBundleCodec _keyBundleCodec;
   final CryptoEnvelopeCodec _envelopeCodec;
+  final ConversationSessionBootstrapper _sessionBootstrapper;
   final RealtimeService _realtimeService;
   final ConversationCacheService? _cacheService;
   final AttachmentTempFileStore? _attachmentTempFileStore;
@@ -1456,8 +1459,105 @@ class VeilMessengerController extends ChangeNotifier {
 
   Future<KeyBundle> _fetchPeerBundle(String handle) async {
     final response = await _apiClient.getKeyBundle(handle);
+    final activeDeviceId =
+        (response['user'] as Map<String, dynamic>?)?['activeDeviceId'] as String?;
+    final directoryJson =
+        (response['deviceBundles'] as List<dynamic>?)
+            ?.whereType<Map<String, dynamic>>()
+            .toList(growable: false) ??
+        const <Map<String, dynamic>>[];
+    if (directoryJson.isNotEmpty) {
+      final bundles = _keyBundleCodec.decodeDirectoryBundles(directoryJson);
+      final selected = bundles.firstWhere(
+        (bundle) => bundle.deviceId == activeDeviceId,
+        orElse: () => bundles.first,
+      );
+      final sessionState = await _ensureConversationSession(handle, selected);
+      _refreshConversationBundle(handle, selected, sessionState: sessionState);
+      return selected;
+    }
+
     final bundle = response['bundle'] as Map<String, dynamic>;
-    return _keyBundleCodec.decodeDirectoryBundle(bundle);
+    final selected = _keyBundleCodec.decodeDirectoryBundle(bundle);
+    final sessionState = await _ensureConversationSession(handle, selected);
+    _refreshConversationBundle(handle, selected, sessionState: sessionState);
+    return selected;
+  }
+
+  Future<ConversationSessionState?> _ensureConversationSession(
+    String handle,
+    KeyBundle bundle,
+  ) async {
+    if (!_session.isAuthenticated) {
+      return null;
+    }
+
+    ConversationPreview? conversation;
+    for (final item in _conversations) {
+      if (item.peerHandle == handle) {
+        conversation = item;
+        break;
+      }
+    }
+    if (conversation == null) {
+      return null;
+    }
+
+    if (conversation.sessionState != null &&
+        conversation.recipientBundle.deviceId == bundle.deviceId) {
+      return conversation.sessionState;
+    }
+
+    final bootstrapped = await _sessionBootstrapper.bootstrapSession(
+      SessionBootstrapRequest(
+        conversationId: conversation.id,
+        localDeviceId: _session.deviceId!,
+        localUserId: _session.userId!,
+        remoteUserId: bundle.userId,
+        remoteDeviceId: bundle.deviceId,
+        remoteIdentityPublicKey: bundle.identityPublicKey,
+        remoteSignedPrekeyBundle: bundle.signedPrekeyBundle,
+      ),
+    );
+    return ConversationSessionState(
+      sessionLocator: bootstrapped.sessionLocator,
+      sessionEnvelopeVersion: bootstrapped.sessionEnvelopeVersion,
+      requiresLocalPersistence: bootstrapped.requiresLocalPersistence,
+      bootstrappedAt: DateTime.now(),
+      auditHint: bootstrapped.auditHint,
+    );
+  }
+
+  void _refreshConversationBundle(
+    String handle,
+    KeyBundle bundle, {
+    ConversationSessionState? sessionState,
+  }) {
+    var changed = false;
+    _conversations = _conversations.map((conversation) {
+      if (conversation.peerHandle != handle) {
+        return conversation;
+      }
+      final shouldUpdateBundle =
+          conversation.recipientBundle.deviceId != bundle.deviceId;
+      final shouldUpdateSession =
+          sessionState != null &&
+          (conversation.sessionState?.sessionLocator != sessionState.sessionLocator ||
+              conversation.sessionState?.sessionEnvelopeVersion !=
+                  sessionState.sessionEnvelopeVersion);
+      if (!shouldUpdateBundle && !shouldUpdateSession) {
+        return conversation;
+      }
+      changed = true;
+      return conversation.copyWith(
+        recipientBundle: bundle,
+        sessionState: sessionState,
+      );
+    }).toList(growable: false);
+    if (changed) {
+      unawaited(_cacheService?.storeConversations(_conversations));
+      notifyListeners();
+    }
   }
 
   ConversationPreview _conversationFromApi(dynamic raw) {
@@ -1486,6 +1586,7 @@ class VeilMessengerController extends ChangeNotifier {
           : DateTime.parse(
               (conversation['lastMessage'] as Map<String, dynamic>)['serverReceivedAt'] as String,
             ),
+      sessionState: null,
     );
   }
 

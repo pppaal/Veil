@@ -67,6 +67,7 @@ export interface UserProfileResponse {
 export interface KeyBundleResponse {
   user: UserProfileResponse;
   bundle: PublicKeyBundle;
+  deviceBundles: PublicKeyBundle[];
 }
 
 export interface ConversationMemberSummary {

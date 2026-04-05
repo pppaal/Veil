@@ -67,6 +67,11 @@ export class DeviceTransferService {
     auth: { userId: string; deviceId: string },
     dto: DeviceTransferInitDto,
   ): Promise<DeviceTransferInitResponse> {
+    await this.cleanupExpiredSessions({
+      userId: auth.userId,
+      oldDeviceId: dto.oldDeviceId,
+    });
+
     if (auth.deviceId !== dto.oldDeviceId) {
       throw forbidden(
         'device_forbidden',
@@ -121,8 +126,7 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
-    if (session.completedAt || session.expiresAt.getTime() <= Date.now()) {
-      await this.ephemeralStore.delete(claimKey(dto.sessionId));
+    if (await this.closeIfInactive(session.id, session.completedAt, session.expiresAt)) {
       throw forbidden('transfer_session_inactive', 'Transfer session is no longer active');
     }
 
@@ -160,8 +164,7 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
-    if (session.completedAt || session.expiresAt.getTime() <= Date.now()) {
-      await this.ephemeralStore.delete(claimKey(dto.sessionId));
+    if (await this.closeIfInactive(session.id, session.completedAt, session.expiresAt)) {
       throw forbidden('transfer_session_inactive', 'Transfer session is no longer active');
     }
 
@@ -226,13 +229,8 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
-    if (session.completedAt) {
+    if (await this.closeIfInactive(session.id, session.completedAt, session.expiresAt)) {
       throw forbidden('transfer_session_inactive', 'Transfer session already completed');
-    }
-
-    if (session.expiresAt.getTime() <= Date.now()) {
-      await this.ephemeralStore.delete(claimKey(dto.sessionId));
-      throw forbidden('transfer_session_inactive', 'Transfer session expired');
     }
 
     if (hashToken(dto.transferToken) !== session.tokenHash) {
@@ -341,5 +339,64 @@ export class DeviceTransferService {
         },
       });
     }
+  }
+
+  private async cleanupExpiredSessions(args: {
+    userId: string;
+    oldDeviceId?: string;
+  }): Promise<void> {
+    const now = new Date();
+    const expired = await this.prisma.deviceTransferSession.findMany({
+      where: {
+        userId: args.userId,
+        ...(args.oldDeviceId ? { oldDeviceId: args.oldDeviceId } : {}),
+        completedAt: null,
+        expiresAt: {
+          lt: now,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (expired.length === 0) {
+      return;
+    }
+
+    for (const session of expired) {
+      await this.ephemeralStore.delete(claimKey(session.id));
+    }
+
+    await this.prisma.deviceTransferSession.updateMany({
+      where: {
+        id: {
+          in: expired.map((session) => session.id),
+        },
+      },
+      data: {
+        completedAt: now,
+      },
+    });
+  }
+
+  private async closeIfInactive(
+    sessionId: string,
+    completedAt: Date | null,
+    expiresAt: Date,
+  ): Promise<boolean> {
+    if (completedAt) {
+      await this.ephemeralStore.delete(claimKey(sessionId));
+      return true;
+    }
+
+    if (expiresAt.getTime() > Date.now()) {
+      return false;
+    }
+
+    await this.ephemeralStore.delete(claimKey(sessionId));
+    await this.prisma.deviceTransferSession.update({
+      where: { id: sessionId },
+      data: { completedAt: new Date() },
+    });
+    return true;
   }
 }

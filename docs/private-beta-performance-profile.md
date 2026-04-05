@@ -4,6 +4,10 @@ This document defines the minimum real-device profiling pass before widening VEI
 
 It is a performance and UX checklist, not a cryptographic review.
 
+Machine-readable template:
+- `pnpm beta:perf:template`
+- output: `artifacts/private-beta-performance-template.json`
+
 ## Target areas
 
 1. Conversation list

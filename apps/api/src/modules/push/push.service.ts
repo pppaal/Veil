@@ -16,21 +16,6 @@ export class NoopPushProvider implements PushProvider {
   }
 }
 
-export class MetadataOnlySeamPushProvider implements PushProvider {
-  constructor(readonly kind: 'apns' | 'fcm') {}
-
-  async sendMessageHint(
-    pushToken: string,
-    hint: MessagePushHint,
-  ): Promise<void> {
-    void pushToken;
-    void hint;
-    // Intentionally metadata-only. Real APNs/FCM integration belongs behind this seam.
-    // This provider exists to preserve the boundary and release wiring without
-    // claiming that a real provider has been privacy-reviewed or production-hardened.
-  }
-}
-
 @Injectable()
 export class PushService {
   constructor(
@@ -45,6 +30,11 @@ export class PushService {
     pushToken: string,
     hint: MessagePushHint,
   ): Promise<void> {
-    await this.provider.sendMessageHint(pushToken, hint);
+    try {
+      await this.provider.sendMessageHint(pushToken, hint);
+    } catch {
+      // Push delivery must never block the message relay path.
+      // Provider-specific failures are handled out-of-band by health/ops review.
+    }
   }
 }

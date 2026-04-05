@@ -23,6 +23,15 @@ export class FakeConfigService {
   redisUrl: string | undefined = undefined;
   trustProxy = false;
   swaggerEnabled = true;
+  pushProvider = 'none' as const;
+  pushDeliveryEnabled = false;
+  apnsBundleId: string | undefined = undefined;
+  apnsTeamId: string | undefined = undefined;
+  apnsKeyId: string | undefined = undefined;
+  apnsPrivateKeyPem: string | undefined = undefined;
+  apnsUseSandbox = true;
+  fcmProjectId: string | undefined = undefined;
+  fcmServiceAccountJson: string | undefined = undefined;
   allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
   transferTokenTtlSeconds = 300;
   authChallengeTtlSeconds = 120;

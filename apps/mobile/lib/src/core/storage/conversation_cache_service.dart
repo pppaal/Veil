@@ -166,23 +166,6 @@ class AttachmentUploadDraft {
     );
   }
 
-  // ignore: unused_element
-  String _unusedDraftQuerySnippet(String searchBody, String normalizedQuery) {
-    final compactBody = searchBody.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final matchIndex = compactBody.indexOf(normalizedQuery);
-    if (matchIndex < 0) {
-      return compactBody.length <= 96
-          ? compactBody
-          : '${compactBody.substring(0, 96).trim()}...';
-    }
-    final start = (matchIndex - 24).clamp(0, compactBody.length);
-    final end = (matchIndex + normalizedQuery.length + 56)
-        .clamp(0, compactBody.length);
-    final prefix = start > 0 ? '... ' : '';
-    final suffix = end < compactBody.length ? ' ...' : '';
-    return '$prefix${compactBody.substring(start, end).trim()}$suffix';
-  }
-
 }
 
 class PendingMessageRecord {
@@ -335,6 +318,14 @@ class DriftConversationCacheService implements ConversationCacheService {
       final previewNonce = await _decrypt(row.previewNonce);
       final previewMessageType = await _decrypt(row.previewMessageType);
       final previewAttachmentJson = await _decrypt(row.previewAttachmentJson);
+      final sessionLocator = await _decrypt(row.sessionLocator);
+      final sessionEnvelopeVersion =
+          await _decrypt(row.sessionEnvelopeVersion);
+      final sessionRequiresLocalPersistence =
+          await _decrypt(row.sessionRequiresLocalPersistence);
+      final sessionAuditHint = await _decrypt(row.sessionAuditHint);
+      final sessionBootstrappedAt =
+          await _decrypt(row.sessionBootstrappedAt);
 
       conversations.add(
         ConversationPreview(
@@ -365,6 +356,19 @@ class DriftConversationCacheService implements ConversationCacheService {
                   attachment: _decodeAttachment(previewAttachmentJson),
                 ),
           updatedAt: row.updatedAt,
+          sessionState: sessionLocator == null ||
+                  sessionEnvelopeVersion == null ||
+                  sessionRequiresLocalPersistence == null ||
+                  sessionBootstrappedAt == null
+              ? null
+              : ConversationSessionState(
+                  sessionLocator: sessionLocator,
+                  sessionEnvelopeVersion: sessionEnvelopeVersion,
+                  requiresLocalPersistence:
+                      sessionRequiresLocalPersistence == 'true',
+                  bootstrappedAt: DateTime.parse(sessionBootstrappedAt),
+                  auditHint: sessionAuditHint,
+                ),
         ),
       );
     }
@@ -466,6 +470,18 @@ class DriftConversationCacheService implements ConversationCacheService {
           previewAttachmentJson:
               Value(await _encrypt(_encodeAttachment(preview?.attachment))),
           previewExpiresAt: Value(preview?.expiresAt),
+          sessionLocator:
+              Value(await _encrypt(conversation.sessionState?.sessionLocator)),
+          sessionEnvelopeVersion: Value(await _encrypt(
+              conversation.sessionState?.sessionEnvelopeVersion)),
+          sessionRequiresLocalPersistence: Value(await _encrypt(
+            conversation.sessionState?.requiresLocalPersistence.toString(),
+          )),
+          sessionAuditHint:
+              Value(await _encrypt(conversation.sessionState?.auditHint)),
+          sessionBootstrappedAt: Value(await _encrypt(
+            conversation.sessionState?.bootstrappedAt.toIso8601String(),
+          )),
           paginationCursor: Value(existing?.paginationCursor),
           hasMoreHistory: Value(existing?.hasMoreHistory ?? true),
           lastSyncedAt: Value(existing?.lastSyncedAt),
@@ -978,19 +994,4 @@ class DriftConversationCacheService implements ConversationCacheService {
     return encrypted ?? value;
   }
 
-  // ignore: unused_element
-  String _legacySnippetForQuery(String searchBody, String normalizedQuery) {
-    final matchIndex = searchBody.indexOf(normalizedQuery);
-    if (matchIndex < 0) {
-      return searchBody.length <= 96
-          ? searchBody
-          : '${searchBody.substring(0, 96)}…';
-    }
-    final start = (matchIndex - 24).clamp(0, searchBody.length);
-    final end =
-        (matchIndex + normalizedQuery.length + 56).clamp(0, searchBody.length);
-    final prefix = start > 0 ? '…' : '';
-    final suffix = end < searchBody.length ? '…' : '';
-    return '$prefix${searchBody.substring(start, end).trim()}$suffix';
-  }
 }

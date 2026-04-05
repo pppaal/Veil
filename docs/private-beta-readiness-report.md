@@ -61,6 +61,7 @@ The release gate is now documented in:
 - [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
 - [Observability Hygiene](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
 - [Internal Alpha Test Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-test-checklist.md)
+- `pnpm beta:release:evidence` writes a machine-readable handoff file to `artifacts/private-beta-release-evidence.json`
 
 ## Security assumptions
 

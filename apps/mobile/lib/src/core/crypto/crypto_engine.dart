@@ -172,6 +172,8 @@ abstract class DeviceAuthChallengeSigner {
 
 abstract class KeyBundleCodec {
   KeyBundle decodeDirectoryBundle(Map<String, dynamic> json);
+
+  List<KeyBundle> decodeDirectoryBundles(List<Map<String, dynamic>> json);
 }
 
 abstract class CryptoEnvelopeCodec {

@@ -17,6 +17,11 @@ class CachedConversations extends Table {
   TextColumn get previewMessageType => text().nullable()();
   TextColumn get previewAttachmentJson => text().nullable()();
   DateTimeColumn get previewExpiresAt => dateTime().nullable()();
+  TextColumn get sessionLocator => text().nullable()();
+  TextColumn get sessionEnvelopeVersion => text().nullable()();
+  TextColumn get sessionRequiresLocalPersistence => text().nullable()();
+  TextColumn get sessionAuditHint => text().nullable()();
+  TextColumn get sessionBootstrappedAt => text().nullable()();
   TextColumn get paginationCursor => text().nullable()();
   BoolColumn get hasMoreHistory =>
       boolean().withDefault(const Constant(true))();
@@ -74,7 +79,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -100,6 +105,23 @@ class AppDatabase extends _$AppDatabase {
             await customStatement('DROP TABLE IF EXISTS cached_messages');
             await customStatement('DROP TABLE IF EXISTS cached_conversations');
             await migrator.createAll();
+          }
+          if (from < 6) {
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_locator TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_envelope_version TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_requires_local_persistence TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_audit_hint TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_bootstrapped_at TEXT',
+            );
           }
           await _createIndexes();
         },

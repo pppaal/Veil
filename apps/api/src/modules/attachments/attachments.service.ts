@@ -81,6 +81,8 @@ export class AttachmentsService {
     deviceId: string,
     dto: CompleteAttachmentUploadDto,
   ): Promise<CompleteAttachmentUploadResponse> {
+    await this.cleanupExpiredPendingUploads(deviceId);
+
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: dto.attachmentId },
     });
@@ -144,6 +146,8 @@ export class AttachmentsService {
     auth: { userId: string; deviceId: string },
     attachmentId: string,
   ): Promise<AttachmentDownloadTicketResponse> {
+    await this.cleanupExpiredPendingUploads(auth.deviceId);
+
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: attachmentId },
       select: {

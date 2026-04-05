@@ -47,6 +47,40 @@ export class AppConfigService {
     return this.configService.get('VEIL_PUSH_PROVIDER', { infer: true });
   }
 
+  get pushDeliveryEnabled(): boolean {
+    return this.configService.get('VEIL_PUSH_ENABLE_DELIVERY', {
+      infer: true,
+    });
+  }
+
+  get apnsBundleId(): string | undefined {
+    return this.configService.get('VEIL_APNS_BUNDLE_ID', { infer: true });
+  }
+
+  get apnsTeamId(): string | undefined {
+    return this.configService.get('VEIL_APNS_TEAM_ID', { infer: true });
+  }
+
+  get apnsKeyId(): string | undefined {
+    return this.configService.get('VEIL_APNS_KEY_ID', { infer: true });
+  }
+
+  get apnsPrivateKeyPem(): string | undefined {
+    return this.configService.get('VEIL_APNS_PRIVATE_KEY_PEM', { infer: true });
+  }
+
+  get apnsUseSandbox(): boolean {
+    return this.configService.get('VEIL_APNS_USE_SANDBOX', { infer: true });
+  }
+
+  get fcmProjectId(): string | undefined {
+    return this.configService.get('VEIL_FCM_PROJECT_ID', { infer: true });
+  }
+
+  get fcmServiceAccountJson(): string | undefined {
+    return this.configService.get('VEIL_FCM_SERVICE_ACCOUNT_JSON', { infer: true });
+  }
+
   get allowedOrigins(): string[] {
     const configured = this.configService.get('VEIL_ALLOWED_ORIGINS', { infer: true });
     if (configured?.trim()) {

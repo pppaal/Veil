@@ -1,4 +1,4 @@
-package com.example.veil_mobile
+package io.veil.mobile
 
 import android.os.Build
 import android.os.Bundle

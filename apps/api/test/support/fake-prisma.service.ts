@@ -638,6 +638,12 @@ export class FakePrismaService {
       if (where?.completedAt === null) {
         records = records.filter((item) => item.completedAt === null);
       }
+      if (where?.expiresAt?.lt) {
+        records = records.filter((item) => item.expiresAt < where.expiresAt.lt);
+      }
+      if (where?.id?.in) {
+        records = records.filter((item) => where.id.in.includes(item.id));
+      }
       return records;
     };
 
@@ -652,10 +658,13 @@ export class FakePrismaService {
       for (const record of this.transferSessions) {
         const matchesUser = !where?.userId || record.userId === where.userId;
         const matchesOldDevice = !where?.oldDeviceId || record.oldDeviceId === where.oldDeviceId;
+        const matchesIds = !where?.id?.in || where.id.in.includes(record.id);
         const matchesCompletedAt =
           where?.completedAt === undefined ||
           (where.completedAt === null ? record.completedAt === null : record.completedAt === where.completedAt);
-        if (!matchesUser || !matchesOldDevice || !matchesCompletedAt) {
+        const matchesExpiresAt =
+          where?.expiresAt?.lt === undefined || record.expiresAt < where.expiresAt.lt;
+        if (!matchesUser || !matchesOldDevice || !matchesIds || !matchesCompletedAt || !matchesExpiresAt) {
           continue;
         }
         Object.assign(record, data);

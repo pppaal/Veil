@@ -113,6 +113,9 @@ export interface DeviceAuthChallengeSigner {
 
 export interface KeyBundleCodec {
   decodeDirectoryBundle(json: Record<string, unknown>): PublicKeyBundle;
+  decodeDirectoryBundles(
+    json: Array<Record<string, unknown>>,
+  ): PublicKeyBundle[];
 }
 
 export interface CryptoEnvelopeCodec {

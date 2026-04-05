@@ -69,6 +69,12 @@ class MockKeyBundleCodec implements KeyBundleCodec {
       updatedAt: json.updatedAt as string,
     };
   }
+
+  decodeDirectoryBundles(
+    json: Array<Record<string, unknown>>,
+  ): PublicKeyBundle[] {
+    return json.map((entry) => this.decodeDirectoryBundle(entry));
+  }
 }
 
 class MockCryptoEnvelopeCodec implements CryptoEnvelopeCodec {

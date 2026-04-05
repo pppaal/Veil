@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import { ApnsMetadataPushProvider } from './apns-push.provider';
+import { FcmMetadataPushProvider } from './fcm-push.provider';
 import {
-  MetadataOnlySeamPushProvider,
   NoopPushProvider,
   PUSH_PROVIDER,
   PushService,
@@ -17,8 +18,9 @@ import type { PushProvider } from './push.types';
       useFactory: (config: AppConfigService): PushProvider => {
         switch (config.pushProvider) {
           case 'apns':
+            return new ApnsMetadataPushProvider(config);
           case 'fcm':
-            return new MetadataOnlySeamPushProvider(config.pushProvider);
+            return new FcmMetadataPushProvider(config);
           case 'none':
           default:
             return new NoopPushProvider();

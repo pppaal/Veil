@@ -168,4 +168,68 @@ describe('DeviceTransferService', () => {
       }),
     ).rejects.toThrow('Transfer session is no longer active');
   });
+
+  it('marks expired open sessions completed when a fresh init begins', async () => {
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const service = new DeviceTransferService(
+      prisma as never,
+      store as never,
+      config as never,
+      new Ed25519DeviceAuthVerifier(),
+      new FakeRealtimeGateway() as never,
+    );
+
+    prisma.users.push({
+      id: 'user-1',
+      handle: 'icarus',
+      displayName: null,
+      avatarPath: null,
+      status: 'active',
+      activeDeviceId: 'device-old',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    prisma.devices.push({
+      id: 'device-old',
+      userId: 'user-1',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: null,
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+    prisma.transferSessions.push({
+      id: 'expired-session',
+      userId: 'user-1',
+      oldDeviceId: 'device-old',
+      tokenHash: 'stale',
+      expiresAt: new Date(Date.now() - 1000),
+      completedAt: null,
+      createdAt: new Date(Date.now() - 5000),
+    });
+    await store.setJson('transfer:claim:expired-session', {
+      claimId: 'claim-stale',
+    });
+
+    const fresh = await service.init(
+      { userId: 'user-1', deviceId: 'device-old' },
+      { oldDeviceId: 'device-old' },
+    );
+
+    expect(fresh.sessionId).not.toBe('expired-session');
+    expect(
+      prisma.transferSessions.find((item) => item.id === 'expired-session')?.completedAt,
+    ).not.toBeNull();
+    await expect(store.getJson('transfer:claim:expired-session')).resolves.toBeNull();
+  });
 });

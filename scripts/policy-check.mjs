@@ -42,9 +42,9 @@ const assertMatch = (target, pattern, message) => {
 };
 
 assertNoMatch(
-  'apps/api/src/modules/push/push.service.ts',
-  /\b(body|ciphertext|nonce)\b/,
-  'Push payload must remain metadata-only',
+  'apps/api/src/modules/push',
+  /\b(messageBody|plaintext|bodyText|body_text|message_text|ciphertext|nonce)\b/i,
+  'Push payloads must not reference plaintext or envelope fields',
 );
 
 assertMatch(

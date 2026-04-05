@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { KeyBundleResponse, UserProfileResponse } from '@veil/contracts';
 
+import { notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
 
 @Injectable()
@@ -13,7 +14,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw notFound('handle_not_found', 'User not found');
     }
 
     return {
@@ -41,7 +42,7 @@ export class UsersService {
     });
 
     if (!user) {
-      throw new NotFoundException('Active device bundle not found');
+      throw notFound('active_device_not_found', 'Active device bundle not found');
     }
 
     const trustedDevices = await this.prisma.device.findMany({
@@ -60,7 +61,7 @@ export class UsersService {
       trustedDevices.find((device) => device.id === user.activeDeviceId) ?? trustedDevices[0];
 
     if (!resolvedDevice || !resolvedDevice.isActive || resolvedDevice.revokedAt) {
-      throw new NotFoundException('Active device bundle not found');
+      throw notFound('active_device_not_found', 'Active device bundle not found');
     }
 
     return {
@@ -82,6 +83,16 @@ export class UsersService {
         isActive: resolvedDevice.isActive,
         updatedAt: user.updatedAt.toISOString(),
       },
+      deviceBundles: trustedDevices.map((device) => ({
+        userId: user.id,
+        deviceId: device.id,
+        handle: user.handle,
+        identityPublicKey: device.publicIdentityKey,
+        signedPrekeyBundle: device.signedPrekeyBundle,
+        platform: device.platform,
+        isActive: device.isActive,
+        updatedAt: user.updatedAt.toISOString(),
+      })),
     };
   }
 }

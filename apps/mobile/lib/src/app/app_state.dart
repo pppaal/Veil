@@ -642,6 +642,7 @@ final messengerControllerProvider =
     cryptoEngine: ref.read(messagingCryptoProvider),
     keyBundleCodec: ref.read(cryptoAdapterProvider).keyBundles,
     envelopeCodec: ref.read(cryptoAdapterProvider).envelopeCodec,
+    sessionBootstrapper: ref.read(cryptoAdapterProvider).sessions,
     realtimeService: ref.read(realtimeServiceProvider),
     cacheService: ref.watch(conversationCacheProvider).maybeWhen(
           data: (cache) => cache,

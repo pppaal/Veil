@@ -59,6 +59,8 @@ Do not treat the current build as audited production E2EE.
 
 - latest green CI run
 - latest `pnpm beta:release:check` result
+- latest `artifacts/private-beta-release-evidence.json`
+- latest `artifacts/external-security-review-manifest.json`
 - exact commit SHA under review
 - environment mode used for the review build
 - current mobile build artifact identifiers

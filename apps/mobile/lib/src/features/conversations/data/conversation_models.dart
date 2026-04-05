@@ -1,5 +1,21 @@
 import '../../../core/crypto/crypto_engine.dart';
 
+class ConversationSessionState {
+  const ConversationSessionState({
+    required this.sessionLocator,
+    required this.sessionEnvelopeVersion,
+    required this.requiresLocalPersistence,
+    required this.bootstrappedAt,
+    this.auditHint,
+  });
+
+  final String sessionLocator;
+  final String sessionEnvelopeVersion;
+  final bool requiresLocalPersistence;
+  final DateTime bootstrappedAt;
+  final String? auditHint;
+}
+
 class ConversationPreview {
   static const Object _unset = Object();
 
@@ -10,6 +26,7 @@ class ConversationPreview {
     required this.recipientBundle,
     required this.lastEnvelope,
     required this.updatedAt,
+    this.sessionState,
   });
 
   final String id;
@@ -18,6 +35,7 @@ class ConversationPreview {
   final KeyBundle recipientBundle;
   final CryptoEnvelope? lastEnvelope;
   final DateTime updatedAt;
+  final ConversationSessionState? sessionState;
 
   ConversationPreview copyWith({
     String? id,
@@ -26,6 +44,7 @@ class ConversationPreview {
     KeyBundle? recipientBundle,
     Object? lastEnvelope = _unset,
     DateTime? updatedAt,
+    Object? sessionState = _unset,
   }) {
     return ConversationPreview(
       id: id ?? this.id,
@@ -36,6 +55,8 @@ class ConversationPreview {
       lastEnvelope:
           identical(lastEnvelope, _unset) ? this.lastEnvelope : lastEnvelope as CryptoEnvelope?,
       updatedAt: updatedAt ?? this.updatedAt,
+      sessionState:
+          identical(sessionState, _unset) ? this.sessionState : sessionState as ConversationSessionState?,
     );
   }
 }

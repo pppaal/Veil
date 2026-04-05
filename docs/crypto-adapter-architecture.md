@@ -42,6 +42,14 @@ Files:
 - [mock_crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/mock_crypto_engine.dart)
 - [packages/shared/src/crypto/types.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/types.ts)
 
+Current private-beta consumption:
+
+- session bootstrap material is now consumed by the mobile messaging flow when a
+  peer device bundle is selected
+- bootstrap metadata is persisted in the local conversation cache so an audited
+  adapter can later replace only the adapter/session-state implementation rather
+  than the controller or UI flow
+
 ## Storage implications
 
 Real audited crypto will require additional local state beyond the current private-beta mock:

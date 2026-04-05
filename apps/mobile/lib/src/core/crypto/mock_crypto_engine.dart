@@ -73,6 +73,11 @@ class _MockKeyBundleCodec implements KeyBundleCodec {
       signedPrekeyBundle: json['signedPrekeyBundle'] as String,
     );
   }
+
+  @override
+  List<KeyBundle> decodeDirectoryBundles(List<Map<String, dynamic>> json) {
+    return json.map(decodeDirectoryBundle).toList(growable: false);
+  }
 }
 
 class _MockCryptoEnvelopeCodec implements CryptoEnvelopeCodec {

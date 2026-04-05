@@ -20,6 +20,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
     );
@@ -47,6 +48,49 @@ void main() {
     expect(messages.first.clientMessageId, isNotNull);
     expect(controller.pendingCountFor('conv-1'), 0);
     expect(api.sentPayloads, hasLength(1));
+  });
+
+  test('sendText prefers the active device bundle from the local directory response',
+      () async {
+    final api = _FakeVeilApiClient();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.sendText(conversationId: 'conv-1', body: 'directory aware');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+
+    expect(api.sentPayloads, hasLength(1));
+    final payload = api.sentPayloads.single['envelope'] as Map<String, dynamic>;
+    expect(payload['recipientUserId'], 'user-selene');
+    final refreshedConversation = controller.conversations.firstWhere((item) => item.id == 'conv-1');
+    expect(refreshedConversation.recipientBundle.deviceId, 'device-selene-primary');
+    expect(refreshedConversation.recipientBundle.identityPublicKey, 'pub-selene-primary');
+    expect(refreshedConversation.sessionState, isNotNull);
+    expect(
+      refreshedConversation.sessionState?.sessionEnvelopeVersion,
+      crypto.envelopeCodec.defaultEnvelopeVersion,
+    );
   });
 
   test(
@@ -81,6 +125,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
     );
@@ -158,6 +203,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
     );
@@ -195,6 +241,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: realtime,
       cacheService: _MemoryConversationCache(),
     );
@@ -256,6 +303,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: realtime,
       cacheService: _MemoryConversationCache(),
     );
@@ -296,6 +344,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
       attachmentTempFileStore: tempStore,
@@ -361,6 +410,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: realtime,
       cacheService: _MemoryConversationCache(),
     );
@@ -426,6 +476,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
     );
@@ -482,6 +533,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: realtime,
       cacheService: _MemoryConversationCache(),
     );
@@ -529,6 +581,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
     );
@@ -565,6 +618,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: _MemoryConversationCache(),
       attachmentTempFileStore: tempStore,
@@ -663,6 +717,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
     );
@@ -742,6 +797,7 @@ void main() {
       cryptoEngine: crypto.messaging,
       keyBundleCodec: crypto.keyBundles,
       envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
       cacheService: cache,
     );
@@ -874,6 +930,9 @@ class _FakeVeilApiClient extends VeilApiClient {
   @override
   Future<Map<String, dynamic>> getKeyBundle(String handle) async {
     return {
+      'user': {
+        'activeDeviceId': 'device-$handle-primary',
+      },
       'bundle': {
         'userId': 'user-$handle',
         'deviceId': 'device-$handle',
@@ -881,6 +940,22 @@ class _FakeVeilApiClient extends VeilApiClient {
         'identityPublicKey': 'pub-$handle',
         'signedPrekeyBundle': 'prekey-$handle',
       },
+      'deviceBundles': [
+        {
+          'userId': 'user-$handle',
+          'deviceId': 'device-$handle-primary',
+          'handle': handle,
+          'identityPublicKey': 'pub-$handle-primary',
+          'signedPrekeyBundle': 'prekey-$handle-primary',
+        },
+        {
+          'userId': 'user-$handle',
+          'deviceId': 'device-$handle-secondary',
+          'handle': handle,
+          'identityPublicKey': 'pub-$handle-secondary',
+          'signedPrekeyBundle': 'prekey-$handle-secondary',
+        },
+      ],
     };
   }
 
@@ -1320,3 +1395,6 @@ class _PagedQuery {
   @override
   int get hashCode => Object.hash(conversationId, cursor);
 }
+
+
+

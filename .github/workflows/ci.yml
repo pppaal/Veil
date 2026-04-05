@@ -77,3 +77,39 @@ jobs:
 
       - name: Verify mobile
         run: pnpm ci:mobile
+
+  runtime-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    needs:
+      - api-and-packages
+      - mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Start alpha stack
+        run: pnpm docker:alpha:up
+
+      - name: Run runtime smoke
+        run: pnpm alpha:smoke
+
+      - name: Stop alpha stack
+        if: always()
+        run: pnpm docker:alpha:down

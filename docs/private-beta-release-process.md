@@ -23,6 +23,7 @@ pnpm ci:api
 pnpm ci:mobile
 pnpm alpha:smoke
 pnpm beta:release:check
+pnpm beta:release:evidence
 ```
 
 Required outcomes:
@@ -35,6 +36,7 @@ Required outcomes:
 - mobile codegen/analyze/test passes
 - alpha smoke passes against a running stack
 - the combined release gate passes
+- release evidence JSON is generated under `artifacts/private-beta-release-evidence.json`
 
 ## 4. QA gate
 
@@ -71,6 +73,13 @@ Before any private-beta build is distributed:
 - Produce signed build artifacts only from a clean tree.
 - Record the commit SHA, env file source, and smoke-test result alongside the build.
 - Keep release notes explicit that mock crypto is still in place.
+- Run `pnpm beta:release:evidence` and attach the generated JSON to the candidate build handoff.
+- Android package identity is `io.veil.mobile`. Release signing should come from
+  [`apps/mobile/android/keystore.properties.example`](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/android/keystore.properties.example),
+  not the debug keystore, for any distributed private-beta build.
+- iOS bundle identifier is `io.veil.mobile`. Automatic signing is acceptable for
+  internal development, but distributed private-beta archives should be cut with the
+  intended Apple team and signing profile.
 
 ## 7. Go / no-go criteria
 

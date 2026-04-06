@@ -19,6 +19,7 @@
     "ci:verify": "pnpm ci:api && pnpm ci:mobile",
     "beta:release:check": "pnpm ci:verify && pnpm alpha:smoke",
     "beta:release:evidence": "node ./scripts/beta-release-evidence.mjs",
+    "beta:deploy:preflight": "node ./scripts/beta-deploy-preflight.mjs",
     "beta:perf:template": "node ./scripts/private-beta-performance-template.mjs",
     "beta:review:manifest": "node ./scripts/external-review-manifest.mjs",
     "alpha:smoke": "node ./scripts/alpha-smoke.mjs",

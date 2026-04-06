@@ -87,6 +87,12 @@ describe('VEIL API (e2e)', () => {
       service: 'veil-api',
     });
 
+    const readiness = await api.get('/v1/health/ready');
+    expect(readiness.status).toBe(200);
+    expect(readiness.body.status).toBe('ok');
+    expect(readiness.body.checks.allowedOriginsConfigured).toBe(true);
+    expect(readiness.body.checks.productionBootBlocked).toBe(true);
+
     const missingBundle = await api.get('/v1/users/unknown/key-bundle');
     expect(missingBundle.status).toBe(404);
     expect(missingBundle.body.code).toBe('active_device_not_found');

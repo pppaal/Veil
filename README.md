@@ -67,6 +67,9 @@ Mobile release identity:
 - `pnpm ci:verify`
 - `pnpm beta:release:check`
 - `pnpm beta:release:evidence`
+- `pnpm beta:deploy:preflight -- --env-file apps/api/.env`
+- `apps/api/.env.alpha.example` is intentionally not deployable as-is.
+  Replace placeholder secrets before running deploy preflight against a real beta env file.
 - `pnpm beta:perf:template`
 - `pnpm beta:review:manifest`
 - `pnpm -C apps/api test:e2e`

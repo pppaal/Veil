@@ -24,6 +24,7 @@ pnpm ci:mobile
 pnpm alpha:smoke
 pnpm beta:release:check
 pnpm beta:release:evidence
+pnpm beta:deploy:preflight -- --env-file apps/api/.env
 ```
 
 Required outcomes:
@@ -37,6 +38,12 @@ Required outcomes:
 - alpha smoke passes against a running stack
 - the combined release gate passes
 - release evidence JSON is generated under `artifacts/private-beta-release-evidence.json`
+- deploy preflight passes and writes `artifacts/private-beta-deploy-preflight.json`
+
+Notes:
+
+- `apps/api/.env.alpha.example` is only a wiring example.
+- Replace placeholder JWT and provider secrets in the actual env file before expecting preflight to pass.
 
 ## 4. QA gate
 

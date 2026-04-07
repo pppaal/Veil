@@ -8,6 +8,10 @@ Machine-readable template:
 - `pnpm beta:perf:template`
 - output: `artifacts/private-beta-performance-template.json`
 
+Execution checklist:
+- [Real-Device Performance Execution Plan](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
+- [Real-Device Performance Results Template](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-results-template.md)
+
 ## Target areas
 
 1. Conversation list

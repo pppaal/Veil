@@ -149,6 +149,8 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Private Beta Release Process](docs/private-beta-release-process.md)
 - [Private Beta Readiness Report](docs/private-beta-readiness-report.md)
 - [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
+- [Real-Device Performance Execution Plan](docs/real-device-performance-execution.md)
+- [Real-Device Performance Results Template](docs/real-device-performance-results-template.md)
 - [External Security Review Packet](docs/external-security-review-packet.md)
 - [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
 - [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)

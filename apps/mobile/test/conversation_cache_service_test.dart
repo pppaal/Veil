@@ -39,6 +39,17 @@ void main() {
       ),
       lastEnvelope: null,
       updatedAt: DateTime.utc(2026, 3, 30, 10, 0, 0),
+      sessionState: ConversationSessionState(
+        sessionLocator: 'session://conv-1/mock-locator',
+        sessionEnvelopeVersion: 'veil-envelope-v1-dev',
+        requiresLocalPersistence: true,
+        sessionSchemaVersion: 1,
+        localDeviceId: 'device-local',
+        remoteDeviceId: 'device-selene',
+        remoteIdentityFingerprint: 'fingerprint-selene',
+        bootstrappedAt: DateTime.utc(2026, 3, 30, 9, 59, 0),
+        auditHint: 'mock-session-bootstrap',
+      ),
     );
 
     await cache.storeConversations([conversation]);
@@ -73,6 +84,7 @@ void main() {
 
     final restoredPending = await cache.readPendingMessages();
     final paging = await cache.readPagingState('conv-1');
+    final restoredConversation = (await cache.readConversations()).single;
 
     expect(restoredPending, hasLength(1));
     expect(restoredPending.first.clientMessageId, 'client-msg-1');
@@ -85,6 +97,22 @@ void main() {
       paging.lastSyncedAt
           ?.isAtSameMomentAs(DateTime.utc(2026, 3, 30, 10, 5, 0)),
       isTrue,
+    );
+    expect(
+      restoredConversation.sessionState?.sessionSchemaVersion,
+      1,
+    );
+    expect(
+      restoredConversation.sessionState?.localDeviceId,
+      'device-local',
+    );
+    expect(
+      restoredConversation.sessionState?.remoteDeviceId,
+      'device-selene',
+    );
+    expect(
+      restoredConversation.sessionState?.remoteIdentityFingerprint,
+      'fingerprint-selene',
     );
   });
 
@@ -421,5 +449,181 @@ void main() {
     expect(firstPage.hasMore, isTrue);
     expect(secondPage.items, hasLength(1));
     expect(secondPage.items.single.messageId, 'msg-page-2');
+  });
+
+  test('searchMessageArchive is case-insensitive and ranks stronger local matches first',
+      () async {
+    final now = DateTime.now();
+    await cache.storeConversations([
+      ConversationPreview(
+        id: 'conv-ranked',
+        peerHandle: 'selene',
+        peerDisplayName: 'Selene',
+        recipientBundle: const KeyBundle(
+          userId: 'user-selene',
+          deviceId: 'device-selene',
+          handle: 'selene',
+          identityPublicKey: 'pub-selene',
+          signedPrekeyBundle: 'prekey-selene',
+        ),
+        lastEnvelope: null,
+        updatedAt: now,
+      ),
+    ]);
+
+    await cache.storeMessages(
+      'conv-ranked',
+      [
+        ChatMessage(
+          id: 'msg-ranked-1',
+          senderDeviceId: 'device-local',
+          sentAt: now.subtract(const Duration(minutes: 2)),
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-ranked',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: 'opaque-ranked-1',
+            nonce: 'nonce-ranked-1',
+            messageKind: MessageKind.text,
+          ),
+          searchableBody: 'Orbit',
+          isMine: true,
+        ),
+        ChatMessage(
+          id: 'msg-ranked-2',
+          senderDeviceId: 'device-local',
+          sentAt: now.subtract(const Duration(minutes: 1)),
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-ranked',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: 'opaque-ranked-2',
+            nonce: 'nonce-ranked-2',
+            messageKind: MessageKind.text,
+          ),
+          searchableBody: 'A relay window into orbit mechanics',
+          isMine: true,
+        ),
+        ChatMessage(
+          id: 'msg-ranked-3',
+          senderDeviceId: 'device-local',
+          sentAt: now,
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-ranked',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: 'opaque-ranked-3',
+            nonce: 'nonce-ranked-3',
+            messageKind: MessageKind.text,
+          ),
+          searchableBody: 'Telemetry for the ORBIT relay',
+          isMine: true,
+        ),
+      ],
+    );
+
+    final results = await cache.searchMessageArchive(
+      query: const MessageSearchQuery(query: 'orbit', limit: 3),
+      currentDeviceId: 'device-local',
+    );
+
+    expect(
+      results.items.map((item) => item.messageId).toList(),
+      ['msg-ranked-1', 'msg-ranked-3', 'msg-ranked-2'],
+    );
+    expect(results.items.first.bodySnippet, 'Orbit');
+    expect(results.items[1].bodySnippet.toLowerCase(), contains('orbit'));
+  });
+
+  test('searchMessageArchive paging keeps same-timestamp matches reachable', () async {
+    final now = DateTime.now();
+    await cache.storeConversations([
+      ConversationPreview(
+        id: 'conv-same-time',
+        peerHandle: 'lyra',
+        peerDisplayName: 'Lyra',
+        recipientBundle: const KeyBundle(
+          userId: 'user-lyra',
+          deviceId: 'device-lyra',
+          handle: 'lyra',
+          identityPublicKey: 'pub-lyra',
+          signedPrekeyBundle: 'prekey-lyra',
+        ),
+        lastEnvelope: null,
+        updatedAt: now,
+      ),
+    ]);
+
+    await cache.storeMessages(
+      'conv-same-time',
+      [
+        ChatMessage(
+          id: 'msg-same-a',
+          senderDeviceId: 'device-local',
+          sentAt: now,
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-same-time',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-lyra',
+            ciphertext: 'opaque-same-a',
+            nonce: 'nonce-same-a',
+            messageKind: MessageKind.text,
+          ),
+          searchableBody: 'orbit first',
+          isMine: true,
+        ),
+        ChatMessage(
+          id: 'msg-same-b',
+          senderDeviceId: 'device-local',
+          sentAt: now,
+          envelope: const CryptoEnvelope(
+            version: 'veil-envelope-v1-dev',
+            conversationId: 'conv-same-time',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-lyra',
+            ciphertext: 'opaque-same-b',
+            nonce: 'nonce-same-b',
+            messageKind: MessageKind.text,
+          ),
+          searchableBody: 'orbit second',
+          isMine: true,
+        ),
+      ],
+    );
+
+    final firstPage = await cache.searchMessageArchive(
+      query: const MessageSearchQuery(query: 'orbit', limit: 1),
+      currentDeviceId: 'device-local',
+    );
+    final secondPage = await cache.searchMessageArchive(
+      query: MessageSearchQuery(
+        query: 'orbit',
+        limit: 1,
+        beforeSentAt: firstPage.nextBeforeSentAt,
+        beforeMessageId: firstPage.nextBeforeMessageId,
+      ),
+      currentDeviceId: 'device-local',
+    );
+
+    expect(firstPage.items, hasLength(1));
+    expect(secondPage.items, hasLength(1));
+    expect(
+      {firstPage.items.single.messageId, secondPage.items.single.messageId},
+      {'msg-same-a', 'msg-same-b'},
+    );
+  });
+
+  test('normalizeArchiveSearchBody compacts whitespace and caps indexed size', () {
+    final normalized = normalizeArchiveSearchBody(
+      'orbit   relay\n\n${List.filled(1300, 'x').join()}',
+    );
+
+    expect(normalized.startsWith('orbit relay'), isTrue);
+    expect(normalized.contains('\n'), isFalse);
+    expect(normalized.length, lessThanOrEqualTo(maxArchiveSearchBodyLength));
   });
 }

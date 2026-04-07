@@ -20,6 +20,10 @@ class CachedConversations extends Table {
   TextColumn get sessionLocator => text().nullable()();
   TextColumn get sessionEnvelopeVersion => text().nullable()();
   TextColumn get sessionRequiresLocalPersistence => text().nullable()();
+  IntColumn get sessionSchemaVersion => integer().nullable()();
+  TextColumn get sessionLocalDeviceId => text().nullable()();
+  TextColumn get sessionRemoteDeviceId => text().nullable()();
+  TextColumn get sessionRemoteIdentityFingerprint => text().nullable()();
   TextColumn get sessionAuditHint => text().nullable()();
   TextColumn get sessionBootstrappedAt => text().nullable()();
   TextColumn get paginationCursor => text().nullable()();
@@ -79,7 +83,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -121,6 +125,20 @@ class AppDatabase extends _$AppDatabase {
             );
             await customStatement(
               'ALTER TABLE cached_conversations ADD COLUMN session_bootstrapped_at TEXT',
+            );
+          }
+          if (from < 7) {
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_schema_version INTEGER',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_local_device_id TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_remote_device_id TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN session_remote_identity_fingerprint TEXT',
             );
           }
           await _createIndexes();

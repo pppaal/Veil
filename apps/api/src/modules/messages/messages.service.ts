@@ -12,6 +12,7 @@ import { PrismaService } from '../../common/prisma.service';
 import {
   forbidden,
   notFound,
+  serviceUnavailable,
 } from '../../common/errors/api-error';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -206,7 +207,10 @@ export class MessagesService {
       }
     }
 
-    throw new Error('Message persistence retry budget exhausted');
+    throw serviceUnavailable(
+      'internal_error',
+      'Message relay is temporarily unavailable',
+    );
   }
 
   private findExistingMessage(senderDeviceId: string, clientMessageId: string) {

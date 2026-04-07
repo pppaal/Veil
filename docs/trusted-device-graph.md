@@ -44,7 +44,8 @@ These values are metadata only. Message bodies remain ciphertext-like payloads.
 
 ## Stale device handling
 
-- A device becomes `stale` when it has not been seen for an extended window.
+- A device becomes `stale` when it has no recent trusted activity for an extended window.
+- `trusted activity` uses the newest of device `last_seen_at` and device `last_sync_at`.
 - `stale` does not mean revoked. It is still trusted until explicitly revoked.
 - The settings UI should surface stale devices clearly so the user can retire them deliberately.
 

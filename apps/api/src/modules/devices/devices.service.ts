@@ -40,21 +40,30 @@ export class DevicesService {
 
     return {
       activeDeviceId: user?.activeDeviceId ?? null,
-      items: devices.map((device) => ({
-        id: device.id,
-        deviceName: device.deviceName,
-        platform: device.platform,
-        isActive: device.isActive,
-        trustState: this.resolveTrustState(device, user?.activeDeviceId ?? null, currentDeviceId),
-        revokedAt: device.revokedAt?.toISOString() ?? null,
-        trustedAt: device.trustedAt.toISOString(),
-        joinedFromDeviceId: device.joinedFromDeviceId ?? null,
-        joinedFromDeviceName: device.joinedFromDevice?.deviceName ?? null,
-        joinedFromPlatform: device.joinedFromDevice?.platform ?? null,
-        createdAt: device.createdAt.toISOString(),
-        lastSeenAt: device.lastSeenAt.toISOString(),
-        lastSyncAt: device.lastSyncAt?.toISOString() ?? null,
-      })),
+      items: devices.map((device) => {
+        const lastTrustedActivityAt = this.resolveLastTrustedActivityAt(device);
+        return {
+          id: device.id,
+          deviceName: device.deviceName,
+          platform: device.platform,
+          isActive: device.isActive,
+          trustState: this.resolveTrustState(
+            device,
+            user?.activeDeviceId ?? null,
+            currentDeviceId,
+            lastTrustedActivityAt,
+          ),
+          revokedAt: device.revokedAt?.toISOString() ?? null,
+          trustedAt: device.trustedAt.toISOString(),
+          joinedFromDeviceId: device.joinedFromDeviceId ?? null,
+          joinedFromDeviceName: device.joinedFromDevice?.deviceName ?? null,
+          joinedFromPlatform: device.joinedFromDevice?.platform ?? null,
+          createdAt: device.createdAt.toISOString(),
+          lastSeenAt: device.lastSeenAt.toISOString(),
+          lastSyncAt: device.lastSyncAt?.toISOString() ?? null,
+          lastTrustedActivityAt: lastTrustedActivityAt.toISOString(),
+        };
+      }),
     };
   }
 
@@ -123,9 +132,11 @@ export class DevicesService {
       isActive: boolean;
       revokedAt: Date | null;
       lastSeenAt: Date;
+      lastSyncAt?: Date | null;
     },
     preferredDeviceId: string | null,
     currentDeviceId?: string,
+    lastTrustedActivityAt: Date = this.resolveLastTrustedActivityAt(device),
   ): 'current' | 'preferred' | 'trusted' | 'stale' | 'revoked' {
     if (device.revokedAt || !device.isActive) {
       return 'revoked';
@@ -136,9 +147,21 @@ export class DevicesService {
     if (preferredDeviceId === device.id) {
       return 'preferred';
     }
-    if (Date.now() - device.lastSeenAt.getTime() > STALE_DEVICE_WINDOW_MS) {
+    if (Date.now() - lastTrustedActivityAt.getTime() > STALE_DEVICE_WINDOW_MS) {
       return 'stale';
     }
     return 'trusted';
+  }
+
+  private resolveLastTrustedActivityAt(device: {
+    lastSeenAt: Date;
+    lastSyncAt?: Date | null;
+  }): Date {
+    if (!device.lastSyncAt) {
+      return device.lastSeenAt;
+    }
+    return device.lastSyncAt.getTime() > device.lastSeenAt.getTime()
+      ? device.lastSyncAt
+      : device.lastSeenAt;
   }
 }

@@ -96,6 +96,10 @@ export interface SessionBootstrapMaterial {
   sessionLocator: string;
   sessionEnvelopeVersion: string;
   requiresLocalPersistence: boolean;
+  sessionSchemaVersion: number;
+  localDeviceId: string;
+  remoteDeviceId: string;
+  remoteIdentityFingerprint: string;
   auditHint?: string;
 }
 

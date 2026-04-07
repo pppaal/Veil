@@ -276,6 +276,27 @@ class SecurityStatusScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: VeilSpace.md),
+          VeilMetricStrip(
+            items: [
+              VeilMetricItem(
+                label: 'Runtime',
+                value: VeilConfig.runtimeConfigurationError == null ? 'Ready' : 'Blocked',
+              ),
+              VeilMetricItem(
+                label: 'Relay',
+                value: messenger.realtimeConnected ? 'Linked' : 'Idle',
+              ),
+              VeilMetricItem(
+                label: 'Cache',
+                value: !cacheConfigured
+                    ? 'Off'
+                    : cacheReady
+                        ? 'Ready'
+                        : 'Starting',
+              ),
+            ],
+          ),
+          const SizedBox(height: VeilSpace.md),
           const _SecuritySection(title: 'Identity'),
           ...identitySignals.map((signal) => _SecurityRow(signal: signal)),
           const SizedBox(height: VeilSpace.md),

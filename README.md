@@ -70,6 +70,8 @@ Mobile release identity:
 - `pnpm beta:deploy:preflight -- --env-file apps/api/.env`
 - `apps/api/.env.alpha.example` is intentionally not deployable as-is.
   Replace placeholder secrets before running deploy preflight against a real beta env file.
+- `apps/api/.env.beta.ci.example` is the non-placeholder CI fixture used to keep
+  deploy preflight and beta artifact generation wired during runtime smoke.
 - `pnpm beta:perf:template`
 - `pnpm beta:review:manifest`
 - `pnpm -C apps/api test:e2e`
@@ -93,6 +95,8 @@ CI is treated as a private-beta gate:
 - policy checks fail on wildcard realtime CORS, missing security headers, plaintext-prone push fields, mobile console logging, and crash-reporting SDK drift
 - mobile codegen, analyze, and test all run in CI
 - API container builds on every main-branch and pull-request run
+- main-branch runtime smoke also runs deploy preflight against the CI beta fixture,
+  generates beta handoff JSON artifacts, and uploads them as workflow artifacts
 
 ## Current implementation status
 
@@ -106,6 +110,8 @@ CI is treated as a private-beta gate:
 - App lock with PIN/biometric hooks and security status screens
 - Local privacy shield, destructive local wipe flows, and old-device revoke cleanup on mobile
 - Drift-ready conversation/message cache service wired behind the messenger controller
+- Versioned session-bootstrap persistence metadata wired into the local
+  conversation cache for future audited crypto migration
 - Docs, unit tests, and CI-friendly scripts
 
 ## Mobile runtime configuration
@@ -138,6 +144,8 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Internal Alpha Test Checklist](docs/internal-alpha-test-checklist.md)
 - [Internal Alpha Desktop QA](docs/internal-alpha-desktop-qa.md)
 - [Private Beta Audit](docs/private-beta-audit.md)
+- [Final Technical Status](docs/final-technical-status.md)
+- [Six-Month Roadmap](docs/six-month-roadmap.md)
 - [Private Beta Release Process](docs/private-beta-release-process.md)
 - [Private Beta Readiness Report](docs/private-beta-readiness-report.md)
 - [Private Beta Performance Profile](docs/private-beta-performance-profile.md)

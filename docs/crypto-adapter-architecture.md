@@ -49,6 +49,13 @@ Current private-beta consumption:
 - bootstrap metadata is persisted in the local conversation cache so an audited
   adapter can later replace only the adapter/session-state implementation rather
   than the controller or UI flow
+- persisted bootstrap metadata now includes:
+  - `sessionSchemaVersion`
+  - `localDeviceId`
+  - `remoteDeviceId`
+  - `remoteIdentityFingerprint`
+  so future adapters can detect stale local state and bind stored session
+  material to the correct trusted-device edge
 
 ## Storage implications
 
@@ -58,6 +65,7 @@ Real audited crypto will require additional local state beyond the current priva
 - signed prekeys and rotation state
 - per-peer session state
 - attachment content keys or wrapped-key state
+- versioned session-state storage keyed to the local/remote device pair
 
 What should not change:
 
@@ -87,10 +95,12 @@ Current architecture checks already assert:
 ## Rollout risks
 
 1. Session-state shape will grow, and careless storage migration can wipe or corrupt local conversations.
-2. Attachment encryption failures can create silent UX regressions if wrap/unwrap semantics drift.
-3. Transfer and revoke must be re-verified once real session material exists.
-4. Real crypto can expose ordering and replay assumptions that the mock adapter does not.
-5. Any claim of production cryptographic safety before external review would be false.
+2. Device-graph changes can invalidate persisted session state if local/remote
+   device binding is not checked during migration.
+3. Attachment encryption failures can create silent UX regressions if wrap/unwrap semantics drift.
+4. Transfer and revoke must be re-verified once real session material exists.
+5. Real crypto can expose ordering and replay assumptions that the mock adapter does not.
+6. Any claim of production cryptographic safety before external review would be false.
 
 ## Migration checklist
 
@@ -98,8 +108,13 @@ Current architecture checks already assert:
 2. Keep `crypto_adapter_registry.dart` as the only runtime selection point.
 3. Preserve the current API contract unless a versioned envelope migration is explicitly required.
 4. Add interoperability fixtures for sender, receiver, attachment, and transfer flows.
-5. Review secure storage lifecycle for revoke, logout, wipe, and transfer.
-6. Run external security review before any production claim or production boot enablement.
+5. Preserve and migrate persisted session metadata:
+   - schema version
+   - local device id
+   - remote device id
+   - remote identity fingerprint
+6. Review secure storage lifecycle for revoke, logout, wipe, and transfer.
+7. Run external security review before any production claim or production boot enablement.
 
 The future fixture contract is defined in:
 

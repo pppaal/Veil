@@ -28,6 +28,22 @@ void main() {
     );
   });
 
+  test('filterConversationPreviews ranks exact and prefix matches before loose matches', () {
+    final conversations = [
+      _conversation('conv-1', 'stellar', 'Relay Sel archive'),
+      _conversation('conv-2', 'selene', 'Selene'),
+      _conversation('conv-3', 'orion', 'Orbital Selene Desk'),
+    ];
+
+    final results = filterConversationPreviews(conversations, 'sel');
+
+    expect(results.map((item) => item.peerHandle).toList(), [
+      'selene',
+      'stellar',
+      'orion',
+    ]);
+  });
+
   test('shouldUseWideConversationLayout switches at desktop breakpoint', () {
     expect(shouldUseWideConversationLayout(1119), isFalse);
     expect(shouldUseWideConversationLayout(1120), isTrue);
@@ -52,6 +68,57 @@ void main() {
     expect(second.messageId, 'msg-42');
     expect(second.query, 'orbit');
     expect(second.requestId, 2);
+  });
+
+  test('mergeArchiveSearchResults keeps existing order and removes duplicate message ids', () {
+    final existing = [
+      MessageSearchResult(
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+        peerHandle: 'selene',
+        peerDisplayName: 'Selene',
+        sentAt: DateTime.utc(2026, 4, 5, 10),
+        messageKind: MessageKind.text,
+        isMine: true,
+        bodySnippet: 'orbit one',
+      ),
+      MessageSearchResult(
+        conversationId: 'conv-1',
+        messageId: 'msg-2',
+        peerHandle: 'selene',
+        peerDisplayName: 'Selene',
+        sentAt: DateTime.utc(2026, 4, 5, 9),
+        messageKind: MessageKind.text,
+        isMine: false,
+        bodySnippet: 'orbit two',
+      ),
+    ];
+    final incoming = [
+      MessageSearchResult(
+        conversationId: 'conv-1',
+        messageId: 'msg-2',
+        peerHandle: 'selene',
+        peerDisplayName: 'Selene',
+        sentAt: DateTime.utc(2026, 4, 5, 9),
+        messageKind: MessageKind.text,
+        isMine: false,
+        bodySnippet: 'orbit two',
+      ),
+      MessageSearchResult(
+        conversationId: 'conv-1',
+        messageId: 'msg-3',
+        peerHandle: 'selene',
+        peerDisplayName: 'Selene',
+        sentAt: DateTime.utc(2026, 4, 5, 8),
+        messageKind: MessageKind.file,
+        isMine: false,
+        bodySnippet: 'orbit file',
+      ),
+    ];
+
+    final merged = mergeArchiveSearchResults(existing, incoming);
+
+    expect(merged.map((item) => item.messageId).toList(), ['msg-1', 'msg-2', 'msg-3']);
   });
 
   test('conversation list view state round-trips through local storage shape',

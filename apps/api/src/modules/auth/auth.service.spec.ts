@@ -111,4 +111,65 @@ describe('AuthService', () => {
       }),
     ).rejects.toThrow('Challenge expired or invalid');
   });
+
+  it('invalidates the previous device challenge when a new one is issued', async () => {
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
+    const service = new AuthService(
+      prisma as never,
+      store as never,
+      new JwtService(),
+      config as never,
+      verifier,
+    );
+
+    const registered = await service.register({
+      handle: 'supersede',
+      displayName: 'Supersede',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: keyPair.authPublicKey,
+      pushToken: undefined,
+    });
+
+    const first = await service.createChallenge({
+      handle: 'supersede',
+      deviceId: registered.deviceId,
+    });
+    const second = await service.createChallenge({
+      handle: 'supersede',
+      deviceId: registered.deviceId,
+    });
+
+    await expect(
+      service.verify({
+        challengeId: first.challengeId,
+        deviceId: registered.deviceId,
+        signature: keyHelper.createProof({
+          challenge: first.challenge,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
+      }),
+    ).rejects.toThrow('Challenge expired or invalid');
+
+    await expect(
+      service.verify({
+        challengeId: second.challengeId,
+        deviceId: registered.deviceId,
+        signature: keyHelper.createProof({
+          challenge: second.challenge,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
+      }),
+    ).resolves.toMatchObject({
+      deviceId: registered.deviceId,
+      userId: registered.userId,
+    });
+  });
 });

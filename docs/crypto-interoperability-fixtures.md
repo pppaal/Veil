@@ -41,6 +41,11 @@ Every fixture must include:
 3. `session`
    - session bootstrap request
    - session bootstrap result
+   - persistence expectation for:
+     - local device id
+     - remote device id
+     - remote identity fingerprint
+     - session schema version
 4. `attachment`
    - wrapped attachment content-key material
 5. `message`
@@ -73,6 +78,7 @@ At minimum, fixture assertions must prove:
 - stable envelope serialization
 - stable attachment wrap serialization
 - stable session bootstrap material shape
+- stable session persistence metadata shape
 - no plaintext message body leaves the adapter boundary
 
 ## Rollout risks

@@ -26,6 +26,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   final _timeFormat = DateFormat('HH:mm');
   final _searchController = TextEditingController();
   Timer? _archiveSearchDebounce;
+  int _archiveSearchRequestId = 0;
   String? _selectedConversationId;
   MessageNavigationTarget? _selectedNavigationTarget;
   int _navigationRequestCounter = 0;
@@ -338,6 +339,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       if (!mounted) {
         return;
       }
+      _archiveSearchRequestId += 1;
       setState(() {
         _archiveResults = const <MessageSearchResult>[];
         _searchingArchive = false;
@@ -350,6 +352,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     final senderFilter = _senderFilter;
     final typeFilter = _typeFilter;
     final dateFilter = _dateFilter;
+    final requestId = ++_archiveSearchRequestId;
     if (mounted) {
       setState(() => _searchingArchive = true);
     }
@@ -364,6 +367,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
 
     if (!mounted ||
+        requestId != _archiveSearchRequestId ||
         _searchController.text.trim() != query ||
         senderFilter != _senderFilter ||
         typeFilter != _typeFilter ||
@@ -390,6 +394,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     final senderFilter = _senderFilter;
     final typeFilter = _typeFilter;
     final dateFilter = _dateFilter;
+    final requestId = ++_archiveSearchRequestId;
     setState(() => _searchingArchive = true);
 
     final page = await ref.read(messengerControllerProvider).searchMessageArchive(
@@ -404,6 +409,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
 
     if (!mounted ||
+        requestId != _archiveSearchRequestId ||
         _searchController.text.trim() != query ||
         senderFilter != _senderFilter ||
         typeFilter != _typeFilter ||
@@ -412,7 +418,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     }
 
     setState(() {
-      _archiveResults = [..._archiveResults, ...page.items];
+      _archiveResults = mergeArchiveSearchResults(_archiveResults, page.items);
       _searchingArchive = false;
       _archiveNextBeforeSentAt = page.nextBeforeSentAt;
       _archiveNextBeforeMessageId = page.nextBeforeMessageId;
@@ -454,6 +460,23 @@ MessageNavigationTarget issueMessageNavigationTarget({
     requestId: requestId,
     query: query.trim(),
   );
+}
+
+List<MessageSearchResult> mergeArchiveSearchResults(
+  List<MessageSearchResult> existing,
+  List<MessageSearchResult> incoming,
+) {
+  final merged = <MessageSearchResult>[];
+  final seenMessageIds = <String>{};
+
+  for (final item in [...existing, ...incoming]) {
+    if (!seenMessageIds.add(item.messageId)) {
+      continue;
+    }
+    merged.add(item);
+  }
+
+  return merged;
 }
 
 Map<String, Object?> encodeConversationListViewState(
@@ -530,13 +553,66 @@ List<ConversationPreview> filterConversationPreviews(
     return conversations;
   }
 
-  return conversations.where((conversation) {
-    final haystack = [
-      conversation.peerHandle,
-      conversation.peerDisplayName ?? '',
-    ].join(' ').toLowerCase();
-    return haystack.contains(normalizedQuery);
-  }).toList();
+  final ranked = <({int score, ConversationPreview conversation})>[];
+  for (final conversation in conversations) {
+    final handle = conversation.peerHandle.toLowerCase();
+    final displayName = (conversation.peerDisplayName ?? '').toLowerCase();
+    final matchScore = _conversationSearchScore(
+      query: normalizedQuery,
+      handle: handle,
+      displayName: displayName,
+    );
+    if (matchScore == null) {
+      continue;
+    }
+    ranked.add((score: matchScore, conversation: conversation));
+  }
+
+  ranked.sort((a, b) {
+    final scoreCompare = a.score.compareTo(b.score);
+    if (scoreCompare != 0) {
+      return scoreCompare;
+    }
+    final updatedAtCompare =
+        b.conversation.updatedAt.compareTo(a.conversation.updatedAt);
+    if (updatedAtCompare != 0) {
+      return updatedAtCompare;
+    }
+    return a.conversation.peerHandle.compareTo(b.conversation.peerHandle);
+  });
+
+  return ranked.map((entry) => entry.conversation).toList(growable: false);
+}
+
+int? _conversationSearchScore({
+  required String query,
+  required String handle,
+  required String displayName,
+}) {
+  if (handle == query) {
+    return 0;
+  }
+  if (displayName == query) {
+    return 10;
+  }
+  if (handle.startsWith(query)) {
+    return 20;
+  }
+  if (displayName.startsWith(query)) {
+    return 30;
+  }
+
+  final handleIndex = handle.indexOf(query);
+  if (handleIndex >= 0) {
+    return 40 + handleIndex;
+  }
+
+  final displayIndex = displayName.indexOf(query);
+  if (displayIndex >= 0) {
+    return 80 + displayIndex;
+  }
+
+  return null;
 }
 
 class _ConversationListPane extends StatelessWidget {
@@ -613,6 +689,23 @@ class _ConversationListPane extends StatelessWidget {
           ],
         ),
       ),
+      const SizedBox(height: VeilSpace.md),
+      VeilMetricStrip(
+        items: [
+          VeilMetricItem(
+            label: 'Relay',
+            value: controller.realtimeConnected ? 'Linked' : 'Idle',
+          ),
+          VeilMetricItem(
+            label: 'Local search',
+            value: hasSearchQuery ? 'Active' : 'Ready',
+          ),
+          VeilMetricItem(
+            label: 'Conversations',
+            value: '${conversations.length}',
+          ),
+        ],
+      ),
       if (controller.errorMessage != null) ...[
         const SizedBox(height: VeilSpace.md),
         VeilInlineBanner(
@@ -623,9 +716,9 @@ class _ConversationListPane extends StatelessWidget {
       ],
       const SizedBox(height: VeilSpace.md),
       VeilFieldBlock(
-        label: 'LOCAL SEARCH',
+        label: 'LOCAL SEARCH INDEX',
         caption:
-            'Search stays on this device. Cached conversations and decrypted local index entries only.',
+            'Search stays on this device. Handles, cached previews, and decrypted local index entries only.',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -809,6 +902,21 @@ class _ConversationListPane extends StatelessWidget {
                   handle: item.peerHandle,
                   subtitle: subtitleForConversation(item, controller),
                   timestamp: timeFormat.format(item.updatedAt),
+                  selected: isSelected,
+                  meta: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      const VeilStatusPill(label: 'Direct'),
+                      if (controller.pendingCountFor(item.id) > 0)
+                        VeilStatusPill(
+                          label: controller.pendingCountFor(item.id) == 1
+                              ? '1 queued'
+                              : '${controller.pendingCountFor(item.id)} queued',
+                          tone: VeilBannerTone.warn,
+                        ),
+                    ],
+                  ),
                   expiryLabel: item.lastEnvelope?.expiresAt == null
                       ? null
                       : formatMessageExpiry(item.lastEnvelope!.expiresAt!),
@@ -854,6 +962,7 @@ class _ConversationListPane extends StatelessWidget {
             (result) => Padding(
               padding: const EdgeInsets.only(bottom: VeilSpace.sm),
               child: VeilListTileCard(
+                eyebrow: '${result.isMine ? 'You' : 'Peer'} | ${_messageTypeLabel(result.messageKind)}',
                 leading: Icon(
                   switch (result.messageKind) {
                     MessageKind.text => Icons.chat_bubble_outline_rounded,

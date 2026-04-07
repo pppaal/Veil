@@ -25,7 +25,13 @@ See the current adapter split in [crypto-adapter-architecture.md](c:/Users/pjyrh
 3. Replace `MessageCryptoEngine` with audited per-conversation session encryption.
 4. Replace mock attachment key wrapping with audited recipient-specific attachment key encryption.
 5. Keep `KeyBundleCodec` and `CryptoEnvelopeCodec` stable unless a versioned envelope migration is required.
-6. Add interoperability tests and versioned fixtures between:
+6. Preserve session bootstrap persistence semantics. Future adapters must emit:
+   - `sessionSchemaVersion`
+   - `localDeviceId`
+   - `remoteDeviceId`
+   - `remoteIdentityFingerprint`
+   so locally stored session state can be migrated and invalidated safely.
+7. Add interoperability tests and versioned fixtures between:
    - mobile sender
    - mobile receiver
    - backend contract serialization
@@ -34,7 +40,7 @@ See the current adapter split in [crypto-adapter-architecture.md](c:/Users/pjyrh
    Fixture shape must follow:
    - [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
    - [crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)
-7. Run external security review before enabling production traffic.
+8. Run external security review before enabling production traffic.
 
 ## Non-negotiable constraints
 

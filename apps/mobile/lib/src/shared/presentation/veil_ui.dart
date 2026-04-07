@@ -215,17 +215,23 @@ class VeilSurfaceCard extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(VeilSpace.lg),
     this.toned = false,
+    this.selected = false,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final bool toned;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     return Card(
-      color: toned ? palette.surfaceAlt : null,
+      color: selected
+          ? palette.surfaceRaised
+          : toned
+              ? palette.surfaceAlt
+              : null,
       child: Padding(
         padding: padding,
         child: child,
@@ -482,24 +488,155 @@ class VeilToast {
   }
 }
 
+class VeilMetricStrip extends StatelessWidget {
+  const VeilMetricStrip({
+    super.key,
+    required this.items,
+  });
+
+  final List<VeilMetricItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: VeilSpace.sm,
+      runSpacing: VeilSpace.sm,
+      children: items
+          .map(
+            (item) => VeilSurfaceCard(
+              toned: true,
+              padding: const EdgeInsets.symmetric(
+                horizontal: VeilSpace.md,
+                vertical: VeilSpace.sm,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 112),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.label.toUpperCase(),
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: context.veilPalette.textSubtle,
+                          ),
+                    ),
+                    const SizedBox(height: VeilSpace.xxs),
+                    Text(
+                      item.value,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+}
+
+class VeilMetricItem {
+  const VeilMetricItem({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+}
+
+class VeilDestructiveNotice extends StatelessWidget {
+  const VeilDestructiveNotice({
+    super.key,
+    required this.title,
+    required this.body,
+  });
+
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    return Container(
+      padding: const EdgeInsets.all(VeilSpace.lg),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(VeilRadius.lg),
+        border: Border.all(color: const Color(0xFF6A3342)),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF24151B),
+            Color(0xFF151117),
+          ],
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(VeilRadius.sm),
+              color: const Color(0x1FF57C96),
+              border: Border.all(color: const Color(0xFF6A3342)),
+            ),
+            child: Icon(
+              Icons.priority_high_rounded,
+              size: VeilIconSize.md,
+              color: palette.danger,
+            ),
+          ),
+          const SizedBox(width: VeilSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: VeilSpace.xs),
+                Text(
+                  body,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: palette.textMuted,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class VeilListTileCard extends StatelessWidget {
   const VeilListTileCard({
     super.key,
     required this.title,
     required this.subtitle,
     this.subtitleWidget,
+    this.eyebrow,
     this.leading,
     this.trailing,
     this.destructive = false,
+    this.selected = false,
     this.onTap,
   });
 
   final String title;
   final String subtitle;
   final Widget? subtitleWidget;
+  final String? eyebrow;
   final Widget? leading;
   final Widget? trailing;
   final bool destructive;
+  final bool selected;
   final VoidCallback? onTap;
 
   @override
@@ -507,17 +644,48 @@ class VeilListTileCard extends StatelessWidget {
     final palette = context.veilPalette;
     final titleColor = destructive ? palette.danger : null;
 
-    return Card(
-      child: InkWell(
+    return AnimatedContainer(
+      duration: VeilMotion.normal,
+      curve: VeilMotion.emphasize,
+      decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(VeilRadius.lg),
-        onTap: onTap,
-        child: ListTile(
-          minTileHeight: 72,
-          leading: leading,
-          trailing: trailing,
-            title: Text(
-              title,
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(color: titleColor),
+        boxShadow: selected ? VeilElevation.raised : null,
+      ),
+      child: Card(
+        color: selected ? palette.surfaceRaised : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(VeilRadius.lg),
+          side: BorderSide(
+            color: selected ? palette.strokeStrong : palette.stroke,
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(VeilRadius.lg),
+          onTap: onTap,
+          child: ListTile(
+            minTileHeight: 72,
+            leading: leading,
+            trailing: trailing,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (eyebrow != null) ...[
+                  Text(
+                    eyebrow!,
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: palette.textSubtle,
+                        ),
+                  ),
+                  const SizedBox(height: VeilSpace.xxs),
+                ],
+                Text(
+                  title,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: titleColor),
+                ),
+              ],
             ),
             subtitle: Padding(
               padding: const EdgeInsets.only(top: VeilSpace.xxs),
@@ -529,7 +697,8 @@ class VeilListTileCard extends StatelessWidget {
             ),
           ),
         ),
-      );
+      ),
+    );
   }
 }
 
@@ -541,6 +710,8 @@ class VeilConversationCard extends StatelessWidget {
     required this.subtitle,
     required this.timestamp,
     this.expiryLabel,
+    this.selected = false,
+    this.meta,
     this.onTap,
   });
 
@@ -549,6 +720,8 @@ class VeilConversationCard extends StatelessWidget {
   final String subtitle;
   final String timestamp;
   final String? expiryLabel;
+  final bool selected;
+  final Widget? meta;
   final VoidCallback? onTap;
 
   @override
@@ -559,7 +732,21 @@ class VeilConversationCard extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Conversation with $title',
-      child: Card(
+      child: AnimatedContainer(
+        duration: VeilMotion.normal,
+        curve: VeilMotion.emphasize,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(VeilRadius.lg),
+          boxShadow: selected ? VeilElevation.raised : null,
+        ),
+        child: Card(
+          color: selected ? palette.surfaceRaised : null,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(VeilRadius.lg),
+            side: BorderSide(
+              color: selected ? palette.strokeStrong : palette.stroke,
+            ),
+          ),
         child: InkWell(
           borderRadius: BorderRadius.circular(VeilRadius.lg),
           onTap: onTap,
@@ -594,6 +781,10 @@ class VeilConversationCard extends StatelessWidget {
                               color: palette.textSubtle,
                             ),
                       ),
+                      if (meta != null) ...[
+                        const SizedBox(height: VeilSpace.sm),
+                        meta!,
+                      ],
                       const SizedBox(height: VeilSpace.sm),
                       Row(
                         children: [
@@ -626,20 +817,22 @@ class VeilConversationCard extends StatelessWidget {
                     Text(
                       timestamp,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: palette.textSubtle,
+                            color:
+                                selected ? palette.primaryStrong : palette.textSubtle,
                           ),
                     ),
                     const SizedBox(height: VeilSpace.sm),
                     Icon(
                       Icons.arrow_forward_ios_rounded,
                       size: 14,
-                      color: palette.textSubtle,
+                      color: selected ? palette.primaryStrong : palette.textSubtle,
                     ),
                   ],
                 ),
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -651,10 +844,12 @@ class VeilMessageBubbleCard extends StatelessWidget {
     super.key,
     required this.child,
     required this.isMine,
+    this.highlighted = false,
   });
 
   final Widget child;
   final bool isMine;
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context) {
@@ -666,7 +861,11 @@ class VeilMessageBubbleCard extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 360),
       padding: const EdgeInsets.all(VeilSpace.md),
       decoration: BoxDecoration(
-        color: isMine ? palette.primarySoft : palette.surface,
+        color: highlighted
+            ? palette.surfaceRaised
+            : isMine
+                ? palette.primarySoft
+                : palette.surface,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(VeilRadius.lg),
           topRight: const Radius.circular(VeilRadius.lg),
@@ -674,7 +873,11 @@ class VeilMessageBubbleCard extends StatelessWidget {
           bottomRight: Radius.circular(isMine ? VeilSpace.xs : VeilRadius.lg),
         ),
         border: Border.all(
-          color: isMine ? palette.strokeStrong : palette.stroke,
+          color: highlighted
+              ? palette.primaryStrong
+              : isMine
+                  ? palette.strokeStrong
+                  : palette.stroke,
         ),
       ),
       child: child,
@@ -953,12 +1156,18 @@ class VeilStepRow extends StatelessWidget {
             color: indicatorColor.withValues(alpha: 0.12),
             border: Border.all(color: indicatorColor),
           ),
-          child: Text(
-            complete ? '•' : '$step',
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+          child: complete
+              ? Icon(
+                  Icons.check_rounded,
+                  size: VeilIconSize.sm,
                   color: indicatorColor,
+                )
+              : Text(
+                  '$step',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: indicatorColor,
+                      ),
                 ),
-          ),
         ),
         const SizedBox(width: VeilSpace.sm),
         Expanded(

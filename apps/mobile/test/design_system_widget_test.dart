@@ -39,6 +39,14 @@ void main() {
                   handle: 'atlas',
                   subtitle: 'Encrypted message',
                   timestamp: '08:45',
+                  selected: true,
+                  meta: Wrap(
+                    spacing: 8,
+                    children: [
+                      VeilStatusPill(label: 'Direct'),
+                      VeilStatusPill(label: 'Queued', tone: VeilBannerTone.warn),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -51,6 +59,7 @@ void main() {
     expect(find.text('Cold, restrained, and privacy-first.'), findsOneWidget);
     expect(find.text('Notice'), findsOneWidget);
     expect(find.bySemanticsLabel('Conversation with Atlas'), findsOneWidget);
+    expect(find.text('Queued'), findsOneWidget);
   });
 
   testWidgets('composer and action buttons keep accessible touch targets', (
@@ -161,6 +170,7 @@ void main() {
           body: Padding(
             padding: EdgeInsets.all(24),
             child: VeilListTileCard(
+              eyebrow: 'Peer | Text',
               title: 'Selene',
               subtitle: 'fallback',
               subtitleWidget: Column(
@@ -178,8 +188,41 @@ void main() {
     );
 
     expect(find.text('Selene'), findsOneWidget);
+    expect(find.text('Peer | Text'), findsOneWidget);
     expect(find.text('Peer | Text | Apr 3'), findsOneWidget);
     expect(find.text('... orbit relay window ...'), findsOneWidget);
+  });
+
+  testWidgets('metric strip and destructive notice remain readable', (tester) async {
+    await tester.pumpWidget(
+      const _DesignTestApp(
+        child: Scaffold(
+          body: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                VeilMetricStrip(
+                  items: [
+                    VeilMetricItem(label: 'Relay', value: 'Linked'),
+                    VeilMetricItem(label: 'Recovery', value: 'None'),
+                  ],
+                ),
+                SizedBox(height: VeilSpace.md),
+                VeilDestructiveNotice(
+                  title: 'No recovery path',
+                  body: 'If this device is lost, VEIL cannot restore access.',
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Linked'), findsOneWidget);
+    expect(find.text('None'), findsOneWidget);
+    expect(find.text('No recovery path'), findsOneWidget);
   });
 }
 

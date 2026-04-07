@@ -1,11 +1,14 @@
 const REDACTION = '[REDACTED]';
 const SENSITIVE_KEYS = new Set([
   'accessToken',
+  'authorization',
   'authProof',
   'authPrivateKey',
   'authPrivateKeyRef',
   'authPublicKey',
   'body',
+  'challenge',
+  'challengeId',
   'ciphertext',
   'downloadUrl',
   'encryptedKey',
@@ -17,6 +20,7 @@ const SENSITIVE_KEYS = new Set([
   'refreshToken',
   'secret',
   'sessionToken',
+  'sessionLocator',
   'sha256',
   'signature',
   'signedPrekeyBundle',
@@ -30,10 +34,13 @@ const SENSITIVE_SUFFIXES = ['Token', 'Secret', 'Signature', 'Proof', 'PrivateKey
 
 export interface RedactionTarget {
   accessToken?: string | null;
+  authorization?: string | null;
   authProof?: string | null;
   authPrivateKey?: string | null;
   authPrivateKeyRef?: string | null;
   authPublicKey?: string | null;
+  challenge?: string | null;
+  challengeId?: string | null;
   ciphertext?: string | null;
   downloadUrl?: string | null;
   encryptedKey?: string | null;
@@ -44,6 +51,7 @@ export interface RedactionTarget {
   pushToken?: string | null;
   refreshToken?: string | null;
   secret?: string | null;
+  sessionLocator?: string | null;
   sha256?: string | null;
   signature?: string | null;
   signedPrekeyBundle?: string | null;

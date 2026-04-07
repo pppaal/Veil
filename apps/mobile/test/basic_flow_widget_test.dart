@@ -92,8 +92,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('VEIL never unlocks itself remotely.'), findsOneWidget);
-    expect(find.text('PIN required'), findsOneWidget);
-    expect(find.text('Biometrics available'), findsOneWidget);
+    expect(find.text('Required'), findsOneWidget);
+    expect(find.text('Available'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Use biometrics'),
       200,
@@ -282,6 +282,8 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'createdAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
           'lastSeenAt': DateTime.utc(2026, 4, 2, 8, 0, 0).toIso8601String(),
           'lastSyncAt': DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
+          'lastTrustedActivityAt':
+              DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
         },
         {
           'id': 'device-old',
@@ -297,6 +299,8 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'createdAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
           'lastSeenAt': DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
           'lastSyncAt': null,
+          'lastTrustedActivityAt':
+              DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
         },
         {
           'id': 'device-laptop',
@@ -312,6 +316,8 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'createdAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
           'lastSeenAt': DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
           'lastSyncAt': DateTime.utc(2026, 3, 30, 7, 45, 0).toIso8601String(),
+          'lastTrustedActivityAt':
+              DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
         },
       ],
     };

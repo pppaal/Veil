@@ -106,6 +106,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             (message) => message.deliveryState == MessageDeliveryState.pending)
         .length;
     final hasSearchQuery = _searchController.text.trim().isNotEmpty;
+    final nextRetryAt = controller.nextRetryAtForConversation(widget.conversationId);
 
     final content = Column(
       children: [
@@ -119,6 +120,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           onChangedDisappearing: (value) =>
               setState(() => _disappearing = value),
         ),
+        const SizedBox(height: VeilSpace.sm),
+        VeilMetricStrip(
+          items: [
+            VeilMetricItem(
+              label: 'Relay',
+              value: controller.realtimeConnected ? 'Linked' : 'Recovering',
+            ),
+            VeilMetricItem(
+              label: 'Loaded',
+              value: '${messages.length}',
+            ),
+            VeilMetricItem(
+              label: 'Search',
+              value: hasSearchQuery ? '${filteredMessages.length} hits' : 'Idle',
+            ),
+          ],
+        ),
         if (controller.errorMessage != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
@@ -130,13 +148,28 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         if (pendingCount > 0) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
-            title: failedCount > 0 ? 'Delivery stalled' : 'Queued locally',
-            message: failedCount > 0
-                ? '$failedCount message(s) failed to send. Retry when the relay is reachable.'
-                : uploadingCount > 0
-                    ? '$uploadingCount attachment message(s) are uploading opaque blobs before send.'
-                    : '$queuedCount message(s) are staged locally and will retry after reconnect.',
-            tone: failedCount > 0 ? VeilBannerTone.warn : VeilBannerTone.info,
+            title: !controller.realtimeConnected
+                ? 'Relay reconnecting'
+                : failedCount > 0
+                    ? 'Delivery stalled'
+                    : 'Queued locally',
+            message: !controller.realtimeConnected
+                ? _networkRecoveryMessage(
+                    failedCount: failedCount,
+                    queuedCount: queuedCount,
+                    uploadingCount: uploadingCount,
+                    nextRetryAt: nextRetryAt,
+                  )
+                : failedCount > 0
+                    ? '$failedCount message(s) failed to send. Retry when the relay is reachable.'
+                    : uploadingCount > 0
+                        ? '$uploadingCount attachment message(s) are uploading opaque blobs before send.'
+                        : '$queuedCount message(s) are staged locally and will retry after reconnect.',
+            tone: !controller.realtimeConnected
+                ? VeilBannerTone.warn
+                : failedCount > 0
+                    ? VeilBannerTone.warn
+                    : VeilBannerTone.info,
           ),
           if (failedCount > 0)
             Align(
@@ -476,6 +509,40 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 }
 
+String _networkRecoveryMessage({
+  required int failedCount,
+  required int queuedCount,
+  required int uploadingCount,
+  required DateTime? nextRetryAt,
+}) {
+  final retryLabel = nextRetryAt == null
+      ? 'Retry resumes when the relay reconnects.'
+      : 'Next retry in ${_formatRetryCountdown(nextRetryAt)}.';
+  if (failedCount > 0) {
+    return '$failedCount message(s) are waiting on relay recovery. $retryLabel';
+  }
+  if (uploadingCount > 0) {
+    return '$uploadingCount attachment message(s) are paused while the relay reconnects. $retryLabel';
+  }
+  return '$queuedCount message(s) remain queued on this device. $retryLabel';
+}
+
+String _formatRetryCountdown(DateTime nextRetryAt) {
+  final difference = nextRetryAt.difference(DateTime.now());
+  if (difference.inSeconds <= 1) {
+    return '1s';
+  }
+  if (difference.inSeconds < 60) {
+    return '${difference.inSeconds}s';
+  }
+  final minutes = difference.inMinutes;
+  final seconds = difference.inSeconds - (minutes * 60);
+  if (seconds <= 0) {
+    return '${minutes}m';
+  }
+  return '${minutes}m ${seconds}s';
+}
+
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.embedded,
@@ -659,35 +726,36 @@ class _MessageBubble extends StatelessWidget {
                 : null,
             color: highlighted ? context.veilPalette.primarySoft : Colors.transparent,
           ),
-          child: Dismissible(
-            key: ValueKey('reply-${message.id}'),
-            direction: DismissDirection.startToEnd,
-            confirmDismiss: (_) async {
-              onReplyGesture();
+            child: Dismissible(
+              key: ValueKey('reply-${message.id}'),
+              direction: DismissDirection.startToEnd,
+              confirmDismiss: (_) async {
+                onReplyGesture();
               return false;
             },
-            background: Container(
-              alignment: Alignment.centerLeft,
-              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.lg),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(VeilRadius.lg),
+              background: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.lg),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(VeilRadius.lg),
                 color: context.veilPalette.primarySoft,
                 border: Border.all(color: context.veilPalette.strokeStrong),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.reply_rounded),
-                  SizedBox(width: VeilSpace.xs),
-                  Text('Respond'),
-                ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.reply_rounded),
+                    SizedBox(width: VeilSpace.xs),
+                    Text('Reply locally'),
+                  ],
+                ),
               ),
-            ),
-            child: VeilMessageBubbleCard(
-              isMine: message.isMine,
-              child: FutureBuilder<DecryptedMessage>(
-                future: decryptFuture,
-                builder: (context, snapshot) {
+              child: VeilMessageBubbleCard(
+                isMine: message.isMine,
+                highlighted: highlighted,
+                child: FutureBuilder<DecryptedMessage>(
+                  future: decryptFuture,
+                  builder: (context, snapshot) {
                   final decrypted = snapshot.data;
                   final body = decrypted?.body ?? 'Decrypting envelope...';
                   return Column(
@@ -918,15 +986,19 @@ class _AttachmentTransferPanel extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (onRetry != null)
-                  FilledButton.tonal(
+              if (onRetry != null)
+                  VeilButton(
+                    expanded: false,
+                    tone: VeilButtonTone.secondary,
                     onPressed: onRetry,
-                    child: const Text('Retry upload'),
+                    label: 'Retry upload',
                   ),
                 if (onCancel != null)
-                  OutlinedButton(
+                  VeilButton(
+                    expanded: false,
+                    tone: VeilButtonTone.ghost,
                     onPressed: onCancel,
-                    child: const Text('Cancel'),
+                    label: 'Cancel',
                   ),
               ],
             ),

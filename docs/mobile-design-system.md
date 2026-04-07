@@ -77,6 +77,26 @@ Use banners for:
 
 Do not use banners for decorative emphasis.
 
+### `VeilMetricStrip`
+
+Use for:
+
+- compact runtime summaries
+- device-graph counts
+- chat and conversation overview state
+
+Metric strips should stay short, factual, and scannable.
+
+### `VeilDestructiveNotice`
+
+Use for:
+
+- no-recovery reminders
+- irreversible local wipe or revoke flows
+- transfer failure consequences
+
+Destructive notice blocks should feel calm and high-stakes, not melodramatic.
+
 ### `VeilComposer`
 
 The composer should feel stable, deliberate, and operational.
@@ -96,12 +116,14 @@ The composer should feel stable, deliberate, and operational.
 
 - Optimize for scan speed and calm density.
 - Search belongs to the device, not the server.
+- Selected conversations should stand out through tone and border, not loud color.
 
 ### Chat Room
 
 - Message bodies must be highly readable.
 - Status should never overwhelm content.
 - Attachment and failure states must stay explicit.
+- The header should keep relay, search, and disappearance context visible without crowding the composer.
 
 ### Settings / Security / Transfer
 

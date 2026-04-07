@@ -110,6 +110,22 @@ jobs:
       - name: Run runtime smoke
         run: pnpm alpha:smoke
 
+      - name: Run deploy preflight
+        run: pnpm beta:deploy:preflight -- --env-file apps/api/.env.beta.ci.example
+
+      - name: Generate beta artifacts
+        run: |
+          pnpm beta:release:evidence
+          pnpm beta:perf:template
+          pnpm beta:review:manifest
+
+      - name: Upload beta artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-beta-artifacts
+          path: artifacts/*.json
+
       - name: Stop alpha stack
         if: always()
         run: pnpm docker:alpha:down

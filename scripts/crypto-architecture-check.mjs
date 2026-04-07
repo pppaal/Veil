@@ -72,6 +72,30 @@ assertMatch(
 
 assertMatch(
   'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
+  /final int sessionSchemaVersion;/,
+  'Session bootstrap material must expose a schema version for future adapter migrations',
+);
+
+assertMatch(
+  'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
+  /final String localDeviceId;/,
+  'Session bootstrap material must bind persisted state to the local device',
+);
+
+assertMatch(
+  'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
+  /final String remoteDeviceId;/,
+  'Session bootstrap material must bind persisted state to the remote device',
+);
+
+assertMatch(
+  'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
+  /final String remoteIdentityFingerprint;/,
+  'Session bootstrap material must expose a remote identity fingerprint for migration checks',
+);
+
+assertMatch(
+  'apps/mobile/lib/src/core/crypto/crypto_engine.dart',
   /abstract class CryptoAdapter/,
   'Crypto boundary must expose an adapter facade',
 );

@@ -65,3 +65,6 @@ export const notFound = (code: VeilErrorCode, message: string): NotFoundExceptio
 
 export const conflict = (code: VeilErrorCode, message: string): ConflictException =>
   new ConflictException({ code, message });
+
+export const serviceUnavailable = (code: VeilErrorCode, message: string): HttpException =>
+  new ApiError(code, HttpStatus.SERVICE_UNAVAILABLE, message);

@@ -168,11 +168,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: VeilSpace.md),
           const VeilSectionLabel('SESSION'),
           const SizedBox(height: VeilSpace.sm),
-          const VeilInlineBanner(
+          const VeilDestructiveNotice(
             title: 'No recovery path',
-            message:
+            body:
                 'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.',
-            tone: VeilBannerTone.warn,
           ),
           const SizedBox(height: VeilSpace.sm),
           VeilActionCluster(
@@ -419,7 +418,7 @@ int _compareTrustedDevices(_TrustedDevice left, _TrustedDevice right) {
     return trustDelta;
   }
 
-  return right.lastSeenAt.compareTo(left.lastSeenAt);
+  return right.lastTrustedActivityAt.compareTo(left.lastTrustedActivityAt);
 }
 
 class _DeviceRowCard extends StatelessWidget {
@@ -497,6 +496,10 @@ class _DeviceRowCard extends StatelessWidget {
                   'Synced ${dateFormat.format(device.lastSyncAt!.toLocal())}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+              Text(
+                'Activity ${dateFormat.format(device.lastTrustedActivityAt.toLocal())}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
               if (device.trustedAt != null)
                 Text(
                   'Trusted ${dateFormat.format(device.trustedAt!.toLocal())}',
@@ -524,7 +527,7 @@ class _DeviceRowCard extends StatelessWidget {
               _DeviceTrustState.trusted =>
                 'This device remains trusted and can continue syncing while another trusted device exists.',
               _DeviceTrustState.stale =>
-                'This device is still trusted but has not synced recently. Revoke it if it should no longer retain access.',
+                'This device is still trusted but recent trusted activity has gone quiet. Revoke it if it should no longer retain access.',
               _DeviceTrustState.revoked =>
                 'This device is no longer trusted and cannot resume the session.',
             },
@@ -568,6 +571,7 @@ class _TrustedDevice {
     this.joinedFromDeviceName,
     this.joinedFromPlatform,
     this.lastSyncAt,
+    required this.lastTrustedActivityAt,
   });
 
   final String id;
@@ -583,6 +587,7 @@ class _TrustedDevice {
   final String? joinedFromDeviceName;
   final String? joinedFromPlatform;
   final DateTime? lastSyncAt;
+  final DateTime lastTrustedActivityAt;
 
   factory _TrustedDevice.fromJson(Map<String, dynamic> json) {
     return _TrustedDevice(
@@ -605,6 +610,11 @@ class _TrustedDevice {
       lastSyncAt: json['lastSyncAt'] == null
           ? null
           : DateTime.parse(json['lastSyncAt'] as String),
+      lastTrustedActivityAt: json['lastTrustedActivityAt'] == null
+          ? (json['lastSyncAt'] == null
+              ? DateTime.parse(json['lastSeenAt'] as String)
+              : DateTime.parse(json['lastSyncAt'] as String))
+          : DateTime.parse(json['lastTrustedActivityAt'] as String),
     );
   }
 }
@@ -629,6 +639,15 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
     final revokedCount = devices
         .where((device) => device.trustState == _DeviceTrustState.revoked)
         .length;
+    final mostRecentTrustedActivity = devices
+        .where((device) => device.trustState != _DeviceTrustState.revoked)
+        .map((device) => device.lastTrustedActivityAt)
+        .fold<DateTime?>(null, (latest, candidate) {
+      if (latest == null || candidate.isAfter(latest)) {
+        return candidate;
+      }
+      return latest;
+    });
     final preferredDevice = devices.cast<_TrustedDevice?>().firstWhere(
           (device) => device?.trustState == _DeviceTrustState.preferred,
           orElse: () => null,
@@ -664,6 +683,15 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: VeilSpace.md),
+          if (mostRecentTrustedActivity != null)
+            Text(
+              'Recent trusted activity ${DateFormat('MMM d | HH:mm').format(mostRecentTrustedActivity.toLocal())}',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: context.veilPalette.textSubtle,
+                  ),
+            ),
+          if (mostRecentTrustedActivity != null)
+            const SizedBox(height: VeilSpace.sm),
           if (preferredDevice != null &&
               preferredDevice.id != currentDevice?.id)
             VeilInlineBanner(
@@ -679,7 +707,7 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
             const VeilInlineBanner(
               title: 'Stale trusted devices present',
               message:
-                  'Some trusted devices have not synced recently. Revoke them if they should no longer retain access.',
+                  'Some trusted devices have no recent trusted activity. Stale does not mean revoked, but they should be reviewed deliberately.',
               tone: VeilBannerTone.warn,
             ),
           ],

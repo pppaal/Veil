@@ -106,11 +106,10 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                   ),
                 ),
                 const SizedBox(height: VeilSpace.md),
-                const VeilInlineBanner(
+                const VeilDestructiveNotice(
                   title: 'No recovery',
-                  message:
+                  body:
                       'If you forget the local barrier and lose the active device, VEIL cannot restore access.',
-                  tone: VeilBannerTone.warn,
                 ),
                 if (_integrityCompromised) ...[
                   const SizedBox(height: VeilSpace.md),
@@ -131,6 +130,23 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                     tone: VeilBannerTone.warn,
                   ),
                 ],
+                const SizedBox(height: VeilSpace.md),
+                VeilMetricStrip(
+                  items: [
+                    VeilMetricItem(
+                      label: 'PIN',
+                      value: _hasPin ? 'Configured' : 'Required',
+                    ),
+                    VeilMetricItem(
+                      label: 'Biometrics',
+                      value: _biometricsAvailable ? 'Available' : 'Unavailable',
+                    ),
+                    VeilMetricItem(
+                      label: 'Preview',
+                      value: _screenCaptureProtectionEnabled ? 'Protected' : 'Shielded',
+                    ),
+                  ],
+                ),
                 const SizedBox(height: VeilSpace.md),
                 VeilFieldBlock(
                   label: 'PIN',

@@ -43,11 +43,18 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             ),
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilInlineBanner(
+          const VeilDestructiveNotice(
             title: 'No restore path',
-            message:
+            body:
                 'If you lose this device, your account and messages are gone. VEIL cannot restore access. This is intentional.',
-            tone: VeilBannerTone.warn,
+          ),
+          const SizedBox(height: VeilSpace.lg),
+          const VeilMetricStrip(
+            items: [
+              VeilMetricItem(label: 'Identity', value: 'Local'),
+              VeilMetricItem(label: 'Recovery', value: 'None'),
+              VeilMetricItem(label: 'Transfer', value: 'Old device'),
+            ],
           ),
           const SizedBox(height: VeilSpace.lg),
           VeilFieldBlock(

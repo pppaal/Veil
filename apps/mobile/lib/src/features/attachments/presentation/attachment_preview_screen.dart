@@ -71,6 +71,14 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
             tone: VeilBannerTone.info,
           ),
           const SizedBox(height: VeilSpace.md),
+          VeilMetricStrip(
+            items: [
+              VeilMetricItem(label: 'MIME', value: contentType),
+              const VeilMetricItem(label: 'Upload', value: 'Ticketed'),
+              const VeilMetricItem(label: 'Blob', value: 'Opaque'),
+            ],
+          ),
+          const SizedBox(height: VeilSpace.md),
           VeilSurfaceCard(
             toned: true,
             child: Column(

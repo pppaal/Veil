@@ -261,6 +261,13 @@ class _MockConversationSessionBootstrapper
       sessionLocator: 'session://${request.conversationId}/${_opaqueToken(_random, 18)}',
       sessionEnvelopeVersion: _codec.defaultEnvelopeVersion,
       requiresLocalPersistence: true,
+      sessionSchemaVersion: 1,
+      localDeviceId: request.localDeviceId,
+      remoteDeviceId: request.remoteDeviceId,
+      remoteIdentityFingerprint: _sessionBindingFingerprint(
+        remoteDeviceId: request.remoteDeviceId,
+        remoteIdentityPublicKey: request.remoteIdentityPublicKey,
+      ),
       auditHint: 'mock-session-bootstrap',
     );
   }
@@ -269,4 +276,12 @@ class _MockConversationSessionBootstrapper
 String _opaqueToken(Random random, int byteLength) {
   final bytes = List<int>.generate(byteLength, (_) => random.nextInt(256));
   return base64Url.encode(bytes).replaceAll('=', '');
+}
+
+String _sessionBindingFingerprint({
+  required String remoteDeviceId,
+  required String remoteIdentityPublicKey,
+}) {
+  final raw = utf8.encode('$remoteDeviceId:$remoteIdentityPublicKey');
+  return base64Url.encode(raw).replaceAll('=', '');
 }

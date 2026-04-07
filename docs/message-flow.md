@@ -32,7 +32,9 @@
 - Outbound items are keyed by `clientMessageId` for idempotent re-send.
 - Temporary relay or network failures stay in the local queue and retry with bounded backoff.
 - Reconnect forces an immediate outbox drain and a batched first-page backfill for active, cached, or recently hinted conversations.
+- App resume forces a realtime refresh so stale sockets do not linger after background wake-up.
 - Late `message.delivered` and `message.read` events are buffered locally until the corresponding message page is present.
+- Out-of-order receipt events must only move state forward. A late `delivered` event must not regress a message that is already `read`.
 - Long conversations paginate by `conversationOrder`, newest first on the wire and oldest first in the local UI.
 
 ## Local search and history navigation
@@ -58,7 +60,14 @@
 
 - Receipt transitions must only move forward: `sent -> delivered -> read`.
 - Repeated `read` actions should not emit duplicate downstream receipt events after the first successful transition.
+- Repeated or late realtime receipt events should merge timestamps with `max(existing, incoming)` semantics.
 - Sender-side views derive receipt state from the recipient receipt record, while recipient-side views derive it from the local viewer receipt.
+
+## Transient failure UX
+
+- While the relay is disconnected, queued or failed sends stay visible in the conversation with explicit local state.
+- The conversation view should communicate whether the relay is reconnecting and when the next retry window opens.
+- Attachment uploads remain attached to the same local outbound item across retry and cancel transitions.
 
 ## Server-visible fields
 

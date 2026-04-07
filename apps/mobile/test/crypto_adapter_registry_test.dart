@@ -29,5 +29,9 @@ void main() {
     expect(bootstrap.sessionLocator, isNotEmpty);
     expect(bootstrap.sessionEnvelopeVersion, isNotEmpty);
     expect(bootstrap.requiresLocalPersistence, isTrue);
+    expect(bootstrap.sessionSchemaVersion, greaterThan(0));
+    expect(bootstrap.localDeviceId, 'device-local');
+    expect(bootstrap.remoteDeviceId, 'device-remote');
+    expect(bootstrap.remoteIdentityFingerprint, isNotEmpty);
   });
 }

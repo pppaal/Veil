@@ -288,6 +288,18 @@ describe('VEIL API (e2e)', () => {
     expect(transferComplete.body.handle).toBe('icarus');
     expect(transferComplete.body.displayName).toBe('Icarus');
 
+    const replayedTransferComplete = await api.post('/v1/device-transfer/complete').send({
+      sessionId: transferInit.body.sessionId,
+      transferToken: transferInit.body.transferToken,
+      claimId: transferClaim.body.claimId,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-complete:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferInit.body.transferToken}`,
+        authPrivateKey: transferKeyPair.authPrivateKey,
+      }),
+    });
+    expect(replayedTransferComplete.status).toBe(403);
+    expect(replayedTransferComplete.body.code).toBe('transfer_session_inactive');
+
     const transferredChallenge = await api.post('/v1/auth/challenge').send({
       handle: 'icarus',
       deviceId: transferComplete.body.newDeviceId,
@@ -327,6 +339,13 @@ describe('VEIL API (e2e)', () => {
       .get('/v1/conversations')
       .set('Authorization', bearer);
     expect(oldBearerAfterTransfer.status).toBe(200);
+
+    const foreignInit = await api
+      .post('/v1/device-transfer/init')
+      .set('Authorization', transferredBearer)
+      .send({ oldDeviceId: registerA.body.deviceId });
+    expect(foreignInit.status).toBe(403);
+    expect(foreignInit.body.code).toBe('device_forbidden');
   });
 
   it('blocks unrelated attachment download tickets and invalidates revoked device tokens', async () => {
@@ -525,15 +544,31 @@ describe('VEIL API (e2e)', () => {
     expect(reusedChallenge.status).toBe(401);
     expect(reusedChallenge.body.code).toBe('challenge_invalid');
 
-    const validChallenge = await api.post('/v1/auth/challenge').send({
+    const supersededChallenge = await api.post('/v1/auth/challenge').send({
       handle: 'replaytest',
       deviceId: register.body.deviceId,
     });
-    const verify = await api.post('/v1/auth/verify').send({
-      challengeId: validChallenge.body.challengeId,
+    const newestChallenge = await api.post('/v1/auth/challenge').send({
+      handle: 'replaytest',
+      deviceId: register.body.deviceId,
+    });
+
+    const supersededVerify = await api.post('/v1/auth/verify').send({
+      challengeId: supersededChallenge.body.challengeId,
       deviceId: register.body.deviceId,
       signature: keyHelper.createProof({
-        challenge: validChallenge.body.challenge,
+        challenge: supersededChallenge.body.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    expect(supersededVerify.status).toBe(401);
+    expect(supersededVerify.body.code).toBe('challenge_invalid');
+
+    const verify = await api.post('/v1/auth/verify').send({
+      challengeId: newestChallenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: newestChallenge.body.challenge,
         authPrivateKey: keyPair.authPrivateKey,
       }),
     });

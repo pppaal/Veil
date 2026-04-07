@@ -34,6 +34,8 @@ The current repository is not suitable for:
 - duplicate send and reconnect/backfill paths are covered
 - attachment ticket, upload completion, and download ticket flows are covered
 - app lock, local wipe, revoke, transfer success, and transfer failure are covered
+- conversation session bootstrap metadata is persisted with versioned local and
+  remote device binding for future audited crypto migration
 
 ### Privacy posture
 
@@ -73,6 +75,8 @@ These assumptions remain explicit:
 - transfer requires the old device
 - private keys and equivalent local device material stay on-device
 - mock crypto is still a placeholder seam and not a production security claim
+- persisted session bootstrap metadata is versioned, but it is still only a
+  migration-ready mock boundary and not real session cryptography
 
 ## Remaining risks
 
@@ -81,6 +85,9 @@ These assumptions remain explicit:
 3. Push-provider integrations are still seams and need separate privacy review.
 4. The local encrypted cache is private-beta hardening, not an audited secure mobile database design.
 5. Real iOS/Android signing and store-distribution hardening remain release-engineering work outside this code pass.
+6. Local message search is intentionally cache-backed and size-capped on-device, not a full encrypted archive engine.
+7. Session bootstrap persistence is migration-ready, but real audited
+   per-peer session state and migration logic are still future work.
 
 ## Release recommendation
 

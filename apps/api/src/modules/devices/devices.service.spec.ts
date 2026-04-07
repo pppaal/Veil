@@ -67,6 +67,69 @@ describe('DevicesService', () => {
       isActive: true,
       trustState: 'current',
     });
+    expect((listed.items[0] as unknown as { lastTrustedActivityAt?: string | null }).lastTrustedActivityAt).toBe(
+      new Date('2026-04-02T09:00:00.000Z').toISOString(),
+    );
+  });
+
+  it('keeps a device trusted when recent sync activity is newer than last seen', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+
+    prisma.users.push({
+      id: 'user-1',
+      handle: 'icarus',
+      displayName: null,
+      avatarPath: null,
+      status: 'active',
+      activeDeviceId: 'device-current',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    prisma.devices.push(
+      {
+        id: 'device-current',
+        userId: 'user-1',
+        platform: 'android',
+        deviceName: 'Pixel',
+        publicIdentityKey: 'pub-1',
+        signedPrekeyBundle: 'prekey-1',
+        authPublicKey: 'auth-1',
+        pushToken: 'push-current',
+        isActive: true,
+        revokedAt: null,
+        trustedAt: new Date('2026-03-15T09:00:00.000Z'),
+        joinedFromDeviceId: null,
+        createdAt: new Date('2026-03-15T09:00:00.000Z'),
+        lastSeenAt: new Date('2026-04-02T09:00:00.000Z'),
+        lastSyncAt: new Date('2026-04-02T09:05:00.000Z'),
+      },
+      {
+        id: 'device-laptop',
+        userId: 'user-1',
+        platform: 'windows',
+        deviceName: 'Desktop',
+        publicIdentityKey: 'pub-2',
+        signedPrekeyBundle: 'prekey-2',
+        authPublicKey: 'auth-2',
+        pushToken: 'push-2',
+        isActive: true,
+        revokedAt: null,
+        trustedAt: new Date('2026-03-16T09:00:00.000Z'),
+        joinedFromDeviceId: 'device-current',
+        createdAt: new Date('2026-03-16T09:00:00.000Z'),
+        lastSeenAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 45),
+        lastSyncAt: new Date(),
+      },
+    );
+
+    const listed = await service.list('user-1', 'device-current');
+    const laptop = listed.items.find((item) => item.id === 'device-laptop');
+
+    expect(laptop).toMatchObject({
+      trustState: 'trusted',
+      lastTrustedActivityAt: expect.any(String),
+    });
   });
 
   it('revokes the current preferred device and promotes another trusted device when available', async () => {

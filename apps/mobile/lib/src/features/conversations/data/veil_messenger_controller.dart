@@ -124,6 +124,20 @@ class VeilMessengerController extends ChangeNotifier {
           .length ??
       0;
 
+  DateTime? nextRetryAtForConversation(String conversationId) {
+    DateTime? earliest;
+    for (final pending in _pendingByClientMessageId.values) {
+      if (pending.conversationId != conversationId || pending.nextRetryAt == null) {
+        continue;
+      }
+      final nextRetryAt = pending.nextRetryAt!;
+      if (earliest == null || nextRetryAt.isBefore(earliest)) {
+        earliest = nextRetryAt;
+      }
+    }
+    return earliest;
+  }
+
   Future<void> applySession(AppSessionState session) async {
     final sessionChanged =
         session.accessToken != _session.accessToken || session.handle != _session.handle;
@@ -169,6 +183,14 @@ class VeilMessengerController extends ChangeNotifier {
 
   void setActiveConversation(String conversationId) {
     _activeConversationId = conversationId;
+  }
+
+  Future<void> handleAppResumed() async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      return;
+    }
+
+    await _refreshRealtimeAndSync(forceReconnect: true);
   }
 
   Future<void> refreshConversations() async {
@@ -815,6 +837,11 @@ class VeilMessengerController extends ChangeNotifier {
       accessToken: _session.accessToken!,
       onConnectionChanged: (connected) {
         _realtimeConnected = connected;
+        if (connected) {
+          _clearTransientRelayError();
+        } else {
+          _noteTransientRelayInterruption();
+        }
         notifyListeners();
         if (connected) {
           _scheduleSyncAfterRealtimeHint();
@@ -841,6 +868,8 @@ class VeilMessengerController extends ChangeNotifier {
             final data = payload as Map<String, dynamic>;
             final message = _messageFromApi(data);
             _mergeServerMessages(message.envelope.conversationId, <ChatMessage>[message]);
+            unawaited(_persistConversationState(message.envelope.conversationId));
+            notifyListeners();
             if (!message.isMine && message.envelope.conversationId == _activeConversationId) {
               await markRead(message.id);
             }
@@ -855,6 +884,21 @@ class VeilMessengerController extends ChangeNotifier {
         }
       },
     );
+  }
+
+  Future<void> _refreshRealtimeAndSync({bool forceReconnect = false}) async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      return;
+    }
+
+    if (forceReconnect || !_realtimeService.isConnected || !_realtimeConnected) {
+      _realtimeService.disconnect();
+      _realtimeConnected = false;
+      notifyListeners();
+      await _connectRealtime();
+    }
+    _scheduleSyncAfterRealtimeHint(conversationId: _activeConversationId);
+    await _drainOutbox(ignoreRetrySchedule: true);
   }
 
   void _scheduleSyncAfterRealtimeHint({String? conversationId}) {
@@ -1015,6 +1059,19 @@ class VeilMessengerController extends ChangeNotifier {
       deliveredAt: _laterOf(existing?.deliveredAt, deliveredAt),
       readAt: _laterOf(existing?.readAt, readAt),
     );
+  }
+
+  void _noteTransientRelayInterruption() {
+    if (_pendingByClientMessageId.isEmpty) {
+      return;
+    }
+    _errorMessage = 'Relay connection interrupted. Queued sends will retry after reconnect.';
+  }
+
+  void _clearTransientRelayError() {
+    if (_errorMessage == 'Relay connection interrupted. Queued sends will retry after reconnect.') {
+      _errorMessage = null;
+    }
   }
 
   void _updateLocalMessageState(
@@ -1455,6 +1512,7 @@ class VeilMessengerController extends ChangeNotifier {
       lastEnvelope: latestMessage?.envelope,
       updatedAt: latestMessage?.sentAt ?? current.updatedAt,
     );
+    _conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   Future<KeyBundle> _fetchPeerBundle(String handle) async {
@@ -1504,7 +1562,8 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     if (conversation.sessionState != null &&
-        conversation.recipientBundle.deviceId == bundle.deviceId) {
+        conversation.sessionState!.belongsToLocalDevice(_session.deviceId!) &&
+        conversation.sessionState!.matchesBundle(bundle)) {
       return conversation.sessionState;
     }
 
@@ -1523,6 +1582,10 @@ class VeilMessengerController extends ChangeNotifier {
       sessionLocator: bootstrapped.sessionLocator,
       sessionEnvelopeVersion: bootstrapped.sessionEnvelopeVersion,
       requiresLocalPersistence: bootstrapped.requiresLocalPersistence,
+      sessionSchemaVersion: bootstrapped.sessionSchemaVersion,
+      localDeviceId: bootstrapped.localDeviceId,
+      remoteDeviceId: bootstrapped.remoteDeviceId,
+      remoteIdentityFingerprint: bootstrapped.remoteIdentityFingerprint,
       bootstrappedAt: DateTime.now(),
       auditHint: bootstrapped.auditHint,
     );
@@ -1544,7 +1607,15 @@ class VeilMessengerController extends ChangeNotifier {
           sessionState != null &&
           (conversation.sessionState?.sessionLocator != sessionState.sessionLocator ||
               conversation.sessionState?.sessionEnvelopeVersion !=
-                  sessionState.sessionEnvelopeVersion);
+                  sessionState.sessionEnvelopeVersion ||
+              conversation.sessionState?.sessionSchemaVersion !=
+                  sessionState.sessionSchemaVersion ||
+              conversation.sessionState?.localDeviceId !=
+                  sessionState.localDeviceId ||
+              conversation.sessionState?.remoteDeviceId !=
+                  sessionState.remoteDeviceId ||
+              conversation.sessionState?.remoteIdentityFingerprint !=
+                  sessionState.remoteIdentityFingerprint);
       if (!shouldUpdateBundle && !shouldUpdateSession) {
         return conversation;
       }

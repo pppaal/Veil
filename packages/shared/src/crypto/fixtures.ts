@@ -22,6 +22,12 @@ export interface CryptoInteropFixtureBundleCase {
 export interface CryptoInteropFixtureSessionCase {
   request: SessionBootstrapRequest;
   result: SessionBootstrapMaterial;
+  persistenceExpectation: {
+    localDeviceId: string;
+    remoteDeviceId: string;
+    remoteIdentityFingerprint: string;
+    sessionSchemaVersion: number;
+  };
 }
 
 export interface CryptoInteropFixtureAttachmentCase {

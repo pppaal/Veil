@@ -44,6 +44,9 @@ Notes:
 
 - `apps/api/.env.alpha.example` is only a wiring example.
 - Replace placeholder JWT and provider secrets in the actual env file before expecting preflight to pass.
+- CI uses [`apps/api/.env.beta.ci.example`](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/.env.beta.ci.example)
+  to prove that the deploy preflight and beta artifact generation still work with a
+  non-placeholder private-beta fixture.
 
 ## 4. QA gate
 

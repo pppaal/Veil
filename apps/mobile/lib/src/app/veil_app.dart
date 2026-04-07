@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -63,6 +65,7 @@ class _PrivacyLifecycleBoundaryState
         break;
       case AppLifecycleState.resumed:
         _refreshPlatformSecurity();
+        unawaited(ref.read(messengerControllerProvider).handleAppResumed());
         Future<void>.delayed(const Duration(milliseconds: 180), () {
           if (!mounted) {
             return;

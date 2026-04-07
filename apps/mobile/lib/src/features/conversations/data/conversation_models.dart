@@ -5,6 +5,10 @@ class ConversationSessionState {
     required this.sessionLocator,
     required this.sessionEnvelopeVersion,
     required this.requiresLocalPersistence,
+    required this.sessionSchemaVersion,
+    required this.localDeviceId,
+    required this.remoteDeviceId,
+    required this.remoteIdentityFingerprint,
     required this.bootstrappedAt,
     this.auditHint,
   });
@@ -12,8 +16,16 @@ class ConversationSessionState {
   final String sessionLocator;
   final String sessionEnvelopeVersion;
   final bool requiresLocalPersistence;
+  final int sessionSchemaVersion;
+  final String localDeviceId;
+  final String remoteDeviceId;
+  final String remoteIdentityFingerprint;
   final DateTime bootstrappedAt;
   final String? auditHint;
+
+  bool matchesBundle(KeyBundle bundle) => remoteDeviceId == bundle.deviceId;
+
+  bool belongsToLocalDevice(String deviceId) => localDeviceId == deviceId;
 }
 
 class ConversationPreview {

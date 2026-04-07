@@ -241,6 +241,7 @@ export interface DeviceSummary {
   createdAt: string;
   lastSeenAt: string;
   lastSyncAt?: string | null;
+  lastTrustedActivityAt?: string | null;
 }
 
 export interface ListDevicesResponse {

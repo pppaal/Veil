@@ -112,11 +112,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             ],
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilInlineBanner(
+          const VeilDestructiveNotice(
             title: 'No fallback path',
-            message:
+            body:
                 'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.',
-            tone: VeilBannerTone.warn,
           ),
           if (transferExpired || claimExpired) ...[
             const SizedBox(height: VeilSpace.sm),
@@ -128,6 +127,31 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               tone: VeilBannerTone.danger,
             ),
           ],
+          const SizedBox(height: VeilSpace.md),
+          VeilMetricStrip(
+            items: [
+              VeilMetricItem(
+                label: 'Mode',
+                value: _mode == _TransferMode.oldDevice ? 'Old device' : 'New device',
+              ),
+              VeilMetricItem(
+                label: 'Session',
+                value: transferExpired
+                    ? 'Expired'
+                    : controller.transferSessionId == null
+                        ? 'Idle'
+                        : 'Live',
+              ),
+              VeilMetricItem(
+                label: 'Claim',
+                value: _claimId == null
+                    ? 'Missing'
+                    : claimExpired
+                        ? 'Expired'
+                        : 'Issued',
+              ),
+            ],
+          ),
           const SizedBox(height: VeilSpace.md),
           if (_mode == _TransferMode.oldDevice)
             _OldDevicePanel(

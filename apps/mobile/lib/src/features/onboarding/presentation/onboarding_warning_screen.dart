@@ -44,11 +44,10 @@ class OnboardingWarningScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: VeilSpace.lg),
-          const VeilInlineBanner(
+          const VeilDestructiveNotice(
             title: 'Unrecoverable by design',
-            message:
+            body:
                 'If you lose your device, your account and messages are gone. VEIL cannot restore your access.',
-            tone: VeilBannerTone.warn,
           ),
           const SizedBox(height: VeilSpace.md),
           const _WarningCard(

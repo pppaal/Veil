@@ -28,6 +28,9 @@ interface StoredChallenge {
   deviceId: string;
 }
 
+const challengeKey = (challengeId: string): string => `auth:challenge:${challengeId}`;
+const activeChallengeKey = (deviceId: string): string => `auth:challenge:device:${deviceId}`;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -116,9 +119,21 @@ export class AuthService {
     const challenge = randomUUID();
     const expiresAt = new Date(Date.now() + this.config.authChallengeTtlSeconds * 1000);
 
+    const previousChallengeId = await this.ephemeralStore.getJson<string>(
+      activeChallengeKey(dto.deviceId),
+    );
+    if (previousChallengeId) {
+      await this.ephemeralStore.delete(challengeKey(previousChallengeId));
+    }
+
     await this.ephemeralStore.setJson<StoredChallenge>(
-      `auth:challenge:${challengeId}`,
+      challengeKey(challengeId),
       { challenge, deviceId: dto.deviceId },
+      this.config.authChallengeTtlSeconds,
+    );
+    await this.ephemeralStore.setJson<string>(
+      activeChallengeKey(dto.deviceId),
+      challengeId,
       this.config.authChallengeTtlSeconds,
     );
 
@@ -130,15 +145,21 @@ export class AuthService {
   }
 
   async verify(dto: VerifyDto): Promise<AuthVerifyResponse> {
-    const stored = await this.ephemeralStore.getJson<StoredChallenge>(
-      `auth:challenge:${dto.challengeId}`,
+    const stored = await this.ephemeralStore.getJson<StoredChallenge>(challengeKey(dto.challengeId));
+    const activeChallengeId = await this.ephemeralStore.getJson<string>(
+      activeChallengeKey(dto.deviceId),
     );
 
-    if (!stored || stored.deviceId !== dto.deviceId) {
+    if (
+      !stored ||
+      stored.deviceId !== dto.deviceId ||
+      activeChallengeId != dto.challengeId
+    ) {
       throw unauthorized('challenge_invalid', 'Challenge expired or invalid');
     }
 
-    await this.ephemeralStore.delete(`auth:challenge:${dto.challengeId}`);
+    await this.ephemeralStore.delete(challengeKey(dto.challengeId));
+    await this.ephemeralStore.delete(activeChallengeKey(dto.deviceId));
 
     const device = await this.prisma.device.findUnique({
       where: { id: dto.deviceId },

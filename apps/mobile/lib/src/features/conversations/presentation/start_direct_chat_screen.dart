@@ -53,6 +53,14 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
                 'Conversations open only when you know the exact handle. There is no graph expansion layer here.',
           ),
           const SizedBox(height: VeilSpace.md),
+          const VeilMetricStrip(
+            items: [
+              VeilMetricItem(label: 'Discovery', value: 'Manual'),
+              VeilMetricItem(label: 'Graph', value: 'None'),
+              VeilMetricItem(label: 'Mode', value: 'Direct 1:1'),
+            ],
+          ),
+          const SizedBox(height: VeilSpace.md),
           VeilFieldBlock(
             label: 'TARGET HANDLE',
             trailing: _handleController.text.trim().isEmpty

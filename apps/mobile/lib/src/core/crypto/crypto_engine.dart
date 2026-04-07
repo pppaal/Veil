@@ -47,12 +47,20 @@ class SessionBootstrapMaterial {
     required this.sessionLocator,
     required this.sessionEnvelopeVersion,
     required this.requiresLocalPersistence,
+    required this.sessionSchemaVersion,
+    required this.localDeviceId,
+    required this.remoteDeviceId,
+    required this.remoteIdentityFingerprint,
     this.auditHint,
   });
 
   final String sessionLocator;
   final String sessionEnvelopeVersion;
   final bool requiresLocalPersistence;
+  final int sessionSchemaVersion;
+  final String localDeviceId;
+  final String remoteDeviceId;
+  final String remoteIdentityFingerprint;
   final String? auditHint;
 }
 

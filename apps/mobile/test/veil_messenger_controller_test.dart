@@ -91,6 +91,16 @@ void main() {
       refreshedConversation.sessionState?.sessionEnvelopeVersion,
       crypto.envelopeCodec.defaultEnvelopeVersion,
     );
+    expect(refreshedConversation.sessionState?.sessionSchemaVersion, 1);
+    expect(refreshedConversation.sessionState?.localDeviceId, 'device-local');
+    expect(
+      refreshedConversation.sessionState?.remoteDeviceId,
+      'device-selene-primary',
+    );
+    expect(
+      refreshedConversation.sessionState?.remoteIdentityFingerprint,
+      isNotEmpty,
+    );
   });
 
   test(
@@ -334,6 +344,48 @@ void main() {
         greaterThan(0));
   });
 
+  test('app resume forces realtime refresh and drains queued outbound work',
+      () async {
+    final api = _FakeVeilApiClient(failSendAttempts: 1);
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.sendText(conversationId: 'conv-1', body: 'resume sync');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    expect(controller.pendingCountFor('conv-1'), 1);
+
+    final connectCountBeforeResume = realtime.connectCount;
+    await controller.handleAppResumed();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(realtime.disconnectCount, greaterThan(0));
+    expect(realtime.connectCount, greaterThan(connectCountBeforeResume));
+    expect(controller.pendingCountFor('conv-1'), 0);
+    expect(controller.messagesFor('conv-1').single.id, 'srv-1');
+  });
+
   test('failed attachment upload remains queued for retry and succeeds later',
       () async {
     final api = _FakeVeilApiClient(failUploadAttempts: 1);
@@ -439,6 +491,66 @@ void main() {
     expect(message.id, 'srv-late');
     expect(message.deliveryState, MessageDeliveryState.read);
     expect(message.readAt, isNotNull);
+  });
+
+  test('out-of-order receipt events only move delivery state forward', () async {
+    final api = _FakeVeilApiClient(
+      pagedMessages: {
+        const _PagedQuery('conv-1', null): {
+          'items': [
+            _FakeVeilApiClient.messageJson(
+              id: 'srv-ordered',
+              clientMessageId: 'client-ordered',
+              conversationId: 'conv-1',
+              senderDeviceId: 'device-local',
+              conversationOrder: 8,
+              ciphertext: 'opaque-ordered',
+              nonce: 'nonce-ordered',
+            ),
+          ],
+          'nextCursor': null,
+        },
+      },
+    );
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.loadConversationMessages('conv-1');
+    realtime.emit('message.read', {
+      'messageId': 'srv-ordered',
+      'readAt': DateTime.utc(2026, 3, 30, 12, 40, 0).toIso8601String(),
+    });
+    realtime.emit('message.delivered', {
+      'messageId': 'srv-ordered',
+      'deliveredAt': DateTime.utc(2026, 3, 30, 12, 35, 0).toIso8601String(),
+    });
+
+    final message = controller.messagesFor('conv-1').single;
+    expect(message.deliveryState, MessageDeliveryState.read);
+    expect(message.readAt, isNotNull);
+    expect(message.deliveredAt, isNotNull);
   });
 
   test('searchLoadedMessageIds matches locally decrypted message bodies',
@@ -569,6 +681,168 @@ void main() {
           .length,
       1,
     );
+  });
+
+  test('realtime message.new immediately updates preview ordering before backfill',
+      () async {
+    final api = _FakeVeilApiClient(
+      conversations: [
+        {
+          'id': 'conv-1',
+          'type': 'direct',
+          'createdAt': DateTime.utc(2026, 3, 30, 10, 0, 0).toIso8601String(),
+          'members': [
+            {
+              'userId': 'user-local',
+              'handle': 'atlas',
+              'displayName': 'Atlas',
+            },
+            {
+              'userId': 'user-selene',
+              'handle': 'selene',
+              'displayName': 'Selene',
+            },
+          ],
+          'lastMessage': {
+            ..._FakeVeilApiClient.messageJson(
+              id: 'srv-old-1',
+              clientMessageId: 'client-old-1',
+              conversationId: 'conv-1',
+              senderDeviceId: 'device-selene',
+              conversationOrder: 1,
+              ciphertext: 'opaque-old-1',
+              nonce: 'nonce-old-1',
+            ),
+            'serverReceivedAt': DateTime.utc(2026, 3, 30, 12, 0, 0).toIso8601String(),
+          },
+        },
+        {
+          'id': 'conv-2',
+          'type': 'direct',
+          'createdAt': DateTime.utc(2026, 3, 30, 9, 0, 0).toIso8601String(),
+          'members': [
+            {
+              'userId': 'user-local',
+              'handle': 'atlas',
+              'displayName': 'Atlas',
+            },
+            {
+              'userId': 'user-lyra',
+              'handle': 'lyra',
+              'displayName': 'Lyra',
+            },
+          ],
+          'lastMessage': {
+            ..._FakeVeilApiClient.messageJson(
+              id: 'srv-old-2',
+              clientMessageId: 'client-old-2',
+              conversationId: 'conv-2',
+              senderDeviceId: 'device-lyra',
+              conversationOrder: 2,
+              ciphertext: 'opaque-old-2',
+              nonce: 'nonce-old-2',
+            ),
+            'serverReceivedAt': DateTime.utc(2026, 3, 30, 11, 0, 0).toIso8601String(),
+          },
+        },
+      ],
+    );
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    expect(controller.conversations.first.id, 'conv-1');
+    api.messageFetches.clear();
+
+    realtime.emit(
+      'message.new',
+      {
+        ..._FakeVeilApiClient.messageJson(
+          id: 'srv-new-2',
+          clientMessageId: 'client-new-2',
+          conversationId: 'conv-2',
+          senderDeviceId: 'device-lyra',
+          conversationOrder: 3,
+          ciphertext: 'opaque-new-2',
+          nonce: 'nonce-new-2',
+        ),
+        'serverReceivedAt': DateTime.utc(2026, 3, 30, 13, 0, 0).toIso8601String(),
+      },
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(controller.conversations.first.id, 'conv-2');
+    expect(controller.messagesFor('conv-2').single.id, 'srv-new-2');
+    expect(api.messageFetches, isEmpty);
+  });
+
+  test('duplicate realtime message.new events do not duplicate local messages',
+      () async {
+    final api = _FakeVeilApiClient();
+    final realtime = _FakeRealtimeService();
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: realtime,
+      cacheService: _MemoryConversationCache(),
+    );
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    final payload = {
+      ..._FakeVeilApiClient.messageJson(
+        id: 'srv-dedupe-1',
+        clientMessageId: 'client-dedupe-1',
+        conversationId: 'conv-1',
+        senderDeviceId: 'device-selene',
+        conversationOrder: 5,
+        ciphertext: 'opaque-dedupe-1',
+        nonce: 'nonce-dedupe-1',
+      ),
+      'serverReceivedAt': DateTime.utc(2026, 3, 30, 14, 0, 0).toIso8601String(),
+    };
+
+    realtime.emit('message.new', payload);
+    realtime.emit('message.new', payload);
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(controller.messagesFor('conv-1').map((message) => message.id).toList(), ['srv-dedupe-1']);
   });
 
   test('attachment download resolution exposes a transient resolving state',
@@ -836,11 +1110,13 @@ void main() {
 class _FakeVeilApiClient extends VeilApiClient {
   _FakeVeilApiClient({
     Map<_PagedQuery, Map<String, dynamic>>? pagedMessages,
+    List<Map<String, dynamic>>? conversations,
     this.failSendAttempts = 0,
     this.failUploadAttempts = 0,
     this.downloadTicketDelay = Duration.zero,
     this.uploadDelay = Duration.zero,
   })  : _pagedMessages = pagedMessages ?? {},
+        _conversationsResponse = conversations,
         super(baseUrl: 'http://localhost:3000/v1');
 
   final List<Map<String, dynamic>> sentPayloads = [];
@@ -848,6 +1124,7 @@ class _FakeVeilApiClient extends VeilApiClient {
   final List<_PagedQuery> messageFetches = [];
   int conversationFetchCount = 0;
   final Map<_PagedQuery, Map<String, dynamic>> _pagedMessages;
+  final List<Map<String, dynamic>>? _conversationsResponse;
   final String _defaultEnvelopeVersion =
       createDefaultCryptoAdapter().envelopeCodec.defaultEnvelopeVersion;
   int failSendAttempts;
@@ -905,7 +1182,8 @@ class _FakeVeilApiClient extends VeilApiClient {
   @override
   Future<List<dynamic>> getConversations(String accessToken) async {
     conversationFetchCount += 1;
-    return [
+    return _conversationsResponse ??
+        [
       {
         'id': 'conv-1',
         'type': 'direct',
@@ -1111,6 +1389,8 @@ class _FakeVeilApiClient extends VeilApiClient {
 class _FakeRealtimeService extends RealtimeService {
   void Function(String event, dynamic payload)? _onEvent;
   void Function(bool connected)? _onConnectionChanged;
+  int connectCount = 0;
+  int disconnectCount = 0;
 
   @override
   void connect({
@@ -1119,6 +1399,7 @@ class _FakeRealtimeService extends RealtimeService {
     required void Function(String event, dynamic payload) onEvent,
     void Function(bool connected)? onConnectionChanged,
   }) {
+    connectCount += 1;
     _onEvent = onEvent;
     _onConnectionChanged = onConnectionChanged;
     _onConnectionChanged?.call(true);
@@ -1126,6 +1407,7 @@ class _FakeRealtimeService extends RealtimeService {
 
   @override
   void disconnect() {
+    disconnectCount += 1;
     _onConnectionChanged?.call(false);
   }
 

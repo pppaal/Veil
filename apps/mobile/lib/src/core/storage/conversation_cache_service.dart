@@ -7,9 +7,73 @@ import '../crypto/crypto_engine.dart';
 import '../security/local_data_cipher.dart';
 import 'app_database.dart';
 
+const int maxArchiveSearchBodyLength = 1024;
+
+String normalizeArchiveSearchBody(String searchBody) {
+  final compact = searchBody.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (compact.length <= maxArchiveSearchBodyLength) {
+    return compact;
+  }
+  return compact.substring(0, maxArchiveSearchBodyLength).trim();
+}
+
+int findArchiveQueryIndex(String searchBody, String normalizedQuery) {
+  if (normalizedQuery.isEmpty) {
+    return -1;
+  }
+  final compactBody = normalizeArchiveSearchBody(searchBody);
+  return compactBody.toLowerCase().indexOf(normalizedQuery);
+}
+
+int archiveSearchRankingScore(String searchBody, String normalizedQuery) {
+  final compactBody = normalizeArchiveSearchBody(searchBody);
+  final lowerBody = compactBody.toLowerCase();
+  final matchIndex = lowerBody.indexOf(normalizedQuery);
+  if (matchIndex < 0) {
+    return 1 << 20;
+  }
+  if (lowerBody == normalizedQuery) {
+    return 0;
+  }
+  if (lowerBody.startsWith(normalizedQuery)) {
+    return 100 + matchIndex;
+  }
+  if (matchIndex > 0 && _isArchiveWordBoundary(compactBody[matchIndex - 1])) {
+    return 200 + matchIndex;
+  }
+  return 300 + matchIndex;
+}
+
+bool _isArchiveWordBoundary(String character) {
+  const boundaries = <String>{
+    ' ',
+    '\t',
+    '\n',
+    '-',
+    '_',
+    ',',
+    '.',
+    ';',
+    ':',
+    '!',
+    '?',
+    '(',
+    ')',
+    '[',
+    ']',
+    '{',
+    '}',
+    '\'',
+    '"',
+    '/',
+    '\\',
+  };
+  return boundaries.contains(character);
+}
+
 String buildArchiveQuerySnippet(String searchBody, String normalizedQuery) {
-  final compactBody = searchBody.replaceAll(RegExp(r'\s+'), ' ').trim();
-  final matchIndex = compactBody.indexOf(normalizedQuery);
+  final compactBody = normalizeArchiveSearchBody(searchBody);
+  final matchIndex = findArchiveQueryIndex(compactBody, normalizedQuery);
   if (matchIndex < 0) {
     return compactBody.length <= 96
         ? compactBody
@@ -323,6 +387,10 @@ class DriftConversationCacheService implements ConversationCacheService {
           await _decrypt(row.sessionEnvelopeVersion);
       final sessionRequiresLocalPersistence =
           await _decrypt(row.sessionRequiresLocalPersistence);
+      final sessionLocalDeviceId = await _decrypt(row.sessionLocalDeviceId);
+      final sessionRemoteDeviceId = await _decrypt(row.sessionRemoteDeviceId);
+      final sessionRemoteIdentityFingerprint =
+          await _decrypt(row.sessionRemoteIdentityFingerprint);
       final sessionAuditHint = await _decrypt(row.sessionAuditHint);
       final sessionBootstrappedAt =
           await _decrypt(row.sessionBootstrappedAt);
@@ -359,6 +427,10 @@ class DriftConversationCacheService implements ConversationCacheService {
           sessionState: sessionLocator == null ||
                   sessionEnvelopeVersion == null ||
                   sessionRequiresLocalPersistence == null ||
+                  row.sessionSchemaVersion == null ||
+                  sessionLocalDeviceId == null ||
+                  sessionRemoteDeviceId == null ||
+                  sessionRemoteIdentityFingerprint == null ||
                   sessionBootstrappedAt == null
               ? null
               : ConversationSessionState(
@@ -366,6 +438,10 @@ class DriftConversationCacheService implements ConversationCacheService {
                   sessionEnvelopeVersion: sessionEnvelopeVersion,
                   requiresLocalPersistence:
                       sessionRequiresLocalPersistence == 'true',
+                  sessionSchemaVersion: row.sessionSchemaVersion!,
+                  localDeviceId: sessionLocalDeviceId,
+                  remoteDeviceId: sessionRemoteDeviceId,
+                  remoteIdentityFingerprint: sessionRemoteIdentityFingerprint,
                   bootstrappedAt: DateTime.parse(sessionBootstrappedAt),
                   auditHint: sessionAuditHint,
                 ),
@@ -477,6 +553,14 @@ class DriftConversationCacheService implements ConversationCacheService {
           sessionRequiresLocalPersistence: Value(await _encrypt(
             conversation.sessionState?.requiresLocalPersistence.toString(),
           )),
+          sessionSchemaVersion:
+              Value(conversation.sessionState?.sessionSchemaVersion),
+          sessionLocalDeviceId: Value(
+              await _encrypt(conversation.sessionState?.localDeviceId)),
+          sessionRemoteDeviceId: Value(
+              await _encrypt(conversation.sessionState?.remoteDeviceId)),
+          sessionRemoteIdentityFingerprint: Value(await _encrypt(
+              conversation.sessionState?.remoteIdentityFingerprint)),
           sessionAuditHint:
               Value(await _encrypt(conversation.sessionState?.auditHint)),
           sessionBootstrappedAt: Value(await _encrypt(
@@ -711,7 +795,10 @@ class DriftConversationCacheService implements ConversationCacheService {
     final matches = <String>[];
     for (final row in rows) {
       final searchBody = await _decrypt(row.searchBody);
-      if (searchBody == null || !searchBody.contains(normalizedQuery)) {
+      if (searchBody == null ||
+          !normalizeArchiveSearchBody(searchBody)
+              .toLowerCase()
+              .contains(normalizedQuery)) {
         continue;
       }
       matches.add(row.id);
@@ -759,7 +846,7 @@ class DriftConversationCacheService implements ConversationCacheService {
             }
             if (query.beforeSentAt case final beforeSentAt?) {
               expression = expression &
-                  table.receivedAt.isSmallerThanValue(beforeSentAt);
+                  table.receivedAt.isSmallerOrEqualValue(beforeSentAt);
             }
             return expression;
           })
@@ -772,6 +859,7 @@ class DriftConversationCacheService implements ConversationCacheService {
         .get();
 
     final results = <MessageSearchResult>[];
+    final ranked = <({int score, MessageSearchResult result})>[];
     for (final row in rows) {
       final conversation = conversationsById[row.conversationId];
       if (conversation == null) {
@@ -789,7 +877,8 @@ class DriftConversationCacheService implements ConversationCacheService {
           row.id.compareTo(query.beforeMessageId!) >= 0) {
         continue;
       }
-      if (!searchBody.contains(normalizedQuery)) {
+      final rankingScore = archiveSearchRankingScore(searchBody, normalizedQuery);
+      if (rankingScore >= (1 << 20)) {
         continue;
       }
       if (!_messageTypeMatchesFilter(messageType, query.typeFilter)) {
@@ -812,8 +901,9 @@ class DriftConversationCacheService implements ConversationCacheService {
           break;
       }
 
-      results.add(
-        MessageSearchResult(
+      ranked.add((
+        score: rankingScore,
+        result: MessageSearchResult(
           conversationId: row.conversationId,
           messageId: row.id,
           peerHandle: conversation.peerHandle,
@@ -824,11 +914,23 @@ class DriftConversationCacheService implements ConversationCacheService {
           bodySnippet: buildArchiveQuerySnippet(searchBody, normalizedQuery),
           conversationOrder: row.conversationOrder,
         ),
-      );
+      ));
+    }
 
-      if (results.length >= query.limit) {
-        break;
+    ranked.sort((a, b) {
+      final scoreCompare = a.score.compareTo(b.score);
+      if (scoreCompare != 0) {
+        return scoreCompare;
       }
+      final sentAtCompare = b.result.sentAt.compareTo(a.result.sentAt);
+      if (sentAtCompare != 0) {
+        return sentAtCompare;
+      }
+      return b.result.messageId.compareTo(a.result.messageId);
+    });
+
+    for (final entry in ranked.take(query.limit)) {
+      results.add(entry.result);
     }
 
     if (results.length < query.limit) {

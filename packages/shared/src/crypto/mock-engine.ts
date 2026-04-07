@@ -227,6 +227,14 @@ class MockConversationSessionBootstrapper
       sessionLocator: `session://${request.conversationId}/${opaqueToken(18)}`,
       sessionEnvelopeVersion: DEV_ENVELOPE_VERSION,
       requiresLocalPersistence: true,
+      sessionSchemaVersion: 1,
+      localDeviceId: request.localDeviceId,
+      remoteDeviceId: request.remoteDeviceId,
+      remoteIdentityFingerprint: Buffer.from(
+        `${request.remoteDeviceId}:${request.remoteIdentityPublicKey}`,
+        'utf8',
+      )
+        .toString('base64url'),
       auditHint: 'mock-session-bootstrap',
     };
   }

@@ -43,12 +43,14 @@ Message search uses a device-local cache layer.
 1. The app decrypts a message on device.
 2. The decrypted body is normalized into a searchable local string.
 3. That searchable body is stored in the local encrypted cache alongside the cached message record.
+   - VEIL stores a normalized, size-capped local search body instead of an unbounded plaintext-sized blob.
 4. Archive search scans the local cache using:
    - conversation scope
    - sender filter
    - message type
    - date cutoff
    - local result paging cursor
+   - local match ranking that prefers exact and prefix matches before looser substring hits
 
 This index is intentionally local-first and partial.
 
@@ -77,8 +79,11 @@ Search results are paged on-device.
 
 - The first pass returns only a bounded slice of matches.
 - Additional results are requested with a local cursor based on the last result timestamp and id.
+- The UI discards stale in-flight search responses when query or filters change before the local page returns.
+- Paged result merging de-duplicates message ids locally so repeated boundary matches do not appear twice.
 - This avoids rendering or scanning the full visible result set into the UI all at once.
 - The conversation list keeps its local query, filters, selected conversation, and scroll position while the active app session remains alive.
+- Conversation search also ranks exact handle/display-name hits and prefix matches ahead of looser partial matches.
 
 ## History And Pagination
 

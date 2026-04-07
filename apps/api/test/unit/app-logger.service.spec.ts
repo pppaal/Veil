@@ -5,6 +5,8 @@ describe('AppLoggerService', () => {
     const logger = new AppLoggerService() as any;
 
     const redacted = logger.redact({
+      authorization: 'Bearer secret-token',
+      challenge: 'ephemeral-challenge',
       ciphertext: 'opaque-ciphertext',
       nested: {
         transferToken: 'transfer-token',
@@ -23,6 +25,8 @@ describe('AppLoggerService', () => {
       ],
     });
 
+    expect(redacted.authorization).toBe('[REDACTED]');
+    expect(redacted.challenge).toBe('[REDACTED]');
     expect(redacted.ciphertext).toBe('[REDACTED]');
     expect((redacted.nested as { transferToken: string }).transferToken).toBe('[REDACTED]');
     expect((redacted.nested as { authPublicKey: string }).authPublicKey).toBe('[REDACTED]');

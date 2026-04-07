@@ -33,10 +33,12 @@ Do not treat the current build as audited production E2EE.
 5. Crypto boundary and migration posture
    - [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md)
    - [mock-crypto-replacement.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/mock-crypto-replacement.md)
+   - [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
 6. Release posture and known limits
    - [private-beta-audit.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-audit.md)
    - [private-beta-readiness-report.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-readiness-report.md)
    - [production-deployment.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/production-deployment.md)
+   - [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
 
 ## Questions the review must answer
 

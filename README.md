@@ -150,6 +150,8 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Private Beta Readiness Report](docs/private-beta-readiness-report.md)
 - [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
 - [External Security Review Packet](docs/external-security-review-packet.md)
+- [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
+- [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)
 - [Telegram-Grade Private Beta Gap Analysis](docs/telegram-grade-private-beta-gap-analysis.md)
 - [Observability Hygiene](docs/observability-hygiene.md)
 - [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)

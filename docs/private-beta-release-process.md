@@ -73,6 +73,7 @@ Required manual checks:
 Before any private-beta build is distributed:
 
 - review [Observability Hygiene](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
+- review [Push Privacy Review Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
 - confirm no plaintext fields in logs or push hints
 - confirm no crash SDK has been added
 - confirm request IDs propagate in API responses
@@ -120,3 +121,5 @@ Do not claim any of the following in private beta:
 
 - [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
 - [Private Beta Performance Profile](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)
+- [Audited Crypto Adapter Execution Plan](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
+- [Push Privacy Review Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)

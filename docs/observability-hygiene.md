@@ -41,6 +41,8 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
   stay behind the seam in [push.service.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/src/modules/push/push.service.ts).
 - `VEIL_PUSH_ENABLE_DELIVERY` must stay `false` until provider credentials are
   configured and the specific provider path has passed privacy review.
+- The review process is defined in
+  [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md).
 - Provider selection does not authorize plaintext payload fields. The payload
   contract stays metadata-only regardless of provider kind.
 - Alerts should key on error codes, health checks, queue growth, and storage failures.

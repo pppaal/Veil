@@ -14,6 +14,11 @@ Use this document to coordinate:
 
 This checklist does not weaken VEIL philosophy.
 
+Machine-readable status:
+
+- `pnpm beta:external:status`
+- output: `artifacts/external-execution-status.json`
+
 ## Overall release condition
 
 VEIL remains:

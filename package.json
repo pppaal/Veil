@@ -23,6 +23,7 @@
     "beta:push:readiness": "node ./scripts/push-provider-readiness.mjs",
     "beta:perf:template": "node ./scripts/private-beta-performance-template.mjs",
     "beta:review:manifest": "node ./scripts/external-review-manifest.mjs",
+    "beta:external:status": "node ./scripts/external-execution-status.mjs",
     "alpha:smoke": "node ./scripts/alpha-smoke.mjs",
     "policy:check": "node ./scripts/policy-check.mjs",
     "dev:api": "pnpm -C apps/api start:dev",

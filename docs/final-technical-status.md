@@ -24,6 +24,11 @@ What VEIL is not yet:
 - fully profiled real-device performance at large scale
 - externally reviewed and remediated production release
 
+Latest repo-side readiness additions:
+
+- audited crypto candidate decision support
+- push credential readiness automation
+
 ## Philosophy check
 
 VEIL's core rules remain present in the codebase and docs:
@@ -132,6 +137,9 @@ These are the main tasks that cannot be finished purely inside this repository:
 2. APNs/FCM credential setup and provider privacy review
 3. Android/iPhone real-device performance profiling
 4. external security review execution
+
+Master checklist:
+- [external-execution-master-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-execution-master-checklist.md)
 
 ## Bottom line
 

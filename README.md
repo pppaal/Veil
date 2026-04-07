@@ -68,6 +68,7 @@ Mobile release identity:
 - `pnpm beta:release:check`
 - `pnpm beta:release:evidence`
 - `pnpm beta:deploy:preflight -- --env-file apps/api/.env`
+- `pnpm beta:push:readiness`
 - `apps/api/.env.alpha.example` is intentionally not deployable as-is.
   Replace placeholder secrets before running deploy preflight against a real beta env file.
 - `apps/api/.env.beta.ci.example` is the non-placeholder CI fixture used to keep
@@ -152,7 +153,9 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Real-Device Performance Execution Plan](docs/real-device-performance-execution.md)
 - [Real-Device Performance Results Template](docs/real-device-performance-results-template.md)
 - [External Security Review Packet](docs/external-security-review-packet.md)
+- [External Execution Master Checklist](docs/external-execution-master-checklist.md)
 - [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
+- [Audited Crypto Library Decision](docs/audited-crypto-library-decision.md)
 - [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)
 - [Telegram-Grade Private Beta Gap Analysis](docs/telegram-grade-private-beta-gap-analysis.md)
 - [Observability Hygiene](docs/observability-hygiene.md)

@@ -121,5 +121,6 @@ Do not claim any of the following in private beta:
 
 - [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
 - [Private Beta Performance Profile](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)
+- [Real-Device Performance Execution Plan](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
 - [Audited Crypto Adapter Execution Plan](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
 - [Push Privacy Review Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)

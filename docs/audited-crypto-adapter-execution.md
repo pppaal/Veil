@@ -89,6 +89,9 @@ Tasks:
 Required artifact:
 - `docs/audited-crypto-library-decision.md`
 
+Current recommendation:
+- [audited-crypto-library-decision.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-library-decision.md)
+
 ### 2. Flutter bridge design
 
 Owner:

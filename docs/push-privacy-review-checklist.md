@@ -43,6 +43,16 @@ Push payloads must not include:
 
 ## Phase 1: credential readiness
 
+Quick machine check:
+
+- `pnpm beta:push:readiness`
+- `pnpm beta:push:readiness -- --env-file apps/api/.env --provider apns`
+- `pnpm beta:push:readiness -- --env-file apps/api/.env --provider fcm`
+
+Artifact written:
+
+- `artifacts/push-provider-readiness.json`
+
 ### APNs
 
 Required:

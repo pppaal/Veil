@@ -142,7 +142,7 @@ class VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    return _post('/profile', body, accessToken: accessToken);
+    return _patch('/profile', body, accessToken: accessToken);
   }
 
   Future<List<dynamic>> getContacts(String accessToken) async {
@@ -162,9 +162,9 @@ class VeilApiClient {
 
   Future<Map<String, dynamic>> removeContact(
     String accessToken,
-    String contactUserId,
+    String handle,
   ) async {
-    return _delete('/contacts/$contactUserId', accessToken: accessToken);
+    return _delete('/contacts/$handle', accessToken: accessToken);
   }
 
   // Stories endpoints
@@ -386,6 +386,19 @@ class VeilApiClient {
     final response = await _client.delete(
       Uri.parse('$baseUrl$path'),
       headers: _headers(accessToken),
+    );
+    return _decodeMap(response);
+  }
+
+  Future<Map<String, dynamic>> _patch(
+    String path,
+    Map<String, dynamic> body, {
+    String? accessToken,
+  }) async {
+    final response = await _client.patch(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(accessToken),
+      body: jsonEncode(body),
     );
     return _decodeMap(response);
   }

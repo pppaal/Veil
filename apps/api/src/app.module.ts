@@ -11,14 +11,20 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ChannelsModule } from './modules/channels/channels.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { DeviceTransferModule } from './modules/device-transfer/device-transfer.module';
 import { DevicesModule } from './modules/devices/devices.module';
+import { GroupsModule } from './modules/groups/groups.module';
 import { HealthModule } from './modules/health/health.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { PushModule } from './modules/push/push.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
+import { ContactsModule } from './modules/contacts/contacts.module';
+import { ProfileModule } from './modules/profile/profile.module';
+import { StoriesModule } from './modules/stories/stories.module';
 import { UsersModule } from './modules/users/users.module';
+import { CallsModule } from './modules/calls/calls.module';
 
 @Module({
   imports: [
@@ -40,11 +46,17 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
     DevicesModule,
     ConversationsModule,
+    GroupsModule,
+    ChannelsModule,
     MessagesModule,
     AttachmentsModule,
     PushModule,
     RealtimeModule,
     DeviceTransferModule,
+    ProfileModule,
+    ContactsModule,
+    StoriesModule,
+    CallsModule,
   ],
   providers: [
     {

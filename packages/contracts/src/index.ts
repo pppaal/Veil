@@ -258,6 +258,10 @@ export interface RealtimeEventMap {
   'message.new': ConversationMessageSummary;
   'message.delivered': { messageId: string; userId: string; deliveredAt: string };
   'message.read': { messageId: string; userId: string; readAt: string };
+  'message.reaction': { messageId: string; userId: string; emoji: string; action: 'add' | 'remove' };
   'presence.update': { userId: string; status: 'online' | 'offline'; updatedAt: string };
   'conversation.sync': { conversationId: string; reason: 'message' | 'membership' | 'refresh' };
+  'call.incoming': { callId: string; conversationId: string; callType: 'voice' | 'video'; initiatorHandle: string };
+  'call.ended': { callId: string; conversationId: string; duration: number };
+  'story.new': { storyId: string; userId: string; contentType: string };
 }

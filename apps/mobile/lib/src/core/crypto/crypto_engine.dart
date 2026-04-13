@@ -1,4 +1,4 @@
-enum MessageKind { text, image, file, system }
+enum MessageKind { text, image, file, system, voice, sticker, reaction, call }
 
 class DeviceIdentityMaterial {
   const DeviceIdentityMaterial({

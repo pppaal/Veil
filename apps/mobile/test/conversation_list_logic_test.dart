@@ -169,6 +169,77 @@ void main() {
       2,
     );
   });
+
+  test('buildSearchHighlightTextSpans matches case-insensitively', () {
+    final spans = buildSearchHighlightTextSpans(
+      text: 'Orbit relay window',
+      query: 'orbit',
+    );
+
+    expect(spans.map((span) => span.text).join(), 'Orbit relay window');
+    expect(spans.where((span) => span.text == 'Orbit').length, 1);
+  });
+
+  test('buildSearchHighlightTextSpans returns single span for empty query', () {
+    final spans = buildSearchHighlightTextSpans(
+      text: 'Orbit relay window',
+      query: '',
+    );
+
+    expect(spans.length, 1);
+    expect(spans.single.text, 'Orbit relay window');
+  });
+
+  test('filterConversationPreviews returns empty list when no conversations match', () {
+    final conversations = [
+      _conversation('conv-1', 'selene', 'Selene'),
+      _conversation('conv-2', 'orion', 'Orion'),
+    ];
+
+    expect(
+      filterConversationPreviews(conversations, 'zzz_no_match'),
+      isEmpty,
+    );
+  });
+
+  test('filterConversationPreviews handles empty input list', () {
+    expect(
+      filterConversationPreviews(const [], 'anything'),
+      isEmpty,
+    );
+  });
+
+  test('conversation list view state decoder handles missing optional fields', () {
+    final decoded = decodeConversationListViewState(const <String, Object?>{
+      'query': 'test',
+      'senderFilter': 'all',
+      'typeFilter': 'all',
+      'dateFilter': 'any',
+    });
+
+    expect(decoded, isNotNull);
+    expect(decoded!.query, 'test');
+    expect(decoded.selectedConversationId, isNull);
+  });
+
+  test('mergeArchiveSearchResults handles empty existing list', () {
+    final incoming = [
+      MessageSearchResult(
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+        peerHandle: 'selene',
+        peerDisplayName: 'Selene',
+        sentAt: DateTime.utc(2026, 4, 5, 10),
+        messageKind: MessageKind.text,
+        isMine: true,
+        bodySnippet: 'orbit one',
+      ),
+    ];
+
+    final merged = mergeArchiveSearchResults(const [], incoming);
+    expect(merged.length, 1);
+    expect(merged.single.messageId, 'msg-1');
+  });
 }
 
 ConversationPreview _conversation(

@@ -107,6 +107,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         .length;
     final hasSearchQuery = _searchController.text.trim().isNotEmpty;
     final nextRetryAt = controller.nextRetryAtForConversation(widget.conversationId);
+    final historyBanner = !hasSearchQuery && messages.isNotEmpty
+        ? historyWindowBannerSpec(
+            isLoadingHistory: isLoadingHistory,
+            hasMoreHistory: hasMoreHistory,
+          )
+        : null;
 
     final content = Column(
       children: [
@@ -132,11 +138,27 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               value: '${messages.length}',
             ),
             VeilMetricItem(
+              label: 'History',
+              value: historyWindowLabel(
+                isLoadingHistory: isLoadingHistory,
+                hasMoreHistory: hasMoreHistory,
+              ),
+            ),
+            VeilMetricItem(
               label: 'Search',
               value: hasSearchQuery ? '${filteredMessages.length} hits' : 'Idle',
             ),
           ],
         ),
+        if (historyBanner != null) ...[
+          const SizedBox(height: VeilSpace.sm),
+          VeilInlineBanner(
+            title: historyBanner.title,
+            message: historyBanner.message,
+            tone: historyBanner.tone,
+            icon: historyBanner.icon,
+          ),
+        ],
         if (controller.errorMessage != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
@@ -184,6 +206,19 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                 ),
               ),
             ),
+        ],
+        if (hasSearchQuery) ...[
+          const SizedBox(height: VeilSpace.sm),
+          VeilInlineBanner(
+            title: _isSearchingMessages ? 'Searching locally' : 'Local message search',
+            message: _isSearchingMessages
+                ? 'Scanning cached message text on this device. Relay state does not change.'
+                : filteredMessages.isEmpty
+                    ? 'No cached message text matched this query in the current conversation.'
+                    : 'Showing ${filteredMessages.length} cached match(es). Clear search to return to full conversation context.',
+            tone: VeilBannerTone.info,
+            icon: Icons.manage_search_rounded,
+          ),
         ],
         const SizedBox(height: VeilSpace.md),
         Expanded(
@@ -273,6 +308,33 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final validIds = filteredMessages.map((message) => message.id).toSet();
     _messageKeys.removeWhere((messageId, _) => !validIds.contains(messageId));
 
+    final useBottomAnchoredLayout =
+        !hasSearchQuery && !hasMoreHistory && filteredMessages.length <= 6;
+
+    if (useBottomAnchoredLayout) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            controller: _scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: _buildMessageEntries(
+                  controller: controller,
+                  filteredMessages: filteredMessages,
+                  hasMoreHistory: hasMoreHistory,
+                  isLoadingHistory: isLoadingHistory,
+                  hasSearchQuery: hasSearchQuery,
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    }
+
     return ListView.separated(
       controller: _scrollController,
       key: PageStorageKey<String>('chat-${widget.conversationId}'),
@@ -282,63 +344,109 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       padding: EdgeInsets.zero,
       itemBuilder: (context, index) {
-        final message = filteredMessages[index];
-        final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
-
-        final bubble = _MessageBubble(
-          message: message,
-          highlighted: message.id == _highlightedMessageId,
-          sentAtFormat: _sentAtFormat,
-          decryptFuture: controller.decryptMessage(message),
-          onResolveAttachment: _showAttachmentTicket,
-          onReplyGesture: () => _handleReplyGesture(message),
-          onCancelAttachment: message.clientMessageId == null
-              ? null
-              : () => ref
-                  .read(messengerControllerProvider)
-                  .cancelPendingAttachment(message.clientMessageId!),
-          attachmentResolving: message.envelope.attachment != null &&
-              controller.isResolvingAttachment(
-                  message.envelope.attachment!.attachmentId),
-          attachmentDownloadError: message.envelope.attachment == null
-              ? null
-              : controller.attachmentDownloadError(
-                  message.envelope.attachment!.attachmentId),
-          transferSnapshot: message.clientMessageId == null
-              ? null
-              : controller
-                  .attachmentTransferForMessage(message.clientMessageId!),
-          onRetryMessage: message.hasFailed
-              ? () => ref
-                  .read(messengerControllerProvider)
-                  .retryPendingMessages(widget.conversationId)
-              : null,
-        );
-        final keyedBubble = KeyedSubtree(
-          key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
-          child: bubble,
-        );
-
-        if (!showLoadOlder) {
-          return keyedBubble;
-        }
-
-        return Column(
-          children: [
-            VeilButton(
-              onPressed: isLoadingHistory
-                  ? null
-                  : () => ref
-                      .read(messengerControllerProvider)
-                      .loadOlderConversationMessages(widget.conversationId),
-              tone: VeilButtonTone.secondary,
-              label: isLoadingHistory ? 'Loading older' : 'Load older',
-            ),
-            const SizedBox(height: VeilSpace.sm),
-            keyedBubble,
-          ],
+        return _buildMessageEntry(
+          controller: controller,
+          message: filteredMessages[index],
+          index: index,
+          filteredMessages: filteredMessages,
+          hasMoreHistory: hasMoreHistory,
+          isLoadingHistory: isLoadingHistory,
+          hasSearchQuery: hasSearchQuery,
         );
       },
+    );
+  }
+
+  List<Widget> _buildMessageEntries({
+    required VeilMessengerController controller,
+    required List<ChatMessage> filteredMessages,
+    required bool hasMoreHistory,
+    required bool isLoadingHistory,
+    required bool hasSearchQuery,
+  }) {
+    return List<Widget>.generate(filteredMessages.length, (index) {
+      return _buildMessageEntry(
+        controller: controller,
+        message: filteredMessages[index],
+        index: index,
+        filteredMessages: filteredMessages,
+        hasMoreHistory: hasMoreHistory,
+        isLoadingHistory: isLoadingHistory,
+        hasSearchQuery: hasSearchQuery,
+      );
+    }, growable: false);
+  }
+
+  Widget _buildMessageEntry({
+    required VeilMessengerController controller,
+    required ChatMessage message,
+    required int index,
+    required List<ChatMessage> filteredMessages,
+    required bool hasMoreHistory,
+    required bool isLoadingHistory,
+    required bool hasSearchQuery,
+  }) {
+    final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
+
+    final bubble = _MessageBubble(
+      message: message,
+      highlighted: message.id == _highlightedMessageId,
+      sentAtFormat: _sentAtFormat,
+      decryptFuture: controller.decryptMessage(message),
+      onResolveAttachment: _showAttachmentTicket,
+      onReplyGesture: () => _handleReplyGesture(message),
+      onCancelAttachment: message.clientMessageId == null
+          ? null
+          : () => ref
+              .read(messengerControllerProvider)
+              .cancelPendingAttachment(message.clientMessageId!),
+      attachmentResolving: message.envelope.attachment != null &&
+          controller.isResolvingAttachment(
+              message.envelope.attachment!.attachmentId),
+      attachmentDownloadError: message.envelope.attachment == null
+          ? null
+          : controller.attachmentDownloadError(
+              message.envelope.attachment!.attachmentId),
+      transferSnapshot: message.clientMessageId == null
+          ? null
+          : controller.attachmentTransferForMessage(message.clientMessageId!),
+      onRetryMessage: message.hasFailed
+          ? () => ref
+              .read(messengerControllerProvider)
+              .retryPendingMessages(widget.conversationId)
+          : null,
+    );
+    final keyedBubble = RepaintBoundary(
+      child: KeyedSubtree(
+        key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
+        child: bubble,
+      ),
+    );
+
+    if (!showLoadOlder) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : 12),
+        child: keyedBubble,
+      );
+    }
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : 12),
+      child: Column(
+        children: [
+          VeilButton(
+            onPressed: isLoadingHistory
+                ? null
+                : () => ref
+                    .read(messengerControllerProvider)
+                    .loadOlderConversationMessages(widget.conversationId),
+            tone: VeilButtonTone.secondary,
+            label: isLoadingHistory ? 'Loading older' : 'Load older',
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          keyedBubble,
+        ],
+      ),
     );
   }
 
@@ -517,7 +625,7 @@ String _networkRecoveryMessage({
 }) {
   final retryLabel = nextRetryAt == null
       ? 'Retry resumes when the relay reconnects.'
-      : 'Next retry in ${_formatRetryCountdown(nextRetryAt)}.';
+      : 'Next retry in ${formatRetryCountdown(nextRetryAt)}.';
   if (failedCount > 0) {
     return '$failedCount message(s) are waiting on relay recovery. $retryLabel';
   }
@@ -527,10 +635,62 @@ String _networkRecoveryMessage({
   return '$queuedCount message(s) remain queued on this device. $retryLabel';
 }
 
-String _formatRetryCountdown(DateTime nextRetryAt) {
+String historyWindowLabel({
+  required bool isLoadingHistory,
+  required bool hasMoreHistory,
+}) {
+  if (isLoadingHistory) {
+    return 'Loading older';
+  }
+  if (hasMoreHistory) {
+    return 'Paged';
+  }
+  return 'Complete';
+}
+
+HistoryWindowBannerSpec? historyWindowBannerSpec({
+  required bool isLoadingHistory,
+  required bool hasMoreHistory,
+}) {
+  if (isLoadingHistory) {
+    return const HistoryWindowBannerSpec(
+      title: 'Syncing older history',
+      message:
+          'Pulling older encrypted history from the relay for this trusted device.',
+      tone: VeilBannerTone.info,
+      icon: Icons.history_toggle_off_rounded,
+    );
+  }
+  if (!hasMoreHistory) {
+    return const HistoryWindowBannerSpec(
+      title: 'Conversation window complete',
+      message:
+          'The currently trusted device-local window is fully loaded. Older history is not pending right now.',
+      tone: VeilBannerTone.info,
+      icon: Icons.done_all_rounded,
+    );
+  }
+  return null;
+}
+
+class HistoryWindowBannerSpec {
+  const HistoryWindowBannerSpec({
+    required this.title,
+    required this.message,
+    required this.tone,
+    required this.icon,
+  });
+
+  final String title;
+  final String message;
+  final VeilBannerTone tone;
+  final IconData icon;
+}
+
+String formatRetryCountdown(DateTime nextRetryAt) {
   final difference = nextRetryAt.difference(DateTime.now());
-  if (difference.inSeconds <= 1) {
-    return '1s';
+  if (difference.inSeconds <= 0) {
+    return '0s';
   }
   if (difference.inSeconds < 60) {
     return '${difference.inSeconds}s';
@@ -541,6 +701,44 @@ String _formatRetryCountdown(DateTime nextRetryAt) {
     return '${minutes}m';
   }
   return '${minutes}m ${seconds}s';
+}
+
+String messageDeliveryLabel(ChatMessage message) {
+  switch (message.deliveryState) {
+    case MessageDeliveryState.pending:
+      return 'Queued';
+    case MessageDeliveryState.uploading:
+      return 'Uploading';
+    case MessageDeliveryState.failed:
+      return 'Retry required';
+    case MessageDeliveryState.sent:
+      return 'Sent';
+    case MessageDeliveryState.delivered:
+      return 'Delivered';
+    case MessageDeliveryState.read:
+      return 'Read';
+  }
+}
+
+VeilBannerTone messageDeliveryTone(ChatMessage message) {
+  switch (message.deliveryState) {
+    case MessageDeliveryState.pending:
+    case MessageDeliveryState.uploading:
+      return VeilBannerTone.warn;
+    case MessageDeliveryState.failed:
+      return VeilBannerTone.danger;
+    case MessageDeliveryState.sent:
+      return VeilBannerTone.info;
+    case MessageDeliveryState.delivered:
+    case MessageDeliveryState.read:
+      return VeilBannerTone.good;
+  }
+}
+
+String messageBubbleSemanticsLabel(ChatMessage message) {
+  final direction = message.isMine ? 'Sent' : 'Received';
+  final stateSegment = message.isMine ? ' ${messageDeliveryLabel(message)}.' : '';
+  return '$direction message bubble.$stateSegment';
 }
 
 class _ChatHeader extends StatelessWidget {
@@ -713,8 +911,7 @@ class _MessageBubble extends StatelessWidget {
     return Align(
       alignment: alignment,
       child: Semantics(
-        label:
-            message.isMine ? 'Sent message bubble' : 'Received message bubble',
+        label: messageBubbleSemanticsLabel(message),
         child: AnimatedContainer(
           duration: VeilMotion.normal,
           curve: Curves.easeOutCubic,
@@ -849,6 +1046,7 @@ class _MessageBubble extends StatelessWidget {
                       const SizedBox(height: VeilSpace.sm),
                       Row(
                         mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Text(
                             sentAtFormat.format(message.sentAt),
@@ -857,10 +1055,9 @@ class _MessageBubble extends StatelessWidget {
                           if (message.isMine) ...[
                             const SizedBox(width: VeilSpace.xs),
                             Flexible(
-                              child: Text(
-                                _deliveryLabel(message),
-                                style: Theme.of(context).textTheme.bodyMedium,
-                                overflow: TextOverflow.ellipsis,
+                              child: VeilStatusPill(
+                                label: messageDeliveryLabel(message),
+                                tone: messageDeliveryTone(message),
                               ),
                             ),
                           ],
@@ -885,23 +1082,6 @@ class _MessageBubble extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  String _deliveryLabel(ChatMessage message) {
-    switch (message.deliveryState) {
-      case MessageDeliveryState.pending:
-        return 'Queued';
-      case MessageDeliveryState.uploading:
-        return 'Uploading';
-      case MessageDeliveryState.failed:
-        return 'Retry required';
-      case MessageDeliveryState.sent:
-        return 'Sent';
-      case MessageDeliveryState.delivered:
-        return 'Delivered';
-      case MessageDeliveryState.read:
-        return 'Read';
-    }
   }
 }
 

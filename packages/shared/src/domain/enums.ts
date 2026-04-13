@@ -4,10 +4,10 @@ export type UserStatus = (typeof userStatuses)[number];
 export const devicePlatforms = ['ios', 'android', 'windows', 'macos', 'linux'] as const;
 export type DevicePlatform = (typeof devicePlatforms)[number];
 
-export const conversationTypes = ['direct'] as const;
+export const conversationTypes = ['direct', 'group', 'channel'] as const;
 export type ConversationType = (typeof conversationTypes)[number];
 
-export const messageTypes = ['text', 'image', 'file', 'system'] as const;
+export const messageTypes = ['text', 'image', 'file', 'system', 'voice', 'sticker', 'reaction', 'call'] as const;
 export type MessageType = (typeof messageTypes)[number];
 
 export const attachmentUploadStatuses = ['pending', 'uploaded', 'failed'] as const;

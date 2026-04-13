@@ -118,6 +118,14 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         return 'System envelope';
       case MessageKind.text:
         return 'Encrypted message';
+      case MessageKind.voice:
+        return 'Encrypted voice note';
+      case MessageKind.sticker:
+        return 'Encrypted sticker';
+      case MessageKind.reaction:
+        return 'Encrypted reaction';
+      case MessageKind.call:
+        return 'Encrypted call event';
     }
   }
 
@@ -265,7 +273,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                       )
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+                        children: [
                           VeilHeroPanel(
                             eyebrow: 'ACTIVE CONVERSATION',
                             title: selectedConversation.peerDisplayName ??
@@ -706,6 +714,16 @@ class _ConversationListPane extends StatelessWidget {
           ),
         ],
       ),
+      if (controller.isBusy && controller.errorMessage == null) ...[
+        const SizedBox(height: VeilSpace.md),
+        const VeilInlineBanner(
+          title: 'Refreshing locally',
+          message:
+              'Pulling the latest opaque conversation state while preserving local search context.',
+          tone: VeilBannerTone.info,
+          icon: Icons.sync_rounded,
+        ),
+      ],
       if (controller.errorMessage != null) ...[
         const SizedBox(height: VeilSpace.md),
         VeilInlineBanner(
@@ -802,6 +820,17 @@ class _ConversationListPane extends StatelessWidget {
           ],
         ),
       ),
+      if (hasSearchQuery) ...[
+        const SizedBox(height: VeilSpace.md),
+        VeilInlineBanner(
+          title: searchingArchive ? 'Searching locally' : 'Local search active',
+          message: searchingArchive
+              ? 'Scanning cached conversation labels and device-local message text.'
+              : 'Found ${conversations.length} conversation match(es) and ${archiveResults.length} message result(s) on this device. Search never leaves local state.',
+          tone: VeilBannerTone.info,
+          icon: Icons.manage_search_rounded,
+        ),
+      ],
       const SizedBox(height: VeilSpace.md),
       VeilSectionLabel(
         'CONVERSATIONS',
@@ -872,55 +901,58 @@ class _ConversationListPane extends StatelessWidget {
       children.addAll(
         conversations.map((item) {
           final isSelected = item.id == selectedConversationId;
+          final pendingCount = controller.pendingCountFor(item.id);
           return Padding(
             padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-            child: AnimatedContainer(
-              duration: VeilMotion.normal,
-              curve: Curves.easeOutCubic,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(VeilRadius.lg),
-                boxShadow: isSelected
-                    ? const [
-                        BoxShadow(
-                          color: Color(0x22000000),
-                          blurRadius: 24,
-                          offset: Offset(0, 12),
-                        ),
-                      ]
-                    : null,
-              ),
-              child: Theme(
-                data: Theme.of(context).copyWith(
-                  cardTheme: Theme.of(context).cardTheme.copyWith(
-                        color: isSelected
-                            ? const Color(0xFF151E28)
-                            : Theme.of(context).cardTheme.color,
-                      ),
+            child: RepaintBoundary(
+              child: AnimatedContainer(
+                duration: VeilMotion.normal,
+                curve: Curves.easeOutCubic,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(VeilRadius.lg),
+                  boxShadow: isSelected
+                      ? const [
+                          BoxShadow(
+                            color: Color(0x22000000),
+                            blurRadius: 24,
+                            offset: Offset(0, 12),
+                          ),
+                        ]
+                      : null,
                 ),
-                child: VeilConversationCard(
-                  title: item.peerDisplayName ?? item.peerHandle,
-                  handle: item.peerHandle,
-                  subtitle: subtitleForConversation(item, controller),
-                  timestamp: timeFormat.format(item.updatedAt),
-                  selected: isSelected,
-                  meta: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      const VeilStatusPill(label: 'Direct'),
-                      if (controller.pendingCountFor(item.id) > 0)
-                        VeilStatusPill(
-                          label: controller.pendingCountFor(item.id) == 1
-                              ? '1 queued'
-                              : '${controller.pendingCountFor(item.id)} queued',
-                          tone: VeilBannerTone.warn,
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    cardTheme: Theme.of(context).cardTheme.copyWith(
+                          color: isSelected
+                              ? const Color(0xFF151E28)
+                              : Theme.of(context).cardTheme.color,
                         ),
-                    ],
                   ),
-                  expiryLabel: item.lastEnvelope?.expiresAt == null
-                      ? null
-                      : formatMessageExpiry(item.lastEnvelope!.expiresAt!),
-                  onTap: () => onSelectConversation(item.id),
+                  child: VeilConversationCard(
+                    title: item.peerDisplayName ?? item.peerHandle,
+                    handle: item.peerHandle,
+                    subtitle: subtitleForConversation(item, controller),
+                    timestamp: timeFormat.format(item.updatedAt),
+                    selected: isSelected,
+                    meta: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        const VeilStatusPill(label: 'Direct'),
+                        if (pendingCount > 0)
+                          VeilStatusPill(
+                            label: pendingCount == 1
+                                ? '1 queued'
+                                : '$pendingCount queued',
+                            tone: VeilBannerTone.warn,
+                          ),
+                      ],
+                    ),
+                    expiryLabel: item.lastEnvelope?.expiresAt == null
+                        ? null
+                        : formatMessageExpiry(item.lastEnvelope!.expiresAt!),
+                    onTap: () => onSelectConversation(item.id),
+                  ),
                 ),
               ),
             ),
@@ -961,25 +993,31 @@ class _ConversationListPane extends StatelessWidget {
           archiveResults.map(
             (result) => Padding(
               padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-              child: VeilListTileCard(
-                eyebrow: '${result.isMine ? 'You' : 'Peer'} | ${_messageTypeLabel(result.messageKind)}',
-                leading: Icon(
-                  switch (result.messageKind) {
-                    MessageKind.text => Icons.chat_bubble_outline_rounded,
-                    MessageKind.image => Icons.image_outlined,
-                    MessageKind.file => Icons.attach_file_rounded,
-                    MessageKind.system => Icons.info_outline_rounded,
-                  },
+              child: RepaintBoundary(
+                child: VeilListTileCard(
+                  eyebrow: '${result.isMine ? 'You' : 'Peer'} | ${_messageTypeLabel(result.messageKind)}',
+                  leading: Icon(
+                    switch (result.messageKind) {
+                      MessageKind.text => Icons.chat_bubble_outline_rounded,
+                      MessageKind.image => Icons.image_outlined,
+                      MessageKind.file => Icons.attach_file_rounded,
+                      MessageKind.system => Icons.info_outline_rounded,
+                      MessageKind.voice => Icons.mic_none_rounded,
+                      MessageKind.sticker => Icons.emoji_emotions_outlined,
+                      MessageKind.reaction => Icons.favorite_border_rounded,
+                      MessageKind.call => Icons.call_outlined,
+                    },
+                  ),
+                  title: result.title,
+                  subtitle: result.bodySnippet,
+                  subtitleWidget: _MessageSearchResultSubtitle(
+                    result: result,
+                    query: searchController.text,
+                    timeFormat: timeFormat,
+                  ),
+                  trailing: const Icon(Icons.north_east_rounded, size: 18),
+                  onTap: () => onSelectMessageResult(result),
                 ),
-                title: result.title,
-                subtitle: result.bodySnippet,
-                subtitleWidget: _MessageSearchResultSubtitle(
-                  result: result,
-                  query: searchController.text,
-                  timeFormat: timeFormat,
-                ),
-                trailing: const Icon(Icons.north_east_rounded, size: 18),
-                onTap: () => onSelectMessageResult(result),
               ),
             ),
           ),
@@ -1012,6 +1050,7 @@ class _ConversationListPane extends StatelessWidget {
             onRefresh: controller.refreshConversations,
             child: ListView(
               key: const PageStorageKey<String>('conversation-list-scroll'),
+              cacheExtent: 1200,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
                 ...children,
@@ -1037,6 +1076,10 @@ String _messageTypeLabel(MessageKind kind) {
     MessageKind.image => 'Image',
     MessageKind.file => 'Attachment',
     MessageKind.system => 'System',
+    MessageKind.voice => 'Voice',
+    MessageKind.sticker => 'Sticker',
+    MessageKind.reaction => 'Reaction',
+    MessageKind.call => 'Call',
   };
 }
 

@@ -1436,16 +1436,17 @@ class VeilMessengerController extends ChangeNotifier {
 
     for (final entry in _messagesByConversation.entries) {
       final beforeLength = entry.value.length;
-      entry.value.removeWhere((message) {
+      final retainedMessages = entry.value.where((message) {
         final expired = _isExpired(message.expiresAt, now);
         if (expired) {
           final cacheKey = _messageCacheKey(message);
           _decryptedMessageCache.remove(cacheKey);
           _searchableBodyByMessageKey.remove(cacheKey);
         }
-        return expired;
-      });
-      if (entry.value.length != beforeLength) {
+        return !expired;
+      }).toList(growable: true);
+      if (retainedMessages.length != beforeLength) {
+        _messagesByConversation[entry.key] = retainedMessages;
         changedMessageConversations.add(entry.key);
         _syncConversationPreviewFromMessages(entry.key);
         conversationsChanged = true;

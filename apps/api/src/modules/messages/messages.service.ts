@@ -26,7 +26,7 @@ type PersistedMessage = {
   conversationOrder: number;
   ciphertext: string;
   nonce: string;
-  messageType: 'text' | 'image' | 'file' | 'system';
+  messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
   attachmentRef?: unknown;
   expiresAt: Date | null;
   serverReceivedAt: Date;
@@ -354,7 +354,7 @@ export class MessagesService {
     conversationOrder: number;
     ciphertext: string;
     nonce: string;
-    messageType: 'text' | 'image' | 'file' | 'system';
+    messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
     attachmentRef?: unknown;
     expiresAt: Date | null;
     serverReceivedAt: Date;
@@ -378,6 +378,79 @@ export class MessagesService {
       deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
       readAt: receipt?.readAt?.toISOString() ?? null,
     };
+  }
+
+  async addReaction(
+    auth: { userId: string },
+    messageId: string,
+    emoji: string,
+  ) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        conversation: { include: { members: true } },
+      },
+    });
+
+    if (!message || !message.conversation.members.some((m) => m.userId === auth.userId)) {
+      throw notFound('message_not_found', 'Message not found for actor');
+    }
+
+    const reaction = await this.prisma.reaction.upsert({
+      where: {
+        messageId_userId: {
+          messageId,
+          userId: auth.userId,
+        },
+      },
+      update: { emoji },
+      create: {
+        messageId,
+        userId: auth.userId,
+        emoji,
+      },
+    });
+
+    this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.reaction', {
+      messageId,
+      userId: auth.userId,
+      emoji,
+      action: 'add' as const,
+    });
+
+    return { reactionId: reaction.id, messageId, emoji };
+  }
+
+  async removeReaction(
+    auth: { userId: string },
+    messageId: string,
+  ) {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: {
+        conversation: { include: { members: true } },
+      },
+    });
+
+    if (!message || !message.conversation.members.some((m) => m.userId === auth.userId)) {
+      throw notFound('message_not_found', 'Message not found for actor');
+    }
+
+    await this.prisma.reaction.deleteMany({
+      where: {
+        messageId,
+        userId: auth.userId,
+      },
+    });
+
+    this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.reaction', {
+      messageId,
+      userId: auth.userId,
+      emoji: '',
+      action: 'remove' as const,
+    });
+
+    return { messageId, acknowledged: true };
   }
 
   private async dispatchPushFallbackIfNeeded(

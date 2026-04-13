@@ -77,6 +77,144 @@ class VeilApiClient {
     return _post('/messages/$messageId/read', const {}, accessToken: accessToken);
   }
 
+  Future<Map<String, dynamic>> addReaction(
+    String accessToken,
+    String messageId,
+    String emoji,
+  ) async {
+    return _post('/messages/$messageId/reactions', {'emoji': emoji}, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> removeReaction(
+    String accessToken,
+    String messageId,
+  ) async {
+    return _delete('/messages/$messageId/reactions', accessToken: accessToken);
+  }
+
+  // Group and channel endpoints
+
+  Future<Map<String, dynamic>> createGroup(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/conversations/group', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> createChannel(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/conversations/channel', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> updateGroupMeta(
+    String accessToken,
+    String conversationId,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/conversations/$conversationId/meta', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> addMember(
+    String accessToken,
+    String conversationId,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/conversations/$conversationId/members', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> removeMember(
+    String accessToken,
+    String conversationId,
+    String userId,
+  ) async {
+    return _delete('/conversations/$conversationId/members/$userId', accessToken: accessToken);
+  }
+
+  // Profile and contacts endpoints
+
+  Future<Map<String, dynamic>> getProfile(String accessToken) async {
+    return _get('/profile', accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> updateProfile(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/profile', body, accessToken: accessToken);
+  }
+
+  Future<List<dynamic>> getContacts(String accessToken) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/contacts'),
+      headers: _headers(accessToken),
+    );
+    return _decodeList(response);
+  }
+
+  Future<Map<String, dynamic>> addContact(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/contacts', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> removeContact(
+    String accessToken,
+    String contactUserId,
+  ) async {
+    return _delete('/contacts/$contactUserId', accessToken: accessToken);
+  }
+
+  // Stories endpoints
+
+  Future<List<dynamic>> getStories(String accessToken) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/stories'),
+      headers: _headers(accessToken),
+    );
+    return _decodeList(response);
+  }
+
+  Future<Map<String, dynamic>> createStory(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/stories', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> viewStory(
+    String accessToken,
+    String storyId,
+  ) async {
+    return _post('/stories/$storyId/view', const {}, accessToken: accessToken);
+  }
+
+  // Call endpoints
+
+  Future<Map<String, dynamic>> initiateCall(
+    String accessToken,
+    Map<String, dynamic> body,
+  ) async {
+    return _post('/calls/initiate', body, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> endCall(
+    String accessToken,
+    String callId,
+  ) async {
+    return _post('/calls/$callId/end', const {}, accessToken: accessToken);
+  }
+
+  Future<List<dynamic>> getCallHistory(String accessToken) async {
+    final response = await _client.get(
+      Uri.parse('$baseUrl/calls'),
+      headers: _headers(accessToken),
+    );
+    return _decodeList(response);
+  }
+
   Future<Map<String, dynamic>> createUploadTicket(
     String accessToken,
     Map<String, dynamic> body,
@@ -239,6 +377,25 @@ class VeilApiClient {
       body: jsonEncode(body),
     );
     return _decodeMap(response);
+  }
+
+  Future<Map<String, dynamic>> _delete(
+    String path, {
+    String? accessToken,
+  }) async {
+    final response = await _client.delete(
+      Uri.parse('$baseUrl$path'),
+      headers: _headers(accessToken),
+    );
+    return _decodeMap(response);
+  }
+
+  List<dynamic> _decodeList(http.Response response) {
+    final decoded = _decode(response);
+    if (decoded is List<dynamic>) {
+      return decoded;
+    }
+    throw VeilApiException('Unexpected response shape');
   }
 
   Map<String, String> _headers(String? accessToken) {

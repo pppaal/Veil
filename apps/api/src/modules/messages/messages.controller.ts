@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Param, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type {
   DeleteLocalMessageResponse,
@@ -9,6 +9,7 @@ import type {
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { MessagesService } from './messages.service';
 import { SendMessageDto } from './dto/send-message.dto';
+import { ReactionDto } from './dto/reaction.dto';
 
 @ApiTags('messages')
 @ApiBearerAuth()
@@ -38,5 +39,22 @@ export class MessagesController {
     @Param('id') id: string,
   ): Promise<DeleteLocalMessageResponse> {
     return this.messagesService.deleteLocal(request.auth, id);
+  }
+
+  @Post(':id/reactions')
+  addReaction(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: ReactionDto,
+  ) {
+    return this.messagesService.addReaction(request.auth, id, dto.emoji);
+  }
+
+  @Delete(':id/reactions')
+  removeReaction(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+  ) {
+    return this.messagesService.removeReaction(request.auth, id);
   }
 }

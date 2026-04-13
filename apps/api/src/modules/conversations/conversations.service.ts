@@ -26,7 +26,7 @@ type HydratedMessage = {
   conversationOrder: number;
   ciphertext: string;
   nonce: string;
-  messageType: 'text' | 'image' | 'file' | 'system';
+  messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
   serverReceivedAt: Date;
   deletedAt: Date | null;
   expiresAt: Date | null;
@@ -280,7 +280,7 @@ export class ConversationsService {
 
   private toConversationSummary(conversation: {
     id: string;
-    type: 'direct';
+    type: 'direct' | 'group' | 'channel';
     createdAt: Date;
     members: Array<{
       userId: string;

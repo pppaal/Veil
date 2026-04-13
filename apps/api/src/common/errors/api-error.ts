@@ -33,7 +33,14 @@ export type VeilErrorCode =
   | 'transfer_claim_invalid'
   | 'transfer_approval_required'
   | 'transfer_completion_invalid'
-  | 'internal_error';
+  | 'internal_error'
+  | 'profile_not_found'
+  | 'cannot_add_self'
+  | 'contact_already_exists'
+  | 'contact_not_found'
+  | 'story_not_found'
+  | 'story_forbidden'
+  | 'story_already_viewed';
 
 export class ApiError extends HttpException {
   constructor(

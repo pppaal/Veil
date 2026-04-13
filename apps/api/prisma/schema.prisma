@@ -23,6 +23,8 @@ enum DevicePlatform {
 
 enum ConversationType {
   direct
+  group
+  channel
 }
 
 enum MessageType {
@@ -30,6 +32,36 @@ enum MessageType {
   image
   file
   system
+  voice
+  sticker
+  reaction
+  call
+}
+
+enum MemberRole {
+  owner
+  admin
+  member
+  subscriber
+}
+
+enum CallType {
+  voice
+  video
+}
+
+enum CallStatus {
+  ringing
+  active
+  ended
+  missed
+  declined
+}
+
+enum StoryContentType {
+  text
+  image
+  video
 }
 
 enum AttachmentUploadStatus {
@@ -52,6 +84,14 @@ model User {
   conversationRefs ConversationMember[]
   receipts         MessageReceipt[]
   transferSessions DeviceTransferSession[]
+  profile          UserProfile?
+  contacts         UserContact[]          @relation("UserContacts")
+  contactOf        UserContact[]          @relation("UserContactOf")
+  createdGroups    GroupMeta[]
+  createdChannels  ChannelMeta[]
+  stories          Story[]
+  storyViews       StoryView[]
+  reactions        Reaction[]
 
   @@index([activeDeviceId])
   @@map("users")
@@ -81,6 +121,7 @@ model Device {
   joinedFromDevice  Device?                 @relation("JoinedDeviceGraph", fields: [joinedFromDeviceId], references: [id], onDelete: SetNull)
   joinedDevices     Device[]                @relation("JoinedDeviceGraph")
   conversationStates DeviceConversationState[]
+  initiatedCalls     CallRecord[]
 
   @@index([userId, isActive])
   @@index([joinedFromDeviceId])
@@ -91,9 +132,12 @@ model Conversation {
   id        String               @id @default(uuid()) @db.Uuid
   type      ConversationType     @default(direct)
   createdAt DateTime             @default(now()) @map("created_at")
-  members   ConversationMember[]
-  messages  Message[]
+  members      ConversationMember[]
+  messages     Message[]
   deviceStates DeviceConversationState[]
+  groupMeta    GroupMeta?
+  channelMeta  ChannelMeta?
+  callRecords  CallRecord[]
 
   @@map("conversations")
 }
@@ -102,6 +146,7 @@ model ConversationMember {
   id             String        @id @default(uuid()) @db.Uuid
   conversationId String        @map("conversation_id") @db.Uuid
   userId         String        @map("user_id") @db.Uuid
+  role           MemberRole    @default(member)
   joinedAt       DateTime      @default(now()) @map("joined_at")
   conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -145,6 +190,7 @@ model Message {
   senderDevice     Device        @relation(fields: [senderDeviceId], references: [id], onDelete: Restrict)
   attachment       Attachment?   @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
   receipts         MessageReceipt[]
+  reactions        Reaction[]
 
   @@unique([senderDeviceId, clientMessageId])
   @@index([conversationId, conversationOrder])
@@ -198,4 +244,132 @@ model DeviceTransferSession {
   @@index([userId, expiresAt])
   @@index([oldDeviceId])
   @@map("device_transfer_sessions")
+}
+
+model GroupMeta {
+  id              String       @id @default(uuid()) @db.Uuid
+  conversationId  String       @unique @map("conversation_id") @db.Uuid
+  name            String       @db.VarChar(120)
+  description     String?      @db.VarChar(500)
+  avatarPath      String?      @map("avatar_path")
+  createdByUserId String       @map("created_by_user_id") @db.Uuid
+  isPublic        Boolean      @default(false) @map("is_public")
+  memberLimit     Int          @default(500) @map("member_limit")
+  link            String?      @unique @db.VarChar(120)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdByUserId])
+  @@map("group_metas")
+}
+
+model ChannelMeta {
+  id              String       @id @default(uuid()) @db.Uuid
+  conversationId  String       @unique @map("conversation_id") @db.Uuid
+  name            String       @db.VarChar(120)
+  description     String?      @db.VarChar(500)
+  avatarPath      String?      @map("avatar_path")
+  createdByUserId String       @map("created_by_user_id") @db.Uuid
+  isPublic        Boolean      @default(false) @map("is_public")
+  subscriberCount Int          @default(0) @map("subscriber_count")
+  link            String?      @unique @db.VarChar(120)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  createdBy       User         @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdByUserId])
+  @@map("channel_metas")
+}
+
+model UserContact {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  contactUserId String   @map("contact_user_id") @db.Uuid
+  nickname      String?  @db.VarChar(80)
+  createdAt     DateTime @default(now()) @map("created_at")
+  user          User     @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+  contactUser   User     @relation("UserContactOf", fields: [contactUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contactUserId])
+  @@index([contactUserId])
+  @@map("user_contacts")
+}
+
+model UserProfile {
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @unique @map("user_id") @db.Uuid
+  bio           String?   @db.VarChar(300)
+  statusMessage String?   @map("status_message") @db.VarChar(140)
+  statusEmoji   String?   @map("status_emoji") @db.VarChar(8)
+  lastStatusAt  DateTime? @map("last_status_at")
+  avatarPath    String?   @map("avatar_path")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model Story {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  contentType StoryContentType @map("content_type")
+  contentUrl  String           @map("content_url")
+  caption     String?          @db.VarChar(300)
+  expiresAt   DateTime         @map("expires_at")
+  viewCount   Int              @default(0) @map("view_count")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  views       StoryView[]
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("stories")
+}
+
+model StoryView {
+  id           String   @id @default(uuid()) @db.Uuid
+  storyId      String   @map("story_id") @db.Uuid
+  viewerUserId String   @map("viewer_user_id") @db.Uuid
+  viewedAt     DateTime @default(now()) @map("viewed_at")
+  story        Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewer       User     @relation(fields: [viewerUserId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, viewerUserId])
+  @@index([viewerUserId])
+  @@map("story_views")
+}
+
+model Reaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @map("message_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  emoji     String   @db.VarChar(32)
+  createdAt DateTime @default(now()) @map("created_at")
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("reactions")
+}
+
+model CallRecord {
+  id                String       @id @default(uuid()) @db.Uuid
+  conversationId    String       @map("conversation_id") @db.Uuid
+  initiatorDeviceId String       @map("initiator_device_id") @db.Uuid
+  callType          CallType     @map("call_type")
+  status            CallStatus   @default(ringing)
+  startedAt         DateTime     @default(now()) @map("started_at")
+  endedAt           DateTime?    @map("ended_at")
+  duration          Int?
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  initiatorDevice   Device       @relation(fields: [initiatorDeviceId], references: [id], onDelete: Restrict)
+
+  @@index([conversationId, startedAt])
+  @@index([initiatorDeviceId])
+  @@map("call_records")
 }

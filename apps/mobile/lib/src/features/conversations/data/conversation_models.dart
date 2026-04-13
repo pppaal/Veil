@@ -1,5 +1,186 @@
 import '../../../core/crypto/crypto_engine.dart';
 
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ConversationType { direct, group, channel }
+
+enum MemberRole { owner, admin, member, subscriber }
+
+enum CallType { voice, video }
+
+enum CallStatus { ringing, active, ended, missed, declined }
+
+// ---------------------------------------------------------------------------
+// Group & Channel metadata
+// ---------------------------------------------------------------------------
+
+class GroupMeta {
+  const GroupMeta({
+    required this.name,
+    this.description,
+    this.avatarPath,
+    this.isPublic = false,
+    this.memberCount = 0,
+    this.memberLimit = 500,
+    this.link,
+  });
+
+  final String name;
+  final String? description;
+  final String? avatarPath;
+  final bool isPublic;
+  final int memberCount;
+  final int memberLimit;
+  final String? link;
+}
+
+class ChannelMeta {
+  const ChannelMeta({
+    required this.name,
+    this.description,
+    this.avatarPath,
+    this.isPublic = false,
+    this.subscriberCount = 0,
+    this.link,
+  });
+
+  final String name;
+  final String? description;
+  final String? avatarPath;
+  final bool isPublic;
+  final int subscriberCount;
+  final String? link;
+}
+
+// ---------------------------------------------------------------------------
+// Contacts & profiles
+// ---------------------------------------------------------------------------
+
+class UserContact {
+  const UserContact({
+    required this.userId,
+    required this.contactUserId,
+    required this.handle,
+    this.displayName,
+    this.nickname,
+    this.avatarPath,
+  });
+
+  final String userId;
+  final String contactUserId;
+  final String handle;
+  final String? displayName;
+  final String? nickname;
+  final String? avatarPath;
+
+  String get title => nickname ?? displayName ?? '@$handle';
+}
+
+class UserProfile {
+  const UserProfile({
+    required this.userId,
+    required this.handle,
+    this.displayName,
+    this.bio,
+    this.statusMessage,
+    this.statusEmoji,
+    this.avatarPath,
+  });
+
+  final String userId;
+  final String handle;
+  final String? displayName;
+  final String? bio;
+  final String? statusMessage;
+  final String? statusEmoji;
+  final String? avatarPath;
+}
+
+// ---------------------------------------------------------------------------
+// Stories
+// ---------------------------------------------------------------------------
+
+class Story {
+  const Story({
+    required this.id,
+    required this.userId,
+    required this.handle,
+    this.displayName,
+    required this.contentType,
+    required this.contentUrl,
+    this.caption,
+    required this.expiresAt,
+    this.viewCount = 0,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userId;
+  final String handle;
+  final String? displayName;
+  final String contentType;
+  final String contentUrl;
+  final String? caption;
+  final DateTime expiresAt;
+  final int viewCount;
+  final DateTime createdAt;
+
+  bool get isExpired => DateTime.now().isAfter(expiresAt);
+}
+
+// ---------------------------------------------------------------------------
+// Calls
+// ---------------------------------------------------------------------------
+
+class CallRecord {
+  const CallRecord({
+    required this.id,
+    required this.conversationId,
+    required this.callType,
+    required this.status,
+    this.initiatorHandle,
+    required this.startedAt,
+    this.endedAt,
+    this.duration,
+  });
+
+  final String id;
+  final String conversationId;
+  final CallType callType;
+  final CallStatus status;
+  final String? initiatorHandle;
+  final DateTime startedAt;
+  final DateTime? endedAt;
+  final Duration? duration;
+
+  bool get isMissed => status == CallStatus.missed;
+  bool get isActive => status == CallStatus.active;
+}
+
+// ---------------------------------------------------------------------------
+// Reactions
+// ---------------------------------------------------------------------------
+
+class Reaction {
+  const Reaction({
+    required this.messageId,
+    required this.userId,
+    required this.emoji,
+    required this.createdAt,
+  });
+
+  final String messageId;
+  final String userId;
+  final String emoji;
+  final DateTime createdAt;
+}
+
+// ---------------------------------------------------------------------------
+// Session & conversation models
+// ---------------------------------------------------------------------------
+
 class ConversationSessionState {
   const ConversationSessionState({
     required this.sessionLocator,
@@ -39,6 +220,11 @@ class ConversationPreview {
     required this.lastEnvelope,
     required this.updatedAt,
     this.sessionState,
+    this.type = ConversationType.direct,
+    this.groupMeta,
+    this.channelMeta,
+    this.memberCount,
+    this.unreadCount = 0,
   });
 
   final String id;
@@ -48,6 +234,11 @@ class ConversationPreview {
   final CryptoEnvelope? lastEnvelope;
   final DateTime updatedAt;
   final ConversationSessionState? sessionState;
+  final ConversationType type;
+  final GroupMeta? groupMeta;
+  final ChannelMeta? channelMeta;
+  final int? memberCount;
+  final int unreadCount;
 
   ConversationPreview copyWith({
     String? id,
@@ -57,6 +248,11 @@ class ConversationPreview {
     Object? lastEnvelope = _unset,
     DateTime? updatedAt,
     Object? sessionState = _unset,
+    ConversationType? type,
+    Object? groupMeta = _unset,
+    Object? channelMeta = _unset,
+    Object? memberCount = _unset,
+    int? unreadCount,
   }) {
     return ConversationPreview(
       id: id ?? this.id,
@@ -69,6 +265,14 @@ class ConversationPreview {
       updatedAt: updatedAt ?? this.updatedAt,
       sessionState:
           identical(sessionState, _unset) ? this.sessionState : sessionState as ConversationSessionState?,
+      type: type ?? this.type,
+      groupMeta:
+          identical(groupMeta, _unset) ? this.groupMeta : groupMeta as GroupMeta?,
+      channelMeta:
+          identical(channelMeta, _unset) ? this.channelMeta : channelMeta as ChannelMeta?,
+      memberCount:
+          identical(memberCount, _unset) ? this.memberCount : memberCount as int?,
+      unreadCount: unreadCount ?? this.unreadCount,
     );
   }
 }
@@ -89,6 +293,9 @@ class ChatMessage {
     this.expiresAt,
     this.searchableBody,
     this.isMine = false,
+    this.reactions = const [],
+    this.replyToMessageId,
+    this.forwardedFrom,
   });
 
   final String id;
@@ -103,6 +310,9 @@ class ChatMessage {
   final DateTime? expiresAt;
   final String? searchableBody;
   final bool isMine;
+  final List<Reaction> reactions;
+  final String? replyToMessageId;
+  final String? forwardedFrom;
 
   bool get isPending =>
       deliveryState == MessageDeliveryState.pending ||
@@ -122,6 +332,9 @@ class ChatMessage {
     Object? expiresAt = _unset,
     Object? searchableBody = _unset,
     bool? isMine,
+    List<Reaction>? reactions,
+    Object? replyToMessageId = _unset,
+    Object? forwardedFrom = _unset,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -139,6 +352,11 @@ class ChatMessage {
       searchableBody:
           identical(searchableBody, _unset) ? this.searchableBody : searchableBody as String?,
       isMine: isMine ?? this.isMine,
+      reactions: reactions ?? this.reactions,
+      replyToMessageId:
+          identical(replyToMessageId, _unset) ? this.replyToMessageId : replyToMessageId as String?,
+      forwardedFrom:
+          identical(forwardedFrom, _unset) ? this.forwardedFrom : forwardedFrom as String?,
     );
   }
 }

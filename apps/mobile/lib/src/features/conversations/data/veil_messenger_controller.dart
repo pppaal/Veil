@@ -238,6 +238,27 @@ class VeilMessengerController extends ChangeNotifier {
     });
   }
 
+  Future<void> createGroup({
+    required String name,
+    String? description,
+    List<String> memberHandles = const [],
+    bool isPublic = false,
+  }) async {
+    await _run(() async {
+      if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+        throw StateError('Authenticated API session required.');
+      }
+
+      await _apiClient.createGroup(_session.accessToken!, {
+        'name': name,
+        if (description != null && description.isNotEmpty) 'description': description,
+        if (memberHandles.isNotEmpty) 'memberHandles': memberHandles,
+        'isPublic': isPublic,
+      });
+      await _refreshConversationsCore();
+    });
+  }
+
   Future<void> sendText({
     required String conversationId,
     required String body,

@@ -15,6 +15,7 @@ import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/conversations/data/conversation_models.dart';
 import '../../features/conversations/presentation/conversation_list_screen.dart';
 import '../../features/conversations/presentation/start_direct_chat_screen.dart';
+import '../../features/conversations/presentation/start_group_screen.dart';
 import '../../features/device_transfer/presentation/device_transfer_screen.dart';
 import '../../features/media/presentation/media_picker_screen.dart';
 import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
@@ -89,6 +90,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ],
       ),
       GoRoute(path: '/start-chat', builder: (context, state) => const StartDirectChatScreen()),
+      GoRoute(path: '/start-group', builder: (context, state) => const StartGroupScreen()),
       GoRoute(
         path: '/chat/:conversationId',
         builder: (context, state) => ChatRoomScreen(

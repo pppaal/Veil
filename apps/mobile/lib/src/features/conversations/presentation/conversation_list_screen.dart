@@ -1061,6 +1061,13 @@ class _ConversationListPane extends StatelessWidget {
                   tone: VeilButtonTone.secondary,
                   icon: Icons.add_comment_outlined,
                 ),
+                const SizedBox(height: VeilSpace.sm),
+                VeilButton(
+                  onPressed: () => context.push('/start-group'),
+                  label: 'Start group chat',
+                  tone: VeilButtonTone.secondary,
+                  icon: Icons.group_add_outlined,
+                ),
               ],
             ),
           ),

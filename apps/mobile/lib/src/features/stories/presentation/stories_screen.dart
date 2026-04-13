@@ -1,273 +1,292 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../data/story_feed_providers.dart';
 
-class _StoryAuthor {
-  const _StoryAuthor({
-    required this.name,
-    required this.handle,
-    this.hasSeen = false,
-  });
-
-  final String name;
-  final String handle;
-  final bool hasSeen;
-}
-
-class _StoryCard {
-  const _StoryCard({
-    required this.authorName,
-    required this.authorHandle,
-    required this.timeAgo,
-    required this.viewCount,
-    required this.contentHint,
-  });
-
-  final String authorName;
-  final String authorHandle;
-  final String timeAgo;
-  final int viewCount;
-  final String contentHint;
-}
-
-const _mockAuthors = <_StoryAuthor>[
-  _StoryAuthor(name: 'Adriana Voss', handle: 'avoss'),
-  _StoryAuthor(name: 'Kieran Lau', handle: 'klau'),
-  _StoryAuthor(name: 'Nadia Petrov', handle: 'npetrov', hasSeen: true),
-  _StoryAuthor(name: 'Marcus Hale', handle: 'mhale'),
-];
-
-const _mockStoryCards = <_StoryCard>[
-  _StoryCard(
-    authorName: 'Adriana Voss',
-    authorHandle: 'avoss',
-    timeAgo: '12m ago',
-    viewCount: 14,
-    contentHint: 'Photo moment',
-  ),
-  _StoryCard(
-    authorName: 'Kieran Lau',
-    authorHandle: 'klau',
-    timeAgo: '1h ago',
-    viewCount: 38,
-    contentHint: 'Text update',
-  ),
-  _StoryCard(
-    authorName: 'Marcus Hale',
-    authorHandle: 'mhale',
-    timeAgo: '3h ago',
-    viewCount: 7,
-    contentHint: 'Photo moment',
-  ),
-  _StoryCard(
-    authorName: 'Nadia Petrov',
-    authorHandle: 'npetrov',
-    timeAgo: '8h ago',
-    viewCount: 52,
-    contentHint: 'Video clip',
-  ),
-];
-
-class StoriesScreen extends StatelessWidget {
+class StoriesScreen extends ConsumerWidget {
   const StoriesScreen({super.key});
 
+  String _shortTimeAgo(DateTime createdAt) {
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  String _contentHint(StoryContentKind kind) {
+    return switch (kind) {
+      StoryContentKind.image => 'Photo moment',
+      StoryContentKind.video => 'Video clip',
+      StoryContentKind.text => 'Text update',
+    };
+  }
+
+  IconData _contentIcon(StoryContentKind kind) {
+    return switch (kind) {
+      StoryContentKind.image => Icons.image_outlined,
+      StoryContentKind.video => Icons.play_circle_outline_rounded,
+      StoryContentKind.text => Icons.text_snippet_outlined,
+    };
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
+    final storiesAsync = ref.watch(storyFeedProvider);
 
     return VeilShell(
       title: 'Stories',
-      child: CustomScrollView(
-        slivers: [
-          // Privacy banner
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.lg),
-              child: VeilInlineBanner(
-                message:
-                    'Stories expire after 24 hours. Content is stored locally until expiration.',
-                icon: Icons.timer_outlined,
-              ),
-            ),
+      child: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(storyFeedProvider);
+          await ref.read(storyFeedProvider.future);
+        },
+        child: storiesAsync.when(
+          loading: () => ListView(
+            children: const [
+              SizedBox(height: VeilSpace.xl),
+              Center(child: CircularProgressIndicator()),
+            ],
           ),
+          error: (error, _) => ListView(
+            children: [
+              const SizedBox(height: VeilSpace.md),
+              VeilInlineBanner(
+                title: 'Stories unavailable',
+                message: error.toString(),
+                tone: VeilBannerTone.danger,
+              ),
+            ],
+          ),
+          data: (stories) {
+            final distinctAuthors = <String, StoryFeedEntry>{};
+            for (final story in stories) {
+              distinctAuthors.putIfAbsent(story.userId, () => story);
+            }
+            final authors = distinctAuthors.values.toList();
 
-          // My Story section
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.lg),
-              child: Row(
-                children: [
-                  _StoryCircle(
-                    label: 'My Story',
-                    isAddButton: true,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      VeilToast.show(
-                        context,
-                        message: 'Story creation requires media capture',
-                        tone: VeilBannerTone.warn,
+            return CustomScrollView(
+              slivers: [
+                const SliverToBoxAdapter(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: VeilSpace.lg),
+                    child: VeilInlineBanner(
+                      message:
+                          'Stories expire after 24 hours. Content is stored locally until expiration.',
+                      icon: Icons.timer_outlined,
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: VeilSpace.lg),
+                    child: Row(
+                      children: [
+                        _StoryCircle(
+                          label: 'My Story',
+                          isAddButton: true,
+                          onTap: () {
+                            HapticFeedback.selectionClick();
+                            VeilToast.show(
+                              context,
+                              message:
+                                  'Story creation requires media capture',
+                              tone: VeilBannerTone.warn,
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (authors.isEmpty && stories.isEmpty)
+                  const SliverToBoxAdapter(
+                    child: VeilEmptyState(
+                      title: 'No stories yet',
+                      body:
+                          'Stories from your contacts will appear here when they post.',
+                      icon: Icons.amp_stories_outlined,
+                    ),
+                  ),
+                if (authors.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: VeilSpace.sm),
+                      child: VeilSectionLabel('Recent stories'),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 96,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: authors.length,
+                        separatorBuilder: (_, __) =>
+                            const SizedBox(width: VeilSpace.md),
+                        itemBuilder: (context, index) {
+                          final author = authors[index];
+                          final label =
+                              author.displayName?.split(' ').first ??
+                                  author.handle;
+                          return _StoryCircle(
+                            label: label.isEmpty ? author.handle : label,
+                            hasSeen: author.viewedByMe,
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              VeilToast.show(
+                                context,
+                                message: 'Story viewer not yet connected',
+                                tone: VeilBannerTone.info,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(
+                    child: SizedBox(height: VeilSpace.xl),
+                  ),
+                ],
+                if (stories.isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.only(bottom: VeilSpace.sm),
+                      child: VeilSectionLabel('Feed'),
+                    ),
+                  ),
+                  SliverList.separated(
+                    itemCount: stories.length,
+                    separatorBuilder: (_, __) =>
+                        const SizedBox(height: VeilSpace.sm),
+                    itemBuilder: (context, index) {
+                      final story = stories[index];
+                      final authorLabel =
+                          story.displayName ?? story.handle;
+                      final glyph = authorLabel.isEmpty
+                          ? '?'
+                          : authorLabel.characters.first.toUpperCase();
+
+                      return VeilSurfaceCard(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: palette.primarySoft,
+                                    border:
+                                        Border.all(color: palette.stroke),
+                                  ),
+                                  child: Text(
+                                    glyph,
+                                    style: theme.textTheme.titleSmall
+                                        ?.copyWith(color: palette.primary),
+                                  ),
+                                ),
+                                const SizedBox(width: VeilSpace.sm),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        authorLabel.isEmpty
+                                            ? '@${story.handle}'
+                                            : authorLabel,
+                                        style: theme.textTheme.titleSmall,
+                                      ),
+                                      Text(
+                                        _shortTimeAgo(story.createdAt),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                          color: palette.textSubtle,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  '${story.viewCount} views',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: palette.textSubtle,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: VeilSpace.md),
+                            Container(
+                              height: 180,
+                              width: double.infinity,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                borderRadius:
+                                    BorderRadius.circular(VeilRadius.sm),
+                                color: palette.surfaceAlt,
+                                border: Border.all(color: palette.stroke),
+                              ),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _contentIcon(story.contentType),
+                                    size: VeilIconSize.xl,
+                                    color: palette.textSubtle,
+                                  ),
+                                  const SizedBox(height: VeilSpace.xs),
+                                  Text(
+                                    _contentHint(story.contentType),
+                                    style: theme.textTheme.bodySmall
+                                        ?.copyWith(
+                                      color: palette.textSubtle,
+                                    ),
+                                  ),
+                                  if (story.caption != null &&
+                                      story.caption!.isNotEmpty) ...[
+                                    const SizedBox(height: VeilSpace.xs),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: VeilSpace.md,
+                                      ),
+                                      child: Text(
+                                        story.caption!,
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                          color: palette.textMuted,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),
                 ],
-              ),
-            ),
-          ),
-
-          // Section label
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-              child: VeilSectionLabel('Recent stories'),
-            ),
-          ),
-
-          // Horizontal story circles
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 96,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: _mockAuthors.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(width: VeilSpace.md),
-                itemBuilder: (context, index) {
-                  final author = _mockAuthors[index];
-                  return _StoryCircle(
-                    label: author.name.split(' ').first,
-                    hasSeen: author.hasSeen,
-                    onTap: () {
-                      HapticFeedback.selectionClick();
-                      VeilToast.show(
-                        context,
-                        message: 'Story viewer not yet connected',
-                        tone: VeilBannerTone.info,
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-          ),
-
-          const SliverToBoxAdapter(
-            child: SizedBox(height: VeilSpace.xl),
-          ),
-
-          // Feed section label
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-              child: VeilSectionLabel('Feed'),
-            ),
-          ),
-
-          // Story feed cards
-          SliverList.separated(
-            itemCount: _mockStoryCards.length,
-            separatorBuilder: (_, __) => const SizedBox(height: VeilSpace.sm),
-            itemBuilder: (context, index) {
-              final card = _mockStoryCards[index];
-              final glyph =
-                  card.authorName.characters.first.toUpperCase();
-
-              return VeilSurfaceCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Author row
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: palette.primarySoft,
-                            border: Border.all(color: palette.stroke),
-                          ),
-                          child: Text(
-                            glyph,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: palette.primary,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: VeilSpace.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                card.authorName,
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              Text(
-                                card.timeAgo,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: palette.textSubtle,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          '${card.viewCount} views',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: palette.textSubtle,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: VeilSpace.md),
-
-                    // Content placeholder
-                    Container(
-                      height: 180,
-                      width: double.infinity,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius:
-                            BorderRadius.circular(VeilRadius.sm),
-                        color: palette.surfaceAlt,
-                        border: Border.all(color: palette.stroke),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            card.contentHint.contains('Video')
-                                ? Icons.play_circle_outline_rounded
-                                : Icons.image_outlined,
-                            size: VeilIconSize.xl,
-                            color: palette.textSubtle,
-                          ),
-                          const SizedBox(height: VeilSpace.xs),
-                          Text(
-                            card.contentHint,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: palette.textSubtle,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                const SliverToBoxAdapter(
+                  child: SizedBox(height: VeilSpace.xxl),
                 ),
-              );
-            },
-          ),
-
-          const SliverToBoxAdapter(
-            child: SizedBox(height: VeilSpace.xxl),
-          ),
-        ],
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -291,8 +310,7 @@ class _StoryCircle extends StatelessWidget {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
 
-    final ringColor =
-        hasSeen ? palette.stroke : palette.primaryStrong;
+    final ringColor = hasSeen ? palette.stroke : palette.primaryStrong;
 
     return GestureDetector(
       onTap: onTap,
@@ -327,8 +345,8 @@ class _StoryCircle extends StatelessWidget {
                     : Text(
                         label.characters.first.toUpperCase(),
                         style: theme.textTheme.titleMedium?.copyWith(
-                          color: palette.primary,
-                        ),
+                              color: palette.primary,
+                            ),
                       ),
               ),
             ),

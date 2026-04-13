@@ -120,8 +120,43 @@ export class CallsService {
       where: { conversationId: { in: conversationIds } },
       orderBy: { startedAt: 'desc' },
       take: 50,
+      include: {
+        conversation: {
+          include: {
+            members: {
+              include: {
+                user: { select: { id: true, handle: true, displayName: true } },
+              },
+            },
+            groupMeta: { select: { name: true } },
+          },
+        },
+        initiatorDevice: { select: { userId: true } },
+      },
     });
 
-    return { items: calls };
+    return calls.map((call) => {
+      const otherMember = call.conversation.members.find(
+        (m) => m.userId !== auth.userId,
+      );
+      const counterparty = call.conversation.groupMeta?.name
+        ?? otherMember?.user.displayName
+        ?? otherMember?.user.handle
+        ?? 'Unknown';
+      const counterpartyHandle = otherMember?.user.handle ?? null;
+
+      return {
+        id: call.id,
+        conversationId: call.conversationId,
+        callType: call.callType,
+        status: call.status,
+        startedAt: call.startedAt.toISOString(),
+        endedAt: call.endedAt?.toISOString() ?? null,
+        duration: call.duration,
+        initiatedByMe: call.initiatorDevice?.userId === auth.userId,
+        counterparty,
+        counterpartyHandle,
+      };
+    });
   }
 }

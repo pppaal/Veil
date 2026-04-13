@@ -1,6 +1,6 @@
 # VEIL External Execution Master Checklist
 
-Last updated: 2026-04-07
+Last updated: 2026-04-13
 
 This is the single entry point for the remaining work that cannot be completed
  purely inside the repository.
@@ -17,6 +17,7 @@ This checklist does not weaken VEIL philosophy.
 Machine-readable status:
 
 - `pnpm beta:external:status`
+- `pnpm beta:external:bundle`
 - output: `artifacts/external-execution-status.json`
 
 ## Overall release condition
@@ -121,6 +122,7 @@ Primary doc:
 Required outputs:
 - reviewer scope confirmation
 - findings report
+- remediation tracker
 - remediation list
 - retest or acceptance decision
 
@@ -162,3 +164,4 @@ No-Go if:
 - [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
 - [real-device-performance-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
 - [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
+- [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)

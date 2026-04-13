@@ -1,6 +1,6 @@
 # VEIL Audited Crypto Adapter Execution Plan
 
-Last updated: 2026-04-07
+Last updated: 2026-04-13
 
 This document is the execution checklist for replacing VEIL's mock crypto
 adapter with an audited real adapter.
@@ -106,6 +106,9 @@ Tasks:
 
 Required artifact:
 - `docs/crypto-mobile-bridge-design.md`
+
+Current bridge design draft:
+- [crypto-mobile-bridge-design.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-mobile-bridge-design.md)
 
 ### 3. Adapter contract mapping
 

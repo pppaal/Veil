@@ -23,7 +23,10 @@
     "beta:push:readiness": "node ./scripts/push-provider-readiness.mjs",
     "beta:perf:template": "node ./scripts/private-beta-performance-template.mjs",
     "beta:review:manifest": "node ./scripts/external-review-manifest.mjs",
+    "beta:review:findings-template": "node ./scripts/external-review-findings-template.mjs",
     "beta:external:status": "node ./scripts/external-execution-status.mjs",
+    "beta:external:bundle": "pnpm beta:release:evidence && pnpm beta:perf:template && pnpm beta:review:manifest && pnpm beta:review:findings-template && pnpm beta:external:status",
+    "beta:production:blockers": "node ./scripts/production-blockers-report.mjs",
     "alpha:smoke": "node ./scripts/alpha-smoke.mjs",
     "policy:check": "node ./scripts/policy-check.mjs",
     "dev:api": "pnpm -C apps/api start:dev",
@@ -39,6 +42,7 @@
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down -v",
     "docker:alpha:up": "docker compose -f infra/docker/docker-compose.alpha.yml up -d --build",
     "docker:alpha:down": "docker compose -f infra/docker/docker-compose.alpha.yml down -v",
-    "format": "pnpm -r --filter './packages/*' --filter './apps/api' format"
+    "format": "pnpm -r --filter './packages/*' --filter './apps/api' format",
+    "format:check": "prettier --check 'packages/*/src/**/*.ts' 'apps/api/src/**/*.ts' 'scripts/**/*.mjs'"
   }
 }

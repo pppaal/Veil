@@ -63,9 +63,29 @@ Do not treat the current build as audited production E2EE.
 - latest `pnpm beta:release:check` result
 - latest `artifacts/private-beta-release-evidence.json`
 - latest `artifacts/external-security-review-manifest.json`
+- latest `artifacts/external-review-findings-template.json`
 - exact commit SHA under review
 - environment mode used for the review build
 - current mobile build artifact identifiers
+
+## Findings handling
+
+When findings arrive:
+
+1. record them in
+   [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)
+2. patch the repo
+3. re-run verification
+4. attach retest evidence
+
+## Machine-readable artifacts
+
+- `pnpm beta:external:bundle` generates all handoff artifacts
+- `pnpm beta:production:blockers` generates the production blockers report
+- `artifacts/external-security-review-manifest.json`: review scope and file inventory
+- `artifacts/external-review-findings-template.json`: structured findings template with severity and status fields
+- `artifacts/private-beta-release-evidence.json`: CI and verification evidence
+- `artifacts/production-blockers-report.json`: current production blocker summary
 
 ## Explicit caveats
 

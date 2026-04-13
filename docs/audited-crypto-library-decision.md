@@ -1,6 +1,6 @@
 # VEIL Audited Crypto Library Decision
 
-Last updated: 2026-04-07
+Last updated: 2026-04-13
 
 This document records the current recommendation for VEIL's future audited
 crypto adapter.
@@ -132,7 +132,7 @@ Before final sign-off, confirm:
 ## Required next artifacts
 
 - [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- `docs/crypto-mobile-bridge-design.md`
+- [crypto-mobile-bridge-design.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-mobile-bridge-design.md)
 - `docs/crypto-session-state-migration.md`
 
 ## Non-claims

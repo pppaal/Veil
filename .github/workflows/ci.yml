@@ -17,6 +17,7 @@ permissions:
 
 env:
   CI: true
+  NODE_ENV: test
 
 jobs:
   api-and-packages:
@@ -40,6 +41,9 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
 
       - name: Verify API and packages
         run: pnpm ci:api
@@ -75,6 +79,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Flutter dependencies
+        run: cd apps/mobile && flutter pub get
+
       - name: Verify mobile
         run: pnpm ci:mobile
 
@@ -107,6 +114,9 @@ jobs:
       - name: Start alpha stack
         run: pnpm docker:alpha:up
 
+      - name: Wait for services
+        run: sleep 5
+
       - name: Run runtime smoke
         run: pnpm alpha:smoke
 
@@ -115,9 +125,8 @@ jobs:
 
       - name: Generate beta artifacts
         run: |
-          pnpm beta:release:evidence
-          pnpm beta:perf:template
-          pnpm beta:review:manifest
+          pnpm beta:external:bundle
+          pnpm beta:production:blockers
 
       - name: Upload beta artifacts
         if: always()
@@ -125,6 +134,7 @@ jobs:
         with:
           name: private-beta-artifacts
           path: artifacts/*.json
+          retention-days: 30
 
       - name: Stop alpha stack
         if: always()

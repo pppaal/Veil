@@ -16,11 +16,14 @@ const releaseEvidence = readJson('private-beta-release-evidence.json');
 const perfTemplate = readJson('private-beta-performance-template.json');
 const reviewManifest = readJson('external-security-review-manifest.json');
 const pushReadiness = readJson('push-provider-readiness.json');
+const reviewFindingsTemplate = readJson('external-review-findings-template.json');
+const productionBlockers = readJson('production-blockers-report.json');
 
 const hasPerfResults =
   Array.isArray(perfTemplate?.results) && perfTemplate.results.length > 0;
 const hasReviewManifest = reviewManifest != null;
 const hasReleaseEvidence = releaseEvidence != null;
+const hasReviewFindingsTemplate = reviewFindingsTemplate != null;
 const pushReady =
   pushReadiness != null &&
   pushReadiness.readiness?.apns?.credentialsPresent === true &&
@@ -54,12 +57,18 @@ const tracks = {
     ],
   },
   externalSecurityReview: {
-    status: hasReviewManifest && hasReleaseEvidence ? 'ready_for_handoff' : 'blocked',
+    status:
+      hasReviewManifest && hasReleaseEvidence && hasReviewFindingsTemplate
+        ? 'ready_for_handoff'
+        : 'blocked',
     reason:
-      hasReviewManifest && hasReleaseEvidence
-        ? 'Review manifest and release evidence exist; handoff is structurally ready.'
+      hasReviewManifest && hasReleaseEvidence && hasReviewFindingsTemplate
+        ? 'Review manifest, release evidence, and remediation template exist; handoff is structurally ready.'
         : 'Required review artifacts are missing.',
-    docs: ['docs/external-security-review-packet.md'],
+    docs: [
+      'docs/external-security-review-packet.md',
+      'docs/external-review-remediation-tracker.md',
+    ],
   },
 };
 
@@ -74,7 +83,9 @@ const result = {
     perfTemplatePresent: perfTemplate != null,
     perfResultsRecorded: hasPerfResults,
     reviewManifestPresent: hasReviewManifest,
+    reviewFindingsTemplatePresent: hasReviewFindingsTemplate,
     pushReadinessArtifactPresent: pushReadiness != null,
+    productionBlockersPresent: productionBlockers != null,
     productionReady: false,
     blockedTracks,
   },

@@ -122,8 +122,10 @@ The composer should feel stable, deliberate, and operational.
 
 - Message bodies must be highly readable.
 - Status should never overwhelm content.
+- Sent-state clarity should use short, consistent badges such as `Queued`, `Uploading`, `Sent`, `Delivered`, and `Read`.
 - Attachment and failure states must stay explicit.
 - The header should keep relay, search, and disappearance context visible without crowding the composer.
+- Local in-chat search should communicate that it is scanning cached device-local text, not the server.
 
 ### Settings / Security / Transfer
 
@@ -137,6 +139,15 @@ The composer should feel stable, deliberate, and operational.
 - Keep tap targets at or above 44px where interactive.
 - Surface state changes with text, not color alone.
 - Preserve semantics labels on major list and message items.
+
+## Adaptive Layout
+
+- Conversation list uses a wide breakpoint at 1120px logical width.
+- Below the breakpoint, navigation pushes a separate chat room route.
+- Above the breakpoint, the list and chat room render side-by-side in an 8:10 flex ratio.
+- Wide layout should auto-select the first conversation if none is selected.
+- Search results in wide layout switch the active conversation pane inline.
+- Page storage preserves selected conversation, search query, and filter state across rebuilds.
 
 ## What To Avoid
 

@@ -26,6 +26,7 @@
   - The recipient marked the message as read.
 - `failed`
   - Automatic retry budget was exhausted or the relay rejected the send with a permanent error.
+- Sender-side message bubbles should keep the body readable and surface delivery state as a short explicit badge, not a verbose sentence.
 
 ## Retry and reconnect behavior
 
@@ -36,6 +37,7 @@
 - Late `message.delivered` and `message.read` events are buffered locally until the corresponding message page is present.
 - Out-of-order receipt events must only move state forward. A late `delivered` event must not regress a message that is already `read`.
 - Long conversations paginate by `conversationOrder`, newest first on the wire and oldest first in the local UI.
+- If local search is active inside a chat, the UI should explicitly say that results come from cached device-local text and that clearing search returns the user to full conversation context.
 
 ## Local search and history navigation
 
@@ -50,6 +52,13 @@
   - ticket request
   - opaque blob upload
   - encrypted envelope send
+- The mobile UI tracks attachment transfer state through explicit phases:
+  - `staged`: local temp blob prepared, upload not started
+  - `preparing`: ticket requested, upload about to begin
+  - `uploading`: opaque blob transfer in progress with progress tracking
+  - `completing`: upload finished, finalizing attachment record
+  - `failed`: upload or finalization failed, retry available
+  - `canceled`: user explicitly canceled the upload
 - Failed attachment uploads remain in the local queue and can be retried without changing the ciphertext-only relay model.
 - Attachment retries reuse the device-local opaque temp blob and renew the ticket when necessary.
 - Explicit cancel leaves the staged attachment in a failed local state so the user can retry without regenerating plaintext input.

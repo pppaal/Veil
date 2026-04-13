@@ -69,6 +69,7 @@ Mobile release identity:
 - `pnpm beta:release:evidence`
 - `pnpm beta:deploy:preflight -- --env-file apps/api/.env`
 - `pnpm beta:push:readiness`
+- `pnpm beta:external:bundle`
 - `pnpm beta:external:status`
 - `apps/api/.env.alpha.example` is intentionally not deployable as-is.
   Replace placeholder secrets before running deploy preflight against a real beta env file.
@@ -76,6 +77,8 @@ Mobile release identity:
   deploy preflight and beta artifact generation wired during runtime smoke.
 - `pnpm beta:perf:template`
 - `pnpm beta:review:manifest`
+- `pnpm beta:production:blockers`
+- `pnpm format:check`
 - `pnpm -C apps/api test:e2e`
 - `pnpm docker:up`
 - `pnpm docker:down`
@@ -94,14 +97,16 @@ GitHub Actions CI is defined in [`.github/workflows/ci.yml`](c:/Users/pjyrh/OneD
 - `pnpm ci:mobile`
 
 CI is treated as a private-beta gate:
+- format check runs on every push and pull request
 - policy checks fail on wildcard realtime CORS, missing security headers, plaintext-prone push fields, mobile console logging, and crash-reporting SDK drift
 - mobile codegen, analyze, and test all run in CI
 - API container builds on every main-branch and pull-request run
 - main-branch runtime smoke also runs deploy preflight against the CI beta fixture,
-  generates beta handoff JSON artifacts, and uploads them as workflow artifacts
+  generates beta handoff JSON artifacts and the production blockers report, and uploads them as workflow artifacts
 
 ## Current implementation status
 
+### Core messaging
 - Handle registration, device registration, challenge/verify auth, conversation creation, conversation listing
 - Mobile register -> challenge -> verify -> token persistence flow
 - API-backed direct conversation create/list and encrypted envelope send/list flow
@@ -114,6 +119,23 @@ CI is treated as a private-beta gate:
 - Drift-ready conversation/message cache service wired behind the messenger controller
 - Versioned session-bootstrap persistence metadata wired into the local
   conversation cache for future audited crypto migration
+
+### X-chat level features (scaffold)
+- **Group chat**: group conversation type, group metadata (name, description, avatar, member limit, invite link), member roles (owner/admin/member)
+- **Channels**: broadcast channel type, subscriber model, public/private channels
+- **Voice messages**: recording UI with waveform visualization, playback preview, send/cancel flow
+- **Media messages**: photo/video picker with grid selection, camera scaffold, encrypted upload pipeline
+- **Voice/Video calls**: full call screen with dialing/ringing/connected/ended states, call timer, mute/speaker/video controls, call history
+- **Stories/Moments**: 24-hour expiring stories, story circles with unseen indicators, full-screen story viewer with auto-advance, story feed
+- **Contacts**: device-local contact list with search, alphabetical sections, contact management (add/remove/view profile)
+- **Profile**: editable profile with display name, bio, status message, avatar, privacy metrics
+- **AI assistant**: on-device AI chat scaffold with context-aware responses, privacy-first design
+- **Stickers & Emoji**: emoji picker with categories and search, sticker pack placeholder, GIF placeholder
+- **Reactions**: quick-reaction picker (6 common emoji), expandable to full emoji set
+- **Message replies**: reply-to-message reference in message model
+- **Bottom navigation**: 4-tab main shell (Chats, Contacts, Stories, Calls)
+
+### Infrastructure
 - Docs, unit tests, and CI-friendly scripts
 
 ## Mobile runtime configuration
@@ -153,11 +175,20 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
 - [Real-Device Performance Execution Plan](docs/real-device-performance-execution.md)
 - [Real-Device Performance Results Template](docs/real-device-performance-results-template.md)
+- [Real-Device Performance Triage Guide](docs/real-device-performance-triage-guide.md)
 - [External Security Review Packet](docs/external-security-review-packet.md)
+- [External Security Review Request Template](docs/external-security-review-request-template.md)
+- [External Review Intake Checklist](docs/external-review-intake-checklist.md)
 - [External Execution Master Checklist](docs/external-execution-master-checklist.md)
+- [External Review Remediation Tracker](docs/external-review-remediation-tracker.md)
 - [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
 - [Audited Crypto Library Decision](docs/audited-crypto-library-decision.md)
+- [Crypto Mobile Bridge Design](docs/crypto-mobile-bridge-design.md)
+- [Crypto Session State Migration](docs/crypto-session-state-migration.md)
 - [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)
+- [Apple And Firebase Credential Setup Checklist](docs/apple-firebase-credential-setup-checklist.md)
+- [Staging Push Enable Runbook](docs/staging-push-enable-runbook.md)
+- [One-Day Real-Device Test Checklist](docs/one-day-real-device-test-checklist.md)
 - [Telegram-Grade Private Beta Gap Analysis](docs/telegram-grade-private-beta-gap-analysis.md)
 - [Observability Hygiene](docs/observability-hygiene.md)
 - [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)
@@ -166,3 +197,4 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [Production Deployment Checklist](docs/production-deployment.md)
 - [Mock Crypto Replacement Plan](docs/mock-crypto-replacement.md)
 - [Mobile Device Security](docs/mobile-device-security.md)
+- [Mobile Design System](docs/mobile-design-system.md)

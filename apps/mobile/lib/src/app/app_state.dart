@@ -27,7 +27,7 @@ final secureStorageProvider = Provider<SecureStorageService>((ref) {
 
 final platformSecurityServiceProvider =
     Provider<PlatformSecurityService>((ref) {
-  return const MethodChannelPlatformSecurityService();
+  return MethodChannelPlatformSecurityService();
 });
 
 final platformSecurityStatusProvider =

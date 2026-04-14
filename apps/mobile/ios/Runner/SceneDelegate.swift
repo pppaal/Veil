@@ -3,6 +3,7 @@ import UIKit
 
 class SceneDelegate: FlutterSceneDelegate {
   private static let privacyShieldTag = 0x5645494C
+  private var screenshotObserver: NSObjectProtocol?
 
   func applyPrivacyProtections() {
     guard let window else {
@@ -13,6 +14,32 @@ class SceneDelegate: FlutterSceneDelegate {
       removePrivacyShield()
     } else {
       installPrivacyShieldIfNeeded()
+    }
+  }
+
+  override func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    super.scene(scene, willConnectTo: session, options: connectionOptions)
+    registerScreenshotObserver()
+  }
+
+  deinit {
+    if let screenshotObserver {
+      NotificationCenter.default.removeObserver(screenshotObserver)
+    }
+  }
+
+  private func registerScreenshotObserver() {
+    guard screenshotObserver == nil else { return }
+    screenshotObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.userDidTakeScreenshotNotification,
+      object: nil,
+      queue: .main
+    ) { _ in
+      PlatformSecurityEventBus.shared.emitScreenshotDetected()
     }
   }
 

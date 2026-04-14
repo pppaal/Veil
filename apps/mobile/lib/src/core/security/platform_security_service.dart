@@ -42,20 +42,44 @@ class PlatformSecurityStatus {
   );
 }
 
+enum PlatformSecurityEvent { screenshotDetected }
+
 abstract class PlatformSecurityService {
   Future<void> applyPrivacyProtections();
 
   Future<PlatformSecurityStatus> getStatus();
 
   Future<void> excludePathFromBackup(String path);
+
+  Stream<PlatformSecurityEvent> get events;
 }
 
 class MethodChannelPlatformSecurityService implements PlatformSecurityService {
-  const MethodChannelPlatformSecurityService();
+  MethodChannelPlatformSecurityService();
 
   static const _channel = MethodChannel('veil/platform_security');
+  static const _eventChannel = EventChannel('veil/platform_security_events');
+
+  Stream<PlatformSecurityEvent>? _eventStream;
 
   bool get _isSupportedPlatform => Platform.isAndroid || Platform.isIOS;
+
+  @override
+  Stream<PlatformSecurityEvent> get events {
+    if (!_isSupportedPlatform) {
+      return const Stream<PlatformSecurityEvent>.empty();
+    }
+    return _eventStream ??= _eventChannel
+        .receiveBroadcastStream()
+        .map((raw) {
+          if (raw is Map && raw['type'] == 'screenshotDetected') {
+            return PlatformSecurityEvent.screenshotDetected;
+          }
+          return null;
+        })
+        .where((event) => event != null)
+        .cast<PlatformSecurityEvent>();
+  }
 
   @override
   Future<void> applyPrivacyProtections() async {

@@ -177,9 +177,12 @@ export class ConversationsService {
       throw new NotFoundException('Pagination cursor not found');
     }
 
+    void this.pruneExpiredMessages(conversationId);
+
     const messages = (await this.prisma.message.findMany({
       where: {
         conversationId,
+        ...this.notExpiredFilter(),
         ...(cursorMessage
           ? {
               conversationOrder: {
@@ -267,6 +270,7 @@ export class ConversationsService {
 
   private latestMessageInclude() {
     return {
+      where: this.notExpiredFilter(),
       orderBy: { conversationOrder: 'desc' as const },
       take: 1,
       include: {
@@ -276,6 +280,28 @@ export class ConversationsService {
         receipts: true,
       },
     };
+  }
+
+  private notExpiredFilter() {
+    return {
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } },
+      ],
+    };
+  }
+
+  private async pruneExpiredMessages(conversationId: string): Promise<void> {
+    try {
+      await this.prisma.message.deleteMany({
+        where: {
+          conversationId,
+          expiresAt: { lte: new Date() },
+        },
+      });
+    } catch {
+      // Best-effort pruning: ignore failures so reads stay responsive.
+    }
   }
 
   private toConversationSummary(conversation: {

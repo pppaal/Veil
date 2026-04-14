@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/security/platform_security_service.dart';
 import '../../../core/security/sensitive_text_redactor.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -41,7 +42,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
   Timer? _searchDebounce;
   Timer? _highlightClearTimer;
-  bool _disappearing = false;
+  Timer? _expirationTicker;
+  StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
+  Duration? _messageTtl;
   bool _isSearchingMessages = false;
   Set<String> _matchingMessageIds = <String>{};
   String? _highlightedMessageId;
@@ -51,6 +54,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     super.initState();
     _searchController.addListener(_handleSearchChanged);
     scheduleMicrotask(() => _loadConversationState());
+    _securityEventSub = ref
+        .read(platformSecurityServiceProvider)
+        .events
+        .listen(_handlePlatformSecurityEvent);
+  }
+
+  void _handlePlatformSecurityEvent(PlatformSecurityEvent event) {
+    if (!mounted) return;
+    if (event == PlatformSecurityEvent.screenshotDetected) {
+      HapticFeedback.heavyImpact();
+      VeilToast.show(
+        context,
+        message:
+            'Screenshot detected in this conversation. Veil cannot prevent it on this device.',
+        tone: VeilBannerTone.danger,
+      );
+    }
   }
 
   @override
@@ -73,11 +93,73 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _highlightClearTimer?.cancel();
+    _expirationTicker?.cancel();
+    _securityEventSub?.cancel();
     _messageController.dispose();
     _searchController.dispose();
     _composerFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _ensureExpirationTicker(bool hasExpiringMessages) {
+    if (hasExpiringMessages) {
+      _expirationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+      });
+    } else {
+      _expirationTicker?.cancel();
+      _expirationTicker = null;
+    }
+  }
+
+  Future<void> _pickDisappearTtl() async {
+    HapticFeedback.selectionClick();
+    final selected = await showModalBottomSheet<Duration?>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(VeilSpace.lg),
+                child: Text(
+                  'Disappearing messages',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
+              ),
+              for (final option in _ttlOptions)
+                ListTile(
+                  leading: Icon(
+                    _messageTtl == option.duration
+                        ? Icons.check_circle_rounded
+                        : Icons.circle_outlined,
+                  ),
+                  title: Text(option.label),
+                  subtitle: option.caption == null ? null : Text(option.caption!),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop<Duration?>(option.duration),
+                ),
+              const SizedBox(height: VeilSpace.sm),
+            ],
+          ),
+        );
+      },
+    );
+    if (!mounted) return;
+    setState(() => _messageTtl = selected);
+  }
+
+  String _ttlLabel() {
+    final current = _messageTtl;
+    if (current == null) return 'Disappear off';
+    for (final option in _ttlOptions) {
+      if (option.duration == current) return option.label;
+    }
+    return 'Custom TTL';
   }
 
   @override
@@ -122,9 +204,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               '@${conversation?.peerHandle ?? 'unknown'}',
           searchController: _searchController,
           searching: _isSearchingMessages,
-          disappearing: _disappearing,
-          onChangedDisappearing: (value) =>
-              setState(() => _disappearing = value),
+          ttlLabel: _ttlLabel(),
+          ttlActive: _messageTtl != null,
+          onTapTtl: _pickDisappearTtl,
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilMetricStrip(
@@ -237,9 +319,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           focusNode: _composerFocusNode,
           enabled: !controller.isBusy,
           onSubmit: _sendMessage,
-          helper: _disappearing
-              ? 'This send expires in 30 seconds on the device timeline.'
-              : 'This send does not expire unless you change the rule.',
+          helper: _messageTtl == null
+              ? 'This send does not expire unless you change the rule.'
+              : 'This send expires in ${_formatDurationLabel(_messageTtl!)} on every device that sees it.',
           trailing: VeilButton(
             expanded: false,
             onPressed: controller.isBusy ? null : _sendMessage,
@@ -451,10 +533,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   List<ChatMessage> _filteredMessages(List<ChatMessage> messages) {
+    final now = DateTime.now();
+    final visible = messages
+        .where((message) => !isMessageExpired(message.expiresAt, now: now))
+        .toList();
+    final hasExpiring = visible.any((message) => message.expiresAt != null);
+    scheduleMicrotask(() => _ensureExpirationTicker(hasExpiring));
     if (_searchController.text.trim().isEmpty) {
-      return messages;
+      return visible;
     }
-    return messages
+    return visible
         .where((message) => _matchingMessageIds.contains(message.id))
         .toList();
   }
@@ -531,7 +619,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     await ref.read(messengerControllerProvider).sendText(
           conversationId: widget.conversationId,
           body: body,
-          disappearAfter: _disappearing ? const Duration(seconds: 30) : null,
+          disappearAfter: _messageTtl,
         );
     _messageController.clear();
   }
@@ -741,22 +829,69 @@ String messageBubbleSemanticsLabel(ChatMessage message) {
   return '$direction message bubble.$stateSegment';
 }
 
+class _TtlOption {
+  const _TtlOption({required this.label, required this.duration, this.caption});
+
+  final String label;
+  final Duration? duration;
+  final String? caption;
+}
+
+const List<_TtlOption> _ttlOptions = <_TtlOption>[
+  _TtlOption(
+    label: 'Off',
+    duration: null,
+    caption: 'Messages remain until manually deleted.',
+  ),
+  _TtlOption(
+    label: '10 seconds',
+    duration: Duration(seconds: 10),
+    caption: 'Strongest ephemerality. Expect the recipient to be looking.',
+  ),
+  _TtlOption(
+    label: '1 minute',
+    duration: Duration(minutes: 1),
+  ),
+  _TtlOption(
+    label: '5 minutes',
+    duration: Duration(minutes: 5),
+  ),
+  _TtlOption(
+    label: '1 hour',
+    duration: Duration(hours: 1),
+  ),
+  _TtlOption(
+    label: '1 day',
+    duration: Duration(days: 1),
+    caption: 'Default for casual private conversations.',
+  ),
+];
+
+String _formatDurationLabel(Duration duration) {
+  if (duration.inDays > 0) return '${duration.inDays} day(s)';
+  if (duration.inHours > 0) return '${duration.inHours} hour(s)';
+  if (duration.inMinutes > 0) return '${duration.inMinutes} minute(s)';
+  return '${duration.inSeconds} second(s)';
+}
+
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.embedded,
     required this.title,
     required this.searchController,
     required this.searching,
-    required this.disappearing,
-    required this.onChangedDisappearing,
+    required this.ttlLabel,
+    required this.ttlActive,
+    required this.onTapTtl,
   });
 
   final bool embedded;
   final String title;
   final TextEditingController searchController;
   final bool searching;
-  final bool disappearing;
-  final ValueChanged<bool> onChangedDisappearing;
+  final String ttlLabel;
+  final bool ttlActive;
+  final VoidCallback onTapTtl;
 
   @override
   Widget build(BuildContext context) {
@@ -788,9 +923,14 @@ class _ChatHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: VeilSpace.sm),
-              Switch(
-                value: disappearing,
-                onChanged: onChangedDisappearing,
+              VeilButton(
+                expanded: false,
+                tone: ttlActive
+                    ? VeilButtonTone.primary
+                    : VeilButtonTone.secondary,
+                icon: Icons.timer_outlined,
+                onPressed: onTapTtl,
+                label: ttlLabel,
               ),
             ],
           ),
@@ -830,8 +970,8 @@ class _ChatHeader extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   VeilStatusPill(
-                    label: disappearing ? 'Disappear in 30s' : 'Disappear off',
-                    tone: disappearing
+                    label: ttlLabel,
+                    tone: ttlActive
                         ? VeilBannerTone.warn
                         : VeilBannerTone.info,
                   ),
@@ -861,8 +1001,8 @@ class _ChatHeader extends StatelessWidget {
             runSpacing: 8,
             children: [
               VeilStatusPill(
-                label: disappearing ? 'Disappear in 30s' : 'Disappear off',
-                tone: disappearing ? VeilBannerTone.warn : VeilBannerTone.info,
+                label: ttlLabel,
+                tone: ttlActive ? VeilBannerTone.warn : VeilBannerTone.info,
               ),
               const VeilStatusPill(label: 'Attachments encrypted'),
               const VeilStatusPill(label: 'Local search only'),

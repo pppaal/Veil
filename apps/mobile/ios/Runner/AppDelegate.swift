@@ -21,6 +21,40 @@ import UIKit
   private func registerPlatformSecurityPlugin(with registry: FlutterPluginRegistry) {
     let registrar = registry.registrar(forPlugin: "PlatformSecurityPlugin")
     PlatformSecurityPlugin.register(with: registrar)
+    PlatformSecurityEventBus.shared.register(with: registrar)
+  }
+}
+
+final class PlatformSecurityEventBus: NSObject, FlutterStreamHandler {
+  static let shared = PlatformSecurityEventBus()
+
+  private var eventSink: FlutterEventSink?
+
+  func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterEventChannel(
+      name: "veil/platform_security_events",
+      binaryMessenger: registrar.messenger()
+    )
+    channel.setStreamHandler(self)
+  }
+
+  func emitScreenshotDetected() {
+    DispatchQueue.main.async { [weak self] in
+      self?.eventSink?(["type": "screenshotDetected"])
+    }
+  }
+
+  func onListen(
+    withArguments arguments: Any?,
+    eventSink events: @escaping FlutterEventSink
+  ) -> FlutterError? {
+    eventSink = events
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    eventSink = nil
+    return nil
   }
 }
 

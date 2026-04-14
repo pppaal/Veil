@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   ConversationMessageSummary,
   ConversationSummary,
@@ -9,6 +9,10 @@ import type { EncryptedAttachmentReference } from '@veil/shared';
 
 import { PrismaService } from '../../common/prisma.service';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  ATTACHMENT_STORAGE_GATEWAY,
+  type AttachmentStorageGateway,
+} from '../attachments/attachment-storage.gateway';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 
@@ -40,6 +44,8 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    @Inject(ATTACHMENT_STORAGE_GATEWAY)
+    private readonly attachmentStorageGateway: AttachmentStorageGateway,
   ) {}
 
   async createDirect(
@@ -293,14 +299,67 @@ export class ConversationsService {
 
   private async pruneExpiredMessages(conversationId: string): Promise<void> {
     try {
-      await this.prisma.message.deleteMany({
+      const now = new Date();
+      const expired = await this.prisma.message.findMany({
         where: {
           conversationId,
-          expiresAt: { lte: new Date() },
+          expiresAt: { lte: now },
         },
+        select: { id: true, attachmentId: true },
       });
+
+      if (expired.length === 0) {
+        return;
+      }
+
+      const candidateAttachmentIds = Array.from(
+        new Set(
+          expired
+            .map((message) => message.attachmentId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+
+      await this.prisma.message.deleteMany({
+        where: { id: { in: expired.map((message) => message.id) } },
+      });
+
+      for (const attachmentId of candidateAttachmentIds) {
+        await this.tryDeleteOrphanedAttachment(attachmentId);
+      }
     } catch {
       // Best-effort pruning: ignore failures so reads stay responsive.
+    }
+  }
+
+  private async tryDeleteOrphanedAttachment(attachmentId: string): Promise<void> {
+    try {
+      const stillReferenced = await this.prisma.message.findFirst({
+        where: { attachmentId },
+        select: { id: true },
+      });
+      if (stillReferenced) {
+        return;
+      }
+
+      const attachment = await this.prisma.attachment.findUnique({
+        where: { id: attachmentId },
+        select: { id: true, storageKey: true },
+      });
+      if (!attachment) {
+        return;
+      }
+
+      try {
+        await this.attachmentStorageGateway.deleteObject(attachment.storageKey);
+      } catch {
+        // Storage delete is best-effort; DB cleanup still proceeds so the row
+        // does not live forever as a dangling pointer to a missing blob.
+      }
+
+      await this.prisma.attachment.delete({ where: { id: attachment.id } });
+    } catch {
+      // Best-effort: never let attachment cleanup failures surface to readers.
     }
   }
 

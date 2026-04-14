@@ -16,6 +16,6 @@ import { AttachmentsService } from './attachments.service';
       useClass: S3AttachmentStorageGateway,
     },
   ],
-  exports: [AttachmentsService],
+  exports: [AttachmentsService, ATTACHMENT_STORAGE_GATEWAY],
 })
 export class AttachmentsModule {}

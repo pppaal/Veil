@@ -67,8 +67,15 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       VeilToast.show(
         context,
         message:
-            'Screenshot detected in this conversation. Veil cannot prevent it on this device.',
+            'Screenshot detected in this conversation. Veil cannot prevent it on this device — the other side has been notified.',
         tone: VeilBannerTone.danger,
+      );
+      unawaited(
+        ref.read(messengerControllerProvider).sendSystemNotice(
+              conversationId: widget.conversationId,
+              body:
+                  'Peer took a screenshot of this conversation on their device.',
+            ),
       );
     }
   }
@@ -469,6 +476,45 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     required bool hasSearchQuery,
   }) {
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
+
+    if (message.envelope.messageKind == MessageKind.system) {
+      final systemNotice = _SystemNoticeBubble(
+        message: message,
+        decryptFuture: controller.decryptMessage(message),
+      );
+      final keyedNotice = RepaintBoundary(
+        child: KeyedSubtree(
+          key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
+          child: systemNotice,
+        ),
+      );
+      if (!showLoadOlder) {
+        return Padding(
+          padding: EdgeInsets.only(
+              bottom: index == filteredMessages.length - 1 ? 0 : 12),
+          child: keyedNotice,
+        );
+      }
+      return Padding(
+        padding: EdgeInsets.only(
+            bottom: index == filteredMessages.length - 1 ? 0 : 12),
+        child: Column(
+          children: [
+            VeilButton(
+              onPressed: isLoadingHistory
+                  ? null
+                  : () => ref
+                      .read(messengerControllerProvider)
+                      .loadOlderConversationMessages(widget.conversationId),
+              tone: VeilButtonTone.secondary,
+              label: isLoadingHistory ? 'Loading older' : 'Load older',
+            ),
+            const SizedBox(height: VeilSpace.sm),
+            keyedNotice,
+          ],
+        ),
+      );
+    }
 
     final bubble = _MessageBubble(
       message: message,
@@ -1220,6 +1266,62 @@ class _MessageBubble extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SystemNoticeBubble extends StatelessWidget {
+  const _SystemNoticeBubble({
+    required this.message,
+    required this.decryptFuture,
+  });
+
+  final ChatMessage message;
+  final Future<DecryptedMessage> decryptFuture;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    final theme = Theme.of(context);
+    return Center(
+      child: FutureBuilder<DecryptedMessage>(
+        future: decryptFuture,
+        builder: (context, snapshot) {
+          final body = snapshot.data?.body ?? 'Decrypting system notice...';
+          return Container(
+            constraints: const BoxConstraints(maxWidth: 420),
+            padding: const EdgeInsets.symmetric(
+              horizontal: VeilSpace.md,
+              vertical: VeilSpace.sm,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(VeilRadius.pill),
+              color: palette.surfaceOverlay,
+              border: Border.all(color: palette.strokeStrong),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.camera_alt_outlined,
+                  size: VeilIconSize.sm,
+                  color: palette.warning,
+                ),
+                const SizedBox(width: VeilSpace.sm),
+                Flexible(
+                  child: Text(
+                    body,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: palette.textMuted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

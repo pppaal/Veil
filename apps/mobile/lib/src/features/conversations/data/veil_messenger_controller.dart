@@ -291,6 +291,40 @@ class VeilMessengerController extends ChangeNotifier {
     });
   }
 
+  Future<void> sendSystemNotice({
+    required String conversationId,
+    required String body,
+    Duration? disappearAfter,
+  }) async {
+    await _run(() async {
+      if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+        throw StateError('Authenticated API session required.');
+      }
+
+      final conversation =
+          _conversations.firstWhere((item) => item.id == conversationId);
+      final bundle = await _fetchPeerBundle(conversation.peerHandle);
+      final clientMessageId = _nextClientMessageId();
+      final envelope = await _cryptoEngine.encryptMessage(
+        conversationId: conversationId,
+        senderDeviceId: _session.deviceId!,
+        recipientUserId: bundle.userId,
+        body: body,
+        messageKind: MessageKind.system,
+        recipientBundle: bundle,
+        expiresAt:
+            disappearAfter == null ? null : DateTime.now().add(disappearAfter),
+      );
+
+      await _enqueuePendingMessage(
+        conversation: conversation,
+        clientMessageId: clientMessageId,
+        envelope: envelope,
+      );
+      unawaited(_drainOutbox(conversationId: conversationId));
+    });
+  }
+
   Future<void> sendAttachmentPlaceholder(
     String conversationId, {
     String filename = 'dossier.enc',

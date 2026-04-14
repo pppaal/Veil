@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/network/veil_api_client.dart';
 
 enum StoryContentKind { text, image, video }
 
@@ -57,8 +58,10 @@ class StoryFeedEntry {
   }
 }
 
+const kTextStoryContentUrl = 'text://inline';
+
 final storyFeedProvider =
-    FutureProvider.autoDispose<List<StoryFeedEntry>>((ref) async {
+    FutureProvider<List<StoryFeedEntry>>((ref) async {
   final session = ref.watch(appSessionProvider);
   if (!session.isAuthenticated || session.accessToken == null) {
     return const <StoryFeedEntry>[];
@@ -70,3 +73,56 @@ final storyFeedProvider =
       .map(StoryFeedEntry.fromJson)
       .toList();
 });
+
+class StoryMutationResult {
+  const StoryMutationResult({required this.success, this.errorMessage});
+
+  final bool success;
+  final String? errorMessage;
+}
+
+Future<StoryMutationResult> createTextStory(
+  WidgetRef ref, {
+  required String body,
+  String? caption,
+}) async {
+  final session = ref.read(appSessionProvider);
+  if (!session.isAuthenticated || session.accessToken == null) {
+    return const StoryMutationResult(
+      success: false,
+      errorMessage: 'Authenticated session required.',
+    );
+  }
+  try {
+    final apiClient = ref.read(apiClientProvider);
+    await apiClient.createStory(session.accessToken!, {
+      'contentType': 'text',
+      'contentUrl': kTextStoryContentUrl,
+      'caption': body.trim(),
+      if (caption != null && caption.trim().isNotEmpty) 'caption': caption,
+    });
+    ref.invalidate(storyFeedProvider);
+    await ref.read(storyFeedProvider.future);
+    return const StoryMutationResult(success: true);
+  } on VeilApiException catch (error) {
+    return StoryMutationResult(
+      success: false,
+      errorMessage: formatUserFacingError(error),
+    );
+  } catch (error) {
+    return StoryMutationResult(
+      success: false,
+      errorMessage: formatUserFacingError(error),
+    );
+  }
+}
+
+Future<void> markStoryViewed(WidgetRef ref, String storyId) async {
+  final session = ref.read(appSessionProvider);
+  if (!session.isAuthenticated || session.accessToken == null) return;
+  try {
+    await ref.read(apiClientProvider).viewStory(session.accessToken!, storyId);
+  } catch (_) {
+    // View tracking is best effort.
+  }
+}

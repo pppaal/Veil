@@ -128,8 +128,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/story-viewer/:userId',
         builder: (context, state) => StoryViewerScreen(
-          authorName: state.extra is Map ? (state.extra as Map)['name'] as String? ?? 'Unknown' : 'Unknown',
-          authorHandle: state.pathParameters['userId'],
+          authorUserId: state.pathParameters['userId']!,
         ),
       ),
       GoRoute(path: '/ai-chat', builder: (context, state) => const AiChatScreen()),

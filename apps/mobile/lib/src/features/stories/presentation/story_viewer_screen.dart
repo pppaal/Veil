@@ -2,50 +2,34 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../data/story_feed_providers.dart';
 
-class _StorySlide {
-  const _StorySlide({
-    required this.contentHint,
-    required this.timeAgo,
-  });
-
-  final String contentHint;
-  final String timeAgo;
-}
-
-class StoryViewerScreen extends StatefulWidget {
+class StoryViewerScreen extends ConsumerStatefulWidget {
   const StoryViewerScreen({
     super.key,
-    required this.authorName,
-    this.authorHandle,
+    required this.authorUserId,
   });
 
-  final String authorName;
-  final String? authorHandle;
+  final String authorUserId;
 
   @override
-  State<StoryViewerScreen> createState() => _StoryViewerScreenState();
+  ConsumerState<StoryViewerScreen> createState() => _StoryViewerScreenState();
 }
 
-class _StoryViewerScreenState extends State<StoryViewerScreen>
+class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
     with SingleTickerProviderStateMixin {
   static const _autoAdvanceDuration = Duration(seconds: 5);
 
   final _replyController = TextEditingController();
   final _replyFocusNode = FocusNode();
 
-  final _slides = const <_StorySlide>[
-    _StorySlide(contentHint: 'Photo moment', timeAgo: '12m ago'),
-    _StorySlide(contentHint: 'Text update', timeAgo: '45m ago'),
-    _StorySlide(contentHint: 'Video clip', timeAgo: '2h ago'),
-  ];
-
   int _currentIndex = 0;
   late AnimationController _progressController;
-  Timer? _autoAdvanceTimer;
+  String? _lastMarkedViewId;
 
   @override
   void initState() {
@@ -58,19 +42,35 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
           _goNext();
         }
       });
-    _startAutoAdvance();
   }
 
-  void _startAutoAdvance() {
-    _progressController.forward(from: 0);
+  @override
+  void dispose() {
+    _progressController.dispose();
+    _replyController.dispose();
+    _replyFocusNode.dispose();
+    super.dispose();
+  }
+
+  List<StoryFeedEntry> _slidesFor(List<StoryFeedEntry> feed) {
+    return feed.where((s) => s.userId == widget.authorUserId).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
+  void _restartProgress() {
+    _progressController
+      ..stop()
+      ..reset()
+      ..forward();
   }
 
   void _goNext() {
-    if (_currentIndex < _slides.length - 1) {
+    final feed = ref.read(storyFeedProvider).value ?? const [];
+    final slides = _slidesFor(feed);
+    if (_currentIndex < slides.length - 1) {
       setState(() => _currentIndex++);
-      _startAutoAdvance();
+      _restartProgress();
     } else {
-      // Last slide - close viewer
       if (mounted) Navigator.of(context).pop();
     }
   }
@@ -78,7 +78,9 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
   void _goPrevious() {
     if (_currentIndex > 0) {
       setState(() => _currentIndex--);
-      _startAutoAdvance();
+      _restartProgress();
+    } else {
+      _restartProgress();
     }
   }
 
@@ -105,202 +107,313 @@ class _StoryViewerScreenState extends State<StoryViewerScreen>
     );
   }
 
-  @override
-  void dispose() {
-    _autoAdvanceTimer?.cancel();
-    _progressController.dispose();
-    _replyController.dispose();
-    _replyFocusNode.dispose();
-    super.dispose();
+  String _shortTimeAgo(DateTime createdAt) {
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${diff.inDays}d ago';
+  }
+
+  void _syncViewTracking(StoryFeedEntry currentStory) {
+    if (_lastMarkedViewId == currentStory.id) return;
+    _lastMarkedViewId = currentStory.id;
+    unawaited(markStoryViewed(ref, currentStory.id));
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
-    final slide = _slides[_currentIndex];
-    final avatarGlyph = widget.authorName.isNotEmpty
-        ? widget.authorName.characters.first.toUpperCase()
-        : '?';
+    final feedAsync = ref.watch(storyFeedProvider);
 
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return GestureDetector(
-              onTapUp: (details) => _handleTap(details, constraints),
-              child: Column(
-                children: [
-                  // Progress bars
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      VeilSpace.sm,
-                      VeilSpace.sm,
-                      VeilSpace.sm,
-                      0,
-                    ),
-                    child: Row(
-                      children: List.generate(_slides.length, (i) {
-                        return Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              left: i > 0 ? 3 : 0,
-                            ),
-                            child: _SegmentedProgressBar(
-                              controller: i == _currentIndex
-                                  ? _progressController
-                                  : null,
-                              filled: i < _currentIndex,
-                            ),
-                          ),
-                        );
-                      }),
-                    ),
+        child: feedAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Center(
+            child: Padding(
+              padding: const EdgeInsets.all(VeilSpace.lg),
+              child: VeilInlineBanner(
+                title: 'Unable to load stories',
+                message: error.toString(),
+                tone: VeilBannerTone.danger,
+              ),
+            ),
+          ),
+          data: (feed) {
+            final slides = _slidesFor(feed);
+            if (slides.isEmpty) {
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(VeilSpace.lg),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.amp_stories_outlined,
+                        size: 64,
+                        color: palette.textSubtle,
+                      ),
+                      const SizedBox(height: VeilSpace.md),
+                      Text(
+                        'No stories from this user',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: VeilSpace.sm),
+                      VeilButton(
+                        label: 'Close',
+                        icon: Icons.close_rounded,
+                        tone: VeilButtonTone.secondary,
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
                   ),
+                ),
+              );
+            }
 
-                  const SizedBox(height: VeilSpace.sm),
+            if (_currentIndex >= slides.length) {
+              _currentIndex = slides.length - 1;
+            }
+            final slide = slides[_currentIndex];
+            _syncViewTracking(slide);
+            if (!_progressController.isAnimating &&
+                _progressController.value == 0) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _progressController.forward();
+              });
+            }
 
-                  // Author row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: VeilSpace.lg,
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: palette.primarySoft,
-                            border: Border.all(color: palette.stroke),
-                          ),
-                          child: Text(
-                            avatarGlyph,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              color: palette.primary,
-                            ),
-                          ),
+            final authorLabel = slide.displayName?.isNotEmpty == true
+                ? slide.displayName!
+                : '@${slide.handle}';
+            final avatarGlyph = authorLabel.isNotEmpty
+                ? authorLabel.replaceAll('@', '').characters.first.toUpperCase()
+                : '?';
+
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                return GestureDetector(
+                  onTapUp: (details) => _handleTap(details, constraints),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          VeilSpace.sm,
+                          VeilSpace.sm,
+                          VeilSpace.sm,
+                          0,
                         ),
-                        const SizedBox(width: VeilSpace.sm),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.authorName,
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              Text(
-                                slide.timeAgo,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: palette.textSubtle,
+                        child: Row(
+                          children: List.generate(slides.length, (i) {
+                            return Expanded(
+                              child: Padding(
+                                padding: EdgeInsets.only(left: i > 0 ? 3 : 0),
+                                child: _SegmentedProgressBar(
+                                  controller: i == _currentIndex
+                                      ? _progressController
+                                      : null,
+                                  filled: i < _currentIndex,
                                 ),
                               ),
-                            ],
-                          ),
+                            );
+                          }),
                         ),
-                        IconButton(
-                          icon: Icon(
-                            Icons.close_rounded,
-                            color: palette.textMuted,
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(height: VeilSpace.sm),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: VeilSpace.lg,
                         ),
-                      ],
-                    ),
-                  ),
-
-                  // Story content area
-                  Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.all(VeilSpace.lg),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        borderRadius:
-                            BorderRadius.circular(VeilRadius.lg),
-                        color: palette.surfaceAlt,
-                        border: Border.all(color: palette.stroke),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            slide.contentHint.contains('Video')
-                                ? Icons.play_circle_outline_rounded
-                                : Icons.image_outlined,
-                            size: 56,
-                            color: palette.textSubtle,
-                          ),
-                          const SizedBox(height: VeilSpace.sm),
-                          Text(
-                            slide.contentHint,
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: palette.textMuted,
-                            ),
-                          ),
-                          const SizedBox(height: VeilSpace.xxs),
-                          Text(
-                            '${_currentIndex + 1} of ${_slides.length}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: palette.textSubtle,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  // Reply bar
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      VeilSpace.lg,
-                      0,
-                      VeilSpace.lg,
-                      VeilSpace.md,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _replyController,
-                            focusNode: _replyFocusNode,
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _sendReply(),
-                            decoration: const InputDecoration(
-                              hintText: 'Reply to story\u2026',
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: VeilSpace.lg,
-                                vertical: VeilSpace.sm,
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 36,
+                              height: 36,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: palette.primarySoft,
+                                border: Border.all(color: palette.stroke),
+                              ),
+                              child: Text(
+                                avatarGlyph,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  color: palette.primary,
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: VeilSpace.sm),
-                        SizedBox(
-                          width: 48,
-                          height: 48,
-                          child: IconButton(
-                            icon: Icon(
-                              Icons.send_rounded,
-                              color: palette.primary,
-                              size: VeilIconSize.md,
+                            const SizedBox(width: VeilSpace.sm),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    authorLabel,
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  Text(
+                                    _shortTimeAgo(slide.createdAt),
+                                    style:
+                                        theme.textTheme.bodySmall?.copyWith(
+                                      color: palette.textSubtle,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                            onPressed: _sendReply,
-                          ),
+                            IconButton(
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: palette.textMuted,
+                              ),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.all(VeilSpace.lg),
+                          padding: const EdgeInsets.all(VeilSpace.xl),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius:
+                                BorderRadius.circular(VeilRadius.lg),
+                            color: palette.surfaceAlt,
+                            border: Border.all(color: palette.stroke),
+                          ),
+                          child: _SlideContent(slide: slide),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          VeilSpace.lg,
+                          0,
+                          VeilSpace.lg,
+                          VeilSpace.md,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _replyController,
+                                focusNode: _replyFocusNode,
+                                textInputAction: TextInputAction.send,
+                                onSubmitted: (_) => _sendReply(),
+                                decoration: const InputDecoration(
+                                  hintText: 'Reply to story\u2026',
+                                  contentPadding: EdgeInsets.symmetric(
+                                    horizontal: VeilSpace.lg,
+                                    vertical: VeilSpace.sm,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: VeilSpace.sm),
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.send_rounded,
+                                  color: palette.primary,
+                                  size: VeilIconSize.md,
+                                ),
+                                onPressed: _sendReply,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         ),
       ),
     );
+  }
+}
+
+class _SlideContent extends StatelessWidget {
+  const _SlideContent({required this.slide});
+
+  final StoryFeedEntry slide;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    final theme = Theme.of(context);
+
+    switch (slide.contentType) {
+      case StoryContentKind.text:
+        final body = slide.caption?.isNotEmpty == true
+            ? slide.caption!
+            : 'Empty story';
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.format_quote_rounded,
+              size: 48,
+              color: palette.textSubtle,
+            ),
+            const SizedBox(height: VeilSpace.md),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                color: palette.text,
+              ),
+            ),
+          ],
+        );
+      case StoryContentKind.image:
+      case StoryContentKind.video:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              slide.contentType == StoryContentKind.video
+                  ? Icons.play_circle_outline_rounded
+                  : Icons.image_outlined,
+              size: 64,
+              color: palette.textSubtle,
+            ),
+            const SizedBox(height: VeilSpace.sm),
+            Text(
+              slide.contentType == StoryContentKind.video
+                  ? 'Video story'
+                  : 'Photo story',
+              style: theme.textTheme.titleMedium?.copyWith(
+                color: palette.textMuted,
+              ),
+            ),
+            if (slide.caption != null && slide.caption!.isNotEmpty) ...[
+              const SizedBox(height: VeilSpace.xs),
+              Text(
+                slide.caption!,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: palette.textMuted,
+                ),
+              ),
+            ],
+            const SizedBox(height: VeilSpace.md),
+            Text(
+              'Media rendering not yet connected',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette.textSubtle,
+              ),
+            ),
+          ],
+        );
+    }
   }
 }
 

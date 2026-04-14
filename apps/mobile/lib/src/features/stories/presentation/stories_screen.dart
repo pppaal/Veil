@@ -1,14 +1,115 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/story_feed_providers.dart';
 
-class StoriesScreen extends ConsumerWidget {
+class StoriesScreen extends ConsumerStatefulWidget {
   const StoriesScreen({super.key});
+
+  @override
+  ConsumerState<StoriesScreen> createState() => _StoriesScreenState();
+}
+
+class _StoriesScreenState extends ConsumerState<StoriesScreen> {
+  bool _posting = false;
+
+  Future<void> _showCreateTextStorySheet() async {
+    HapticFeedback.selectionClick();
+    final textController = TextEditingController();
+    final palette = context.veilPalette;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(VeilSpace.lg),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'New text story',
+                    style: Theme.of(sheetContext).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: VeilSpace.xs),
+                  Text(
+                    'Text stories disappear after 24 hours. No media capture needed.',
+                    style:
+                        Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
+                              color: palette.textSubtle,
+                            ),
+                  ),
+                  const SizedBox(height: VeilSpace.lg),
+                  TextField(
+                    controller: textController,
+                    autofocus: true,
+                    maxLines: 4,
+                    maxLength: 280,
+                    decoration: const InputDecoration(
+                      hintText: 'What is going on?',
+                    ),
+                  ),
+                  const SizedBox(height: VeilSpace.md),
+                  StatefulBuilder(
+                    builder: (builderContext, setLocalState) {
+                      return VeilButton(
+                        label: _posting ? 'Posting\u2026' : 'Post story',
+                        icon: Icons.send_rounded,
+                        tone: VeilButtonTone.primary,
+                        onPressed: _posting
+                            ? null
+                            : () async {
+                                final body = textController.text.trim();
+                                if (body.isEmpty) return;
+                                setLocalState(() => _posting = true);
+                                final result = await createTextStory(
+                                  ref,
+                                  body: body,
+                                );
+                                setLocalState(() => _posting = false);
+                                if (!sheetContext.mounted) return;
+                                if (result.success) {
+                                  Navigator.of(sheetContext).pop();
+                                  if (mounted) {
+                                    VeilToast.show(
+                                      context,
+                                      message: 'Story posted',
+                                      tone: VeilBannerTone.good,
+                                    );
+                                  }
+                                } else {
+                                  VeilToast.show(
+                                    sheetContext,
+                                    message: result.errorMessage ??
+                                        'Failed to post story',
+                                    tone: VeilBannerTone.danger,
+                                  );
+                                }
+                              },
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    textController.dispose();
+  }
 
   String _shortTimeAgo(DateTime createdAt) {
     final diff = DateTime.now().difference(createdAt);
@@ -35,7 +136,7 @@ class StoriesScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
     final storiesAsync = ref.watch(storyFeedProvider);
@@ -91,15 +192,7 @@ class StoriesScreen extends ConsumerWidget {
                         _StoryCircle(
                           label: 'My Story',
                           isAddButton: true,
-                          onTap: () {
-                            HapticFeedback.selectionClick();
-                            VeilToast.show(
-                              context,
-                              message:
-                                  'Story creation requires media capture',
-                              tone: VeilBannerTone.warn,
-                            );
-                          },
+                          onTap: _showCreateTextStorySheet,
                         ),
                       ],
                     ),
@@ -139,11 +232,7 @@ class StoriesScreen extends ConsumerWidget {
                             hasSeen: author.viewedByMe,
                             onTap: () {
                               HapticFeedback.selectionClick();
-                              VeilToast.show(
-                                context,
-                                message: 'Story viewer not yet connected',
-                                tone: VeilBannerTone.info,
-                              );
+                              context.push('/story-viewer/${author.userId}');
                             },
                           );
                         },
@@ -173,7 +262,13 @@ class StoriesScreen extends ConsumerWidget {
                           ? '?'
                           : authorLabel.characters.first.toUpperCase();
 
-                      return VeilSurfaceCard(
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(VeilRadius.lg),
+                        onTap: () {
+                          HapticFeedback.selectionClick();
+                          context.push('/story-viewer/${story.userId}');
+                        },
+                        child: VeilSurfaceCard(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -275,6 +370,7 @@ class StoriesScreen extends ConsumerWidget {
                               ),
                             ),
                           ],
+                        ),
                         ),
                       );
                     },

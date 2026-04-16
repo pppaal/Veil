@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../../app/app_state.dart';
 import '../data/contacts_providers.dart';
 
 class ContactsScreen extends ConsumerStatefulWidget {
@@ -210,27 +212,30 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       label: 'Start chat',
                       icon: Icons.chat_bubble_outline_rounded,
                       tone: VeilButtonTone.primary,
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.of(sheetContext).pop();
-                        VeilToast.show(
-                          context,
-                          message:
-                              'Starting conversation with ${contact.label}',
-                          tone: VeilBannerTone.info,
-                        );
+                        final conversationId = await ref
+                            .read(messengerControllerProvider)
+                            .startConversationByHandle(contact.handle);
+                        if (!mounted) return;
+                        if (conversationId != null) {
+                          context.push('/chat/$conversationId');
+                        } else {
+                          VeilToast.show(
+                            context,
+                            message: 'Could not start conversation',
+                            tone: VeilBannerTone.warn,
+                          );
+                        }
                       },
                     ),
                     VeilButton(
                       label: 'View profile',
                       icon: Icons.person_outline_rounded,
                       tone: VeilButtonTone.secondary,
-                      onPressed: () {
+                      onPressed: () async {
                         Navigator.of(sheetContext).pop();
-                        VeilToast.show(
-                          context,
-                          message: 'Contact profiles not yet available',
-                          tone: VeilBannerTone.info,
-                        );
+                        await _showPublicProfile(contact);
                       },
                     ),
                     VeilButton(
@@ -403,6 +408,116 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _showPublicProfile(ContactEntry contact) async {
+    final profile = await ref
+        .read(contactsControllerProvider)
+        .fetchPublicProfile(contact.handle);
+    if (!mounted) return;
+
+    final palette = context.veilPalette;
+    final displayName =
+        (profile?['displayName'] as String?) ?? contact.displayName;
+    final bio = profile?['bio'] as String?;
+    final statusMessage = profile?['statusMessage'] as String?;
+    final statusEmoji = profile?['statusEmoji'] as String?;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(VeilSpace.lg),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 28,
+                      backgroundColor: palette.surfaceAlt,
+                      child: Text(
+                        (displayName ?? contact.handle)
+                            .substring(0, 1)
+                            .toUpperCase(),
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: palette.primary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: VeilSpace.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName ?? contact.handle,
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            '@${contact.handle}',
+                            style: Theme.of(sheetContext)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(color: palette.textSubtle),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (statusMessage != null && statusMessage.isNotEmpty) ...[
+                  const SizedBox(height: VeilSpace.md),
+                  Row(
+                    children: [
+                      if (statusEmoji != null && statusEmoji.isNotEmpty) ...[
+                        Text(statusEmoji, style: const TextStyle(fontSize: 16)),
+                        const SizedBox(width: VeilSpace.xs),
+                      ],
+                      Expanded(
+                        child: Text(
+                          statusMessage,
+                          style: Theme.of(sheetContext)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(color: palette.textMuted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (bio != null && bio.isNotEmpty) ...[
+                  const SizedBox(height: VeilSpace.md),
+                  Text(
+                    bio,
+                    style: Theme.of(sheetContext).textTheme.bodyMedium,
+                  ),
+                ],
+                if (contact.nickname != null &&
+                    contact.nickname!.isNotEmpty) ...[
+                  const SizedBox(height: VeilSpace.sm),
+                  Text(
+                    'Your nickname: ${contact.nickname}',
+                    style: Theme.of(sheetContext)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: palette.textSubtle),
+                  ),
+                ],
+                const SizedBox(height: VeilSpace.lg),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

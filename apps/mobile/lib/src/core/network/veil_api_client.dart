@@ -145,6 +145,13 @@ class VeilApiClient {
     return _patch('/profile', body, accessToken: accessToken);
   }
 
+  Future<Map<String, dynamic>> getPublicProfile(
+    String accessToken,
+    String handle,
+  ) async {
+    return _get('/profile/$handle', accessToken: accessToken);
+  }
+
   Future<List<dynamic>> getContacts(String accessToken) async {
     final response = await _client.get(
       Uri.parse('$baseUrl/contacts'),

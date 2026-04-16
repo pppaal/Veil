@@ -131,6 +131,16 @@ class ContactsController extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, dynamic>?> fetchPublicProfile(String handle) async {
+    final token = _accessToken;
+    if (token == null) return null;
+    try {
+      return await apiClient.getPublicProfile(token, handle);
+    } catch (_) {
+      return null;
+    }
+  }
+
   void clearError() {
     if (_errorMessage == null) return;
     _errorMessage = null;

@@ -227,15 +227,19 @@ class VeilMessengerController extends ChangeNotifier {
     );
   }
 
-  Future<void> startConversationByHandle(String handle) async {
+  Future<String?> startConversationByHandle(String handle) async {
+    String? conversationId;
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
         throw StateError('Authenticated API session required.');
       }
 
-      await _apiClient.createDirectConversation(_session.accessToken!, handle);
+      final result = await _apiClient.createDirectConversation(_session.accessToken!, handle);
+      final conversation = result['conversation'] as Map<String, dynamic>?;
+      conversationId = conversation?['id'] as String?;
       await _refreshConversationsCore();
     });
+    return conversationId;
   }
 
   Future<void> createGroup({

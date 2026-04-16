@@ -7,7 +7,7 @@ export const envSchema = z.object({
   VEIL_REDIS_URL: z.string().url().optional(),
   VEIL_ALLOWED_ORIGINS: z.string().optional(),
   VEIL_TRUST_PROXY: z.coerce.boolean().default(false),
-  VEIL_ENABLE_SWAGGER: z.coerce.boolean().default(true),
+  VEIL_ENABLE_SWAGGER: z.coerce.boolean().default(false),
   VEIL_PUSH_PROVIDER: z.enum(['none', 'apns', 'fcm']).default('none'),
   VEIL_PUSH_ENABLE_DELIVERY: z.coerce.boolean().default(false),
   VEIL_APNS_BUNDLE_ID: z.string().optional(),

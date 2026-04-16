@@ -140,10 +140,10 @@ describe('MessagesService', () => {
       hint: expect.objectContaining({
         kind: 'message.new',
         conversationId: 'conv-1',
-        senderDeviceId: 'device-a',
       }),
     });
     expect(JSON.stringify(push.sentHints[0]!.hint)).not.toContain('opaque-ciphertext');
+    expect(JSON.stringify(push.sentHints[0]!.hint)).not.toContain('senderDeviceId');
   });
 
   it('skips push fallback when the recipient already has an active socket', async () => {

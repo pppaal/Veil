@@ -10,7 +10,6 @@ describe('PushService', () => {
     kind: 'message.new' as const,
     messageId: 'msg-1',
     conversationId: 'conv-1',
-    senderDeviceId: 'device-a',
     serverReceivedAt: new Date().toISOString(),
   };
 
@@ -55,7 +54,6 @@ describe('PushService', () => {
       kind: hint.kind,
       messageId: hint.messageId,
       conversationId: hint.conversationId,
-      senderDeviceId: hint.senderDeviceId,
       serverReceivedAt: hint.serverReceivedAt,
     });
     await expect(service.sendMessageHint('push-token', hint)).resolves.toBeUndefined();

@@ -28,8 +28,18 @@ async function bootstrap(): Promise<void> {
 
   app.use(
     helmet({
-      contentSecurityPolicy: false,
-      crossOriginEmbedderPolicy: false,
+      contentSecurityPolicy: config.isProduction
+        ? {
+            directives: {
+              defaultSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+            },
+          }
+        : false,
+      crossOriginEmbedderPolicy: config.isProduction,
+      hsts: config.isProduction
+        ? { maxAge: 63_072_000, includeSubDomains: true, preload: true }
+        : false,
     }),
   );
   app.enableCors({

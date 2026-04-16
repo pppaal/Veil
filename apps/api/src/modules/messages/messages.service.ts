@@ -487,7 +487,6 @@ export class MessagesService {
         kind: 'message.new',
         messageId: summary.id,
         conversationId: summary.conversationId,
-        senderDeviceId: summary.senderDeviceId,
         serverReceivedAt: summary.serverReceivedAt,
       });
     }

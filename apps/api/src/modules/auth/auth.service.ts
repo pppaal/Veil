@@ -153,7 +153,7 @@ export class AuthService {
     if (
       !stored ||
       stored.deviceId !== dto.deviceId ||
-      activeChallengeId != dto.challengeId
+      activeChallengeId !== dto.challengeId
     ) {
       throw unauthorized('challenge_invalid', 'Challenge expired or invalid');
     }

@@ -2,7 +2,6 @@ export interface MessagePushHint {
   kind: 'message.new';
   messageId: string;
   conversationId: string;
-  senderDeviceId: string;
   serverReceivedAt: string;
 }
 

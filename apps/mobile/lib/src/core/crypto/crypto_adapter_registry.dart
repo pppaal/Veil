@@ -1,6 +1,6 @@
 import 'crypto_engine.dart';
-import 'mock_crypto_engine.dart';
+import 'lib_crypto_adapter.dart' as lib_adapter;
 
 CryptoAdapter createConfiguredCryptoAdapter() {
-  return createDefaultCryptoAdapter();
+  return lib_adapter.createDefaultCryptoAdapter();
 }

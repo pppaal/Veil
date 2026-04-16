@@ -930,6 +930,15 @@ class VeilMessengerController extends ChangeNotifier {
             }
             _scheduleSyncAfterRealtimeHint(conversationId: message.envelope.conversationId);
             break;
+          case 'message.reaction':
+            final data = payload as Map<String, dynamic>;
+            _applyReactionEvent(
+              messageId: data['messageId'] as String,
+              userId: data['userId'] as String,
+              emoji: (data['emoji'] as String?) ?? '',
+              action: (data['action'] as String?) ?? 'add',
+            );
+            break;
           case 'conversation.sync':
             final data = payload as Map<String, dynamic>;
             _scheduleSyncAfterRealtimeHint(conversationId: data['conversationId'] as String?);
@@ -1114,6 +1123,131 @@ class VeilMessengerController extends ChangeNotifier {
       deliveredAt: _laterOf(existing?.deliveredAt, deliveredAt),
       readAt: _laterOf(existing?.readAt, readAt),
     );
+  }
+
+  void _applyReactionEvent({
+    required String messageId,
+    required String userId,
+    required String emoji,
+    required String action,
+  }) {
+    for (final entry in _messagesByConversation.entries) {
+      var changed = false;
+      final updated = entry.value.map((message) {
+        if (message.id != messageId) {
+          return message;
+        }
+        final next = _mergeReaction(
+          current: message.reactions,
+          messageId: messageId,
+          userId: userId,
+          emoji: emoji,
+          action: action,
+          sentAt: message.sentAt,
+        );
+        if (identical(next, message.reactions)) {
+          return message;
+        }
+        changed = true;
+        return message.copyWith(reactions: next);
+      }).toList();
+
+      if (changed) {
+        _messagesByConversation[entry.key] = updated;
+        unawaited(_persistConversationState(entry.key));
+        notifyListeners();
+        return;
+      }
+    }
+  }
+
+  List<Reaction> _mergeReaction({
+    required List<Reaction> current,
+    required String messageId,
+    required String userId,
+    required String emoji,
+    required String action,
+    required DateTime sentAt,
+  }) {
+    final withoutUser = current.where((r) => r.userId != userId).toList();
+    if (action == 'remove' || emoji.isEmpty) {
+      if (withoutUser.length == current.length) {
+        return current;
+      }
+      return withoutUser;
+    }
+    withoutUser.add(
+      Reaction(
+        messageId: messageId,
+        userId: userId,
+        emoji: emoji,
+        createdAt: DateTime.now(),
+      ),
+    );
+    return withoutUser;
+  }
+
+  Future<void> toggleReaction(ChatMessage message, String emoji) async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      return;
+    }
+    final accessToken = _session.accessToken;
+    if (accessToken == null) {
+      return;
+    }
+    final myUserId = _session.userId;
+    if (myUserId == null) {
+      return;
+    }
+
+    final existingMine = message.reactions.firstWhere(
+      (r) => r.userId == myUserId,
+      orElse: () => Reaction(
+        messageId: message.id,
+        userId: myUserId,
+        emoji: '',
+        createdAt: DateTime.now(),
+      ),
+    );
+    final isRemoval = existingMine.emoji == emoji;
+    final previous = message.reactions;
+
+    _applyReactionEvent(
+      messageId: message.id,
+      userId: myUserId,
+      emoji: isRemoval ? '' : emoji,
+      action: isRemoval ? 'remove' : 'add',
+    );
+
+    try {
+      if (isRemoval) {
+        await _apiClient.removeReaction(accessToken, message.id);
+      } else {
+        await _apiClient.addReaction(accessToken, message.id, emoji);
+      }
+    } catch (error) {
+      _restoreReactionsForMessage(message.id, previous);
+      _errorMessage = 'Reaction failed: $error';
+      notifyListeners();
+    }
+  }
+
+  void _restoreReactionsForMessage(String messageId, List<Reaction> previous) {
+    for (final entry in _messagesByConversation.entries) {
+      var changed = false;
+      final updated = entry.value.map((message) {
+        if (message.id != messageId) {
+          return message;
+        }
+        changed = true;
+        return message.copyWith(reactions: previous);
+      }).toList();
+      if (changed) {
+        _messagesByConversation[entry.key] = updated;
+        notifyListeners();
+        return;
+      }
+    }
   }
 
   void _noteTransientRelayInterruption() {
@@ -1722,11 +1856,13 @@ class VeilMessengerController extends ChangeNotifier {
         ? null
         : DateTime.parse(raw['deliveredAt'] as String);
     final readAt = raw['readAt'] == null ? null : DateTime.parse(raw['readAt'] as String);
+    final messageId = raw['id'] as String;
+    final sentAt = DateTime.parse(raw['serverReceivedAt'] as String);
     return ChatMessage(
-      id: raw['id'] as String,
+      id: messageId,
       clientMessageId: raw['clientMessageId'] as String?,
       senderDeviceId: raw['senderDeviceId'] as String,
-      sentAt: DateTime.parse(raw['serverReceivedAt'] as String),
+      sentAt: sentAt,
       envelope: _envelopeFromApi(raw),
       conversationOrder: raw['conversationOrder'] as int?,
       deliveryState: readAt != null
@@ -1738,7 +1874,38 @@ class VeilMessengerController extends ChangeNotifier {
       readAt: readAt,
       expiresAt: raw['expiresAt'] == null ? null : DateTime.parse(raw['expiresAt'] as String),
       isMine: raw['senderDeviceId'] == _session.deviceId,
+      reactions: _reactionsFromApi(messageId, raw['reactions'], sentAt),
     );
+  }
+
+  List<Reaction> _reactionsFromApi(
+    String messageId,
+    Object? raw,
+    DateTime fallbackCreatedAt,
+  ) {
+    if (raw is! List) {
+      return const <Reaction>[];
+    }
+    final parsed = <Reaction>[];
+    for (final entry in raw) {
+      if (entry is! Map) {
+        continue;
+      }
+      final userId = entry['userId'];
+      final emoji = entry['emoji'];
+      if (userId is! String || emoji is! String || emoji.isEmpty) {
+        continue;
+      }
+      parsed.add(
+        Reaction(
+          messageId: messageId,
+          userId: userId,
+          emoji: emoji,
+          createdAt: fallbackCreatedAt,
+        ),
+      );
+    }
+    return parsed;
   }
 
   CryptoEnvelope _envelopeFromApi(Map<String, dynamic> raw) {

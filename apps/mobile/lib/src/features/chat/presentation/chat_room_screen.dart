@@ -15,6 +15,7 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
+import '../../reactions/presentation/reaction_picker_widget.dart';
 import 'message_expiration.dart';
 
 class ChatRoomScreen extends ConsumerStatefulWidget {
@@ -544,10 +545,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               .retryPendingMessages(widget.conversationId)
           : null,
     );
+    final reactive = GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onLongPress: () => _showReactionPicker(message),
+      child: bubble,
+    );
+    final bubbleWithReactions = message.reactions.isEmpty
+        ? reactive
+        : Column(
+            crossAxisAlignment: message.isMine
+                ? CrossAxisAlignment.end
+                : CrossAxisAlignment.start,
+            children: [
+              reactive,
+              const SizedBox(height: VeilSpace.xs),
+              _ReactionChipsRow(
+                message: message,
+                myUserId: ref.watch(appSessionProvider).userId,
+                onChipTap: (emoji) => controller.toggleReaction(message, emoji),
+              ),
+            ],
+          );
     final keyedBubble = RepaintBoundary(
       child: KeyedSubtree(
         key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
-        child: bubble,
+        child: bubbleWithReactions,
       ),
     );
 
@@ -748,6 +770,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       }
       setState(() => _highlightedMessageId = null);
     });
+  }
+
+  Future<void> _showReactionPicker(ChatMessage message) async {
+    if (message.envelope.messageKind == MessageKind.system) {
+      return;
+    }
+    HapticFeedback.selectionClick();
+    final controller = ref.read(messengerControllerProvider);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(VeilSpace.md),
+            child: ReactionPickerWidget(
+              onReactionSelected: (emoji) {
+                Navigator.of(sheetContext).pop();
+                controller.toggleReaction(message, emoji);
+              },
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -1458,5 +1505,107 @@ class _AttachmentTransferPanel extends StatelessWidget {
       AttachmentTransferPhase.canceled =>
         'Upload stopped on this device. Retry will request a fresh ticket and reuse the local blob.',
     };
+  }
+}
+
+class _ReactionChipsRow extends StatelessWidget {
+  const _ReactionChipsRow({
+    required this.message,
+    required this.myUserId,
+    required this.onChipTap,
+  });
+
+  final ChatMessage message;
+  final String? myUserId;
+  final ValueChanged<String> onChipTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    final grouped = <String, List<Reaction>>{};
+    for (final reaction in message.reactions) {
+      grouped.putIfAbsent(reaction.emoji, () => []).add(reaction);
+    }
+    if (grouped.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final entries = grouped.entries.toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+
+    return Wrap(
+      spacing: VeilSpace.xs,
+      runSpacing: VeilSpace.xs,
+      children: [
+        for (final entry in entries)
+          _ReactionChip(
+            emoji: entry.key,
+            count: entry.value.length,
+            mine: myUserId != null &&
+                entry.value.any((reaction) => reaction.userId == myUserId),
+            palette: palette,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onChipTap(entry.key);
+            },
+          ),
+      ],
+    );
+  }
+}
+
+class _ReactionChip extends StatelessWidget {
+  const _ReactionChip({
+    required this.emoji,
+    required this.count,
+    required this.mine,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final String emoji;
+  final int count;
+  final bool mine;
+  final VeilPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final background = mine ? palette.primarySoft : palette.surfaceAlt;
+    final border = mine ? palette.primary : palette.stroke;
+    final textColor = mine ? palette.primaryStrong : palette.textMuted;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(VeilRadius.pill),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: VeilSpace.sm,
+            vertical: VeilSpace.xs,
+          ),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(VeilRadius.pill),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 14)),
+              const SizedBox(width: 4),
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: textColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

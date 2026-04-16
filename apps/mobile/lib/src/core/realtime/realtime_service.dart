@@ -39,6 +39,7 @@ class RealtimeService {
       'message.new',
       'message.delivered',
       'message.read',
+      'message.reaction',
       'presence.update',
       'conversation.sync',
     ]) {

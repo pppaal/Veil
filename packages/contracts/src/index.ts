@@ -92,6 +92,11 @@ export interface CreateDirectConversationResponse {
   conversation: ConversationSummary;
 }
 
+export interface MessageReactionSummary {
+  userId: string;
+  emoji: string;
+}
+
 export interface ConversationMessageSummary {
   id: string;
   clientMessageId?: string | null;
@@ -107,6 +112,7 @@ export interface ConversationMessageSummary {
   deletedAt?: string | null;
   deliveredAt?: string | null;
   readAt?: string | null;
+  reactions?: MessageReactionSummary[];
 }
 
 export interface ListMessagesResponse {

@@ -360,6 +360,7 @@ export class MessagesService {
     serverReceivedAt: Date;
     deletedAt: Date | null;
     receipts?: Array<{ deliveredAt: Date | null; readAt: Date | null }>;
+    reactions?: Array<{ userId: string; emoji: string }>;
   }): ConversationMessageSummary {
     const receipt = message.receipts?.[0];
     return {
@@ -377,6 +378,10 @@ export class MessagesService {
       deletedAt: message.deletedAt?.toISOString() ?? null,
       deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
       readAt: receipt?.readAt?.toISOString() ?? null,
+      reactions: (message.reactions ?? []).map((reaction) => ({
+        userId: reaction.userId,
+        emoji: reaction.emoji,
+      })),
     };
   }
 

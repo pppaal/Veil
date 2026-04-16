@@ -22,6 +22,11 @@ type HydratedReceipt = {
   readAt: Date | null;
 };
 
+type HydratedReaction = {
+  userId: string;
+  emoji: string;
+};
+
 type HydratedMessage = {
   id: string;
   clientMessageId: string;
@@ -37,6 +42,7 @@ type HydratedMessage = {
   attachmentRef?: unknown;
   senderDevice: { userId: string };
   receipts: HydratedReceipt[];
+  reactions: HydratedReaction[];
 };
 
 @Injectable()
@@ -204,6 +210,9 @@ export class ConversationsService {
           select: { userId: true },
         },
         receipts: true,
+        reactions: {
+          select: { userId: true, emoji: true },
+        },
       },
     })) as HydratedMessage[];
 
@@ -284,6 +293,9 @@ export class ConversationsService {
           select: { userId: true },
         },
         receipts: true,
+        reactions: {
+          select: { userId: true, emoji: true },
+        },
       },
     };
   }
@@ -405,6 +417,10 @@ export class ConversationsService {
       deletedAt: message.deletedAt?.toISOString() ?? null,
       deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
       readAt: receipt?.readAt?.toISOString() ?? null,
+      reactions: message.reactions.map((reaction) => ({
+        userId: reaction.userId,
+        emoji: reaction.emoji,
+      })),
     };
   }
 

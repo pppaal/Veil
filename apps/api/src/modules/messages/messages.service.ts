@@ -82,6 +82,11 @@ export class MessagesService {
       }
     }
 
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: dto.conversationId },
+      select: { type: true },
+    });
+
     const members = await this.prisma.conversationMember.findMany({
       where: { conversationId: dto.conversationId },
       select: { userId: true },
@@ -91,11 +96,13 @@ export class MessagesService {
       .map((member) => member.userId)
       .filter((userId) => userId !== auth.userId);
 
-    if (
-      recipientUserIds.length !== 1 ||
-      dto.envelope.recipientUserId !== recipientUserIds[0]
-    ) {
-      throw forbidden('direct_peer_mismatch', 'Envelope recipient does not match direct conversation peer');
+    if (conversation?.type === 'direct') {
+      if (
+        recipientUserIds.length !== 1 ||
+        dto.envelope.recipientUserId !== recipientUserIds[0]
+      ) {
+        throw forbidden('direct_peer_mismatch', 'Envelope recipient does not match direct conversation peer');
+      }
     }
 
     const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);

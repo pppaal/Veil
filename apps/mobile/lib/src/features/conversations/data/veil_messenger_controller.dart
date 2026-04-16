@@ -268,37 +268,33 @@ class VeilMessengerController extends ChangeNotifier {
     required String body,
     Duration? disappearAfter,
   }) async {
-    await _run(() async {
-      if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-        throw StateError('Authenticated API session required.');
-      }
-
-      final conversation = _conversations.firstWhere((item) => item.id == conversationId);
-      final bundle = await _fetchPeerBundle(conversation.peerHandle);
-      final clientMessageId = _nextClientMessageId();
-      final envelope = await _cryptoEngine.encryptMessage(
-        conversationId: conversationId,
-        senderDeviceId: _session.deviceId!,
-        recipientUserId: bundle.userId,
-        body: body,
-        messageKind: MessageKind.text,
-        recipientBundle: bundle,
-        expiresAt: disappearAfter == null ? null : DateTime.now().add(disappearAfter),
-      );
-
-      await _enqueuePendingMessage(
-        conversation: conversation,
-        clientMessageId: clientMessageId,
-        envelope: envelope,
-      );
-      unawaited(_drainOutbox(conversationId: conversationId));
-    });
+    await _sendEnvelope(
+      conversationId: conversationId,
+      body: body,
+      messageKind: MessageKind.text,
+      disappearAfter: disappearAfter,
+    );
   }
 
   Future<void> sendSystemNotice({
     required String conversationId,
     required String body,
     Duration? disappearAfter,
+  }) async {
+    await _sendEnvelope(
+      conversationId: conversationId,
+      body: body,
+      messageKind: MessageKind.system,
+      disappearAfter: disappearAfter,
+    );
+  }
+
+  Future<void> _sendEnvelope({
+    required String conversationId,
+    required String body,
+    required MessageKind messageKind,
+    Duration? disappearAfter,
+    AttachmentReference? attachment,
   }) async {
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
@@ -307,17 +303,23 @@ class VeilMessengerController extends ChangeNotifier {
 
       final conversation =
           _conversations.firstWhere((item) => item.id == conversationId);
-      final bundle = await _fetchPeerBundle(conversation.peerHandle);
+      final bundle = conversation.type == ConversationType.group
+          ? conversation.recipientBundle
+          : await _fetchPeerBundle(conversation.peerHandle);
+      final recipientUserId = conversation.type == ConversationType.group
+          ? ''
+          : bundle.userId;
       final clientMessageId = _nextClientMessageId();
       final envelope = await _cryptoEngine.encryptMessage(
         conversationId: conversationId,
         senderDeviceId: _session.deviceId!,
-        recipientUserId: bundle.userId,
+        recipientUserId: recipientUserId,
         body: body,
-        messageKind: MessageKind.system,
+        messageKind: messageKind,
         recipientBundle: bundle,
         expiresAt:
             disappearAfter == null ? null : DateTime.now().add(disappearAfter),
+        attachment: attachment,
       );
 
       await _enqueuePendingMessage(
@@ -341,10 +343,13 @@ class VeilMessengerController extends ChangeNotifier {
       final conversation = _conversations.firstWhere((item) => item.id == conversationId);
       final clientMessageId = _nextClientMessageId();
       final tempBlob = await _stageAttachmentBlob(filename: filename);
+      final recipientUserId = conversation.type == ConversationType.group
+          ? ''
+          : conversation.recipientBundle.userId;
       final envelope = await _cryptoEngine.encryptMessage(
         conversationId: conversationId,
         senderDeviceId: _session.deviceId!,
-        recipientUserId: conversation.recipientBundle.userId,
+        recipientUserId: recipientUserId,
         body: 'Encrypted attachment',
         messageKind: MessageKind.file,
         recipientBundle: conversation.recipientBundle,
@@ -1426,7 +1431,12 @@ class VeilMessengerController extends ChangeNotifier {
       canCancel: false,
     );
 
-    final bundle = await _fetchPeerBundle(conversation.peerHandle);
+    final bundle = conversation.type == ConversationType.group
+        ? conversation.recipientBundle
+        : await _fetchPeerBundle(conversation.peerHandle);
+    final recipientUserId = conversation.type == ConversationType.group
+        ? ''
+        : bundle.userId;
     final attachment = await _cryptoEngine.encryptAttachment(
       attachmentId: draft.attachmentId!,
       storageKey: draft.storageKey!,
@@ -1439,7 +1449,7 @@ class VeilMessengerController extends ChangeNotifier {
     final updatedEnvelope = await _cryptoEngine.encryptMessage(
       conversationId: pending.conversationId,
       senderDeviceId: pending.senderDeviceId,
-      recipientUserId: bundle.userId,
+      recipientUserId: recipientUserId,
       body: 'Encrypted attachment',
       messageKind: MessageKind.file,
       recipientBundle: bundle,

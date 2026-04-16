@@ -122,6 +122,7 @@ export class FakePrismaService {
   };
 
   conversation = {
+    findUnique: async (_args: any) => undefined as any,
     findMany: async (_args: any) => [] as any[],
     create: async (_args: any) => undefined as any,
   };
@@ -327,6 +328,14 @@ export class FakePrismaService {
       const record = this.devices.find((item) => item.id === where.id)!;
       Object.assign(record, data);
       return record;
+    };
+
+    this.conversation.findUnique = async ({ where, select }: any) => {
+      const record = this.conversations.find((item) => item.id === where.id);
+      if (!record) {
+        return null;
+      }
+      return select ? this.pick(record, select) : record;
     };
 
     this.conversation.findMany = async ({ where, include }: any) => {

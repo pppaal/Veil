@@ -15,6 +15,7 @@ import {
 
 import {
   DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
+  PROD_ATTACHMENT_WRAP_ALGORITHM_HINT,
   SUPPORTED_ENVELOPE_VERSIONS,
   messageTypes,
 } from '@veil/shared';
@@ -31,7 +32,7 @@ class AttachmentEncryptionMaterialDto {
   nonce!: string;
 
   @ApiProperty()
-  @IsIn([DEV_ATTACHMENT_WRAP_ALGORITHM_HINT])
+  @IsIn([DEV_ATTACHMENT_WRAP_ALGORITHM_HINT, PROD_ATTACHMENT_WRAP_ALGORITHM_HINT])
   algorithmHint!: string;
 }
 
@@ -79,9 +80,10 @@ class EnvelopeDto {
   @IsUUID()
   senderDeviceId!: string;
 
-  @ApiProperty()
+  @ApiProperty({ required: false })
+  @IsOptional()
   @IsUUID()
-  recipientUserId!: string;
+  recipientUserId?: string;
 
   @ApiProperty()
   @IsString()

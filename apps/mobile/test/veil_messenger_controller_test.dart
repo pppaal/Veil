@@ -1411,7 +1411,8 @@ class _FakeRealtimeService extends RealtimeService {
     _onConnectionChanged?.call(false);
   }
 
-  void emit(String event, dynamic payload) {
+  @override
+  void emit(String event, Map<String, dynamic> payload) {
     _onEvent?.call(event, payload);
   }
 

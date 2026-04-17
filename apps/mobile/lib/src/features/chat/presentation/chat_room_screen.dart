@@ -54,6 +54,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_handleSearchChanged);
+    _messageController.addListener(_handleComposerChanged);
     scheduleMicrotask(() => _loadConversationState());
     _securityEventSub = ref
         .read(platformSecurityServiceProvider)
@@ -215,6 +216,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           ttlLabel: _ttlLabel(),
           ttlActive: _messageTtl != null,
           onTapTtl: _pickDisappearTtl,
+          peerOnline: conversation != null &&
+              controller.isUserOnline(conversation.recipientBundle.userId),
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilMetricStrip(
@@ -320,6 +323,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             isLoadingHistory: isLoadingHistory,
             hasSearchQuery: hasSearchQuery,
           ),
+        ),
+        _TypingIndicator(
+          handle: controller.typingHandleFor(widget.conversationId),
         ),
         const SizedBox(height: VeilSpace.md),
         VeilComposer(
@@ -643,6 +649,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       const Duration(milliseconds: 180),
       () => unawaited(_runSearch()),
     );
+  }
+
+  void _handleComposerChanged() {
+    if (_messageController.text.trim().isNotEmpty) {
+      ref.read(messengerControllerProvider).notifyTyping(widget.conversationId);
+    }
   }
 
   Future<void> _runSearch() async {
@@ -976,6 +988,7 @@ class _ChatHeader extends StatelessWidget {
     required this.ttlLabel,
     required this.ttlActive,
     required this.onTapTtl,
+    this.peerOnline = false,
   });
 
   final bool embedded;
@@ -985,6 +998,7 @@ class _ChatHeader extends StatelessWidget {
   final String ttlLabel;
   final bool ttlActive;
   final VoidCallback onTapTtl;
+  final bool peerOnline;
 
   @override
   Widget build(BuildContext context) {
@@ -1001,16 +1015,37 @@ class _ChatHeader extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      embedded ? title : 'Secure conversation',
-                      style: Theme.of(context).textTheme.titleMedium,
+                    Row(
+                      children: [
+                        if (peerOnline) ...[
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF4CAF50),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: VeilSpace.xs),
+                        ],
+                        Expanded(
+                          child: Text(
+                            embedded ? title : 'Secure conversation',
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: VeilSpace.xxs),
                     Text(
-                      embedded
-                          ? 'Local search stays on this device. Message bodies remain opaque to the relay.'
-                          : 'Direct 1:1 exchange only. Message bodies remain opaque to the server and expire locally when configured.',
-                      style: Theme.of(context).textTheme.bodyMedium,
+                      peerOnline
+                          ? 'Online now'
+                          : embedded
+                              ? 'Local search stays on this device. Message bodies remain opaque to the relay.'
+                              : 'Direct 1:1 exchange only. Message bodies remain opaque to the server.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: peerOnline ? const Color(0xFF4CAF50) : null,
+                          ),
                     ),
                   ],
                 ),
@@ -1505,6 +1540,100 @@ class _AttachmentTransferPanel extends StatelessWidget {
       AttachmentTransferPhase.canceled =>
         'Upload stopped on this device. Retry will request a fresh ticket and reuse the local blob.',
     };
+  }
+}
+
+class _TypingIndicator extends StatelessWidget {
+  const _TypingIndicator({required this.handle});
+
+  final String? handle;
+
+  @override
+  Widget build(BuildContext context) {
+    if (handle == null || handle!.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(left: VeilSpace.md, top: VeilSpace.xs),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            height: 12,
+            child: _TypingDots(),
+          ),
+          const SizedBox(width: VeilSpace.xs),
+          Text(
+            '@$handle is typing',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurface
+                      .withValues(alpha: 0.5),
+                  fontStyle: FontStyle.italic,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TypingDots extends StatefulWidget {
+  @override
+  State<_TypingDots> createState() => _TypingDotsState();
+}
+
+class _TypingDotsState extends State<_TypingDots>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4);
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final delay = i * 0.2;
+            final t = (_controller.value - delay) % 1.0;
+            final scale = (t < 0.5 ? t : 1.0 - t) * 0.6 + 0.7;
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1),
+              child: Transform.scale(
+                scale: scale,
+                child: Container(
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
+    );
   }
 }
 

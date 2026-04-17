@@ -41,12 +41,18 @@ class RealtimeService {
       'message.read',
       'message.reaction',
       'presence.update',
+      'typing.start',
+      'typing.stop',
       'conversation.sync',
     ]) {
       _socket!.on(event, (payload) => onEvent(event, payload));
     }
 
     _socket!.connect();
+  }
+
+  void emit(String event, Map<String, dynamic> payload) {
+    _socket?.emit(event, payload);
   }
 
   void disconnect() {

@@ -91,6 +91,11 @@ class VeilMessengerController extends ChangeNotifier {
   DateTime? _transferExpiresAt;
   Timer? _syncHintDebounce;
   bool _syncAfterHintInFlight = false;
+  final Map<String, String> _typingByConversation = {};
+  Timer? _typingClearTimer;
+  Timer? _localTypingDebounce;
+  bool _localTypingActive = false;
+  final Set<String> _onlineUserIds = {};
 
   List<ConversationPreview> get conversations => _conversations;
   bool get isBusy => _isBusy;
@@ -105,6 +110,8 @@ class VeilMessengerController extends ChangeNotifier {
   String? get transferStatus => _transferStatus;
   DateTime? get transferExpiresAt => _transferExpiresAt;
   bool get hasPendingWork => _pendingByClientMessageId.isNotEmpty;
+  String? typingHandleFor(String conversationId) => _typingByConversation[conversationId];
+  bool isUserOnline(String userId) => _onlineUserIds.contains(userId);
   String? get transferPayload =>
       _transferSessionId == null || _transferToken == null
           ? null
@@ -263,11 +270,29 @@ class VeilMessengerController extends ChangeNotifier {
     });
   }
 
+  void notifyTyping(String conversationId) {
+    if (!_realtimeConnected) return;
+    if (!_localTypingActive) {
+      _localTypingActive = true;
+      _realtimeService.emit('typing.start', {'conversationId': conversationId});
+    }
+    _localTypingDebounce?.cancel();
+    _localTypingDebounce = Timer(const Duration(seconds: 3), () {
+      _localTypingActive = false;
+      _realtimeService.emit('typing.stop', {'conversationId': conversationId});
+    });
+  }
+
   Future<void> sendText({
     required String conversationId,
     required String body,
     Duration? disappearAfter,
   }) async {
+    _localTypingDebounce?.cancel();
+    if (_localTypingActive) {
+      _localTypingActive = false;
+      _realtimeService.emit('typing.stop', {'conversationId': conversationId});
+    }
     await _sendEnvelope(
       conversationId: conversationId,
       body: body,
@@ -947,6 +972,34 @@ class VeilMessengerController extends ChangeNotifier {
               emoji: (data['emoji'] as String?) ?? '',
               action: (data['action'] as String?) ?? 'add',
             );
+            break;
+          case 'typing.start':
+            final data = payload as Map<String, dynamic>;
+            final convId = data['conversationId'] as String;
+            final handle = data['handle'] as String? ?? '';
+            _typingByConversation[convId] = handle;
+            _typingClearTimer?.cancel();
+            _typingClearTimer = Timer(const Duration(seconds: 5), () {
+              _typingByConversation.remove(convId);
+              notifyListeners();
+            });
+            notifyListeners();
+            break;
+          case 'typing.stop':
+            final data = payload as Map<String, dynamic>;
+            _typingByConversation.remove(data['conversationId'] as String);
+            notifyListeners();
+            break;
+          case 'presence.update':
+            final data = payload as Map<String, dynamic>;
+            final userId = data['userId'] as String;
+            final status = data['status'] as String;
+            if (status == 'online') {
+              _onlineUserIds.add(userId);
+            } else {
+              _onlineUserIds.remove(userId);
+            }
+            notifyListeners();
             break;
           case 'conversation.sync':
             final data = payload as Map<String, dynamic>;
@@ -2069,6 +2122,8 @@ class VeilMessengerController extends ChangeNotifier {
     _expirationTicker?.cancel();
     _retryTicker?.cancel();
     _syncHintDebounce?.cancel();
+    _typingClearTimer?.cancel();
+    _localTypingDebounce?.cancel();
     for (final signal in _activeUploadSignals.values) {
       signal.cancel();
     }

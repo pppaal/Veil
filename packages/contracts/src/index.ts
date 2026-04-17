@@ -266,6 +266,8 @@ export interface RealtimeEventMap {
   'message.read': { messageId: string; userId: string; readAt: string };
   'message.reaction': { messageId: string; userId: string; emoji: string; action: 'add' | 'remove' };
   'presence.update': { userId: string; status: 'online' | 'offline'; updatedAt: string };
+  'typing.start': { conversationId: string; userId: string; handle: string };
+  'typing.stop': { conversationId: string; userId: string; handle: string };
   'conversation.sync': { conversationId: string; reason: 'message' | 'membership' | 'refresh' };
   'call.incoming': { callId: string; conversationId: string; callType: 'voice' | 'video'; initiatorHandle: string };
   'call.ended': { callId: string; conversationId: string; duration: number };

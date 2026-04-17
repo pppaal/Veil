@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import {
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
@@ -78,6 +79,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
       client.data.userId = payload.sub;
       client.data.deviceId = payload.deviceId;
+      client.data.handle = payload.handle;
 
       const existing = this.socketsByUserId.get(payload.sub) ?? new Set<string>();
       existing.add(client.id);
@@ -177,6 +179,62 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
 
     return [...connectedDeviceIds];
+  }
+
+  @SubscribeMessage('typing.start')
+  async handleTypingStart(client: Socket, payload: { conversationId: string }): Promise<void> {
+    const userId = client.data.userId as string | undefined;
+    const handle = client.data.handle as string | undefined;
+    if (!userId || !handle || !payload?.conversationId) return;
+
+    const members = await this.prisma.conversationMember.findMany({
+      where: { conversationId: payload.conversationId },
+      select: { userId: true },
+    });
+
+    for (const member of members) {
+      if (member.userId !== userId) {
+        this.emitToUser(member.userId, 'typing.start', {
+          conversationId: payload.conversationId,
+          userId,
+          handle,
+        });
+      }
+    }
+  }
+
+  @SubscribeMessage('typing.stop')
+  async handleTypingStop(client: Socket, payload: { conversationId: string }): Promise<void> {
+    const userId = client.data.userId as string | undefined;
+    const handle = client.data.handle as string | undefined;
+    if (!userId || !handle || !payload?.conversationId) return;
+
+    const members = await this.prisma.conversationMember.findMany({
+      where: { conversationId: payload.conversationId },
+      select: { userId: true },
+    });
+
+    for (const member of members) {
+      if (member.userId !== userId) {
+        this.emitToUser(member.userId, 'typing.stop', {
+          conversationId: payload.conversationId,
+          userId,
+          handle,
+        });
+      }
+    }
+  }
+
+  isUserOnline(userId: string): boolean {
+    return this.hasConnectedUser(userId);
+  }
+
+  onlineStatusForUsers(userIds: string[]): Map<string, boolean> {
+    const result = new Map<string, boolean>();
+    for (const userId of userIds) {
+      result.set(userId, this.hasConnectedUser(userId));
+    }
+    return result;
   }
 
   disconnectDevice(deviceId: string): void {

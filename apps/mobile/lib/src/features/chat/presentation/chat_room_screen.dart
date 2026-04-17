@@ -979,6 +979,31 @@ String _formatDurationLabel(Duration duration) {
   return '${duration.inSeconds} second(s)';
 }
 
+IconData _attachmentIcon(String contentType) {
+  if (contentType.startsWith('image/')) return Icons.image_rounded;
+  if (contentType.startsWith('video/')) return Icons.videocam_rounded;
+  if (contentType.startsWith('audio/')) return Icons.audiotrack_rounded;
+  if (contentType.contains('pdf')) return Icons.picture_as_pdf_rounded;
+  return Icons.insert_drive_file_rounded;
+}
+
+String _attachmentLabel(String contentType) {
+  if (contentType.startsWith('image/')) return 'Encrypted image';
+  if (contentType.startsWith('video/')) return 'Encrypted video';
+  if (contentType.startsWith('audio/')) return 'Encrypted audio';
+  if (contentType.contains('pdf')) return 'Encrypted document';
+  return 'Encrypted file';
+}
+
+String _formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  if (bytes < 1024 * 1024 * 1024) {
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+  return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+}
+
 class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.embedded,
@@ -1253,14 +1278,36 @@ class _MessageBubble extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Encrypted attachment',
-                                style: Theme.of(context).textTheme.titleSmall,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                '${decrypted!.attachment!.contentType} - ${decrypted.attachment!.sizeBytes} bytes',
-                                style: Theme.of(context).textTheme.bodyMedium,
+                              Row(
+                                children: [
+                                  Icon(
+                                    _attachmentIcon(decrypted!.attachment!.contentType),
+                                    size: 28,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _attachmentLabel(decrypted.attachment!.contentType),
+                                          style: Theme.of(context).textTheme.titleSmall,
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${_formatFileSize(decrypted.attachment!.sizeBytes)} · ${decrypted.attachment!.contentType}',
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withValues(alpha: 0.5),
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                               if (attachmentDownloadError != null) ...[
                                 const SizedBox(height: 10),
@@ -1435,9 +1482,22 @@ class _AttachmentTransferPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            snapshot.filename ?? 'Encrypted attachment',
-            style: theme.textTheme.titleSmall,
+          Row(
+            children: [
+              Icon(
+                _attachmentIcon(snapshot.contentType ?? 'application/octet-stream'),
+                size: 22,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  snapshot.filename ?? _attachmentLabel(snapshot.contentType ?? 'application/octet-stream'),
+                  style: theme.textTheme.titleSmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(

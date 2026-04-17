@@ -127,6 +127,26 @@ The composer should feel stable, deliberate, and operational.
 - The header should keep relay, search, and disappearance context visible without crowding the composer.
 - Local in-chat search should communicate that it is scanning cached device-local text, not the server.
 
+### Reactions
+
+- Long-press on a message bubble opens a reaction picker via modal bottom sheet.
+- Reaction chips display grouped below the message bubble as `_ReactionChipsRow`.
+- Each chip shows emoji + count. The current user's reactions are highlighted with accent color.
+- Tapping an existing reaction from the current user removes it (toggle behavior).
+- Reactions should feel restrained and functional, not playful.
+
+### Contacts
+
+- "Start chat" creates a direct conversation and navigates to the chat room.
+- "View profile" opens a bottom sheet showing the public profile fetched from `GET /profile/:handle`.
+- Contact list is local-first and device-scoped.
+
+### Group Chat
+
+- Group conversations display all members in the header.
+- Message send uses the group conversation's shared bundle (no per-peer key fetch).
+- Group management actions (leave, remove member) should use destructive notice patterns for irreversible operations.
+
 ### Settings / Security / Transfer
 
 - These screens are product philosophy surfaces.

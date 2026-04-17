@@ -23,15 +23,15 @@ The backend must never become a plaintext message processor.
 
 ## Mobile architecture
 
-- `CryptoEngine` abstraction with a mock adapter
+- `CryptoEngine` abstraction with a production adapter (`LibCryptoAdapter`: X25519+AES-256-GCM+Ed25519)
 - secure device secret references via `flutter_secure_storage`
 - local app lock hooks via `local_auth`
 - local cache definitions via Drift/SQLite
-- feature-oriented screen scaffolds for onboarding, chat, transfer, and settings
+- feature-oriented screens: onboarding, chat, contacts, transfer, settings, reactions, and profile
 
 ## API architecture
 
-- NestJS modules by domain: `AuthModule`, `UsersModule`, `DevicesModule`, `ConversationsModule`, `MessagesModule`, `AttachmentsModule`, `RealtimeModule`, `DeviceTransferModule`
+- NestJS modules by domain: `AuthModule`, `UsersModule`, `DevicesModule`, `ConversationsModule`, `MessagesModule`, `AttachmentsModule`, `RealtimeModule`, `DeviceTransferModule`, `GroupsModule`, `ContactsModule`, `ProfileModule`, `CallsModule`, `StoriesModule`, `ChannelsModule`
 - Prisma schema for all core entities
 - challenge/verify device auth instead of password auth
 - rate limiting, DTO validation, structured logging without sensitive content
@@ -55,11 +55,18 @@ The server must not handle:
 - device private keys
 - admin decryption utilities
 
+## Conversation types
+
+- `direct`: one-to-one with strict recipient validation
+- `group`: multi-member with server fan-out, optional `recipientUserId`
+- `channel`: broadcast (planned)
+
 ## Crypto seam
 
-The current system intentionally uses a mock adapter. The important design constraint is not the mock itself, but the boundary:
+The production system uses `LibCryptoAdapter` (X25519+AES-256-GCM). The important design constraint is the boundary:
 
 - `CryptoEngine` owns message encryption/decryption
 - attachment key wrapping is abstracted
-- contracts preserve envelope semantics
-- future audited crypto can replace the adapter without redesigning routes, storage, or UI flows
+- contracts preserve envelope semantics (`veil-envelope-v1`)
+- the adapter can be upgraded without redesigning routes, storage, or UI flows
+- external cryptographic audit is required before production claim

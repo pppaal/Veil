@@ -13,15 +13,19 @@
 - only encrypted envelopes are stored server-side
 - no password reset and no recovery channels exist
 - device transfer requires explicit action from the active old device
-- push payloads are metadata-only
+- push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
 - single active device model simplifies trust and revocation in v1
+- rate limiting on auth, user lookup, and key bundle endpoints
+- Helmet security headers (CSP, HSTS, COEP) in production
+- Swagger disabled by default in production
 
 ## Deliberate exclusions
 
-- the current mock crypto adapter is not a security control
+- the production crypto adapter has not yet been externally audited
 - multi-device concurrent session complexity is intentionally deferred
-- public groups and social surfaces are intentionally absent
+- public social surfaces and open discovery are intentionally absent
+- private group messaging is supported; public groups are not
 
 ## Operational rules
 
@@ -32,9 +36,9 @@
 - rate limit public-facing endpoints
 - validate all request DTOs
 
-## Residual risks in this MVP scaffold
+## Residual risks
 
-- audited cryptography is not yet integrated
+- production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
 - attachment upload/download URLs are scaffolds, not hardened presigned-storage production code
 - mobile local database encryption-at-rest is prepared conceptually but not finalized
 - transport/session hardening still needs production infrastructure work

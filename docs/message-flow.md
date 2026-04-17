@@ -7,10 +7,20 @@
 3. The mobile client assigns a `clientMessageId` and stages the outbound item in the local pending queue.
 4. For attachments, the mobile client first stages an opaque local temp blob, uploads it to object storage, finalizes the attachment record, and only then sends the encrypted envelope with the attachment reference.
 5. Mobile sends only the envelope to `POST /v1/messages`.
-6. API stores ciphertext, nonce, metadata, timestamps, and optional attachment reference.
-7. Realtime gateway emits `message.new` and `conversation.sync`.
-8. If the recipient has no active socket but does have a registered push token, the backend may send a metadata-only wake-up hint.
-9. Recipient device retrieves the envelope and decrypts locally.
+6. API validates that `recipientUserId` matches the direct conversation peer.
+7. API stores ciphertext, nonce, metadata, timestamps, and optional attachment reference.
+8. Realtime gateway emits `message.new` and `conversation.sync`.
+9. If the recipient has no active socket but does have a registered push token, the backend may send a metadata-only wake-up hint.
+10. Recipient device retrieves the envelope and decrypts locally.
+
+## Group message send
+
+1. Sender encrypts locally using the group conversation's shared bundle (no per-peer key fetch).
+2. The envelope omits `recipientUserId` (field is optional for groups).
+3. Mobile sends the envelope to `POST /v1/messages`.
+4. API skips the direct-peer validation check for non-direct conversation types.
+5. API fans out the message to all conversation members via realtime and push fallback.
+6. Each member device retrieves the envelope and decrypts locally.
 
 ## Client delivery lifecycle
 
@@ -104,7 +114,6 @@ Push is a secondary wake-up path, not a content channel. Payloads must remain me
 - `kind`
 - `messageId`
 - `conversationId`
-- `senderDeviceId`
 - `serverReceivedAt`
 
 Push must never contain plaintext message bodies, filenames, attachment keys, decrypted previews, or local queue metadata.

@@ -27,7 +27,6 @@ Push hints may contain only metadata required to wake the client:
 - `kind`
 - `messageId`
 - `conversationId`
-- `senderDeviceId`
 - `serverReceivedAt`
 
 Push payloads must not include:
@@ -175,5 +174,5 @@ If any of these fail:
 Even after enablement:
 
 - push is still metadata-only fallback, not a trusted message transport
-- push privacy review does not make the crypto layer production-ready
-- push enablement does not justify a production-security claim while mock crypto remains active
+- push privacy review does not replace external cryptographic audit
+- push enablement does not justify a production-security claim without completed external review

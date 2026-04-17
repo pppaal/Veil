@@ -1,10 +1,23 @@
 # VEIL Crypto Adapter Architecture
 
-VEIL still uses mock crypto in private beta. This document defines the boundary that an audited real adapter must satisfy later.
+VEIL now uses a production crypto adapter (`LibCryptoAdapter`) built on X25519 ECDH key exchange, AES-256-GCM authenticated encryption, HKDF-SHA256 key derivation, and Ed25519 identity signing. The mock adapter remains available for unit tests only.
+
+## Production adapter: LibCryptoAdapter
+
+The production adapter is implemented in `lib_crypto_adapter.dart` and provides:
+
+- `_LibDeviceIdentityProvider`: Ed25519 identity keys + X25519 prekey bundles
+- `_LibKeyBundleCodec`: API key bundle parsing
+- `_LibCryptoEnvelopeCodec`: envelope version `veil-envelope-v1`
+- `_LibSessionBootstrapper`: X25519 ECDH shared secret via HKDF-SHA256
+- `_LibMessageCryptoEngine`: AES-256-GCM encrypt/decrypt with ephemeral key prepended (32 bytes) and MAC appended (16 bytes)
+- Attachment encryption: random content key, X25519 DH wrap, algorithm hint `x25519-aes256gcm`
+
+The adapter is registered through `crypto_adapter_registry.dart` and is the default for all runtime builds.
 
 ## What remains unchanged
 
-These areas should remain stable when real audited cryptography is introduced:
+These areas remained stable during production crypto integration:
 
 - REST and realtime message lifecycle
 - ciphertext-only server storage model
@@ -14,9 +27,9 @@ These areas should remain stable when real audited cryptography is introduced:
 - attachment upload ticket and encrypted-reference architecture
 - message queue, retry, reconnect, and receipt flows
 
-## What must change for real crypto
+## What changed for production crypto
 
-Only the adapter layer should change materially:
+Only the adapter layer changed materially:
 
 1. Device identity generation
 2. Signed prekey generation and storage
@@ -39,27 +52,28 @@ Files:
 
 - [crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/crypto_engine.dart)
 - [crypto_adapter_registry.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/crypto_adapter_registry.dart)
-- [mock_crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/mock_crypto_engine.dart)
+- [lib_crypto_adapter.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart)
+- [mock_crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/mock_crypto_engine.dart) (test-only)
 - [packages/shared/src/crypto/types.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/types.ts)
 
-Current private-beta consumption:
+Runtime consumption:
 
-- session bootstrap material is now consumed by the mobile messaging flow when a
+- session bootstrap material is consumed by the mobile messaging flow when a
   peer device bundle is selected
-- bootstrap metadata is persisted in the local conversation cache so an audited
-  adapter can later replace only the adapter/session-state implementation rather
-  than the controller or UI flow
-- persisted bootstrap metadata now includes:
+- bootstrap metadata is persisted in the local conversation cache so adapter
+  upgrades replace only the adapter/session-state implementation rather than
+  the controller or UI flow
+- persisted bootstrap metadata includes:
   - `sessionSchemaVersion`
   - `localDeviceId`
   - `remoteDeviceId`
   - `remoteIdentityFingerprint`
-  so future adapters can detect stale local state and bind stored session
-  material to the correct trusted-device edge
+  so adapters can detect stale local state and bind stored session material
+  to the correct trusted-device edge
 
 ## Storage implications
 
-Real audited crypto will require additional local state beyond the current private-beta mock:
+The production adapter requires additional local state:
 
 - identity private key material
 - signed prekeys and rotation state
@@ -76,7 +90,7 @@ What should not change:
 
 ## Testing implications
 
-When real crypto is integrated, these tests must expand:
+With production crypto integrated, these tests should expand:
 
 - cross-device interoperability tests
 - fixture compatibility tests against a versioned interoperability fixture contract
@@ -94,21 +108,21 @@ Current architecture checks already assert:
 
 ## Rollout risks
 
-1. Session-state shape will grow, and careless storage migration can wipe or corrupt local conversations.
+1. Session-state shape has grown, and careless storage migration can wipe or corrupt local conversations.
 2. Device-graph changes can invalidate persisted session state if local/remote
    device binding is not checked during migration.
 3. Attachment encryption failures can create silent UX regressions if wrap/unwrap semantics drift.
-4. Transfer and revoke must be re-verified once real session material exists.
-5. Real crypto can expose ordering and replay assumptions that the mock adapter does not.
-6. Any claim of production cryptographic safety before external review would be false.
+4. Transfer and revoke must be re-verified with real session material.
+5. Production crypto can expose ordering and replay assumptions that the mock adapter did not.
+6. Any claim of production cryptographic safety before external review would be premature.
 
-## Migration checklist
+## External review checklist
 
-1. Implement an audited adapter behind the existing interfaces.
-2. Keep `crypto_adapter_registry.dart` as the only runtime selection point.
-3. Preserve the current API contract unless a versioned envelope migration is explicitly required.
-4. Add interoperability fixtures for sender, receiver, attachment, and transfer flows.
-5. Preserve and migrate persisted session metadata:
+1. Production adapter (`LibCryptoAdapter`) is integrated behind the existing interfaces.
+2. `crypto_adapter_registry.dart` remains the only runtime selection point.
+3. API contract preserved with versioned envelope (`veil-envelope-v1`).
+4. Interoperability fixtures for sender, receiver, attachment, and transfer flows should be expanded.
+5. Persisted session metadata preserved:
    - schema version
    - local device id
    - remote device id

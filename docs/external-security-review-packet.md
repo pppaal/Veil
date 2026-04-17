@@ -11,9 +11,9 @@ Review the current VEIL private beta as:
 - a privacy-first mobile messenger
 - a trusted-device graph product
 - a ciphertext-only relay architecture
-- a mock-crypto implementation with a strict adapter boundary
+- a production crypto implementation (X25519+AES-256-GCM) with a strict adapter boundary
 
-Do not treat the current build as audited production E2EE.
+Do not treat the current build as externally audited production E2EE until the external review is complete.
 
 ## Required packet contents
 
@@ -89,6 +89,6 @@ When findings arrive:
 
 ## Explicit caveats
 
-- Mock crypto is still active.
+- Production crypto adapter (LibCryptoAdapter) is integrated but not yet externally audited.
 - Push providers remain metadata-only seams unless a separate privacy review is attached.
-- Production boot remains blocked until the audited crypto replacement is complete.
+- Production boot remains blocked until external cryptographic audit is complete.

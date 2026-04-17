@@ -1,6 +1,6 @@
 # VEIL External Execution Master Checklist
 
-Last updated: 2026-04-13
+Last updated: 2026-04-17
 
 This is the single entry point for the remaining work that cannot be completed
  purely inside the repository.
@@ -32,22 +32,23 @@ Production remains blocked until all four tracks below are complete.
 ## Track 1. Audited crypto
 
 Status:
-- repo boundary prepared
-- external execution still required
+- production adapter integrated (LibCryptoAdapter: X25519+AES-256-GCM+Ed25519)
+- envelope version: `veil-envelope-v1`, algorithm hint: `x25519-aes256gcm`
+- external audit still required
 
 Primary doc:
 - [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
 - [audited-crypto-library-decision.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-library-decision.md)
+- [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md)
 
 Required outputs:
-- audited library decision
-- Flutter bridge decision
-- migration plan
-- interoperability fixture plan
+- external cryptographic audit of LibCryptoAdapter
+- interoperability fixture expansion
+- cross-device verification tests
 
 Go when:
-- library decision is signed off
-- mobile bridge design is accepted
+- external audit is complete with no critical findings
+- interoperability fixtures cover sender, receiver, attachment, and transfer
 - no-recovery and device-bound rules remain intact
 
 No-Go if:

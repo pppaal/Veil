@@ -1,46 +1,40 @@
-# Mock Crypto Replacement Plan
+# Crypto Replacement Status
 
-The current VEIL repository preserves the encrypted-envelope architecture, but it does not provide production cryptographic safety.
+The mock crypto adapter has been replaced with a production `LibCryptoAdapter`.
 
 ## Current state
 
-- Mobile and backend contracts are already built around a crypto adapter boundary.
-- The API only stores opaque ciphertext-like payloads, nonces, and attachment metadata.
-- The current adapters are mock-only and must not ship to production.
+- The production adapter (`lib_crypto_adapter.dart`) is integrated and active for all runtime builds.
+- X25519 ECDH key exchange, AES-256-GCM encryption, HKDF-SHA256 derivation, Ed25519 signing.
+- Envelope version: `veil-envelope-v1`. Attachment algorithm hint: `x25519-aes256gcm`.
+- The mock adapter remains available for unit tests only.
+- The API stores opaque ciphertext payloads, nonces, and attachment metadata (unchanged).
 
-See the current adapter split in [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md).
+See the adapter architecture in [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md).
 
-## Replacement requirements
+## Design constraints (preserved)
 
-1. Keep the adapter boundary intact.
-2. Replace only the adapter implementation first, not the app and API message flow.
-3. Use audited messaging/session primitives. Do not invent custom cryptography.
-4. Keep private key material on-device only.
-5. Keep the server as an encrypted relay and metadata store only.
+1. Adapter boundary remains intact.
+2. Only the adapter implementation changed, not the app or API message flow.
+3. Uses `cryptography` Dart package primitives. No custom cryptography invented.
+4. Private key material stays on-device only.
+5. Server remains an encrypted relay and metadata store only.
 
-## Exact steps
+## What was replaced
 
-1. Replace `DeviceIdentityProvider` with real identity key generation, signed prekeys, and session bootstrap state.
-2. Replace `DeviceAuthChallengeSigner` only if platform-keystore backed device auth changes are required.
-3. Replace `MessageCryptoEngine` with audited per-conversation session encryption.
-4. Replace mock attachment key wrapping with audited recipient-specific attachment key encryption.
-5. Keep `KeyBundleCodec` and `CryptoEnvelopeCodec` stable unless a versioned envelope migration is required.
-6. Preserve session bootstrap persistence semantics. Future adapters must emit:
+1. `DeviceIdentityProvider`: now generates real Ed25519 identity keys and X25519 signed prekey bundles.
+2. `MessageCryptoEngine`: now uses AES-256-GCM with ephemeral keys and per-conversation HKDF-derived shared secrets.
+3. Attachment key wrapping: now uses X25519 DH wrap with random content keys.
+4. `KeyBundleCodec` and `CryptoEnvelopeCodec`: updated for production envelope version.
+5. Session bootstrap persistence semantics preserved:
    - `sessionSchemaVersion`
    - `localDeviceId`
    - `remoteDeviceId`
    - `remoteIdentityFingerprint`
-   so locally stored session state can be migrated and invalidated safely.
-7. Add interoperability tests and versioned fixtures between:
-   - mobile sender
-   - mobile receiver
-   - backend contract serialization
-   - session bootstrap material
-   - attachment wrap material
-   Fixture shape must follow:
+6. Interoperability tests and versioned fixtures should be expanded:
    - [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
    - [crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)
-8. Run external security review before enabling production traffic.
+7. External security review still required before production traffic.
 
 ## Non-negotiable constraints
 

@@ -41,6 +41,7 @@ export const envSchema = z.object({
   VEIL_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   VEIL_TRANSFER_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   VEIL_AUTH_CHALLENGE_TTL_SECONDS: z.coerce.number().int().positive().default(120),
+  VEIL_AUDITED_CRYPTO_ATTESTED: z.coerce.boolean().default(false),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

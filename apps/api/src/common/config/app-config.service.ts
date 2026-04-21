@@ -110,6 +110,21 @@ export class AppConfigService {
     return this.configService.get('VEIL_AUTH_CHALLENGE_TTL_SECONDS', { infer: true });
   }
 
+  get cryptoAuditAttested(): boolean {
+    return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
+  }
+
+  assertProductionReady(): void {
+    if (this.isProduction && !this.cryptoAuditAttested) {
+      throw new Error(
+        'VEIL production boot blocked: VEIL_AUDITED_CRYPTO_ATTESTED is not true. ' +
+          'Set this only after the audited crypto adapter has replaced the mock boundary ' +
+          'and external security review has covered the new crypto path. ' +
+          'See docs/audited-crypto-adapter-execution.md.',
+      );
+    }
+  }
+
   get s3Endpoint(): string {
     return this.configService.get('VEIL_S3_ENDPOINT', { infer: true });
   }
@@ -156,17 +171,4 @@ export class AppConfigService {
     return this.allowedOrigins.includes(origin);
   }
 
-  assertReleaseSafety(): void {
-    if (!this.isProduction) {
-      return;
-    }
-
-    throw new Error(
-      [
-        'Production boot blocked.',
-        'VEIL still uses the mock crypto boundary.',
-        'Replace the crypto adapters before setting VEIL_ENV=production.',
-      ].join(' '),
-    );
-  }
 }

@@ -30,6 +30,7 @@ export class HealthController {
       pushDeliveryEnabled: boolean;
       s3PublicEndpointConfigured: boolean;
       productionBootBlocked: boolean;
+      cryptoAuditAttested: boolean;
     };
   } {
     return {
@@ -42,6 +43,7 @@ export class HealthController {
         pushDeliveryEnabled: this.config.pushDeliveryEnabled,
         s3PublicEndpointConfigured: this.config.s3PublicEndpoint.length > 0,
         productionBootBlocked: !this.config.isProduction,
+        cryptoAuditAttested: this.config.cryptoAuditAttested,
       },
     };
   }

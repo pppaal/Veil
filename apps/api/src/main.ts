@@ -14,6 +14,7 @@ async function bootstrap(): Promise<void> {
     bufferLogs: true,
   });
   const config = app.get(AppConfigService);
+  config.assertProductionReady();
   const corsOrigin = (
     origin: string | undefined,
     callback: (error: Error | null, allow?: boolean) => void,
@@ -72,7 +73,6 @@ async function bootstrap(): Promise<void> {
     SwaggerModule.setup('docs', app, swaggerDocument);
   }
 
-  config.assertReleaseSafety();
   await app.listen(config.port);
 }
 

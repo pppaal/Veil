@@ -122,7 +122,7 @@ class _CallScreenState extends State<CallScreen>
             colors: [
               palette.canvasAlt,
               palette.canvas,
-              const Color(0xFF0A0F15),
+              palette.surface,
             ],
           ),
         ),

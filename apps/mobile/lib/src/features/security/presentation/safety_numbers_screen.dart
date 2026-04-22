@@ -401,6 +401,7 @@ class _QrCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(VeilRadius.md),
+              border: Border.all(color: palette.stroke),
             ),
             child: QrImageView(
               data: content,

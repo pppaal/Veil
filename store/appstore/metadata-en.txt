@@ -1,0 +1,50 @@
+[Name]
+VEIL Messenger
+
+[Subtitle]
+End-to-end encrypted privacy messenger
+
+[Promotional Text]
+A cold, encrypted messenger with no accounts, no phone numbers, and no recovery path. Conversations live only on your device.
+
+[Description]
+VEIL is a messenger designed with privacy as the first principle.
+
+Core principles
+• No phone number. No email. No real name required.
+• Every message is end-to-end encrypted on-device. Servers never see plaintext.
+• No recovery path. If you lose the device, the conversations go with it. This is the VEIL safety model.
+
+Cryptography
+• X25519 key exchange + AES-256-GCM symmetric encryption
+• Ed25519 device signatures
+• HKDF-SHA256 session key derivation
+
+Features
+• 1:1 and group conversations with encrypted attachments
+• Typing indicators, presence, optional read receipts
+• Local app lock (PIN, biometrics)
+• Encrypted device transfer
+• Korean and English UI
+
+Privacy posture
+• No ads. No tracking. No third-party analytics.
+• Designed to meet Korea's PIPA requirements.
+
+Safety note
+VEIL deliberately has no account recovery. If your device is lost, conversations cannot be restored. This is by design.
+
+Privacy policy: https://veil.app/privacy
+Contact: privacy@veil.app
+
+[Keywords]
+messenger,encryption,privacy,e2ee,secure,chat,anonymous,pin,encrypted
+
+[Support URL]
+https://veil.app/support
+
+[Marketing URL]
+https://veil.app
+
+[Privacy Policy URL]
+https://veil.app/privacy

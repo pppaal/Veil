@@ -13,6 +13,7 @@ ios/Pods
 android/.gradle
 .idea
 .vscode
+.claude/
 *.log
 artifacts/
 .env

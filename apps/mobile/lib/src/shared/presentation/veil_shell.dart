@@ -27,13 +27,57 @@ class VeilShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
+    // When a title is shown, the AppBar is translucent and content scrolls
+    // under it — offset the content so the first child isn't obscured.
+    final resolvedPadding = title == null
+        ? padding
+        : padding.add(const EdgeInsets.only(top: 52));
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: title == null
           ? null
-          : AppBar(
-              title: Text(title!),
-              actions: actions,
+          : PreferredSize(
+              preferredSize: const Size.fromHeight(52),
+              child: VeilBlur(
+                intensity: 22,
+                tintAlpha: 0.62,
+                child: SafeArea(
+                  bottom: false,
+                  child: Container(
+                    height: 52,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: VeilSpace.lg,
+                    ),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: palette.stroke.withValues(alpha: 0.45),
+                          width: 0.5,
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            title!,
+                            style: VeilTypography.headline.copyWith(
+                              color: palette.text,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (actions != null) ...[
+                          const SizedBox(width: VeilSpace.sm),
+                          ...actions!,
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
       body: DecoratedBox(
         decoration: BoxDecoration(
@@ -43,7 +87,7 @@ class VeilShell extends StatelessWidget {
             colors: [
               palette.canvas,
               palette.canvasAlt,
-              const Color(0xFF10161D),
+              palette.surface,
             ],
           ),
         ),
@@ -112,7 +156,7 @@ class VeilShell extends StatelessWidget {
                 alignment: Alignment.topCenter,
                 child: maxWidth == null
                     ? Padding(
-                        padding: padding,
+                        padding: resolvedPadding,
                         child: child,
                       )
                     : ConstrainedBox(

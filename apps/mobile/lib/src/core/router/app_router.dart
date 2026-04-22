@@ -1,7 +1,5 @@
-import 'dart:ui';
-
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -25,6 +23,7 @@ import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
 import '../../features/onboarding/presentation/privacy_consent_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
+import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/stickers/presentation/sticker_picker_screen.dart';
@@ -32,6 +31,7 @@ import '../../features/stories/presentation/stories_screen.dart';
 import '../../features/stories/presentation/story_viewer_screen.dart';
 import '../../features/voice/presentation/voice_recorder_screen.dart';
 import '../theme/veil_theme.dart';
+import '../../shared/presentation/veil_ui.dart';
 
 final _mainShellNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -117,63 +117,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/start-chat',
-        pageBuilder: (context, state) => CustomTransitionPage<void>(
-          key: state.pageKey,
-          child: const StartDirectChatScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
-                .animate(CurvedAnimation(parent: animation, curve: VeilMotion.emphasize));
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: slide, child: child),
-            );
-          },
-          transitionDuration: VeilMotion.normal,
-          reverseTransitionDuration: VeilMotion.fast,
-        ),
+        pageBuilder: (context, state) =>
+            _veilModalPage(state, const StartDirectChatScreen()),
       ),
       GoRoute(
         path: '/start-group',
-        pageBuilder: (context, state) => CustomTransitionPage<void>(
-          key: state.pageKey,
-          child: const StartGroupScreen(),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
-                .animate(CurvedAnimation(parent: animation, curve: VeilMotion.emphasize));
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: slide, child: child),
-            );
-          },
-          transitionDuration: VeilMotion.normal,
-          reverseTransitionDuration: VeilMotion.fast,
-        ),
+        pageBuilder: (context, state) =>
+            _veilModalPage(state, const StartGroupScreen()),
       ),
       GoRoute(
         path: '/chat/:conversationId',
-        pageBuilder: (context, state) => CustomTransitionPage<void>(
-          key: state.pageKey,
-          child: ChatRoomScreen(
+        pageBuilder: (context, state) => _veilPushPage(
+          state,
+          ChatRoomScreen(
             conversationId: state.pathParameters['conversationId']!,
             navigationTarget: state.extra is MessageNavigationTarget
                 ? state.extra as MessageNavigationTarget
                 : null,
           ),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            final slide = Tween<Offset>(
-              begin: const Offset(0, 0.06),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: VeilMotion.emphasize,
-            ));
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: slide, child: child),
-            );
-          },
-          transitionDuration: VeilMotion.normal,
-          reverseTransitionDuration: VeilMotion.fast,
         ),
       ),
       GoRoute(
@@ -207,16 +168,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           authorUserId: state.pathParameters['userId']!,
         ),
       ),
-      GoRoute(path: '/ai-chat', builder: (context, state) => const AiChatScreen()),
+      GoRoute(
+        path: '/ai-chat',
+        pageBuilder: (context, state) => _veilPushPage(state, const AiChatScreen()),
+      ),
       GoRoute(
         path: '/profile',
-        pageBuilder: (context, state) =>
-            _veilFadePage(state, const ProfileScreen()),
+        pageBuilder: (context, state) => _veilPushPage(state, const ProfileScreen()),
       ),
       GoRoute(
         path: '/settings',
-        pageBuilder: (context, state) =>
-            _veilFadePage(state, const SettingsScreen()),
+        pageBuilder: (context, state) => _veilPushPage(state, const SettingsScreen()),
       ),
       GoRoute(
         path: '/lock',
@@ -226,12 +188,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/device-transfer',
         pageBuilder: (context, state) =>
-            _veilFadePage(state, const DeviceTransferScreen()),
+            _veilPushPage(state, const DeviceTransferScreen()),
       ),
       GoRoute(
         path: '/security-status',
         pageBuilder: (context, state) =>
-            _veilFadePage(state, const SecurityStatusScreen()),
+            _veilPushPage(state, const SecurityStatusScreen()),
+      ),
+      GoRoute(
+        path: '/safety-numbers/:conversationId',
+        pageBuilder: (context, state) => _veilPushPage(
+          state,
+          SafetyNumbersScreen(
+            conversationId: state.pathParameters['conversationId']!,
+          ),
+        ),
       ),
     ],
   );
@@ -254,6 +225,42 @@ CustomTransitionPage<void> _veilFadePage(GoRouterState state, Widget child) {
         opacity: animation,
         child: SlideTransition(position: slide, child: child),
       );
+    },
+  );
+}
+
+/// iOS-style horizontal push. The incoming screen slides in from the trailing
+/// edge while the previous screen parallax-translates and dims — this is the
+/// Cupertino page transition, just surfaced through go_router.
+CupertinoPage<void> _veilPushPage(GoRouterState state, Widget child) {
+  return CupertinoPage<void>(
+    key: state.pageKey,
+    child: child,
+  );
+}
+
+/// iOS-style modal sheet. The new screen slides up from the bottom with the
+/// canonical 0.36 emphasize curve, and dismissing reverses at snappier speed.
+CustomTransitionPage<void> _veilModalPage(GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: VeilMotion.normal,
+    reverseTransitionDuration: VeilMotion.fast,
+    opaque: false,
+    barrierColor: const Color(0x66000000),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(0, 1),
+        end: Offset.zero,
+      ).animate(
+        CurvedAnimation(
+          parent: animation,
+          curve: VeilMotion.springGentle,
+          reverseCurve: VeilMotion.emphasize,
+        ),
+      );
+      return SlideTransition(position: slide, child: child);
     },
   );
 }
@@ -282,79 +289,78 @@ class _VeilMainShell extends StatelessWidget {
     return Scaffold(
       extendBody: true,
       body: child,
-      bottomNavigationBar: ClipRRect(
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            decoration: BoxDecoration(
-              color: palette.canvas.withValues(alpha: 0.82),
-              border: Border(
-                top: BorderSide(
-                  color: palette.stroke.withValues(alpha: 0.5),
-                  width: 0.5,
-                ),
-              ),
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: palette.stroke.withValues(alpha: 0.5),
+              width: 0.5,
             ),
-            child: SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: VeilSpace.md,
-                  vertical: VeilSpace.xs,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: List.generate(_tabs.length, (index) {
-                    final tab = _tabs[index];
-                    final selected = index == currentIndex;
-                    return Expanded(
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () {
-                          if (!selected) {
-                            HapticFeedback.selectionClick();
-                          }
-                          context.go(tab.path);
-                        },
-                        child: AnimatedContainer(
-                          duration: VeilMotion.fast,
-                          padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              AnimatedContainer(
-                                duration: VeilMotion.fast,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(VeilRadius.pill),
-                                  color: selected ? palette.primarySoft : Colors.transparent,
-                                ),
-                                child: Icon(
-                                  selected ? tab.activeIcon : tab.icon,
-                                  size: 22,
-                                  color: selected ? palette.primary : palette.textSubtle,
-                                ),
+          ),
+        ),
+        child: VeilBlur(
+          intensity: 28,
+          tintAlpha: 0.72,
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: VeilSpace.md,
+                vertical: VeilSpace.xs,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: List.generate(_tabs.length, (index) {
+                  final tab = _tabs[index];
+                  final selected = index == currentIndex;
+                  return Expanded(
+                    child: VeilPressable(
+                      haptic: false,
+                      onTap: () {
+                        if (!selected) {
+                          VeilHaptics.selection();
+                        }
+                        context.go(tab.path);
+                      },
+                      scale: 0.92,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedContainer(
+                              duration: VeilMotion.fast,
+                              curve: VeilMotion.springGentle,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 4,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                tab.label,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                                  color: selected ? palette.primary : palette.textSubtle,
-                                  letterSpacing: 0.1,
-                                ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(VeilRadius.pill),
+                                color: selected ? palette.primarySoft : Colors.transparent,
                               ),
-                            ],
-                          ),
+                              child: Icon(
+                                selected ? tab.activeIcon : tab.icon,
+                                size: 22,
+                                color: selected ? palette.primary : palette.textSubtle,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              tab.label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                                color: selected ? palette.primary : palette.textSubtle,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  }),
-                ),
+                    ),
+                  );
+                }),
               ),
             ),
           ),

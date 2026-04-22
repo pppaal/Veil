@@ -84,6 +84,86 @@ class VeilButton extends StatelessWidget {
   }
 }
 
+/// Spring-scale press wrapper. On tap-down the child scales to [scale] with a
+/// short responsive curve, then relaxes back to 1.0 on release. This mirrors
+/// the subtle "press" feedback you feel on iOS rows, tab items, and chips.
+class VeilPressable extends StatefulWidget {
+  const VeilPressable({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.onLongPress,
+    this.scale = 0.96,
+    this.haptic = true,
+    this.destructive = false,
+    this.behavior = HitTestBehavior.opaque,
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+  final double scale;
+  final bool haptic;
+  final bool destructive;
+  final HitTestBehavior behavior;
+
+  @override
+  State<VeilPressable> createState() => _VeilPressableState();
+}
+
+class _VeilPressableState extends State<VeilPressable>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 120),
+    reverseDuration: const Duration(milliseconds: 180),
+    value: 0,
+    lowerBound: 0,
+    upperBound: 1,
+  );
+
+  late final Animation<double> _scale = Tween<double>(
+    begin: 1,
+    end: widget.scale,
+  ).animate(
+    CurvedAnimation(
+      parent: _controller,
+      curve: VeilMotion.springResponsive,
+      reverseCurve: VeilMotion.springGentle,
+    ),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _press() => _controller.forward();
+  void _release() => _controller.reverse();
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null || widget.onLongPress != null;
+    return GestureDetector(
+      behavior: widget.behavior,
+      onTapDown: enabled ? (_) => _press() : null,
+      onTapUp: enabled ? (_) => _release() : null,
+      onTapCancel: enabled ? _release : null,
+      onTap: widget.onTap == null
+          ? null
+          : () {
+              if (widget.haptic) {
+                widget.destructive ? VeilHaptics.medium() : VeilHaptics.light();
+              }
+              widget.onTap!();
+            },
+      onLongPress: widget.onLongPress,
+      child: ScaleTransition(scale: _scale, child: widget.child),
+    );
+  }
+}
+
 class VeilFieldBlock extends StatelessWidget {
   const VeilFieldBlock({
     super.key,

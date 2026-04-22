@@ -112,6 +112,175 @@ describe('AuthService', () => {
     ).rejects.toThrow('Challenge expired or invalid');
   });
 
+  it('issues a refresh token on verify and rotates it on refresh', async () => {
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
+    const service = new AuthService(
+      prisma as never,
+      store as never,
+      new JwtService(),
+      config as never,
+      verifier,
+    );
+
+    const registered = await service.register({
+      handle: 'rotator',
+      displayName: 'Rotator',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: keyPair.authPublicKey,
+      pushToken: undefined,
+    });
+
+    const challenge = await service.createChallenge({
+      handle: 'rotator',
+      deviceId: registered.deviceId,
+    });
+    const signature = keyHelper.createProof({
+      challenge: challenge.challenge,
+      authPrivateKey: keyPair.authPrivateKey,
+    });
+    const verified = await service.verify({
+      challengeId: challenge.challengeId,
+      deviceId: registered.deviceId,
+      signature,
+    });
+
+    expect(verified.refreshToken).toBeTruthy();
+    expect(verified.refreshToken.length).toBeGreaterThan(32);
+
+    const refreshed = await service.refresh(verified.refreshToken);
+    expect(refreshed.accessToken).toBeTruthy();
+    expect(refreshed.refreshToken).toBeTruthy();
+    expect(refreshed.refreshToken).not.toBe(verified.refreshToken);
+
+    // Presenting the old refresh token after rotation must fail.
+    await expect(service.refresh(verified.refreshToken)).rejects.toThrow(
+      'Refresh token invalid',
+    );
+  });
+
+  it('rejects refresh against a revoked device', async () => {
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
+    const service = new AuthService(
+      prisma as never,
+      store as never,
+      new JwtService(),
+      config as never,
+      verifier,
+    );
+
+    const registered = await service.register({
+      handle: 'revokeme',
+      displayName: 'Revoke Me',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: keyPair.authPublicKey,
+      pushToken: undefined,
+    });
+
+    const challenge = await service.createChallenge({
+      handle: 'revokeme',
+      deviceId: registered.deviceId,
+    });
+    const verified = await service.verify({
+      challengeId: challenge.challengeId,
+      deviceId: registered.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+
+    const device = prisma.devices.find((d) => d.id === registered.deviceId)!;
+    device.isActive = false;
+    device.revokedAt = new Date();
+
+    await expect(service.refresh(verified.refreshToken)).rejects.toThrow(
+      'Device is not active',
+    );
+  });
+
+  it('logout revokes the presented refresh token and blacklists jti', async () => {
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
+    const jwt = new JwtService();
+    const service = new AuthService(
+      prisma as never,
+      store as never,
+      jwt,
+      config as never,
+      verifier,
+    );
+
+    const registered = await service.register({
+      handle: 'logoutcase',
+      displayName: 'Logout Case',
+      deviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: keyPair.authPublicKey,
+      pushToken: undefined,
+    });
+
+    const challenge = await service.createChallenge({
+      handle: 'logoutcase',
+      deviceId: registered.deviceId,
+    });
+    const verified = await service.verify({
+      challengeId: challenge.challengeId,
+      deviceId: registered.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+
+    const decoded = jwt.decode(verified.accessToken) as {
+      jti: string;
+      exp: number;
+    };
+    expect(decoded.jti).toBeTruthy();
+
+    const result = await service.logout(
+      {
+        userId: registered.userId,
+        deviceId: registered.deviceId,
+        jti: decoded.jti,
+        exp: decoded.exp,
+      },
+      { refreshToken: verified.refreshToken },
+    );
+    expect(result.ok).toBe(true);
+
+    await expect(service.refresh(verified.refreshToken)).rejects.toThrow(
+      'Refresh token invalid',
+    );
+
+    const blacklisted = await store.getJson<unknown>(
+      `auth:blacklist:${decoded.jti}`,
+    );
+    expect(blacklisted).not.toBeNull();
+  });
+
   it('invalidates the previous device challenge when a new one is issued', async () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();

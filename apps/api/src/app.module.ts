@@ -24,6 +24,7 @@ import { ContactsModule } from './modules/contacts/contacts.module';
 import { ProfileModule } from './modules/profile/profile.module';
 import { StoriesModule } from './modules/stories/stories.module';
 import { UsersModule } from './modules/users/users.module';
+import { AccountModule } from './modules/account/account.module';
 import { CallsModule } from './modules/calls/calls.module';
 
 @Module({
@@ -57,6 +58,7 @@ import { CallsModule } from './modules/calls/calls.module';
     ContactsModule,
     StoriesModule,
     CallsModule,
+    AccountModule,
   ],
   providers: [
     {

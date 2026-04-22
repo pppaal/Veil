@@ -3,9 +3,11 @@ import {
   Injectable,
 } from '@nestjs/common';
 import { UserStatus } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type {
   AuthChallengeResponse,
+  AuthLogoutRequest,
+  AuthRefreshResponse,
   AuthVerifyResponse,
   RegisterResponse,
 } from '@veil/contracts';
@@ -28,8 +30,22 @@ interface StoredChallenge {
   deviceId: string;
 }
 
+interface StoredRefreshToken {
+  userId: string;
+  deviceId: string;
+  issuedAt: number;
+}
+
+const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 12;
+const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
+
 const challengeKey = (challengeId: string): string => `auth:challenge:${challengeId}`;
 const activeChallengeKey = (deviceId: string): string => `auth:challenge:device:${deviceId}`;
+const refreshTokenKey = (tokenHash: string): string => `auth:refresh:${tokenHash}`;
+const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
+
+const hashToken = (token: string): string =>
+  createHash('sha256').update(token).digest('hex');
 
 @Injectable()
 export class AuthService {
@@ -184,20 +200,7 @@ export class AuthService {
       throw unauthorized('invalid_device_signature', 'Invalid device signature');
     }
 
-    const expiresInSeconds = 60 * 60 * 12;
-    const accessToken = await this.jwtService.signAsync(
-      {
-        sub: device.userId,
-        deviceId: device.id,
-        handle: device.user.handle,
-      },
-      {
-        secret: this.config.jwtSecret,
-        audience: this.config.jwtAudience,
-        issuer: this.config.jwtIssuer,
-        expiresIn: expiresInSeconds,
-      },
-    );
+    const tokens = await this.issueTokenPair(device.userId, device.id, device.user.handle);
 
     await this.prisma.device.update({
       where: { id: device.id },
@@ -205,10 +208,126 @@ export class AuthService {
     });
 
     return {
-      accessToken,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
       deviceId: device.id,
       userId: device.userId,
-      expiresAt: new Date(Date.now() + expiresInSeconds * 1000).toISOString(),
+      expiresAt: tokens.expiresAt,
+      refreshExpiresAt: tokens.refreshExpiresAt,
+    };
+  }
+
+  async refresh(refreshToken: string): Promise<AuthRefreshResponse> {
+    if (!refreshToken) {
+      throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
+    }
+
+    const tokenHash = hashToken(refreshToken);
+    const stored = await this.ephemeralStore.getJson<StoredRefreshToken>(
+      refreshTokenKey(tokenHash),
+    );
+
+    if (!stored) {
+      throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
+    }
+
+    // Single-use refresh: revoke the presented token immediately to block replay.
+    await this.ephemeralStore.delete(refreshTokenKey(tokenHash));
+
+    const device = await this.prisma.device.findUnique({
+      where: { id: stored.deviceId },
+      include: { user: true },
+    });
+
+    if (
+      !device ||
+      device.userId !== stored.userId ||
+      !device.isActive ||
+      device.revokedAt
+    ) {
+      throw unauthorized('device_not_active', 'Device is not active');
+    }
+
+    const tokens = await this.issueTokenPair(device.userId, device.id, device.user.handle);
+
+    await this.prisma.device.update({
+      where: { id: device.id },
+      data: { lastSeenAt: new Date() },
+    });
+
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.expiresAt,
+      refreshExpiresAt: tokens.refreshExpiresAt,
+    };
+  }
+
+  async logout(
+    authContext: { userId: string; deviceId: string; jti?: string; exp?: number },
+    dto: AuthLogoutRequest,
+  ): Promise<{ ok: true }> {
+    if (dto.refreshToken) {
+      const tokenHash = hashToken(dto.refreshToken);
+      const stored = await this.ephemeralStore.getJson<StoredRefreshToken>(
+        refreshTokenKey(tokenHash),
+      );
+      if (stored && stored.deviceId === authContext.deviceId) {
+        await this.ephemeralStore.delete(refreshTokenKey(tokenHash));
+      }
+    }
+
+    if (authContext.jti && authContext.exp) {
+      const ttlSeconds = Math.max(1, authContext.exp - Math.floor(Date.now() / 1000));
+      await this.ephemeralStore.setJson<{ userId: string; deviceId: string }>(
+        jtiBlacklistKey(authContext.jti),
+        { userId: authContext.userId, deviceId: authContext.deviceId },
+        ttlSeconds,
+      );
+    }
+
+    return { ok: true };
+  }
+
+  private async issueTokenPair(
+    userId: string,
+    deviceId: string,
+    handle: string,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: string;
+    refreshExpiresAt: string;
+  }> {
+    const jti = randomUUID();
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: userId,
+        deviceId,
+        handle,
+        jti,
+      },
+      {
+        secret: this.config.jwtSecret,
+        audience: this.config.jwtAudience,
+        issuer: this.config.jwtIssuer,
+        expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      },
+    );
+
+    const refreshToken = randomBytes(48).toString('base64url');
+    await this.ephemeralStore.setJson<StoredRefreshToken>(
+      refreshTokenKey(hashToken(refreshToken)),
+      { userId, deviceId, issuedAt: Date.now() },
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+
+    const now = Date.now();
+    return {
+      accessToken,
+      refreshToken,
+      expiresAt: new Date(now + ACCESS_TOKEN_TTL_SECONDS * 1000).toISOString(),
+      refreshExpiresAt: new Date(now + REFRESH_TOKEN_TTL_SECONDS * 1000).toISOString(),
     };
   }
 }

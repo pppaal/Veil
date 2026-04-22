@@ -40,7 +40,9 @@ export type VeilErrorCode =
   | 'contact_not_found'
   | 'story_not_found'
   | 'story_forbidden'
-  | 'story_already_viewed';
+  | 'story_already_viewed'
+  | 'refresh_token_invalid'
+  | 'token_revoked';
 
 export class ApiError extends HttpException {
   constructor(

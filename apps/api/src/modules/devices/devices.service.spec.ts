@@ -227,4 +227,116 @@ describe('DevicesService', () => {
       NotFoundException,
     );
   });
+
+  it('updates the push token on an active device', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+
+    prisma.devices.push({
+      id: 'device-1',
+      userId: 'user-1',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: null,
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date('2026-01-01T00:00:00.000Z'),
+      lastSyncAt: null,
+    });
+
+    const result = await service.updatePushToken('user-1', 'device-1', 'fcm-token-xyz');
+
+    expect(result.deviceId).toBe('device-1');
+    expect(prisma.devices[0]!.pushToken).toBe('fcm-token-xyz');
+    expect(prisma.devices[0]!.lastSeenAt.getTime()).toBeGreaterThan(
+      new Date('2026-01-01T00:00:00.000Z').getTime(),
+    );
+  });
+
+  it('refuses to update the push token on a revoked device', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+
+    prisma.devices.push({
+      id: 'device-1',
+      userId: 'user-1',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: null,
+      isActive: false,
+      revokedAt: new Date(),
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+
+    await expect(
+      service.updatePushToken('user-1', 'device-1', 'fcm-token-xyz'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('refuses to update a push token on another user\'s device', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+
+    prisma.devices.push({
+      id: 'device-1',
+      userId: 'user-2',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: null,
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+
+    await expect(
+      service.updatePushToken('user-1', 'device-1', 'fcm-token-xyz'),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('clears the push token', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+
+    prisma.devices.push({
+      id: 'device-1',
+      userId: 'user-1',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: 'existing-token',
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+
+    const result = await service.clearPushToken('user-1', 'device-1');
+    expect(result.deviceId).toBe('device-1');
+    expect(prisma.devices[0]!.pushToken).toBeNull();
+  });
 });

@@ -67,6 +67,60 @@ export class DevicesService {
     };
   }
 
+  async updatePushToken(
+    userId: string,
+    deviceId: string,
+    pushToken: string,
+  ): Promise<{ deviceId: string; updatedAt: string }> {
+    const device = await this.prisma.device.findUnique({
+      where: { id: deviceId },
+      select: { id: true, userId: true, isActive: true, revokedAt: true },
+    });
+
+    if (!device || device.userId !== userId) {
+      throw notFound('device_not_found', 'Device not found');
+    }
+
+    if (!device.isActive || device.revokedAt) {
+      throw forbidden('device_not_active', 'Device is not active');
+    }
+
+    const now = new Date();
+    await this.prisma.device.update({
+      where: { id: deviceId },
+      data: { pushToken, lastSeenAt: now },
+    });
+
+    return {
+      deviceId,
+      updatedAt: now.toISOString(),
+    };
+  }
+
+  async clearPushToken(
+    userId: string,
+    deviceId: string,
+  ): Promise<{ deviceId: string; clearedAt: string }> {
+    const device = await this.prisma.device.findUnique({
+      where: { id: deviceId },
+      select: { id: true, userId: true },
+    });
+
+    if (!device || device.userId !== userId) {
+      throw notFound('device_not_found', 'Device not found');
+    }
+
+    await this.prisma.device.update({
+      where: { id: deviceId },
+      data: { pushToken: null },
+    });
+
+    return {
+      deviceId,
+      clearedAt: new Date().toISOString(),
+    };
+  }
+
   async revoke(userId: string, dto: { deviceId: string }): Promise<RevokeDeviceResponse> {
     const device = await this.prisma.device.findUnique({
       where: { id: dto.deviceId },

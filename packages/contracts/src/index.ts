@@ -50,9 +50,26 @@ export interface AuthVerifyRequest {
 
 export interface AuthVerifyResponse {
   accessToken: string;
+  refreshToken: string;
   deviceId: string;
   userId: string;
   expiresAt: string;
+  refreshExpiresAt: string;
+}
+
+export interface AuthRefreshRequest {
+  refreshToken: string;
+}
+
+export interface AuthRefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  refreshExpiresAt: string;
+}
+
+export interface AuthLogoutRequest {
+  refreshToken?: string;
 }
 
 export interface UserProfileResponse {

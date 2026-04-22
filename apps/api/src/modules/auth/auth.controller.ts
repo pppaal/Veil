@@ -1,15 +1,18 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type {
   AuthChallengeResponse,
+  AuthRefreshResponse,
   AuthVerifyResponse,
   RegisterResponse,
 } from '@veil/contracts';
 
+import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { Public } from '../../common/guards/public.decorator';
 import { AuthService } from './auth.service';
 import { ChallengeDto, VerifyDto } from './dto/challenge.dto';
+import { LogoutDto, RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
 
 @ApiTags('auth')
@@ -37,5 +40,21 @@ export class AuthController {
   @Post('verify')
   verify(@Body() dto: VerifyDto): Promise<AuthVerifyResponse> {
     return this.authService.verify(dto);
+  }
+
+  @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @Post('refresh')
+  refresh(@Body() dto: RefreshDto): Promise<AuthRefreshResponse> {
+    return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @Post('logout')
+  logout(
+    @Req() request: AuthenticatedRequest,
+    @Body() dto: LogoutDto,
+  ): Promise<{ ok: true }> {
+    return this.authService.logout(request.auth, dto);
   }
 }

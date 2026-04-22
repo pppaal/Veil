@@ -84,6 +84,34 @@ type DeviceConversationStateRecord = {
   updatedAt: Date;
 };
 
+type UserContactRecord = {
+  id: string;
+  userId: string;
+  contactUserId: string;
+  nickname: string | null;
+  createdAt: Date;
+};
+
+type UserProfileRecord = {
+  id: string;
+  userId: string;
+  bio: string | null;
+  statusMessage: string | null;
+  statusEmoji: string | null;
+  lastStatusAt: Date | null;
+  avatarPath: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ReactionRecord = {
+  id: string;
+  messageId: string;
+  userId: string;
+  emoji: string;
+  createdAt: Date;
+};
+
 type DeviceTransferSessionRecord = {
   id: string;
   userId: string;
@@ -106,6 +134,9 @@ export class FakePrismaService {
   messageReceipts: MessageReceiptRecord[] = [];
   deviceConversationStates: DeviceConversationStateRecord[] = [];
   transferSessions: DeviceTransferSessionRecord[] = [];
+  reactions: ReactionRecord[] = [];
+  userContacts: UserContactRecord[] = [];
+  userProfiles: UserProfileRecord[] = [];
 
   user = {
     findUnique: async (_args: any) => undefined as any,
@@ -137,6 +168,7 @@ export class FakePrismaService {
     findUnique: async (_args: any) => undefined as any,
     findMany: async (_args: any) => [] as any[],
     update: async (_args: any) => undefined as any,
+    delete: async (_args: any) => undefined as any,
   };
 
   message = {
@@ -144,6 +176,7 @@ export class FakePrismaService {
     findMany: async (_args: any) => [] as any[],
     findFirst: async (_args: any) => undefined as any,
     findUnique: async (_args: any) => undefined as any,
+    deleteMany: async (_args: any) => ({ count: 0 }),
   };
 
   messageReceipt = {
@@ -152,6 +185,24 @@ export class FakePrismaService {
   };
 
   deviceConversationState = {
+    findUnique: async (_args: any) => undefined as any,
+    upsert: async (_args: any) => undefined as any,
+  };
+
+  reaction = {
+    upsert: async (_args: any) => undefined as any,
+    deleteMany: async (_args: any) => ({ count: 0 }),
+    findMany: async (_args: any) => [] as any[],
+  };
+
+  userContact = {
+    findMany: async (_args: any) => [] as any[],
+    findUnique: async (_args: any) => undefined as any,
+    create: async (_args: any) => undefined as any,
+    delete: async (_args: any) => undefined as any,
+  };
+
+  userProfile = {
     findUnique: async (_args: any) => undefined as any,
     upsert: async (_args: any) => undefined as any,
   };
@@ -472,20 +523,62 @@ export class FakePrismaService {
       return this.hydrateMessage(record, include);
     };
 
-    this.message.findMany = async ({ where, take, cursor, include }: any) => {
+    this.message.findMany = async ({ where, take, cursor, include, select }: any) => {
+      const now = new Date();
+      const matchesNotExpired = (item: MessageRecord): boolean => {
+        if (!where?.OR) return true;
+        const clauses = where.OR as Array<any>;
+        return clauses.some((clause) => {
+          if (clause.expiresAt === null) return item.expiresAt === null;
+          if (clause.expiresAt?.gt) return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
+          return false;
+        });
+      };
       let records = this.messages
-        .filter((item) => item.conversationId === where.conversationId)
+        .filter((item) => !where?.conversationId || item.conversationId === where.conversationId)
         .filter((item) =>
           where?.conversationOrder?.lt === undefined
             ? true
             : item.conversationOrder < where.conversationOrder.lt,
         )
+        .filter((item) =>
+          where?.expiresAt?.lte === undefined
+            ? true
+            : item.expiresAt !== null && item.expiresAt <= where.expiresAt.lte,
+        )
+        .filter((item) =>
+          where?.id?.in === undefined ? true : where.id.in.includes(item.id),
+        )
+        .filter(matchesNotExpired)
         .sort((a, b) => b.conversationOrder - a.conversationOrder);
       if (cursor?.id) {
         const index = records.findIndex((item) => item.id === cursor.id);
         records = index >= 0 ? records.slice(index + 1) : records;
       }
-      return records.slice(0, take ?? records.length).map((record) => this.hydrateMessage(record, include));
+      const sliced = records.slice(0, take ?? records.length);
+      if (select) {
+        return sliced.map((record) => this.pick(record as unknown as Record<string, any>, select));
+      }
+      return sliced.map((record) => this.hydrateMessage(record, include));
+    };
+
+    this.message.deleteMany = async ({ where }: any) => {
+      let removed = 0;
+      this.messages = this.messages.filter((item) => {
+        const match =
+          (!where?.id?.in || where.id.in.includes(item.id)) &&
+          (!where?.conversationId || item.conversationId === where.conversationId);
+        if (match) removed += 1;
+        return !match;
+      });
+      return { count: removed };
+    };
+
+    this.attachment.delete = async ({ where }: any) => {
+      const index = this.attachments.findIndex((item) => item.id === where.id);
+      if (index < 0) return null;
+      const [removed] = this.attachments.splice(index, 1);
+      return removed;
     };
 
     this.message.findUnique = async ({ where, include, select }: any) => {
@@ -605,6 +698,142 @@ export class FakePrismaService {
       return createdRecord;
     };
 
+    this.userContact.findMany = async ({ where, include, orderBy }: any) => {
+      let records = [...this.userContacts];
+      if (where?.userId) {
+        records = records.filter((item) => item.userId === where.userId);
+      }
+      if (orderBy?.createdAt) {
+        records.sort((a, b) =>
+          orderBy.createdAt === 'asc'
+            ? a.createdAt.getTime() - b.createdAt.getTime()
+            : b.createdAt.getTime() - a.createdAt.getTime(),
+        );
+      }
+      return records.map((record) => {
+        if (!include?.contactUser) {
+          return record;
+        }
+        const user = this.users.find((item) => item.id === record.contactUserId);
+        if (!user) {
+          return { ...record, contactUser: null };
+        }
+        const select = include.contactUser.select ?? {};
+        const contactUser: any = {};
+        if (select.id) contactUser.id = user.id;
+        if (select.handle) contactUser.handle = user.handle;
+        if (select.displayName) contactUser.displayName = user.displayName;
+        if (select.profile) {
+          const profile = this.userProfiles.find((item) => item.userId === user.id);
+          contactUser.profile = profile
+            ? this.pick(profile, select.profile.select)
+            : null;
+        }
+        return { ...record, contactUser };
+      });
+    };
+
+    this.userContact.findUnique = async ({ where }: any) => {
+      const key = where.userId_contactUserId;
+      return (
+        this.userContacts.find(
+          (item) => item.userId === key.userId && item.contactUserId === key.contactUserId,
+        ) ?? null
+      );
+    };
+
+    this.userContact.create = async ({ data }: any) => {
+      const record: UserContactRecord = {
+        id: makeId('contact'),
+        userId: data.userId,
+        contactUserId: data.contactUserId,
+        nickname: data.nickname ?? null,
+        createdAt: new Date(),
+      };
+      this.userContacts.push(record);
+      return record;
+    };
+
+    this.userContact.delete = async ({ where }: any) => {
+      const key = where.userId_contactUserId;
+      const index = this.userContacts.findIndex(
+        (item) => item.userId === key.userId && item.contactUserId === key.contactUserId,
+      );
+      if (index < 0) return null;
+      const [removed] = this.userContacts.splice(index, 1);
+      return removed;
+    };
+
+    this.userProfile.findUnique = async ({ where, select }: any) => {
+      const record = this.userProfiles.find((item) => item.userId === where.userId);
+      if (!record) return null;
+      return select ? this.pick(record, select) : record;
+    };
+
+    this.userProfile.upsert = async ({ where, update, create }: any) => {
+      const record = this.userProfiles.find((item) => item.userId === where.userId);
+      if (record) {
+        Object.assign(record, update, { updatedAt: new Date() });
+        return record;
+      }
+      const created: UserProfileRecord = {
+        id: makeId('profile'),
+        userId: create.userId ?? where.userId,
+        bio: create.bio ?? null,
+        statusMessage: create.statusMessage ?? null,
+        statusEmoji: create.statusEmoji ?? null,
+        lastStatusAt: create.lastStatusAt ?? null,
+        avatarPath: create.avatarPath ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      this.userProfiles.push(created);
+      return created;
+    };
+
+    this.reaction.upsert = async ({ where, update, create }: any) => {
+      const key = where.messageId_userId;
+      const record = this.reactions.find(
+        (item) => item.messageId === key.messageId && item.userId === key.userId,
+      );
+      if (record) {
+        Object.assign(record, update);
+        return record;
+      }
+      const created: ReactionRecord = {
+        id: makeId('reaction'),
+        messageId: create.messageId,
+        userId: create.userId,
+        emoji: create.emoji,
+        createdAt: new Date(),
+      };
+      this.reactions.push(created);
+      return created;
+    };
+
+    this.reaction.deleteMany = async ({ where }: any) => {
+      let removed = 0;
+      this.reactions = this.reactions.filter((item) => {
+        const match =
+          (!where.messageId || item.messageId === where.messageId) &&
+          (!where.userId || item.userId === where.userId);
+        if (match) removed += 1;
+        return !match;
+      });
+      return { count: removed };
+    };
+
+    this.reaction.findMany = async ({ where }: any = {}) => {
+      let records = [...this.reactions];
+      if (where?.messageId) {
+        records = records.filter((item) => item.messageId === where.messageId);
+      }
+      if (where?.userId) {
+        records = records.filter((item) => item.userId === where.userId);
+      }
+      return records;
+    };
+
     this.deviceTransferSession.create = async ({ data }: any) => {
       const record: DeviceTransferSessionRecord = {
         id: makeId('transfer'),
@@ -706,6 +935,15 @@ export class FakePrismaService {
       messages: include?.messages
         ? this.messages
             .filter((item) => item.conversationId === record.id)
+            .filter((item) => {
+              const whereOr = include.messages.where?.OR as Array<any> | undefined;
+              if (!whereOr) return true;
+              return whereOr.some((clause) => {
+                if (clause.expiresAt === null) return item.expiresAt === null;
+                if (clause.expiresAt?.gt) return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
+                return false;
+              });
+            })
             .sort((a, b) => b.conversationOrder - a.conversationOrder)
             .slice(0, include.messages.take ?? Number.MAX_SAFE_INTEGER)
             .map((message) => this.hydrateMessage(message, include.messages.include))
@@ -724,6 +962,15 @@ export class FakePrismaService {
         : null,
       receipts: include?.receipts
         ? this.messageReceipts.filter((item) => item.messageId === record.id)
+        : undefined,
+      reactions: include?.reactions
+        ? this.reactions
+            .filter((item) => item.messageId === record.id)
+            .map((reaction) =>
+              include.reactions.select
+                ? this.pick(reaction, include.reactions.select)
+                : reaction,
+            )
         : undefined,
     };
   }

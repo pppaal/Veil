@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import type { AuthenticatedRequest } from './authenticated-request';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { AppConfigService } from '../config/app-config.service';
+import { EphemeralStoreService } from '../ephemeral-store.service';
 import { unauthorized } from '../errors/api-error';
 import { PrismaService } from '../prisma.service';
 
@@ -17,6 +18,8 @@ interface AccessTokenPayload {
   sub: string;
   deviceId: string;
   handle: string;
+  jti?: string;
+  exp?: number;
 }
 
 @Injectable()
@@ -26,6 +29,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly config: AppConfigService,
     private readonly prisma: PrismaService,
+    private readonly ephemeralStore: EphemeralStoreService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -57,6 +61,15 @@ export class JwtAuthGuard implements CanActivate {
         issuer: this.config.jwtIssuer,
       });
 
+      if (payload.jti) {
+        const blacklisted = await this.ephemeralStore.getJson<unknown>(
+          `auth:blacklist:${payload.jti}`,
+        );
+        if (blacklisted) {
+          throw unauthorized('token_revoked', 'Access token has been revoked');
+        }
+      }
+
       const device = await this.prisma.device.findUnique({
         where: { id: payload.deviceId },
         include: { user: true },
@@ -75,6 +88,8 @@ export class JwtAuthGuard implements CanActivate {
         userId: payload.sub,
         deviceId: payload.deviceId,
         handle: payload.handle,
+        jti: payload.jti,
+        exp: payload.exp,
       };
       return true;
     } catch (error) {

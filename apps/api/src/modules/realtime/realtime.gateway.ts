@@ -30,6 +30,8 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   private readonly socketsByUserId = new Map<string, Set<string>>();
   private readonly socketsByDeviceId = new Map<string, Set<string>>();
+  private readonly typingRateLimitBySocket = new Map<string, Map<string, number>>();
+  private static readonly TYPING_MIN_INTERVAL_MS = 500;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -130,6 +132,23 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         }
       }
     }
+
+    this.typingRateLimitBySocket.delete(client.id);
+  }
+
+  private shouldThrottleTyping(socketId: string, conversationId: string): boolean {
+    const now = Date.now();
+    let perConversation = this.typingRateLimitBySocket.get(socketId);
+    if (!perConversation) {
+      perConversation = new Map<string, number>();
+      this.typingRateLimitBySocket.set(socketId, perConversation);
+    }
+    const last = perConversation.get(conversationId) ?? 0;
+    if (now - last < RealtimeGateway.TYPING_MIN_INTERVAL_MS) {
+      return true;
+    }
+    perConversation.set(conversationId, now);
+    return false;
   }
 
   emitToUser<K extends keyof RealtimeEventMap>(userId: string, event: K, payload: RealtimeEventMap[K]): void {
@@ -186,6 +205,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = client.data.userId as string | undefined;
     const handle = client.data.handle as string | undefined;
     if (!userId || !handle || !payload?.conversationId) return;
+    if (this.shouldThrottleTyping(client.id, payload.conversationId)) return;
 
     const members = await this.prisma.conversationMember.findMany({
       where: { conversationId: payload.conversationId },
@@ -208,6 +228,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const userId = client.data.userId as string | undefined;
     const handle = client.data.handle as string | undefined;
     if (!userId || !handle || !payload?.conversationId) return;
+    if (this.shouldThrottleTyping(client.id, payload.conversationId)) return;
 
     const members = await this.prisma.conversationMember.findMany({
       where: { conversationId: payload.conversationId },

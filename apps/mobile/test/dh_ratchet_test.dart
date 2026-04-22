@@ -13,7 +13,7 @@ import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 void main() {
   const conversationId = 'conv-dh';
 
-  KeyBundle _bundle(DeviceIdentityMaterial id, String user, String device) {
+  KeyBundle buildBundle(DeviceIdentityMaterial id, String user, String device) {
     return KeyBundle(
       userId: user,
       deviceId: device,
@@ -23,7 +23,7 @@ void main() {
     );
   }
 
-  Future<CryptoEnvelope> _send({
+  Future<CryptoEnvelope> sendMessage({
     required LibCryptoAdapter from,
     required String fromDeviceId,
     required KeyBundle recipientBundle,
@@ -39,7 +39,7 @@ void main() {
     );
   }
 
-  Future<void> _bootstrapReceiver({
+  Future<void> bootstrapReceiver({
     required LibCryptoAdapter receiver,
     required DeviceIdentityMaterial receiverIdentity,
     required String receiverDevice,
@@ -61,7 +61,7 @@ void main() {
     );
   }
 
-  List<int> _ratchetPubFrom(CryptoEnvelope envelope) {
+  List<int> ratchetPubFrom(CryptoEnvelope envelope) {
     final padded = envelope.ciphertext.padRight(
       envelope.ciphertext.length +
           ((4 - envelope.ciphertext.length % 4) % 4),
@@ -77,8 +77,8 @@ void main() {
     final bobId = await bob.identity.generateDeviceIdentity('device-bob');
     final aliceId =
         await alice.identity.generateDeviceIdentity('device-alice');
-    final bobBundle = _bundle(bobId, 'device-bob', 'device-bob');
-    final aliceBundle = _bundle(aliceId, 'device-alice', 'device-alice');
+    final bobBundle = buildBundle(bobId, 'device-bob', 'device-bob');
+    final aliceBundle = buildBundle(aliceId, 'device-alice', 'device-alice');
 
     await alice.sessions.bootstrapSession(
       SessionBootstrapRequest(
@@ -94,18 +94,18 @@ void main() {
 
     // Alice sends 3 messages in a row. She has not received anything — all
     // three must carry the same ratchet pub.
-    final a0 = await _send(
+    final a0 = await sendMessage(
         from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'a0');
-    final a1 = await _send(
+    final a1 = await sendMessage(
         from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'a1');
-    final a2 = await _send(
+    final a2 = await sendMessage(
         from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'a2');
 
-    expect(_ratchetPubFrom(a1), _ratchetPubFrom(a0));
-    expect(_ratchetPubFrom(a2), _ratchetPubFrom(a0));
+    expect(ratchetPubFrom(a1), ratchetPubFrom(a0));
+    expect(ratchetPubFrom(a2), ratchetPubFrom(a0));
 
     // Bob bootstraps + decrypts. That flips his turn-flag.
-    await _bootstrapReceiver(
+    await bootstrapReceiver(
       receiver: bob,
       receiverIdentity: bobId,
       receiverDevice: 'device-bob',
@@ -118,15 +118,15 @@ void main() {
 
     // Bob's first reply MUST rotate his ratchet pub. Second reply without an
     // intervening receive must NOT rotate.
-    final b0 = await _send(
+    final b0 = await sendMessage(
         from: bob, fromDeviceId: 'device-bob', recipientBundle: aliceBundle, body: 'b0');
-    final b1 = await _send(
+    final b1 = await sendMessage(
         from: bob, fromDeviceId: 'device-bob', recipientBundle: aliceBundle, body: 'b1');
 
-    final aliceEphemeralPub = _ratchetPubFrom(a0);
-    expect(_ratchetPubFrom(b0), isNot(aliceEphemeralPub),
+    final aliceEphemeralPub = ratchetPubFrom(a0);
+    expect(ratchetPubFrom(b0), isNot(aliceEphemeralPub),
         reason: 'first send after receive should rotate DH');
-    expect(_ratchetPubFrom(b1), _ratchetPubFrom(b0),
+    expect(ratchetPubFrom(b1), ratchetPubFrom(b0),
         reason: 'no new receive since last send, no rotation');
 
     // Alice must be able to decrypt despite the rotation (proves the DH
@@ -141,8 +141,8 @@ void main() {
     final bobId = await bob.identity.generateDeviceIdentity('device-bob');
     final aliceId =
         await alice.identity.generateDeviceIdentity('device-alice');
-    final bobBundle = _bundle(bobId, 'device-bob', 'device-bob');
-    final aliceBundle = _bundle(aliceId, 'device-alice', 'device-alice');
+    final bobBundle = buildBundle(bobId, 'device-bob', 'device-bob');
+    final aliceBundle = buildBundle(aliceId, 'device-alice', 'device-alice');
 
     await alice.sessions.bootstrapSession(
       SessionBootstrapRequest(
@@ -156,12 +156,12 @@ void main() {
       ),
     );
 
-    final first = await _send(
+    final first = await sendMessage(
         from: alice,
         fromDeviceId: 'device-alice',
         recipientBundle: bobBundle,
         body: 'alice-0');
-    await _bootstrapReceiver(
+    await bootstrapReceiver(
       receiver: bob,
       receiverIdentity: bobId,
       receiverDevice: 'device-bob',
@@ -171,7 +171,7 @@ void main() {
     expect((await bob.messaging.decryptMessage(first)).body, 'alice-0');
 
     final ratchetHistory = <String>{};
-    ratchetHistory.add(base64Url.encode(_ratchetPubFrom(first)));
+    ratchetHistory.add(base64Url.encode(ratchetPubFrom(first)));
 
     // 12 turn-flips back and forth.
     var aliceTurn = false;
@@ -181,12 +181,12 @@ void main() {
       final recipientBundle = aliceTurn ? bobBundle : aliceBundle;
       final deviceId = aliceTurn ? 'device-alice' : 'device-bob';
       final body = 'turn-$turn';
-      final env = await _send(
+      final env = await sendMessage(
           from: sender,
           fromDeviceId: deviceId,
           recipientBundle: recipientBundle,
           body: body);
-      final key = base64Url.encode(_ratchetPubFrom(env));
+      final key = base64Url.encode(ratchetPubFrom(env));
       expect(ratchetHistory.contains(key), isFalse,
           reason: 'turn $turn should use a fresh ratchet pub');
       ratchetHistory.add(key);
@@ -201,7 +201,7 @@ void main() {
     final bobOriginal = LibCryptoAdapter();
     final bobId =
         await bobOriginal.identity.generateDeviceIdentity('device-bob');
-    final bobBundle = _bundle(bobId, 'device-bob', 'device-bob');
+    final bobBundle = buildBundle(bobId, 'device-bob', 'device-bob');
 
     await alice.sessions.bootstrapSession(
       SessionBootstrapRequest(
@@ -224,8 +224,8 @@ void main() {
     );
 
     final bootstrapMsg =
-        await _send(from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'bootstrap');
-    await _bootstrapReceiver(
+        await sendMessage(from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'bootstrap');
+    await bootstrapReceiver(
       receiver: bobOriginal,
       receiverIdentity: bobId,
       receiverDevice: 'device-bob',
@@ -237,7 +237,7 @@ void main() {
 
     // Send a few more to advance Alice's send chain beyond counter 0.
     for (var i = 0; i < 3; i++) {
-      final env = await _send(
+      final env = await sendMessage(
           from: alice,
           fromDeviceId: 'device-alice',
           recipientBundle: bobBundle,
@@ -248,16 +248,19 @@ void main() {
     // Force a persister flush: Alice sends one more and we capture the
     // snapshot at counter=4 state.
     final afterAdvance =
-        await _send(from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'snap-point');
+        await sendMessage(from: alice, fromDeviceId: 'device-alice', recipientBundle: bobBundle, body: 'snap-point');
     expect((await bobOriginal.messaging.decryptMessage(afterAdvance)).body,
         'snap-point');
+    // v3 persistence is debounced — drain writes so the snapshot map has the
+    // latest state before we try to restore from it.
+    await alice.flushPendingSnapshotWrites();
     expect(snapshots.containsKey(conversationId), isTrue);
 
     // Simulate app restart: build a fresh Alice adapter and restore.
     final aliceRestarted = LibCryptoAdapter();
     await aliceRestarted.restoreSessionsFromSnapshots(snapshots);
 
-    final afterRestart = await _send(
+    final afterRestart = await sendMessage(
         from: aliceRestarted,
         fromDeviceId: 'device-alice',
         recipientBundle: bobBundle,
@@ -273,8 +276,8 @@ void main() {
     final bobId = await bob.identity.generateDeviceIdentity('device-bob');
     final aliceId =
         await alice.identity.generateDeviceIdentity('device-alice');
-    final bobBundle = _bundle(bobId, 'device-bob', 'device-bob');
-    final aliceBundle = _bundle(aliceId, 'device-alice', 'device-alice');
+    final bobBundle = buildBundle(bobId, 'device-bob', 'device-bob');
+    final aliceBundle = buildBundle(aliceId, 'device-alice', 'device-alice');
 
     await alice.sessions.bootstrapSession(
       SessionBootstrapRequest(
@@ -295,12 +298,12 @@ void main() {
       },
     );
 
-    final first = await _send(
+    final first = await sendMessage(
         from: alice,
         fromDeviceId: 'device-alice',
         recipientBundle: bobBundle,
         body: 'a0');
-    await _bootstrapReceiver(
+    await bootstrapReceiver(
       receiver: bob,
       receiverIdentity: bobId,
       receiverDevice: 'device-bob',
@@ -310,24 +313,27 @@ void main() {
     expect((await bob.messaging.decryptMessage(first)).body, 'a0');
 
     // Bob replies → Alice receives → Alice snapshot captures hasReceived=true.
-    final reply = await _send(
+    final reply = await sendMessage(
         from: bob,
         fromDeviceId: 'device-bob',
         recipientBundle: aliceBundle,
         body: 'b0');
     expect((await alice.messaging.decryptMessage(reply)).body, 'b0');
 
-    // Snapshot captured after Alice processed Bob's reply. Simulate restart.
+    // Snapshot captured after Alice processed Bob's reply. Debounced writes
+    // must drain before restore so the restored session sees the latest
+    // hasReceivedSinceLastSend=true.
+    await alice.flushPendingSnapshotWrites();
     final aliceRestarted = LibCryptoAdapter();
     await aliceRestarted.restoreSessionsFromSnapshots(snapshots);
 
     // On restart, Alice's next send should rotate DH. Bob must agree.
-    final afterRestart = await _send(
+    final afterRestart = await sendMessage(
         from: aliceRestarted,
         fromDeviceId: 'device-alice',
         recipientBundle: bobBundle,
         body: 'post-restart');
-    expect(_ratchetPubFrom(afterRestart), isNot(_ratchetPubFrom(first)),
+    expect(ratchetPubFrom(afterRestart), isNot(ratchetPubFrom(first)),
         reason: 'restart + queued turn-flip must rotate DH on next send');
     expect((await bob.messaging.decryptMessage(afterRestart)).body,
         'post-restart');

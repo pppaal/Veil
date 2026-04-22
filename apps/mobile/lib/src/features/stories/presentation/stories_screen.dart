@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,7 +18,7 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen> {
   bool _posting = false;
 
   Future<void> _showCreateTextStorySheet() async {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     final textController = TextEditingController();
     final palette = context.veilPalette;
 
@@ -231,7 +230,7 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen> {
                             label: label.isEmpty ? author.handle : label,
                             hasSeen: author.viewedByMe,
                             onTap: () {
-                              HapticFeedback.selectionClick();
+                              VeilHaptics.selection();
                               context.push('/story-viewer/${author.userId}');
                             },
                           );
@@ -265,7 +264,7 @@ class _StoriesScreenState extends ConsumerState<StoriesScreen> {
                       return InkWell(
                         borderRadius: BorderRadius.circular(VeilRadius.lg),
                         onTap: () {
-                          HapticFeedback.selectionClick();
+                          VeilHaptics.selection();
                           context.push('/story-viewer/${story.userId}');
                         },
                         child: VeilSurfaceCard(

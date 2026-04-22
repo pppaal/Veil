@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -68,7 +67,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     if (!mounted) return;
     if (event == PlatformSecurityEvent.screenshotDetected) {
       final l10n = AppLocalizations.of(context);
-      HapticFeedback.heavyImpact();
+      VeilHaptics.heavy();
       VeilToast.show(
         context,
         message: l10n.chatScreenshotToast,
@@ -125,7 +124,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   Future<void> _pickDisappearTtl() async {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     final l10n = AppLocalizations.of(context);
     final options = _ttlOptions(l10n);
     final selected = await showModalBottomSheet<Duration?>(
@@ -366,11 +365,19 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       return content;
     }
 
+    final isDirect = conversation?.type == ConversationType.direct;
     return VeilShell(
       title: conversation?.peerDisplayName ??
           conversation?.peerHandle ??
           l10n.chatTitleFallback,
       actions: [
+        if (isDirect)
+          IconButton(
+            tooltip: 'Safety number',
+            onPressed: () =>
+                context.push('/safety-numbers/${widget.conversationId}'),
+            icon: const Icon(Icons.verified_user_outlined),
+          ),
         IconButton(
           onPressed: () => context.push('/attachment/${widget.conversationId}'),
           icon: const Icon(Icons.attach_file),
@@ -754,7 +761,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   void _handleReplyGesture(ChatMessage message) {
-    HapticFeedback.lightImpact();
+    VeilHaptics.light();
     _composerFocusNode.requestFocus();
     final l10n = AppLocalizations.of(context);
     VeilToast.show(
@@ -811,7 +818,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     if (message.envelope.messageKind == MessageKind.system) {
       return;
     }
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     final controller = ref.read(messengerControllerProvider);
     await showModalBottomSheet<void>(
       context: context,
@@ -1055,6 +1062,7 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final palette = context.veilPalette;
     final header = Column(
       children: [
         VeilSurfaceCard(
@@ -1074,8 +1082,8 @@ class _ChatHeader extends StatelessWidget {
                           Container(
                             width: 8,
                             height: 8,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF4CAF50),
+                            decoration: BoxDecoration(
+                              color: palette.success,
                               shape: BoxShape.circle,
                             ),
                           ),
@@ -1097,7 +1105,7 @@ class _ChatHeader extends StatelessWidget {
                               ? l10n.chatSubtitleEmbedded
                               : l10n.chatSubtitleStandalone,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: peerOnline ? const Color(0xFF4CAF50) : null,
+                            color: peerOnline ? palette.success : null,
                           ),
                     ),
                   ],
@@ -1762,7 +1770,7 @@ class _ReactionChipsRow extends StatelessWidget {
                 entry.value.any((reaction) => reaction.userId == myUserId),
             palette: palette,
             onTap: () {
-              HapticFeedback.selectionClick();
+              VeilHaptics.selection();
               onChipTap(entry.key);
             },
           ),
@@ -1888,32 +1896,34 @@ class _GradientSendButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.veilPalette;
     final enabled = onPressed != null;
     return GestureDetector(
       onTap: enabled
           ? () {
-              HapticFeedback.selectionClick();
+              VeilHaptics.light();
               onPressed!();
             }
           : null,
       child: AnimatedContainer(
         duration: VeilMotion.fast,
+        curve: VeilMotion.springGentle,
         width: 44,
         height: 44,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           gradient: enabled
-              ? const LinearGradient(
+              ? LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [Color(0xFF6C8CFF), Color(0xFF8B5CF6)],
+                  colors: [palette.primary, palette.accent],
                 )
               : null,
-          color: enabled ? null : const Color(0xFF1F293A),
+          color: enabled ? null : palette.surfaceOverlay,
           boxShadow: enabled
               ? [
                   BoxShadow(
-                    color: const Color(0xFF6C8CFF).withValues(alpha: 0.35),
+                    color: palette.primary.withValues(alpha: 0.32),
                     blurRadius: 14,
                     offset: const Offset(0, 4),
                   ),
@@ -1922,7 +1932,7 @@ class _GradientSendButton extends StatelessWidget {
         ),
         child: Icon(
           busy ? Icons.more_horiz_rounded : Icons.arrow_upward_rounded,
-          color: enabled ? Colors.white : const Color(0xFF5E6B7F),
+          color: enabled ? Colors.white : palette.textSubtle,
           size: 22,
         ),
       ),

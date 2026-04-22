@@ -672,6 +672,7 @@ class _ConversationListPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.veilPalette;
     final hasSearchQuery = searchController.text.trim().isNotEmpty;
     final children = <Widget>[
       VeilHeroPanel(
@@ -913,21 +914,13 @@ class _ConversationListPane extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(VeilRadius.lg),
-                  boxShadow: isSelected
-                      ? const [
-                          BoxShadow(
-                            color: Color(0x22000000),
-                            blurRadius: 24,
-                            offset: Offset(0, 12),
-                          ),
-                        ]
-                      : null,
+                  boxShadow: isSelected ? VeilElevation.raised : null,
                 ),
                 child: Theme(
                   data: Theme.of(context).copyWith(
                     cardTheme: Theme.of(context).cardTheme.copyWith(
                           color: isSelected
-                              ? const Color(0xFF151E28)
+                              ? palette.surfaceRaised
                               : Theme.of(context).cardTheme.color,
                         ),
                   ),

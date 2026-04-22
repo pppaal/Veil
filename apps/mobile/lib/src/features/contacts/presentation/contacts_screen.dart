@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -60,7 +59,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   }
 
   Future<void> _showAddContactSheet() async {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     final handleController = TextEditingController();
     final nicknameController = TextEditingController();
     final palette = context.veilPalette;
@@ -153,7 +152,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   }
 
   void _showContactActions(ContactEntry contact) {
-    HapticFeedback.mediumImpact();
+    VeilHaptics.medium();
     final palette = context.veilPalette;
 
     showModalBottomSheet<void>(

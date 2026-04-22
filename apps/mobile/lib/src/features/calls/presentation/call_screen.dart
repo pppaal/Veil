@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_ui.dart';
@@ -85,7 +84,7 @@ class _CallScreenState extends State<CallScreen>
   }
 
   void _endCall() {
-    HapticFeedback.mediumImpact();
+    VeilHaptics.medium();
     _dialTimer?.cancel();
     _durationTimer?.cancel();
     setState(() => _callState = CallScreenState.ended);
@@ -233,7 +232,7 @@ class _CallScreenState extends State<CallScreen>
                       active: _isMuted,
                       enabled: isActive,
                       onPressed: () {
-                        HapticFeedback.selectionClick();
+                        VeilHaptics.selection();
                         setState(() => _isMuted = !_isMuted);
                       },
                     ),
@@ -245,7 +244,7 @@ class _CallScreenState extends State<CallScreen>
                       active: _isSpeaker,
                       enabled: isActive,
                       onPressed: () {
-                        HapticFeedback.selectionClick();
+                        VeilHaptics.selection();
                         setState(() => _isSpeaker = !_isSpeaker);
                       },
                     ),
@@ -257,7 +256,7 @@ class _CallScreenState extends State<CallScreen>
                       active: _isVideo,
                       enabled: isActive,
                       onPressed: () {
-                        HapticFeedback.selectionClick();
+                        VeilHaptics.selection();
                         setState(() => _isVideo = !_isVideo);
                       },
                     ),

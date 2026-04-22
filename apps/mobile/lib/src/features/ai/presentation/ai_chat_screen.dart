@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -194,7 +193,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    HapticFeedback.lightImpact();
+    VeilHaptics.light();
     setState(() {
       _messages.add(_AiMessage(
         text: text,

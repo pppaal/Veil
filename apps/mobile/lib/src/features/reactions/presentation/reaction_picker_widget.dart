@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_ui.dart';
@@ -39,7 +38,7 @@ class ReactionPickerWidget extends StatelessWidget {
             _ReactionButton(
               emoji: emoji,
               onTap: () {
-                HapticFeedback.selectionClick();
+                VeilHaptics.selection();
                 onReactionSelected(emoji);
               },
             ),
@@ -61,7 +60,7 @@ class ReactionPickerWidget extends StatelessWidget {
               ),
               tooltip: 'More reactions',
               onPressed: () {
-                HapticFeedback.selectionClick();
+                VeilHaptics.selection();
                 onExpandPressed?.call();
               },
             ),

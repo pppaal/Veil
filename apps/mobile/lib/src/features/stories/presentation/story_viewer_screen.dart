@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
@@ -85,7 +84,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   }
 
   void _handleTap(TapUpDetails details, BoxConstraints constraints) {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     final tapX = details.localPosition.dx;
     if (tapX < constraints.maxWidth * 0.35) {
       _goPrevious();
@@ -97,7 +96,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
   void _sendReply() {
     final text = _replyController.text.trim();
     if (text.isEmpty) return;
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     _replyController.clear();
     _replyFocusNode.unfocus();
     VeilToast.show(

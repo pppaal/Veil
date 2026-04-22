@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/veil_theme.dart';
@@ -39,7 +38,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _onEditPressed(ProfileController controller) async {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     if (_isEditing) {
       final snapshot = controller.profile;
       final currentDisplay = snapshot?.displayName ?? '';

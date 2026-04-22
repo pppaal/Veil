@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -43,7 +42,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen>
   }
 
   void _startRecording() {
-    HapticFeedback.mediumImpact();
+    VeilHaptics.medium();
     setState(() {
       _state = _RecordingState.recording;
       _elapsed = Duration.zero;
@@ -55,7 +54,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen>
   }
 
   void _stopRecording() {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     _timer?.cancel();
     _waveController.stop();
     setState(() => _state = _RecordingState.preview);
@@ -72,7 +71,7 @@ class _VoiceRecorderScreenState extends State<VoiceRecorderScreen>
   }
 
   void _togglePreviewPlayback() {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     setState(() => _previewPlaying = !_previewPlaying);
   }
 

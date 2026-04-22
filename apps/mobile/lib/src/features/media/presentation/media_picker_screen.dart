@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -18,7 +17,7 @@ class _MediaPickerScreenState extends State<MediaPickerScreen> {
   static const _placeholderCount = 24;
 
   void _toggleSelection(int index) {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     setState(() {
       if (_selected.contains(index)) {
         _selected.remove(index);

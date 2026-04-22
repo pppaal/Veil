@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -78,7 +77,7 @@ class _StickerPickerScreenState extends State<StickerPickerScreen>
   }
 
   void _selectEmoji(String emoji) {
-    HapticFeedback.selectionClick();
+    VeilHaptics.selection();
     if (widget.onEmojiSelected != null) {
       widget.onEmojiSelected!(emoji);
     } else {

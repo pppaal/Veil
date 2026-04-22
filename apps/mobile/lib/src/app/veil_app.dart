@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/crypto/lib_crypto_adapter.dart';
 import '../core/router/app_router.dart';
 import '../core/theme/veil_theme.dart';
 import '../l10n/generated/app_localizations.dart';
@@ -26,7 +27,9 @@ class VeilApp extends ConsumerWidget {
     return _PrivacyLifecycleBoundary(
       child: MaterialApp.router(
         title: 'VEIL',
-        theme: VeilTheme.dark(),
+        theme: VeilTheme.light(),
+        darkTheme: VeilTheme.dark(),
+        themeMode: ThemeMode.system,
         debugShowCheckedModeBanner: false,
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -74,6 +77,7 @@ class _PrivacyLifecycleBoundaryState
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
         _engagePrivacyShield();
+        _flushPendingRatchetSnapshots();
         break;
       case AppLifecycleState.resumed:
         _refreshPlatformSecurity();
@@ -89,7 +93,19 @@ class _PrivacyLifecycleBoundaryState
         break;
       case AppLifecycleState.detached:
         _engagePrivacyShield();
+        _flushPendingRatchetSnapshots();
         break;
+    }
+  }
+
+  // Drain debounced session-snapshot writes before the OS freezes or kills
+  // the process — otherwise the latest ratchet state could be lost within
+  // the debounce window. Safe to call unconditionally: no-op if the active
+  // adapter doesn't use the debounced persister.
+  void _flushPendingRatchetSnapshots() {
+    final adapter = ref.read(cryptoAdapterProvider);
+    if (adapter is LibCryptoAdapter) {
+      unawaited(adapter.flushPendingSnapshotWrites());
     }
   }
 

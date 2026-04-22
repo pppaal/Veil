@@ -49,8 +49,8 @@ class ReactionPickerWidget extends StatelessWidget {
             color: palette.stroke,
           ),
           SizedBox(
-            width: 36,
-            height: 36,
+            width: 44,
+            height: 44,
             child: IconButton(
               padding: EdgeInsets.zero,
               icon: Icon(
@@ -87,11 +87,14 @@ class _ReactionButton extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(VeilRadius.sm),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(VeilSpace.xs),
-          child: Text(
-            emoji,
-            style: const TextStyle(fontSize: 22),
+        child: SizedBox(
+          width: 44,
+          height: 44,
+          child: Center(
+            child: Text(
+              emoji,
+              style: const TextStyle(fontSize: 24),
+            ),
           ),
         ),
       ),

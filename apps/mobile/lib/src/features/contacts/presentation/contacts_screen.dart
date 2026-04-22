@@ -295,6 +295,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               suffixIcon: _searchQuery.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear_rounded),
+                      tooltip: 'Clear search',
                       onPressed: () => _searchController.clear(),
                     )
                   : null,

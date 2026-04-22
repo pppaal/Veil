@@ -7,7 +7,8 @@ enum VeilBannerTone { info, good, warn, danger }
 enum VeilButtonTone { primary, secondary, destructive, ghost }
 
 extension VeilThemeContext on BuildContext {
-  VeilPalette get veilPalette => VeilPalette.dark;
+  VeilPalette get veilPalette =>
+      VeilPalette.forBrightness(Theme.of(this).brightness);
 }
 
 class VeilButton extends StatelessWidget {

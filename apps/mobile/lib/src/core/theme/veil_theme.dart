@@ -159,19 +159,55 @@ class VeilPalette {
     accent: Color(0xFFBF5AF2),
     accentSoft: Color(0x1FBF5AF2),
   );
+
+  // iOS light mode. Background tiers mirror systemBackground /
+  // secondarySystemBackground / tertiarySystemBackground. Colors use the
+  // documented iOS light system color values so Dynamic Type and system
+  // contrast assumptions hold.
+  static const light = VeilPalette(
+    canvas: Color(0xFFFFFFFF),
+    canvasAlt: Color(0xFFF2F2F7),
+    surface: Color(0xFFFFFFFF),
+    surfaceAlt: Color(0xFFF2F2F7),
+    surfaceRaised: Color(0xFFFFFFFF),
+    surfaceOverlay: Color(0xFFE5E5EA),
+    stroke: Color(0xFFD1D1D6),
+    strokeStrong: Color(0xFFC6C6C8),
+    primary: Color(0xFF007AFF),
+    primaryStrong: Color(0xFF0A84FF),
+    primarySoft: Color(0x1F007AFF),
+    text: Color(0xFF000000),
+    textMuted: Color(0xFF3C3C43),
+    textSubtle: Color(0x993C3C43),
+    success: Color(0xFF34C759),
+    warning: Color(0xFFFF9500),
+    danger: Color(0xFFFF3B30),
+    accent: Color(0xFFAF52DE),
+    accentSoft: Color(0x1FAF52DE),
+  );
+
+  /// Resolve the palette matching a [Brightness]. Screens should prefer
+  /// `context.veilPalette` which reads the brightness from [Theme.of].
+  static VeilPalette forBrightness(Brightness brightness) =>
+      brightness == Brightness.light ? light : dark;
 }
 
 class VeilTheme {
-  static ThemeData dark() {
-    const palette = VeilPalette.dark;
+  static ThemeData dark() => _build(VeilPalette.dark, Brightness.dark);
+
+  static ThemeData light() => _build(VeilPalette.light, Brightness.light);
+
+  static ThemeData _build(VeilPalette palette, Brightness brightness) {
+    final onPrimary =
+        brightness == Brightness.light ? Colors.white : palette.canvas;
     final scheme = ColorScheme(
-      brightness: Brightness.dark,
+      brightness: brightness,
       primary: palette.primary,
-      onPrimary: palette.canvas,
+      onPrimary: onPrimary,
       secondary: palette.primary,
-      onSecondary: palette.canvas,
+      onSecondary: onPrimary,
       error: palette.danger,
-      onError: palette.canvas,
+      onError: onPrimary,
       surface: palette.surface,
       onSurface: palette.text,
       outline: palette.stroke,
@@ -186,7 +222,7 @@ class VeilTheme {
 
     final base = ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
+      brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: palette.canvas,
       canvasColor: palette.canvas,

@@ -321,6 +321,7 @@ class _StoryViewerScreenState extends ConsumerState<StoryViewerScreen>
                                   color: palette.primary,
                                   size: VeilIconSize.md,
                                 ),
+                                tooltip: 'Send reply',
                                 onPressed: _sendReply,
                               ),
                             ),

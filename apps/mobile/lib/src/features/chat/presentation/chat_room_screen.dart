@@ -379,6 +379,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
             icon: const Icon(Icons.verified_user_outlined),
           ),
         IconButton(
+          tooltip: 'Attachments',
           onPressed: () => context.push('/attachment/${widget.conversationId}'),
           icon: const Icon(Icons.attach_file),
         ),

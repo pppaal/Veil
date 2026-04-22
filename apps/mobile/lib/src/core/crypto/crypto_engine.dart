@@ -42,6 +42,33 @@ class SessionBootstrapRequest {
   final String remoteSignedPrekeyBundle;
 }
 
+// Receive-side bootstrap: derives the same symmetric session as the sender
+// using the recipient's stored X25519 private key and the sender's ephemeral
+// public key extracted from the inbound envelope's wire bytes.
+class InboundSessionBootstrapRequest {
+  const InboundSessionBootstrapRequest({
+    required this.conversationId,
+    required this.localDeviceId,
+    required this.localUserId,
+    required this.localIdentityPrivateRef,
+    required this.remoteUserId,
+    required this.remoteDeviceId,
+    required this.remoteEphemeralPublicKey,
+  });
+
+  final String conversationId;
+  final String localDeviceId;
+  final String localUserId;
+  // Opaque reference (b64 of a JSON bundle in the lib adapter) — the adapter
+  // knows how to parse this back into an X25519 private key.
+  final String localIdentityPrivateRef;
+  final String remoteUserId;
+  final String remoteDeviceId;
+  // Raw 32 bytes of the sender's ephemeral X25519 public key, as carried in
+  // the first 32 bytes of the encrypted envelope payload.
+  final List<int> remoteEphemeralPublicKey;
+}
+
 class SessionBootstrapMaterial {
   const SessionBootstrapMaterial({
     required this.sessionLocator,
@@ -226,6 +253,22 @@ abstract class ConversationSessionBootstrapper {
   Future<SessionBootstrapMaterial> bootstrapSession(
     SessionBootstrapRequest request,
   );
+
+  Future<SessionBootstrapMaterial> bootstrapSessionFromInbound(
+    InboundSessionBootstrapRequest request,
+  );
+
+  // Returns true if a session has already been established for this
+  // conversation. Lets the app-layer decide whether to proactively kick off an
+  // inbound-bootstrap on an incoming envelope. Mock/stub adapters may always
+  // return true to short-circuit the bootstrap path in tests.
+  bool hasSessionFor(String conversationId) => true;
+}
+
+abstract class InboundEnvelopeInspector {
+  // Returns the 32-byte sender ephemeral public key carried in an inbound
+  // envelope's wire bytes, or null if the envelope is malformed.
+  List<int>? extractSenderEphemeralPublicKey(CryptoEnvelope envelope);
 }
 
 abstract class CryptoAdapter {

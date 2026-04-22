@@ -8,7 +8,11 @@ import 'package:local_auth/local_auth.dart';
 import '../core/config/veil_config.dart';
 import '../core/crypto/crypto_adapter_registry.dart';
 import '../core/crypto/crypto_engine.dart';
+import '../core/crypto/lib_crypto_adapter.dart';
 import '../core/network/veil_api_client.dart';
+import '../core/notifications/local_notification_service.dart';
+import '../core/notifications/push_token_coordinator.dart';
+import '../core/notifications/remote_push_service.dart';
 import '../core/realtime/realtime_service.dart';
 import '../core/security/app_lock_service.dart';
 import '../core/security/local_data_cipher.dart';
@@ -90,6 +94,13 @@ final realtimeServiceProvider = Provider<RealtimeService>((ref) {
   return RealtimeService();
 });
 
+final localNotificationServiceProvider =
+    Provider<LocalNotificationService>((ref) {
+  final service = LocalNotificationService();
+  unawaited(service.initialize());
+  return service;
+});
+
 final appLockServiceProvider = Provider<AppLockService>((ref) {
   return AppLockService(
     DeviceLocalUnlockAuthenticator(LocalAuthentication()),
@@ -164,11 +175,13 @@ class AppSessionState {
 
   const AppSessionState({
     this.accessToken,
+    this.refreshToken,
     this.userId,
     this.deviceId,
     this.handle,
     this.displayName,
     this.onboardingAccepted = false,
+    this.privacyConsentAccepted = false,
     this.locked = true,
     this.initializing = true,
     this.authFlowStage = AuthFlowStage.idle,
@@ -176,11 +189,13 @@ class AppSessionState {
   });
 
   final String? accessToken;
+  final String? refreshToken;
   final String? userId;
   final String? deviceId;
   final String? handle;
   final String? displayName;
   final bool onboardingAccepted;
+  final bool privacyConsentAccepted;
   final bool locked;
   final bool initializing;
   final AuthFlowStage authFlowStage;
@@ -198,11 +213,13 @@ class AppSessionState {
 
   AppSessionState copyWith({
     Object? accessToken = _unset,
+    Object? refreshToken = _unset,
     Object? userId = _unset,
     Object? deviceId = _unset,
     Object? handle = _unset,
     Object? displayName = _unset,
     bool? onboardingAccepted,
+    bool? privacyConsentAccepted,
     bool? locked,
     bool? initializing,
     AuthFlowStage? authFlowStage,
@@ -212,6 +229,9 @@ class AppSessionState {
       accessToken: identical(accessToken, _unset)
           ? this.accessToken
           : accessToken as String?,
+      refreshToken: identical(refreshToken, _unset)
+          ? this.refreshToken
+          : refreshToken as String?,
       userId: identical(userId, _unset) ? this.userId : userId as String?,
       deviceId:
           identical(deviceId, _unset) ? this.deviceId : deviceId as String?,
@@ -220,6 +240,7 @@ class AppSessionState {
           ? this.displayName
           : displayName as String?,
       onboardingAccepted: onboardingAccepted ?? this.onboardingAccepted,
+      privacyConsentAccepted: privacyConsentAccepted ?? this.privacyConsentAccepted,
       locked: locked ?? this.locked,
       initializing: initializing ?? this.initializing,
       authFlowStage: authFlowStage ?? this.authFlowStage,
@@ -269,13 +290,16 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
     final session = await _storage.readSession();
     final onboardingAccepted = await _storage.readOnboardingAccepted();
+    final privacyConsentAccepted = await _storage.readPrivacyConsent();
     state = AppSessionState(
       accessToken: session?.accessToken,
+      refreshToken: session?.refreshToken,
       userId: session?.userId,
       deviceId: session?.deviceId,
       handle: session?.handle,
       displayName: session?.displayName,
       onboardingAccepted: onboardingAccepted,
+      privacyConsentAccepted: privacyConsentAccepted,
       locked: session != null,
       initializing: false,
     );
@@ -284,6 +308,11 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   Future<void> acceptOnboarding() async {
     await _storage.persistOnboardingAccepted(true);
     state = state.copyWith(onboardingAccepted: true);
+  }
+
+  Future<void> acceptPrivacyConsent() async {
+    await _storage.persistPrivacyConsent(true);
+    state = state.copyWith(privacyConsentAccepted: true);
   }
 
   Future<void> registerAndAuthenticate({
@@ -337,6 +366,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
       await _storage.persistSession(
         accessToken: verified['accessToken'] as String,
+        refreshToken: verified['refreshToken'] as String?,
         userId: verified['userId'] as String,
         deviceId: verified['deviceId'] as String,
         handle: handle,
@@ -345,6 +375,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
       state = state.copyWith(
         accessToken: verified['accessToken'] as String,
+        refreshToken: verified['refreshToken'] as String?,
         userId: verified['userId'] as String,
         deviceId: verified['deviceId'] as String,
         handle: handle,
@@ -405,11 +436,66 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     await _apiClient.revokeDevice(accessToken, deviceId);
   }
 
+  Future<void> deleteAccount() async {
+    final accessToken = state.accessToken;
+    if (accessToken == null) {
+      return;
+    }
+
+    try {
+      await _apiClient.deleteAccount(accessToken);
+    } finally {
+      await _clearLocalState(
+        preserveOnboardingAccepted: false,
+        preservePin: false,
+      );
+    }
+  }
+
   Future<void> logout() async {
+    final accessToken = state.accessToken;
+    final refreshToken = state.refreshToken;
+    if (accessToken != null) {
+      try {
+        await _apiClient.logoutAuth(accessToken, refreshToken: refreshToken);
+      } catch (_) {
+        // Server-side revoke is best-effort; local wipe must still proceed.
+      }
+    }
     await _clearLocalState(
       preserveOnboardingAccepted: true,
       preservePin: true,
     );
+  }
+
+  /// Attempts to exchange the stored refresh token for a new access token.
+  /// Returns the fresh access token on success, or `null` if the session
+  /// is no longer usable (caller should fall back to re-authentication).
+  Future<String?> refreshSession() async {
+    final refreshToken = state.refreshToken;
+    if (refreshToken == null || refreshToken.isEmpty) {
+      return null;
+    }
+
+    try {
+      final refreshed = await _apiClient.refreshAuth(refreshToken);
+      final newAccess = refreshed['accessToken'] as String?;
+      final newRefresh = refreshed['refreshToken'] as String?;
+      if (newAccess == null || newAccess.isEmpty) {
+        return null;
+      }
+      await _storage.updateAccessTokens(
+        accessToken: newAccess,
+        refreshToken: newRefresh,
+      );
+      state = state.copyWith(
+        accessToken: newAccess,
+        refreshToken: newRefresh ?? state.refreshToken,
+      );
+      return newAccess;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> wipeLocalDeviceState() async {
@@ -458,6 +544,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     _clearPendingTransferClaim();
     state = state.copyWith(
       accessToken: null,
+      refreshToken: null,
       userId: null,
       deviceId: null,
       handle: null,
@@ -466,6 +553,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       locked: true,
       onboardingAccepted:
           preserveOnboardingAccepted ? state.onboardingAccepted : false,
+      privacyConsentAccepted:
+          preserveOnboardingAccepted ? state.privacyConsentAccepted : false,
       authFlowStage: AuthFlowStage.idle,
     );
   }
@@ -583,6 +672,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       );
       await _storage.persistSession(
         accessToken: verified['accessToken'] as String,
+        refreshToken: verified['refreshToken'] as String?,
         userId: verified['userId'] as String,
         deviceId: verified['deviceId'] as String,
         handle: handle,
@@ -591,6 +681,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
       state = state.copyWith(
         accessToken: verified['accessToken'] as String,
+        refreshToken: verified['refreshToken'] as String?,
         userId: verified['userId'] as String,
         deviceId: verified['deviceId'] as String,
         handle: handle,
@@ -635,32 +726,78 @@ final appSessionProvider =
   );
 });
 
+final pushTokenCoordinatorProvider = Provider<PushTokenCoordinator>((ref) {
+  final coordinator = PushTokenCoordinator(
+    apiClient: ref.read(apiClientProvider),
+    pushService: ref.read(remotePushServiceProvider),
+  );
+  ref.onDispose(() {
+    unawaited(coordinator.dispose());
+  });
+  return coordinator;
+});
+
 final messengerControllerProvider =
     ChangeNotifierProvider<VeilMessengerController>((ref) {
+  final notificationService = ref.read(localNotificationServiceProvider);
+  final secureStorage = ref.read(secureStorageProvider);
+  final cryptoAdapter = ref.read(cryptoAdapterProvider);
+
+  // Double Ratchet session persistence: wire the adapter's after-mutate
+  // callback to secure storage, and build a restorer that rehydrates
+  // snapshots into memory on first authenticated applySession.
+  Future<void> Function()? sessionRestorer;
+  if (cryptoAdapter is LibCryptoAdapter) {
+    cryptoAdapter.setSessionPersistence(
+      persister: (conversationId, snapshot) =>
+          secureStorage.writeSessionSnapshot(conversationId, snapshot),
+    );
+    sessionRestorer = () async {
+      final snapshots = await secureStorage.readAllSessionSnapshots();
+      if (snapshots.isEmpty) return;
+      await cryptoAdapter.restoreSessionsFromSnapshots(snapshots);
+    };
+  }
+
   final controller = VeilMessengerController(
     apiClient: ref.read(apiClientProvider),
     cryptoEngine: ref.read(messagingCryptoProvider),
-    keyBundleCodec: ref.read(cryptoAdapterProvider).keyBundles,
-    envelopeCodec: ref.read(cryptoAdapterProvider).envelopeCodec,
-    sessionBootstrapper: ref.read(cryptoAdapterProvider).sessions,
+    keyBundleCodec: cryptoAdapter.keyBundles,
+    envelopeCodec: cryptoAdapter.envelopeCodec,
+    sessionBootstrapper: cryptoAdapter.sessions,
     realtimeService: ref.read(realtimeServiceProvider),
     cacheService: ref.watch(conversationCacheProvider).maybeWhen(
           data: (cache) => cache,
           orElse: () => null,
         ),
     attachmentTempFileStore: ref.read(attachmentTempFileStoreProvider),
+    notificationService: notificationService,
     onSecurityException: (error) async {
       await ref
           .read(appSessionProvider.notifier)
           .handleSecurityException(error);
     },
+    identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
+    sessionSnapshotRestorer: sessionRestorer,
   );
 
-  ref.listen<AppSessionState>(appSessionProvider, (_, next) {
+  final pushCoordinator = ref.read(pushTokenCoordinatorProvider);
+
+  ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
     unawaited(controller.applySession(next));
+    final wasAuthed = previous?.isAuthenticated ?? false;
+    if (next.isAuthenticated && next.accessToken != null) {
+      unawaited(pushCoordinator.bind(next.accessToken!));
+    } else if (wasAuthed && !next.isAuthenticated) {
+      unawaited(pushCoordinator.unbind());
+    }
   });
 
-  unawaited(controller.applySession(ref.read(appSessionProvider)));
+  final initial = ref.read(appSessionProvider);
+  unawaited(controller.applySession(initial));
+  if (initial.isAuthenticated && initial.accessToken != null) {
+    unawaited(pushCoordinator.bind(initial.accessToken!));
+  }
   ref.onDispose(controller.dispose);
   return controller;
 });

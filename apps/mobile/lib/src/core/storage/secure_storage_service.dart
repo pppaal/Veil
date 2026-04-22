@@ -67,11 +67,18 @@ class SecureStorageService {
   static const _pinLockoutUntilKey = 'veil.app_lock.pin_lockout_until';
   static const _cacheKey = 'veil.cache.encryption_key';
   static const _accessTokenKey = 'veil.session.access_token';
+  static const _refreshTokenKey = 'veil.session.refresh_token';
   static const _userIdKey = 'veil.session.user_id';
   static const _deviceIdKey = 'veil.session.device_id';
   static const _handleKey = 'veil.session.handle';
   static const _displayNameKey = 'veil.session.display_name';
   static const _onboardingAcceptedKey = 'veil.onboarding.accepted';
+  static const _privacyConsentKey = 'veil.privacy.consent_accepted';
+  // Double Ratchet per-conversation session snapshots, stored as a single
+  // JSON blob {conversationId: <snapshot json string>}. Stored as one key so
+  // we don't depend on backend enumeration, which FlutterSecureStorage can't
+  // do portably.
+  static const _sessionSnapshotsKey = 'veil.crypto.session_snapshots';
 
   Future<void> persistDeviceSecretRefs({
     required String identityPrivateRef,
@@ -88,6 +95,10 @@ class SecureStorageService {
     final authPrivateKey = await _storage.read(key: _authPrivateKey);
     return (identityPrivateRef?.isNotEmpty ?? false) &&
         (authPrivateKey?.isNotEmpty ?? false);
+  }
+
+  Future<String?> readIdentityPrivateRef() async {
+    return _storage.read(key: _identityKey);
   }
 
   Future<StoredAuthKeyMaterial?> readAuthKeyMaterial() async {
@@ -202,20 +213,33 @@ class SecureStorageService {
 
   Future<void> persistSession({
     required String accessToken,
+    String? refreshToken,
     required String userId,
     required String deviceId,
     required String handle,
     String? displayName,
   }) async {
     await _storage.write(key: _accessTokenKey, value: accessToken);
+    await _storage.write(key: _refreshTokenKey, value: refreshToken);
     await _storage.write(key: _userIdKey, value: userId);
     await _storage.write(key: _deviceIdKey, value: deviceId);
     await _storage.write(key: _handleKey, value: handle);
     await _storage.write(key: _displayNameKey, value: displayName);
   }
 
+  Future<void> updateAccessTokens({
+    required String accessToken,
+    String? refreshToken,
+  }) async {
+    await _storage.write(key: _accessTokenKey, value: accessToken);
+    if (refreshToken != null) {
+      await _storage.write(key: _refreshTokenKey, value: refreshToken);
+    }
+  }
+
   Future<StoredSession?> readSession() async {
     final accessToken = await _storage.read(key: _accessTokenKey);
+    final refreshToken = await _storage.read(key: _refreshTokenKey);
     final userId = await _storage.read(key: _userIdKey);
     final deviceId = await _storage.read(key: _deviceIdKey);
     final handle = await _storage.read(key: _handleKey);
@@ -230,6 +254,7 @@ class SecureStorageService {
 
     return StoredSession(
       accessToken: accessToken,
+      refreshToken: refreshToken,
       userId: userId,
       deviceId: deviceId,
       handle: handle,
@@ -239,6 +264,7 @@ class SecureStorageService {
 
   Future<void> clearSession() async {
     await _storage.delete(key: _accessTokenKey);
+    await _storage.delete(key: _refreshTokenKey);
     await _storage.delete(key: _userIdKey);
     await _storage.delete(key: _deviceIdKey);
     await _storage.delete(key: _handleKey);
@@ -249,6 +275,40 @@ class SecureStorageService {
     await _storage.delete(key: _identityKey);
     await _storage.delete(key: _authPrivateKey);
     await _storage.delete(key: _authPublicKey);
+  }
+
+  Future<Map<String, Map<String, dynamic>>> readAllSessionSnapshots() async {
+    final raw = await _storage.read(key: _sessionSnapshotsKey);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final result = <String, Map<String, dynamic>>{};
+      decoded.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          result[key] = value;
+        }
+      });
+      return result;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> writeSessionSnapshot(
+    String conversationId,
+    Map<String, dynamic> snapshot,
+  ) async {
+    final all = await readAllSessionSnapshots();
+    final next = Map<String, Map<String, dynamic>>.from(all);
+    next[conversationId] = snapshot;
+    await _storage.write(
+      key: _sessionSnapshotsKey,
+      value: json.encode(next),
+    );
+  }
+
+  Future<void> clearSessionSnapshots() async {
+    await _storage.delete(key: _sessionSnapshotsKey);
   }
 
   Future<void> clearCacheKey() async {
@@ -268,6 +328,21 @@ class SecureStorageService {
 
   Future<bool> readOnboardingAccepted() async {
     return (await _storage.read(key: _onboardingAcceptedKey)) == 'true';
+  }
+
+  Future<void> persistPrivacyConsent(bool accepted) {
+    return _storage.write(
+      key: _privacyConsentKey,
+      value: accepted ? 'true' : 'false',
+    );
+  }
+
+  Future<void> clearPrivacyConsent() async {
+    await _storage.delete(key: _privacyConsentKey);
+  }
+
+  Future<bool> readPrivacyConsent() async {
+    return (await _storage.read(key: _privacyConsentKey)) == 'true';
   }
 
   Future<PinThrottleState> readPinThrottleState() async {
@@ -307,6 +382,7 @@ class SecureStorageService {
     await clearDeviceSecrets();
     await clearCacheKey();
     await clearPinThrottleState();
+    await clearSessionSnapshots();
     if (!preservePin) {
       await clearPin();
     }
@@ -383,6 +459,7 @@ class SecureStorageService {
 class StoredSession {
   const StoredSession({
     required this.accessToken,
+    this.refreshToken,
     required this.userId,
     required this.deviceId,
     required this.handle,
@@ -390,6 +467,7 @@ class StoredSession {
   });
 
   final String accessToken;
+  final String? refreshToken;
   final String userId;
   final String deviceId;
   final String handle;

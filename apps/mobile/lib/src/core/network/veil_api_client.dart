@@ -25,6 +25,21 @@ class VeilApiClient {
     return _post('/auth/verify', body);
   }
 
+  Future<Map<String, dynamic>> refreshAuth(String refreshToken) async {
+    return _post('/auth/refresh', {'refreshToken': refreshToken});
+  }
+
+  Future<Map<String, dynamic>> logoutAuth(
+    String accessToken, {
+    String? refreshToken,
+  }) async {
+    return _post(
+      '/auth/logout',
+      {if (refreshToken != null) 'refreshToken': refreshToken},
+      accessToken: accessToken,
+    );
+  }
+
   Future<Map<String, dynamic>> getKeyBundle(String handle) async {
     return _get('/users/$handle/key-bundle');
   }
@@ -348,6 +363,25 @@ class VeilApiClient {
 
   Future<Map<String, dynamic>> listDevices(String accessToken) async {
     return _get('/devices', accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> updatePushToken(
+    String accessToken,
+    String pushToken,
+  ) async {
+    return _post(
+      '/devices/push-token',
+      {'pushToken': pushToken},
+      accessToken: accessToken,
+    );
+  }
+
+  Future<Map<String, dynamic>> clearPushToken(String accessToken) async {
+    return _delete('/devices/push-token', accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> deleteAccount(String accessToken) async {
+    return _delete('/account', accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> _get(

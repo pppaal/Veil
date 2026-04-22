@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/router/app_router.dart';
 import '../core/theme/veil_theme.dart';
+import '../l10n/generated/app_localizations.dart';
 import '../shared/presentation/veil_ui.dart';
 import 'app_state.dart';
 
@@ -14,12 +15,22 @@ class VeilApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
+    final notificationService = ref.read(localNotificationServiceProvider);
+
+    notificationService.onNotificationTapped = (conversationId) {
+      if (conversationId != null && conversationId.isNotEmpty) {
+        router.go('/chat/$conversationId');
+      }
+    };
+
     return _PrivacyLifecycleBoundary(
       child: MaterialApp.router(
         title: 'VEIL',
         theme: VeilTheme.dark(),
         debugShowCheckedModeBanner: false,
         routerConfig: router,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
       ),
     );
   }
@@ -46,6 +57,7 @@ class _PrivacyLifecycleBoundaryState
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _refreshPlatformSecurity();
+      unawaited(ref.read(localNotificationServiceProvider).requestPermission());
     });
   }
 
@@ -113,6 +125,7 @@ class _PrivacyLifecycleBoundaryState
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -124,19 +137,18 @@ class _PrivacyLifecycleBoundaryState
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 360),
-                  child: const Padding(
-                    padding: EdgeInsets.all(24),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
                     child: VeilHeroPanel(
-                      eyebrow: 'PRIVACY SHIELD',
-                      title: 'VEIL is hidden while inactive.',
-                      body:
-                          'Recent-app previews are obscured and the local barrier is re-armed when the app leaves the foreground.',
+                      eyebrow: l10n.privacyShieldEyebrow,
+                      title: l10n.privacyShieldTitle,
+                      body: l10n.privacyShieldBody,
                       bottom: Wrap(
                         spacing: 8,
                         runSpacing: 8,
                         children: [
-                          VeilStatusPill(label: 'Session locked'),
-                          VeilStatusPill(label: 'Preview obscured'),
+                          VeilStatusPill(label: l10n.pillSessionLocked),
+                          VeilStatusPill(label: l10n.pillPreviewObscured),
                         ],
                       ),
                     ),

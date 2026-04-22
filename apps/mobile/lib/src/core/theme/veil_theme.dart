@@ -74,6 +74,8 @@ class VeilPalette {
     required this.success,
     required this.warning,
     required this.danger,
+    this.accent = const Color(0xFF8B5CF6),
+    this.accentSoft = const Color(0x1A8B5CF6),
   });
 
   final Color canvas;
@@ -93,25 +95,39 @@ class VeilPalette {
   final Color success;
   final Color warning;
   final Color danger;
+  final Color accent;
+  final Color accentSoft;
+
+  LinearGradient get primaryGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF6C8CFF), Color(0xFF8B5CF6)],
+      );
+
+  LinearGradient get surfaceGradient => const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF131A26), Color(0xFF0E1219)],
+      );
 
   static const dark = VeilPalette(
-    canvas: Color(0xFF07090C),
-    canvasAlt: Color(0xFF0B1016),
-    surface: Color(0xFF10161D),
-    surfaceAlt: Color(0xFF151D27),
-    surfaceRaised: Color(0xFF1B2430),
-    surfaceOverlay: Color(0xFF212C38),
-    stroke: Color(0xFF263445),
-    strokeStrong: Color(0xFF355069),
-    primary: Color(0xFF88A9C4),
-    primaryStrong: Color(0xFFA7C1D7),
-    primarySoft: Color(0x1F88A9C4),
-    text: Color(0xFFF3F6FA),
-    textMuted: Color(0xFFA3AFBC),
-    textSubtle: Color(0xFF7C8895),
-    success: Color(0xFF8BE0C4),
-    warning: Color(0xFFFFD28D),
-    danger: Color(0xFFFFA8B7),
+    canvas: Color(0xFF06080D),
+    canvasAlt: Color(0xFF0A0E16),
+    surface: Color(0xFF0F141E),
+    surfaceAlt: Color(0xFF141A26),
+    surfaceRaised: Color(0xFF1A2230),
+    surfaceOverlay: Color(0xFF1F293A),
+    stroke: Color(0xFF232F42),
+    strokeStrong: Color(0xFF2E4060),
+    primary: Color(0xFF6C8CFF),
+    primaryStrong: Color(0xFF93ABFF),
+    primarySoft: Color(0x1A6C8CFF),
+    text: Color(0xFFF0F4FA),
+    textMuted: Color(0xFF8E9BB0),
+    textSubtle: Color(0xFF5E6B7F),
+    success: Color(0xFF5CE0B0),
+    warning: Color(0xFFFFBE6D),
+    danger: Color(0xFFFF7B93),
   );
 }
 

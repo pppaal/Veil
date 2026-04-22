@@ -8,6 +8,7 @@ import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
@@ -156,6 +157,8 @@ class _TestApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: VeilTheme.dark(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: child,
     );
   }

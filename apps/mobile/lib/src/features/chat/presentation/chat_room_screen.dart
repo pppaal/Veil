@@ -11,6 +11,7 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/security/platform_security_service.dart';
 import '../../../core/security/sensitive_text_redactor.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
@@ -47,6 +48,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
   Duration? _messageTtl;
   bool _isSearchingMessages = false;
+  double _sendScale = 1.0;
   Set<String> _matchingMessageIds = <String>{};
   String? _highlightedMessageId;
 
@@ -65,18 +67,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   void _handlePlatformSecurityEvent(PlatformSecurityEvent event) {
     if (!mounted) return;
     if (event == PlatformSecurityEvent.screenshotDetected) {
+      final l10n = AppLocalizations.of(context);
       HapticFeedback.heavyImpact();
       VeilToast.show(
         context,
-        message:
-            'Screenshot detected in this conversation. Veil cannot prevent it on this device — the other side has been notified.',
+        message: l10n.chatScreenshotToast,
         tone: VeilBannerTone.danger,
       );
       unawaited(
         ref.read(messengerControllerProvider).sendSystemNotice(
               conversationId: widget.conversationId,
-              body:
-                  'Peer took a screenshot of this conversation on their device.',
+              body: l10n.chatScreenshotSystemNotice,
             ),
       );
     }
@@ -125,6 +126,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   Future<void> _pickDisappearTtl() async {
     HapticFeedback.selectionClick();
+    final l10n = AppLocalizations.of(context);
+    final options = _ttlOptions(l10n);
     final selected = await showModalBottomSheet<Duration?>(
       context: context,
       builder: (sheetContext) {
@@ -136,11 +139,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               Padding(
                 padding: const EdgeInsets.all(VeilSpace.lg),
                 child: Text(
-                  'Disappearing messages',
+                  l10n.chatTtlSheetTitle,
                   style: Theme.of(sheetContext).textTheme.titleLarge,
                 ),
               ),
-              for (final option in _ttlOptions)
+              for (final option in options)
                 ListTile(
                   leading: Icon(
                     _messageTtl == option.duration
@@ -162,17 +165,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     setState(() => _messageTtl = selected);
   }
 
-  String _ttlLabel() {
+  String _ttlLabel(AppLocalizations l10n) {
     final current = _messageTtl;
-    if (current == null) return 'Disappear off';
-    for (final option in _ttlOptions) {
+    if (current == null) return l10n.chatTtlDisabledLabel;
+    for (final option in _ttlOptions(l10n)) {
       if (option.duration == current) return option.label;
     }
-    return 'Custom TTL';
+    return l10n.chatTtlCustom;
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final controller = ref.watch(messengerControllerProvider);
     ConversationPreview? conversation;
     for (final item in controller.conversations) {
@@ -200,6 +204,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final nextRetryAt = controller.nextRetryAtForConversation(widget.conversationId);
     final historyBanner = !hasSearchQuery && messages.isNotEmpty
         ? historyWindowBannerSpec(
+            l10n: l10n,
             isLoadingHistory: isLoadingHistory,
             hasMoreHistory: hasMoreHistory,
           )
@@ -213,7 +218,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
               '@${conversation?.peerHandle ?? 'unknown'}',
           searchController: _searchController,
           searching: _isSearchingMessages,
-          ttlLabel: _ttlLabel(),
+          ttlLabel: _ttlLabel(l10n),
           ttlActive: _messageTtl != null,
           onTapTtl: _pickDisappearTtl,
           peerOnline: conversation != null &&
@@ -223,23 +228,28 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         VeilMetricStrip(
           items: [
             VeilMetricItem(
-              label: 'Relay',
-              value: controller.realtimeConnected ? 'Linked' : 'Recovering',
+              label: l10n.chatMetricRelay,
+              value: controller.realtimeConnected
+                  ? l10n.chatMetricRelayLinked
+                  : l10n.chatMetricRelayRecovering,
             ),
             VeilMetricItem(
-              label: 'Loaded',
+              label: l10n.chatMetricLoaded,
               value: '${messages.length}',
             ),
             VeilMetricItem(
-              label: 'History',
+              label: l10n.chatMetricHistory,
               value: historyWindowLabel(
+                l10n: l10n,
                 isLoadingHistory: isLoadingHistory,
                 hasMoreHistory: hasMoreHistory,
               ),
             ),
             VeilMetricItem(
-              label: 'Search',
-              value: hasSearchQuery ? '${filteredMessages.length} hits' : 'Idle',
+              label: l10n.chatMetricSearch,
+              value: hasSearchQuery
+                  ? l10n.chatMetricSearchHits(filteredMessages.length)
+                  : l10n.chatMetricSearchIdle,
             ),
           ],
         ),
@@ -255,7 +265,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         if (controller.errorMessage != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
-            title: 'Conversation issue',
+            title: l10n.chatBannerConversationIssue,
             message: controller.errorMessage!,
             tone: VeilBannerTone.danger,
           ),
@@ -264,22 +274,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
             title: !controller.realtimeConnected
-                ? 'Relay reconnecting'
+                ? l10n.chatBannerRelayReconnecting
                 : failedCount > 0
-                    ? 'Delivery stalled'
-                    : 'Queued locally',
+                    ? l10n.chatBannerDeliveryStalled
+                    : l10n.chatBannerQueuedLocally,
             message: !controller.realtimeConnected
                 ? _networkRecoveryMessage(
+                    l10n: l10n,
                     failedCount: failedCount,
                     queuedCount: queuedCount,
                     uploadingCount: uploadingCount,
                     nextRetryAt: nextRetryAt,
                   )
                 : failedCount > 0
-                    ? '$failedCount message(s) failed to send. Retry when the relay is reachable.'
+                    ? l10n.chatBannerFailedSends(failedCount)
                     : uploadingCount > 0
-                        ? '$uploadingCount attachment message(s) are uploading opaque blobs before send.'
-                        : '$queuedCount message(s) are staged locally and will retry after reconnect.',
+                        ? l10n.chatBannerUploadingAttachments(uploadingCount)
+                        : l10n.chatBannerQueuedMessages(queuedCount),
             tone: !controller.realtimeConnected
                 ? VeilBannerTone.warn
                 : failedCount > 0
@@ -295,7 +306,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   onPressed: () => ref
                       .read(messengerControllerProvider)
                       .retryPendingMessages(widget.conversationId),
-                  child: const Text('Retry failed sends'),
+                  child: Text(l10n.chatRetryFailedSendsAction),
                 ),
               ),
             ),
@@ -303,12 +314,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         if (hasSearchQuery) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
-            title: _isSearchingMessages ? 'Searching locally' : 'Local message search',
+            title: _isSearchingMessages
+                ? l10n.chatSearchBannerSearchingTitle
+                : l10n.chatSearchBannerIdleTitle,
             message: _isSearchingMessages
-                ? 'Scanning cached message text on this device. Relay state does not change.'
+                ? l10n.chatSearchBannerSearchingBody
                 : filteredMessages.isEmpty
-                    ? 'No cached message text matched this query in the current conversation.'
-                    : 'Showing ${filteredMessages.length} cached match(es). Clear search to return to full conversation context.',
+                    ? l10n.chatSearchBannerEmptyBody
+                    : l10n.chatSearchBannerResultBody(filteredMessages.length),
             tone: VeilBannerTone.info,
             icon: Icons.manage_search_rounded,
           ),
@@ -334,13 +347,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           enabled: !controller.isBusy,
           onSubmit: _sendMessage,
           helper: _messageTtl == null
-              ? 'This send does not expire unless you change the rule.'
-              : 'This send expires in ${_formatDurationLabel(_messageTtl!)} on every device that sees it.',
-          trailing: VeilButton(
-            expanded: false,
-            onPressed: controller.isBusy ? null : _sendMessage,
-            label: controller.isBusy ? 'Sending' : 'Send',
-            icon: Icons.arrow_upward_rounded,
+              ? l10n.chatComposerExpiryOff
+              : l10n.chatComposerExpiryOn(_formatDurationLabel(l10n, _messageTtl!)),
+          trailing: AnimatedScale(
+            scale: _sendScale,
+            duration: VeilMotion.fast,
+            curve: VeilMotion.emphasize,
+            child: _GradientSendButton(
+              onPressed: controller.isBusy ? null : _sendMessage,
+              busy: controller.isBusy,
+            ),
           ),
         ),
       ],
@@ -353,7 +369,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     return VeilShell(
       title: conversation?.peerDisplayName ??
           conversation?.peerHandle ??
-          'Secure conversation',
+          l10n.chatTitleFallback,
       actions: [
         IconButton(
           onPressed: () => context.push('/attachment/${widget.conversationId}'),
@@ -372,31 +388,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     required bool isLoadingHistory,
     required bool hasSearchQuery,
   }) {
+    final l10n = AppLocalizations.of(context);
+
     if (messages.isEmpty && controller.isBusy) {
-      return const VeilLoadingBlock(
-        title: 'Decrypting conversation state',
-        body: 'Pulling the latest message envelopes from the relay.',
+      return VeilLoadingBlock(
+        title: l10n.chatLoadingTitle,
+        body: l10n.chatLoadingBody,
       );
     }
 
     if (messages.isEmpty) {
       return VeilEmptyState(
-        title: 'No messages yet',
-        body:
-            'This conversation is open, but no encrypted envelopes have been sent yet.',
+        title: l10n.chatEmptyTitle,
+        body: l10n.chatEmptyBody,
         icon: Icons.chat_bubble_outline_rounded,
         action: FilledButton.tonal(
           onPressed: () => _composerFocusNode.requestFocus(),
-          child: const Text('Send first message'),
+          child: Text(l10n.chatSendAction),
         ),
       );
     }
 
     if (hasSearchQuery && filteredMessages.isEmpty) {
-      return const VeilEmptyState(
-        title: 'No local matches',
-        body:
-            'This device did not find a matching cached message in the current conversation.',
+      return VeilEmptyState(
+        title: l10n.chatSearchEmptyTitle,
+        body: l10n.chatSearchEmptyBody,
         icon: Icons.search_off_rounded,
       );
     }
@@ -482,6 +498,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     required bool isLoadingHistory,
     required bool hasSearchQuery,
   }) {
+    final l10n = AppLocalizations.of(context);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
 
     if (message.envelope.messageKind == MessageKind.system) {
@@ -514,7 +531,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                       .read(messengerControllerProvider)
                       .loadOlderConversationMessages(widget.conversationId),
               tone: VeilButtonTone.secondary,
-              label: isLoadingHistory ? 'Loading older' : 'Load older',
+              label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
             ),
             const SizedBox(height: VeilSpace.sm),
             keyedNotice,
@@ -575,7 +592,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     final keyedBubble = RepaintBoundary(
       child: KeyedSubtree(
         key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
-        child: bubbleWithReactions,
+        child: _AnimatedBubbleEntry(
+          fromRight: message.isMine,
+          child: bubbleWithReactions,
+        ),
       ),
     );
 
@@ -597,7 +617,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                     .read(messengerControllerProvider)
                     .loadOlderConversationMessages(widget.conversationId),
             tone: VeilButtonTone.secondary,
-            label: isLoadingHistory ? 'Loading older' : 'Load older',
+            label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
           ),
           const SizedBox(height: VeilSpace.sm),
           keyedBubble,
@@ -696,6 +716,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       return;
     }
 
+    setState(() => _sendScale = 0.85);
+    Future<void>.delayed(VeilMotion.fast, () {
+      if (mounted) setState(() => _sendScale = 1.0);
+    });
+
     await ref.read(messengerControllerProvider).sendText(
           conversationId: widget.conversationId,
           body: body,
@@ -712,19 +737,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       return;
     }
     final ticketSummary = summarizeSensitiveUrl(url);
+    final l10n = AppLocalizations.of(context);
     await showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Attachment ticket ready'),
-        content: Text(
-          'A short-lived local download ticket was resolved for this device.\n\n'
-          'Summary: $ticketSummary\n\n'
-          'Copying and sharing the raw ticket is intentionally disabled.',
-        ),
+        title: Text(l10n.chatAttachmentTicketTitle),
+        content: Text(l10n.chatAttachmentTicketBody(ticketSummary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
+            child: Text(l10n.commonClose),
           ),
         ],
       ),
@@ -734,9 +756,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   void _handleReplyGesture(ChatMessage message) {
     HapticFeedback.lightImpact();
     _composerFocusNode.requestFocus();
+    final l10n = AppLocalizations.of(context);
     VeilToast.show(
       context,
-      message: 'Composer primed for a quick response in this conversation.',
+      message: l10n.chatReplyPrimed,
       tone: VeilBannerTone.info,
     );
   }
@@ -811,54 +834,55 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 }
 
 String _networkRecoveryMessage({
+  required AppLocalizations l10n,
   required int failedCount,
   required int queuedCount,
   required int uploadingCount,
   required DateTime? nextRetryAt,
 }) {
   final retryLabel = nextRetryAt == null
-      ? 'Retry resumes when the relay reconnects.'
-      : 'Next retry in ${formatRetryCountdown(nextRetryAt)}.';
+      ? l10n.chatRetryResumes
+      : l10n.chatRetryNextIn(formatRetryCountdown(nextRetryAt));
   if (failedCount > 0) {
-    return '$failedCount message(s) are waiting on relay recovery. $retryLabel';
+    return l10n.chatNetworkRecoveryFailed(failedCount, retryLabel);
   }
   if (uploadingCount > 0) {
-    return '$uploadingCount attachment message(s) are paused while the relay reconnects. $retryLabel';
+    return l10n.chatNetworkRecoveryUploading(uploadingCount, retryLabel);
   }
-  return '$queuedCount message(s) remain queued on this device. $retryLabel';
+  return l10n.chatNetworkRecoveryQueued(queuedCount, retryLabel);
 }
 
 String historyWindowLabel({
+  required AppLocalizations l10n,
   required bool isLoadingHistory,
   required bool hasMoreHistory,
 }) {
   if (isLoadingHistory) {
-    return 'Loading older';
+    return l10n.chatMetricHistoryLoading;
   }
   if (hasMoreHistory) {
-    return 'Paged';
+    return l10n.chatMetricHistoryPaged;
   }
-  return 'Complete';
+  return l10n.chatMetricHistoryComplete;
 }
 
 HistoryWindowBannerSpec? historyWindowBannerSpec({
+  required AppLocalizations l10n,
   required bool isLoadingHistory,
   required bool hasMoreHistory,
 }) {
   if (isLoadingHistory) {
-    return const HistoryWindowBannerSpec(
-      title: 'Syncing older history',
-      message:
-          'Pulling older encrypted history from the relay for this trusted device.',
+    return HistoryWindowBannerSpec(
+      title: l10n.chatBannerHistoryLoadingTitle,
+      message: l10n.chatBannerHistoryLoadingBody,
       tone: VeilBannerTone.info,
       icon: Icons.history_toggle_off_rounded,
     );
   }
   if (!hasMoreHistory) {
-    return const HistoryWindowBannerSpec(
-      title: 'Conversation window complete',
-      message:
-          'The currently trusted device-local window is fully loaded. Older history is not pending right now.',
+    return HistoryWindowBannerSpec(
+      title: l10n.chatBannerHistoryCompleteTitle,
+      message: l10n.chatBannerHistoryCompleteBody,
       tone: VeilBannerTone.info,
       icon: Icons.done_all_rounded,
     );
@@ -896,20 +920,20 @@ String formatRetryCountdown(DateTime nextRetryAt) {
   return '${minutes}m ${seconds}s';
 }
 
-String messageDeliveryLabel(ChatMessage message) {
+String messageDeliveryLabel(AppLocalizations l10n, ChatMessage message) {
   switch (message.deliveryState) {
     case MessageDeliveryState.pending:
-      return 'Queued';
+      return l10n.chatDeliveryQueued;
     case MessageDeliveryState.uploading:
-      return 'Uploading';
+      return l10n.chatDeliveryUploading;
     case MessageDeliveryState.failed:
-      return 'Retry required';
+      return l10n.chatDeliveryFailed;
     case MessageDeliveryState.sent:
-      return 'Sent';
+      return l10n.chatDeliverySent;
     case MessageDeliveryState.delivered:
-      return 'Delivered';
+      return l10n.chatDeliveryDelivered;
     case MessageDeliveryState.read:
-      return 'Read';
+      return l10n.chatDeliveryRead;
   }
 }
 
@@ -928,10 +952,13 @@ VeilBannerTone messageDeliveryTone(ChatMessage message) {
   }
 }
 
-String messageBubbleSemanticsLabel(ChatMessage message) {
-  final direction = message.isMine ? 'Sent' : 'Received';
-  final stateSegment = message.isMine ? ' ${messageDeliveryLabel(message)}.' : '';
-  return '$direction message bubble.$stateSegment';
+String messageBubbleSemanticsLabel(AppLocalizations l10n, ChatMessage message) {
+  final direction =
+      message.isMine ? l10n.chatSemanticsSent : l10n.chatSemanticsReceived;
+  final stateSegment = message.isMine
+      ? l10n.chatSemanticsStateSegment(messageDeliveryLabel(l10n, message))
+      : '';
+  return l10n.chatSemanticsBubble(direction, stateSegment);
 }
 
 class _TtlOption {
@@ -942,41 +969,41 @@ class _TtlOption {
   final String? caption;
 }
 
-const List<_TtlOption> _ttlOptions = <_TtlOption>[
-  _TtlOption(
-    label: 'Off',
-    duration: null,
-    caption: 'Messages remain until manually deleted.',
-  ),
-  _TtlOption(
-    label: '10 seconds',
-    duration: Duration(seconds: 10),
-    caption: 'Strongest ephemerality. Expect the recipient to be looking.',
-  ),
-  _TtlOption(
-    label: '1 minute',
-    duration: Duration(minutes: 1),
-  ),
-  _TtlOption(
-    label: '5 minutes',
-    duration: Duration(minutes: 5),
-  ),
-  _TtlOption(
-    label: '1 hour',
-    duration: Duration(hours: 1),
-  ),
-  _TtlOption(
-    label: '1 day',
-    duration: Duration(days: 1),
-    caption: 'Default for casual private conversations.',
-  ),
-];
+List<_TtlOption> _ttlOptions(AppLocalizations l10n) => <_TtlOption>[
+      _TtlOption(
+        label: l10n.chatTtlOff,
+        duration: null,
+        caption: l10n.chatTtlOffCaption,
+      ),
+      _TtlOption(
+        label: l10n.chatTtl10s,
+        duration: const Duration(seconds: 10),
+        caption: l10n.chatTtl10sCaption,
+      ),
+      _TtlOption(
+        label: l10n.chatTtl1m,
+        duration: const Duration(minutes: 1),
+      ),
+      _TtlOption(
+        label: l10n.chatTtl5m,
+        duration: const Duration(minutes: 5),
+      ),
+      _TtlOption(
+        label: l10n.chatTtl1h,
+        duration: const Duration(hours: 1),
+      ),
+      _TtlOption(
+        label: l10n.chatTtl1d,
+        duration: const Duration(days: 1),
+        caption: l10n.chatTtl1dCaption,
+      ),
+    ];
 
-String _formatDurationLabel(Duration duration) {
-  if (duration.inDays > 0) return '${duration.inDays} day(s)';
-  if (duration.inHours > 0) return '${duration.inHours} hour(s)';
-  if (duration.inMinutes > 0) return '${duration.inMinutes} minute(s)';
-  return '${duration.inSeconds} second(s)';
+String _formatDurationLabel(AppLocalizations l10n, Duration duration) {
+  if (duration.inDays > 0) return l10n.chatDurationDays(duration.inDays);
+  if (duration.inHours > 0) return l10n.chatDurationHours(duration.inHours);
+  if (duration.inMinutes > 0) return l10n.chatDurationMinutes(duration.inMinutes);
+  return l10n.chatDurationSeconds(duration.inSeconds);
 }
 
 IconData _attachmentIcon(String contentType) {
@@ -987,12 +1014,12 @@ IconData _attachmentIcon(String contentType) {
   return Icons.insert_drive_file_rounded;
 }
 
-String _attachmentLabel(String contentType) {
-  if (contentType.startsWith('image/')) return 'Encrypted image';
-  if (contentType.startsWith('video/')) return 'Encrypted video';
-  if (contentType.startsWith('audio/')) return 'Encrypted audio';
-  if (contentType.contains('pdf')) return 'Encrypted document';
-  return 'Encrypted file';
+String _attachmentLabel(AppLocalizations l10n, String contentType) {
+  if (contentType.startsWith('image/')) return l10n.chatAttachmentEncryptedImage;
+  if (contentType.startsWith('video/')) return l10n.chatAttachmentEncryptedVideo;
+  if (contentType.startsWith('audio/')) return l10n.chatAttachmentEncryptedAudio;
+  if (contentType.contains('pdf')) return l10n.chatAttachmentEncryptedDocument;
+  return l10n.chatAttachmentEncryptedFile;
 }
 
 String _formatFileSize(int bytes) {
@@ -1027,6 +1054,7 @@ class _ChatHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final header = Column(
       children: [
         VeilSurfaceCard(
@@ -1055,7 +1083,7 @@ class _ChatHeader extends StatelessWidget {
                         ],
                         Expanded(
                           child: Text(
-                            embedded ? title : 'Secure conversation',
+                            embedded ? title : l10n.chatTitleFallback,
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ),
@@ -1064,10 +1092,10 @@ class _ChatHeader extends StatelessWidget {
                     const SizedBox(height: VeilSpace.xxs),
                     Text(
                       peerOnline
-                          ? 'Online now'
+                          ? l10n.chatSubtitleOnline
                           : embedded
-                              ? 'Local search stays on this device. Message bodies remain opaque to the relay.'
-                              : 'Direct 1:1 exchange only. Message bodies remain opaque to the server.',
+                              ? l10n.chatSubtitleEmbedded
+                              : l10n.chatSubtitleStandalone,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: peerOnline ? const Color(0xFF4CAF50) : null,
                           ),
@@ -1110,11 +1138,11 @@ class _ChatHeader extends StatelessWidget {
                       : searchController.text.trim().isEmpty
                           ? null
                           : IconButton(
-                              tooltip: 'Clear search',
+                              tooltip: l10n.chatSearchClearTooltip,
                               onPressed: searchController.clear,
                               icon: const Icon(Icons.close_rounded),
                             ),
-                  hintText: 'Search cached messages on this device',
+                  hintText: l10n.chatSearchHint,
                 ),
               ),
               const SizedBox(height: VeilSpace.sm),
@@ -1128,8 +1156,8 @@ class _ChatHeader extends StatelessWidget {
                         ? VeilBannerTone.warn
                         : VeilBannerTone.info,
                   ),
-                  const VeilStatusPill(label: 'Attachments encrypted'),
-                  const VeilStatusPill(label: 'Local search only'),
+                  VeilStatusPill(label: l10n.chatPillAttachmentsEncrypted),
+                  VeilStatusPill(label: l10n.chatPillLocalSearchOnly),
                 ],
               ),
             ],
@@ -1145,10 +1173,9 @@ class _ChatHeader extends StatelessWidget {
     return Column(
       children: [
         VeilHeroPanel(
-          eyebrow: 'SECURE CONVERSATION',
+          eyebrow: l10n.chatHeroEyebrow,
           title: title,
-          body:
-              'Direct 1:1 exchange only. Message bodies remain opaque to the server and expire locally when configured.',
+          body: l10n.chatHeroBody,
           bottom: Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -1157,8 +1184,8 @@ class _ChatHeader extends StatelessWidget {
                 label: ttlLabel,
                 tone: ttlActive ? VeilBannerTone.warn : VeilBannerTone.info,
               ),
-              const VeilStatusPill(label: 'Attachments encrypted'),
-              const VeilStatusPill(label: 'Local search only'),
+              VeilStatusPill(label: l10n.chatPillAttachmentsEncrypted),
+              VeilStatusPill(label: l10n.chatPillLocalSearchOnly),
             ],
           ),
         ),
@@ -1198,13 +1225,14 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final alignment =
         message.isMine ? Alignment.centerRight : Alignment.centerLeft;
 
     return Align(
       alignment: alignment,
       child: Semantics(
-        label: messageBubbleSemanticsLabel(message),
+        label: messageBubbleSemanticsLabel(l10n, message),
         child: AnimatedContainer(
           duration: VeilMotion.normal,
           curve: Curves.easeOutCubic,
@@ -1233,10 +1261,10 @@ class _MessageBubble extends StatelessWidget {
               ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.reply_rounded),
-                    SizedBox(width: VeilSpace.xs),
-                    Text('Reply locally'),
+                  children: [
+                    const Icon(Icons.reply_rounded),
+                    const SizedBox(width: VeilSpace.xs),
+                    Text(l10n.chatReplyLocally),
                   ],
                 ),
               ),
@@ -1247,7 +1275,7 @@ class _MessageBubble extends StatelessWidget {
                   future: decryptFuture,
                   builder: (context, snapshot) {
                   final decrypted = snapshot.data;
-                  final body = decrypted?.body ?? 'Decrypting envelope...';
+                  final body = decrypted?.body ?? l10n.chatDecryptingEnvelope;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1291,7 +1319,7 @@ class _MessageBubble extends StatelessWidget {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          _attachmentLabel(decrypted.attachment!.contentType),
+                                          _attachmentLabel(l10n, decrypted.attachment!.contentType),
                                           style: Theme.of(context).textTheme.titleSmall,
                                         ),
                                         const SizedBox(height: 2),
@@ -1312,7 +1340,7 @@ class _MessageBubble extends StatelessWidget {
                               if (attachmentDownloadError != null) ...[
                                 const SizedBox(height: 10),
                                 VeilInlineBanner(
-                                  title: 'Attachment ticket failed',
+                                  title: l10n.chatAttachmentTicketFailed,
                                   message: attachmentDownloadError!,
                                   tone: VeilBannerTone.warn,
                                 ),
@@ -1331,15 +1359,15 @@ class _MessageBubble extends StatelessWidget {
                                               decrypted.attachment!.attachmentId,
                                             ),
                                     label: attachmentResolving
-                                        ? 'Resolving ticket'
-                                        : 'Resolve download ticket',
+                                        ? l10n.chatAttachmentResolvingAction
+                                        : l10n.chatAttachmentResolveAction,
                                   ),
                                   if (message.hasFailed && onRetryMessage != null)
                                     VeilButton(
                                       expanded: false,
                                       tone: VeilButtonTone.secondary,
                                       onPressed: onRetryMessage,
-                                      label: 'Retry send',
+                                      label: l10n.chatRetrySend,
                                     ),
                                 ],
                               ),
@@ -1355,7 +1383,7 @@ class _MessageBubble extends StatelessWidget {
                           expanded: false,
                           tone: VeilButtonTone.ghost,
                           onPressed: onRetryMessage,
-                          label: 'Retry send',
+                          label: l10n.chatRetrySend,
                         ),
                       ],
                       const SizedBox(height: VeilSpace.sm),
@@ -1371,7 +1399,7 @@ class _MessageBubble extends StatelessWidget {
                             const SizedBox(width: VeilSpace.xs),
                             Flexible(
                               child: VeilStatusPill(
-                                label: messageDeliveryLabel(message),
+                                label: messageDeliveryLabel(l10n, message),
                                 tone: messageDeliveryTone(message),
                               ),
                             ),
@@ -1413,11 +1441,12 @@ class _SystemNoticeBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: FutureBuilder<DecryptedMessage>(
         future: decryptFuture,
         builder: (context, snapshot) {
-          final body = snapshot.data?.body ?? 'Decrypting system notice...';
+          final body = snapshot.data?.body ?? l10n.chatDecryptingSystemNotice;
           return Container(
             constraints: const BoxConstraints(maxWidth: 420),
             padding: const EdgeInsets.symmetric(
@@ -1470,6 +1499,7 @@ class _AttachmentTransferPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final progressLabel = '${(snapshot.progress * 100).round()}%';
     return Container(
       padding: const EdgeInsets.all(12),
@@ -1492,7 +1522,7 @@ class _AttachmentTransferPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  snapshot.filename ?? _attachmentLabel(snapshot.contentType ?? 'application/octet-stream'),
+                  snapshot.filename ?? _attachmentLabel(l10n, snapshot.contentType ?? 'application/octet-stream'),
                   style: theme.textTheme.titleSmall,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1501,7 +1531,7 @@ class _AttachmentTransferPanel extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            _phaseDescription(snapshot),
+            _phaseDescription(l10n, snapshot),
             style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 10),
@@ -1521,7 +1551,7 @@ class _AttachmentTransferPanel extends StatelessWidget {
             runSpacing: 8,
             children: [
               VeilStatusPill(
-                label: _phaseLabel(snapshot.phase),
+                label: _phaseLabel(l10n, snapshot.phase),
                 tone: switch (snapshot.phase) {
                   AttachmentTransferPhase.failed ||
                   AttachmentTransferPhase.canceled =>
@@ -1539,7 +1569,7 @@ class _AttachmentTransferPanel extends StatelessWidget {
           if (snapshot.errorMessage != null) ...[
             const SizedBox(height: 10),
             VeilInlineBanner(
-              title: 'Attachment state',
+              title: l10n.chatAttachmentStateBanner,
               message: snapshot.errorMessage!,
               tone: VeilBannerTone.warn,
             ),
@@ -1555,14 +1585,14 @@ class _AttachmentTransferPanel extends StatelessWidget {
                     expanded: false,
                     tone: VeilButtonTone.secondary,
                     onPressed: onRetry,
-                    label: 'Retry upload',
+                    label: l10n.chatRetryUpload,
                   ),
                 if (onCancel != null)
                   VeilButton(
                     expanded: false,
                     tone: VeilButtonTone.ghost,
                     onPressed: onCancel,
-                    label: 'Cancel',
+                    label: l10n.chatCancelAction,
                   ),
               ],
             ),
@@ -1572,33 +1602,31 @@ class _AttachmentTransferPanel extends StatelessWidget {
     );
   }
 
-  String _phaseLabel(AttachmentTransferPhase phase) {
+  String _phaseLabel(AppLocalizations l10n, AttachmentTransferPhase phase) {
     return switch (phase) {
-      AttachmentTransferPhase.staged => 'Staged',
-      AttachmentTransferPhase.preparing => 'Preparing',
-      AttachmentTransferPhase.uploading => 'Uploading',
-      AttachmentTransferPhase.finalizing => 'Finalizing',
-      AttachmentTransferPhase.failed => 'Retry required',
-      AttachmentTransferPhase.canceled => 'Canceled',
+      AttachmentTransferPhase.staged => l10n.chatPhaseStaged,
+      AttachmentTransferPhase.preparing => l10n.chatPhasePreparing,
+      AttachmentTransferPhase.uploading => l10n.chatPhaseUploading,
+      AttachmentTransferPhase.finalizing => l10n.chatPhaseFinalizing,
+      AttachmentTransferPhase.failed => l10n.chatPhaseFailed,
+      AttachmentTransferPhase.canceled => l10n.chatPhaseCanceled,
     };
   }
 
-  String _phaseDescription(AttachmentTransferSnapshot snapshot) {
-    final sizeLabel =
-        snapshot.sizeBytes == null ? '' : ' ${snapshot.sizeBytes} bytes.';
+  String _phaseDescription(
+      AppLocalizations l10n, AttachmentTransferSnapshot snapshot) {
+    final sizeLabel = snapshot.sizeBytes == null
+        ? ''
+        : l10n.chatAttachmentSizeBytes(snapshot.sizeBytes!);
     return switch (snapshot.phase) {
       AttachmentTransferPhase.staged =>
-        'Opaque blob staged locally.$sizeLabel Upload begins when the relay is reachable.',
-      AttachmentTransferPhase.preparing =>
-        'Refreshing upload authorization and validating encrypted metadata.',
-      AttachmentTransferPhase.uploading =>
-        'Sending ciphertext-like bytes to object storage. The relay never sees plaintext.',
-      AttachmentTransferPhase.finalizing =>
-        'Binding the uploaded blob into an encrypted message envelope.',
-      AttachmentTransferPhase.failed => snapshot.errorMessage ??
-          'Upload failed. Retry will reuse the local encrypted temp blob.',
-      AttachmentTransferPhase.canceled =>
-        'Upload stopped on this device. Retry will request a fresh ticket and reuse the local blob.',
+        l10n.chatPhaseDescStaged(sizeLabel),
+      AttachmentTransferPhase.preparing => l10n.chatPhaseDescPreparing,
+      AttachmentTransferPhase.uploading => l10n.chatPhaseDescUploading,
+      AttachmentTransferPhase.finalizing => l10n.chatPhaseDescFinalizing,
+      AttachmentTransferPhase.failed =>
+        snapshot.errorMessage ?? l10n.chatPhaseDescFailed,
+      AttachmentTransferPhase.canceled => l10n.chatPhaseDescCanceled,
     };
   }
 }
@@ -1624,7 +1652,7 @@ class _TypingIndicator extends StatelessWidget {
           ),
           const SizedBox(width: VeilSpace.xs),
           Text(
-            '@$handle is typing',
+            AppLocalizations.of(context).chatTypingSuffix(handle!),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context)
                       .colorScheme
@@ -1793,6 +1821,109 @@ class _ReactionChip extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AnimatedBubbleEntry extends StatefulWidget {
+  const _AnimatedBubbleEntry({required this.child, this.fromRight = false});
+
+  final Widget child;
+  final bool fromRight;
+
+  @override
+  State<_AnimatedBubbleEntry> createState() => _AnimatedBubbleEntryState();
+}
+
+class _AnimatedBubbleEntryState extends State<_AnimatedBubbleEntry>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: VeilMotion.normal,
+    );
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOut);
+    final dx = widget.fromRight ? 0.08 : -0.08;
+    _slide = Tween<Offset>(
+      begin: Offset(dx, 0.04),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: VeilMotion.emphasize,
+    ));
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(
+        position: _slide,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _GradientSendButton extends StatelessWidget {
+  const _GradientSendButton({this.onPressed, this.busy = false});
+
+  final VoidCallback? onPressed;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return GestureDetector(
+      onTap: enabled
+          ? () {
+              HapticFeedback.selectionClick();
+              onPressed!();
+            }
+          : null,
+      child: AnimatedContainer(
+        duration: VeilMotion.fast,
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: enabled
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF6C8CFF), Color(0xFF8B5CF6)],
+                )
+              : null,
+          color: enabled ? null : const Color(0xFF1F293A),
+          boxShadow: enabled
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF6C8CFF).withValues(alpha: 0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
+        ),
+        child: Icon(
+          busy ? Icons.more_horiz_rounded : Icons.arrow_upward_rounded,
+          color: enabled ? Colors.white : const Color(0xFF5E6B7F),
+          size: 22,
         ),
       ),
     );

@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,6 +22,7 @@ import '../../features/conversations/presentation/start_group_screen.dart';
 import '../../features/device_transfer/presentation/device_transfer_screen.dart';
 import '../../features/media/presentation/media_picker_screen.dart';
 import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
+import '../../features/onboarding/presentation/privacy_consent_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
@@ -51,6 +55,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return path == '/lock' ? null : '/lock';
       }
 
+      if (!session.privacyConsentAccepted) {
+        return path == '/privacy-consent' ? null : '/privacy-consent';
+      }
+
       if (!session.onboardingAccepted) {
         return path == '/onboarding' ? null : '/onboarding';
       }
@@ -66,6 +74,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       }
 
       if (path == '/splash' ||
+          path == '/privacy-consent' ||
           path == '/onboarding' ||
           path == '/create-account' ||
           path == '/choose-handle' ||
@@ -76,9 +85,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
-      GoRoute(path: '/onboarding', builder: (context, state) => const OnboardingWarningScreen()),
-      GoRoute(path: '/create-account', builder: (context, state) => const CreateAccountScreen()),
-      GoRoute(path: '/choose-handle', builder: (context, state) => const ChooseHandleScreen()),
+      GoRoute(
+        path: '/privacy-consent',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const PrivacyConsentScreen()),
+      ),
+      GoRoute(
+        path: '/onboarding',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const OnboardingWarningScreen()),
+      ),
+      GoRoute(
+        path: '/create-account',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const CreateAccountScreen()),
+      ),
+      GoRoute(
+        path: '/choose-handle',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const ChooseHandleScreen()),
+      ),
       ShellRoute(
         navigatorKey: _mainShellNavigatorKey,
         builder: (context, state, child) => _VeilMainShell(child: child),
@@ -89,15 +115,65 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/contacts', builder: (context, state) => const ContactsScreen()),
         ],
       ),
-      GoRoute(path: '/start-chat', builder: (context, state) => const StartDirectChatScreen()),
-      GoRoute(path: '/start-group', builder: (context, state) => const StartGroupScreen()),
+      GoRoute(
+        path: '/start-chat',
+        pageBuilder: (context, state) => CustomTransitionPage<void>(
+          key: state.pageKey,
+          child: const StartDirectChatScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+                .animate(CurvedAnimation(parent: animation, curve: VeilMotion.emphasize));
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(position: slide, child: child),
+            );
+          },
+          transitionDuration: VeilMotion.normal,
+          reverseTransitionDuration: VeilMotion.fast,
+        ),
+      ),
+      GoRoute(
+        path: '/start-group',
+        pageBuilder: (context, state) => CustomTransitionPage<void>(
+          key: state.pageKey,
+          child: const StartGroupScreen(),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final slide = Tween<Offset>(begin: const Offset(0, 0.15), end: Offset.zero)
+                .animate(CurvedAnimation(parent: animation, curve: VeilMotion.emphasize));
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(position: slide, child: child),
+            );
+          },
+          transitionDuration: VeilMotion.normal,
+          reverseTransitionDuration: VeilMotion.fast,
+        ),
+      ),
       GoRoute(
         path: '/chat/:conversationId',
-        builder: (context, state) => ChatRoomScreen(
-          conversationId: state.pathParameters['conversationId']!,
-          navigationTarget: state.extra is MessageNavigationTarget
-              ? state.extra as MessageNavigationTarget
-              : null,
+        pageBuilder: (context, state) => CustomTransitionPage<void>(
+          key: state.pageKey,
+          child: ChatRoomScreen(
+            conversationId: state.pathParameters['conversationId']!,
+            navigationTarget: state.extra is MessageNavigationTarget
+                ? state.extra as MessageNavigationTarget
+                : null,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final slide = Tween<Offset>(
+              begin: const Offset(0, 0.06),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: VeilMotion.emphasize,
+            ));
+            return FadeTransition(
+              opacity: animation,
+              child: SlideTransition(position: slide, child: child),
+            );
+          },
+          transitionDuration: VeilMotion.normal,
+          reverseTransitionDuration: VeilMotion.fast,
         ),
       ),
       GoRoute(
@@ -132,14 +208,55 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(path: '/ai-chat', builder: (context, state) => const AiChatScreen()),
-      GoRoute(path: '/profile', builder: (context, state) => const ProfileScreen()),
-      GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
-      GoRoute(path: '/lock', builder: (context, state) => const AppLockScreen()),
-      GoRoute(path: '/device-transfer', builder: (context, state) => const DeviceTransferScreen()),
-      GoRoute(path: '/security-status', builder: (context, state) => const SecurityStatusScreen()),
+      GoRoute(
+        path: '/profile',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const ProfileScreen()),
+      ),
+      GoRoute(
+        path: '/settings',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const SettingsScreen()),
+      ),
+      GoRoute(
+        path: '/lock',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const AppLockScreen()),
+      ),
+      GoRoute(
+        path: '/device-transfer',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const DeviceTransferScreen()),
+      ),
+      GoRoute(
+        path: '/security-status',
+        pageBuilder: (context, state) =>
+            _veilFadePage(state, const SecurityStatusScreen()),
+      ),
     ],
   );
 });
+
+CustomTransitionPage<void> _veilFadePage(GoRouterState state, Widget child) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: VeilMotion.normal,
+    reverseTransitionDuration: VeilMotion.fast,
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      final slide = Tween<Offset>(
+        begin: const Offset(0, 0.04),
+        end: Offset.zero,
+      ).animate(
+        CurvedAnimation(parent: animation, curve: VeilMotion.emphasize),
+      );
+      return FadeTransition(
+        opacity: animation,
+        child: SlideTransition(position: slide, child: child),
+      );
+    },
+  );
+}
 
 class _VeilMainShell extends StatelessWidget {
   const _VeilMainShell({required this.child});
@@ -155,7 +272,7 @@ class _VeilMainShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = Theme.of(context).extension<VeilPalette>()!;
+    const palette = VeilPalette.dark;
     final currentPath = GoRouterState.of(context).fullPath ?? '/conversations';
     var currentIndex = _tabs.indexWhere((tab) => currentPath.startsWith(tab.path));
     if (currentIndex < 0) {
@@ -163,30 +280,84 @@ class _VeilMainShell extends StatelessWidget {
     }
 
     return Scaffold(
+      extendBody: true,
       body: child,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(color: palette.stroke, width: 0.5),
+      bottomNavigationBar: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+          child: Container(
+            decoration: BoxDecoration(
+              color: palette.canvas.withValues(alpha: 0.82),
+              border: Border(
+                top: BorderSide(
+                  color: palette.stroke.withValues(alpha: 0.5),
+                  width: 0.5,
+                ),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: VeilSpace.md,
+                  vertical: VeilSpace.xs,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: List.generate(_tabs.length, (index) {
+                    final tab = _tabs[index];
+                    final selected = index == currentIndex;
+                    return Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          if (!selected) {
+                            HapticFeedback.selectionClick();
+                          }
+                          context.go(tab.path);
+                        },
+                        child: AnimatedContainer(
+                          duration: VeilMotion.fast,
+                          padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedContainer(
+                                duration: VeilMotion.fast,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(VeilRadius.pill),
+                                  color: selected ? palette.primarySoft : Colors.transparent,
+                                ),
+                                child: Icon(
+                                  selected ? tab.activeIcon : tab.icon,
+                                  size: 22,
+                                  color: selected ? palette.primary : palette.textSubtle,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                tab.label,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                                  color: selected ? palette.primary : palette.textSubtle,
+                                  letterSpacing: 0.1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+            ),
           ),
-        ),
-        child: NavigationBar(
-          selectedIndex: currentIndex,
-          onDestinationSelected: (index) {
-            context.go(_tabs[index].path);
-          },
-          backgroundColor: palette.canvasAlt,
-          indicatorColor: palette.primarySoft,
-          surfaceTintColor: Colors.transparent,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-          height: 64,
-          destinations: _tabs.map((tab) {
-            return NavigationDestination(
-              icon: Icon(tab.icon, color: palette.textSubtle, size: VeilIconSize.md),
-              selectedIcon: Icon(tab.activeIcon, color: palette.primary, size: VeilIconSize.md),
-              label: tab.label,
-            );
-          }).toList(),
         ),
       ),
     );

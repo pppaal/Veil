@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../chat/presentation/chat_room_screen.dart';
@@ -206,17 +207,19 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           },
         );
 
+        final l10n = AppLocalizations.of(context);
+
         if (!isWideLayout) {
           return VeilShell(
             title: 'VEIL',
             actions: [
               IconButton(
-                tooltip: 'Security status',
+                tooltip: l10n.settingsSecurityStatusTitle,
                 onPressed: () => context.push('/security-status'),
                 icon: const Icon(Icons.verified_user_outlined),
               ),
               IconButton(
-                tooltip: 'Settings',
+                tooltip: l10n.settingsTitle,
                 onPressed: () => context.push('/settings'),
                 icon: const Icon(Icons.tune),
               ),
@@ -243,12 +246,12 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           title: 'VEIL',
           actions: [
             IconButton(
-              tooltip: 'Security status',
+              tooltip: l10n.settingsSecurityStatusTitle,
               onPressed: () => context.push('/security-status'),
               icon: const Icon(Icons.verified_user_outlined),
             ),
             IconButton(
-              tooltip: 'Settings',
+              tooltip: l10n.settingsTitle,
               onPressed: () => context.push('/settings'),
               icon: const Icon(Icons.tune),
             ),

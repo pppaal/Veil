@@ -275,6 +275,26 @@ class _MockConversationSessionBootstrapper
       auditHint: 'mock-session-bootstrap',
     );
   }
+
+  @override
+  bool hasSessionFor(String conversationId) => true;
+
+  @override
+  Future<SessionBootstrapMaterial> bootstrapSessionFromInbound(
+    InboundSessionBootstrapRequest request,
+  ) async {
+    return SessionBootstrapMaterial(
+      sessionLocator:
+          'session://${request.conversationId}/${_opaqueToken(_random, 18)}',
+      sessionEnvelopeVersion: _codec.defaultEnvelopeVersion,
+      requiresLocalPersistence: true,
+      sessionSchemaVersion: 1,
+      localDeviceId: request.localDeviceId,
+      remoteDeviceId: request.remoteDeviceId,
+      remoteIdentityFingerprint: '',
+      auditHint: 'mock-inbound-session-bootstrap',
+    );
+  }
 }
 
 String _opaqueToken(Random random, int byteLength) {

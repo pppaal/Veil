@@ -2,24 +2,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 
 void main() {
+  final AppLocalizations l10n = AppLocalizationsEn();
+
   test('messageDeliveryLabel maps send states to clear user-facing copy', () {
-    expect(messageDeliveryLabel(_message(MessageDeliveryState.pending)), 'Queued');
-    expect(messageDeliveryLabel(_message(MessageDeliveryState.uploading)), 'Uploading');
-    expect(messageDeliveryLabel(_message(MessageDeliveryState.failed)), 'Retry required');
-    expect(messageDeliveryLabel(_message(MessageDeliveryState.sent)), 'Sent');
-    expect(messageDeliveryLabel(_message(MessageDeliveryState.delivered)), 'Delivered');
-    expect(messageDeliveryLabel(_message(MessageDeliveryState.read)), 'Read');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.pending)), 'Queued');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.uploading)), 'Uploading');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.failed)), 'Retry required');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.sent)), 'Sent');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.delivered)), 'Delivered');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.read)), 'Read');
   });
 
   test('messageBubbleSemanticsLabel includes delivery state for sent messages', () {
     expect(
-      messageBubbleSemanticsLabel(_message(MessageDeliveryState.delivered)),
+      messageBubbleSemanticsLabel(l10n, _message(MessageDeliveryState.delivered)),
       'Sent message bubble. Delivered.',
     );
     expect(
       messageBubbleSemanticsLabel(
+        l10n,
         _message(MessageDeliveryState.sent).copyWith(isMine: false),
       ),
       'Received message bubble.',
@@ -36,30 +41,30 @@ void main() {
 
   test('historyWindowLabel reflects paged and complete states clearly', () {
     expect(
-      historyWindowLabel(isLoadingHistory: true, hasMoreHistory: true),
+      historyWindowLabel(l10n: l10n, isLoadingHistory: true, hasMoreHistory: true),
       'Loading older',
     );
     expect(
-      historyWindowLabel(isLoadingHistory: false, hasMoreHistory: true),
+      historyWindowLabel(l10n: l10n, isLoadingHistory: false, hasMoreHistory: true),
       'Paged',
     );
     expect(
-      historyWindowLabel(isLoadingHistory: false, hasMoreHistory: false),
+      historyWindowLabel(l10n: l10n, isLoadingHistory: false, hasMoreHistory: false),
       'Complete',
     );
   });
 
   test('historyWindowBannerSpec only appears for loading or complete windows', () {
     expect(
-      historyWindowBannerSpec(isLoadingHistory: false, hasMoreHistory: true),
+      historyWindowBannerSpec(l10n: l10n, isLoadingHistory: false, hasMoreHistory: true),
       isNull,
     );
     expect(
-      historyWindowBannerSpec(isLoadingHistory: true, hasMoreHistory: true)?.title,
+      historyWindowBannerSpec(l10n: l10n, isLoadingHistory: true, hasMoreHistory: true)?.title,
       'Syncing older history',
     );
     expect(
-      historyWindowBannerSpec(isLoadingHistory: false, hasMoreHistory: false)?.title,
+      historyWindowBannerSpec(l10n: l10n, isLoadingHistory: false, hasMoreHistory: false)?.title,
       'Conversation window complete',
     );
   });
@@ -67,7 +72,7 @@ void main() {
   test('messageDeliveryLabel handles all delivery states exhaustively', () {
     for (final state in MessageDeliveryState.values) {
       expect(
-        messageDeliveryLabel(_message(state)),
+        messageDeliveryLabel(l10n, _message(state)),
         isNotEmpty,
         reason: 'Missing label for $state',
       );
@@ -87,7 +92,7 @@ void main() {
   test('messageBubbleSemanticsLabel omits delivery state for received messages', () {
     final received = _message(MessageDeliveryState.read).copyWith(isMine: false);
     expect(
-      messageBubbleSemanticsLabel(received),
+      messageBubbleSemanticsLabel(l10n, received),
       'Received message bubble.',
     );
   });

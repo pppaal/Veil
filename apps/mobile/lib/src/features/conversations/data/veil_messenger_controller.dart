@@ -9,6 +9,7 @@ import '../../../app/app_state.dart';
 import '../../../core/config/veil_config.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/network/veil_api_client.dart';
+import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
 import '../../attachments/data/attachment_temp_file_store.dart';
@@ -30,7 +31,10 @@ class VeilMessengerController extends ChangeNotifier {
     required RealtimeService realtimeService,
     required ConversationCacheService? cacheService,
     AttachmentTempFileStore? attachmentTempFileStore,
+    LocalNotificationService? notificationService,
     Future<void> Function(Object error)? onSecurityException,
+    Future<String?> Function()? identityPrivateRefLoader,
+    Future<void> Function()? sessionSnapshotRestorer,
   })  : _apiClient = apiClient,
         _cryptoEngine = cryptoEngine,
         _keyBundleCodec = keyBundleCodec,
@@ -39,7 +43,10 @@ class VeilMessengerController extends ChangeNotifier {
         _realtimeService = realtimeService,
         _cacheService = cacheService,
         _attachmentTempFileStore = attachmentTempFileStore,
-        _onSecurityException = onSecurityException {
+        _notificationService = notificationService,
+        _onSecurityException = onSecurityException,
+        _identityPrivateRefLoader = identityPrivateRefLoader,
+        _sessionSnapshotRestorer = sessionSnapshotRestorer {
     _expirationTicker = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_reconcileExpiringState()),
@@ -58,8 +65,13 @@ class VeilMessengerController extends ChangeNotifier {
   final RealtimeService _realtimeService;
   final ConversationCacheService? _cacheService;
   final AttachmentTempFileStore? _attachmentTempFileStore;
+  final LocalNotificationService? _notificationService;
   final Future<void> Function(Object error)? _onSecurityException;
+  final Future<String?> Function()? _identityPrivateRefLoader;
+  final Future<void> Function()? _sessionSnapshotRestorer;
+  bool _sessionsRestored = false;
   final Random _random = Random.secure();
+  final Set<String> _inboundBootstrapInFlight = <String>{};
 
   Timer? _expirationTicker;
   Timer? _retryTicker;
@@ -178,8 +190,25 @@ class VeilMessengerController extends ChangeNotifier {
       _transferToken = null;
       _transferStatus = null;
       _transferExpiresAt = null;
+      _sessionsRestored = false;
       notifyListeners();
       return;
+    }
+
+    // Rehydrate persisted Double Ratchet state before any encrypt/decrypt
+    // happens. Only runs once per authenticated session; subsequent
+    // applySession calls (e.g. token refresh) skip this.
+    if (!_sessionsRestored) {
+      _sessionsRestored = true;
+      final restorer = _sessionSnapshotRestorer;
+      if (restorer != null) {
+        try {
+          await restorer();
+        } catch (_) {
+          // Corrupt snapshots are ignored; sessions will be re-bootstrapped
+          // lazily on inbound envelope.
+        }
+      }
     }
 
     await _hydrateFromCache();
@@ -515,8 +544,65 @@ class VeilMessengerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) {
+  Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) async {
+    await _ensureInboundSession(envelope);
     return _cryptoEngine.decryptMessage(envelope);
+  }
+
+  // Lazily bootstraps a session when an inbound envelope arrives for a
+  // conversation we haven't ECDH'd on yet. Uses the sender's ephemeral pub
+  // (carried in the envelope wire bytes) + our own stored x25519 identity
+  // private key, so no round-trip is needed. No-ops if the adapter doesn't
+  // support wire inspection (mock) or the caller didn't wire an identity loader.
+  Future<void> _ensureInboundSession(CryptoEnvelope envelope) async {
+    final loader = _identityPrivateRefLoader;
+    if (loader == null) return;
+    final codec = _envelopeCodec;
+    if (codec is! InboundEnvelopeInspector) return;
+    final conversationId = envelope.conversationId;
+    if (_sessionBootstrapper.hasSessionFor(conversationId)) return;
+    if (_inboundBootstrapInFlight.contains(conversationId)) return;
+    final deviceId = _session.deviceId;
+    final userId = _session.userId;
+    if (deviceId == null || userId == null) return;
+
+    _inboundBootstrapInFlight.add(conversationId);
+    try {
+      final ephemeralPub =
+          (codec as InboundEnvelopeInspector).extractSenderEphemeralPublicKey(envelope);
+      if (ephemeralPub == null) return;
+      final identityRef = await loader();
+      if (identityRef == null || identityRef.isEmpty) return;
+
+      final peer = _resolvePeerForConversation(conversationId);
+      await _sessionBootstrapper.bootstrapSessionFromInbound(
+        InboundSessionBootstrapRequest(
+          conversationId: conversationId,
+          localDeviceId: deviceId,
+          localUserId: userId,
+          localIdentityPrivateRef: identityRef,
+          remoteUserId: peer?.remoteUserId ?? '',
+          remoteDeviceId: peer?.remoteDeviceId ?? envelope.senderDeviceId,
+          remoteEphemeralPublicKey: ephemeralPub,
+        ),
+      );
+    } catch (_) {
+      // Bootstrap failures fall through to the placeholder-body path — the UI
+      // surfaces "session not established" rather than crashing.
+    } finally {
+      _inboundBootstrapInFlight.remove(conversationId);
+    }
+  }
+
+  _InboundPeerHint? _resolvePeerForConversation(String conversationId) {
+    for (final convo in _conversations) {
+      if (convo.id != conversationId) continue;
+      return _InboundPeerHint(
+        remoteUserId: convo.recipientBundle.userId,
+        remoteDeviceId: convo.recipientBundle.deviceId,
+      );
+    }
+    return null;
   }
 
   Future<DecryptedMessage> decryptMessage(ChatMessage message) {
@@ -528,6 +614,7 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     final future = () async {
+      await _ensureInboundSession(message.envelope);
       final decrypted = await _cryptoEngine.decryptMessage(message.envelope);
       final searchableBody = _searchableMessageBody(decrypted);
       _rememberSearchableBody(cacheKey, searchableBody);
@@ -961,6 +1048,13 @@ class VeilMessengerController extends ChangeNotifier {
             notifyListeners();
             if (!message.isMine && message.envelope.conversationId == _activeConversationId) {
               await markRead(message.id);
+            }
+            if (!message.isMine && message.envelope.conversationId != _activeConversationId) {
+              unawaited(_notificationService?.showMessageNotification(
+                conversationId: message.envelope.conversationId,
+                title: 'VEIL',
+                body: 'New encrypted message',
+              ));
             }
             _scheduleSyncAfterRealtimeHint(conversationId: message.envelope.conversationId);
             break;
@@ -2180,4 +2274,14 @@ class AttachmentTransferSnapshot {
   final int? sizeBytes;
   final bool canRetry;
   final bool canCancel;
+}
+
+class _InboundPeerHint {
+  const _InboundPeerHint({
+    required this.remoteUserId,
+    required this.remoteDeviceId,
+  });
+
+  final String remoteUserId;
+  final String remoteDeviceId;
 }

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -22,6 +23,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _dateFormat = DateFormat('MMM d | HH:mm');
   final _wipeConfirmController = TextEditingController();
   final _revokeConfirmController = TextEditingController();
+  final _deleteAccountConfirmController = TextEditingController();
 
   @override
   void initState() {
@@ -33,43 +35,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void dispose() {
     _wipeConfirmController.dispose();
     _revokeConfirmController.dispose();
+    _deleteAccountConfirmController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
+    final l10n = AppLocalizations.of(context);
 
     return VeilShell(
-      title: 'Settings',
+      title: l10n.settingsTitle,
       child: ListView(
         children: [
           VeilHeroPanel(
-            eyebrow: 'LOCAL DEVICE',
+            eyebrow: l10n.settingsEyebrow,
             title: session.displayName ?? '@${session.handle ?? 'unbound'}',
             body: session.deviceId == null
-                ? 'No active device session is bound.'
-                : 'Current device session: ${session.deviceId}',
+                ? l10n.settingsNoDeviceBound
+                : l10n.settingsCurrentDevice(session.deviceId!),
             bottom: Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: const [
-                VeilStatusPill(label: 'No recovery'),
-                VeilStatusPill(label: 'Device-bound'),
-                VeilStatusPill(label: 'Private by design'),
+              children: [
+                VeilStatusPill(label: l10n.pillNoRecovery),
+                VeilStatusPill(label: l10n.pillDeviceBound),
+                VeilStatusPill(label: l10n.settingsPillPrivateByDesign),
               ],
             ),
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilSectionLabel('TRUSTED DEVICE GRAPH'),
+          VeilSectionLabel(l10n.settingsSectionDeviceGraph),
           const SizedBox(height: VeilSpace.sm),
           FutureBuilder<_DeviceGraphSnapshot>(
             future: _deviceGraphFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const VeilLoadingBlock(
-                  title: 'Loading device graph',
-                  body: 'Reviewing the bound devices known to this account.',
+                return VeilLoadingBlock(
+                  title: l10n.settingsLoadingDeviceGraph,
+                  body: l10n.settingsLoadingDeviceGraphBody,
                 );
               }
 
@@ -78,8 +82,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const VeilInlineBanner(
-                        title: 'Device graph unavailable',
+                      VeilInlineBanner(
+                        title: l10n.settingsDeviceGraphUnavailable,
                         message:
                             'This device could not load the current trust graph. Local security controls remain available.',
                         tone: VeilBannerTone.warn,
@@ -87,7 +91,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const SizedBox(height: VeilSpace.md),
                       OutlinedButton(
                         onPressed: _refreshDeviceGraph,
-                        child: const Text('Retry'),
+                        child: Text(l10n.commonRetry),
                       ),
                     ],
                   ),
@@ -97,8 +101,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               final snapshotValue =
                   snapshot.data ?? const _DeviceGraphSnapshot.empty();
               if (snapshotValue.devices.isEmpty) {
-                return const VeilEmptyState(
-                  title: 'No trusted devices visible',
+                return VeilEmptyState(
+                  title: l10n.settingsNoTrustedDevices,
                   body:
                       'This account has no readable device graph yet. Bound-device controls still remain local and unrecoverable.',
                   icon: Icons.devices_outlined,
@@ -146,20 +150,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           VeilActionCluster(
             children: [
               VeilListTileCard(
-                title: 'App lock',
-                subtitle: 'Biometric and PIN barrier on this device only',
+                title: l10n.settingsAppLockTitle,
+                subtitle: l10n.settingsAppLockSubtitle,
                 leading: const Icon(Icons.lock_outline),
                 onTap: () => context.push('/lock'),
               ),
               VeilListTileCard(
-                title: 'Device transfer',
-                subtitle: 'Old device must initiate and approve',
+                title: l10n.settingsDeviceTransferTitle,
+                subtitle: l10n.settingsDeviceTransferSubtitle,
                 leading: const Icon(Icons.phonelink_lock_outlined),
                 onTap: () => context.push('/device-transfer'),
               ),
               VeilListTileCard(
-                title: 'Security status',
-                subtitle: 'Review local guardrails and runtime state',
+                title: l10n.settingsSecurityStatusTitle,
+                subtitle: l10n.settingsSecurityStatusSubtitle,
                 leading: const Icon(Icons.verified_user_outlined),
                 onTap: () => context.push('/security-status'),
               ),
@@ -168,8 +172,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: VeilSpace.md),
           const VeilSectionLabel('SESSION'),
           const SizedBox(height: VeilSpace.sm),
-          const VeilDestructiveNotice(
-            title: 'No recovery path',
+          VeilDestructiveNotice(
+            title: l10n.settingsNoRecoveryPath,
             body:
                 'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.',
           ),
@@ -177,7 +181,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           VeilActionCluster(
             children: [
               VeilListTileCard(
-                title: 'Lock now',
+                title: l10n.settingsLockNow,
                 subtitle:
                     'Hide the current session behind the local barrier immediately',
                 leading: const Icon(Icons.visibility_off_outlined),
@@ -187,7 +191,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               VeilListTileCard(
-                title: 'Wipe local device state',
+                title: l10n.settingsWipeLocal,
                 subtitle:
                     'Deletes local session state, local secrets, encrypted cache, PIN, and onboarding state on this device only.',
                 leading: Icon(
@@ -199,7 +203,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   final confirmed = await _confirmDestructiveAction(
                     controller: _wipeConfirmController,
                     context: context,
-                    title: 'Wipe this device locally?',
+                    title: l10n.settingsWipeConfirmTitle,
                     body:
                         'This erases local VEIL state on this device. It does not create a recovery path. If this is your only active device, access is gone.',
                     confirmVerb: 'Wipe local state',
@@ -219,7 +223,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               VeilListTileCard(
-                title: 'Revoke this device',
+                title: l10n.settingsRevokeTitle,
                 subtitle:
                     'Destroys this bound device session and wipes local state on this device. No recovery exists.',
                 leading: Icon(
@@ -231,7 +235,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   final confirmed = await _confirmDestructiveAction(
                     controller: _revokeConfirmController,
                     context: context,
-                    title: 'Revoke this device?',
+                    title: l10n.settingsRevokeConfirmTitle,
                     body:
                         'This removes the active device binding for this account on this device and wipes local state here. VEIL cannot restore it.',
                     confirmVerb: 'Revoke device',
@@ -251,7 +255,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               VeilListTileCard(
-                title: 'Log out',
+                title: l10n.settingsLogout,
                 subtitle:
                     'Clears this local session while leaving the onboarding acknowledgment and local barrier intact.',
                 leading: const Icon(Icons.logout),
@@ -259,6 +263,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   await ref.read(appSessionProvider.notifier).logout();
                   if (context.mounted) {
                     context.go('/create-account');
+                  }
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: VeilSpace.md),
+          VeilSectionLabel(l10n.settingsDeleteAccountTitle),
+          const SizedBox(height: VeilSpace.sm),
+          VeilDestructiveNotice(
+            title: l10n.settingsIrreversible,
+            body: l10n.settingsDeleteAccountBody,
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          VeilActionCluster(
+            children: [
+              VeilListTileCard(
+                title: l10n.settingsDeleteAccountAction,
+                subtitle: l10n.settingsDeleteAccountBody,
+                leading: Icon(
+                  Icons.delete_forever_outlined,
+                  color: Theme.of(context).colorScheme.error,
+                ),
+                destructive: true,
+                onTap: () async {
+                  final confirmed = await _confirmDestructiveAction(
+                    controller: _deleteAccountConfirmController,
+                    context: context,
+                    title: l10n.settingsDeleteAccountConfirmHeadline,
+                    body: l10n.settingsDeleteAccountBody,
+                    confirmVerb: l10n.settingsDeleteAccountAction,
+                    expectedPhrase: 'DELETE',
+                  );
+
+                  if (confirmed != true) return;
+
+                  try {
+                    await ref
+                        .read(appSessionProvider.notifier)
+                        .deleteAccount();
+                    if (context.mounted) {
+                      context.go('/splash');
+                    }
+                  } catch (_) {
+                    if (!context.mounted) return;
+                    VeilToast.show(
+                      context,
+                      message: l10n.commonError,
+                      tone: VeilBannerTone.warn,
+                    );
                   }
                 },
               ),

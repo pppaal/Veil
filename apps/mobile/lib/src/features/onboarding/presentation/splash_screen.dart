@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -65,6 +66,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     });
 
     final session = ref.watch(appSessionProvider);
+    final l10n = AppLocalizations.of(context);
 
     return VeilShell(
       child: Center(
@@ -72,38 +74,38 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             VeilHeroPanel(
-              eyebrow: 'PRIVATE BETA',
-              title: 'VEIL',
-              body: 'No backup. No recovery. No leaks.',
+              eyebrow: l10n.splashEyebrow,
+              title: l10n.appTitle,
+              body: l10n.splashBody,
               bottom: Column(
                 children: [
-                  const Wrap(
+                  Wrap(
                     spacing: VeilSpace.xs,
                     runSpacing: VeilSpace.xs,
                     alignment: WrapAlignment.center,
                     children: [
-                      VeilStatusPill(label: 'Device-bound messenger'),
-                      VeilStatusPill(label: 'Private beta'),
+                      VeilStatusPill(label: l10n.pillDeviceBoundMessenger),
+                      VeilStatusPill(label: l10n.pillPrivateBeta),
                     ],
                   ),
                   const SizedBox(height: VeilSpace.lg),
                   if (session.errorMessage != null)
                     VeilInlineBanner(
-                      title: 'Runtime configuration blocked',
+                      title: l10n.splashErrorTitle,
                         message: session.errorMessage!,
                         tone: VeilBannerTone.danger,
                       )
                   else
-                    const VeilSurfaceCard(
+                    VeilSurfaceCard(
                       toned: true,
                       child: Column(
                         children: [
                           VeilLoadingBlock(
-                            title: 'Preparing local state',
-                            body: 'Checking onboarding, session binding, and local security state.',
+                            title: l10n.splashPreparingTitle,
+                            body: l10n.splashPreparingBody,
                           ),
-                          SizedBox(height: VeilSpace.md),
-                          Row(
+                          const SizedBox(height: VeilSpace.md),
+                          const Row(
                             children: [
                               Expanded(child: VeilSkeletonLine()),
                               SizedBox(width: VeilSpace.sm),

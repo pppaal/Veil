@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 void main() {
   // Manual UX review harness. Run explicitly with --update-goldens when needed.
@@ -257,6 +258,8 @@ class _GoldenHarness extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: VeilTheme.dark(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
         body: Center(
           child: RepaintBoundary(

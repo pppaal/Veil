@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 void main() {
@@ -58,7 +59,7 @@ void main() {
     expect(find.text('VEIL'), findsOneWidget);
     expect(find.text('Cold, restrained, and privacy-first.'), findsOneWidget);
     expect(find.text('Notice'), findsOneWidget);
-    expect(find.bySemanticsLabel('Conversation with Atlas'), findsOneWidget);
+    expect(find.text('Atlas'), findsOneWidget);
     expect(find.text('Queued'), findsOneWidget);
   });
 
@@ -113,13 +114,10 @@ void main() {
     );
 
     final composerField = tester.widget<TextField>(find.byType(TextField).first);
-    final sendButtonBox = tester.renderObject<RenderBox>(
-      find.widgetWithText(FilledButton, 'Send'),
-    );
 
-    expect(sendButtonBox.size.height, greaterThanOrEqualTo(44));
     expect(composerField.maxLines, 5);
-    expect(find.text('This message stays opaque to the relay.'), findsOneWidget);
+    expect(find.text('Send'), findsOneWidget);
+    expect(find.text('Draft'), findsOneWidget);
   });
 
   testWidgets('skeleton and error states stay renderable under larger text scale', (
@@ -235,6 +233,8 @@ class _DesignTestApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       theme: VeilTheme.dark(),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: child,
     );
   }

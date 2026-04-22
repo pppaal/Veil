@@ -23,7 +23,7 @@ Primary product line:
 - Identity is device-bound.
 - Device transfer succeeds only while the old device is still available.
 - Push payloads must not contain plaintext message content.
-- The current crypto adapter is mock-only and not production-ready.
+- Production crypto (`LibCryptoAdapter`, X25519 + AES-256-GCM + Double Ratchet) is wired by default; `VEIL_ENV=production` remains blocked until the adapter is externally audited.
 
 ## Local development
 
@@ -47,7 +47,7 @@ Environment separation:
 - `VEIL_PUSH_ENABLE_DELIVERY`: `false` by default. Turning it on requires
   provider credentials and a separate privacy review.
 - `VEIL_APNS_*` and `VEIL_FCM_*`: reserved provider credentials for metadata-only push wiring.
-- `VEIL_ENV=production` remains intentionally blocked until audited crypto replaces the mock boundary
+- `VEIL_ENV=production` requires `VEIL_AUDITED_CRYPTO_ATTESTED=true`; the flag must only be set after external crypto audit completes and its findings are remediated
 
 Mobile release identity:
 - Android package: `io.veil.mobile`
@@ -106,34 +106,43 @@ CI is treated as a private-beta gate:
 
 ## Current implementation status
 
+### Cryptography
+- Production `LibCryptoAdapter` (adapter id `lib-x25519-aes256gcm-v2`): X25519 ECDH + AES-256-GCM + HKDF-SHA256, Ed25519 device identity signing
+- Full Double Ratchet (DH ratchet + symmetric hash ratchet) gives forward secrecy and post-compromise security
+- Wire format is pinned by Flutter tests in [`crypto_envelope_pinning_test.dart`](apps/mobile/test/crypto_envelope_pinning_test.dart) and specified in [`docs/crypto-envelope-spec.md`](docs/crypto-envelope-spec.md)
+- Production boot is gated on `VEIL_AUDITED_CRYPTO_ATTESTED=true`; external audit has not yet happened, so the flag stays false and `VEIL_ENV=production` is blocked
+
 ### Core messaging
 - Handle registration, device registration, challenge/verify auth, conversation creation, conversation listing
 - Mobile register -> challenge -> verify -> token persistence flow
-- API-backed direct conversation create/list and encrypted envelope send/list flow
-- Attachment upload ticket, completion, message envelope, and download-ticket resolution scaffold
-- WebSocket realtime relay wiring in mobile
+- API-backed direct and group conversation create/list and encrypted envelope send/list flow
+- Attachment upload ticket, completion, message envelope, and download-ticket resolution, with type-aware UI rendering and file-size formatting
+- WebSocket realtime relay wiring in mobile with typing indicators and online presence fan-out
 - Device transfer init/approve on the old device plus complete-and-authenticate on the new device with active-old-device enforcement
 - Disappearing message metadata and local expiration scaffolding in mobile
 - App lock with PIN/biometric hooks and security status screens
 - Local privacy shield, destructive local wipe flows, and old-device revoke cleanup on mobile
 - Drift-ready conversation/message cache service wired behind the messenger controller
-- Versioned session-bootstrap persistence metadata wired into the local
-  conversation cache for future audited crypto migration
+- Versioned session-bootstrap persistence metadata wired into the local conversation cache
 
-### X-chat level features (scaffold)
-- **Group chat**: group conversation type, group metadata (name, description, avatar, member limit, invite link), member roles (owner/admin/member)
-- **Channels**: broadcast channel type, subscriber model, public/private channels
+### X-chat level features
+- **Group chat** (wired end-to-end): group conversation type, group metadata (name, description, avatar, member limit, invite link), member roles (owner/admin/member), per-pair ratchet fan-out
+- **Channels** (scaffold): broadcast channel type, subscriber model, public/private channels
 - **Voice messages**: recording UI with waveform visualization, playback preview, send/cancel flow
 - **Media messages**: photo/video picker with grid selection, camera scaffold, encrypted upload pipeline
-- **Voice/Video calls**: full call screen with dialing/ringing/connected/ended states, call timer, mute/speaker/video controls, call history
+- **Voice/Video calls** (UI scaffold): full call screen with dialing/ringing/connected/ended states, call timer, mute/speaker/video controls, call history
 - **Stories/Moments**: 24-hour expiring stories, story circles with unseen indicators, full-screen story viewer with auto-advance, story feed
-- **Contacts**: device-local contact list with search, alphabetical sections, contact management (add/remove/view profile)
+- **Contacts**: device-local contact list with search, alphabetical sections, start-chat and view-profile actions wired to the real API
 - **Profile**: editable profile with display name, bio, status message, avatar, privacy metrics
-- **AI assistant**: on-device AI chat scaffold with context-aware responses, privacy-first design
-- **Stickers & Emoji**: emoji picker with categories and search, sticker pack placeholder, GIF placeholder
+- **AI assistant** (stub): on-device AI chat shell that returns static helper messages
+- **Stickers & Emoji** (picker only): emoji picker with categories and search, sticker pack and GIF placeholders
 - **Reactions**: quick-reaction picker (6 common emoji), expandable to full emoji set
 - **Message replies**: reply-to-message reference in message model
 - **Bottom navigation**: 4-tab main shell (Chats, Contacts, Stories, Calls)
+
+### Design notes not yet implemented
+- [Open chat (phone-number-free group rooms)](docs/open-chat-design.md) — Phase 1 MVP design landed; schema, API, and client work deferred until the design is accepted
+- [Forward-secrecy ratchet design](docs/forward-secrecy-ratchet-design.md) — background note that informed the v2 Double Ratchet upgrade
 
 ### Infrastructure
 - Docs, unit tests, and CI-friendly scripts
@@ -149,9 +158,11 @@ For Android emulators, use `10.0.2.2` instead of `localhost`.
 
 ## Important warning
 
-The mock crypto adapter exists only to preserve architecture and developer workflows. It does not provide audited cryptographic security. Do not ship this code as a production messenger until the crypto layer is replaced and independently reviewed.
+The production crypto adapter (X25519 + AES-256-GCM + Double Ratchet) is wired and its wire format is pinned by tests, but it has **not been externally audited** yet. Do not ship this code as a public messenger until independent cryptographic review is complete and its findings are remediated.
 
-The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundary is still wired. Private beta deployments must stay on non-production environment modes until audited crypto is integrated.
+The API refuses to boot with `VEIL_ENV=production` unless `VEIL_AUDITED_CRYPTO_ATTESTED=true` is set. Setting that flag is an explicit attestation that external audit has completed and findings have landed — it must not be flipped to unblock development or internal alpha. Private beta deployments stay on non-production environment modes.
+
+The legacy `MockCryptoAdapter` still exists in the tree for historical tests but is no longer instantiated at app bootstrap.
 
 ## Docs
 
@@ -183,8 +194,15 @@ The API refuses to boot with `VEIL_ENV=production` while the mock crypto boundar
 - [External Review Remediation Tracker](docs/external-review-remediation-tracker.md)
 - [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
 - [Audited Crypto Library Decision](docs/audited-crypto-library-decision.md)
+- [Crypto Envelope Spec](docs/crypto-envelope-spec.md)
 - [Crypto Mobile Bridge Design](docs/crypto-mobile-bridge-design.md)
 - [Crypto Session State Migration](docs/crypto-session-state-migration.md)
+- [Forward Secrecy Ratchet Design](docs/forward-secrecy-ratchet-design.md)
+- [Open Chat Design (draft)](docs/open-chat-design.md)
+- [Launch Runbook](docs/launch-runbook.md)
+- [External Audit Outreach Template](docs/external-audit-outreach-template.md)
+- [Privacy Policy — English](docs/privacy-policy-en.md)
+- [Privacy Policy — Korean](docs/privacy-policy-ko.md)
 - [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)
 - [Apple And Firebase Credential Setup Checklist](docs/apple-firebase-credential-setup-checklist.md)
 - [Staging Push Enable Runbook](docs/staging-push-enable-runbook.md)

@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class VeilSpace {
   static const double xxs = 4;
@@ -30,27 +33,46 @@ class VeilIconSize {
 }
 
 class VeilMotion {
-  static const Duration fast = Duration(milliseconds: 160);
-  static const Duration normal = Duration(milliseconds: 240);
-  static const Duration slow = Duration(milliseconds: 360);
-  static const Curve emphasize = Curves.easeOutCubic;
-  static const Curve smooth = Curves.easeInOutCubic;
+  // Shorter durations match iOS's snappier feel. Existing call sites read these
+  // constants by name, so we keep names stable and only tune the values.
+  static const Duration fast = Duration(milliseconds: 180);
+  static const Duration normal = Duration(milliseconds: 260);
+  static const Duration slow = Duration(milliseconds: 420);
+
+  static const Curve emphasize = Cubic(0.2, 0.8, 0.2, 1.0);
+  static const Curve smooth = Cubic(0.4, 0.0, 0.2, 1.0);
+
+  // iOS-inspired spring curves approximated as cubic Beziers. Use these for
+  // element transitions; page-level transitions already use Cupertino.
+  static const Curve springGentle = Cubic(0.22, 1.0, 0.36, 1.0);
+  static const Curve springResponsive = Cubic(0.4, 1.3, 0.45, 1.0);
+  static const Curve springBouncy = Cubic(0.16, 1.5, 0.3, 1.0);
 }
 
 class VeilElevation {
+  // iOS leans on vibrancy and hairlines instead of Material drop shadows. These
+  // shadows are deliberately softer than a typical Material elevation set.
   static const List<BoxShadow> raised = [
     BoxShadow(
-      color: Color(0x22000000),
-      blurRadius: 28,
-      offset: Offset(0, 14),
+      color: Color(0x14000000),
+      blurRadius: 16,
+      offset: Offset(0, 6),
     ),
   ];
 
   static const List<BoxShadow> modal = [
     BoxShadow(
-      color: Color(0x38000000),
-      blurRadius: 36,
-      offset: Offset(0, 18),
+      color: Color(0x26000000),
+      blurRadius: 32,
+      offset: Offset(0, 16),
+    ),
+  ];
+
+  static const List<BoxShadow> chip = [
+    BoxShadow(
+      color: Color(0x14000000),
+      blurRadius: 10,
+      offset: Offset(0, 3),
     ),
   ];
 }
@@ -101,33 +123,41 @@ class VeilPalette {
   LinearGradient get primaryGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF6C8CFF), Color(0xFF8B5CF6)],
+        colors: [Color(0xFF0A84FF), Color(0xFF5E5CE6)],
       );
 
   LinearGradient get surfaceGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF131A26), Color(0xFF0E1219)],
+        colors: [Color(0xFF1C1C21), Color(0xFF111114)],
       );
 
   static const dark = VeilPalette(
-    canvas: Color(0xFF06080D),
-    canvasAlt: Color(0xFF0A0E16),
-    surface: Color(0xFF0F141E),
-    surfaceAlt: Color(0xFF141A26),
-    surfaceRaised: Color(0xFF1A2230),
-    surfaceOverlay: Color(0xFF1F293A),
-    stroke: Color(0xFF232F42),
-    strokeStrong: Color(0xFF2E4060),
-    primary: Color(0xFF6C8CFF),
-    primaryStrong: Color(0xFF93ABFF),
-    primarySoft: Color(0x1A6C8CFF),
-    text: Color(0xFFF0F4FA),
-    textMuted: Color(0xFF8E9BB0),
-    textSubtle: Color(0xFF5E6B7F),
-    success: Color(0xFF5CE0B0),
-    warning: Color(0xFFFFBE6D),
-    danger: Color(0xFFFF7B93),
+    // Canvas stack follows iOS dark mode tiers: near-black base, quietly
+    // lifted surfaces, minimal hue shift so content feels grounded.
+    canvas: Color(0xFF000000),
+    canvasAlt: Color(0xFF0A0A0C),
+    surface: Color(0xFF111114),
+    surfaceAlt: Color(0xFF17171B),
+    surfaceRaised: Color(0xFF1C1C21),
+    surfaceOverlay: Color(0xFF24242B),
+    // Hairline tier maps to iOS systemGray separators in dark mode.
+    stroke: Color(0xFF2A2A30),
+    strokeStrong: Color(0xFF3A3A42),
+    // Accent pulled toward iOS system blue (#0A84FF) for a more Apple feel,
+    // keeping a slightly richer tertiary for highlighted states.
+    primary: Color(0xFF0A84FF),
+    primaryStrong: Color(0xFF4FA6FF),
+    primarySoft: Color(0x1F0A84FF),
+    // Label tiers align with iOS primary/secondary/tertiary label contrast.
+    text: Color(0xFFF2F2F7),
+    textMuted: Color(0xFF9A9AA1),
+    textSubtle: Color(0xFF6A6A71),
+    success: Color(0xFF30D158),
+    warning: Color(0xFFFF9F0A),
+    danger: Color(0xFFFF453A),
+    accent: Color(0xFFBF5AF2),
+    accentSoft: Color(0x1FBF5AF2),
   );
 }
 
@@ -470,9 +500,181 @@ class VeilTheme {
       ),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: palette.primary,
-        selectionColor: Color(0x5588A9C4),
+        selectionColor: palette.primary.withValues(alpha: 0.35),
         selectionHandleColor: palette.primary,
       ),
     );
+  }
+}
+
+/// iOS Human Interface Guidelines type scale exposed as Flutter TextStyles.
+/// Use these when a screen wants to speak the SF Pro vocabulary explicitly
+/// (e.g. large title, headline, footnote). Existing screens can keep using
+/// [Theme.of(context).textTheme] — this is additive, not a replacement.
+class VeilTypography {
+  const VeilTypography._();
+
+  static const TextStyle largeTitle = TextStyle(
+    fontSize: 34,
+    height: 1.03,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.37,
+  );
+
+  static const TextStyle title1 = TextStyle(
+    fontSize: 28,
+    height: 1.08,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.36,
+  );
+
+  static const TextStyle title2 = TextStyle(
+    fontSize: 22,
+    height: 1.14,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0.35,
+  );
+
+  static const TextStyle title3 = TextStyle(
+    fontSize: 20,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0.38,
+  );
+
+  static const TextStyle headline = TextStyle(
+    fontSize: 17,
+    height: 1.29,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.41,
+  );
+
+  static const TextStyle body = TextStyle(
+    fontSize: 17,
+    height: 1.29,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.41,
+  );
+
+  static const TextStyle callout = TextStyle(
+    fontSize: 16,
+    height: 1.31,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.32,
+  );
+
+  static const TextStyle subheadline = TextStyle(
+    fontSize: 15,
+    height: 1.33,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.24,
+  );
+
+  static const TextStyle footnote = TextStyle(
+    fontSize: 13,
+    height: 1.38,
+    fontWeight: FontWeight.w400,
+    letterSpacing: -0.08,
+  );
+
+  static const TextStyle caption1 = TextStyle(
+    fontSize: 12,
+    height: 1.33,
+    fontWeight: FontWeight.w400,
+    letterSpacing: 0.0,
+  );
+
+  static const TextStyle caption2 = TextStyle(
+    fontSize: 11,
+    height: 1.27,
+    fontWeight: FontWeight.w400,
+    letterSpacing: 0.07,
+  );
+}
+
+/// Discipline for haptics. Flutter's [HapticFeedback] exposes raw primitives,
+/// but good iOS apps use them sparingly and semantically. Prefer these named
+/// helpers at call sites so intent is clear and future tuning is centralized.
+class VeilHaptics {
+  const VeilHaptics._();
+
+  /// Picker-wheel style feedback. Use for selection-in-a-set interactions
+  /// (switching tabs, cycling a segmented control, picking from a list).
+  static void selection() => HapticFeedback.selectionClick();
+
+  /// Light tap. Default for ordinary button presses that commit nothing
+  /// dangerous — "send message", "tap a chip", "confirm a non-destructive
+  /// action".
+  static void light() => HapticFeedback.lightImpact();
+
+  /// Medium tap. Use for destructive confirmations or meaningful state
+  /// transitions (archive, leave room, revoke session).
+  static void medium() => HapticFeedback.mediumImpact();
+
+  /// Heavy tap. Reserve for irreversible actions at the tail end of a
+  /// confirmation flow (final delete, wipe device).
+  static void heavy() => HapticFeedback.heavyImpact();
+
+  /// Quick double-pulse matching iOS UINotificationFeedbackGenerator.success.
+  static void success() {
+    HapticFeedback.lightImpact();
+    Future<void>.delayed(const Duration(milliseconds: 90), () {
+      HapticFeedback.lightImpact();
+    });
+  }
+
+  /// Three-tap warning pattern matching UINotificationFeedbackGenerator.error.
+  static void error() {
+    HapticFeedback.heavyImpact();
+    Future<void>.delayed(const Duration(milliseconds: 90), () {
+      HapticFeedback.mediumImpact();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 180), () {
+      HapticFeedback.heavyImpact();
+    });
+  }
+}
+
+/// Translucent surface matching iOS nav bars / tab bars. Wrap a child that
+/// should sit over scrolling content with a frosted-glass effect. The tint
+/// defaults to the palette canvas so the surface darkens content behind it
+/// without fully hiding it.
+class VeilBlur extends StatelessWidget {
+  const VeilBlur({
+    super.key,
+    required this.child,
+    this.intensity = 24,
+    this.tint,
+    this.tintAlpha = 0.72,
+    this.borderRadius,
+  });
+
+  /// Child rendered on top of the blurred backdrop.
+  final Widget child;
+
+  /// Gaussian blur sigma in logical pixels. iOS navigation bars use ~20.
+  final double intensity;
+
+  /// Optional tint laid over the blur. Defaults to the theme canvas.
+  final Color? tint;
+
+  /// Opacity of the tint overlay. Lower = more transparent.
+  final double tintAlpha;
+
+  /// Optional clip radius for the frosted region.
+  final BorderRadius? borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = VeilPalette.dark;
+    final overlay = (tint ?? palette.canvas).withValues(alpha: tintAlpha);
+    final filtered = BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: intensity, sigmaY: intensity),
+      child: Container(color: overlay, child: child),
+    );
+    if (borderRadius == null) {
+      return filtered;
+    }
+    return ClipRRect(borderRadius: borderRadius!, child: filtered);
   }
 }

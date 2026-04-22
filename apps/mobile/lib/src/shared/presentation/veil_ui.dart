@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../core/theme/veil_theme.dart';
 
@@ -75,9 +74,10 @@ class VeilButton extends StatelessWidget {
       return null;
     }
     return () {
-      HapticFeedback.selectionClick();
       if (destructive) {
-        HapticFeedback.mediumImpact();
+        VeilHaptics.medium();
+      } else {
+        VeilHaptics.light();
       }
       handler();
     };
@@ -193,13 +193,13 @@ class _VeilHeroPanelState extends State<VeilHeroPanel>
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(VeilRadius.xl),
         border: Border.all(color: palette.stroke),
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF171F29),
-            Color(0xFF111821),
-            Color(0xFF0A0F15),
+            palette.surfaceRaised,
+            palette.surfaceAlt,
+            palette.canvasAlt,
           ],
         ),
         boxShadow: VeilElevation.raised,
@@ -382,24 +382,24 @@ class VeilInlineBanner extends StatelessWidget {
   _BannerPalette _paletteFor(VeilBannerTone tone) {
     return switch (tone) {
       VeilBannerTone.info => const _BannerPalette(
-          border: Color(0xFF2E4060),
-          fill: Color(0x1A6C8CFF),
-          foreground: Color(0xFF93ABFF),
+          border: Color(0x660A84FF),
+          fill: Color(0x1F0A84FF),
+          foreground: Color(0xFF4FA6FF),
         ),
       VeilBannerTone.good => const _BannerPalette(
-          border: Color(0xFF1A4D3F),
-          fill: Color(0x1A5CE0B0),
-          foreground: Color(0xFF5CE0B0),
+          border: Color(0x6630D158),
+          fill: Color(0x1F30D158),
+          foreground: Color(0xFF30D158),
         ),
       VeilBannerTone.warn => const _BannerPalette(
-          border: Color(0xFF5C4420),
-          fill: Color(0x1AFFBE6D),
-          foreground: Color(0xFFFFBE6D),
+          border: Color(0x66FF9F0A),
+          fill: Color(0x1FFF9F0A),
+          foreground: Color(0xFFFF9F0A),
         ),
       VeilBannerTone.danger => const _BannerPalette(
-          border: Color(0xFF5C2435),
-          fill: Color(0x1AFF7B93),
-          foreground: Color(0xFFFF7B93),
+          border: Color(0x66FF453A),
+          fill: Color(0x1FFF453A),
+          foreground: Color(0xFFFF453A),
         ),
     };
   }
@@ -428,24 +428,24 @@ class VeilStatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = switch (tone) {
       VeilBannerTone.info => const _BannerPalette(
-          border: Color(0xFF2E4060),
-          fill: Color(0x1A6C8CFF),
-          foreground: Color(0xFF93ABFF),
+          border: Color(0x660A84FF),
+          fill: Color(0x1F0A84FF),
+          foreground: Color(0xFF4FA6FF),
         ),
       VeilBannerTone.good => const _BannerPalette(
-          border: Color(0xFF1A4D3F),
-          fill: Color(0x1A5CE0B0),
-          foreground: Color(0xFF5CE0B0),
+          border: Color(0x6630D158),
+          fill: Color(0x1F30D158),
+          foreground: Color(0xFF30D158),
         ),
       VeilBannerTone.warn => const _BannerPalette(
-          border: Color(0xFF5C4420),
-          fill: Color(0x1AFFBE6D),
-          foreground: Color(0xFFFFBE6D),
+          border: Color(0x66FF9F0A),
+          fill: Color(0x1FFF9F0A),
+          foreground: Color(0xFFFF9F0A),
         ),
       VeilBannerTone.danger => const _BannerPalette(
-          border: Color(0xFF5C2435),
-          fill: Color(0x1AFF7B93),
-          foreground: Color(0xFFFF7B93),
+          border: Color(0x66FF453A),
+          fill: Color(0x1FFF453A),
+          foreground: Color(0xFFFF453A),
         ),
     };
 
@@ -613,13 +613,13 @@ class VeilDestructiveNotice extends StatelessWidget {
       padding: const EdgeInsets.all(VeilSpace.lg),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(VeilRadius.lg),
-        border: Border.all(color: const Color(0xFF6A3342)),
-        gradient: const LinearGradient(
+        border: Border.all(color: palette.danger.withValues(alpha: 0.45)),
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Color(0xFF24151B),
-            Color(0xFF151117),
+            palette.danger.withValues(alpha: 0.12),
+            palette.surface,
           ],
         ),
       ),
@@ -632,8 +632,8 @@ class VeilDestructiveNotice extends StatelessWidget {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(VeilRadius.sm),
-              color: const Color(0x1FF57C96),
-              border: Border.all(color: const Color(0xFF6A3342)),
+              color: palette.danger.withValues(alpha: 0.14),
+              border: Border.all(color: palette.danger.withValues(alpha: 0.45)),
             ),
             child: Icon(
               Icons.priority_high_rounded,
@@ -929,7 +929,7 @@ class VeilMessageBubbleCard extends StatelessWidget {
 
     return AnimatedContainer(
       duration: VeilMotion.normal,
-      curve: VeilMotion.emphasize,
+      curve: VeilMotion.springGentle,
       constraints: const BoxConstraints(maxWidth: 340),
       padding: const EdgeInsets.symmetric(
         horizontal: VeilSpace.md,
@@ -939,10 +939,14 @@ class VeilMessageBubbleCard extends StatelessWidget {
         gradient: highlighted
             ? null
             : isMine
-                ? const LinearGradient(
+                ? LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF1E2D52), Color(0xFF192240)],
+                    colors: [
+                      palette.primary,
+                      Color.lerp(palette.primary, palette.accent, 0.5) ??
+                          palette.primary,
+                    ],
                   )
                 : null,
         color: highlighted
@@ -951,25 +955,25 @@ class VeilMessageBubbleCard extends StatelessWidget {
                 ? null
                 : palette.surfaceAlt,
         borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(20),
-          topRight: const Radius.circular(20),
-          bottomLeft: Radius.circular(isMine ? 20 : 6),
-          bottomRight: Radius.circular(isMine ? 6 : 20),
+          topLeft: const Radius.circular(22),
+          topRight: const Radius.circular(22),
+          bottomLeft: Radius.circular(isMine ? 22 : 6),
+          bottomRight: Radius.circular(isMine ? 6 : 22),
         ),
         border: Border.all(
           color: highlighted
               ? palette.primaryStrong
               : isMine
-                  ? const Color(0xFF2A3D66)
+                  ? palette.primary.withValues(alpha: 0.4)
                   : palette.stroke,
           width: 0.5,
         ),
         boxShadow: isMine
             ? [
                 BoxShadow(
-                  color: palette.primary.withValues(alpha: 0.08),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
+                  color: palette.primary.withValues(alpha: 0.18),
+                  blurRadius: 18,
+                  offset: const Offset(0, 6),
                 ),
               ]
             : null,
@@ -1092,10 +1096,10 @@ class VeilEmptyState extends StatelessWidget {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(VeilRadius.lg),
                   border: Border.all(color: palette.stroke),
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFF18202A), Color(0xFF10161D)],
+                    colors: [palette.surfaceRaised, palette.canvasAlt],
                   ),
                 ),
                 child: Icon(icon, size: VeilIconSize.xl, color: palette.primary),

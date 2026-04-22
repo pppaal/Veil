@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -9,7 +10,28 @@ import 'crypto_engine.dart';
 
 const _envelopeVersion = 'veil-envelope-v1';
 const _attachmentAlgoHint = 'x25519-aes256gcm';
-const int _currentSessionSchemaVersion = 2;
+
+// Snapshot schema:
+//   v2 — introduced DH ratchet state + skipped message keys (flat map).
+//   v3 — per-skipped-key stashedAt timestamps (TTL), per-epoch bucket cap,
+//        and epoch metadata (rotation count + last rotation time).
+// Older schemas are handled by the `_migrate*` chain in `_SessionState.tryRestore`.
+const int _currentSessionSchemaVersion = 3;
+
+// Skipped-key TTL: a key stashed for later reordering that's older than this
+// is considered an abandoned straggler and dropped. Protects against an
+// adversary who pins a receiver's skipped-key slots without ever catching up.
+const Duration _skippedKeyTtl = Duration(days: 7);
+
+// Max skipped keys stashed per DH epoch (per peer ratchet pub). Combined with
+// the global `_maxSkippedKeys` cap, this keeps a single bad epoch from
+// starving the whole reorder budget.
+const int _maxSkippedKeysPerEpoch = 200;
+
+// Debounce window for session-snapshot writes to secure storage. Every
+// encrypt/decrypt mutates the ratchet; flushing on each mutation burns flash
+// and battery on active chats. Writes within this window coalesce.
+const Duration _snapshotDebounceWindow = Duration(milliseconds: 300);
 
 String _b64Encode(List<int> bytes) =>
     base64Url.encode(bytes).replaceAll('=', '');
@@ -98,6 +120,32 @@ class LibCryptoAdapter implements CryptoAdapter {
   ) async {
     await _sessionBootstrapper.restoreSessions(snapshots);
   }
+
+  // Drains every debounced session-snapshot write so the caller can be sure
+  // all in-memory ratchet mutations have reached secure storage. Call from
+  // app-lifecycle pause / detach and before logout/wipe — otherwise a
+  // process kill within the debounce window would lose the most recent
+  // ratchet state.
+  Future<void> flushPendingSnapshotWrites() async {
+    await _sessionBootstrapper.flushPendingSnapshotWrites();
+  }
+
+  // Forces the next outbound message on this conversation to perform a DH
+  // ratchet step, rotating the send-side ratchet keypair and mixing a fresh
+  // DH output into the root key. Used by the "rotate keys" UX as a
+  // post-compromise reset: any attacker holding a stale snapshot loses
+  // ability to derive future message keys once the next send lands.
+  //
+  // Drops all currently-cached skipped keys — they belong to the pre-rotation
+  // epoch, and after a manual rekey the user has signalled they don't want
+  // any pre-rotation stragglers decrypting even if they'd otherwise fit the
+  // reorder window.
+  //
+  // Returns true if an active session was found (and the rekey was armed),
+  // false if no session exists yet for the conversation.
+  Future<bool> forceRekeyNextSend(String conversationId) async {
+    return _sessionBootstrapper.forceRekeyNextSend(conversationId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +184,22 @@ class _LibDeviceIdentityProvider implements DeviceIdentityProvider {
       identityPrivateKeyRef: _b64Encode(utf8.encode(privateBundle)),
       signedPrekeyBundle: _b64Encode(utf8.encode(prekeyPayload)),
     );
+  }
+
+  @override
+  Future<String> extractIdentityPublicKeyFromPrivateRef(
+    String identityPrivateRef,
+  ) async {
+    final decodedJson = utf8.decode(_b64Decode(identityPrivateRef));
+    final bundle = json.decode(decodedJson) as Map<String, dynamic>;
+    final edPrivB64 = bundle['ed25519'] as String?;
+    if (edPrivB64 == null) {
+      throw ArgumentError('identity bundle missing ed25519 private key');
+    }
+    final seed = _b64Decode(edPrivB64);
+    final kp = await _ed25519.newKeyPairFromSeed(seed);
+    final pub = await kp.extractPublicKey();
+    return _b64Encode(pub.bytes);
   }
 
   static Future<String> _signBytes(
@@ -305,6 +369,15 @@ class _LibCryptoEnvelopeCodec
 // state loses visibility as soon as either side performs a DH step.
 // ---------------------------------------------------------------------------
 
+// A skipped (out-of-order) message key, stashed so it can decrypt a straggler
+// that arrives later. Timestamp is used to drop abandoned keys past the TTL.
+class _SkippedKeyEntry {
+  _SkippedKeyEntry({required this.key, required this.stashedAt});
+
+  final SecretKey key;
+  final DateTime stashedAt;
+}
+
 class _SessionState {
   _SessionState({
     required this.sessionLocator,
@@ -320,6 +393,8 @@ class _SessionState {
     required this.remoteDeviceId,
     this.sendCounter = 0,
     this.receiveCounter = 0,
+    this.ratchetRotationCount = 0,
+    this.lastRatchetRotationAt,
   });
 
   final String sessionLocator;
@@ -330,8 +405,9 @@ class _SessionState {
   int receiveCounter;
   // Stashed out-of-order message keys. Key format: "<peerPubB64>|<counter>".
   // The peerPub prefix means stragglers from a pre-rotation DH epoch don't
-  // alias counters on the post-rotation chain.
-  final Map<String, SecretKey> skippedMessageKeys = {};
+  // alias counters on the post-rotation chain. Entries carry a timestamp so
+  // abandoned stragglers age out after `_skippedKeyTtl`.
+  final Map<String, _SkippedKeyEntry> skippedMessageKeys = {};
   SimpleKeyPairData currentSendRatchetPriv;
   SimplePublicKey currentSendRatchetPub;
   List<int> lastSeenPeerRatchetPub;
@@ -339,14 +415,41 @@ class _SessionState {
   final String remoteIdentityFingerprint;
   final String localDeviceId;
   final String remoteDeviceId;
+  // Count of completed DH ratchet rotations (send + receive combined) since
+  // bootstrap. Purely for observability — helps diagnose "is this chat
+  // actually ratcheting or stuck?" during incident review.
+  int ratchetRotationCount;
+  DateTime? lastRatchetRotationAt;
+
+  // Drops skipped-key entries older than `_skippedKeyTtl`. Called on any read
+  // path that touches the skipped-key map, so TTL enforcement is lazy and
+  // amortized across message flow.
+  void pruneExpiredSkippedKeys({DateTime? now}) {
+    final cutoff = (now ?? DateTime.now().toUtc()).subtract(_skippedKeyTtl);
+    skippedMessageKeys.removeWhere((_, entry) => entry.stashedAt.isBefore(cutoff));
+  }
+
+  // Counts how many skipped-key slots are currently used by a given epoch
+  // (identified by its peer ratchet pub). Used to enforce the per-epoch cap.
+  int skippedKeysInEpoch(String peerPubB64) {
+    final prefix = '$peerPubB64|';
+    var count = 0;
+    for (final k in skippedMessageKeys.keys) {
+      if (k.startsWith(prefix)) count += 1;
+    }
+    return count;
+  }
 
   Future<Map<String, dynamic>> snapshot() async {
     final rootBytes = await rootKey.extractBytes();
     final sendBytes = await sendChainKey.extractBytes();
     final recvBytes = await receiveChainKey.extractBytes();
-    final skipped = <String, String>{};
+    final skipped = <String, Map<String, dynamic>>{};
     for (final entry in skippedMessageKeys.entries) {
-      skipped[entry.key] = _b64Encode(await entry.value.extractBytes());
+      skipped[entry.key] = {
+        'k': _b64Encode(await entry.value.key.extractBytes()),
+        't': entry.value.stashedAt.toUtc().toIso8601String(),
+      };
     }
     return {
       'v': _currentSessionSchemaVersion,
@@ -364,43 +467,92 @@ class _SessionState {
       'localDeviceId': localDeviceId,
       'remoteDeviceId': remoteDeviceId,
       'skippedKeys': skipped,
+      'ratchetRotationCount': ratchetRotationCount,
+      'lastRatchetRotationAt':
+          lastRatchetRotationAt?.toUtc().toIso8601String(),
     };
   }
 
   static Future<_SessionState?> tryRestore(Map<String, dynamic> json) async {
     try {
-      if (json['v'] != _currentSessionSchemaVersion) return null;
-      final privBytes = _b64Decode(json['sendRatchetPriv'] as String);
-      final pubBytes = _b64Decode(json['sendRatchetPub'] as String);
+      final v = (json['v'] as num?)?.toInt() ?? 0;
+      Map<String, dynamic> current = json;
+      if (v < 2) {
+        // Pre-v2 snapshots predate the DH ratchet shape and have no
+        // production deployment behind them. Nothing to migrate — let the
+        // caller re-bootstrap.
+        return null;
+      }
+      if (v == 2) current = _migrateV2ToV3(current);
+      if (current['v'] != _currentSessionSchemaVersion) return null;
+
+      final privBytes = _b64Decode(current['sendRatchetPriv'] as String);
+      final pubBytes = _b64Decode(current['sendRatchetPub'] as String);
       final kp = await X25519().newKeyPairFromSeed(privBytes);
       final kpData = await kp.extract();
       final pub = SimplePublicKey(pubBytes, type: KeyPairType.x25519);
+      final lastRotationStr = current['lastRatchetRotationAt'] as String?;
       final state = _SessionState(
-        sessionLocator: json['sessionLocator'] as String,
-        rootKey: SecretKey(_b64Decode(json['rootKey'] as String)),
-        sendChainKey: SecretKey(_b64Decode(json['sendChainKey'] as String)),
-        receiveChainKey: SecretKey(_b64Decode(json['receiveChainKey'] as String)),
+        sessionLocator: current['sessionLocator'] as String,
+        rootKey: SecretKey(_b64Decode(current['rootKey'] as String)),
+        sendChainKey: SecretKey(_b64Decode(current['sendChainKey'] as String)),
+        receiveChainKey:
+            SecretKey(_b64Decode(current['receiveChainKey'] as String)),
         currentSendRatchetPriv: kpData,
         currentSendRatchetPub: pub,
-        lastSeenPeerRatchetPub: _b64Decode(json['lastSeenPeerPub'] as String),
+        lastSeenPeerRatchetPub: _b64Decode(current['lastSeenPeerPub'] as String),
         hasReceivedSinceLastSend:
-            json['hasReceivedSinceLastSend'] as bool? ?? false,
+            current['hasReceivedSinceLastSend'] as bool? ?? false,
         remoteIdentityFingerprint:
-            json['remoteIdentityFingerprint'] as String? ?? '',
-        localDeviceId: json['localDeviceId'] as String,
-        remoteDeviceId: json['remoteDeviceId'] as String,
-        sendCounter: (json['sendCounter'] as num?)?.toInt() ?? 0,
-        receiveCounter: (json['receiveCounter'] as num?)?.toInt() ?? 0,
+            current['remoteIdentityFingerprint'] as String? ?? '',
+        localDeviceId: current['localDeviceId'] as String,
+        remoteDeviceId: current['remoteDeviceId'] as String,
+        sendCounter: (current['sendCounter'] as num?)?.toInt() ?? 0,
+        receiveCounter: (current['receiveCounter'] as num?)?.toInt() ?? 0,
+        ratchetRotationCount:
+            (current['ratchetRotationCount'] as num?)?.toInt() ?? 0,
+        lastRatchetRotationAt:
+            lastRotationStr == null ? null : DateTime.tryParse(lastRotationStr),
       );
-      final skipped = json['skippedKeys'] as Map<String, dynamic>? ?? {};
+      final skipped = current['skippedKeys'] as Map<String, dynamic>? ?? {};
       for (final entry in skipped.entries) {
-        state.skippedMessageKeys[entry.key] =
-            SecretKey(_b64Decode(entry.value as String));
+        final value = entry.value as Map<String, dynamic>;
+        final stashedAtStr = value['t'] as String?;
+        final stashedAt = stashedAtStr == null
+            ? DateTime.now().toUtc()
+            : DateTime.tryParse(stashedAtStr)?.toUtc() ??
+                DateTime.now().toUtc();
+        state.skippedMessageKeys[entry.key] = _SkippedKeyEntry(
+          key: SecretKey(_b64Decode(value['k'] as String)),
+          stashedAt: stashedAt,
+        );
       }
+      // Prune on restore so a long-backgrounded device doesn't resurrect
+      // week-old skipped keys the moment it comes back online.
+      state.pruneExpiredSkippedKeys();
       return state;
     } catch (_) {
       return null;
     }
+  }
+
+  // v2 → v3: wrap flat skipped-key entries into {k, t} objects (stashedAt
+  // defaults to "now" since v2 didn't track it), and seed the epoch
+  // observability fields to zero / null.
+  static Map<String, dynamic> _migrateV2ToV3(Map<String, dynamic> v2) {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final oldSkipped = v2['skippedKeys'] as Map<String, dynamic>? ?? const {};
+    final newSkipped = <String, Map<String, dynamic>>{};
+    for (final e in oldSkipped.entries) {
+      newSkipped[e.key] = {'k': e.value as String, 't': now};
+    }
+    return <String, dynamic>{
+      ...v2,
+      'v': 3,
+      'skippedKeys': newSkipped,
+      'ratchetRotationCount': v2['ratchetRotationCount'] ?? 0,
+      'lastRatchetRotationAt': v2['lastRatchetRotationAt'],
+    };
   }
 }
 
@@ -415,19 +567,101 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
   final Map<String, _SessionState> _sessions = {};
   SessionPersister? _persister;
 
+  // Debounced-write bookkeeping: conversations with pending writes and their
+  // scheduled timers. Coalescing writes within `_snapshotDebounceWindow`
+  // keeps flash/battery cost bounded on high-frequency chats.
+  final Set<String> _pendingWrites = <String>{};
+  final Map<String, Timer> _writeTimers = <String, Timer>{};
+  // In-flight flushes awaited by `flushPendingSnapshotWrites()` so a lifecycle
+  // pause can actually wait for the write to land on disk.
+  final List<Future<void>> _inflightWrites = <Future<void>>[];
+
   void setPersistence({SessionPersister? persister}) {
     _persister = persister;
   }
 
   _SessionState? getSession(String conversationId) => _sessions[conversationId];
 
+  // Schedules a debounced snapshot write. We deliberately return before the
+  // write completes so the hot encrypt/decrypt path doesn't block on
+  // secure-storage I/O. Lifecycle pause / app-exit must call
+  // `flushPendingSnapshotWrites()` to guarantee durability.
   Future<void> notifySessionChanged(String conversationId) async {
+    if (_persister == null) return;
+    if (!_sessions.containsKey(conversationId)) return;
+    _pendingWrites.add(conversationId);
+    _writeTimers[conversationId]?.cancel();
+    _writeTimers[conversationId] =
+        Timer(_snapshotDebounceWindow, () => _flushOne(conversationId));
+  }
+
+  // Synchronous write path used at bootstrap: the very first root/chain
+  // material is load-bearing — if the process dies before the debounce
+  // window elapses, we'd have no way to continue the conversation. Prefer
+  // eating the latency over losing the entire session.
+  Future<void> persistImmediately(String conversationId) async {
+    _writeTimers.remove(conversationId)?.cancel();
+    _pendingWrites.remove(conversationId);
     final persister = _persister;
     if (persister == null) return;
     final session = _sessions[conversationId];
     if (session == null) return;
     final snap = await session.snapshot();
     await persister(conversationId, snap);
+  }
+
+  void _flushOne(String conversationId) {
+    _writeTimers.remove(conversationId);
+    if (!_pendingWrites.remove(conversationId)) return;
+    final persister = _persister;
+    if (persister == null) return;
+    final session = _sessions[conversationId];
+    if (session == null) return;
+    final future = () async {
+      final snap = await session.snapshot();
+      await persister(conversationId, snap);
+    }();
+    _inflightWrites.add(future);
+    future.whenComplete(() => _inflightWrites.remove(future));
+  }
+
+  // Arms the conversation for a forced DH rotation on the next send. Clears
+  // skipped keys from all epochs so the pre-rekey state can't straggle into
+  // the post-rekey chain. Persists synchronously — a rekey is a deliberate
+  // user action and must survive a crash before the debounce window.
+  @override
+  Future<bool> forceRekeyNextSend(String conversationId) async {
+    final session = _sessions[conversationId];
+    if (session == null) return false;
+    session.hasReceivedSinceLastSend = true;
+    session.skippedMessageKeys.clear();
+    await persistImmediately(conversationId);
+    return true;
+  }
+
+  // Drains every debounced write and returns once the persister has settled.
+  // Call from app-lifecycle pause / detach and before logout/wipe.
+  Future<void> flushPendingSnapshotWrites() async {
+    for (final id in _writeTimers.keys.toList()) {
+      _writeTimers.remove(id)?.cancel();
+    }
+    final ids = _pendingWrites.toList();
+    _pendingWrites.clear();
+    for (final id in ids) {
+      final persister = _persister;
+      if (persister == null) break;
+      final session = _sessions[id];
+      if (session == null) continue;
+      final future = () async {
+        final snap = await session.snapshot();
+        await persister(id, snap);
+      }();
+      _inflightWrites.add(future);
+      future.whenComplete(() => _inflightWrites.remove(future));
+    }
+    while (_inflightWrites.isNotEmpty) {
+      await Future.wait(List<Future<void>>.from(_inflightWrites));
+    }
   }
 
   Future<void> restoreSessions(
@@ -489,7 +723,9 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
       remoteDeviceId: request.remoteDeviceId,
     );
     _sessions[request.conversationId] = session;
-    await notifySessionChanged(request.conversationId);
+    // Bootstrap material is load-bearing: persist synchronously so a crash
+    // before the debounce window won't strand the session.
+    await persistImmediately(request.conversationId);
 
     return SessionBootstrapMaterial(
       sessionLocator: session.sessionLocator,
@@ -560,7 +796,7 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
       remoteDeviceId: request.remoteDeviceId,
     );
     _sessions[request.conversationId] = session;
-    await notifySessionChanged(request.conversationId);
+    await persistImmediately(request.conversationId);
 
     return SessionBootstrapMaterial(
       sessionLocator: session.sessionLocator,
@@ -671,6 +907,8 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
     session.currentSendRatchetPriv = newPriv;
     session.currentSendRatchetPub = newPub;
     session.hasReceivedSinceLastSend = false;
+    session.ratchetRotationCount += 1;
+    session.lastRatchetRotationAt = DateTime.now().toUtc();
   }
 
   // Receive-side DH step: the inbound envelope carries a new peer ratchet
@@ -692,6 +930,8 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
     session.receiveChainKey = newRecvChain;
     session.receiveCounter = 0;
     session.lastSeenPeerRatchetPub = incomingPeerPub;
+    session.ratchetRotationCount += 1;
+    session.lastRatchetRotationAt = DateTime.now().toUtc();
   }
 
   static Future<SimplePublicKey> _resolveRemoteX25519Key(
@@ -1027,33 +1267,47 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
     List<int> peerPub,
     int counter,
   ) async {
+    // Amortized TTL sweep: drop abandoned skipped keys older than the TTL
+    // before doing any work, so every receive self-heals the cache.
+    session.pruneExpiredSkippedKeys();
+
     final skippedKey = _skippedKey(peerPub, counter);
     // Out-of-order: already stashed.
     final cached = session.skippedMessageKeys.remove(skippedKey);
-    if (cached != null) return cached;
+    if (cached != null) return cached.key;
 
     // Replay or below-window.
     if (counter < session.receiveCounter) return null;
 
     // Gap too big → refuse (could be attacker-induced DoS).
-    if (counter - session.receiveCounter > _maxSkippedKeys) return null;
+    final gap = counter - session.receiveCounter;
+    if (gap > _maxSkippedKeys) return null;
 
     // Cap total stashed keys across all epochs.
-    if (session.skippedMessageKeys.length +
-            (counter - session.receiveCounter) >
-        _maxSkippedKeys) {
+    if (session.skippedMessageKeys.length + gap > _maxSkippedKeys) {
+      return null;
+    }
+
+    // Cap stashed keys within the CURRENT epoch (i.e. under this peerPub).
+    // A rogue peer that pins counters on one ratchet pub must not be able to
+    // consume the entire global budget and starve legitimate stragglers from
+    // other epochs.
+    final peerPubB64 = _b64Encode(peerPub);
+    if (session.skippedKeysInEpoch(peerPubB64) + gap >
+        _maxSkippedKeysPerEpoch) {
       return null;
     }
 
     // Advance: derive keys for all counters in [receiveCounter, counter).
     // Stash intermediate ones under (current peer pub, counter).
+    final now = DateTime.now().toUtc();
     while (session.receiveCounter < counter) {
       final k = await _deriveMessageKeyFromChain(
         session.receiveChainKey,
         session.receiveCounter,
       );
       session.skippedMessageKeys[_skippedKey(peerPub, session.receiveCounter)] =
-          k;
+          _SkippedKeyEntry(key: k, stashedAt: now);
       session.receiveChainKey =
           await _advanceChainKey(session.receiveChainKey);
       session.receiveCounter += 1;

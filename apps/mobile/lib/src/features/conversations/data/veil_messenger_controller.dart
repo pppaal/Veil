@@ -343,6 +343,24 @@ class VeilMessengerController extends ChangeNotifier {
     );
   }
 
+  // Manually rotates the DH ratchet for [conversationId]. Arms the next
+  // outbound encrypt to perform a fresh DH step, drops any stashed skipped
+  // keys from prior epochs, then sends a system notice so the rotation
+  // actually lands on the wire (the peer only learns the new ratchet pub
+  // once it decrypts a real envelope). Returns true if a session existed
+  // and was armed; false if there's no session yet for this conversation.
+  Future<bool> rekeyConversation(String conversationId) async {
+    final armed = await _sessionBootstrapper.forceRekeyNextSend(conversationId);
+    if (!armed) {
+      return false;
+    }
+    await sendSystemNotice(
+      conversationId: conversationId,
+      body: 'session.rekey',
+    );
+    return true;
+  }
+
   Future<void> _sendEnvelope({
     required String conversationId,
     required String body,

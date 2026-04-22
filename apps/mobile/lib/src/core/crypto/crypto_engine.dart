@@ -194,6 +194,14 @@ class DecryptedMessage {
 
 abstract class DeviceIdentityProvider {
   Future<DeviceIdentityMaterial> generateDeviceIdentity(String deviceId);
+
+  /// Recovers the local device's Ed25519 identity public key from the
+  /// opaque [identityPrivateRef] that [generateDeviceIdentity] returned.
+  /// Used by the Safety Numbers screen so we don't need to round-trip to
+  /// the directory API for our own key.
+  Future<String> extractIdentityPublicKeyFromPrivateRef(
+    String identityPrivateRef,
+  );
 }
 
 abstract class DeviceAuthChallengeSigner {
@@ -263,6 +271,13 @@ abstract class ConversationSessionBootstrapper {
   // inbound-bootstrap on an incoming envelope. Mock/stub adapters may always
   // return true to short-circuit the bootstrap path in tests.
   bool hasSessionFor(String conversationId) => true;
+
+  // Arms a manual DH ratchet rotation on the next outbound message for this
+  // conversation. Implementations that support forward-secret session state
+  // should also drop any pre-rotation skipped keys. Returns true if an
+  // existing session was armed, false if there's no session yet. Stub/mock
+  // adapters without session state may safely return false.
+  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 }
 
 abstract class InboundEnvelopeInspector {

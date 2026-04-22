@@ -79,6 +79,10 @@ class SecureStorageService {
   // we don't depend on backend enumeration, which FlutterSecureStorage can't
   // do portably.
   static const _sessionSnapshotsKey = 'veil.crypto.session_snapshots';
+  // Safety-number verification attestations — records that a conversation's
+  // peer identity key was human-verified at a point in time. Single-blob
+  // layout for the same portability reason as session snapshots.
+  static const _safetyVerificationsKey = 'veil.security.safety_verifications';
 
   Future<void> persistDeviceSecretRefs({
     required String identityPrivateRef,
@@ -311,6 +315,69 @@ class SecureStorageService {
     await _storage.delete(key: _sessionSnapshotsKey);
   }
 
+  Future<Map<String, SafetyVerificationRecord>>
+      readAllSafetyVerifications() async {
+    final raw = await _storage.read(key: _safetyVerificationsKey);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final result = <String, SafetyVerificationRecord>{};
+      decoded.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          final record = SafetyVerificationRecord.tryFromJson(value);
+          if (record != null) result[key] = record;
+        }
+      });
+      return result;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<SafetyVerificationRecord?> readSafetyVerification(
+    String conversationId,
+  ) async {
+    final all = await readAllSafetyVerifications();
+    return all[conversationId];
+  }
+
+  Future<void> writeSafetyVerification(
+    String conversationId,
+    SafetyVerificationRecord record,
+  ) async {
+    final all = await readAllSafetyVerifications();
+    final next = <String, Map<String, dynamic>>{};
+    all.forEach((key, value) {
+      next[key] = value.toJson();
+    });
+    next[conversationId] = record.toJson();
+    await _storage.write(
+      key: _safetyVerificationsKey,
+      value: json.encode(next),
+    );
+  }
+
+  Future<void> clearSafetyVerification(String conversationId) async {
+    final all = await readAllSafetyVerifications();
+    if (!all.containsKey(conversationId)) return;
+    final next = <String, Map<String, dynamic>>{};
+    all.forEach((key, value) {
+      if (key != conversationId) next[key] = value.toJson();
+    });
+    if (next.isEmpty) {
+      await _storage.delete(key: _safetyVerificationsKey);
+    } else {
+      await _storage.write(
+        key: _safetyVerificationsKey,
+        value: json.encode(next),
+      );
+    }
+  }
+
+  Future<void> clearAllSafetyVerifications() async {
+    await _storage.delete(key: _safetyVerificationsKey);
+  }
+
   Future<void> clearCacheKey() async {
     await _storage.delete(key: _cacheKey);
   }
@@ -383,6 +450,7 @@ class SecureStorageService {
     await clearCacheKey();
     await clearPinThrottleState();
     await clearSessionSnapshots();
+    await clearAllSafetyVerifications();
     if (!preservePin) {
       await clearPin();
     }
@@ -482,6 +550,46 @@ class StoredAuthKeyMaterial {
 
   final String privateKey;
   final String publicKey;
+}
+
+class SafetyVerificationRecord {
+  const SafetyVerificationRecord({
+    required this.peerIdentityPublicKey,
+    required this.safetyNumber,
+    required this.verifiedAt,
+  });
+
+  /// Base64url (no padding) Ed25519 public key the user verified against.
+  /// If the peer later rotates identity, the stored value won't match and
+  /// the UI must warn.
+  final String peerIdentityPublicKey;
+
+  /// 60-digit safety number the user compared.
+  final String safetyNumber;
+
+  final DateTime verifiedAt;
+
+  Map<String, dynamic> toJson() => {
+        'peerIdentityPublicKey': peerIdentityPublicKey,
+        'safetyNumber': safetyNumber,
+        'verifiedAt': verifiedAt.toUtc().toIso8601String(),
+      };
+
+  static SafetyVerificationRecord? tryFromJson(Map<String, dynamic> json) {
+    final peer = json['peerIdentityPublicKey'] as String?;
+    final number = json['safetyNumber'] as String?;
+    final verifiedAtRaw = json['verifiedAt'] as String?;
+    if (peer == null || number == null || verifiedAtRaw == null) {
+      return null;
+    }
+    final verifiedAt = DateTime.tryParse(verifiedAtRaw);
+    if (verifiedAt == null) return null;
+    return SafetyVerificationRecord(
+      peerIdentityPublicKey: peer,
+      safetyNumber: number,
+      verifiedAt: verifiedAt.toUtc(),
+    );
+  }
 }
 
 class PinThrottleState {

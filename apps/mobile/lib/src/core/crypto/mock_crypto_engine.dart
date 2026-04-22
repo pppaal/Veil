@@ -58,6 +58,20 @@ class _MockDeviceIdentityProvider implements DeviceIdentityProvider {
       signedPrekeyBundle: _opaqueToken(_random, 32),
     );
   }
+
+  @override
+  Future<String> extractIdentityPublicKeyFromPrivateRef(
+    String identityPrivateRef,
+  ) async {
+    // Mock adapter mirrors the convention generateDeviceIdentity uses so
+    // tests can pass the ref straight back and expect the matching pub.
+    const prefix = 'secure-store://identity/';
+    if (identityPrivateRef.startsWith(prefix)) {
+      final deviceId = identityPrivateRef.substring(prefix.length);
+      return 'mock-id-pub-$deviceId';
+    }
+    return 'mock-id-pub';
+  }
 }
 
 class _MockKeyBundleCodec implements KeyBundleCodec {
@@ -278,6 +292,9 @@ class _MockConversationSessionBootstrapper
 
   @override
   bool hasSessionFor(String conversationId) => true;
+
+  @override
+  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 
   @override
   Future<SessionBootstrapMaterial> bootstrapSessionFromInbound(

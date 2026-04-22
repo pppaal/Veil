@@ -23,6 +23,7 @@ class SafetyNumbersScreen extends ConsumerStatefulWidget {
 
 class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<_SafetyNumbersData>? _loader;
+  bool _rekeying = false;
 
   @override
   void initState() {
@@ -108,6 +109,56 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     await _reload();
     if (!mounted) return;
     VeilToast.show(context, message: 'Verification cleared');
+  }
+
+  Future<void> _rotateSessionKeys() async {
+    if (_rekeying) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rotate session keys?'),
+        content: const Text(
+          'This forces a fresh Diffie-Hellman ratchet step on your next message. '
+          'Old skipped message keys for this chat are dropped immediately. '
+          'Use this if you suspect this device or your peer\'s device was '
+          'briefly exposed — past messages stay readable, but any stolen '
+          'session state stops being useful.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Rotate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (!mounted) return;
+
+    setState(() => _rekeying = true);
+    VeilHaptics.medium();
+    try {
+      final messenger = ref.read(messengerControllerProvider);
+      final armed = await messenger.rekeyConversation(widget.conversationId);
+      if (!mounted) return;
+      VeilToast.show(
+        context,
+        message: armed
+            ? 'Session keys rotated'
+            : 'No session yet — send a message first',
+      );
+    } catch (error) {
+      if (!mounted) return;
+      VeilToast.show(context, message: 'Rotation failed: $error');
+    } finally {
+      if (mounted) {
+        setState(() => _rekeying = false);
+      }
+    }
   }
 
   @override
@@ -240,6 +291,36 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             label: keyChanged ? 'Re-verify with new key' : 'Mark as verified',
             onPressed: () => _markVerified(data),
           ),
+        const SizedBox(height: VeilSpace.md),
+        VeilSurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ROTATE SESSION KEYS',
+                style: TextStyle(
+                  color: palette.textSubtle,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              const SizedBox(height: VeilSpace.xs),
+              Text(
+                'Forces a fresh DH ratchet step on your next message and '
+                'drops any stashed skipped keys. Use if this device or '
+                'your peer\'s was briefly exposed.',
+                style: TextStyle(color: palette.textSubtle, fontSize: 13),
+              ),
+              const SizedBox(height: VeilSpace.md),
+              VeilButton(
+                label: _rekeying ? 'Rotating…' : 'Rotate session keys',
+                tone: VeilButtonTone.secondary,
+                onPressed: _rekeying ? null : _rotateSessionKeys,
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

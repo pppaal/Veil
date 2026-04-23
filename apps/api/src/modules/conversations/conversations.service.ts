@@ -1,4 +1,11 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import type {
   ConversationMessageSummary,
   ConversationSummary,
@@ -46,13 +53,42 @@ type HydratedMessage = {
 };
 
 @Injectable()
-export class ConversationsService {
+export class ConversationsService implements OnModuleInit, OnModuleDestroy {
+  // Sweep interval for hard-deleting globally expired messages. Each
+  // conversation read already prunes lazily via notExpiredFilter(), but idle
+  // conversations never get a read and would otherwise retain rows past
+  // their expiresAt. 10 minutes keeps the retention window tight without
+  // saturating the primary with deletes on a messenger-scale workload.
+  private static readonly GLOBAL_PRUNE_INTERVAL_MS = 10 * 60 * 1000;
+
+  private globalPruneTimer: NodeJS.Timeout | null = null;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly attachmentStorageGateway: AttachmentStorageGateway,
   ) {}
+
+  onModuleInit(): void {
+    // Run one sweep shortly after boot so a freshly-started process catches
+    // up on whatever expired while it was down, then keep the periodic
+    // cadence. unref() so the timer never keeps the event loop alive during
+    // graceful shutdown.
+    setTimeout(() => void this.pruneAllExpiredMessages(), 5_000).unref();
+    this.globalPruneTimer = setInterval(
+      () => void this.pruneAllExpiredMessages(),
+      ConversationsService.GLOBAL_PRUNE_INTERVAL_MS,
+    );
+    this.globalPruneTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.globalPruneTimer) {
+      clearInterval(this.globalPruneTimer);
+      this.globalPruneTimer = null;
+    }
+  }
 
   async createDirect(
     currentUserId: string,
@@ -307,6 +343,38 @@ export class ConversationsService {
         { expiresAt: { gt: new Date() } },
       ],
     };
+  }
+
+  private async pruneAllExpiredMessages(): Promise<void> {
+    try {
+      const now = new Date();
+      const expired = await this.prisma.message.findMany({
+        where: { expiresAt: { lte: now } },
+        select: { id: true, attachmentId: true },
+      });
+
+      if (expired.length === 0) {
+        return;
+      }
+
+      const candidateAttachmentIds = Array.from(
+        new Set(
+          expired
+            .map((message) => message.attachmentId)
+            .filter((value): value is string => Boolean(value)),
+        ),
+      );
+
+      await this.prisma.message.deleteMany({
+        where: { id: { in: expired.map((message) => message.id) } },
+      });
+
+      for (const attachmentId of candidateAttachmentIds) {
+        await this.tryDeleteOrphanedAttachment(attachmentId);
+      }
+    } catch {
+      // Best-effort sweep: next interval will retry.
+    }
   }
 
   private async pruneExpiredMessages(conversationId: string): Promise<void> {

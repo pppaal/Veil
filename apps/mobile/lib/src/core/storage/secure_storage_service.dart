@@ -334,35 +334,66 @@ class SecureStorageService {
     }
   }
 
+  // Composite key format: direct conversations use the raw conversationId;
+  // group per-member attestations use "$conversationId:$memberUserId". The
+  // colon is safe because both halves are opaque server-generated IDs with
+  // no colons of their own. Direct reads stay source-compatible.
+  String _safetyVerificationKey(String conversationId, String? memberUserId) {
+    if (memberUserId == null || memberUserId.isEmpty) return conversationId;
+    return '$conversationId:$memberUserId';
+  }
+
   Future<SafetyVerificationRecord?> readSafetyVerification(
-    String conversationId,
-  ) async {
+    String conversationId, {
+    String? memberUserId,
+  }) async {
     final all = await readAllSafetyVerifications();
-    return all[conversationId];
+    return all[_safetyVerificationKey(conversationId, memberUserId)];
+  }
+
+  // Returns a map of memberUserId -> record for every per-member attestation
+  // stashed against [conversationId]. Useful for rendering the group safety-
+  // numbers list without N round-trips.
+  Future<Map<String, SafetyVerificationRecord>>
+      readSafetyVerificationsForGroup(String conversationId) async {
+    final all = await readAllSafetyVerifications();
+    final prefix = '$conversationId:';
+    final result = <String, SafetyVerificationRecord>{};
+    all.forEach((key, value) {
+      if (key.startsWith(prefix)) {
+        result[key.substring(prefix.length)] = value;
+      }
+    });
+    return result;
   }
 
   Future<void> writeSafetyVerification(
     String conversationId,
-    SafetyVerificationRecord record,
-  ) async {
+    SafetyVerificationRecord record, {
+    String? memberUserId,
+  }) async {
     final all = await readAllSafetyVerifications();
     final next = <String, Map<String, dynamic>>{};
     all.forEach((key, value) {
       next[key] = value.toJson();
     });
-    next[conversationId] = record.toJson();
+    next[_safetyVerificationKey(conversationId, memberUserId)] = record.toJson();
     await _storage.write(
       key: _safetyVerificationsKey,
       value: json.encode(next),
     );
   }
 
-  Future<void> clearSafetyVerification(String conversationId) async {
+  Future<void> clearSafetyVerification(
+    String conversationId, {
+    String? memberUserId,
+  }) async {
     final all = await readAllSafetyVerifications();
-    if (!all.containsKey(conversationId)) return;
+    final target = _safetyVerificationKey(conversationId, memberUserId);
+    if (!all.containsKey(target)) return;
     final next = <String, Map<String, dynamic>>{};
     all.forEach((key, value) {
-      if (key != conversationId) next[key] = value.toJson();
+      if (key != target) next[key] = value.toJson();
     });
     if (next.isEmpty) {
       await _storage.delete(key: _safetyVerificationsKey);

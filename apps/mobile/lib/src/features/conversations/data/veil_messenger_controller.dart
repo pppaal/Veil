@@ -1884,6 +1884,11 @@ class VeilMessengerController extends ChangeNotifier {
     _conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
+  // Public entry point for callers that need a single peer's KeyBundle —
+  // currently the group Safety Numbers screen, which resolves each member's
+  // identity key on demand instead of caching it on the conversation preview.
+  Future<KeyBundle> fetchPeerKeyBundle(String handle) => _fetchPeerBundle(handle);
+
   Future<KeyBundle> _fetchPeerBundle(String handle) async {
     final response = await _apiClient.getKeyBundle(handle);
     final activeDeviceId =
@@ -2002,11 +2007,24 @@ class VeilMessengerController extends ChangeNotifier {
 
   ConversationPreview _conversationFromApi(dynamic raw) {
     final conversation = raw as Map<String, dynamic>;
-    final members = (conversation['members'] as List<dynamic>).cast<Map<String, dynamic>>();
-    final peer = members.firstWhere(
+    final rawMembers =
+        (conversation['members'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final peer = rawMembers.firstWhere(
       (member) => member['handle'] != _session.handle,
-      orElse: () => members.first,
+      orElse: () => rawMembers.first,
     );
+    final type = _conversationTypeFromApi(conversation['type']);
+    // Only carry the full member list for groups — direct chats use the
+    // peerHandle/recipientBundle fields and would just duplicate state.
+    final members = type == ConversationType.group
+        ? rawMembers
+            .map((m) => GroupMember(
+                  userId: m['userId'] as String,
+                  handle: m['handle'] as String,
+                  displayName: m['displayName'] as String?,
+                ))
+            .toList(growable: false)
+        : const <GroupMember>[];
     return ConversationPreview(
       id: conversation['id'] as String,
       peerHandle: peer['handle'] as String,
@@ -2027,7 +2045,20 @@ class VeilMessengerController extends ChangeNotifier {
               (conversation['lastMessage'] as Map<String, dynamic>)['serverReceivedAt'] as String,
             ),
       sessionState: null,
+      type: type,
+      members: members,
     );
+  }
+
+  ConversationType _conversationTypeFromApi(Object? raw) {
+    switch (raw) {
+      case 'group':
+        return ConversationType.group;
+      case 'channel':
+        return ConversationType.channel;
+      default:
+        return ConversationType.direct;
+    }
   }
 
   ChatMessage _messageFromApi(Map<String, dynamic> raw) {

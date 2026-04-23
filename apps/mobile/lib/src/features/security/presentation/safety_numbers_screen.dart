@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
@@ -12,9 +13,17 @@ import '../../conversations/data/conversation_models.dart';
 import '../domain/safety_numbers.dart';
 
 class SafetyNumbersScreen extends ConsumerStatefulWidget {
-  const SafetyNumbersScreen({required this.conversationId, super.key});
+  const SafetyNumbersScreen({
+    required this.conversationId,
+    this.memberUserId,
+    super.key,
+  });
 
   final String conversationId;
+  // When set and the conversation is a group, renders the safety-number
+  // detail for that specific member. When null on a group, renders the
+  // member list. Ignored for direct conversations.
+  final String? memberUserId;
 
   @override
   ConsumerState<SafetyNumbersScreen> createState() =>
@@ -22,7 +31,7 @@ class SafetyNumbersScreen extends ConsumerStatefulWidget {
 }
 
 class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
-  Future<_SafetyNumbersData>? _loader;
+  Future<_SafetyNumbersViewData>? _loader;
   bool _rekeying = false;
 
   @override
@@ -31,7 +40,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     _loader = _load();
   }
 
-  Future<_SafetyNumbersData> _load() async {
+  Future<_SafetyNumbersViewData> _load() async {
     final messenger = ref.read(messengerControllerProvider);
     final ConversationPreview? conversation = messenger.conversations
         .cast<ConversationPreview?>()
@@ -42,15 +51,62 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     if (conversation == null) {
       throw StateError('Conversation not found');
     }
-    if (conversation.type != ConversationType.direct) {
-      throw const _UnsupportedGroupException();
+
+    final isGroup = conversation.type == ConversationType.group;
+    if (isGroup && widget.memberUserId == null) {
+      return _loadGroupList(conversation);
     }
-    final peerPubB64 = conversation.recipientBundle.identityPublicKey;
+    return _loadDetail(conversation);
+  }
+
+  Future<_GroupListData> _loadGroupList(ConversationPreview conversation) async {
+    final storage = ref.read(secureStorageProvider);
+    final session = ref.read(appSessionProvider);
+    final verifications =
+        await storage.readSafetyVerificationsForGroup(widget.conversationId);
+    // Hide self from the list — you can't verify your own identity number
+    // against yourself.
+    final members = conversation.members
+        .where((m) => m.userId != session.userId)
+        .toList(growable: false);
+    return _GroupListData(
+      groupName: conversation.groupMeta?.name,
+      members: members,
+      verifications: verifications,
+    );
+  }
+
+  Future<_DetailData> _loadDetail(ConversationPreview conversation) async {
+    final messenger = ref.read(messengerControllerProvider);
+    final storage = ref.read(secureStorageProvider);
+
+    String peerHandle;
+    String? peerDisplayName;
+    String peerPubB64;
+    String? memberUserId;
+
+    if (conversation.type == ConversationType.group) {
+      memberUserId = widget.memberUserId!;
+      final member = conversation.members.firstWhere(
+        (m) => m.userId == memberUserId,
+        orElse: () => throw StateError('Member not in this group'),
+      );
+      peerHandle = member.handle;
+      peerDisplayName = member.displayName;
+      // Resolve the member's identity key on demand — group previews don't
+      // carry per-member key material.
+      final bundle = await messenger.fetchPeerKeyBundle(member.handle);
+      peerPubB64 = bundle.identityPublicKey;
+    } else {
+      peerHandle = conversation.peerHandle;
+      peerDisplayName = conversation.peerDisplayName;
+      peerPubB64 = conversation.recipientBundle.identityPublicKey;
+    }
+
     if (peerPubB64.isEmpty) {
       throw StateError('Peer identity key is unavailable');
     }
 
-    final storage = ref.read(secureStorageProvider);
     final identityPrivateRef = await storage.readIdentityPrivateRef();
     if (identityPrivateRef == null || identityPrivateRef.isEmpty) {
       throw StateError('Local identity is unavailable');
@@ -66,14 +122,20 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       peerIdentityPublicKey: decodeIdentityPublicKeyB64(peerPubB64),
     );
 
-    final record = await storage.readSafetyVerification(widget.conversationId);
-    return _SafetyNumbersData(
-      peerHandle: conversation.peerHandle,
-      peerDisplayName: conversation.peerDisplayName,
+    final record = await storage.readSafetyVerification(
+      widget.conversationId,
+      memberUserId: memberUserId,
+    );
+
+    return _DetailData(
+      peerHandle: peerHandle,
+      peerDisplayName: peerDisplayName,
       peerIdentityPublicKey: peerPubB64,
       localIdentityPublicKey: localPubB64,
       number: number,
       verification: record,
+      memberUserId: memberUserId,
+      isDirect: conversation.type == ConversationType.direct,
     );
   }
 
@@ -84,7 +146,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     await _loader;
   }
 
-  Future<void> _markVerified(_SafetyNumbersData data) async {
+  Future<void> _markVerified(_DetailData data) async {
     VeilHaptics.medium();
     final storage = ref.read(secureStorageProvider);
     await storage.writeSafetyVerification(
@@ -94,6 +156,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         safetyNumber: data.number.digits,
         verifiedAt: DateTime.now().toUtc(),
       ),
+      memberUserId: data.memberUserId,
     );
     if (!mounted) return;
     await _reload();
@@ -101,10 +164,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     VeilToast.show(context, message: 'Marked as verified');
   }
 
-  Future<void> _clearVerification() async {
+  Future<void> _clearVerification(_DetailData data) async {
     VeilHaptics.selection();
     final storage = ref.read(secureStorageProvider);
-    await storage.clearSafetyVerification(widget.conversationId);
+    await storage.clearSafetyVerification(
+      widget.conversationId,
+      memberUserId: data.memberUserId,
+    );
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
@@ -165,7 +231,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Widget build(BuildContext context) {
     return VeilShell(
       title: 'Safety Number',
-      child: FutureBuilder<_SafetyNumbersData>(
+      child: FutureBuilder<_SafetyNumbersViewData>(
         future: _loader,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -173,42 +239,112 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               padding: EdgeInsets.all(VeilSpace.lg),
               child: VeilLoadingBlock(
                 title: 'Deriving safety number',
-                body: 'Hashing your identity keys locally.',
+                body: 'Hashing identity keys locally.',
               ),
             );
           }
           if (snapshot.hasError) {
             return _buildErrorBody(context, snapshot.error!);
           }
-          return _buildBody(context, snapshot.data!);
+          final data = snapshot.data!;
+          if (data is _GroupListData) {
+            return _buildGroupList(context, data);
+          }
+          return _buildDetail(context, data as _DetailData);
         },
       ),
     );
   }
 
   Widget _buildErrorBody(BuildContext context, Object error) {
-    final isGroup = error is _UnsupportedGroupException;
     return Padding(
       padding: const EdgeInsets.all(VeilSpace.lg),
       child: VeilErrorState(
-        title: isGroup
-            ? 'Group safety numbers are not supported yet'
-            : 'Could not load safety number',
-        body: isGroup
-            ? 'Safety numbers currently only work for direct conversations. Per-member verification for groups is planned.'
-            : error.toString(),
-        action: isGroup
-            ? null
-            : VeilButton(
-                label: 'Retry',
-                tone: VeilButtonTone.secondary,
-                onPressed: _reload,
-              ),
+        title: 'Could not load safety number',
+        body: error.toString(),
+        action: VeilButton(
+          label: 'Retry',
+          tone: VeilButtonTone.secondary,
+          onPressed: _reload,
+        ),
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context, _SafetyNumbersData data) {
+  Widget _buildGroupList(BuildContext context, _GroupListData data) {
+    final palette = VeilPalette.dark;
+    if (data.members.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(VeilSpace.lg),
+        child: VeilErrorState(
+          title: 'No other members',
+          body:
+              'This group has no other participants yet — invite someone to verify.',
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        VeilSpace.md,
+        VeilSpace.sm,
+        VeilSpace.md,
+        VeilSpace.xl,
+      ),
+      children: [
+        VeilHeroPanel(
+          eyebrow: 'VERIFY GROUP MEMBERS',
+          title: data.groupName == null
+              ? 'Verify each member of this group'
+              : 'Verify each member of ${data.groupName}',
+          body:
+              'Tap a member to see their 60-digit safety number. Compare it on '
+              'a channel you trust — read it aloud over a call or scan the QR. '
+              'A mismatch means that specific member\'s device may be compromised.',
+        ),
+        const SizedBox(height: VeilSpace.md),
+        for (final member in data.members)
+          Padding(
+            padding: const EdgeInsets.only(bottom: VeilSpace.xs),
+            child: VeilListTileCard(
+              title: member.title,
+              subtitle: '@${member.handle}',
+              trailing: _verificationPill(member, data.verifications),
+              onTap: () {
+                context.push(
+                  '/safety-numbers/${widget.conversationId}'
+                  '?member=${Uri.encodeQueryComponent(member.userId)}',
+                );
+              },
+            ),
+          ),
+        const SizedBox(height: VeilSpace.md),
+        Text(
+          'Group-level session key rotation is not yet supported. Rotate keys '
+          'from a direct chat with the specific member instead.',
+          style: TextStyle(color: palette.textSubtle, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _verificationPill(
+    GroupMember member,
+    Map<String, SafetyVerificationRecord> verifications,
+  ) {
+    final record = verifications[member.userId];
+    if (record == null) {
+      return const VeilStatusPill(
+        label: 'Unverified',
+        tone: VeilBannerTone.info,
+      );
+    }
+    return const VeilStatusPill(
+      label: 'Verified',
+      tone: VeilBannerTone.good,
+    );
+  }
+
+  Widget _buildDetail(BuildContext context, _DetailData data) {
     final palette = VeilPalette.dark;
     final verified = data.verification != null &&
         data.verification!.peerIdentityPublicKey == data.peerIdentityPublicKey;
@@ -252,7 +388,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             tone: VeilBannerTone.warn,
             title: 'Peer identity key changed',
             message:
-                'The identity key for this conversation is different from the one you verified on ${_formatDate(data.verification!.verifiedAt)}. This can happen if your peer reinstalled the app — or if someone is impersonating them. Verify again before trusting this chat.',
+                'The identity key for this peer is different from the one you verified on ${_formatDate(data.verification!.verifiedAt)}. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.',
           ),
         ],
         const SizedBox(height: VeilSpace.md),
@@ -281,7 +417,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
                 VeilButton(
                   label: 'Clear verification',
                   tone: VeilButtonTone.ghost,
-                  onPressed: _clearVerification,
+                  onPressed: () => _clearVerification(data),
                 ),
               ],
             ),
@@ -291,36 +427,38 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             label: keyChanged ? 'Re-verify with new key' : 'Mark as verified',
             onPressed: () => _markVerified(data),
           ),
-        const SizedBox(height: VeilSpace.md),
-        VeilSurfaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'ROTATE SESSION KEYS',
-                style: TextStyle(
-                  color: palette.textSubtle,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
+        if (data.isDirect) ...[
+          const SizedBox(height: VeilSpace.md),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ROTATE SESSION KEYS',
+                  style: TextStyle(
+                    color: palette.textSubtle,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4,
+                  ),
                 ),
-              ),
-              const SizedBox(height: VeilSpace.xs),
-              Text(
-                'Forces a fresh DH ratchet step on your next message and '
-                'drops any stashed skipped keys. Use if this device or '
-                'your peer\'s was briefly exposed.',
-                style: TextStyle(color: palette.textSubtle, fontSize: 13),
-              ),
-              const SizedBox(height: VeilSpace.md),
-              VeilButton(
-                label: _rekeying ? 'Rotating…' : 'Rotate session keys',
-                tone: VeilButtonTone.secondary,
-                onPressed: _rekeying ? null : _rotateSessionKeys,
-              ),
-            ],
+                const SizedBox(height: VeilSpace.xs),
+                Text(
+                  'Forces a fresh DH ratchet step on your next message and '
+                  'drops any stashed skipped keys. Use if this device or '
+                  'your peer\'s was briefly exposed.',
+                  style: TextStyle(color: palette.textSubtle, fontSize: 13),
+                ),
+                const SizedBox(height: VeilSpace.md),
+                VeilButton(
+                  label: _rekeying ? 'Rotating…' : 'Rotate session keys',
+                  tone: VeilButtonTone.secondary,
+                  onPressed: _rekeying ? null : _rotateSessionKeys,
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -401,7 +539,6 @@ class _QrCard extends StatelessWidget {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(VeilRadius.md),
-              border: Border.all(color: palette.stroke),
             ),
             child: QrImageView(
               data: content,
@@ -422,14 +559,20 @@ class _QrCard extends StatelessWidget {
   }
 }
 
-class _SafetyNumbersData {
-  const _SafetyNumbersData({
+abstract class _SafetyNumbersViewData {
+  const _SafetyNumbersViewData();
+}
+
+class _DetailData extends _SafetyNumbersViewData {
+  const _DetailData({
     required this.peerHandle,
     required this.peerDisplayName,
     required this.peerIdentityPublicKey,
     required this.localIdentityPublicKey,
     required this.number,
     required this.verification,
+    required this.memberUserId,
+    required this.isDirect,
   });
 
   final String peerHandle;
@@ -438,6 +581,9 @@ class _SafetyNumbersData {
   final String localIdentityPublicKey;
   final SafetyNumberResult number;
   final SafetyVerificationRecord? verification;
+  // null for direct conversations, set for a specific group member.
+  final String? memberUserId;
+  final bool isDirect;
 
   String get peerDisplay =>
       (peerDisplayName != null && peerDisplayName!.isNotEmpty)
@@ -445,8 +591,16 @@ class _SafetyNumbersData {
           : '@$peerHandle';
 }
 
-class _UnsupportedGroupException implements Exception {
-  const _UnsupportedGroupException();
+class _GroupListData extends _SafetyNumbersViewData {
+  const _GroupListData({
+    required this.groupName,
+    required this.members,
+    required this.verifications,
+  });
+
+  final String? groupName;
+  final List<GroupMember> members;
+  final Map<String, SafetyVerificationRecord> verifications;
 }
 
 String _formatDate(DateTime value) {

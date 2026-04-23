@@ -36,6 +36,30 @@ class GroupMeta {
   final String? link;
 }
 
+// Lightweight per-member projection used when the client needs to enumerate
+// a group's participants — currently for per-peer safety-number verification.
+// Does NOT carry key material; consumers fetch the KeyBundle on demand via
+// the users/:handle/key-bundle endpoint. Keeping keys out of the preview
+// layer means we don't pay the N-fetch cost on every conversation list load.
+class GroupMember {
+  const GroupMember({
+    required this.userId,
+    required this.handle,
+    this.displayName,
+    this.role = MemberRole.member,
+  });
+
+  final String userId;
+  final String handle;
+  final String? displayName;
+  final MemberRole role;
+
+  String get title =>
+      (displayName != null && displayName!.isNotEmpty)
+          ? displayName!
+          : '@$handle';
+}
+
 class ChannelMeta {
   const ChannelMeta({
     required this.name,
@@ -224,6 +248,7 @@ class ConversationPreview {
     this.groupMeta,
     this.channelMeta,
     this.memberCount,
+    this.members = const [],
     this.unreadCount = 0,
   });
 
@@ -238,6 +263,11 @@ class ConversationPreview {
   final GroupMeta? groupMeta;
   final ChannelMeta? channelMeta;
   final int? memberCount;
+  // All participants of this conversation, populated only for groups.
+  // For direct chats this is empty — the single peer lives in
+  // peerHandle/peerDisplayName/recipientBundle. Key material is NOT
+  // carried here; resolve per-member KeyBundles on demand.
+  final List<GroupMember> members;
   final int unreadCount;
 
   ConversationPreview copyWith({
@@ -252,6 +282,7 @@ class ConversationPreview {
     Object? groupMeta = _unset,
     Object? channelMeta = _unset,
     Object? memberCount = _unset,
+    List<GroupMember>? members,
     int? unreadCount,
   }) {
     return ConversationPreview(
@@ -272,6 +303,7 @@ class ConversationPreview {
           identical(channelMeta, _unset) ? this.channelMeta : channelMeta as ChannelMeta?,
       memberCount:
           identical(memberCount, _unset) ? this.memberCount : memberCount as int?,
+      members: members ?? this.members,
       unreadCount: unreadCount ?? this.unreadCount,
     );
   }

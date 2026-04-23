@@ -201,6 +201,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           state,
           SafetyNumbersScreen(
             conversationId: state.pathParameters['conversationId']!,
+            memberUserId: state.uri.queryParameters['member'],
           ),
         ),
       ),

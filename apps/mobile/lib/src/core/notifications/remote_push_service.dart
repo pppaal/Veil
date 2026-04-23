@@ -28,15 +28,11 @@ abstract class RemotePushService {
 
 @immutable
 class RemotePushHint {
-  const RemotePushHint({
-    required this.kind,
-    this.conversationId,
-    this.messageId,
-  });
+  const RemotePushHint({required this.kind});
 
+  /// Opaque wake signal. The push payload carries no conversation or message
+  /// metadata — the app responds by running its normal unread backfill.
   final String kind;
-  final String? conversationId;
-  final String? messageId;
 }
 
 /// Default implementation used when Firebase is not wired up. Keeps the

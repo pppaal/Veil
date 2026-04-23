@@ -7,10 +7,7 @@ import { FcmMetadataPushProvider } from '../../src/modules/push/fcm-push.provide
 
 describe('PushService', () => {
   const hint = {
-    kind: 'message.new' as const,
-    messageId: 'msg-1',
-    conversationId: 'conv-1',
-    serverReceivedAt: new Date().toISOString(),
+    kind: 'wake' as const,
   };
 
   it('reports none when the noop provider is active', async () => {
@@ -20,7 +17,7 @@ describe('PushService', () => {
     await expect(service.sendMessageHint('push-token', hint)).resolves.toBeUndefined();
   });
 
-  it('builds metadata-only APNs requests without plaintext body fields', async () => {
+  it('builds opaque wake-only APNs requests with no conversation metadata', async () => {
     const provider = new ApnsMetadataPushProvider({
       apnsBundleId: 'io.veil.mobile',
       apnsTeamId: 'TEAMID123',
@@ -35,11 +32,15 @@ describe('PushService', () => {
     expect(request.endpoint).toContain('api.sandbox.push.apple.com/3/device/push-token');
     expect(request.headers['apns-topic']).toBe('io.veil.mobile');
     expect(request.body.aps['content-available']).toBe(1);
-    expect(request.body.veil).toEqual(hint);
+    expect(request.body.veil).toEqual({ kind: 'wake' });
+    const serialized = JSON.stringify(request.body);
+    expect(serialized).not.toContain('conversationId');
+    expect(serialized).not.toContain('messageId');
+    expect(serialized).not.toContain('serverReceivedAt');
     await expect(service.sendMessageHint('push-token', hint)).resolves.toBeUndefined();
   });
 
-  it('builds metadata-only FCM requests without plaintext body fields', async () => {
+  it('builds opaque wake-only FCM requests with no conversation metadata', async () => {
     const provider = new FcmMetadataPushProvider({
       fcmProjectId: 'veil-beta',
       fcmServiceAccountJson: '{"type":"service_account"}',
@@ -50,12 +51,11 @@ describe('PushService', () => {
     expect(service.providerKind).toBe('fcm');
     expect(request.endpoint).toContain('/projects/veil-beta/messages:send');
     expect(request.body.message.token).toBe('push-token');
-    expect(request.body.message.data).toEqual({
-      kind: hint.kind,
-      messageId: hint.messageId,
-      conversationId: hint.conversationId,
-      serverReceivedAt: hint.serverReceivedAt,
-    });
+    expect(request.body.message.data).toEqual({ kind: 'wake' });
+    const serialized = JSON.stringify(request.body);
+    expect(serialized).not.toContain('conversationId');
+    expect(serialized).not.toContain('messageId');
+    expect(serialized).not.toContain('serverReceivedAt');
     await expect(service.sendMessageHint('push-token', hint)).resolves.toBeUndefined();
   });
 });

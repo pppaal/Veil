@@ -55,9 +55,6 @@ export class FcmMetadataPushProvider implements PushProvider {
           token: pushToken,
           data: {
             kind: hint.kind,
-            messageId: hint.messageId,
-            conversationId: hint.conversationId,
-            serverReceivedAt: hint.serverReceivedAt,
           },
           android: {
             priority: 'high',

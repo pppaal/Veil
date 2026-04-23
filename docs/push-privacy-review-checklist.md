@@ -1,6 +1,6 @@
 # VEIL Push Privacy Review Checklist
 
-Last updated: 2026-04-07
+Last updated: 2026-04-22
 
 This checklist is required before enabling:
 
@@ -22,15 +22,14 @@ The review is not optional.
 
 ## Allowed payload contract
 
-Push hints may contain only metadata required to wake the client:
+Push hints are **opaque wake signals**. The only field on the wire is:
 
-- `kind`
-- `messageId`
-- `conversationId`
-- `serverReceivedAt`
+- `kind` — fixed literal `"wake"`
 
-Push payloads must not include:
+Push payloads must not include (and as of 2026-04-22 no longer do):
 
+- `conversationId`, `messageId`, `serverReceivedAt` (removed — previously
+  leaked per-conversation activity timing to the push provider)
 - plaintext message body
 - plaintext attachment names or captions
 - ciphertext blobs
@@ -39,6 +38,16 @@ Push payloads must not include:
 - transfer tokens
 - auth challenge material
 - handle search text
+
+### Why opaque wake
+
+Even though content was always encrypted, prior `{messageId, conversationId,
+serverReceivedAt}` payloads let Google/Apple (and anyone with access to their
+logs) observe *which conversation* received traffic and *when*. For a
+privacy-first messenger this is a material metadata leak. The wake signal
+now carries zero correlatable fields; the app responds by running its normal
+unread backfill over the authenticated API, which never traverses the push
+provider.
 
 ## Phase 1: credential readiness
 

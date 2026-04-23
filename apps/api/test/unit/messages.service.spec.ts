@@ -129,7 +129,7 @@ describe('MessagesService', () => {
     expect(push.sentHints).toHaveLength(1);
   });
 
-  it('sends metadata-only push fallback when the recipient has no active socket', async () => {
+  it('sends opaque wake-only push fallback when the recipient has no active socket', async () => {
     const { push, service } = createFixture();
 
     await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
@@ -137,13 +137,13 @@ describe('MessagesService', () => {
     expect(push.sentHints).toHaveLength(1);
     expect(push.sentHints[0]).toEqual({
       pushToken: 'push-b',
-      hint: expect.objectContaining({
-        kind: 'message.new',
-        conversationId: 'conv-1',
-      }),
+      hint: { kind: 'wake' },
     });
-    expect(JSON.stringify(push.sentHints[0]!.hint)).not.toContain('opaque-ciphertext');
-    expect(JSON.stringify(push.sentHints[0]!.hint)).not.toContain('senderDeviceId');
+    const serialized = JSON.stringify(push.sentHints[0]!.hint);
+    expect(serialized).not.toContain('conversationId');
+    expect(serialized).not.toContain('messageId');
+    expect(serialized).not.toContain('opaque-ciphertext');
+    expect(serialized).not.toContain('senderDeviceId');
   });
 
   it('skips push fallback when the recipient already has an active socket', async () => {

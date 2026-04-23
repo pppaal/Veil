@@ -13,7 +13,9 @@ type ApnsRequestShape = {
     aps: {
       'content-available': 1;
     };
-    veil: MessagePushHint;
+    veil: {
+      kind: MessagePushHint['kind'];
+    };
   };
 };
 
@@ -47,7 +49,9 @@ export class ApnsMetadataPushProvider implements PushProvider {
         aps: {
           'content-available': 1,
         },
-        veil: hint,
+        veil: {
+          kind: hint.kind,
+        },
       },
     };
   }

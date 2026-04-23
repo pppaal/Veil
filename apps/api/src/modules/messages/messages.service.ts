@@ -491,10 +491,7 @@ export class MessagesService {
       }
 
       await this.pushService.sendMessageHint(device.pushToken, {
-        kind: 'message.new',
-        messageId: summary.id,
-        conversationId: summary.conversationId,
-        serverReceivedAt: summary.serverReceivedAt,
+        kind: 'wake',
       });
     }
   }

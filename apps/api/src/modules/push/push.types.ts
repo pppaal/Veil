@@ -1,8 +1,5 @@
 export interface MessagePushHint {
-  kind: 'message.new';
-  messageId: string;
-  conversationId: string;
-  serverReceivedAt: string;
+  kind: 'wake';
 }
 
 export type PushProviderKind = 'none' | 'apns' | 'fcm';

@@ -318,10 +318,34 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             ),
           ),
         const SizedBox(height: VeilSpace.md),
-        Text(
-          'Group-level session key rotation is not yet supported. Rotate keys '
-          'from a direct chat with the specific member instead.',
-          style: TextStyle(color: palette.textSubtle, fontSize: 12),
+        VeilSurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'ROTATE GROUP SESSION KEYS',
+                style: TextStyle(
+                  color: palette.textSubtle,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.4,
+                ),
+              ),
+              const SizedBox(height: VeilSpace.xs),
+              Text(
+                'Forces a fresh DH ratchet step on the next group message and '
+                'drops stashed skipped keys for this group. Affects every '
+                'member — use if any participant\'s device was briefly exposed.',
+                style: TextStyle(color: palette.textSubtle, fontSize: 13),
+              ),
+              const SizedBox(height: VeilSpace.md),
+              VeilButton(
+                label: _rekeying ? 'Rotating…' : 'Rotate group session keys',
+                tone: VeilButtonTone.secondary,
+                onPressed: _rekeying ? null : _rotateSessionKeys,
+              ),
+            ],
+          ),
         ),
       ],
     );

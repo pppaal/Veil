@@ -3,6 +3,11 @@ import { AccountService } from './account.service';
 // Destructive-cascade spec. The transaction runs many deleteMany calls —
 // these tests use jest.fn() mocks (not FakePrismaService) so we can verify
 // the exact ordering and scoping of each step without wiring up every model.
+// The ordering matters: several FKs in schema.prisma are `onDelete: Restrict`
+// (Message.senderDevice, Attachment.uploaderDevice, CallRecord.initiatorDevice,
+// GroupMeta.createdBy, ChannelMeta.createdBy, DeviceTransferSession.oldDevice)
+// — those rows must be removed before the Device / User row they point at,
+// or Postgres rejects the delete.
 
 type MockTx = {
   reaction: { deleteMany: jest.Mock };
@@ -13,11 +18,24 @@ type MockTx = {
   userProfile: { deleteMany: jest.Mock };
   conversationMember: { deleteMany: jest.Mock };
   deviceTransferSession: { deleteMany: jest.Mock };
+  message: { deleteMany: jest.Mock };
+  attachment: { deleteMany: jest.Mock };
+  callRecord: { deleteMany: jest.Mock };
+  conversation: { deleteMany: jest.Mock };
+  groupMeta: { findMany: jest.Mock };
+  channelMeta: { findMany: jest.Mock };
   user: { update: jest.Mock; delete: jest.Mock };
-  device: { deleteMany: jest.Mock };
+  device: { findMany: jest.Mock; deleteMany: jest.Mock };
 };
 
-function createTxMock(): MockTx {
+function createTxMock(overrides?: {
+  deviceIds?: string[];
+  ownedGroupConversationIds?: string[];
+  ownedChannelConversationIds?: string[];
+}): MockTx {
+  const deviceIds = overrides?.deviceIds ?? ['device-1'];
+  const ownedGroups = overrides?.ownedGroupConversationIds ?? [];
+  const ownedChannels = overrides?.ownedChannelConversationIds ?? [];
   return {
     reaction: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     storyView: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -27,11 +45,28 @@ function createTxMock(): MockTx {
     userProfile: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     conversationMember: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
     deviceTransferSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    message: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    attachment: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    callRecord: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    conversation: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    groupMeta: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(ownedGroups.map((id) => ({ conversationId: id }))),
+    },
+    channelMeta: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue(ownedChannels.map((id) => ({ conversationId: id }))),
+    },
     user: {
       update: jest.fn().mockResolvedValue({}),
       delete: jest.fn().mockResolvedValue({}),
     },
-    device: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    device: {
+      findMany: jest.fn().mockResolvedValue(deviceIds.map((id) => ({ id }))),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
   };
 }
 
@@ -57,6 +92,105 @@ describe('AccountService.deleteAccount', () => {
     expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: userId } });
   });
 
+  it('collects device IDs before touching any Restrict-gated row', async () => {
+    const tx = createTxMock({ deviceIds: ['device-a', 'device-b'] });
+    const { service } = buildService(tx);
+
+    const order: string[] = [];
+    tx.device.findMany.mockImplementation(async () => {
+      order.push('device.findMany');
+      return [{ id: 'device-a' }, { id: 'device-b' }];
+    });
+    tx.message.deleteMany.mockImplementation(async () => {
+      order.push('message.deleteMany');
+      return { count: 0 };
+    });
+    tx.device.deleteMany.mockImplementation(async () => {
+      order.push('device.deleteMany');
+      return { count: 0 };
+    });
+
+    await service.deleteAccount(userId);
+
+    expect(order[0]).toBe('device.findMany');
+    expect(order.indexOf('message.deleteMany')).toBeLessThan(
+      order.indexOf('device.deleteMany'),
+    );
+  });
+
+  it('removes Restrict-gated child rows before device.deleteMany', async () => {
+    const tx = createTxMock({ deviceIds: ['device-a', 'device-b'] });
+    const { service } = buildService(tx);
+
+    await service.deleteAccount(userId);
+
+    expect(tx.message.deleteMany).toHaveBeenCalledWith({
+      where: { senderDeviceId: { in: ['device-a', 'device-b'] } },
+    });
+    expect(tx.attachment.deleteMany).toHaveBeenCalledWith({
+      where: { uploaderDeviceId: { in: ['device-a', 'device-b'] } },
+    });
+    expect(tx.callRecord.deleteMany).toHaveBeenCalledWith({
+      where: { initiatorDeviceId: { in: ['device-a', 'device-b'] } },
+    });
+    expect(tx.deviceTransferSession.deleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ userId }, { oldDeviceId: { in: ['device-a', 'device-b'] } }],
+      },
+    });
+  });
+
+  it('skips the device-scoped deleteMany calls when the user has no devices', async () => {
+    const tx = createTxMock({ deviceIds: [] });
+    const { service } = buildService(tx);
+
+    await service.deleteAccount(userId);
+
+    expect(tx.message.deleteMany).not.toHaveBeenCalled();
+    expect(tx.attachment.deleteMany).not.toHaveBeenCalled();
+    expect(tx.callRecord.deleteMany).not.toHaveBeenCalled();
+    // Still sweeps user-scoped transfer sessions even without devices.
+    expect(tx.deviceTransferSession.deleteMany).toHaveBeenCalledWith({
+      where: { userId },
+    });
+  });
+
+  it('deletes conversations the user created (group + channel) before devices', async () => {
+    const tx = createTxMock({
+      ownedGroupConversationIds: ['conv-g1', 'conv-g2'],
+      ownedChannelConversationIds: ['conv-c1'],
+    });
+    const { service } = buildService(tx);
+
+    const order: string[] = [];
+    tx.conversation.deleteMany.mockImplementation(async () => {
+      order.push('conversation.deleteMany');
+      return { count: 0 };
+    });
+    tx.device.deleteMany.mockImplementation(async () => {
+      order.push('device.deleteMany');
+      return { count: 0 };
+    });
+
+    await service.deleteAccount(userId);
+
+    expect(tx.conversation.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: ['conv-g1', 'conv-g2', 'conv-c1'] } },
+    });
+    expect(order.indexOf('conversation.deleteMany')).toBeLessThan(
+      order.indexOf('device.deleteMany'),
+    );
+  });
+
+  it('does not call conversation.deleteMany when the user owns none', async () => {
+    const tx = createTxMock();
+    const { service } = buildService(tx);
+
+    await service.deleteAccount(userId);
+
+    expect(tx.conversation.deleteMany).not.toHaveBeenCalled();
+  });
+
   it('clears activeDeviceId before deleting the device rows to avoid a self-referential FK block', async () => {
     const tx = createTxMock();
     const { service } = buildService(tx);
@@ -78,34 +212,6 @@ describe('AccountService.deleteAccount', () => {
       where: { id: userId },
       data: { activeDeviceId: null },
     });
-  });
-
-  it('deletes user-owned rows before cross-user rows to respect FK dependencies', async () => {
-    const tx = createTxMock();
-    const { service } = buildService(tx);
-
-    const order: string[] = [];
-    const record = (name: string) => {
-      return async () => {
-        order.push(name);
-        return { count: 0 };
-      };
-    };
-    tx.reaction.deleteMany.mockImplementation(record('reaction'));
-    tx.messageReceipt.deleteMany.mockImplementation(record('messageReceipt'));
-    tx.conversationMember.deleteMany.mockImplementation(record('conversationMember'));
-    tx.device.deleteMany.mockImplementation(record('device'));
-    tx.user.delete.mockImplementation(async () => {
-      order.push('user.delete');
-      return {};
-    });
-
-    await service.deleteAccount(userId);
-
-    expect(order.indexOf('reaction')).toBeLessThan(order.indexOf('user.delete'));
-    expect(order.indexOf('messageReceipt')).toBeLessThan(order.indexOf('user.delete'));
-    expect(order.indexOf('conversationMember')).toBeLessThan(order.indexOf('device'));
-    expect(order.indexOf('device')).toBeLessThan(order.indexOf('user.delete'));
   });
 
   it('scopes userContact deletion to both sides of the contact graph', async () => {
@@ -144,8 +250,8 @@ describe('AccountService.deleteAccount', () => {
     const { service } = buildService(tx);
 
     await expect(service.deleteAccount(userId)).rejects.toThrow('db busy');
-    // Later steps must not run — Prisma would roll back the whole transaction,
-    // but the service layer contract is just that it doesn't swallow the error.
+    // Later steps must not run — Prisma rolls back the whole transaction,
+    // the service contract is just that it doesn't swallow the error.
     expect(tx.user.delete).not.toHaveBeenCalled();
   });
 });

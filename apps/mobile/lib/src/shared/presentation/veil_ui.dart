@@ -146,11 +146,12 @@ class _VeilPressableState extends State<VeilPressable>
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null || widget.onLongPress != null;
+    final reduceMotion = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
       behavior: widget.behavior,
-      onTapDown: enabled ? (_) => _press() : null,
-      onTapUp: enabled ? (_) => _release() : null,
-      onTapCancel: enabled ? _release : null,
+      onTapDown: enabled && !reduceMotion ? (_) => _press() : null,
+      onTapUp: enabled && !reduceMotion ? (_) => _release() : null,
+      onTapCancel: enabled && !reduceMotion ? _release : null,
       onTap: widget.onTap == null
           ? null
           : () {
@@ -160,7 +161,9 @@ class _VeilPressableState extends State<VeilPressable>
               widget.onTap!();
             },
       onLongPress: widget.onLongPress,
-      child: ScaleTransition(scale: _scale, child: widget.child),
+      child: reduceMotion
+          ? widget.child
+          : ScaleTransition(scale: _scale, child: widget.child),
     );
   }
 }

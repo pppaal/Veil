@@ -326,18 +326,25 @@ class _CallActionButton extends StatelessWidget {
               color: bgColor,
               shape: const CircleBorder(),
               clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: enabled ? onPressed : null,
-                child: Icon(icon, color: fgColor, size: VeilIconSize.lg),
+              child: Semantics(
+                button: true,
+                enabled: enabled,
+                label: label,
+                child: InkWell(
+                  onTap: enabled ? onPressed : null,
+                  child: Icon(icon, color: fgColor, size: VeilIconSize.lg),
+                ),
               ),
             ),
           ),
           const SizedBox(height: VeilSpace.xs),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: palette.textSubtle,
-                ),
+          ExcludeSemantics(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: palette.textSubtle,
+                  ),
+            ),
           ),
         ],
       ),

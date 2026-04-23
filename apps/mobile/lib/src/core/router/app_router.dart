@@ -216,6 +216,9 @@ CustomTransitionPage<void> _veilFadePage(GoRouterState state, Widget child) {
     transitionDuration: VeilMotion.normal,
     reverseTransitionDuration: VeilMotion.fast,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      if (MediaQuery.of(context).disableAnimations) {
+        return child;
+      }
       final slide = Tween<Offset>(
         begin: const Offset(0, 0.04),
         end: Offset.zero,
@@ -251,6 +254,9 @@ CustomTransitionPage<void> _veilModalPage(GoRouterState state, Widget child) {
     opaque: false,
     barrierColor: const Color(0x66000000),
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      if (MediaQuery.of(context).disableAnimations) {
+        return child;
+      }
       final slide = Tween<Offset>(
         begin: const Offset(0, 1),
         end: Offset.zero,

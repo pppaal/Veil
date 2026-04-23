@@ -407,13 +407,16 @@ class _StoryCircle extends StatelessWidget {
 
     final ringColor = hasSeen ? palette.stroke : palette.primaryStrong;
 
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: 68,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    return Semantics(
+      button: true,
+      label: isAddButton ? 'Add story' : label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: 68,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             Container(
               width: 60,
               height: 60,
@@ -446,17 +449,20 @@ class _StoryCircle extends StatelessWidget {
               ),
             ),
             const SizedBox(height: VeilSpace.xxs),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: palette.textMuted,
+            ExcludeSemantics(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
+                ),
               ),
             ),
           ],
         ),
+      ),
       ),
     );
   }

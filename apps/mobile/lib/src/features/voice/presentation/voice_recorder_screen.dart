@@ -219,14 +219,17 @@ class _RecordButton extends StatelessWidget {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        GestureDetector(
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: VeilMotion.normal,
-            curve: VeilMotion.emphasize,
-            width: 88,
-            height: 88,
-            alignment: Alignment.center,
+        Semantics(
+          button: true,
+          label: label,
+          child: GestureDetector(
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: VeilMotion.normal,
+              curve: VeilMotion.emphasize,
+              width: 88,
+              height: 88,
+              alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: glowing ? palette.danger : palette.primarySoft,
@@ -251,12 +254,15 @@ class _RecordButton extends StatelessWidget {
             ),
           ),
         ),
+        ),
         const SizedBox(height: VeilSpace.md),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: palette.textMuted,
-              ),
+        ExcludeSemantics(
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: palette.textMuted,
+                ),
+          ),
         ),
       ],
     );

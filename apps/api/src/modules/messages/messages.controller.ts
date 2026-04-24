@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Param, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type {
   DeleteLocalMessageResponse,
   MarkMessageReadResponse,
@@ -17,6 +18,10 @@ import { ReactionDto } from './dto/reaction.dto';
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
+  // Caps sustained message abuse while leaving normal bursts alone. At 120/min
+  // you can still paste a long conversation or send rapid reactions without
+  // hitting the ceiling.
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   @Post()
   send(
     @Req() request: AuthenticatedRequest,

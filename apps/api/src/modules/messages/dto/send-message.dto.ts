@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -103,6 +104,11 @@ class EnvelopeDto {
   @IsOptional()
   @IsISO8601()
   expiresAt?: string | null;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  viewOnce?: boolean;
 
   @ApiProperty({ required: false, nullable: true })
   @IsOptional()

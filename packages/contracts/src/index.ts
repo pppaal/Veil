@@ -137,6 +137,9 @@ export interface ConversationMessageSummary {
   messageType: MessageType;
   attachment?: EncryptedAttachmentReference | null;
   expiresAt?: string | null;
+  // True when the message is view-once: the server hard-deletes it as
+  // soon as any non-sender member marks it read.
+  viewOnce?: boolean;
   serverReceivedAt: string;
   deletedAt?: string | null;
   deliveredAt?: string | null;
@@ -360,6 +363,7 @@ export interface RealtimeEventMap {
   'typing.stop': { conversationId: string; userId: string; handle: string };
   'conversation.sync': { conversationId: string; reason: 'message' | 'membership' | 'refresh' };
   'conversation.timer.changed': { conversationId: string; disappearingTimerSeconds: number | null };
+  'message.consumed': { messageId: string; conversationId: string; consumedAt: string };
   'call.incoming': { callId: string; conversationId: string; callType: 'voice' | 'video'; initiatorHandle: string };
   'call.ended': { callId: string; conversationId: string; duration: number };
   'story.new': { storyId: string; userId: string; contentType: string };

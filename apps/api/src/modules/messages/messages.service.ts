@@ -30,6 +30,7 @@ type PersistedMessage = {
   messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
   attachmentRef?: unknown;
   expiresAt: Date | null;
+  viewOnce?: boolean;
   serverReceivedAt: Date;
   deletedAt: Date | null;
   receipts?: Array<{ deliveredAt: Date | null; readAt: Date | null }>;
@@ -192,6 +193,7 @@ export class MessagesService {
                   ? (dto.envelope.attachment as unknown as Prisma.InputJsonValue)
                   : undefined,
                 expiresAt: dto.envelope.expiresAt ? new Date(dto.envelope.expiresAt) : null,
+                viewOnce: dto.envelope.viewOnce === true,
                 receipts: {
                   create: members
                     .filter((member) => member.userId !== auth.userId)
@@ -260,6 +262,9 @@ export class MessagesService {
       include: {
         conversation: {
           include: { members: true },
+        },
+        senderDevice: {
+          select: { userId: true },
         },
       },
     });
@@ -337,10 +342,42 @@ export class MessagesService {
       data: { lastSyncAt: now },
     });
 
+    // View-once consumption: once any non-sender has read it, hard-delete
+    // the row and broadcast so every member (including the sender) drops
+    // the ciphertext from the local cache.
+    if (message.viewOnce && message.senderDevice.userId !== auth.userId) {
+      await this.consumeViewOnceMessage(
+        messageId,
+        message.conversationId,
+        message.conversation.members,
+        now,
+      );
+    }
+
     return {
       messageId,
       readAt: updatedReceipt.readAt?.toISOString() ?? now.toISOString(),
     };
+  }
+
+  private async consumeViewOnceMessage(
+    messageId: string,
+    conversationId: string,
+    members: Array<{ userId: string }>,
+    consumedAt: Date,
+  ): Promise<void> {
+    try {
+      await this.prisma.message.delete({ where: { id: messageId } });
+    } catch {
+      // Concurrent consumption lost the race — the other consumer already
+      // deleted the row. The realtime broadcast below still fires so every
+      // member drops it from their cache.
+    }
+    this.realtimeGateway.emitConversationMembers(members, 'message.consumed', {
+      messageId,
+      conversationId,
+      consumedAt: consumedAt.toISOString(),
+    });
   }
 
   async deleteLocal(
@@ -375,6 +412,7 @@ export class MessagesService {
     messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
     attachmentRef?: unknown;
     expiresAt: Date | null;
+    viewOnce?: boolean;
     serverReceivedAt: Date;
     deletedAt: Date | null;
     receipts?: Array<{ deliveredAt: Date | null; readAt: Date | null }>;
@@ -392,6 +430,7 @@ export class MessagesService {
       messageType: message.messageType,
       attachment: (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
       expiresAt: message.expiresAt?.toISOString() ?? null,
+      viewOnce: message.viewOnce === true,
       serverReceivedAt: message.serverReceivedAt.toISOString(),
       deletedAt: message.deletedAt?.toISOString() ?? null,
       deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,

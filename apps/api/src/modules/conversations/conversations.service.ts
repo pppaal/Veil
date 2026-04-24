@@ -48,6 +48,7 @@ type HydratedMessage = {
   serverReceivedAt: Date;
   deletedAt: Date | null;
   expiresAt: Date | null;
+  viewOnce?: boolean;
   attachmentRef?: unknown;
   senderDevice: { userId: string };
   receipts: HydratedReceipt[];
@@ -535,6 +536,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       messageType: message.messageType,
       attachment: (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
       expiresAt: message.expiresAt?.toISOString() ?? null,
+      viewOnce: message.viewOnce === true,
       serverReceivedAt: message.serverReceivedAt.toISOString(),
       deletedAt: message.deletedAt?.toISOString() ?? null,
       deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,

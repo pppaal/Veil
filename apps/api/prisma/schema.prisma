@@ -92,9 +92,57 @@ model User {
   stories          Story[]
   storyViews       StoryView[]
   reactions        Reaction[]
+  blocksOutgoing   UserBlock[]            @relation("BlocksOutgoing")
+  blocksIncoming   UserBlock[]            @relation("BlocksIncoming")
+  conversationMutes ConversationMute[]
+  reportsFiled     AbuseReport[]          @relation("ReportsFiled")
+  reportsAgainst   AbuseReport[]          @relation("ReportsAgainst")
 
   @@index([activeDeviceId])
   @@map("users")
+}
+
+model UserBlock {
+  blockerUserId String   @map("blocker_user_id") @db.Uuid
+  blockedUserId String   @map("blocked_user_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at")
+  blocker       User     @relation("BlocksOutgoing", fields: [blockerUserId], references: [id], onDelete: Cascade)
+  blocked       User     @relation("BlocksIncoming", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@id([blockerUserId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("user_blocks")
+}
+
+model ConversationMute {
+  userId         String    @map("user_id") @db.Uuid
+  conversationId String    @map("conversation_id") @db.Uuid
+  // null = muted indefinitely. A future date = auto-unmutes after that time.
+  mutedUntil     DateTime? @map("muted_until")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([userId, conversationId])
+  @@index([conversationId])
+  @@map("conversation_mutes")
+}
+
+model AbuseReport {
+  id              String   @id @default(uuid()) @db.Uuid
+  reporterUserId  String   @map("reporter_user_id") @db.Uuid
+  reportedUserId  String   @map("reported_user_id") @db.Uuid
+  conversationId  String?  @map("conversation_id") @db.Uuid
+  messageId       String?  @map("message_id") @db.Uuid
+  reason          String   @db.VarChar(40)
+  note            String?  @db.VarChar(1000)
+  createdAt       DateTime @default(now()) @map("created_at")
+  reporter        User     @relation("ReportsFiled", fields: [reporterUserId], references: [id], onDelete: Cascade)
+  reported        User     @relation("ReportsAgainst", fields: [reportedUserId], references: [id], onDelete: Cascade)
+
+  @@index([reportedUserId, createdAt])
+  @@index([reporterUserId, createdAt])
+  @@map("abuse_reports")
 }
 
 model Device {
@@ -142,6 +190,7 @@ model Conversation {
   groupMeta    GroupMeta?
   channelMeta  ChannelMeta?
   callRecords  CallRecord[]
+  mutes        ConversationMute[]
 
   @@map("conversations")
 }

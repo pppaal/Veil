@@ -22,6 +22,7 @@ import {
   type AttachmentStorageGateway,
 } from '../attachments/attachment-storage.gateway';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SafetyService } from '../safety/safety.service';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 
 type HydratedReceipt = {
@@ -69,6 +70,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     private readonly realtimeGateway: RealtimeGateway,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly attachmentStorageGateway: AttachmentStorageGateway,
+    private readonly safetyService: SafetyService,
   ) {}
 
   onModuleInit(): void {
@@ -106,6 +108,13 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
 
     if (peer.id === currentUserId) {
       throw new ForbiddenException('Direct conversation requires a second user');
+    }
+
+    // Either-direction block. Returning NotFound keeps the block state
+    // opaque to the blocked user — they can't distinguish between
+    // "handle doesn't exist" and "you've been blocked".
+    if (await this.safetyService.isBlockedEitherWay(currentUserId, peer.id)) {
+      throw new NotFoundException('Peer handle not found');
     }
 
     const currentMemberships = await this.prisma.conversationMember.findMany({

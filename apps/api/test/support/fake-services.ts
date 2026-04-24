@@ -104,6 +104,42 @@ export class FakePushService {
   }
 }
 
+export class FakeSafetyService {
+  readonly blocks = new Set<string>();
+  readonly mutes = new Map<string, Date | null>();
+
+  static pairKey(a: string, b: string): string {
+    return `${a}::${b}`;
+  }
+
+  static muteKey(userId: string, conversationId: string): string {
+    return `${userId}::${conversationId}`;
+  }
+
+  setBlocked(blockerUserId: string, blockedUserId: string): void {
+    this.blocks.add(FakeSafetyService.pairKey(blockerUserId, blockedUserId));
+  }
+
+  setMute(userId: string, conversationId: string, mutedUntil: Date | null): void {
+    this.mutes.set(FakeSafetyService.muteKey(userId, conversationId), mutedUntil);
+  }
+
+  async isBlockedEitherWay(userIdA: string, userIdB: string): Promise<boolean> {
+    return (
+      this.blocks.has(FakeSafetyService.pairKey(userIdA, userIdB)) ||
+      this.blocks.has(FakeSafetyService.pairKey(userIdB, userIdA))
+    );
+  }
+
+  async isConversationMutedForUser(userId: string, conversationId: string): Promise<boolean> {
+    const key = FakeSafetyService.muteKey(userId, conversationId);
+    if (!this.mutes.has(key)) return false;
+    const until = this.mutes.get(key);
+    if (until === null || until === undefined) return true;
+    return until.getTime() > Date.now();
+  }
+}
+
 export class FakeAttachmentStorageGateway {
   readonly uploaded = new Map<
     string,

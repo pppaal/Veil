@@ -6,6 +6,7 @@ import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import {
   FakeAttachmentStorageGateway,
   FakeRealtimeGateway,
+  FakeSafetyService,
 } from '../../../test/support/fake-services';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 
@@ -13,6 +14,7 @@ type Seed = {
   prisma: FakePrismaService;
   gateway: FakeRealtimeGateway;
   storage: FakeAttachmentStorageGateway;
+  safety: FakeSafetyService;
   service: ConversationsService;
 };
 
@@ -20,12 +22,14 @@ function makeService(): Seed {
   const prisma = new FakePrismaService();
   const gateway = new FakeRealtimeGateway();
   const storage = new FakeAttachmentStorageGateway();
+  const safety = new FakeSafetyService();
   const service = new ConversationsService(
     prisma as never,
     gateway as never,
     storage as never,
+    safety as never,
   );
-  return { prisma, gateway, storage, service };
+  return { prisma, gateway, storage, safety, service };
 }
 
 function seedUser(prisma: FakePrismaService, handle: string): { userId: string; deviceId: string } {

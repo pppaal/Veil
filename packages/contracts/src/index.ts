@@ -289,6 +289,67 @@ export interface RevokeDeviceResponse {
   revokedAt: string;
 }
 
+export interface BlockedUserSummary {
+  userId: string;
+  handle: string;
+  displayName?: string | null;
+  blockedAt: string;
+}
+
+export interface ListBlockedUsersResponse {
+  items: BlockedUserSummary[];
+}
+
+export interface BlockUserRequest {
+  userId: string;
+}
+
+export interface BlockUserResponse {
+  blocked: BlockedUserSummary;
+}
+
+export interface UnblockUserResponse {
+  userId: string;
+  unblocked: true;
+}
+
+export interface ConversationMuteSummary {
+  conversationId: string;
+  // null = muted indefinitely. ISO string = auto-unmutes at that time.
+  mutedUntil: string | null;
+}
+
+export interface SetConversationMuteRequest {
+  // null = unmute. number = seconds from now until auto-unmute (use a huge value for "forever" or omit for indefinite).
+  mutedForSeconds: number | null | undefined;
+}
+
+export interface SetConversationMuteResponse {
+  mute: ConversationMuteSummary | null;
+}
+
+export type AbuseReportReason =
+  | 'spam'
+  | 'harassment'
+  | 'impersonation'
+  | 'csam'
+  | 'violence'
+  | 'scam'
+  | 'other';
+
+export interface FileAbuseReportRequest {
+  reportedUserId: string;
+  conversationId?: string | null;
+  messageId?: string | null;
+  reason: AbuseReportReason;
+  note?: string | null;
+}
+
+export interface FileAbuseReportResponse {
+  reportId: string;
+  filedAt: string;
+}
+
 export interface RealtimeEventMap {
   'message.new': ConversationMessageSummary;
   'message.delivered': { messageId: string; userId: string; deliveredAt: string };

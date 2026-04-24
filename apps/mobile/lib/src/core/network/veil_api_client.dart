@@ -90,6 +90,60 @@ class VeilApiClient {
     );
   }
 
+  Future<Map<String, dynamic>> listBlockedUsers(String accessToken) async {
+    return _get('/safety/blocks', accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> blockUser(
+    String accessToken,
+    String userId,
+  ) async {
+    return _post('/safety/blocks', {'userId': userId}, accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> unblockUser(
+    String accessToken,
+    String userId,
+  ) async {
+    return _delete('/safety/blocks/$userId', accessToken: accessToken);
+  }
+
+  Future<Map<String, dynamic>> setConversationMute(
+    String accessToken,
+    String conversationId, {
+    int? mutedForSeconds,
+    required bool unmute,
+  }) async {
+    return _post(
+      '/safety/mutes/$conversationId',
+      {
+        'mutedForSeconds': unmute ? null : mutedForSeconds,
+      },
+      accessToken: accessToken,
+    );
+  }
+
+  Future<Map<String, dynamic>> fileAbuseReport(
+    String accessToken, {
+    required String reportedUserId,
+    required String reason,
+    String? conversationId,
+    String? messageId,
+    String? note,
+  }) async {
+    return _post(
+      '/safety/reports',
+      {
+        'reportedUserId': reportedUserId,
+        'reason': reason,
+        if (conversationId != null) 'conversationId': conversationId,
+        if (messageId != null) 'messageId': messageId,
+        if (note != null) 'note': note,
+      },
+      accessToken: accessToken,
+    );
+  }
+
   Future<Map<String, dynamic>> sendMessage(
     String accessToken,
     Map<String, dynamic> body,

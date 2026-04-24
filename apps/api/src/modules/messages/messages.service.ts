@@ -16,6 +16,7 @@ import {
 } from '../../common/errors/api-error';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SafetyService } from '../safety/safety.service';
 import { SendMessageDto } from './dto/send-message.dto';
 
 type PersistedMessage = {
@@ -40,6 +41,7 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly pushService: PushService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly safetyService: SafetyService,
   ) {}
 
   async send(
@@ -102,6 +104,15 @@ export class MessagesService {
         dto.envelope.recipientUserId !== recipientUserIds[0]
       ) {
         throw forbidden('direct_peer_mismatch', 'Envelope recipient does not match direct conversation peer');
+      }
+
+      // Either-direction block stops delivery on direct conversations.
+      // Groups intentionally don't enforce here: a blocked member is expected
+      // to be removed from the group, and per-sender filtering would make
+      // conversation ordering diverge across members.
+      const peerId = recipientUserIds[0];
+      if (await this.safetyService.isBlockedEitherWay(auth.userId, peerId)) {
+        throw forbidden('peer_unreachable', 'Peer is unreachable');
       }
     }
 
@@ -469,6 +480,18 @@ export class MessagesService {
     recipientUserId: string,
     summary: ConversationMessageSummary,
   ): Promise<void> {
+    if (
+      await this.safetyService.isConversationMutedForUser(
+        recipientUserId,
+        summary.conversationId,
+      )
+    ) {
+      // Muted: the message still persists and flows over the realtime
+      // socket if the app is open, but we skip the wake to keep the phone
+      // quiet.
+      return;
+    }
+
     const connectedDeviceIds = new Set(this.realtimeGateway.connectedDeviceIdsForUser(recipientUserId));
     const recipientDevices = await this.prisma.device.findMany({
       where: {

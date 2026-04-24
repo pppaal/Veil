@@ -5,6 +5,7 @@ import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import {
   FakePushService,
   FakeRealtimeGateway,
+  FakeSafetyService,
 } from '../../../test/support/fake-services';
 import { SendMessageDto } from './dto/send-message.dto';
 
@@ -12,6 +13,7 @@ type Seed = {
   prisma: FakePrismaService;
   gateway: FakeRealtimeGateway;
   push: FakePushService;
+  safety: FakeSafetyService;
   service: MessagesService;
 };
 
@@ -19,12 +21,14 @@ function makeService(): Seed {
   const prisma = new FakePrismaService();
   const gateway = new FakeRealtimeGateway();
   const push = new FakePushService();
+  const safety = new FakeSafetyService();
   const service = new MessagesService(
     prisma as never,
     push as never,
     gateway as never,
+    safety as never,
   );
-  return { prisma, gateway, push, service };
+  return { prisma, gateway, push, safety, service };
 }
 
 function seedUserAndDevice(

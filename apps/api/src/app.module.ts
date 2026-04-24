@@ -26,6 +26,7 @@ import { StoriesModule } from './modules/stories/stories.module';
 import { UsersModule } from './modules/users/users.module';
 import { AccountModule } from './modules/account/account.module';
 import { CallsModule } from './modules/calls/calls.module';
+import { SafetyModule } from './modules/safety/safety.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { CallsModule } from './modules/calls/calls.module';
     StoriesModule,
     CallsModule,
     AccountModule,
+    SafetyModule,
   ],
   providers: [
     {

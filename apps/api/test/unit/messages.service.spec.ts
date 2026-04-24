@@ -1,16 +1,22 @@
 import { MessagesService } from '../../src/modules/messages/messages.service';
 import { FakePrismaService } from '../support/fake-prisma.service';
-import { FakePushService, FakeRealtimeGateway } from '../support/fake-services';
+import {
+  FakePushService,
+  FakeRealtimeGateway,
+  FakeSafetyService,
+} from '../support/fake-services';
 
 describe('MessagesService', () => {
   function createFixture() {
     const prisma = new FakePrismaService();
     const realtime = new FakeRealtimeGateway();
     const push = new FakePushService();
+    const safety = new FakeSafetyService();
     const service = new MessagesService(
       prisma as never,
       push as never,
       realtime as never,
+      safety as never,
     );
 
     prisma.users.push(

@@ -46,6 +46,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   Timer? _expirationTicker;
   StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
   Duration? _messageTtl;
+  int? _observedConversationTimer;
   bool _isSearchingMessages = false;
   double _sendScale = 1.0;
   Set<String> _matchingMessageIds = <String>{};
@@ -127,6 +128,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     VeilHaptics.selection();
     final l10n = AppLocalizations.of(context);
     final options = _ttlOptions(l10n);
+    final sentinel = const Duration(microseconds: -1);
     final selected = await showModalBottomSheet<Duration?>(
       context: context,
       builder: (sheetContext) {
@@ -152,7 +154,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
                   title: Text(option.label),
                   subtitle: option.caption == null ? null : Text(option.caption!),
                   onTap: () =>
-                      Navigator.of(sheetContext).pop<Duration?>(option.duration),
+                      Navigator.of(sheetContext).pop<Duration?>(option.duration ?? sentinel),
                 ),
               const SizedBox(height: VeilSpace.sm),
             ],
@@ -161,7 +163,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       },
     );
     if (!mounted) return;
-    setState(() => _messageTtl = selected);
+    // Distinguish "dismissed without selection" (null) from "selected Off" (sentinel).
+    if (selected == null) return;
+    final nextTtl = selected == sentinel ? null : selected;
+    setState(() => _messageTtl = nextTtl);
+    try {
+      await ref.read(messengerControllerProvider).setDisappearingTimer(
+            widget.conversationId,
+            nextTtl?.inSeconds,
+          );
+    } catch (_) {
+      // Controller already surfaces the error through errorMessage.
+    }
   }
 
   String _ttlLabel(AppLocalizations l10n) {
@@ -183,6 +196,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
         conversation = item;
         break;
       }
+    }
+    // Keep the composer TTL in sync with the conversation's default so the
+    // header shows the current setting when navigating in/out or when another
+    // device changes it via realtime.
+    final conversationTimer = conversation?.disappearingTimerSeconds;
+    if (_observedConversationTimer != conversationTimer) {
+      _observedConversationTimer = conversationTimer;
+      _messageTtl = conversationTimer == null
+          ? null
+          : Duration(seconds: conversationTimer);
     }
     final messages = controller.messagesFor(widget.conversationId);
     final filteredMessages = _filteredMessages(messages);

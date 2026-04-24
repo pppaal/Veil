@@ -4,12 +4,14 @@ import type {
   ConversationSummary,
   CreateDirectConversationResponse,
   ListMessagesResponse,
+  SetDisappearingTimerResponse,
 } from '@veil/contracts';
 
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { ConversationsService } from './conversations.service';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
+import { SetDisappearingTimerDto } from './dto/set-disappearing-timer.dto';
 
 @ApiTags('conversations')
 @ApiBearerAuth()
@@ -37,5 +39,18 @@ export class ConversationsController {
     @Query() query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
     return this.conversationsService.listMessagesForUser(request.auth, id, query);
+  }
+
+  @Post(':id/timer')
+  setTimer(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: SetDisappearingTimerDto,
+  ): Promise<SetDisappearingTimerResponse> {
+    return this.conversationsService.setDisappearingTimer(
+      request.auth.userId,
+      id,
+      dto.seconds,
+    );
   }
 }

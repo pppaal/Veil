@@ -99,6 +99,9 @@ export interface ConversationSummary {
   createdAt: string;
   members: ConversationMemberSummary[];
   lastMessage?: ConversationMessageSummary | null;
+  // Default TTL (seconds) applied to new messages in this conversation.
+  // null means disappearing messages are disabled.
+  disappearingTimerSeconds?: number | null;
 }
 
 export interface CreateDirectConversationRequest {
@@ -106,6 +109,15 @@ export interface CreateDirectConversationRequest {
 }
 
 export interface CreateDirectConversationResponse {
+  conversation: ConversationSummary;
+}
+
+export interface SetDisappearingTimerRequest {
+  // Positive integer = TTL in seconds. null = disable.
+  seconds: number | null;
+}
+
+export interface SetDisappearingTimerResponse {
   conversation: ConversationSummary;
 }
 
@@ -286,6 +298,7 @@ export interface RealtimeEventMap {
   'typing.start': { conversationId: string; userId: string; handle: string };
   'typing.stop': { conversationId: string; userId: string; handle: string };
   'conversation.sync': { conversationId: string; reason: 'message' | 'membership' | 'refresh' };
+  'conversation.timer.changed': { conversationId: string; disappearingTimerSeconds: number | null };
   'call.incoming': { callId: string; conversationId: string; callType: 'voice' | 'video'; initiatorHandle: string };
   'call.ended': { callId: string; conversationId: string; duration: number };
   'story.new': { storyId: string; userId: string; contentType: string };

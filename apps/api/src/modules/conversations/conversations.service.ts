@@ -11,6 +11,7 @@ import type {
   ConversationSummary,
   CreateDirectConversationResponse,
   ListMessagesResponse,
+  SetDisappearingTimerResponse,
 } from '@veil/contracts';
 import type { EncryptedAttachmentReference } from '@veil/shared';
 
@@ -156,6 +157,48 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     return {
       conversation: this.toConversationSummary(created, currentUserId),
     };
+  }
+
+  async setDisappearingTimer(
+    currentUserId: string,
+    conversationId: string,
+    seconds: number | null,
+  ): Promise<SetDisappearingTimerResponse> {
+    const membership = await this.prisma.conversationMember.findUnique({
+      where: {
+        conversationId_userId: {
+          conversationId,
+          userId: currentUserId,
+        },
+      },
+      select: { id: true },
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('Conversation membership required');
+    }
+
+    const updated = await this.prisma.conversation.update({
+      where: { id: conversationId },
+      data: { disappearingTimerSeconds: seconds },
+      include: {
+        members: {
+          include: { user: true },
+        },
+        messages: this.latestMessageInclude(),
+      },
+    });
+
+    this.realtimeGateway.emitConversationMembers(
+      updated.members.map((member) => ({ userId: member.userId })),
+      'conversation.timer.changed',
+      {
+        conversationId,
+        disappearingTimerSeconds: seconds,
+      },
+    );
+
+    return { conversation: this.toConversationSummary(updated, currentUserId) };
   }
 
   async listForUser(userId: string): Promise<ConversationSummary[]> {
@@ -447,6 +490,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     id: string;
     type: 'direct' | 'group' | 'channel';
     createdAt: Date;
+    disappearingTimerSeconds: number | null;
     members: Array<{
       userId: string;
       user: { handle: string; displayName: string | null };
@@ -457,6 +501,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       id: conversation.id,
       type: conversation.type,
       createdAt: conversation.createdAt.toISOString(),
+      disappearingTimerSeconds: conversation.disappearingTimerSeconds,
       members: conversation.members.map((member) => ({
         userId: member.userId,
         handle: member.user.handle,

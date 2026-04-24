@@ -132,6 +132,10 @@ model Conversation {
   id        String               @id @default(uuid()) @db.Uuid
   type      ConversationType     @default(direct)
   createdAt DateTime             @default(now()) @map("created_at")
+  // Per-conversation default TTL for new messages, in seconds. null = off.
+  // Client uses this to auto-stamp expiresAt on outgoing messages, and
+  // server enforces it as an upper bound on incoming messages.
+  disappearingTimerSeconds Int?  @map("disappearing_timer_seconds")
   members      ConversationMember[]
   messages     Message[]
   deviceStates DeviceConversationState[]

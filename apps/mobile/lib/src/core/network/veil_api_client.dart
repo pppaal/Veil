@@ -78,6 +78,18 @@ class VeilApiClient {
     return _decodeMap(response);
   }
 
+  Future<Map<String, dynamic>> setDisappearingTimer(
+    String accessToken,
+    String conversationId,
+    int? seconds,
+  ) async {
+    return _post(
+      '/conversations/$conversationId/timer',
+      {'seconds': seconds},
+      accessToken: accessToken,
+    );
+  }
+
   Future<Map<String, dynamic>> sendMessage(
     String accessToken,
     Map<String, dynamic> body,

@@ -457,6 +457,63 @@ class VeilMessengerController extends ChangeNotifier {
     }
   }
 
+  Future<void> setDisappearingTimer(
+    String conversationId,
+    int? seconds,
+  ) async {
+    if (!_session.isAuthenticated || !VeilConfig.hasApi) {
+      _applyTimerChanged(
+        conversationId: conversationId,
+        disappearingTimerSeconds: seconds,
+      );
+      return;
+    }
+
+    try {
+      final response = await _apiClient.setDisappearingTimer(
+        _session.accessToken!,
+        conversationId,
+        seconds,
+      );
+      final data = response['conversation'] as Map<String, dynamic>?;
+      final nextSeconds = data == null
+          ? seconds
+          : data['disappearingTimerSeconds'] as int?;
+      _applyTimerChanged(
+        conversationId: conversationId,
+        disappearingTimerSeconds: nextSeconds,
+      );
+    } catch (error) {
+      await _handleSecurityException(error);
+      _errorMessage = formatUserFacingError(error);
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  void _applyTimerChanged({
+    required String conversationId,
+    required int? disappearingTimerSeconds,
+  }) {
+    var changed = false;
+    _conversations = _conversations.map((conversation) {
+      if (conversation.id != conversationId) {
+        return conversation;
+      }
+      if (conversation.disappearingTimerSeconds == disappearingTimerSeconds) {
+        return conversation;
+      }
+      changed = true;
+      return conversation.copyWith(
+        disappearingTimerSeconds: disappearingTimerSeconds,
+      );
+    }).toList(growable: false);
+    if (changed) {
+      unawaited(_cacheService?.storeConversations(_conversations));
+      notifyListeners();
+    }
+  }
+
   Future<String?> getAttachmentDownloadUrl(String attachmentId) async {
     if (!_session.isAuthenticated || !VeilConfig.hasApi) {
       return null;
@@ -1117,6 +1174,13 @@ class VeilMessengerController extends ChangeNotifier {
             final data = payload as Map<String, dynamic>;
             _scheduleSyncAfterRealtimeHint(conversationId: data['conversationId'] as String?);
             break;
+          case 'conversation.timer.changed':
+            final data = payload as Map<String, dynamic>;
+            _applyTimerChanged(
+              conversationId: data['conversationId'] as String,
+              disappearingTimerSeconds: data['disappearingTimerSeconds'] as int?,
+            );
+            break;
           default:
             break;
         }
@@ -1602,14 +1666,19 @@ class VeilMessengerController extends ChangeNotifier {
     final recipientUserId = conversation.type == ConversationType.group
         ? ''
         : bundle.userId;
-    final attachment = await _cryptoEngine.encryptAttachment(
+    // TODO(attachments): integrate encrypt-then-upload end-to-end. Today the
+    // temp blob is opaque random bytes uploaded as-is; we feed those same
+    // bytes as "plaintext" so the reference carries a valid AES-GCM-wrapped
+    // content key even though the uploaded blob is not the cipher output.
+    final plaintextBytes = await File(draft.tempFilePath!).readAsBytes();
+    final cipher = await _cryptoEngine.encryptAttachment(
       attachmentId: draft.attachmentId!,
       storageKey: draft.storageKey!,
       contentType: draft.contentType,
-      sizeBytes: draft.sizeBytes,
-      sha256: draft.sha256,
+      plaintext: plaintextBytes,
       recipientBundle: bundle,
     );
+    final attachment = cipher.reference;
 
     final updatedEnvelope = await _cryptoEngine.encryptMessage(
       conversationId: pending.conversationId,
@@ -2047,6 +2116,7 @@ class VeilMessengerController extends ChangeNotifier {
       sessionState: null,
       type: type,
       members: members,
+      disappearingTimerSeconds: conversation['disappearingTimerSeconds'] as int?,
     );
   }
 

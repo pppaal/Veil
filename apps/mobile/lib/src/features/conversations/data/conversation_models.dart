@@ -250,6 +250,7 @@ class ConversationPreview {
     this.memberCount,
     this.members = const [],
     this.unreadCount = 0,
+    this.disappearingTimerSeconds,
   });
 
   final String id;
@@ -269,6 +270,9 @@ class ConversationPreview {
   // carried here; resolve per-member KeyBundles on demand.
   final List<GroupMember> members;
   final int unreadCount;
+  // Default TTL (seconds) applied to newly-sent messages in this
+  // conversation. null = disappearing messages disabled.
+  final int? disappearingTimerSeconds;
 
   ConversationPreview copyWith({
     String? id,
@@ -284,6 +288,7 @@ class ConversationPreview {
     Object? memberCount = _unset,
     List<GroupMember>? members,
     int? unreadCount,
+    Object? disappearingTimerSeconds = _unset,
   }) {
     return ConversationPreview(
       id: id ?? this.id,
@@ -305,6 +310,9 @@ class ConversationPreview {
           identical(memberCount, _unset) ? this.memberCount : memberCount as int?,
       members: members ?? this.members,
       unreadCount: unreadCount ?? this.unreadCount,
+      disappearingTimerSeconds: identical(disappearingTimerSeconds, _unset)
+          ? this.disappearingTimerSeconds
+          : disappearingTimerSeconds as int?,
     );
   }
 }

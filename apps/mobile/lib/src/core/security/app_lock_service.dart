@@ -53,7 +53,35 @@ class AppLockService {
 
   static final _pinPattern = RegExp(r'^\d{6,12}$');
   static const int maxFailedPinAttempts = 5;
-  static const Duration pinLockoutDuration = Duration(seconds: 30);
+  // Base lockout kicks in after the first full batch of failed attempts.
+  // Each subsequent batch doubles the lockout up to [maxLockoutDuration],
+  // which slows a brute-force attacker from 12 guesses/minute down to a
+  // handful per hour after a few rounds without permanently bricking the
+  // user out from a legitimate memory slip.
+  static const Duration baseLockoutDuration = Duration(seconds: 30);
+  static const Duration maxLockoutDuration = Duration(hours: 1);
+  // Retained for API compatibility — callers that used to reference the
+  // fixed-duration constant now see the base tier; actual lockout length
+  // for a given state is [lockoutDurationForTier].
+  static const Duration pinLockoutDuration = baseLockoutDuration;
+
+  /// Returns the lockout duration for a 1-based [tier]. Tier 0 means "no
+  /// lockout scheduled"; tier 1 is the first lockout (==base), tier 2 is
+  /// twice as long, and so on — capped at [maxLockoutDuration].
+  static Duration lockoutDurationForTier(int tier) {
+    if (tier <= 0) {
+      return Duration.zero;
+    }
+    // `1 << exponent` overflows silently at int64 boundary; clamp to a safe
+    // exponent since we cap on the second line anyway.
+    final exponent = (tier - 1).clamp(0, 30);
+    final multiplier = 1 << exponent;
+    final scaledSeconds = baseLockoutDuration.inSeconds * multiplier;
+    final cappedSeconds = scaledSeconds > maxLockoutDuration.inSeconds
+        ? maxLockoutDuration.inSeconds
+        : scaledSeconds;
+    return Duration(seconds: cappedSeconds);
+  }
 
   final LocalUnlockAuthenticator _authenticator;
   final SecureStorageService _secureStorage;
@@ -109,11 +137,15 @@ class AppLockService {
 
     final nextFailures = throttleState.failedAttempts + 1;
     if (nextFailures >= maxFailedPinAttempts) {
-      final lockoutUntil = now.add(pinLockoutDuration);
+      // Advance the tier so successive lockout rounds grow exponentially.
+      // failedAttempts resets so the user can try again after the window.
+      final nextTier = throttleState.lockoutTier + 1;
+      final lockoutUntil = now.add(lockoutDurationForTier(nextTier));
       await _secureStorage.persistPinThrottleState(
         PinThrottleState(
           failedAttempts: 0,
           lockoutUntil: lockoutUntil,
+          lockoutTier: nextTier,
         ),
       );
       return PinValidationResult.lockedOut(
@@ -122,7 +154,12 @@ class AppLockService {
     }
 
     await _secureStorage.persistPinThrottleState(
-      PinThrottleState(failedAttempts: nextFailures),
+      PinThrottleState(
+        failedAttempts: nextFailures,
+        // Carry tier forward — it only resets on a successful unlock, which
+        // hit `clearPinThrottleState` above.
+        lockoutTier: throttleState.lockoutTier,
+      ),
     );
     return PinValidationResult.mismatch(
       remainingAttempts: max(0, maxFailedPinAttempts - nextFailures),

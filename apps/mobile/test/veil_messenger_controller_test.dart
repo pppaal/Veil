@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
@@ -1437,8 +1439,18 @@ class _FakeAttachmentTempFileStore implements AttachmentTempFileStore {
     required int sizeBytes,
     String? existingPath,
   }) async {
+    // Write a real file on disk so the controller can read the bytes back
+    // when it feeds plaintext to encryptAttachment. The attachment flow in
+    // production treats this blob as the content to encrypt-then-upload.
+    final path = existingPath ??
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+            'veil-test-$filename-${DateTime.now().microsecondsSinceEpoch}';
+    final file = File(path);
+    if (!file.existsSync()) {
+      file.writeAsBytesSync(List<int>.filled(sizeBytes, 0));
+    }
     return AttachmentTempBlob(
-      path: existingPath ?? 'temp://$filename',
+      path: path,
       filename: filename,
       sizeBytes: sizeBytes,
       sha256: 'sha256-$filename',

@@ -16,6 +16,15 @@ class VeilConfig {
     defaultValue: true,
   );
 
+  // Comma-separated list of base64 SHA-256 leaf-cert fingerprints the client
+  // will trust when talking to [apiBaseUrl]. Empty means "no pin" (dev mode).
+  // Production builds MUST pass --dart-define VEIL_TLS_PINS=... so a
+  // compromised CA can't transparently MITM the API connection.
+  static const tlsPins = String.fromEnvironment(
+    'VEIL_TLS_PINS',
+    defaultValue: '',
+  );
+
   static bool get hasApi => apiBaseUrl.isNotEmpty;
 
   static String? get runtimeConfigurationError {

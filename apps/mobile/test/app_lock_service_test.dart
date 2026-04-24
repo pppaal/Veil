@@ -88,6 +88,99 @@ void main() {
     expect(await service.remainingPinLockout(), isNotNull);
     expect(await service.validatePin('123456'), isFalse);
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('lockoutDurationForTier schedules exponential backoff up to the cap',
+      () {
+    // Schedule must double each tier until it hits the configured cap.
+    expect(AppLockService.lockoutDurationForTier(0), Duration.zero);
+    expect(AppLockService.lockoutDurationForTier(1),
+        AppLockService.baseLockoutDuration);
+    expect(
+      AppLockService.lockoutDurationForTier(2),
+      AppLockService.baseLockoutDuration * 2,
+    );
+    expect(
+      AppLockService.lockoutDurationForTier(3),
+      AppLockService.baseLockoutDuration * 4,
+    );
+    expect(
+      AppLockService.lockoutDurationForTier(4),
+      AppLockService.baseLockoutDuration * 8,
+    );
+    // Well past the cap — must not exceed maxLockoutDuration.
+    expect(
+      AppLockService.lockoutDurationForTier(20),
+      AppLockService.maxLockoutDuration,
+    );
+    expect(
+      AppLockService.lockoutDurationForTier(1000),
+      AppLockService.maxLockoutDuration,
+    );
+  });
+
+  test('successive lockout rounds escalate the stored tier', () async {
+    final store = _MemorySecureKeyValueStore();
+    final storage = SecureStorageService(store);
+    final service = AppLockService(_FakeAuthenticator(), storage);
+    await service.setPin('123456');
+
+    Future<void> burnAttemptsUntilLocked() async {
+      for (var i = 0; i < AppLockService.maxFailedPinAttempts; i++) {
+        await service.validatePinAttempt('654321');
+      }
+    }
+
+    await burnAttemptsUntilLocked();
+    var state = await storage.readPinThrottleState();
+    expect(state.lockoutTier, 1);
+    final firstLockoutRemaining = state.lockoutUntil!
+        .difference(DateTime.now().toUtc())
+        .inMilliseconds;
+
+    // Simulate the first lockout elapsing, then burn another round.
+    await storage.persistPinThrottleState(
+      PinThrottleState(
+        failedAttempts: 0,
+        lockoutUntil: DateTime.now().toUtc().subtract(const Duration(seconds: 1)),
+        lockoutTier: state.lockoutTier,
+      ),
+    );
+    await burnAttemptsUntilLocked();
+    state = await storage.readPinThrottleState();
+    expect(state.lockoutTier, 2);
+    final secondLockoutRemaining = state.lockoutUntil!
+        .difference(DateTime.now().toUtc())
+        .inMilliseconds;
+    // Second lockout window must be strictly longer than the first.
+    expect(secondLockoutRemaining, greaterThan(firstLockoutRemaining));
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('successful PIN entry resets the lockout tier', () async {
+    final store = _MemorySecureKeyValueStore();
+    final storage = SecureStorageService(store);
+    final service = AppLockService(_FakeAuthenticator(), storage);
+    await service.setPin('123456');
+
+    // Manually plant a high-tier state as though the user had already
+    // served multiple lockout rounds — then simulate the lockout window
+    // having already elapsed so the next attempt isn't rejected as locked.
+    await storage.persistPinThrottleState(
+      PinThrottleState(
+        failedAttempts: 2,
+        lockoutUntil:
+            DateTime.now().toUtc().subtract(const Duration(seconds: 1)),
+        lockoutTier: 4,
+      ),
+    );
+
+    final ok = await service.validatePin('123456');
+    expect(ok, isTrue);
+
+    final state = await storage.readPinThrottleState();
+    expect(state.failedAttempts, 0);
+    expect(state.lockoutTier, 0);
+    expect(state.lockoutUntil, isNull);
+  });
 }
 
 class _FakeAuthenticator implements LocalUnlockAuthenticator {

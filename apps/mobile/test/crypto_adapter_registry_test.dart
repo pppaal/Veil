@@ -14,15 +14,23 @@ void main() {
     expect(adapter.messaging, isA<MessageCryptoEngine>());
     expect(adapter.sessions, isA<ConversationSessionBootstrapper>());
 
+    // Bootstrap now requires a real signed prekey bundle because the adapter
+    // verifies the Ed25519 signature before using the embedded X25519 pub.
+    // Generating a peer identity through the same adapter is the simplest
+    // way to get a correctly-signed bundle.
+    final peer = createConfiguredCryptoAdapter();
+    final peerIdentity =
+        await peer.identity.generateDeviceIdentity('device-remote');
+
     final bootstrap = await adapter.sessions.bootstrapSession(
-      const SessionBootstrapRequest(
+      SessionBootstrapRequest(
         conversationId: 'conversation-1',
         localDeviceId: 'device-local',
         localUserId: 'user-local',
         remoteUserId: 'user-remote',
         remoteDeviceId: 'device-remote',
-        remoteIdentityPublicKey: 'remote-identity-key',
-        remoteSignedPrekeyBundle: 'remote-spk',
+        remoteIdentityPublicKey: peerIdentity.identityPublicKey,
+        remoteSignedPrekeyBundle: peerIdentity.signedPrekeyBundle,
       ),
     );
 

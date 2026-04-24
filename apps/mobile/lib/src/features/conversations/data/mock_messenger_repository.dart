@@ -74,14 +74,15 @@ class MockMessengerRepository {
     required String filename,
   }) async {
     final conversation = _conversations.firstWhere((item) => item.id == conversationId);
-    final attachment = await _cryptoEngine.encryptAttachment(
+    final attachmentBytes = List<int>.generate(2048, (i) => (i * 7) & 0xff);
+    final cipher = await _cryptoEngine.encryptAttachment(
       attachmentId: 'attachment-${_random.nextInt(1 << 31)}',
       storageKey: 'attachments/mock/$filename',
       contentType: 'application/octet-stream',
-      sizeBytes: 2048,
-      sha256: 'mock-sha256-$filename',
+      plaintext: attachmentBytes,
       recipientBundle: conversation.recipientBundle,
     );
+    final attachment = cipher.reference;
     final envelope = await _cryptoEngine.encryptMessage(
       conversationId: conversationId,
       senderDeviceId: currentDeviceId,

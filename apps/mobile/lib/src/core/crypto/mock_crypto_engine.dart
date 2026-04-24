@@ -1,5 +1,8 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart' as crypto_hash;
 
 import '../security/device_auth_signer.dart';
 import 'crypto_engine.dart';
@@ -240,25 +243,54 @@ class _MockMessageCryptoEngine implements MessageCryptoEngine {
     );
   }
 
+  static final Map<String, List<int>> _attachmentPlaintextRegistry = {};
+
   @override
-  Future<AttachmentReference> encryptAttachment({
+  Future<AttachmentCipher> encryptAttachment({
     required String attachmentId,
     required String storageKey,
     required String contentType,
-    required int sizeBytes,
-    required String sha256,
+    required List<int> plaintext,
     required KeyBundle recipientBundle,
   }) async {
-    return AttachmentReference(
-      attachmentId: attachmentId,
-      storageKey: storageKey,
-      contentType: contentType,
-      sizeBytes: sizeBytes,
-      sha256: sha256,
-      encryptedKey: _opaqueToken(_random, 32),
-      nonce: 'mock-attachment-${_random.nextInt(1 << 32)}',
-      algorithmHint: _codec.defaultAttachmentWrapAlgorithmHint,
+    // Mock adapter stores plaintext keyed by attachmentId so decryptAttachment
+    // can return the same bytes. The "ciphertext" is just an opaque blob that
+    // stands in for the real encrypted payload.
+    final ciphertext = Uint8List.fromList(
+      List<int>.generate(plaintext.length + 16, (_) => _random.nextInt(256)),
     );
+    _attachmentPlaintextRegistry[attachmentId] = List<int>.unmodifiable(plaintext);
+    final digest = crypto_hash.sha256.convert(ciphertext).toString();
+
+    return AttachmentCipher(
+      reference: AttachmentReference(
+        attachmentId: attachmentId,
+        storageKey: storageKey,
+        contentType: contentType,
+        sizeBytes: ciphertext.length,
+        sha256: digest,
+        encryptedKey: _opaqueToken(_random, 32),
+        nonce: 'mock-attachment-${_random.nextInt(1 << 32)}',
+        algorithmHint: _codec.defaultAttachmentWrapAlgorithmHint,
+      ),
+      ciphertext: ciphertext,
+    );
+  }
+
+  @override
+  Future<List<int>> decryptAttachment({
+    required AttachmentReference reference,
+    required List<int> ciphertext,
+    required String localIdentityPrivateRef,
+  }) async {
+    final cached = _attachmentPlaintextRegistry[reference.attachmentId];
+    if (cached != null) {
+      return List<int>.from(cached);
+    }
+    // Fallback for inbound references that weren't produced by this process
+    // (e.g. tests that construct a reference by hand). The mock has no real
+    // crypto, so just return an empty payload rather than throwing.
+    return const <int>[];
   }
 }
 

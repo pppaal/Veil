@@ -9,6 +9,7 @@ import '../core/config/veil_config.dart';
 import '../core/crypto/crypto_adapter_registry.dart';
 import '../core/crypto/crypto_engine.dart';
 import '../core/crypto/lib_crypto_adapter.dart';
+import '../core/network/pinned_http_client.dart';
 import '../core/network/veil_api_client.dart';
 import '../core/notifications/local_notification_service.dart';
 import '../core/notifications/push_token_coordinator.dart';
@@ -74,7 +75,9 @@ final conversationCacheProvider =
 });
 
 final apiClientProvider = Provider<VeilApiClient>((ref) {
-  return VeilApiClient(baseUrl: VeilConfig.apiBaseUrl);
+  final pins = parsePinList(VeilConfig.tlsPins);
+  final httpClient = buildPinnedHttpClient(allowedFingerprints: pins);
+  return VeilApiClient(baseUrl: VeilConfig.apiBaseUrl, client: httpClient);
 });
 
 final attachmentTempFileStoreProvider =

@@ -233,6 +233,24 @@ abstract class CryptoEnvelopeCodec {
   Map<String, dynamic>? encodeAttachmentReference(AttachmentReference? attachment);
 }
 
+// Output of a completed attachment encryption. The `reference` is what goes
+// inside the `CryptoEnvelope` and travels to the peer; `ciphertext` is the
+// opaque blob the caller uploads to attachment storage. Together they give
+// the receiving device everything it needs to decrypt:
+// - the reference's wrapped content-key lets the receiver unwrap the
+//   symmetric blob key via ECDH to its identity x25519 private,
+// - the ciphertext is fed back into `decryptAttachment` with that wrapped
+//   key to produce plaintext bytes.
+class AttachmentCipher {
+  const AttachmentCipher({
+    required this.reference,
+    required this.ciphertext,
+  });
+
+  final AttachmentReference reference;
+  final List<int> ciphertext;
+}
+
 abstract class MessageCryptoEngine {
   Future<CryptoEnvelope> encryptMessage({
     required String conversationId,
@@ -247,13 +265,30 @@ abstract class MessageCryptoEngine {
 
   Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope);
 
-  Future<AttachmentReference> encryptAttachment({
+  // Encrypts an attachment blob end-to-end: generates a one-shot content key,
+  // encrypts `plaintext` with AES-256-GCM, wraps the content key for the
+  // recipient via ephemeral X25519 ECDH + HKDF, and returns both the wrapped
+  // reference (for the message envelope) and the ciphertext blob (for
+  // attachment storage). `sizeBytes` and `sha256` on the returned reference
+  // describe the ciphertext, not the plaintext — they're what the server sees.
+  Future<AttachmentCipher> encryptAttachment({
     required String attachmentId,
     required String storageKey,
     required String contentType,
-    required int sizeBytes,
-    required String sha256,
+    required List<int> plaintext,
     required KeyBundle recipientBundle,
+  });
+
+  // Reverses `encryptAttachment`: unwraps the content key using the local
+  // identity's x25519 private (stored under `localIdentityPrivateRef`),
+  // then decrypts `ciphertext` with AES-256-GCM and returns plaintext bytes.
+  // Implementations SHOULD verify `reference.sha256` against the ciphertext
+  // before attempting decryption so storage-layer tampering aborts early
+  // with a precise error rather than a generic MAC failure.
+  Future<List<int>> decryptAttachment({
+    required AttachmentReference reference,
+    required List<int> ciphertext,
+    required String localIdentityPrivateRef,
   });
 }
 

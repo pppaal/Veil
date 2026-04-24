@@ -10,6 +10,8 @@ import type {
 } from '@veil/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 
+import { Prisma } from '@prisma/client';
+
 import { AppConfigService } from '../../common/config/app-config.service';
 import {
   forbidden,
@@ -237,6 +239,10 @@ export class DeviceTransferService {
       throw unauthorized('transfer_token_invalid', 'Transfer token invalid');
     }
 
+    // Preliminary check on the cached read — the authoritative check happens
+    // inside the serializable transaction below. We keep this one as an early
+    // 403 so most failures still short-circuit before we spend ECDSA verify
+    // and a tx round-trip.
     if (!session.oldDevice.isActive || session.oldDevice.revokedAt) {
       throw forbidden(
         'transfer_session_inactive',
@@ -271,33 +277,69 @@ export class DeviceTransferService {
     }
 
     const completedAt = new Date();
-    const result = await this.prisma.$transaction(async (tx) => {
-      const newDevice = await tx.device.create({
-        data: {
-          userId: session.userId,
-          deviceName: pendingClaim.newDeviceName,
-          platform: pendingClaim.platform,
-          publicIdentityKey: pendingClaim.publicIdentityKey,
-          signedPrekeyBundle: pendingClaim.signedPrekeyBundle,
-          authPublicKey: pendingClaim.authPublicKey,
-          isActive: true,
-          trustedAt: completedAt,
-          joinedFromDeviceId: session.oldDeviceId,
-        },
-      });
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        // Re-read the old device inside the serializable tx. The cached read
+        // from earlier could be stale: between that read and now, a concurrent
+        // revoke could have fired. Without this re-check an attacker with
+        // stolen transfer credentials could race-win against a revocation
+        // that should have blocked them. Serializable isolation plus an
+        // in-tx re-read closes that window.
+        const freshOldDevice = await tx.device.findUnique({
+          where: { id: session.oldDeviceId },
+          select: { isActive: true, revokedAt: true },
+        });
+        if (!freshOldDevice || !freshOldDevice.isActive || freshOldDevice.revokedAt) {
+          throw forbidden(
+            'transfer_session_inactive',
+            'Old trusted device is unavailable; transfer cannot proceed',
+          );
+        }
 
-      await tx.user.update({
-        where: { id: session.userId },
-        data: { activeDeviceId: newDevice.id },
-      });
+        // Also re-verify the transfer session has not been completed by a
+        // concurrent call — without this, two simultaneous completes could
+        // both succeed and create two "new" devices.
+        const freshSession = await tx.deviceTransferSession.findUnique({
+          where: { id: session.id },
+          select: { completedAt: true },
+        });
+        if (freshSession?.completedAt) {
+          throw forbidden(
+            'transfer_session_inactive',
+            'Transfer session already completed',
+          );
+        }
 
-      await tx.deviceTransferSession.update({
-        where: { id: session.id },
-        data: { completedAt },
-      });
+        const newDevice = await tx.device.create({
+          data: {
+            userId: session.userId,
+            deviceName: pendingClaim.newDeviceName,
+            platform: pendingClaim.platform,
+            publicIdentityKey: pendingClaim.publicIdentityKey,
+            signedPrekeyBundle: pendingClaim.signedPrekeyBundle,
+            authPublicKey: pendingClaim.authPublicKey,
+            isActive: true,
+            trustedAt: completedAt,
+            joinedFromDeviceId: session.oldDeviceId,
+          },
+        });
 
-      return newDevice;
-    });
+        await tx.user.update({
+          where: { id: session.userId },
+          data: { activeDeviceId: newDevice.id },
+        });
+
+        await tx.deviceTransferSession.update({
+          where: { id: session.id },
+          data: { completedAt },
+        });
+
+        return newDevice;
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      },
+    );
 
     await this.ephemeralStore.delete(claimKey(dto.sessionId));
 

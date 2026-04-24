@@ -563,6 +563,7 @@ class _SessionState {
 class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
   static final X25519 _x25519 = X25519();
   static final Sha256 _sha256 = Sha256();
+  static final Ed25519 _ed25519 = Ed25519();
 
   final Map<String, _SessionState> _sessions = {};
   SessionPersister? _persister;
@@ -685,6 +686,7 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
   ) async {
     final remoteX25519Public = await _resolveRemoteX25519Key(
       request.remoteSignedPrekeyBundle,
+      request.remoteIdentityPublicKey,
     );
 
     final ephemeralKeyPair = await _x25519.newKeyPair();
@@ -934,25 +936,72 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
     session.lastRatchetRotationAt = DateTime.now().toUtc();
   }
 
+  // Resolves and AUTHENTICATES the remote peer's X25519 public key.
+  //
+  // The bundle is a JSON blob signed at identity-generation time
+  // (see `_LibDeviceIdentityProvider.generateDeviceIdentity`):
+  //   { "v": 1, "x25519": <base64 pub>, "sig": <Ed25519(identityKey, x25519)> }
+  //
+  // The Ed25519 signature MUST be verified against the peer's identity public
+  // key before the x25519 bytes are used for session bootstrap / attachment
+  // wrap. Without verification, a hostile server can swap in an attacker-
+  // controlled x25519 pub and wedge itself into every new session (active
+  // MITM), completely defeating the Double Ratchet.
+  //
+  // No silent fallback: if the bundle is malformed, lacks a signature, or the
+  // signature does not verify against the given identity key, this throws.
+  // A missing signature is treated as an active attack, not a compatibility
+  // case — legacy unsigned bundles must not silently downgrade security.
   static Future<SimplePublicKey> _resolveRemoteX25519Key(
     String signedPrekeyBundle,
+    String remoteIdentityPublicKey,
   ) async {
+    final Map<String, dynamic> map;
     try {
       final decoded = utf8.decode(_b64Decode(signedPrekeyBundle));
-      final map = json.decode(decoded) as Map<String, dynamic>;
-      final x25519B64 = map['x25519'] as String?;
-      if (x25519B64 != null) {
-        final bytes = _b64Decode(x25519B64);
-        if (bytes.length == 32) {
-          return SimplePublicKey(bytes, type: KeyPairType.x25519);
-        }
-      }
-    } catch (_) {
-      // Not a valid prekey bundle — fall through to ephemeral
+      map = json.decode(decoded) as Map<String, dynamic>;
+    } catch (e) {
+      throw StateError('Signed prekey bundle is malformed: $e');
     }
-    // Fallback: generate a temporary peer key for development/test bundles
-    final tempPeer = await _x25519.newKeyPair();
-    return tempPeer.extractPublicKey();
+
+    final x25519B64 = map['x25519'] as String?;
+    final sigB64 = map['sig'] as String?;
+    if (x25519B64 == null || sigB64 == null) {
+      throw StateError(
+        'Signed prekey bundle missing x25519 or sig field — refusing to '
+        'accept unsigned peer key.',
+      );
+    }
+
+    final xBytes = _b64Decode(x25519B64);
+    if (xBytes.length != 32) {
+      throw StateError(
+        'Signed prekey x25519 field has wrong length '
+        '(expected 32, got ${xBytes.length}).',
+      );
+    }
+
+    final idBytes = _b64Decode(remoteIdentityPublicKey);
+    if (idBytes.length != 32) {
+      throw StateError(
+        'Remote identity public key has wrong length '
+        '(expected 32, got ${idBytes.length}).',
+      );
+    }
+
+    final sigBytes = _b64Decode(sigB64);
+    final identityPub = SimplePublicKey(idBytes, type: KeyPairType.ed25519);
+    final signature = Signature(sigBytes, publicKey: identityPub);
+
+    final ok = await _ed25519.verify(xBytes, signature: signature);
+    if (!ok) {
+      throw StateError(
+        'Signed prekey signature did not verify against remote identity key '
+        '— aborting session bootstrap (possible MITM).',
+      );
+    }
+
+    return SimplePublicKey(xBytes, type: KeyPairType.x25519);
   }
 
   static List<int> _safeB64Decode(String value) {
@@ -977,6 +1026,7 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
   static final AesGcm _aesGcm = AesGcm.with256bits();
   static final Hkdf _hkdf = Hkdf(hmac: Hmac.sha256(), outputLength: 32);
   static final X25519 _x25519 = X25519();
+  static final Sha256 _sha256 = Sha256();
   static final Random _random = Random.secure();
 
   @override
@@ -1169,23 +1219,33 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
   }
 
   @override
-  Future<AttachmentReference> encryptAttachment({
+  Future<AttachmentCipher> encryptAttachment({
     required String attachmentId,
     required String storageKey,
     required String contentType,
-    required int sizeBytes,
-    required String sha256,
+    required List<int> plaintext,
     required KeyBundle recipientBundle,
   }) async {
-    // Generate a random content encryption key
+    // Per-attachment content key and two independent nonces:
+    // - `contentNonce` is the GCM nonce for the blob itself,
+    // - `wrapNonce` is the GCM nonce for wrapping the content key.
+    // Keeping them separate means a future refactor that reuses one value
+    // can't drag the other into a (key, nonce) collision.
     final contentKey =
         List<int>.generate(32, (_) => _random.nextInt(256));
-    final nonce = List<int>.generate(12, (_) => _random.nextInt(256));
+    final contentNonce =
+        List<int>.generate(12, (_) => _random.nextInt(256));
+    final wrapNonce =
+        List<int>.generate(12, (_) => _random.nextInt(256));
 
-    // Encrypt the content key using recipient's X25519 public key
+    // Signature verification inside _resolveRemoteX25519Key guarantees the
+    // x25519 bytes are authenticated by the recipient's identity key — an
+    // attacker-swapped bundle aborts here rather than wrapping the content
+    // key to a MITM-controlled public key.
     final remoteX25519Public =
         await _LibSessionBootstrapper._resolveRemoteX25519Key(
       recipientBundle.signedPrekeyBundle,
+      recipientBundle.identityPublicKey,
     );
 
     final ephKeyPair = await _x25519.newKeyPair();
@@ -1195,37 +1255,172 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       remotePublicKey: remoteX25519Public,
     );
 
+    // HKDF salt is the ephemeral pub (unique per attachment, public,
+    // non-secret). That salt gives every attachment an independent wrapKey
+    // even without the GCM nonce contributing.
     final wrapKey = await _hkdf.deriveKey(
       secretKey: wrapSecret,
-      nonce: nonce,
+      nonce: ephPublic.bytes,
       info: utf8.encode('veil-attachment-wrap-v1'),
     );
 
-    final secretBox = await _aesGcm.encrypt(
+    final wrapBox = await _aesGcm.encrypt(
       contentKey,
       secretKey: wrapKey,
-      nonce: nonce,
+      nonce: wrapNonce,
     );
 
-    // Prepend ephemeral public key to the encrypted content key
-    final wrappedKey = Uint8List(32 + secretBox.cipherText.length + 16);
+    // wire format of encryptedKey:
+    //   ephPub (32) || wrapCiphertext (32) || wrapMac (16)
+    final wrappedKey = Uint8List(32 + wrapBox.cipherText.length + 16);
     wrappedKey.setRange(0, 32, ephPublic.bytes);
     wrappedKey.setRange(
-        32, 32 + secretBox.cipherText.length, secretBox.cipherText);
+        32, 32 + wrapBox.cipherText.length, wrapBox.cipherText);
     wrappedKey.setRange(
-        32 + secretBox.cipherText.length, wrappedKey.length,
-        secretBox.mac.bytes);
+        32 + wrapBox.cipherText.length, wrappedKey.length,
+        wrapBox.mac.bytes);
 
-    return AttachmentReference(
-      attachmentId: attachmentId,
-      storageKey: storageKey,
-      contentType: contentType,
-      sizeBytes: sizeBytes,
-      sha256: sha256,
-      encryptedKey: _b64Encode(wrappedKey),
-      nonce: _b64Encode(nonce),
-      algorithmHint: _attachmentAlgoHint,
+    // Encrypt the actual blob with the content key. The on-wire blob is
+    // `contentCiphertext || contentMac` — the content nonce rides separately
+    // in the AttachmentReference (see below), and the GCM tag is appended so
+    // a single upload round-trip carries MAC with ciphertext.
+    final blobBox = await _aesGcm.encrypt(
+      plaintext,
+      secretKey: SecretKey(contentKey),
+      nonce: contentNonce,
     );
+    final blobCiphertext =
+        Uint8List(blobBox.cipherText.length + blobBox.mac.bytes.length);
+    blobCiphertext.setRange(0, blobBox.cipherText.length, blobBox.cipherText);
+    blobCiphertext.setRange(
+      blobBox.cipherText.length,
+      blobCiphertext.length,
+      blobBox.mac.bytes,
+    );
+
+    // Server sees only ciphertext — the reference's size/hash describe the
+    // ciphertext blob so the server can validate upload integrity without
+    // ever learning the plaintext size delta (GCM adds a fixed 16-byte tag,
+    // but nothing else about the plaintext leaks via those fields).
+    final cipherHash = await _sha256.hash(blobCiphertext);
+
+    return AttachmentCipher(
+      reference: AttachmentReference(
+        attachmentId: attachmentId,
+        storageKey: storageKey,
+        contentType: contentType,
+        sizeBytes: blobCiphertext.length,
+        sha256: _b64Encode(cipherHash.bytes),
+        encryptedKey: _b64Encode(wrappedKey),
+        // `nonce` on the reference is the CONTENT nonce (used to decrypt the
+        // blob). The wrap-nonce is bundled with the wrapped key.
+        nonce: '${_b64Encode(contentNonce)}.${_b64Encode(wrapNonce)}',
+        algorithmHint: _attachmentAlgoHint,
+      ),
+      ciphertext: blobCiphertext,
+    );
+  }
+
+  @override
+  Future<List<int>> decryptAttachment({
+    required AttachmentReference reference,
+    required List<int> ciphertext,
+    required String localIdentityPrivateRef,
+  }) async {
+    // Pre-decrypt integrity check. A SHA-256 mismatch means the blob arrived
+    // corrupted or tampered with between upload and download — fail with a
+    // precise error before GCM's MAC fails for the same reason with a less
+    // diagnostic one.
+    final computedHash = await _sha256.hash(ciphertext);
+    if (_b64Encode(computedHash.bytes) != reference.sha256) {
+      throw StateError(
+        'Attachment ciphertext hash does not match reference.sha256 — '
+        'blob has been modified in transit or storage.',
+      );
+    }
+
+    // Split combined nonce field. New-format references carry two nonces
+    // joined by '.'; legacy references (from the pre-fix encrypt path) only
+    // carried one — for those we treat the single nonce as the wrap-nonce
+    // and reject, since the content nonce is unrecoverable and the legacy
+    // format never actually encrypted a blob end-to-end.
+    final nonceParts = reference.nonce.split('.');
+    if (nonceParts.length != 2) {
+      throw StateError(
+        'Attachment reference uses a legacy nonce format without a separate '
+        'content nonce — cannot decrypt.',
+      );
+    }
+    final contentNonce = _b64Decode(nonceParts[0]);
+    final wrapNonce = _b64Decode(nonceParts[1]);
+    if (contentNonce.length != 12 || wrapNonce.length != 12) {
+      throw StateError('Attachment nonces must be exactly 12 bytes each.');
+    }
+
+    final wrapped = _b64Decode(reference.encryptedKey);
+    if (wrapped.length < 32 + 16) {
+      throw StateError(
+        'Wrapped attachment key is too short (expected ephPub + wrapped + mac).',
+      );
+    }
+    final ephPubBytes = wrapped.sublist(0, 32);
+    final wrapCipher = wrapped.sublist(32, wrapped.length - 16);
+    final wrapMac = wrapped.sublist(wrapped.length - 16);
+
+    final localPriv =
+        _LibSessionBootstrapper._parseLocalX25519Private(localIdentityPrivateRef);
+    if (localPriv == null) {
+      throw StateError(
+        'Local identity bundle missing x25519 private key — cannot unwrap '
+        'attachment content key.',
+      );
+    }
+    final localKeyPair = await _x25519.newKeyPairFromSeed(localPriv);
+
+    final wrapSecret = await _x25519.sharedSecretKey(
+      keyPair: localKeyPair,
+      remotePublicKey:
+          SimplePublicKey(ephPubBytes, type: KeyPairType.x25519),
+    );
+    final wrapKey = await _hkdf.deriveKey(
+      secretKey: wrapSecret,
+      nonce: ephPubBytes,
+      info: utf8.encode('veil-attachment-wrap-v1'),
+    );
+
+    final List<int> contentKeyBytes;
+    try {
+      contentKeyBytes = await _aesGcm.decrypt(
+        SecretBox(wrapCipher, nonce: wrapNonce, mac: Mac(wrapMac)),
+        secretKey: wrapKey,
+      );
+    } on SecretBoxAuthenticationError catch (_) {
+      throw StateError(
+        'Wrapped attachment key failed authentication — the reference was '
+        'not wrapped for this identity (or has been tampered with).',
+      );
+    }
+
+    // Split blob ciphertext into body + GCM tag.
+    if (ciphertext.length < 16) {
+      throw StateError(
+        'Attachment ciphertext shorter than the AES-GCM tag (16 bytes).',
+      );
+    }
+    final blobBody = ciphertext.sublist(0, ciphertext.length - 16);
+    final blobMac = ciphertext.sublist(ciphertext.length - 16);
+
+    try {
+      return await _aesGcm.decrypt(
+        SecretBox(blobBody, nonce: contentNonce, mac: Mac(blobMac)),
+        secretKey: SecretKey(contentKeyBytes),
+      );
+    } on SecretBoxAuthenticationError catch (_) {
+      throw StateError(
+        'Attachment ciphertext failed AES-GCM authentication — blob was '
+        'modified or encrypted with a different content key.',
+      );
+    }
   }
 
   // Derives a one-shot AES-GCM key from the chain key at a specific counter.

@@ -65,6 +65,10 @@ class SecureStorageService {
   static const _pinKey = 'veil.app_lock.pin_verifier';
   static const _pinFailuresKey = 'veil.app_lock.pin_failures';
   static const _pinLockoutUntilKey = 'veil.app_lock.pin_lockout_until';
+  // Persistent tier that survives a single lockout window. Each time the
+  // user burns through `maxFailedPinAttempts`, tier is incremented and the
+  // next lockout length grows exponentially. A successful unlock resets it.
+  static const _pinLockoutTierKey = 'veil.app_lock.pin_lockout_tier';
   static const _cacheKey = 'veil.cache.encryption_key';
   static const _accessTokenKey = 'veil.session.access_token';
   static const _refreshTokenKey = 'veil.session.refresh_token';
@@ -446,13 +450,16 @@ class SecureStorageService {
   Future<PinThrottleState> readPinThrottleState() async {
     final failuresRaw = await _storage.read(key: _pinFailuresKey);
     final lockoutUntilRaw = await _storage.read(key: _pinLockoutUntilKey);
+    final tierRaw = await _storage.read(key: _pinLockoutTierKey);
     final failures = int.tryParse(failuresRaw ?? '') ?? 0;
+    final tier = int.tryParse(tierRaw ?? '') ?? 0;
     final lockoutUntil = lockoutUntilRaw == null || lockoutUntilRaw.isEmpty
         ? null
         : DateTime.tryParse(lockoutUntilRaw)?.toUtc();
     return PinThrottleState(
       failedAttempts: failures < 0 ? 0 : failures,
       lockoutUntil: lockoutUntil,
+      lockoutTier: tier < 0 ? 0 : tier,
     );
   }
 
@@ -465,11 +472,16 @@ class SecureStorageService {
       key: _pinLockoutUntilKey,
       value: state.lockoutUntil?.toUtc().toIso8601String(),
     );
+    await _storage.write(
+      key: _pinLockoutTierKey,
+      value: '${state.lockoutTier < 0 ? 0 : state.lockoutTier}',
+    );
   }
 
   Future<void> clearPinThrottleState() async {
     await _storage.delete(key: _pinFailuresKey);
     await _storage.delete(key: _pinLockoutUntilKey);
+    await _storage.delete(key: _pinLockoutTierKey);
   }
 
   Future<void> wipeLocalDeviceState({
@@ -627,10 +639,15 @@ class PinThrottleState {
   const PinThrottleState({
     this.failedAttempts = 0,
     this.lockoutUntil,
+    this.lockoutTier = 0,
   });
 
   final int failedAttempts;
   final DateTime? lockoutUntil;
+  // Number of lockout rounds served so far in this failure streak. Used by
+  // AppLockService to grow the next lockout exponentially. Cleared on a
+  // successful PIN entry.
+  final int lockoutTier;
 
   bool get isLockedOut =>
       lockoutUntil != null && lockoutUntil!.isAfter(DateTime.now().toUtc());

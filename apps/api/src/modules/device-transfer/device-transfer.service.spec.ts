@@ -386,4 +386,113 @@ describe('DeviceTransferService', () => {
       }),
     ).rejects.toThrow('Transfer session already completed');
   });
+
+  it('rejects completion when the old device is revoked concurrently (TOCTOU)', async () => {
+    // Simulates the race window between the preliminary isActive check
+    // (on the cached `session.oldDevice` read) and the authoritative check
+    // inside the serializable transaction. An attacker holding a valid
+    // transfer token must NOT be able to complete if a revocation lands in
+    // that window — the in-tx re-read is what closes this hole.
+    const prisma = new FakePrismaService();
+    const store = new FakeEphemeralStoreService();
+    const config = new FakeConfigService();
+    const verifier = new Ed25519DeviceAuthVerifier();
+    const keyHelper = new DeviceAuthTestHelper();
+    const keyPair = keyHelper.createKeyPair();
+    const service = new DeviceTransferService(
+      prisma as never,
+      store as never,
+      config as never,
+      verifier,
+      new FakeRealtimeGateway() as never,
+    );
+
+    prisma.users.push({
+      id: 'user-1',
+      handle: 'icarus',
+      displayName: null,
+      avatarPath: null,
+      status: 'active',
+      activeDeviceId: 'device-old',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    prisma.devices.push({
+      id: 'device-old',
+      userId: 'user-1',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: null,
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+
+    const init = await service.init(
+      { userId: 'user-1', deviceId: 'device-old' },
+      { oldDeviceId: 'device-old' },
+    );
+
+    prisma.transferSessions[0]!.tokenHash = createHash('sha256')
+      .update(init.transferToken)
+      .digest('hex');
+
+    const claim = await service.claim({
+      sessionId: init.sessionId,
+      transferToken: init.transferToken,
+      newDeviceName: 'VEIL Desktop',
+      platform: 'windows',
+      publicIdentityKey: 'pub-new',
+      signedPrekeyBundle: 'prekey-new',
+      authPublicKey: keyPair.authPublicKey,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-claim:${init.sessionId}:${init.transferToken}`,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+
+    await service.approve(
+      { userId: 'user-1', deviceId: 'device-old' },
+      { sessionId: init.sessionId, claimId: claim.claimId },
+    );
+
+    // Wedge a revocation in right before the serializable transaction runs.
+    // The preliminary check (on the cached include read) will have already
+    // observed isActive=true; the in-tx re-read is now the only thing
+    // standing between the attacker and a successful device swap.
+    const originalTransaction = prisma.$transaction.bind(prisma);
+    (prisma as any).$transaction = async (cb: any, options?: unknown) => {
+      const oldDevice = prisma.devices.find((d) => d.id === 'device-old');
+      if (oldDevice) {
+        oldDevice.isActive = false;
+        oldDevice.revokedAt = new Date();
+      }
+      return originalTransaction(cb, options);
+    };
+
+    const proof = keyHelper.createProof({
+      challenge: `transfer-complete:${init.sessionId}:${claim.claimId}:${init.transferToken}`,
+      authPrivateKey: keyPair.authPrivateKey,
+    });
+
+    await expect(
+      service.complete({
+        sessionId: init.sessionId,
+        transferToken: init.transferToken,
+        claimId: claim.claimId,
+        authProof: proof,
+      }),
+    ).rejects.toThrow('Old trusted device is unavailable');
+
+    // And confirm the new device was NOT created, i.e. no partial state.
+    expect(prisma.devices.find((d) => d.id !== 'device-old')).toBeUndefined();
+    expect(prisma.users[0]!.activeDeviceId).toBe('device-old');
+  });
 });

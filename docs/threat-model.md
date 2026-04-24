@@ -16,9 +16,15 @@
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
 - single active device model simplifies trust and revocation in v1
-- rate limiting on auth, user lookup, and key bundle endpoints
+- rate limiting on auth, user lookup, key bundle, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening)
 - Helmet security headers (CSP, HSTS, COEP) in production
 - Swagger disabled by default in production
+- bidirectional user blocks enforced at conversation creation and message send (direct), with opaque "NotFound" framing that hides block state from the blocked user
+- per-conversation mutes suppress push wakes only — realtime + persistence stay consistent across devices
+- abuse reports throttled to 6/min/user so the moderation queue can't be weaponized as DoS
+- disappearing messages: per-conversation TTL + periodic global cron that hard-deletes expired rows even in idle conversations
+- view-once messages: server hard-deletes the row on first non-sender read and broadcasts `message.consumed` for cache invalidation
+- backup envelope uses PBKDF2-SHA256 600k + AES-256-GCM with per-seal salt + nonce; empty passphrase rejected; wrong passphrase fails authentication rather than returning garbage
 
 ## Deliberate exclusions
 

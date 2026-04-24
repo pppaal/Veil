@@ -1,0 +1,31 @@
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./coturn.conf:/etc/coturn/turnserver.conf:ro
+    environment:
+      # Required. 32+ byte hex shared secret used for use-auth-secret.
+      # See ../docs/ops/call-infra-plan.md for credential flow.
+      - TURN_SHARED_SECRET=${TURN_SHARED_SECRET:?TURN_SHARED_SECRET required}
+      - TURN_REALM=${TURN_REALM:-veil.app}
+    command: >
+      -n
+      --use-auth-secret
+      --static-auth-secret=$TURN_SHARED_SECRET
+      --realm=$TURN_REALM
+      --no-loopback-peers
+      --no-multicast-peers
+      --no-stdout-log
+      --log-file=stdout
+      --simple-log
+      --prometheus
+      --cli-password=${TURN_CLI_PASSWORD:-disabled}
+      --lt-cred-mech
+      --fingerprint
+      --no-cli
+      --listening-port=3478
+      --tls-listening-port=5349
+      --min-port=49152
+      --max-port=65535

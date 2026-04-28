@@ -112,6 +112,177 @@ async function api(path, { method = 'GET', body, token } = {}) {
   return text ? JSON.parse(text) : {};
 }
 
+// ---------- websocket ----------
+function setConnPill(kind, text) {
+  const pill = $('conn-pill');
+  pill.className = 'topbar-pill ' + kind;
+  pill.textContent = text;
+}
+
+function connectSocket() {
+  if (!state.me) return;
+  if (typeof window.io !== 'function') {
+    setConnPill('offline', '폴링 모드');
+    return;
+  }
+  if (state.socket) {
+    try { state.socket.removeAllListeners(); state.socket.disconnect(); } catch {}
+  }
+  setConnPill('connecting', '연결 중…');
+  const s = window.io({
+    path: '/v1/realtime',
+    auth: { token: state.me.accessToken },
+    transports: ['websocket', 'polling'],
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 30000,
+    randomizationFactor: 0.4,
+  });
+  state.socket = s;
+
+  s.on('connect', () => {
+    setConnPill('connected', '실시간');
+    // Slow polling to a heartbeat once we have the WS push channel.
+    if (state.pollTimer) clearInterval(state.pollTimer);
+    state.pollTimer = setInterval(loadConversations, 30000);
+  });
+  s.on('disconnect', (reason) => {
+    setConnPill('connecting', reason === 'io server disconnect' ? '연결 끊김' : '재연결 중…');
+  });
+  s.on('connect_error', () => {
+    setConnPill('offline', '연결 실패');
+  });
+
+  s.on('message.new', (msg) => onMessageNew(msg));
+  s.on('message.delivered', ({ messageId, deliveredAt }) =>
+    patchMessage(messageId, { deliveredAt }),
+  );
+  s.on('message.read', ({ messageId, readAt }) =>
+    patchMessage(messageId, { readAt }),
+  );
+  s.on('presence.update', ({ userId, status }) => {
+    if (status === 'online') state.online.add(userId);
+    else state.online.delete(userId);
+    renderSidebar();
+    renderActivePanel();
+  });
+  s.on('typing.start', ({ conversationId, userId, handle }) => {
+    let perConv = state.typing.get(conversationId);
+    if (!perConv) {
+      perConv = new Map();
+      state.typing.set(conversationId, perConv);
+    }
+    perConv.set(userId, { handle, expiresAt: Date.now() + 6000 });
+    renderActivePanel();
+    setTimeout(() => clearStaleTyping(conversationId), 6500);
+  });
+  s.on('typing.stop', ({ conversationId, userId }) => {
+    const perConv = state.typing.get(conversationId);
+    if (perConv) {
+      perConv.delete(userId);
+      if (perConv.size === 0) state.typing.delete(conversationId);
+      renderActivePanel();
+    }
+  });
+  s.on('conversation.sync', () => loadConversations());
+}
+
+function clearStaleTyping(convId) {
+  const perConv = state.typing.get(convId);
+  if (!perConv) return;
+  const now = Date.now();
+  let changed = false;
+  for (const [uid, entry] of perConv) {
+    if (entry.expiresAt < now) {
+      perConv.delete(uid);
+      changed = true;
+    }
+  }
+  if (perConv.size === 0) state.typing.delete(convId);
+  if (changed) renderActivePanel();
+}
+
+function disconnectSocket() {
+  if (state.socket) {
+    try { state.socket.removeAllListeners(); state.socket.disconnect(); } catch {}
+  }
+  state.socket = null;
+  state.online.clear();
+  state.typing.clear();
+}
+
+function onMessageNew(msg) {
+  const convId = msg.conversationId;
+  const list = state.messagesByConv.get(convId) || [];
+  // If we already have this message id, ignore.
+  if (list.some((m) => m.id === msg.id)) return;
+  // Replace optimistic pending entry with the same clientMessageId (server echo of our own send).
+  if (msg.clientMessageId) {
+    const idx = list.findIndex((m) => m.clientMessageId === msg.clientMessageId);
+    if (idx >= 0) {
+      list[idx] = msg;
+      state.messagesByConv.set(convId, list);
+      bumpConversation(convId, msg);
+      return;
+    }
+  }
+  list.push(msg);
+  state.messagesByConv.set(convId, list);
+  bumpConversation(convId, msg);
+}
+
+function bumpConversation(convId, msg) {
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (conv) {
+    conv.lastMessage = msg;
+    state.conversations.sort((a, b) => {
+      const ax = a.lastMessage?.serverReceivedAt ?? a.createdAt;
+      const bx = b.lastMessage?.serverReceivedAt ?? b.createdAt;
+      return bx.localeCompare(ax);
+    });
+  }
+  renderSidebar();
+  if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
+}
+
+function patchMessage(messageId, patch) {
+  for (const [convId, list] of state.messagesByConv) {
+    const idx = list.findIndex((m) => m.id === messageId);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], ...patch };
+      if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
+      return;
+    }
+  }
+}
+
+const typingEmits = new Map(); // convId -> { lastStartAt: number, stopTimer: number }
+function emitTypingStart(convId) {
+  if (!state.socket?.connected) return;
+  const entry = typingEmits.get(convId) ?? { lastStartAt: 0, stopTimer: null };
+  const now = Date.now();
+  if (now - entry.lastStartAt > 3000) {
+    state.socket.emit('typing.start', { conversationId: convId });
+    entry.lastStartAt = now;
+  }
+  if (entry.stopTimer) clearTimeout(entry.stopTimer);
+  entry.stopTimer = setTimeout(() => emitTypingStop(convId), 4000);
+  typingEmits.set(convId, entry);
+}
+function emitTypingStop(convId) {
+  const entry = typingEmits.get(convId);
+  // No-op if we never emitted a typing.start for this conversation. This avoids
+  // a spurious stop when the textarea blurs from a re-render, which would
+  // otherwise prime the server's per-socket throttle and swallow the next
+  // legitimate typing.start.
+  if (!entry) return;
+  if (entry.stopTimer) clearTimeout(entry.stopTimer);
+  typingEmits.delete(convId);
+  if (state.socket?.connected) {
+    state.socket.emit('typing.stop', { conversationId: convId });
+  }
+}
+
 // ---------- session ----------
 const session = {
   load() { try { return JSON.parse(localStorage.getItem(STORE) ?? 'null'); } catch { return null; } },
@@ -129,7 +300,12 @@ const state = {
   secondaryConv: null,         // split-mode right panel convId | null
   splitView: false,            // is split layout enabled?
   pollTimer: null,
+  socket: null,                // socket.io client
+  online: new Set(),           // userId set, populated from presence.update
+  typing: new Map(),           // convId -> Map<userId, { handle, expiresAt }>
 };
+// Expose for diagnostics — handy in DevTools and Playwright probes.
+if (typeof window !== 'undefined') window.__veil = state;
 
 // ---------- render ----------
 function showAuth() {
@@ -187,6 +363,10 @@ function renderSidebar() {
       const last = c.lastMessage;
       const preview = last ? renderPreview(last.ciphertext) : '아직 메시지 없음';
       const time = last ? formatRelTime(last.serverReceivedAt) : '';
+      const peerOnline = peer && state.online.has(peer.userId);
+      const av = avatarFor(peer?.handle ?? '?', 'md');
+      av.appendChild(el('span', { class: 'presence-dot' }));
+      if (peerOnline) av.classList.add('online');
       return el(
         'button',
         {
@@ -194,7 +374,7 @@ function renderSidebar() {
           onclick: () => openConversation(c.id),
         },
         [
-          avatarFor(peer?.handle ?? '?', 'md'),
+          av,
           el('div', { class: 'conv-meta' }, [
             el('div', { class: 'conv-row1' }, [
               el('span', { class: 'conv-name' }, ['@' + (peer?.handle ?? '?')]),
@@ -417,13 +597,16 @@ function renderOnePanel(convId) {
     { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea, convId) },
     [el('span', { 'aria-hidden': 'true' }, ['↑'])],
   );
-  // Auto-grow.
+  // Auto-grow + emit typing while user is composing.
   const autoGrow = () => {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
     sendBtn.disabled = textarea.value.trim().length === 0;
+    if (textarea.value.trim().length > 0) emitTypingStart(convId);
+    else emitTypingStop(convId);
   };
   textarea.addEventListener('input', autoGrow);
+  textarea.addEventListener('blur', () => emitTypingStop(convId));
   // IME-safe Enter to send.
   let composing = false;
   textarea.addEventListener('compositionstart', () => { composing = true; });
@@ -436,12 +619,28 @@ function renderOnePanel(convId) {
   });
   sendBtn.disabled = true;
 
+  // Header subtitle: typing > online > conversation id.
+  const peerTyping = peer && state.typing.get(convId)?.has(peer.userId);
+  const peerOnline = peer && state.online.has(peer.userId);
+  let subText = `대화 ${conv.id.slice(0, 8)}`;
+  let subClass = 'sub';
+  if (peerTyping) {
+    subText = '입력 중…';
+    subClass = 'sub typing';
+  } else if (peerOnline) {
+    subText = '온라인';
+    subClass = 'sub online';
+  }
+  const headerAvatar = avatarFor(peer?.handle ?? '?', 'md');
+  headerAvatar.appendChild(el('span', { class: 'presence-dot' }));
+  if (peerOnline) headerAvatar.classList.add('online');
+
   const panelNode = el('div', { class: 'panel', dataset: { conv: convId } }, [
     el('div', { class: 'panel-header' }, [
-      avatarFor(peer?.handle ?? '?', 'md'),
+      headerAvatar,
       el('div', { class: 'panel-title' }, [
         el('div', { class: 'name' }, ['@' + (peer?.handle ?? '?')]),
-        el('div', { class: 'sub' }, [`대화 ${conv.id.slice(0, 8)}`]),
+        el('div', { class: subClass }, [subText]),
       ]),
     ]),
     msgsNode,
@@ -693,6 +892,7 @@ async function sendMessage(textarea, convId) {
   textarea.value = '';
   textarea.style.height = 'auto';
   textarea.dispatchEvent(new Event('input'));
+  emitTypingStop(target);
   renderActivePanel();
 
   try {
@@ -740,19 +940,28 @@ function logout() {
   state.conversations = [];
   state.messagesByConv.clear();
   state.activeConv = null;
+  state.secondaryConv = null;
+  state.openTabs = [];
+  state.splitView = false;
+  scrollPosByConv.clear();
+  readMarked.clear();
+  disconnectSocket();
   if (state.pollTimer) clearInterval(state.pollTimer);
   state.pollTimer = null;
+  setConnPill('offline', '오프라인');
   showAuth();
   toast('로그아웃되었습니다');
 }
 
 function startPolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
+  // Polling acts as a safety-net that runs while the WS handshake is pending
+  // and stays at a relaxed cadence after WS connects.
   state.pollTimer = setInterval(async () => {
     if (!state.me) return;
     if (document.hidden) return;
     await loadConversations();
-    // Refresh every open tab so split view + background tabs stay live.
+    if (state.socket?.connected) return; // WS handles per-message updates
     for (const convId of state.openTabs) {
       await refreshMessages(convId);
     }
@@ -771,17 +980,11 @@ async function bootIfSession() {
     await loadConversations();
     showApp();
     startPolling();
-    setConnPill('connected', '온라인 (폴링)');
+    connectSocket();
   } catch (e) {
     toast('세션 복원 실패: ' + e.message, 'error');
     showAuth();
   }
-}
-
-function setConnPill(kind, text) {
-  const pill = $('conn-pill');
-  pill.className = 'topbar-pill ' + kind;
-  pill.textContent = text;
 }
 
 $('register-form').addEventListener('submit', async (e) => {
@@ -796,7 +999,7 @@ $('register-form').addEventListener('submit', async (e) => {
     await loadConversations();
     showApp();
     startPolling();
-    setConnPill('connected', '온라인 (폴링)');
+    connectSocket();
     toast('환영합니다 @' + handle, 'good');
   } catch (e) {
     toast(e.message, 'error');
@@ -814,7 +1017,7 @@ $('restore-btn').addEventListener('click', async () => {
     await loadConversations();
     showApp();
     startPolling();
-    setConnPill('connected', '온라인 (폴링)');
+    connectSocket();
   } catch (e) {
     toast('복원 실패: ' + e.message, 'error');
   } finally {

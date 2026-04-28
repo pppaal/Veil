@@ -164,6 +164,14 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    // Wake up the peer's conversation list so they see the new DM without
+    // waiting for a polling tick.
+    this.realtimeGateway.emitConversationMembers(
+      created.members.map((member) => ({ userId: member.userId })),
+      'conversation.sync',
+      { conversationId: created.id, reason: 'membership' },
+    );
+
     return {
       conversation: this.toConversationSummary(created, currentUserId),
     };

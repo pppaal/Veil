@@ -6,6 +6,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
   ConversationMessageSummary,
   ConversationSummary,
@@ -149,20 +150,44 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const created = await this.prisma.conversation.create({
-      data: {
-        type: 'direct',
-        members: {
-          create: [{ userId: currentUserId }, { userId: peer.id }],
+    // Deterministic dedupe key — sorted member uuids joined by '|'. Two
+    // concurrent createDirect calls between the same pair both try to
+    // write this same string; the unique index in 0009 lets the database
+    // pick a winner and we just look up the existing row on P2002.
+    const directKey = [currentUserId, peer.id].sort().join('|');
+
+    let created;
+    try {
+      created = await this.prisma.conversation.create({
+        data: {
+          type: 'direct',
+          directKey,
+          members: {
+            create: [{ userId: currentUserId }, { userId: peer.id }],
+          },
         },
-      },
-      include: {
-        members: {
-          include: { user: true },
+        include: {
+          members: {
+            include: { user: true },
+          },
+          messages: this.latestMessageInclude(),
         },
-        messages: this.latestMessageInclude(),
-      },
-    });
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const existing = await this.prisma.conversation.findUnique({
+          where: { directKey },
+          include: {
+            members: { include: { user: true } },
+            messages: this.latestMessageInclude(),
+          },
+        });
+        if (existing) {
+          return { conversation: this.toConversationSummary(existing, currentUserId) };
+        }
+      }
+      throw error;
+    }
 
     // Wake up the peer's conversation list so they see the new DM without
     // waiting for a polling tick.

@@ -1,14 +1,26 @@
 -- CreateEnum
-CREATE TYPE "MemberRole" AS ENUM ('owner', 'admin', 'member', 'subscriber');
+DO $$ BEGIN
+  CREATE TYPE "MemberRole" AS ENUM ('owner', 'admin', 'member', 'subscriber');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CallType" AS ENUM ('voice', 'video');
+DO $$ BEGIN
+  CREATE TYPE "CallType" AS ENUM ('voice', 'video');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "CallStatus" AS ENUM ('ringing', 'active', 'ended', 'missed', 'declined');
+DO $$ BEGIN
+  CREATE TYPE "CallStatus" AS ENUM ('ringing', 'active', 'ended', 'missed', 'declined');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateEnum
-CREATE TYPE "StoryContentType" AS ENUM ('text', 'image', 'video');
+DO $$ BEGIN
+  CREATE TYPE "StoryContentType" AS ENUM ('text', 'image', 'video');
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AlterEnum
 -- This migration adds more than one value to an enum.
@@ -18,8 +30,8 @@ CREATE TYPE "StoryContentType" AS ENUM ('text', 'image', 'video');
 -- the enum.
 
 
-ALTER TYPE "ConversationType" ADD VALUE 'group';
-ALTER TYPE "ConversationType" ADD VALUE 'channel';
+ALTER TYPE "ConversationType" ADD VALUE IF NOT EXISTS 'group';
+ALTER TYPE "ConversationType" ADD VALUE IF NOT EXISTS 'channel';
 
 -- AlterEnum
 -- This migration adds more than one value to an enum.
@@ -29,28 +41,28 @@ ALTER TYPE "ConversationType" ADD VALUE 'channel';
 -- the enum.
 
 
-ALTER TYPE "MessageType" ADD VALUE 'voice';
-ALTER TYPE "MessageType" ADD VALUE 'sticker';
-ALTER TYPE "MessageType" ADD VALUE 'reaction';
-ALTER TYPE "MessageType" ADD VALUE 'call';
+ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'voice';
+ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'sticker';
+ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'reaction';
+ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'call';
 
 -- DropForeignKey
-ALTER TABLE "abuse_reports" DROP CONSTRAINT "abuse_reports_reported_fkey";
+ALTER TABLE "abuse_reports" DROP CONSTRAINT IF EXISTS "abuse_reports_reported_fkey";
 
 -- DropForeignKey
-ALTER TABLE "abuse_reports" DROP CONSTRAINT "abuse_reports_reporter_fkey";
+ALTER TABLE "abuse_reports" DROP CONSTRAINT IF EXISTS "abuse_reports_reporter_fkey";
 
 -- DropForeignKey
-ALTER TABLE "conversation_mutes" DROP CONSTRAINT "conversation_mutes_conversation_fkey";
+ALTER TABLE "conversation_mutes" DROP CONSTRAINT IF EXISTS "conversation_mutes_conversation_fkey";
 
 -- DropForeignKey
-ALTER TABLE "conversation_mutes" DROP CONSTRAINT "conversation_mutes_user_fkey";
+ALTER TABLE "conversation_mutes" DROP CONSTRAINT IF EXISTS "conversation_mutes_user_fkey";
 
 -- DropForeignKey
-ALTER TABLE "user_blocks" DROP CONSTRAINT "user_blocks_blocked_fkey";
+ALTER TABLE "user_blocks" DROP CONSTRAINT IF EXISTS "user_blocks_blocked_fkey";
 
 -- DropForeignKey
-ALTER TABLE "user_blocks" DROP CONSTRAINT "user_blocks_blocker_fkey";
+ALTER TABLE "user_blocks" DROP CONSTRAINT IF EXISTS "user_blocks_blocker_fkey";
 
 -- AlterTable
 ALTER TABLE "abuse_reports" ALTER COLUMN "id" DROP DEFAULT;
@@ -60,7 +72,7 @@ ALTER TABLE "attachments" ALTER COLUMN "id" DROP DEFAULT,
 ALTER COLUMN "created_at" SET DATA TYPE TIMESTAMP(3);
 
 -- AlterTable
-ALTER TABLE "conversation_members" ADD COLUMN     "role" "MemberRole" NOT NULL DEFAULT 'member',
+ALTER TABLE "conversation_members" ADD COLUMN IF NOT EXISTS "role" "MemberRole" NOT NULL DEFAULT 'member',
 ALTER COLUMN "id" DROP DEFAULT,
 ALTER COLUMN "joined_at" SET DATA TYPE TIMESTAMP(3);
 
@@ -105,7 +117,7 @@ ALTER COLUMN "updated_at" DROP DEFAULT,
 ALTER COLUMN "updated_at" SET DATA TYPE TIMESTAMP(3);
 
 -- CreateTable
-CREATE TABLE "group_metas" (
+CREATE TABLE IF NOT EXISTS "group_metas" (
     "id" UUID NOT NULL,
     "conversation_id" UUID NOT NULL,
     "name" VARCHAR(120) NOT NULL,
@@ -122,7 +134,7 @@ CREATE TABLE "group_metas" (
 );
 
 -- CreateTable
-CREATE TABLE "channel_metas" (
+CREATE TABLE IF NOT EXISTS "channel_metas" (
     "id" UUID NOT NULL,
     "conversation_id" UUID NOT NULL,
     "name" VARCHAR(120) NOT NULL,
@@ -139,7 +151,7 @@ CREATE TABLE "channel_metas" (
 );
 
 -- CreateTable
-CREATE TABLE "user_contacts" (
+CREATE TABLE IF NOT EXISTS "user_contacts" (
     "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
     "contact_user_id" UUID NOT NULL,
@@ -150,7 +162,7 @@ CREATE TABLE "user_contacts" (
 );
 
 -- CreateTable
-CREATE TABLE "user_profiles" (
+CREATE TABLE IF NOT EXISTS "user_profiles" (
     "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
     "bio" VARCHAR(300),
@@ -165,7 +177,7 @@ CREATE TABLE "user_profiles" (
 );
 
 -- CreateTable
-CREATE TABLE "stories" (
+CREATE TABLE IF NOT EXISTS "stories" (
     "id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
     "content_type" "StoryContentType" NOT NULL,
@@ -179,7 +191,7 @@ CREATE TABLE "stories" (
 );
 
 -- CreateTable
-CREATE TABLE "story_views" (
+CREATE TABLE IF NOT EXISTS "story_views" (
     "id" UUID NOT NULL,
     "story_id" UUID NOT NULL,
     "viewer_user_id" UUID NOT NULL,
@@ -189,7 +201,7 @@ CREATE TABLE "story_views" (
 );
 
 -- CreateTable
-CREATE TABLE "reactions" (
+CREATE TABLE IF NOT EXISTS "reactions" (
     "id" UUID NOT NULL,
     "message_id" UUID NOT NULL,
     "user_id" UUID NOT NULL,
@@ -200,7 +212,7 @@ CREATE TABLE "reactions" (
 );
 
 -- CreateTable
-CREATE TABLE "call_records" (
+CREATE TABLE IF NOT EXISTS "call_records" (
     "id" UUID NOT NULL,
     "conversation_id" UUID NOT NULL,
     "initiator_device_id" UUID NOT NULL,
@@ -214,113 +226,173 @@ CREATE TABLE "call_records" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "group_metas_conversation_id_key" ON "group_metas"("conversation_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "group_metas_conversation_id_key" ON "group_metas"("conversation_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "group_metas_link_key" ON "group_metas"("link");
+CREATE UNIQUE INDEX IF NOT EXISTS "group_metas_link_key" ON "group_metas"("link");
 
 -- CreateIndex
-CREATE INDEX "group_metas_created_by_user_id_idx" ON "group_metas"("created_by_user_id");
+CREATE INDEX IF NOT EXISTS "group_metas_created_by_user_id_idx" ON "group_metas"("created_by_user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "channel_metas_conversation_id_key" ON "channel_metas"("conversation_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "channel_metas_conversation_id_key" ON "channel_metas"("conversation_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "channel_metas_link_key" ON "channel_metas"("link");
+CREATE UNIQUE INDEX IF NOT EXISTS "channel_metas_link_key" ON "channel_metas"("link");
 
 -- CreateIndex
-CREATE INDEX "channel_metas_created_by_user_id_idx" ON "channel_metas"("created_by_user_id");
+CREATE INDEX IF NOT EXISTS "channel_metas_created_by_user_id_idx" ON "channel_metas"("created_by_user_id");
 
 -- CreateIndex
-CREATE INDEX "user_contacts_contact_user_id_idx" ON "user_contacts"("contact_user_id");
+CREATE INDEX IF NOT EXISTS "user_contacts_contact_user_id_idx" ON "user_contacts"("contact_user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "user_contacts_user_id_contact_user_id_key" ON "user_contacts"("user_id", "contact_user_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "user_contacts_user_id_contact_user_id_key" ON "user_contacts"("user_id", "contact_user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "user_profiles_user_id_key" ON "user_profiles"("user_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "user_profiles_user_id_key" ON "user_profiles"("user_id");
 
 -- CreateIndex
-CREATE INDEX "stories_user_id_created_at_idx" ON "stories"("user_id", "created_at");
+CREATE INDEX IF NOT EXISTS "stories_user_id_created_at_idx" ON "stories"("user_id", "created_at");
 
 -- CreateIndex
-CREATE INDEX "stories_expires_at_idx" ON "stories"("expires_at");
+CREATE INDEX IF NOT EXISTS "stories_expires_at_idx" ON "stories"("expires_at");
 
 -- CreateIndex
-CREATE INDEX "story_views_viewer_user_id_idx" ON "story_views"("viewer_user_id");
+CREATE INDEX IF NOT EXISTS "story_views_viewer_user_id_idx" ON "story_views"("viewer_user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "story_views_story_id_viewer_user_id_key" ON "story_views"("story_id", "viewer_user_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "story_views_story_id_viewer_user_id_key" ON "story_views"("story_id", "viewer_user_id");
 
 -- CreateIndex
-CREATE INDEX "reactions_user_id_idx" ON "reactions"("user_id");
+CREATE INDEX IF NOT EXISTS "reactions_user_id_idx" ON "reactions"("user_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "reactions_message_id_user_id_key" ON "reactions"("message_id", "user_id");
+CREATE UNIQUE INDEX IF NOT EXISTS "reactions_message_id_user_id_key" ON "reactions"("message_id", "user_id");
 
 -- CreateIndex
-CREATE INDEX "call_records_conversation_id_started_at_idx" ON "call_records"("conversation_id", "started_at");
+CREATE INDEX IF NOT EXISTS "call_records_conversation_id_started_at_idx" ON "call_records"("conversation_id", "started_at");
 
 -- CreateIndex
-CREATE INDEX "call_records_initiator_device_id_idx" ON "call_records"("initiator_device_id");
+CREATE INDEX IF NOT EXISTS "call_records_initiator_device_id_idx" ON "call_records"("initiator_device_id");
 
 -- AddForeignKey
-ALTER TABLE "user_blocks" ADD CONSTRAINT "user_blocks_blocker_user_id_fkey" FOREIGN KEY ("blocker_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "user_blocks" ADD CONSTRAINT "user_blocks_blocker_user_id_fkey" FOREIGN KEY ("blocker_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "user_blocks" ADD CONSTRAINT "user_blocks_blocked_user_id_fkey" FOREIGN KEY ("blocked_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "user_blocks" ADD CONSTRAINT "user_blocks_blocked_user_id_fkey" FOREIGN KEY ("blocked_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "conversation_mutes" ADD CONSTRAINT "conversation_mutes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "conversation_mutes" ADD CONSTRAINT "conversation_mutes_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "conversation_mutes" ADD CONSTRAINT "conversation_mutes_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "conversation_mutes" ADD CONSTRAINT "conversation_mutes_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "abuse_reports" ADD CONSTRAINT "abuse_reports_reporter_user_id_fkey" FOREIGN KEY ("reporter_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "abuse_reports" ADD CONSTRAINT "abuse_reports_reporter_user_id_fkey" FOREIGN KEY ("reporter_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "abuse_reports" ADD CONSTRAINT "abuse_reports_reported_user_id_fkey" FOREIGN KEY ("reported_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "abuse_reports" ADD CONSTRAINT "abuse_reports_reported_user_id_fkey" FOREIGN KEY ("reported_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "group_metas" ADD CONSTRAINT "group_metas_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "group_metas" ADD CONSTRAINT "group_metas_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "group_metas" ADD CONSTRAINT "group_metas_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "group_metas" ADD CONSTRAINT "group_metas_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "channel_metas" ADD CONSTRAINT "channel_metas_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "channel_metas" ADD CONSTRAINT "channel_metas_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "channel_metas" ADD CONSTRAINT "channel_metas_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "channel_metas" ADD CONSTRAINT "channel_metas_created_by_user_id_fkey" FOREIGN KEY ("created_by_user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "user_contacts" ADD CONSTRAINT "user_contacts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "user_contacts" ADD CONSTRAINT "user_contacts_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "user_contacts" ADD CONSTRAINT "user_contacts_contact_user_id_fkey" FOREIGN KEY ("contact_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "user_contacts" ADD CONSTRAINT "user_contacts_contact_user_id_fkey" FOREIGN KEY ("contact_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "user_profiles" ADD CONSTRAINT "user_profiles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "user_profiles" ADD CONSTRAINT "user_profiles_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "stories" ADD CONSTRAINT "stories_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "stories" ADD CONSTRAINT "stories_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "story_views" ADD CONSTRAINT "story_views_story_id_fkey" FOREIGN KEY ("story_id") REFERENCES "stories"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "story_views" ADD CONSTRAINT "story_views_story_id_fkey" FOREIGN KEY ("story_id") REFERENCES "stories"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "story_views" ADD CONSTRAINT "story_views_viewer_user_id_fkey" FOREIGN KEY ("viewer_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "story_views" ADD CONSTRAINT "story_views_viewer_user_id_fkey" FOREIGN KEY ("viewer_user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "reactions" ADD CONSTRAINT "reactions_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "messages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "reactions" ADD CONSTRAINT "reactions_message_id_fkey" FOREIGN KEY ("message_id") REFERENCES "messages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "reactions" ADD CONSTRAINT "reactions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "reactions" ADD CONSTRAINT "reactions_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "call_records" ADD CONSTRAINT "call_records_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "call_records" ADD CONSTRAINT "call_records_conversation_id_fkey" FOREIGN KEY ("conversation_id") REFERENCES "conversations"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 
 -- AddForeignKey
-ALTER TABLE "call_records" ADD CONSTRAINT "call_records_initiator_device_id_fkey" FOREIGN KEY ("initiator_device_id") REFERENCES "devices"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "call_records" ADD CONSTRAINT "call_records_initiator_device_id_fkey" FOREIGN KEY ("initiator_device_id") REFERENCES "devices"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null;
+END $$;
 

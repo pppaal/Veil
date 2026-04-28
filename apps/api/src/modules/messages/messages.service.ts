@@ -285,23 +285,40 @@ export class MessagesService {
     const hadDelivered = Boolean(existingReceipt?.deliveredAt);
     const hadRead = Boolean(existingReceipt?.readAt);
 
-    const updatedReceipt = await this.prisma.messageReceipt.upsert({
-      where: {
-        messageId_userId: {
+    // Wrap the receipt upsert and (for view-once) the row delete in a single
+    // transaction. Without this, a crash between "read recorded" and "row
+    // deleted" leaves view-once ciphertext on disk after the read event
+    // already fired — exactly the leak window we promise not to have.
+    const isViewOnceConsumption =
+      message.viewOnce && message.senderDevice.userId !== auth.userId;
+    const updatedReceipt = await this.prisma.$transaction(async (tx) => {
+      const receipt = await tx.messageReceipt.upsert({
+        where: {
+          messageId_userId: {
+            messageId,
+            userId: auth.userId,
+          },
+        },
+        update: {
+          deliveredAt: now,
+          readAt: now,
+        },
+        create: {
           messageId,
           userId: auth.userId,
+          deliveredAt: now,
+          readAt: now,
         },
-      },
-      update: {
-        deliveredAt: now,
-        readAt: now,
-      },
-      create: {
-        messageId,
-        userId: auth.userId,
-        deliveredAt: now,
-        readAt: now,
-      },
+      });
+      if (isViewOnceConsumption) {
+        try {
+          await tx.message.delete({ where: { id: messageId } });
+        } catch {
+          // Concurrent consumption already deleted the row — the broadcast
+          // below still fires so every member drops it from their cache.
+        }
+      }
+      return receipt;
     });
 
     if (!hadDelivered) {
@@ -342,15 +359,15 @@ export class MessagesService {
       data: { lastSyncAt: now },
     });
 
-    // View-once consumption: once any non-sender has read it, hard-delete
-    // the row and broadcast so every member (including the sender) drops
-    // the ciphertext from the local cache.
-    if (message.viewOnce && message.senderDevice.userId !== auth.userId) {
-      await this.consumeViewOnceMessage(
-        messageId,
-        message.conversationId,
+    if (isViewOnceConsumption) {
+      this.realtimeGateway.emitConversationMembers(
         message.conversation.members,
-        now,
+        'message.consumed',
+        {
+          messageId,
+          conversationId: message.conversationId,
+          consumedAt: now.toISOString(),
+        },
       );
     }
 
@@ -358,26 +375,6 @@ export class MessagesService {
       messageId,
       readAt: updatedReceipt.readAt?.toISOString() ?? now.toISOString(),
     };
-  }
-
-  private async consumeViewOnceMessage(
-    messageId: string,
-    conversationId: string,
-    members: Array<{ userId: string }>,
-    consumedAt: Date,
-  ): Promise<void> {
-    try {
-      await this.prisma.message.delete({ where: { id: messageId } });
-    } catch {
-      // Concurrent consumption lost the race — the other consumer already
-      // deleted the row. The realtime broadcast below still fires so every
-      // member drops it from their cache.
-    }
-    this.realtimeGateway.emitConversationMembers(members, 'message.consumed', {
-      messageId,
-      conversationId,
-      consumedAt: consumedAt.toISOString(),
-    });
   }
 
   async deleteLocal(

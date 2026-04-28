@@ -184,6 +184,12 @@ model Conversation {
   // Client uses this to auto-stamp expiresAt on outgoing messages, and
   // server enforces it as an upper bound on incoming messages.
   disappearingTimerSeconds Int?  @map("disappearing_timer_seconds")
+  // Deterministic dedupe key for direct conversations: sortedUserIds.join('|').
+  // Null for group/channel rows. The unique index on this column means two
+  // concurrent createDirect calls between the same pair can't both create a
+  // conversation — one wins, the other catches P2002 and returns the
+  // existing conversation.
+  directKey String?              @map("direct_key") @db.VarChar(80)
   members      ConversationMember[]
   messages     Message[]
   deviceStates DeviceConversationState[]
@@ -192,6 +198,7 @@ model Conversation {
   callRecords  CallRecord[]
   mutes        ConversationMute[]
 
+  @@unique([directKey])
   @@map("conversations")
 }
 
@@ -250,7 +257,11 @@ model Message {
   reactions        Reaction[]
 
   @@unique([senderDeviceId, clientMessageId])
-  @@index([conversationId, conversationOrder])
+  // Hard guarantee that a conversation's message order has no gaps and no
+  // duplicates even under concurrent inserts. Without this the sender flow
+  // relies on a SERIALIZABLE retry that breaks silently if the isolation
+  // level is ever weakened.
+  @@unique([conversationId, conversationOrder])
   @@index([conversationId, serverReceivedAt])
   @@index([attachmentId])
   @@map("messages")

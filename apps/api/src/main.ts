@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -51,6 +54,18 @@ async function bootstrap(): Promise<void> {
     app.set('trust proxy', 1);
   }
   app.enableShutdownHooks();
+
+  if (!config.isProduction) {
+    const candidates = [
+      join(process.cwd(), 'apps', 'web-demo'),
+      join(process.cwd(), '..', 'web-demo'),
+      join(__dirname, '..', '..', 'web-demo'),
+    ];
+    const webDemoRoot = candidates.find((path) => existsSync(path));
+    if (webDemoRoot) {
+      app.useStaticAssets(webDemoRoot, { prefix: '/demo' });
+    }
+  }
 
   app.setGlobalPrefix('v1');
   app.useGlobalPipes(

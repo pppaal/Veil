@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<meta name="theme-color" content="#0a0a0a" />
+<title>VEIL Beta</title>
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --panel: #141416;
+    --panel2: #1c1c20;
+    --line: #2a2a30;
+    --fg: #f5f5f7;
+    --dim: #8a8a92;
+    --accent: #6c8eff;
+    --bad: #ff5d6c;
+    --good: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 15px -apple-system,BlinkMacSystemFont,"SF Pro","Segoe UI",Roboto,sans-serif; min-height: 100vh; }
+  body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 4px 0 16px; }
+  header h1 { font-size: 20px; margin: 0; letter-spacing: 0.02em; }
+  header .who { font-size: 13px; color: var(--dim); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); margin: 0 0 12px; }
+  label { display: block; font-size: 13px; color: var(--dim); margin: 8px 0 4px; }
+  input, button, textarea {
+    width: 100%; font: inherit; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--fg);
+    -webkit-appearance: none; appearance: none;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  button {
+    background: var(--accent); color: #fff; border: none; font-weight: 600;
+    margin-top: 12px; padding: 14px; cursor: pointer; transition: opacity 0.15s;
+  }
+  button:active { opacity: 0.7; }
+  button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+  button.bad { background: var(--bad); }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; background: var(--panel2); font-size: 12px; color: var(--dim); border: 1px solid var(--line); }
+  .pill.good { color: var(--good); border-color: var(--good); }
+  .pill.bad { color: var(--bad); border-color: var(--bad); }
+
+  .conv { padding: 12px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
+  .conv:active { background: var(--panel2); }
+  .conv .h { font-weight: 600; }
+  .conv .s { color: var(--dim); font-size: 13px; margin-top: 2px; }
+
+  .msgs { max-height: 50vh; overflow-y: auto; padding: 4px 0; }
+  .msg { padding: 10px 12px; border-radius: 12px; margin: 6px 0; max-width: 78%; word-break: break-word; }
+  .msg.me { background: var(--accent); color: #fff; margin-left: auto; }
+  .msg.them { background: var(--panel2); }
+  .msg .meta { font-size: 11px; opacity: 0.7; margin-top: 4px; }
+  .msg .ct { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; font-size: 12px; opacity: 0.85; }
+
+  .hidden { display: none !important; }
+  .err { color: var(--bad); font-size: 13px; min-height: 18px; margin-top: 8px; }
+  .ok { color: var(--good); font-size: 13px; min-height: 18px; margin-top: 8px; }
+  .footer { font-size: 11px; color: var(--dim); text-align: center; padding: 24px 0 12px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>VEIL <span class="pill" id="env-pill">beta</span></h1>
+    <div class="who" id="me"></div>
+  </header>
+
+  <!-- AUTH -->
+  <section id="auth-card" class="card">
+    <h2>핸들 만들기</h2>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 12px">디바이스에 묶이는 새 신원입니다. 백업/복구 없음.</p>
+    <label>표시 이름</label>
+    <input id="reg-name" placeholder="Alice" autocomplete="off" />
+    <label>핸들</label>
+    <input id="reg-handle" placeholder="alice123" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="reg-btn">핸들 생성 + 로그인</button>
+    <div id="auth-err" class="err"></div>
+    <hr style="border:none;border-top:1px solid var(--line);margin:16px 0" />
+    <h2>저장된 세션 복원</h2>
+    <p style="color:var(--dim);font-size:13px;margin:0 0 8px">이 브라우저에 키가 남아있다면 다시 로그인할 수 있어요.</p>
+    <button class="ghost" id="restore-btn">기존 세션 복원</button>
+    <button class="ghost bad" id="wipe-btn">로컬 키/세션 전부 지우기</button>
+  </section>
+
+  <!-- HOME -->
+  <section id="home-card" class="card hidden">
+    <h2>대화 목록</h2>
+    <div id="conv-list"></div>
+    <button id="refresh-btn" class="ghost">새로고침</button>
+    <hr style="border:none;border-top:1px solid var(--line);margin:14px 0" />
+    <h2>새 다이렉트 챗</h2>
+    <label>상대 핸들</label>
+    <input id="peer-handle" placeholder="bob123" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="start-dm-btn">시작</button>
+    <div id="home-err" class="err"></div>
+  </section>
+
+  <!-- CHAT -->
+  <section id="chat-card" class="card hidden">
+    <h2><span id="chat-title">대화</span> <span class="pill" id="chat-id"></span></h2>
+    <div class="msgs" id="msgs"></div>
+    <textarea id="msg-input" rows="2" placeholder="메시지를 입력 (전송 시 ciphertext 로 envelope 됨)"></textarea>
+    <div class="row">
+      <button id="send-btn">전송</button>
+      <button class="ghost" id="back-btn">뒤로</button>
+    </div>
+    <div id="chat-err" class="err"></div>
+  </section>
+
+  <div class="footer">
+    서버는 ciphertext만 봅니다. 복구 없음. 백업 없음.<br/>
+    이 데모는 브라우저 Web Crypto Ed25519 + 개발용 평문-라벨 envelope 사용.
+  </div>
+</div>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const API = '/v1';
+const STORE = 'veil-demo-session';
+
+function b64uEncode(buf) {
+  const bytes = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64uDecode(str) {
+  const pad = str.length % 4 === 0 ? '' : '='.repeat(4 - (str.length % 4));
+  const b64 = (str + pad).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+
+async function api(path, { method = 'GET', body, token } = {}) {
+  const r = await fetch(API + path, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    let msg = text;
+    try { msg = JSON.parse(text).message ?? text; } catch {}
+    throw new Error(`${r.status} ${msg}`);
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+// ---- session storage (private key kept in IndexedDB-like via localStorage of jwk) ----
+async function generateKey() {
+  const kp = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const rawPub = await crypto.subtle.exportKey('raw', kp.publicKey);
+  const jwkPriv = await crypto.subtle.exportKey('jwk', kp.privateKey);
+  return { rawPub, jwkPriv, privateKey: kp.privateKey };
+}
+async function importPriv(jwk) {
+  return await crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, false, ['sign']);
+}
+async function signWith(privateKey, message) {
+  const sig = await crypto.subtle.sign({ name: 'Ed25519' }, privateKey, new TextEncoder().encode(message));
+  return b64uEncode(sig);
+}
+
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(STORE) ?? 'null'); } catch { return null; }
+}
+function saveSession(s) { localStorage.setItem(STORE, JSON.stringify(s)); }
+function wipeSession() { localStorage.removeItem(STORE); }
+
+let me = null; // { handle, userId, deviceId, jwkPriv, accessToken }
+
+// ---- views ----
+function show(view) {
+  for (const id of ['auth-card', 'home-card', 'chat-card']) $(id).classList.add('hidden');
+  $(view).classList.remove('hidden');
+}
+
+function setMe() {
+  $('me').textContent = me ? `@${me.handle}` : '';
+}
+
+// ---- auth ----
+$('reg-btn').onclick = async () => {
+  $('auth-err').textContent = '';
+  const handle = $('reg-handle').value.trim();
+  const displayName = $('reg-name').value.trim();
+  if (!handle) { $('auth-err').textContent = '핸들을 입력하세요'; return; }
+  try {
+    const { rawPub, jwkPriv, privateKey } = await generateKey();
+    const authPublicKey = b64uEncode(rawPub);
+    const reg = await api('/auth/register', {
+      method: 'POST',
+      body: {
+        handle,
+        displayName: displayName || handle,
+        deviceName: `web-${navigator.platform || 'browser'}`,
+        platform: 'android',
+        publicIdentityKey: `pub-web-${Date.now()}`,
+        signedPrekeyBundle: `prekey-web-${Date.now()}`,
+        authPublicKey,
+      },
+    });
+    const ch = await api('/auth/challenge', { method: 'POST', body: { handle: reg.handle, deviceId: reg.deviceId } });
+    const sig = await signWith(privateKey, ch.challenge);
+    const ver = await api('/auth/verify', {
+      method: 'POST',
+      body: { challengeId: ch.challengeId, deviceId: reg.deviceId, signature: sig },
+    });
+    me = { handle: reg.handle, userId: reg.userId, deviceId: reg.deviceId, jwkPriv, accessToken: ver.accessToken };
+    saveSession(me);
+    setMe();
+    show('home-card');
+    refreshConvs();
+  } catch (e) {
+    $('auth-err').textContent = e.message;
+  }
+};
+
+$('restore-btn').onclick = async () => {
+  $('auth-err').textContent = '';
+  const s = loadSession();
+  if (!s) { $('auth-err').textContent = '저장된 세션 없음'; return; }
+  try {
+    const ch = await api('/auth/challenge', { method: 'POST', body: { handle: s.handle, deviceId: s.deviceId } });
+    const priv = await importPriv(s.jwkPriv);
+    const sig = await signWith(priv, ch.challenge);
+    const ver = await api('/auth/verify', {
+      method: 'POST',
+      body: { challengeId: ch.challengeId, deviceId: s.deviceId, signature: sig },
+    });
+    me = { ...s, accessToken: ver.accessToken };
+    saveSession(me);
+    setMe();
+    show('home-card');
+    refreshConvs();
+  } catch (e) {
+    $('auth-err').textContent = '복원 실패: ' + e.message;
+  }
+};
+
+$('wipe-btn').onclick = () => {
+  if (!confirm('로컬 키와 세션을 전부 지웁니다. 이 핸들에는 다시 로그인할 수 없어요.')) return;
+  wipeSession();
+  me = null;
+  setMe();
+  show('auth-card');
+};
+
+// ---- conversations ----
+async function refreshConvs() {
+  $('home-err').textContent = '';
+  $('conv-list').innerHTML = '<div style="color:var(--dim);font-size:13px">불러오는 중…</div>';
+  try {
+    const r = await api('/conversations', { token: me.accessToken });
+    const items = r.items ?? [];
+    if (items.length === 0) {
+      $('conv-list').innerHTML = '<div style="color:var(--dim);font-size:13px">대화 없음. 아래에서 새 다이렉트 챗을 시작하세요.</div>';
+      return;
+    }
+    $('conv-list').innerHTML = '';
+    for (const c of items) {
+      const peer = (c.members || []).find((m) => m.handle !== me.handle);
+      const node = document.createElement('div');
+      node.className = 'conv';
+      node.innerHTML = `<div class="h">@${peer?.handle ?? '?'}</div>
+        <div class="s">${c.lastMessage ? '마지막 ' + new Date(c.lastMessage.serverReceivedAt).toLocaleTimeString() : '대화 없음'}</div>`;
+      node.onclick = () => openChat(c, peer);
+      $('conv-list').appendChild(node);
+    }
+  } catch (e) {
+    $('home-err').textContent = e.message;
+  }
+}
+$('refresh-btn').onclick = refreshConvs;
+
+$('start-dm-btn').onclick = async () => {
+  $('home-err').textContent = '';
+  const peer = $('peer-handle').value.trim();
+  if (!peer) { $('home-err').textContent = '상대 핸들을 입력하세요'; return; }
+  try {
+    const r = await api('/conversations/direct', {
+      method: 'POST', token: me.accessToken, body: { peerHandle: peer },
+    });
+    const peerMember = r.conversation.members.find((m) => m.handle !== me.handle);
+    openChat(r.conversation, peerMember);
+  } catch (e) {
+    $('home-err').textContent = e.message;
+  }
+};
+
+// ---- chat ----
+let activeConv = null;
+async function openChat(conv, peer) {
+  activeConv = conv;
+  $('chat-title').textContent = peer?.handle ? '@' + peer.handle : '대화';
+  $('chat-id').textContent = conv.id.slice(0, 8);
+  show('chat-card');
+  await refreshMsgs();
+}
+
+async function refreshMsgs() {
+  if (!activeConv) return;
+  $('chat-err').textContent = '';
+  try {
+    const r = await api(`/conversations/${activeConv.id}/messages?limit=50`, { token: me.accessToken });
+    $('msgs').innerHTML = '';
+    for (const m of r.items ?? []) {
+      const isMe = m.senderDeviceId === me.deviceId;
+      const node = document.createElement('div');
+      node.className = 'msg ' + (isMe ? 'me' : 'them');
+      node.innerHTML = `<div class="ct">${escapeHtml(m.ciphertext.slice(0, 200))}</div>
+        <div class="meta">${new Date(m.serverReceivedAt).toLocaleTimeString()}${m.readAt ? ' · 읽음' : ''}</div>`;
+      $('msgs').appendChild(node);
+    }
+    $('msgs').scrollTop = $('msgs').scrollHeight;
+  } catch (e) {
+    $('chat-err').textContent = e.message;
+  }
+}
+
+$('send-btn').onclick = async () => {
+  $('chat-err').textContent = '';
+  const text = $('msg-input').value.trim();
+  if (!text || !activeConv) return;
+  const peer = activeConv.members.find((m) => m.handle !== me.handle);
+  try {
+    await api('/messages', {
+      method: 'POST', token: me.accessToken,
+      body: {
+        conversationId: activeConv.id,
+        clientMessageId: `web-${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId: activeConv.id,
+          senderDeviceId: me.deviceId,
+          recipientUserId: peer.userId,
+          ciphertext: 'DEMO-PLAINTEXT-LABEL[' + text + ']',
+          nonce: 'nonce-' + Math.random().toString(36).slice(2, 10),
+          messageType: 'text',
+        },
+      },
+    });
+    $('msg-input').value = '';
+    await refreshMsgs();
+  } catch (e) {
+    $('chat-err').textContent = e.message;
+  }
+};
+
+$('back-btn').onclick = () => { activeConv = null; show('home-card'); refreshConvs(); };
+
+function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// poll msgs every 4s while in chat
+setInterval(() => { if (activeConv && !$('chat-card').classList.contains('hidden')) refreshMsgs(); }, 4000);
+
+// boot
+const existing = loadSession();
+if (existing) {
+  $('me').textContent = `@${existing.handle} (저장됨)`;
+}
+</script>
+</body>
+</html>

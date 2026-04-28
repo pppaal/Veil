@@ -1977,4 +1977,18 @@ $('menu').addEventListener('click', async (e) => {
 
 $('split-btn').addEventListener('click', toggleSplit);
 
+// Private-beta banner: visible by default until the user dismisses it.
+// Persists per-device in localStorage so a quick reload doesn't keep
+// resurfacing it.
+const BETA_BANNER_KEY = 'veil-demo-beta-banner-dismissed';
+const betaBanner = $('beta-banner');
+const betaBannerClose = $('beta-banner-close');
+if (betaBanner && betaBannerClose) {
+  if (localStorage.getItem(BETA_BANNER_KEY) !== '1') betaBanner.classList.remove('hidden');
+  betaBannerClose.addEventListener('click', () => {
+    betaBanner.classList.add('hidden');
+    try { localStorage.setItem(BETA_BANNER_KEY, '1'); } catch {}
+  });
+}
+
 bootIfSession();

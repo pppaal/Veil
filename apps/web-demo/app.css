@@ -49,6 +49,40 @@ html, body {
 body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 .hidden { display: none !important; }
 
+.beta-banner {
+  position: fixed;
+  top: env(safe-area-inset-top);
+  left: 0;
+  right: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: linear-gradient(90deg, rgba(176, 108, 255, 0.18), rgba(108, 142, 255, 0.18));
+  border-bottom: 1px solid rgba(176, 108, 255, 0.4);
+  color: var(--fg);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(8px);
+}
+.beta-banner strong { color: var(--accent-strong); letter-spacing: 0.08em; }
+.beta-banner-body { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.beta-banner-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--fg-soft);
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.beta-banner-close:hover { background: rgba(255,255,255,0.08); color: var(--fg); }
+body:has(.beta-banner:not(.hidden)) .topbar,
+body:has(.beta-banner:not(.hidden)) .auth-screen { padding-top: 38px; }
+
 button { font: inherit; cursor: pointer; }
 input, textarea { font: inherit; color: inherit; }
 /* Pointer focus is silent — the field's accent border is enough — but

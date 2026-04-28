@@ -47,6 +47,9 @@
     "demo:logs": "docker compose -f docker-compose.demo.yml logs -f api",
     "demo:down": "docker compose -f docker-compose.demo.yml down",
     "demo:reset": "docker compose -f docker-compose.demo.yml down -v",
+    "demo:tunnel:up": "docker compose -f docker-compose.demo.yml --profile tunnel up -d --build",
+    "demo:tunnel:logs": "docker compose -f docker-compose.demo.yml logs -f cloudflared",
+    "demo:tunnel:down": "docker compose -f docker-compose.demo.yml --profile tunnel down",
     "format": "pnpm -r --filter './packages/*' --filter './apps/api' format",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'apps/api/src/**/*.ts' 'scripts/**/*.mjs'"
   }

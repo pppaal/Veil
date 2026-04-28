@@ -87,19 +87,29 @@ services:
       VEIL_API_PORT: "3000"
       VEIL_DATABASE_URL: postgresql://veil:veil@postgres:5432/veil
       VEIL_REDIS_URL: redis://redis:6379
-      VEIL_ALLOWED_ORIGINS: "*"
-      VEIL_TRUST_PROXY: "false"
-      VEIL_ENABLE_SWAGGER: "true"
+      # When you front the demo with a public hostname (Cloudflare Tunnel,
+      # nginx, etc.), set VEIL_ALLOWED_ORIGINS to that exact origin so the
+      # CORS gate stops accepting wildcards. Default '*' keeps the local
+      # phone-on-the-same-Wi-Fi flow working.
+      VEIL_ALLOWED_ORIGINS: ${VEIL_ALLOWED_ORIGINS:-*}
+      # Trust the proxy chain so the realtime gateway and rate limiter see
+      # the real client IP behind a Cloudflare/nginx hop. Off by default for
+      # the bare local stack.
+      VEIL_TRUST_PROXY: ${VEIL_TRUST_PROXY:-false}
+      VEIL_ENABLE_SWAGGER: ${VEIL_ENABLE_SWAGGER:-true}
       VEIL_S3_ENDPOINT: http://minio:9000
       # Public endpoint is what the browser/phone hits for presigned PUTs.
       # Override at run time if the docker host isn't `localhost` from the
-      # phone's perspective — e.g. http://192.168.1.42:9000
+      # phone's perspective — e.g. http://192.168.1.42:9000 or, for a
+      # public deploy with a separate s3 hostname, https://s3.veil.example.com.
       VEIL_S3_PUBLIC_ENDPOINT: ${VEIL_S3_PUBLIC_ENDPOINT:-http://localhost:9000}
       VEIL_S3_REGION: us-east-1
       VEIL_S3_ACCESS_KEY: minioadmin
       VEIL_S3_SECRET_KEY: minioadmin
       VEIL_S3_BUCKET: veil-encrypted
-      VEIL_JWT_SECRET: demo-jwt-secret-replace-for-anything-shared
+      # Generate a fresh secret for any deploy beyond local: openssl rand -base64 32.
+      # The placeholder default is rejected by beta-deploy-preflight.
+      VEIL_JWT_SECRET: ${VEIL_JWT_SECRET:-demo-jwt-secret-replace-for-anything-shared}
       VEIL_JWT_AUDIENCE: veil-mobile
       VEIL_JWT_ISSUER: veil-api
       VEIL_PUSH_PROVIDER: none
@@ -117,6 +127,19 @@ services:
         condition: service_started
       minio-init:
         condition: service_completed_successfully
+
+  # Optional Cloudflare Tunnel sidecar. Start with:
+  #   CLOUDFLARE_TUNNEL_TOKEN=<token-from-zerotrust-dashboard> \
+  #     docker compose -f docker-compose.demo.yml --profile tunnel up -d
+  # In the Cloudflare Zero Trust dashboard set the public hostname's
+  # `Service` to `http://api:3000`. See docs/cloudflare-tunnel-deploy.md.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
 
 volumes:
   veil_demo_postgres:

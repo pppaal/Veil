@@ -38,6 +38,11 @@ API container with the static demo client served at `/demo/`. Then on the same
 Wi-Fi, point your phone browser at `http://<laptop-LAN-IP>:3000/demo/`.
 See [`docs/phone-access.md`](docs/phone-access.md) for the full walkthrough.
 
+To share the demo over the public internet (free, HTTPS, anyone anywhere) via
+Cloudflare Tunnel — `pnpm demo:tunnel:up` plus a token from the Cloudflare
+Zero Trust dashboard. Walkthrough in
+[`docs/cloudflare-tunnel-deploy.md`](docs/cloudflare-tunnel-deploy.md).
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and `apps/api/.env.example` to `apps/api/.env`.

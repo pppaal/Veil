@@ -25,6 +25,19 @@ Primary product line:
 - Push payloads must not contain plaintext message content.
 - Production crypto (`LibCryptoAdapter`, X25519 + AES-256-GCM + Double Ratchet) is wired by default; `VEIL_ENV=production` remains blocked until the adapter is externally audited.
 
+## Try the web demo on your phone
+
+The fastest path to seeing VEIL on a phone (no Flutter / Android SDK required):
+
+```bash
+docker compose -f docker-compose.demo.yml up
+```
+
+This brings up Postgres, Redis, MinIO (with the bucket auto-created), and the
+API container with the static demo client served at `/demo/`. Then on the same
+Wi-Fi, point your phone browser at `http://<laptop-LAN-IP>:3000/demo/`.
+See [`docs/phone-access.md`](docs/phone-access.md) for the full walkthrough.
+
 ## Local development
 
 1. Copy `.env.example` to `.env` and `apps/api/.env.example` to `apps/api/.env`.

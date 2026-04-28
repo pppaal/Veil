@@ -1,0 +1,131 @@
+# Single-command stack for the VEIL web demo:
+#
+#   docker compose -f docker-compose.demo.yml up
+#
+# Brings up:
+#   - postgres        (with healthcheck)
+#   - redis           (with healthcheck)
+#   - minio           (with veil-encrypted bucket auto-created by minio-init)
+#   - api             (NestJS, served at http://<host>:3000)
+#
+# The web demo is then reachable at:
+#   - http://localhost:3000/demo/   on the same machine
+#   - http://<host-LAN-IP>:3000/demo/   from a phone on the same Wi-Fi
+#
+# See docs/phone-access.md for the phone-side setup.
+#
+# This stack uses dev-mode defaults (placeholder JWT secret, dev MinIO admin,
+# Postgres on localhost). Do NOT expose it to the public internet — for
+# beta/private deployment use docker-compose.alpha.yml plus a real env file.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: veil
+      POSTGRES_USER: veil
+      POSTGRES_PASSWORD: veil
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U veil -d veil"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - veil_demo_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - veil_demo_redis:/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-07T23-21-09Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - veil_demo_minio:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    depends_on:
+      minio:
+        condition: service_started
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set veil http://minio:9000 minioadmin minioadmin) do sleep 1; done;
+      /usr/bin/mc mb --ignore-existing veil/veil-encrypted;
+      /usr/bin/mc anonymous set none veil/veil-encrypted;
+      exit 0;
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      VEIL_ENV: development
+      VEIL_API_PORT: "3000"
+      VEIL_DATABASE_URL: postgresql://veil:veil@postgres:5432/veil
+      VEIL_REDIS_URL: redis://redis:6379
+      VEIL_ALLOWED_ORIGINS: "*"
+      VEIL_TRUST_PROXY: "false"
+      VEIL_ENABLE_SWAGGER: "true"
+      VEIL_S3_ENDPOINT: http://minio:9000
+      # Public endpoint is what the browser/phone hits for presigned PUTs.
+      # Override at run time if the docker host isn't `localhost` from the
+      # phone's perspective — e.g. http://192.168.1.42:9000
+      VEIL_S3_PUBLIC_ENDPOINT: ${VEIL_S3_PUBLIC_ENDPOINT:-http://localhost:9000}
+      VEIL_S3_REGION: us-east-1
+      VEIL_S3_ACCESS_KEY: minioadmin
+      VEIL_S3_SECRET_KEY: minioadmin
+      VEIL_S3_BUCKET: veil-encrypted
+      VEIL_JWT_SECRET: demo-jwt-secret-replace-for-anything-shared
+      VEIL_JWT_AUDIENCE: veil-mobile
+      VEIL_JWT_ISSUER: veil-api
+      VEIL_PUSH_PROVIDER: none
+      VEIL_PUSH_ENABLE_DELIVERY: "false"
+      VEIL_LOG_LEVEL: info
+    # Use prisma db push instead of migrate deploy so the demo doesn't depend
+    # on consolidated migrations (the schema currently has features that
+    # never made it into a numbered migration; that gets cleaned up in the
+    # backend-debt phase).
+    command:
+      - sh
+      - -c
+      - |
+        ./node_modules/.bin/prisma db push --accept-data-loss --schema prisma/schema.prisma
+        exec pnpm start
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+
+volumes:
+  veil_demo_postgres:
+  veil_demo_redis:
+  veil_demo_minio:

@@ -42,6 +42,10 @@
     "docker:down": "docker compose -f infra/docker/docker-compose.yml down -v",
     "docker:alpha:up": "docker compose -f infra/docker/docker-compose.alpha.yml up -d --build",
     "docker:alpha:down": "docker compose -f infra/docker/docker-compose.alpha.yml down -v",
+    "demo:up": "docker compose -f docker-compose.demo.yml up -d --build",
+    "demo:logs": "docker compose -f docker-compose.demo.yml logs -f api",
+    "demo:down": "docker compose -f docker-compose.demo.yml down",
+    "demo:reset": "docker compose -f docker-compose.demo.yml down -v",
     "format": "pnpm -r --filter './packages/*' --filter './apps/api' format",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'apps/api/src/**/*.ts' 'scripts/**/*.mjs'"
   }

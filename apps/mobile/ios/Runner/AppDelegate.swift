@@ -143,11 +143,10 @@ private final class PlatformSecurityPlugin: NSObject, FlutterPlugin {
       reasons.append("Known jailbreak artifacts were found on disk.")
     }
 
-    if let url = URL(string: "cydia://package/com.example.package"),
-      UIApplication.shared.canOpenURL(url)
-    {
-      reasons.append("Cydia URL handler is available.")
-    }
+    // The classic cydia:// canOpenURL probe needs the scheme declared in
+    // LSApplicationQueriesSchemes to actually return true, and listing it
+    // there draws extra App Review scrutiny on a non-security app. The
+    // filesystem and dyld signals below cover the same ground.
 
     let probePath = "/private/veil_jailbreak_probe.txt"
     do {

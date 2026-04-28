@@ -130,6 +130,32 @@ https://veil-beta.example.com/demo/
     "SELECT substring(ciphertext from 1 for 60), nonce FROM messages ORDER BY server_received_at DESC LIMIT 3;"
   ```
 
+### 4-1. DB 일일 스냅샷 (선택, 추천)
+
+서버는 ciphertext 만 저장하지만 핸들/디바이스 메타데이터는 평문이라
+백업 없이 디스크가 날아가면 베타 테스터 전원이 신규 가입 절차를 다시
+밟아야 합니다. 노트북이 켜져있는 동안만 돌리면 충분:
+
+```bash
+mkdir -p $HOME/veil-backups
+crontab -l 2>/dev/null > /tmp/cron.bak; cat >> /tmp/cron.bak <<'CRON'
+# VEIL beta DB snapshot — daily 03:30, keep 14 days
+30 3 * * * docker exec veil-postgres-1 pg_dump -U veil -d veil -F c \
+  > $HOME/veil-backups/veil-$(date +\%Y\%m\%d).dump 2>>$HOME/veil-backups/cron.log && \
+  find $HOME/veil-backups -name 'veil-*.dump' -mtime +14 -delete
+CRON
+crontab /tmp/cron.bak && rm /tmp/cron.bak
+```
+
+복구:
+```bash
+docker exec -i veil-postgres-1 pg_restore -U veil -d veil --clean --if-exists \
+  < $HOME/veil-backups/veil-YYYYMMDD.dump
+```
+
+> ⚠️ 스냅샷에는 핸들/이메일/디바이스 ID 가 포함됩니다 (메시지는 ciphertext).
+> 디스크 암호화된 위치에 둘 것. 클라우드 동기화 폴더에는 두지 마세요.
+
 ---
 
 ## 5. 알려진 한계 (이번 단계)

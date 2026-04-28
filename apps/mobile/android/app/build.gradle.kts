@@ -48,11 +48,30 @@ android {
 
     buildTypes {
         release {
+            // No silent debug-key fallback for release builds. Silently
+            // signing release artifacts with the debug key has shipped
+            // unverifiable APKs in the past; fail loudly so the operator
+            // knows to provision keystore.properties.
+            if (gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+                && !keystorePropertiesFile.exists()
+            ) {
+                throw GradleException(
+                    "Release build requires android/keystore.properties. " +
+                        "Refusing to fall back to the debug keystore. " +
+                        "See apps/mobile/README.md for keystore provisioning."
+                )
+            }
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
                 signingConfigs.getByName("debug")
             }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

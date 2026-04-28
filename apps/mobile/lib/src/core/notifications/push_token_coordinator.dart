@@ -1,6 +1,5 @@
 import 'dart:async';
-
-import 'package:flutter/foundation.dart';
+import 'dart:developer' as developer;
 
 import '../network/veil_api_client.dart';
 import 'remote_push_service.dart';
@@ -46,7 +45,12 @@ class PushTokenCoordinator {
     try {
       await apiClient.clearPushToken(token);
     } catch (error, stack) {
-      debugPrint('push token clear failed: $error\n$stack');
+      developer.log(
+        'push token clear failed',
+        name: 'veil.push',
+        error: error,
+        stackTrace: stack,
+      );
     }
   }
 
@@ -74,7 +78,12 @@ class PushTokenCoordinator {
       await apiClient.updatePushToken(accessToken, token);
       _lastSyncedToken = token;
     } catch (error, stack) {
-      debugPrint('push token sync failed: $error\n$stack');
+      developer.log(
+        'push token sync failed',
+        name: 'veil.push',
+        error: error,
+        stackTrace: stack,
+      );
     }
   }
 }

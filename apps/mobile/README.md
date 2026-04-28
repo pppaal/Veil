@@ -26,4 +26,10 @@ Current mobile wiring includes:
 - device transfer init/approve/complete scaffold
 - Drift-backed cache service scaffold pending codegen
 
-The current crypto adapter is intentionally mock-only and must be replaced before production.
+Crypto status: the runtime adapter (`createConfiguredCryptoAdapter` in
+`lib/src/core/crypto/crypto_adapter_registry.dart`) wires the real
+`LibCryptoAdapter` (X25519 ECDH + HKDF-SHA256 + AES-256-GCM). The
+`MockCryptoAdapter` is retained for unit tests only and is never used at
+runtime. Production builds are still gated behind the
+`VEIL_AUDITED_CRYPTO_ATTESTED` define until an external crypto audit
+clears the engine.

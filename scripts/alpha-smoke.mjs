@@ -129,7 +129,7 @@ async function run() {
     body: {
       contentType: 'application/octet-stream',
       sizeBytes: 2048,
-      sha256: `hash-${suffix}`,
+      sha256: `deadbeef${suffix.replace(/[^a-fA-F0-9]/g, '0').padEnd(56, '0').slice(0, 56)}`,
     },
   });
 
@@ -170,7 +170,7 @@ async function run() {
           storageKey: upload.upload.storageKey,
           contentType: 'application/octet-stream',
           sizeBytes: 2048,
-          sha256: `hash-${suffix}`,
+          sha256: `deadbeef${suffix.replace(/[^a-fA-F0-9]/g, '0').padEnd(56, '0').slice(0, 56)}`,
           encryption: {
             encryptedKey: `wrapped-${suffix}`,
             nonce: `attachment-nonce-${suffix}`,

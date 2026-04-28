@@ -57,51 +57,73 @@ export class AccountService {
     ).map((m) => m.conversationId);
     const ownedConversationIds = [...ownedGroupConvIds, ...ownedChannelConvIds];
 
-    // Phase 2 (no enclosing tx): each deleteMany is its own statement,
-    // committed independently. Postgres releases the row locks between
-    // statements so concurrent reads on unrelated rows aren't blocked.
-    // The order respects the Restrict FKs.
+    // Phase 2 (no enclosing tx): each deleteMany is its own statement.
+    // Each step is *idempotent* — running them twice is a no-op — so
+    // partial failure is recoverable: the user is already locked out by
+    // Phase 1, and a later retry of deleteAccount picks up wherever this
+    // run stopped. Errors are collected per chunk so a single transient
+    // failure doesn't mask the rest.
+    const phase2Errors: Array<{ label: string; error: Error }> = [];
+    const tryStep = async (label: string, fn: () => Promise<{ count: number }>) => {
+      try {
+        await this.runDelete(label, fn);
+      } catch (e) {
+        phase2Errors.push({ label, error: e as Error });
+      }
+    };
+
     for (const deviceId of deviceIds) {
-      await this.runDelete('messages', () =>
+      await tryStep('messages', () =>
         this.prisma.message.deleteMany({ where: { senderDeviceId: deviceId } }),
       );
-      await this.runDelete('attachments', () =>
+      await tryStep('attachments', () =>
         this.prisma.attachment.deleteMany({ where: { uploaderDeviceId: deviceId } }),
       );
-      await this.runDelete('callRecords', () =>
+      await tryStep('callRecords', () =>
         this.prisma.callRecord.deleteMany({ where: { initiatorDeviceId: deviceId } }),
       );
     }
 
-    await this.runDelete('messageReceipts', () =>
+    await tryStep('messageReceipts', () =>
       this.prisma.messageReceipt.deleteMany({ where: { userId } }),
     );
-    await this.runDelete('reactions', () =>
+    await tryStep('reactions', () =>
       this.prisma.reaction.deleteMany({ where: { userId } }),
     );
-    await this.runDelete('storyViews', () =>
+    await tryStep('storyViews', () =>
       this.prisma.storyView.deleteMany({ where: { viewerUserId: userId } }),
     );
-    await this.runDelete('stories', () =>
+    await tryStep('stories', () =>
       this.prisma.story.deleteMany({ where: { userId } }),
     );
-    await this.runDelete('userContacts', () =>
+    await tryStep('userContacts', () =>
       this.prisma.userContact.deleteMany({
         where: { OR: [{ userId }, { contactUserId: userId }] },
       }),
     );
-    await this.runDelete('conversationMembers', () =>
+    await tryStep('conversationMembers', () =>
       this.prisma.conversationMember.deleteMany({ where: { userId } }),
     );
 
     if (ownedConversationIds.length > 0) {
       // Cascade-delete is bounded by the number of group/channel
       // conversations the user owns — typically small.
-      await this.runDelete('ownedConversations', () =>
+      await tryStep('ownedConversations', () =>
         this.prisma.conversation.deleteMany({
           where: { id: { in: ownedConversationIds } },
         }),
       );
+    }
+
+    if (phase2Errors.length > 0) {
+      // The user is already locked out by Phase 1, but we couldn't fully
+      // purge their data. Surface this loudly so an operator can retry —
+      // every step is idempotent so re-running deleteAccount picks up
+      // exactly where this attempt stopped.
+      this.logger.error(
+        `deleteAccount(${userId}): phase 2 failed on ${phase2Errors.length} step(s); user is locked but cleanup is incomplete. Safe to retry. First failure: ${phase2Errors[0].label}: ${phase2Errors[0].error.message}`,
+      );
+      throw phase2Errors[0].error;
     }
 
     // Phase 3 (small tx): finish the metadata + the user/device rows

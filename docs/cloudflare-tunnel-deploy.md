@@ -97,7 +97,34 @@ https://veil-beta.example.com/demo/
 - [ ] `Origin: https://veil-beta.example.com` 헤더가 CORS 통과하는지
 - [ ] WebSocket 메시지 즉시 도착 (실시간 pill: 🟢 실시간)
 - [ ] 폰에서 접속 시 v2 envelope 암호화로 정상 수신
-- [ ] DB 직접 조회 → ciphertext 만 저장된 것 확인:
+
+### 🛟 자주 보는 함정
+
+- **WS pill 이 🟠 "재연결 중..." / 🔴 에서 안 풀린다** → 거의 항상
+  `VEIL_ALLOWED_ORIGINS` 와 Cloudflare 의 public hostname 이 정확히
+  일치하지 않습니다 (subdomain 오타 / `https://` 빠짐 / 끝 슬래시
+  여분). 정확히:
+  ```
+  VEIL_ALLOWED_ORIGINS=https://veil-beta.example.com
+  ```
+  형태여야 하고, Cloudflare 대시보드의 public hostname 도 똑같이
+  `https://veil-beta.example.com` 이어야 합니다. 환경변수 갈고
+  `pnpm demo:tunnel:up` 다시.
+
+- **`pnpm demo:tunnel:logs` 에서 `tunnel: not found`** → docker-compose
+  의 `services.api.name` 이 다른 값이면 Cloudflare 의 public hostname
+  Service 도 그 이름으로 바꿔야 합니다. 기본 compose 에선 정확히
+  `http://api:3000`.
+
+- **모든 메시지가 "🔒 복호화 실패"** → 한쪽이 키를 회전한 직후에 잠깐
+  나타나는 정상 동작. 데모는 3회 연속 실패 후 자동으로 peer 키 캐시를
+  무효화합니다. 그 후에도 계속이면 양쪽 다 핸들 wipe + 재등록.
+
+- **첨부 업로드가 401/403/CORS 에러** → 알려진 한계. MinIO (`:9000`)
+  가 별도 호스트로 안 노출되어 있어 polution presigned PUT 이
+  `localhost:9000` 으로 가다 막힙니다. 다음 단계 (B: VPS) 에서 함께.
+
+- DB 직접 조회 → ciphertext 만 저장된 것 확인:
   ```bash
   docker exec veil-postgres-1 psql -U veil -d veil -c \
     "SELECT substring(ciphertext from 1 for 60), nonce FROM messages ORDER BY server_received_at DESC LIMIT 3;"

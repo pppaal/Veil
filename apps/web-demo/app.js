@@ -1101,7 +1101,12 @@ function renderOnePanel(convId) {
     saveDraft(convId, textarea.value);
   };
   textarea.addEventListener('input', autoGrow);
-  textarea.addEventListener('blur', () => emitTypingStop(convId));
+  // No `blur` handler — the textarea blurs every time renderActivePanel
+  // re-creates it (via WS message.new / typing / presence events), and a
+  // typing.stop spam there is a) wrong (the user didn't stop) and b)
+  // primes the server-side rate limit so the next legitimate typing.start
+  // gets throttled. The 4-second idle timer + send-clears-stop covers the
+  // real cases.
   // IME-safe Enter to send.
   let composing = false;
   textarea.addEventListener('compositionstart', () => { composing = true; });
@@ -1169,7 +1174,14 @@ function renderOnePanel(convId) {
     } else {
       msgsNode.scrollTop = prevScrollTop;
     }
-    if (state.activeConv === convId) textarea.focus();
+    // Focus the textarea ONCE per explicit open/switch action. Subsequent
+    // renders (caused by WS events) leave the focus alone so the mobile
+    // soft keyboard doesn't pop back open and the IME composition isn't
+    // interrupted.
+    if (pendingFocusClaim.has(convId) && state.activeConv === convId) {
+      pendingFocusClaim.delete(convId);
+      textarea.focus();
+    }
   });
 
   // Mark visible peer messages as read in the background (only for primary tab).
@@ -1508,6 +1520,12 @@ async function loadConversations() {
   }
 }
 
+// Track which conversations want a one-shot focus claim. We only focus the
+// textarea when the user *explicitly* opens or switches to a tab, never on
+// re-renders triggered by WS events — otherwise every incoming typing.start
+// or presence.update yanks the mobile keyboard back open.
+const pendingFocusClaim = new Set();
+
 async function openConversation(convId) {
   if (!state.openTabs.includes(convId)) state.openTabs.push(convId);
   if (state.splitView && state.activeConv && state.activeConv !== convId) {
@@ -1515,6 +1533,7 @@ async function openConversation(convId) {
   }
   state.activeConv = convId;
   if (state.secondaryConv === convId) state.secondaryConv = null;
+  pendingFocusClaim.add(convId);
   $('app').classList.add('viewing-chat');
   renderSidebar();
   renderTabs();
@@ -1531,6 +1550,7 @@ function setActiveTab(convId) {
   }
   state.activeConv = convId;
   if (state.secondaryConv === convId) state.secondaryConv = null;
+  pendingFocusClaim.add(convId);
   renderSidebar();
   renderTabs();
   renderActivePanel();
@@ -1979,14 +1999,24 @@ $('split-btn').addEventListener('click', toggleSplit);
 
 // Private-beta banner: visible by default until the user dismisses it.
 // Persists per-device in localStorage so a quick reload doesn't keep
-// resurfacing it.
-const BETA_BANNER_KEY = 'veil-demo-beta-banner-dismissed';
+// resurfacing it. The CSS variable --banner-h drives the app/auth-screen
+// layout offset so the banner never overlaps the input area.
+const BETA_BANNER_KEY = 'veil-demo-beta-banner-dismissed-v1';
+const BETA_BANNER_HEIGHT_PX = 38;
 const betaBanner = $('beta-banner');
 const betaBannerClose = $('beta-banner-close');
+function setBannerVisible(show) {
+  if (!betaBanner) return;
+  betaBanner.classList.toggle('hidden', !show);
+  document.documentElement.style.setProperty(
+    '--banner-h',
+    show ? BETA_BANNER_HEIGHT_PX + 'px' : '0px',
+  );
+}
 if (betaBanner && betaBannerClose) {
-  if (localStorage.getItem(BETA_BANNER_KEY) !== '1') betaBanner.classList.remove('hidden');
+  setBannerVisible(localStorage.getItem(BETA_BANNER_KEY) !== '1');
   betaBannerClose.addEventListener('click', () => {
-    betaBanner.classList.add('hidden');
+    setBannerVisible(false);
     try { localStorage.setItem(BETA_BANNER_KEY, '1'); } catch {}
   });
 }

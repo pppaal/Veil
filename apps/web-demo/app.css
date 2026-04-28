@@ -15,6 +15,10 @@
   --good: #4ade80;
   --bad: #ff6b75;
   --warn: #fbbf24;
+  /* Height of the optional PRIVATE BETA banner. App layout reads this var so
+     the banner doesn't push the input area under the URL bar. JS sets it to
+     38px when the banner is visible and 0 when dismissed. */
+  --banner-h: 0px;
 
   --r-sm: 8px;
   --r: 12px;
@@ -80,8 +84,9 @@ body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
   flex-shrink: 0;
 }
 .beta-banner-close:hover { background: rgba(255,255,255,0.08); color: var(--fg); }
-body:has(.beta-banner:not(.hidden)) .topbar,
-body:has(.beta-banner:not(.hidden)) .auth-screen { padding-top: 38px; }
+/* Banner sits in fixed-position over the app; we shrink the app's height so
+   it never overlaps the input row. JS keeps --banner-h in sync with the
+   banner's visible state. */
 
 button { font: inherit; cursor: pointer; }
 input, textarea { font: inherit; color: inherit; }
@@ -207,7 +212,8 @@ a { color: var(--accent); text-decoration: none; }
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  min-height: 100dvh;
+  min-height: calc(100dvh - var(--banner-h));
+  margin-top: var(--banner-h);
   padding: 24px;
 }
 .auth-card {
@@ -304,7 +310,8 @@ a { color: var(--accent); text-decoration: none; }
     "topbar topbar"
     "sidebar main";
   height: 100vh;
-  height: 100dvh;
+  height: calc(100dvh - var(--banner-h));
+  margin-top: var(--banner-h);
   overflow: hidden;
 }
 

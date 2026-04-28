@@ -134,7 +134,10 @@ services:
   # In the Cloudflare Zero Trust dashboard set the public hostname's
   # `Service` to `http://api:3000`. See docs/cloudflare-tunnel-deploy.md.
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    # Pinned to a tagged release rather than :latest so a 03:00 image rebuild
+    # can't break a live tunnel. Bump deliberately when verifying a new
+    # version with `docker compose -f docker-compose.demo.yml --profile tunnel pull`.
+    image: cloudflare/cloudflared:2024.12.2
     profiles: [tunnel]
     restart: unless-stopped
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}

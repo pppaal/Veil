@@ -44,7 +44,13 @@ Users may at any time:
 
 - Request access, correction, or deletion of personal information.
 - Request a halt to processing.
-- Delete their account in-app; this is executed immediately from the settings screen.
+- Delete their account.
+  - **Mobile app (Flutter)**: Settings → Delete account is executed immediately.
+  - **Web demo (`/demo/`) beta**: there is no in-app deletion control yet.
+    Email `privacy@veil.app` with the handle in use; the operator verifies
+    handle ownership via the challenge/verify flow and runs the deletion.
+    Standard turnaround: 3 business days. See
+    [`docs/ops/data-subject-request.md`](ops/data-subject-request.md).
 
 Deleting an account purges all associated server-side identifiers and queued ciphertext.
 

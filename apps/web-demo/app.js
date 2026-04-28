@@ -78,19 +78,142 @@ const toast = (msg, kind = '') => {
   }, kind === 'error' ? 5000 : 2500);
 };
 
-// ---------- crypto (Ed25519 only in Phase A; X25519 envelope in Phase E) ----------
-async function generateAuthKey() {
-  const kp = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
-  const rawPub = await crypto.subtle.exportKey('raw', kp.publicKey);
-  const jwkPriv = await crypto.subtle.exportKey('jwk', kp.privateKey);
-  return { authPublicKey: b64uEncode(rawPub), jwkPriv };
+// ---------- crypto ----------
+// Each device gets two static keypairs:
+//   * Ed25519 — signs auth challenges (so the server can prove device identity).
+//   * X25519  — derives a shared AES-GCM key per peer via ECDH + HKDF, used to
+//               encrypt every envelope sent through the relay.
+// This is not a Double Ratchet — there is no forward secrecy or post-compromise
+// security — but it is real end-to-end encryption: the API sees ciphertext
+// only. The Flutter mobile app uses the audited LibCryptoAdapter for the real
+// thing; the web demo trades ratchet complexity for browser-native primitives.
+async function generateIdentityKeys() {
+  const ed = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  const x = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
+  return {
+    edJwkPriv: await crypto.subtle.exportKey('jwk', ed.privateKey),
+    edPubB64u: b64uEncode(await crypto.subtle.exportKey('raw', ed.publicKey)),
+    xJwkPriv: await crypto.subtle.exportKey('jwk', x.privateKey),
+    xPubB64u: b64uEncode(await crypto.subtle.exportKey('raw', x.publicKey)),
+  };
 }
-async function importAuthPriv(jwk) {
+async function importEdPriv(jwk) {
   return await crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, false, ['sign']);
 }
-async function signChallenge(privateKey, challenge) {
-  const sig = await crypto.subtle.sign({ name: 'Ed25519' }, privateKey, new TextEncoder().encode(challenge));
+async function importXPriv(jwk) {
+  return await crypto.subtle.importKey('jwk', jwk, { name: 'X25519' }, false, ['deriveBits']);
+}
+async function importXPubFromB64u(b64u) {
+  return await crypto.subtle.importKey('raw', b64uDecode(b64u), { name: 'X25519' }, false, []);
+}
+async function signChallenge(edPrivateKey, challenge) {
+  const sig = await crypto.subtle.sign({ name: 'Ed25519' }, edPrivateKey, new TextEncoder().encode(challenge));
   return b64uEncode(sig);
+}
+
+async function deriveSharedAesKey(myXPriv, peerXPub) {
+  const bits = await crypto.subtle.deriveBits({ name: 'X25519', public: peerXPub }, myXPriv, 256);
+  const baseKey = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
+  return await crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: new Uint8Array(0),
+      info: new TextEncoder().encode('veil-demo-v1-aesgcm'),
+    },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+}
+
+async function encryptWithKey(key, plaintext) {
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: nonce },
+    key,
+    new TextEncoder().encode(plaintext),
+  );
+  return { ciphertext: 'v1.' + b64uEncode(ct), nonce: b64uEncode(nonce) };
+}
+
+async function decryptWithKey(key, ciphertextV1, nonceB64u) {
+  if (!ciphertextV1?.startsWith('v1.')) return null;
+  const ct = b64uDecode(ciphertextV1.slice(3));
+  const nonce = b64uDecode(nonceB64u);
+  try {
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ct);
+    return new TextDecoder().decode(pt);
+  } catch {
+    return null;
+  }
+}
+
+// Per-conversation cached AES-GCM key (derived once per peer).
+const sharedKeyByConv = new Map(); // convId -> CryptoKey
+const peerXPubByUserId = new Map(); // userId -> CryptoKey (X25519 pub)
+
+async function getPeerXPub(userId, handle) {
+  if (peerXPubByUserId.has(userId)) return peerXPubByUserId.get(userId);
+  const r = await api(`/users/${handle}/key-bundle`);
+  const pub = await importXPubFromB64u(r.bundle.identityPublicKey);
+  peerXPubByUserId.set(userId, pub);
+  return pub;
+}
+
+async function getSharedKeyForConv(convId) {
+  if (sharedKeyByConv.has(convId)) return sharedKeyByConv.get(convId);
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (!conv || !state.me?.xPrivKey) return null;
+  const peer = (conv.members || []).find((m) => m.userId !== state.me.userId);
+  if (!peer) return null;
+  try {
+    const peerXPub = await getPeerXPub(peer.userId, peer.handle);
+    const key = await deriveSharedAesKey(state.me.xPrivKey, peerXPub);
+    sharedKeyByConv.set(convId, key);
+    return key;
+  } catch (e) {
+    console.warn('shared key derive failed', e);
+    return null;
+  }
+}
+
+async function decryptMessage(msg) {
+  if (msg._plaintext != null) return; // already done
+  const ct = msg.ciphertext || '';
+  // Legacy DEMO-LABEL still in DB from earlier phases.
+  if (ct.startsWith('DEMO-PLAINTEXT-LABEL[') && ct.endsWith(']')) {
+    msg._plaintext = ct.slice('DEMO-PLAINTEXT-LABEL['.length, -1);
+    return;
+  }
+  if (!ct.startsWith('v1.')) {
+    msg._plaintext = '(평문 아님)';
+    return;
+  }
+  const key = await getSharedKeyForConv(msg.conversationId);
+  if (!key) {
+    msg._plaintext = '🔒 키 미해결';
+    return;
+  }
+  const pt = await decryptWithKey(key, ct, msg.nonce);
+  msg._plaintext = pt ?? '🔒 복호화 실패';
+}
+
+async function decryptAllForConv(convId) {
+  const list = state.messagesByConv.get(convId) || [];
+  await Promise.all(list.map(decryptMessage));
+  // Also decrypt the conversation summary's lastMessage (sidebar preview).
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (conv?.lastMessage) await decryptMessage(conv.lastMessage);
+}
+
+async function decryptAllConversations() {
+  await Promise.all(
+    state.conversations.map(async (c) => {
+      if (c.lastMessage) await decryptMessage(c.lastMessage);
+    }),
+  );
 }
 
 // ---------- API client ----------
@@ -211,7 +334,7 @@ function disconnectSocket() {
   state.typing.clear();
 }
 
-function onMessageNew(msg) {
+async function onMessageNew(msg) {
   const convId = msg.conversationId;
   const list = state.messagesByConv.get(convId) || [];
   // If we already have this message id, ignore.
@@ -220,6 +343,8 @@ function onMessageNew(msg) {
   if (msg.clientMessageId) {
     const idx = list.findIndex((m) => m.clientMessageId === msg.clientMessageId);
     if (idx >= 0) {
+      // Carry over the plaintext we already typed locally.
+      if (list[idx]._plaintext != null) msg._plaintext = list[idx]._plaintext;
       list[idx] = msg;
       state.messagesByConv.set(convId, list);
       bumpConversation(convId, msg);
@@ -229,6 +354,10 @@ function onMessageNew(msg) {
   list.push(msg);
   state.messagesByConv.set(convId, list);
   bumpConversation(convId, msg);
+  await decryptMessage(msg);
+  // Re-render with the now-plaintext bubble + sidebar preview.
+  renderSidebar();
+  if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
 }
 
 function bumpConversation(convId, msg) {
@@ -361,7 +490,7 @@ function renderSidebar() {
       const peer = (c.members || []).find((m) => m.handle !== state.me.handle) ?? c.members?.[0];
       const isActive = state.activeConv === c.id || state.secondaryConv === c.id;
       const last = c.lastMessage;
-      const preview = last ? renderPreview(last.ciphertext) : '아직 메시지 없음';
+      const preview = last ? renderPreview(last) : '아직 메시지 없음';
       const time = last ? formatRelTime(last.serverReceivedAt) : '';
       const peerOnline = peer && state.online.has(peer.userId);
       const av = avatarFor(peer?.handle ?? '?', 'md');
@@ -388,10 +517,19 @@ function renderSidebar() {
   );
 }
 
-function renderPreview(ciphertext) {
-  // Strip the dev label so the sidebar shows the inner text.
-  const m = /^DEMO-PLAINTEXT-LABEL\[(.*)\]$/s.exec(ciphertext || '');
-  return (m ? m[1] : ciphertext) || '';
+function renderPreview(msgOrCiphertext) {
+  if (msgOrCiphertext == null) return '';
+  // Phase E onward: messages are pre-decrypted into _plaintext on ingest.
+  if (typeof msgOrCiphertext === 'object') {
+    if (msgOrCiphertext._plaintext != null) return msgOrCiphertext._plaintext;
+    return '🔒 암호화됨';
+  }
+  // Legacy string fallback (the sidebar lastMessage or rare callers passing ct).
+  const ct = msgOrCiphertext;
+  const m = /^DEMO-PLAINTEXT-LABEL\[(.*)\]$/s.exec(ct);
+  if (m) return m[1];
+  if (ct.startsWith('v1.')) return '🔒 암호화됨';
+  return ct;
 }
 
 function formatRelTime(iso) {
@@ -549,7 +687,7 @@ function renderOnePanel(convId) {
         if (i === group.msgs.length - 1) cls.push('last-of-group');
         if (m._status === 'pending') cls.push('pending');
         if (m._status === 'failed') cls.push('failed');
-        stack.appendChild(el('div', { class: cls.join(' ') }, [renderPreview(m.ciphertext)]));
+        stack.appendChild(el('div', { class: cls.join(' ') }, [renderPreview(m)]));
       }
       const last = group.msgs[group.msgs.length - 1];
       const lastT = new Date(last.serverReceivedAt || last._localAt || Date.now());
@@ -683,7 +821,7 @@ async function markVisibleAsRead(convId, msgs) {
 
 // ---------- actions ----------
 async function doRegister(displayName, handle) {
-  const { authPublicKey, jwkPriv } = await generateAuthKey();
+  const keys = await generateIdentityKeys();
   const reg = await api('/auth/register', {
     method: 'POST',
     body: {
@@ -691,17 +829,19 @@ async function doRegister(displayName, handle) {
       displayName: displayName || handle,
       deviceName: 'web-' + (navigator.platform || 'browser'),
       platform: 'android',
-      publicIdentityKey: 'pub-web-' + Date.now(),
-      signedPrekeyBundle: 'prekey-web-' + Date.now(),
-      authPublicKey,
+      // X25519 raw public key — peers fetch this through /users/:handle/key-bundle
+      // and use it to derive the per-conversation AES key via ECDH.
+      publicIdentityKey: keys.xPubB64u,
+      signedPrekeyBundle: 'web-demo-no-prekey',
+      authPublicKey: keys.edPubB64u,
     },
   });
   const ch = await api('/auth/challenge', {
     method: 'POST',
     body: { handle: reg.handle, deviceId: reg.deviceId },
   });
-  const priv = await crypto.subtle.importKey('jwk', jwkPriv, { name: 'Ed25519' }, false, ['sign']);
-  const signature = await signChallenge(priv, ch.challenge);
+  const edPriv = await importEdPriv(keys.edJwkPriv);
+  const signature = await signChallenge(edPriv, ch.challenge);
   const ver = await api('/auth/verify', {
     method: 'POST',
     body: { challengeId: ch.challengeId, deviceId: reg.deviceId, signature },
@@ -710,32 +850,48 @@ async function doRegister(displayName, handle) {
     handle: reg.handle,
     userId: reg.userId,
     deviceId: reg.deviceId,
-    jwkPriv,
+    edJwkPriv: keys.edJwkPriv,
+    xJwkPriv: keys.xJwkPriv,
+    xPubB64u: keys.xPubB64u,
     accessToken: ver.accessToken,
     refreshToken: ver.refreshToken,
   };
-  session.save(state.me);
+  state.me.xPrivKey = await importXPriv(keys.xJwkPriv);
+  session.save(serializableMe(state.me));
 }
 
 async function doRestore(stored) {
+  if (!stored.edJwkPriv || !stored.xJwkPriv) {
+    throw Object.assign(new Error('이 브라우저의 세션은 새 암호화 형식과 호환되지 않아요. 다시 등록해주세요.'), { status: 0 });
+  }
   const ch = await api('/auth/challenge', {
     method: 'POST',
     body: { handle: stored.handle, deviceId: stored.deviceId },
   });
-  const priv = await importAuthPriv(stored.jwkPriv);
-  const signature = await signChallenge(priv, ch.challenge);
+  const edPriv = await importEdPriv(stored.edJwkPriv);
+  const signature = await signChallenge(edPriv, ch.challenge);
   const ver = await api('/auth/verify', {
     method: 'POST',
     body: { challengeId: ch.challengeId, deviceId: stored.deviceId, signature },
   });
   state.me = { ...stored, accessToken: ver.accessToken, refreshToken: ver.refreshToken };
-  session.save(state.me);
+  state.me.xPrivKey = await importXPriv(stored.xJwkPriv);
+  session.save(serializableMe(state.me));
+}
+
+// CryptoKey objects can't be JSON-serialized. Strip them before saving.
+function serializableMe(me) {
+  const { xPrivKey, ...rest } = me;
+  return rest;
 }
 
 async function loadConversations() {
   try {
     const r = await api('/conversations', { token: state.me.accessToken });
     state.conversations = Array.isArray(r) ? r : (r.items ?? []);
+    // Decrypt each conversation's lastMessage for the sidebar preview before
+    // rendering so we don't flash "🔒 암호화됨" on every refresh.
+    await decryptAllConversations();
     renderSidebar();
   } catch (e) {
     if (e.status === 401) return logout();
@@ -852,12 +1008,20 @@ async function refreshMessages(convId) {
     // Preserve any pending optimistic entries that haven't been ACKed yet.
     const prev = state.messagesByConv.get(target) || [];
     const pendings = prev.filter((m) => m._status === 'pending' || m._status === 'failed');
+    const prevByClientId = new Map(prev.map((m) => [m.clientMessageId, m]));
     const seenClientIds = new Set((r.items ?? []).map((m) => m.clientMessageId));
+    const fresh = (r.items ?? []).map((m) => {
+      const cached = prevByClientId.get(m.clientMessageId);
+      // Reuse a previously-decrypted plaintext if we still have it cached.
+      if (cached?._plaintext != null) m._plaintext = cached._plaintext;
+      return m;
+    });
     const merged = [
-      ...(r.items ?? []),
+      ...fresh,
       ...pendings.filter((m) => !seenClientIds.has(m.clientMessageId)),
     ];
     state.messagesByConv.set(target, merged);
+    await decryptAllForConv(target);
     if (target === state.activeConv || target === state.secondaryConv) renderActivePanel();
   } catch (e) {
     if (e.status === 401) return logout();
@@ -873,18 +1037,28 @@ async function sendMessage(textarea, convId) {
   const peer = conv.members.find((m) => m.userId !== state.me.userId);
   const clientMessageId = 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
+  // Encrypt the body with the per-peer derived AES-GCM key. The server only
+  // ever sees `ciphertext` and `nonce`.
+  const sharedKey = await getSharedKeyForConv(target);
+  if (!sharedKey) {
+    toast('상대 키를 찾지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
+    return;
+  }
+  const { ciphertext, nonce } = await encryptWithKey(sharedKey, text);
+
   // Optimistic insert with pending status so the bubble appears immediately.
   const optimistic = {
     id: '__pending__' + clientMessageId,
     clientMessageId,
     conversationId: conv.id,
     senderDeviceId: state.me.deviceId,
-    ciphertext: 'DEMO-PLAINTEXT-LABEL[' + text + ']',
-    nonce: 'nonce-pending',
+    ciphertext,
+    nonce,
     messageType: 'text',
     serverReceivedAt: null,
     _localAt: new Date().toISOString(),
     _status: 'pending',
+    _plaintext: text,
   };
   const list = state.messagesByConv.get(conv.id) || [];
   list.push(optimistic);
@@ -907,13 +1081,14 @@ async function sendMessage(textarea, convId) {
           conversationId: conv.id,
           senderDeviceId: state.me.deviceId,
           recipientUserId: peer.userId,
-          ciphertext: 'DEMO-PLAINTEXT-LABEL[' + text + ']',
-          nonce: 'nonce-' + Math.random().toString(36).slice(2, 10),
+          ciphertext,
+          nonce,
           messageType: 'text',
         },
       },
     });
-    // Swap the optimistic entry with the server-acknowledged message.
+    // Carry over the plaintext we already have locally.
+    sent.message._plaintext = text;
     const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
     if (idx >= 0) list[idx] = sent.message;
     else list.push(sent.message);

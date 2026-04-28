@@ -101,6 +101,12 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
     return {
       url: await getSignedUrl(this.publicClient, command, {
         expiresIn: S3AttachmentStorageGateway.expirySeconds,
+        unhoistableHeaders: new Set([
+          'cache-control',
+          'x-amz-meta-encrypted',
+          'x-amz-meta-sha256',
+          'x-amz-meta-attachment-id',
+        ]),
       }),
       headers: {
         'Content-Type': metadata.contentType,

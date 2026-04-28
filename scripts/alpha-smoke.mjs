@@ -1,4 +1,33 @@
 import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import { URL } from 'node:url';
+
+function rawPut(url, headers, body) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = u.protocol === 'https:' ? httpsRequest : httpRequest;
+    const req = lib(
+      {
+        method: 'PUT',
+        protocol: u.protocol,
+        hostname: u.hostname,
+        port: u.port,
+        path: `${u.pathname}${u.search}`,
+        headers: { ...headers, 'Content-Length': String(body.length) },
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () =>
+          resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }),
+        );
+      },
+    );
+    req.on('error', reject);
+    req.end(body);
+  });
+}
 
 const baseUrl = process.env.VEIL_ALPHA_BASE_URL ?? 'http://127.0.0.1:3000/v1';
 const spkiPrefix = Buffer.from('302a300506032b6570032100', 'hex');
@@ -133,13 +162,10 @@ async function run() {
     },
   });
 
-  const uploadPut = await fetch(upload.upload.uploadUrl, {
-    method: 'PUT',
-    headers: upload.upload.headers,
-    body: Buffer.from(Array.from({ length: 2048 }, (_, index) => index % 251)),
-  });
-  if (!uploadPut.ok) {
-    throw new Error(`upload PUT ${uploadPut.status} ${await uploadPut.text()}`);
+  const uploadBody = Buffer.from(Array.from({ length: 2048 }, (_, index) => index % 251));
+  const uploadPut = await rawPut(upload.upload.uploadUrl, upload.upload.headers, uploadBody);
+  if (uploadPut.status < 200 || uploadPut.status >= 300) {
+    throw new Error(`upload PUT ${uploadPut.status} ${uploadPut.body}`);
   }
 
   const complete = await requestJson('/attachments/complete', {

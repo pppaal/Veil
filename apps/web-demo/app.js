@@ -11,6 +11,11 @@
 const API = '/v1';
 const STORE = 'veil-demo-session';
 const POLL_MS = 4000;
+// Cap a single message body. UTF-8 worst case is ~3 bytes/char so 8000 chars
+// keeps us comfortably under the API's 64 KB envelope ceiling and prevents a
+// 10 MB paste from locking the encrypt/render path.
+const MESSAGE_MAX_CHARS = 8000;
+const DRAFT_DEBOUNCE_MS = 300;
 
 // ---------- utils ----------
 const $ = (id) => document.getElementById(id);
@@ -1015,7 +1020,32 @@ function renderOnePanel(convId) {
           { class: 'msg-status ' + status, title: statusLabel(status) },
           [statusGlyph(status)],
         );
-        stack.appendChild(el('div', { class: 'msg-time' }, [...timeBits, ' · ', statusEl]));
+        const children = [...timeBits, ' · ', statusEl];
+        if (status === 'failed' || (status === 'pending' && last._status === 'failed')) {
+          children.push(
+            ' · ',
+            el(
+              'button',
+              {
+                class: 'msg-action',
+                title: '다시 보내기',
+                onclick: () => retryFailedMessage(convId, last.clientMessageId),
+              },
+              ['다시 보내기'],
+            ),
+            ' · ',
+            el(
+              'button',
+              {
+                class: 'msg-action danger',
+                title: '취소',
+                onclick: () => cancelFailedMessage(convId, last.clientMessageId),
+              },
+              ['취소'],
+            ),
+          );
+        }
+        stack.appendChild(el('div', { class: 'msg-time' }, children));
       } else {
         stack.appendChild(el('div', { class: 'msg-time' }, timeBits));
       }
@@ -1045,10 +1075,11 @@ function renderOnePanel(convId) {
     placeholder: '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)',
     rows: '1',
     'aria-label': '메시지 입력',
+    maxlength: String(MESSAGE_MAX_CHARS),
   });
   // Restore the draft if we have one cached for this conversation.
   const cachedDraft = draftCache.get(convId);
-  if (cachedDraft) textarea.value = cachedDraft;
+  if (cachedDraft) textarea.value = cachedDraft.slice(0, MESSAGE_MAX_CHARS);
   const sendBtn = el(
     'button',
     { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea, convId) },
@@ -1056,6 +1087,12 @@ function renderOnePanel(convId) {
   );
   // Auto-grow + emit typing + persist the draft on every input.
   const autoGrow = () => {
+    // maxlength is enforced by the browser, but a paste larger than the cap
+    // can still arrive as a one-shot input event; trim defensively.
+    if (textarea.value.length > MESSAGE_MAX_CHARS) {
+      textarea.value = textarea.value.slice(0, MESSAGE_MAX_CHARS);
+      toast(`메시지가 잘렸어요 (최대 ${MESSAGE_MAX_CHARS.toLocaleString()}자)`, 'error');
+    }
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
     sendBtn.disabled = textarea.value.trim().length === 0;
@@ -1248,11 +1285,67 @@ async function persistMessages(convId) {
 async function enqueueOutbound(entry) {
   await idbPut('outbound', entry);
 }
+
+async function retryFailedMessage(convId, clientMessageId) {
+  if (!clientMessageId) return;
+  const list = state.messagesByConv.get(convId) || [];
+  const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+  if (idx < 0) return;
+  list[idx] = { ...list[idx], _status: 'pending' };
+  // Re-add to outbound with nextRetryAt=0 so the next drain runs immediately.
+  const queued = await idbGet('outbound', clientMessageId);
+  if (queued) {
+    await idbPut('outbound', { ...queued, attempts: 0, nextRetryAt: 0 });
+  }
+  renderActivePanel();
+  drainOutbound();
+}
+
+async function cancelFailedMessage(convId, clientMessageId) {
+  if (!clientMessageId) return;
+  const list = state.messagesByConv.get(convId) || [];
+  const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+  if (idx >= 0) {
+    list.splice(idx, 1);
+    state.messagesByConv.set(convId, list);
+  }
+  try { await idbDelete('outbound', clientMessageId); } catch {}
+  renderActivePanel();
+  toast('전송 취소됨');
+}
 async function dequeueOutbound(clientMessageId) {
   await idbDelete('outbound', clientMessageId);
 }
+// BroadcastChannel-backed leader election. Multiple tabs of the same handle
+// in the same browser would otherwise both poll the outbound queue, leading
+// to duplicate /messages POSTs (idempotency stops the duplicate write but
+// not the wasted request). Each tab elects itself only if no leader has
+// announced itself in the last ~2s.
+const TAB_ID = Math.random().toString(36).slice(2, 12) + '-' + Date.now().toString(36);
+let leaderUntil = 0;
+let outboundChannel = null;
+try { outboundChannel = new BroadcastChannel('veil-demo-outbound'); } catch {}
+if (outboundChannel) {
+  outboundChannel.addEventListener('message', (ev) => {
+    if (ev.data?.kind === 'lead' && ev.data?.tab !== TAB_ID) {
+      // Another tab is leading; back off.
+      leaderUntil = Math.max(leaderUntil, Date.now() + 2000);
+    }
+  });
+}
+function isOutboundLeader() {
+  if (!outboundChannel) return true; // no BroadcastChannel = old browser, behave as before
+  const now = Date.now();
+  if (leaderUntil > now) return false;
+  // Announce ourselves and reserve the leader slot for the next 2 seconds.
+  try { outboundChannel.postMessage({ kind: 'lead', tab: TAB_ID }); } catch {}
+  leaderUntil = now + 2000;
+  return true;
+}
+
 async function drainOutbound() {
   if (!state.me) return;
+  if (!isOutboundLeader()) return;
   const items = await idbAll('outbound');
   if (items.length === 0) return;
   for (const item of items) {
@@ -1300,22 +1393,36 @@ async function drainOutbound() {
 
 // ---------- drafts ----------
 const draftCache = new Map(); // convId -> text (mirrors IDB; written on input, read on render)
+const draftFlushTimers = new Map(); // convId -> setTimeout handle
 async function loadDraftsFromIdb() {
   try {
     const all = await idbAll('drafts');
     for (const d of all) draftCache.set(d.convId, d.text);
   } catch {}
 }
-async function saveDraft(convId, text) {
-  if (!convId) return;
-  draftCache.set(convId, text);
+async function flushDraftToIdb(convId, text) {
   if (text) {
     try { await idbPut('drafts', { convId, text }); } catch {}
   } else {
     try { await idbDelete('drafts', convId); } catch {}
   }
 }
-
+function saveDraft(convId, text) {
+  if (!convId) return;
+  draftCache.set(convId, text);
+  // Debounce IDB writes — a fast typer otherwise hits disk every keystroke.
+  const existing = draftFlushTimers.get(convId);
+  if (existing) clearTimeout(existing);
+  draftFlushTimers.set(convId, setTimeout(() => {
+    draftFlushTimers.delete(convId);
+    flushDraftToIdb(convId, draftCache.get(convId) ?? '');
+  }, DRAFT_DEBOUNCE_MS));
+}
+async function flushAllDraftsImmediately() {
+  for (const [convId, t] of draftFlushTimers) clearTimeout(t);
+  draftFlushTimers.clear();
+  for (const [convId, text] of draftCache) await flushDraftToIdb(convId, text);
+}
 // ---------- actions ----------
 async function doRegister(displayName, handle) {
   const keys = await generateIdentityKeys();
@@ -1538,6 +1645,10 @@ async function sendMessage(textarea, convId) {
   const target = convId ?? state.activeConv;
   const text = textarea.value.trim();
   if (!text || !target) return;
+  if (text.length > MESSAGE_MAX_CHARS) {
+    toast(`메시지가 너무 길어요 (최대 ${MESSAGE_MAX_CHARS.toLocaleString()}자)`, 'error');
+    return;
+  }
   const conv = state.conversations.find((c) => c.id === target);
   if (!conv) return;
   const peer = conv.members.find((m) => m.userId !== state.me.userId);
@@ -1752,13 +1863,44 @@ $('wipe-btn').addEventListener('click', async () => {
 
 $('search-input').addEventListener('input', renderSidebar);
 
+// Track the element that had focus before a dialog opens so we can restore
+// it on close — important for keyboard users.
+let dialogReturnFocusEl = null;
+function openDialog(dialogId, firstFocusId) {
+  dialogReturnFocusEl = document.activeElement;
+  $(dialogId).classList.remove('hidden');
+  if (firstFocusId) requestAnimationFrame(() => $(firstFocusId)?.focus());
+}
+function closeDialog(dialogId) {
+  $(dialogId).classList.add('hidden');
+  if (dialogReturnFocusEl && document.contains(dialogReturnFocusEl)) {
+    try { dialogReturnFocusEl.focus(); } catch {}
+  }
+  dialogReturnFocusEl = null;
+}
+function trapFocus(dialogId, e) {
+  if (e.key !== 'Tab') return;
+  const dialog = $(dialogId).querySelector('.dialog');
+  if (!dialog) return;
+  const focusable = dialog.querySelectorAll('input, button:not([disabled])');
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 $('new-chat-btn').addEventListener('click', () => {
   $('new-peer-input').value = '';
   $('new-peer-error').textContent = '';
-  $('new-chat-dialog').classList.remove('hidden');
-  $('new-peer-input').focus();
+  openDialog('new-chat-dialog', 'new-peer-input');
 });
-$('new-cancel').addEventListener('click', () => $('new-chat-dialog').classList.add('hidden'));
+$('new-cancel').addEventListener('click', () => closeDialog('new-chat-dialog'));
 $('new-confirm').addEventListener('click', async () => {
   const peer = $('new-peer-input').value.trim().toLowerCase();
   if (!peer) {
@@ -1775,7 +1917,7 @@ $('new-confirm').addEventListener('click', async () => {
       method: 'POST',
       body: { peerHandle: peer },
     });
-    $('new-chat-dialog').classList.add('hidden');
+    closeDialog('new-chat-dialog');
     await loadConversations();
     await openConversation(r.conversation.id);
   } catch (e) {
@@ -1788,7 +1930,15 @@ $('new-peer-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.isComposing) $('new-confirm').click();
 });
 $('new-chat-dialog').addEventListener('click', (e) => {
-  if (e.target.id === 'new-chat-dialog') $('new-chat-dialog').classList.add('hidden');
+  if (e.target.id === 'new-chat-dialog') closeDialog('new-chat-dialog');
+});
+$('new-chat-dialog').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeDialog('new-chat-dialog');
+  } else {
+    trapFocus('new-chat-dialog', e);
+  }
 });
 
 $('back-to-list').addEventListener('click', () => {

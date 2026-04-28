@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <meta name="theme-color" content="#0b0c10" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -93,12 +93,12 @@
   </main>
 
   <!-- New chat dialog -->
-  <div class="dialog-backdrop hidden" id="new-chat-dialog">
-    <div class="dialog">
-      <div class="dialog-title">새 다이렉트 챗</div>
+  <div class="dialog-backdrop hidden" id="new-chat-dialog" role="presentation">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
+      <div class="dialog-title" id="new-chat-title">새 다이렉트 챗</div>
       <div class="dialog-sub">상대 핸들을 입력하세요. 같은 서버에 등록된 핸들이어야 해요.</div>
       <input id="new-peer-input" type="text" placeholder="bob" autocapitalize="off" autocorrect="off" spellcheck="false" />
-      <div class="dialog-error" id="new-peer-error"></div>
+      <div class="dialog-error" id="new-peer-error" role="alert" aria-live="polite"></div>
       <div class="dialog-actions">
         <button class="btn btn-ghost" id="new-cancel">취소</button>
         <button class="btn btn-primary" id="new-confirm">시작</button>

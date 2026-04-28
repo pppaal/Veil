@@ -18,7 +18,10 @@ export class HealthController {
     };
   }
 
-  @Public()
+  // Authenticated readiness probe. Earlier this was @Public() and returned
+  // deployment posture (push provider, crypto audit attestation, S3 public
+  // endpoint visibility) to anyone who could reach the box. The same payload
+  // is still useful for ops dashboards but lives behind a bearer token now.
   @Get('ready')
   getReadiness(): {
     status: 'ok';

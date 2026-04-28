@@ -124,7 +124,10 @@ const state = {
   me: null,                    // { handle, userId, deviceId, jwkPriv, accessToken, refreshToken }
   conversations: [],           // ConversationSummary[]
   messagesByConv: new Map(),   // convId -> ConversationMessageSummary[]
-  activeConv: null,            // convId | null
+  openTabs: [],                // convId[] order = open order
+  activeConv: null,            // primary panel convId | null
+  secondaryConv: null,         // split-mode right panel convId | null
+  splitView: false,            // is split layout enabled?
   pollTimer: null,
 };
 
@@ -180,7 +183,7 @@ function renderSidebar() {
   list.replaceChildren(
     ...filtered.map((c) => {
       const peer = (c.members || []).find((m) => m.handle !== state.me.handle) ?? c.members?.[0];
-      const isActive = state.activeConv === c.id;
+      const isActive = state.activeConv === c.id || state.secondaryConv === c.id;
       const last = c.lastMessage;
       const preview = last ? renderPreview(last.ciphertext) : '아직 메시지 없음';
       const time = last ? formatRelTime(last.serverReceivedAt) : '';
@@ -310,7 +313,8 @@ const NEAR_BOTTOM_PX = 120;
 
 function renderActivePanel() {
   const panels = $('panels');
-  if (!state.activeConv) {
+  const slots = [state.activeConv, state.splitView ? state.secondaryConv : null].filter(Boolean);
+  if (slots.length === 0) {
     panels.replaceChildren(
       el('div', { class: 'panel-empty', style: 'display:flex' }, [
         el('div', { class: 'empty-emoji' }, ['💬']),
@@ -320,8 +324,12 @@ function renderActivePanel() {
     );
     return;
   }
-  const conv = state.conversations.find((c) => c.id === state.activeConv);
-  if (!conv) return;
+  panels.replaceChildren(...slots.map(renderOnePanel).filter(Boolean));
+}
+
+function renderOnePanel(convId) {
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (!conv) return null;
   const peer = (conv.members || []).find((m) => m.handle !== state.me.handle) ?? conv.members?.[0];
   const msgs = state.messagesByConv.get(conv.id) || [];
 
@@ -335,17 +343,17 @@ function renderActivePanel() {
     }
   }
 
-  // Capture scroll position before re-render so we can restore or follow.
-  const prevMsgsNode = panels.querySelector('.panel-msgs');
+  // Capture scroll position from the previous render of THIS conversation, if any.
+  const prevMsgsNode = document.querySelector(`.panel-msgs[data-conv="${convId}"]`);
   let wasNearBottom = true;
-  let prevScrollTop = 0;
+  let prevScrollTop = scrollPosByConv.get(convId) ?? 0;
   if (prevMsgsNode) {
     prevScrollTop = prevMsgsNode.scrollTop;
     wasNearBottom =
       prevMsgsNode.scrollHeight - prevMsgsNode.scrollTop - prevMsgsNode.clientHeight <= NEAR_BOTTOM_PX;
   }
 
-  const msgsNode = el('div', { class: 'panel-msgs', id: 'panel-msgs' });
+  const msgsNode = el('div', { class: 'panel-msgs', dataset: { conv: convId } });
   const days = groupMessages(msgs, peerByDeviceId, state.me);
   for (const day of days) {
     msgsNode.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [day.dayLabel])]));
@@ -396,7 +404,7 @@ function renderActivePanel() {
   }
 
   msgsNode.addEventListener('scroll', () => {
-    scrollPosByConv.set(conv.id, msgsNode.scrollTop);
+    scrollPosByConv.set(convId, msgsNode.scrollTop);
   });
 
   const textarea = el('textarea', {
@@ -406,7 +414,7 @@ function renderActivePanel() {
   });
   const sendBtn = el(
     'button',
-    { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea) },
+    { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea, convId) },
     [el('span', { 'aria-hidden': 'true' }, ['↑'])],
   );
   // Auto-grow.
@@ -423,24 +431,22 @@ function renderActivePanel() {
   textarea.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey && !composing && !e.isComposing) {
       e.preventDefault();
-      sendMessage(textarea);
+      sendMessage(textarea, convId);
     }
   });
   sendBtn.disabled = true;
 
-  panels.replaceChildren(
-    el('div', { class: 'panel' }, [
-      el('div', { class: 'panel-header' }, [
-        avatarFor(peer?.handle ?? '?', 'md'),
-        el('div', { class: 'panel-title' }, [
-          el('div', { class: 'name' }, ['@' + (peer?.handle ?? '?')]),
-          el('div', { class: 'sub' }, [`대화 ${conv.id.slice(0, 8)}`]),
-        ]),
+  const panelNode = el('div', { class: 'panel', dataset: { conv: convId } }, [
+    el('div', { class: 'panel-header' }, [
+      avatarFor(peer?.handle ?? '?', 'md'),
+      el('div', { class: 'panel-title' }, [
+        el('div', { class: 'name' }, ['@' + (peer?.handle ?? '?')]),
+        el('div', { class: 'sub' }, [`대화 ${conv.id.slice(0, 8)}`]),
       ]),
-      msgsNode,
-      el('div', { class: 'panel-input' }, [textarea, sendBtn]),
     ]),
-  );
+    msgsNode,
+    el('div', { class: 'panel-input' }, [textarea, sendBtn]),
+  ]);
 
   // Restore scroll: if user was near the bottom, snap to bottom; otherwise keep
   // them where they were.
@@ -450,11 +456,13 @@ function renderActivePanel() {
     } else {
       msgsNode.scrollTop = prevScrollTop;
     }
-    textarea.focus();
+    if (state.activeConv === convId) textarea.focus();
   });
 
-  // Mark visible peer messages as read in the background.
-  markVisibleAsRead(conv.id, msgs);
+  // Mark visible peer messages as read in the background (only for primary tab).
+  if (state.activeConv === convId) markVisibleAsRead(convId, msgs);
+
+  return panelNode;
 }
 
 const readMarked = new Set();
@@ -537,34 +545,131 @@ async function loadConversations() {
 }
 
 async function openConversation(convId) {
+  if (!state.openTabs.includes(convId)) state.openTabs.push(convId);
+  if (state.splitView && state.activeConv && state.activeConv !== convId) {
+    state.secondaryConv = state.activeConv;
+  }
   state.activeConv = convId;
+  if (state.secondaryConv === convId) state.secondaryConv = null;
   $('app').classList.add('viewing-chat');
   renderSidebar();
+  renderTabs();
   renderActivePanel();
-  await refreshMessages();
+  await refreshMessages(convId);
 }
 
-async function refreshMessages() {
-  if (!state.activeConv) return;
+function setActiveTab(convId) {
+  if (state.splitView && state.activeConv && state.activeConv !== convId) {
+    state.secondaryConv = state.activeConv;
+  }
+  state.activeConv = convId;
+  if (state.secondaryConv === convId) state.secondaryConv = null;
+  renderSidebar();
+  renderTabs();
+  renderActivePanel();
+}
+
+function closeTab(convId) {
+  const idx = state.openTabs.indexOf(convId);
+  if (idx === -1) return;
+  state.openTabs.splice(idx, 1);
+  if (state.secondaryConv === convId) state.secondaryConv = null;
+  if (state.activeConv === convId) {
+    const fallback = state.openTabs[Math.min(idx, state.openTabs.length - 1)] || null;
+    state.activeConv = fallback;
+    if (state.activeConv === state.secondaryConv) state.secondaryConv = null;
+  }
+  if (state.splitView && !state.secondaryConv && state.activeConv) {
+    state.secondaryConv = state.openTabs.find((c) => c !== state.activeConv) || null;
+  }
+  if (!state.activeConv) {
+    $('app').classList.remove('viewing-chat');
+  }
+  scrollPosByConv.delete(convId);
+  renderSidebar();
+  renderTabs();
+  renderActivePanel();
+}
+
+function toggleSplit() {
+  if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches) {
+    toast('분할 보기는 데스크탑에서만 사용할 수 있어요', 'error');
+    return;
+  }
+  state.splitView = !state.splitView;
+  $('split-btn').classList.toggle('active', state.splitView);
+  if (state.splitView) {
+    state.secondaryConv = state.openTabs.find((c) => c !== state.activeConv) || null;
+    if (!state.secondaryConv) {
+      toast('탭을 두 개 이상 열어주세요', 'good');
+    }
+  } else {
+    state.secondaryConv = null;
+  }
+  renderTabs();
+  renderActivePanel();
+}
+
+function renderTabs() {
+  const strip = $('tab-strip');
+  if (state.openTabs.length === 0) {
+    strip.replaceChildren();
+    return;
+  }
+  strip.replaceChildren(
+    ...state.openTabs.map((convId) => {
+      const conv = state.conversations.find((c) => c.id === convId);
+      const peer = conv ? (conv.members || []).find((m) => m.handle !== state.me.handle) ?? conv.members?.[0] : null;
+      const isActive = state.activeConv === convId;
+      const isSecondary = state.secondaryConv === convId;
+      const closeBtn = el(
+        'span',
+        {
+          class: 'tab-close',
+          'aria-label': '탭 닫기',
+          role: 'button',
+          onclick: (e) => { e.stopPropagation(); closeTab(convId); },
+        },
+        ['×'],
+      );
+      return el(
+        'button',
+        {
+          class: 'tab' + (isActive ? ' active' : '') + (isSecondary ? ' secondary' : ''),
+          onclick: () => setActiveTab(convId),
+          title: peer?.handle ? '@' + peer.handle : '대화',
+        },
+        [el('span', {}, ['@' + (peer?.handle ?? '?')]), closeBtn],
+      );
+    }),
+  );
+}
+
+async function refreshMessages(convId) {
+  const target = convId ?? state.activeConv;
+  if (!target) return;
   try {
-    const r = await api(`/conversations/${state.activeConv}/messages?limit=50`, { token: state.me.accessToken });
-    state.messagesByConv.set(state.activeConv, r.items ?? []);
-    if (state.activeConv === stateActiveAtRender()) renderActivePanel();
+    const r = await api(`/conversations/${target}/messages?limit=50`, { token: state.me.accessToken });
+    // Preserve any pending optimistic entries that haven't been ACKed yet.
+    const prev = state.messagesByConv.get(target) || [];
+    const pendings = prev.filter((m) => m._status === 'pending' || m._status === 'failed');
+    const seenClientIds = new Set((r.items ?? []).map((m) => m.clientMessageId));
+    const merged = [
+      ...(r.items ?? []),
+      ...pendings.filter((m) => !seenClientIds.has(m.clientMessageId)),
+    ];
+    state.messagesByConv.set(target, merged);
+    if (target === state.activeConv || target === state.secondaryConv) renderActivePanel();
   } catch (e) {
     if (e.status === 401) return logout();
   }
 }
 
-let lastRenderedActive = null;
-function stateActiveAtRender() {
-  lastRenderedActive = state.activeConv;
-  return lastRenderedActive;
-}
-
-async function sendMessage(textarea) {
+async function sendMessage(textarea, convId) {
+  const target = convId ?? state.activeConv;
   const text = textarea.value.trim();
-  if (!text || !state.activeConv) return;
-  const conv = state.conversations.find((c) => c.id === state.activeConv);
+  if (!text || !target) return;
+  const conv = state.conversations.find((c) => c.id === target);
   if (!conv) return;
   const peer = conv.members.find((m) => m.userId !== state.me.userId);
   const clientMessageId = 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
@@ -647,7 +752,10 @@ function startPolling() {
     if (!state.me) return;
     if (document.hidden) return;
     await loadConversations();
-    if (state.activeConv) await refreshMessages();
+    // Refresh every open tab so split view + background tabs stay live.
+    for (const convId of state.openTabs) {
+      await refreshMessages(convId);
+    }
   }, POLL_MS);
 }
 
@@ -797,7 +905,6 @@ $('menu').addEventListener('click', async (e) => {
   }
 });
 
-// Split button is a placeholder until Phase C.
-$('split-btn').addEventListener('click', () => toast('분할 보기는 다음 단계에서 추가됩니다', 'good'));
+$('split-btn').addEventListener('click', toggleSplit);
 
 bootIfSession();

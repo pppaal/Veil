@@ -263,7 +263,7 @@ async function refreshConvs() {
   $('conv-list').innerHTML = '<div style="color:var(--dim);font-size:13px">불러오는 중…</div>';
   try {
     const r = await api('/conversations', { token: me.accessToken });
-    const items = r.items ?? [];
+    const items = Array.isArray(r) ? r : (r.items ?? []);
     if (items.length === 0) {
       $('conv-list').innerHTML = '<div style="color:var(--dim);font-size:13px">대화 없음. 아래에서 새 다이렉트 챗을 시작하세요.</div>';
       return;

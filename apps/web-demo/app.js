@@ -230,6 +230,84 @@ function formatTime(d) {
   return `${ampm} ${h12}:${String(m).padStart(2, '0')}`;
 }
 
+function dayKey(d) {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+function dayLabel(d) {
+  const now = new Date();
+  if (dayKey(d) === dayKey(now)) return '오늘';
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (dayKey(d) === dayKey(yesterday)) return '어제';
+  if (d.getFullYear() === now.getFullYear()) {
+    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  }
+  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+}
+
+// Bucket messages into [{ dayKey, dayLabel, groups: [{ senderDeviceId, senderHandle, isMe, msgs[] }] }].
+// Within a day, consecutive messages from the same device within 2 minutes form one group.
+function groupMessages(msgs, peerByDeviceId, me) {
+  const days = [];
+  let day = null;
+  let group = null;
+  const GAP_MS = 2 * 60 * 1000;
+  for (const m of msgs) {
+    const t = new Date(m.serverReceivedAt || m._localAt || Date.now());
+    const dk = dayKey(t);
+    if (!day || day.dayKey !== dk) {
+      day = { dayKey: dk, dayLabel: dayLabel(t), groups: [] };
+      days.push(day);
+      group = null;
+    }
+    const isMe = m.senderDeviceId === me.deviceId;
+    const senderHandle = isMe ? me.handle : (peerByDeviceId.get(m.senderDeviceId) || '?');
+    const lastMsg = group ? group.msgs[group.msgs.length - 1] : null;
+    const lastT = lastMsg ? new Date(lastMsg.serverReceivedAt || lastMsg._localAt || 0) : null;
+    if (
+      group &&
+      group.senderDeviceId === m.senderDeviceId &&
+      lastT &&
+      t - lastT < GAP_MS
+    ) {
+      group.msgs.push(m);
+    } else {
+      group = { senderDeviceId: m.senderDeviceId, senderHandle, isMe, msgs: [m] };
+      day.groups.push(group);
+    }
+  }
+  return days;
+}
+
+function statusForMine(m) {
+  if (m._status === 'pending') return 'pending';
+  if (m._status === 'failed') return 'failed';
+  if (m.readAt) return 'read';
+  if (m.deliveredAt) return 'delivered';
+  return 'sent';
+}
+
+function statusGlyph(status) {
+  if (status === 'pending') return '⏳';
+  if (status === 'failed') return '!';
+  if (status === 'read') return '✓✓';
+  if (status === 'delivered') return '✓✓';
+  return '✓';
+}
+
+function statusLabel(status) {
+  if (status === 'pending') return '전송 중';
+  if (status === 'failed') return '전송 실패';
+  if (status === 'read') return '읽음';
+  if (status === 'delivered') return '전달됨';
+  return '전송됨';
+}
+
+// Track scroll positions per conversation so re-renders don't yank the user.
+const scrollPosByConv = new Map();
+const NEAR_BOTTOM_PX = 120;
+
 function renderActivePanel() {
   const panels = $('panels');
   if (!state.activeConv) {
@@ -247,37 +325,108 @@ function renderActivePanel() {
   const peer = (conv.members || []).find((m) => m.handle !== state.me.handle) ?? conv.members?.[0];
   const msgs = state.messagesByConv.get(conv.id) || [];
 
-  const msgsNode = el('div', { class: 'panel-msgs', id: 'panel-msgs' });
+  // Build a deviceId->handle lookup. We only know our own deviceId here; others
+  // collapse to the conversation peer for DMs.
+  const peerByDeviceId = new Map();
+  if (peer) peerByDeviceId.set('__peer__', peer.handle);
   for (const m of msgs) {
-    const isMe = m.senderDeviceId === state.me.deviceId;
-    const sender = isMe ? state.me.handle : peer?.handle;
-    msgsNode.appendChild(
-      el('div', { class: 'msg-group ' + (isMe ? 'me' : 'them') }, [
-        !isMe ? avatarFor(sender, 'sm') : null,
-        el('div', { class: 'group-stack' }, [
-          !isMe ? el('div', { class: 'group-meta' }, ['@' + (sender || '?')]) : null,
-          el('div', { class: 'msg' }, [renderPreview(m.ciphertext)]),
-          el('div', { class: 'msg-time' }, [formatTime(new Date(m.serverReceivedAt))]),
+    if (m.senderDeviceId !== state.me.deviceId && peer && !peerByDeviceId.has(m.senderDeviceId)) {
+      peerByDeviceId.set(m.senderDeviceId, peer.handle);
+    }
+  }
+
+  // Capture scroll position before re-render so we can restore or follow.
+  const prevMsgsNode = panels.querySelector('.panel-msgs');
+  let wasNearBottom = true;
+  let prevScrollTop = 0;
+  if (prevMsgsNode) {
+    prevScrollTop = prevMsgsNode.scrollTop;
+    wasNearBottom =
+      prevMsgsNode.scrollHeight - prevMsgsNode.scrollTop - prevMsgsNode.clientHeight <= NEAR_BOTTOM_PX;
+  }
+
+  const msgsNode = el('div', { class: 'panel-msgs', id: 'panel-msgs' });
+  const days = groupMessages(msgs, peerByDeviceId, state.me);
+  for (const day of days) {
+    msgsNode.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [day.dayLabel])]));
+    for (const group of day.groups) {
+      const stack = el('div', { class: 'group-stack' });
+      if (!group.isMe) {
+        stack.appendChild(el('div', { class: 'group-meta' }, ['@' + group.senderHandle]));
+      }
+      for (let i = 0; i < group.msgs.length; i++) {
+        const m = group.msgs[i];
+        const cls = ['msg'];
+        if (i === 0) cls.push('first-of-group');
+        if (i === group.msgs.length - 1) cls.push('last-of-group');
+        if (m._status === 'pending') cls.push('pending');
+        if (m._status === 'failed') cls.push('failed');
+        stack.appendChild(el('div', { class: cls.join(' ') }, [renderPreview(m.ciphertext)]));
+      }
+      const last = group.msgs[group.msgs.length - 1];
+      const lastT = new Date(last.serverReceivedAt || last._localAt || Date.now());
+      const timeBits = [formatTime(lastT)];
+      if (group.isMe) {
+        const status = statusForMine(last);
+        const statusEl = el(
+          'span',
+          { class: 'msg-status ' + status, title: statusLabel(status) },
+          [statusGlyph(status)],
+        );
+        stack.appendChild(el('div', { class: 'msg-time' }, [...timeBits, ' · ', statusEl]));
+      } else {
+        stack.appendChild(el('div', { class: 'msg-time' }, timeBits));
+      }
+      msgsNode.appendChild(
+        el('div', { class: 'msg-group ' + (group.isMe ? 'me' : 'them') }, [
+          !group.isMe ? avatarFor(group.senderHandle, 'sm') : null,
+          stack,
         ]),
+      );
+    }
+  }
+  if (msgs.length === 0) {
+    msgsNode.appendChild(
+      el('div', { class: 'panel-empty', style: 'display:flex; flex:1' }, [
+        el('div', { class: 'empty-emoji' }, ['👋']),
+        el('div', { class: 'empty-title' }, ['아직 메시지가 없어요']),
+        el('div', { class: 'empty-sub' }, ['아래 입력창으로 첫 메시지를 보내보세요']),
       ]),
     );
   }
 
+  msgsNode.addEventListener('scroll', () => {
+    scrollPosByConv.set(conv.id, msgsNode.scrollTop);
+  });
+
   const textarea = el('textarea', {
     placeholder: '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)',
     rows: '1',
+    'aria-label': '메시지 입력',
   });
   const sendBtn = el(
     'button',
     { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea) },
-    [el('span', {}, ['↑'])],
+    [el('span', { 'aria-hidden': 'true' }, ['↑'])],
   );
+  // Auto-grow.
+  const autoGrow = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
+    sendBtn.disabled = textarea.value.trim().length === 0;
+  };
+  textarea.addEventListener('input', autoGrow);
+  // IME-safe Enter to send.
+  let composing = false;
+  textarea.addEventListener('compositionstart', () => { composing = true; });
+  textarea.addEventListener('compositionend', () => { composing = false; });
   textarea.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    if (e.key === 'Enter' && !e.shiftKey && !composing && !e.isComposing) {
       e.preventDefault();
       sendMessage(textarea);
     }
   });
+  sendBtn.disabled = true;
 
   panels.replaceChildren(
     el('div', { class: 'panel' }, [
@@ -293,11 +442,36 @@ function renderActivePanel() {
     ]),
   );
 
-  // Scroll to bottom on render.
+  // Restore scroll: if user was near the bottom, snap to bottom; otherwise keep
+  // them where they were.
   requestAnimationFrame(() => {
-    msgsNode.scrollTop = msgsNode.scrollHeight;
+    if (wasNearBottom) {
+      msgsNode.scrollTop = msgsNode.scrollHeight;
+    } else {
+      msgsNode.scrollTop = prevScrollTop;
+    }
     textarea.focus();
   });
+
+  // Mark visible peer messages as read in the background.
+  markVisibleAsRead(conv.id, msgs);
+}
+
+const readMarked = new Set();
+async function markVisibleAsRead(convId, msgs) {
+  if (document.hidden) return;
+  for (const m of msgs) {
+    if (m.senderDeviceId === state.me.deviceId) continue;
+    if (m.readAt) continue;
+    if (readMarked.has(m.id)) continue;
+    readMarked.add(m.id);
+    try {
+      await api(`/messages/${m.id}/read`, { method: 'POST', token: state.me.accessToken, body: {} });
+    } catch (e) {
+      readMarked.delete(m.id); // allow retry next render
+      if (e.status === 401) return;
+    }
+  }
 }
 
 // ---------- actions ----------
@@ -393,15 +567,36 @@ async function sendMessage(textarea) {
   const conv = state.conversations.find((c) => c.id === state.activeConv);
   if (!conv) return;
   const peer = conv.members.find((m) => m.userId !== state.me.userId);
+  const clientMessageId = 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  // Optimistic insert with pending status so the bubble appears immediately.
+  const optimistic = {
+    id: '__pending__' + clientMessageId,
+    clientMessageId,
+    conversationId: conv.id,
+    senderDeviceId: state.me.deviceId,
+    ciphertext: 'DEMO-PLAINTEXT-LABEL[' + text + ']',
+    nonce: 'nonce-pending',
+    messageType: 'text',
+    serverReceivedAt: null,
+    _localAt: new Date().toISOString(),
+    _status: 'pending',
+  };
+  const list = state.messagesByConv.get(conv.id) || [];
+  list.push(optimistic);
+  state.messagesByConv.set(conv.id, list);
   textarea.value = '';
-  textarea.focus();
+  textarea.style.height = 'auto';
+  textarea.dispatchEvent(new Event('input'));
+  renderActivePanel();
+
   try {
     const sent = await api('/messages', {
       method: 'POST',
       token: state.me.accessToken,
       body: {
         conversationId: conv.id,
-        clientMessageId: 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+        clientMessageId,
         envelope: {
           version: 'veil-envelope-v1-dev',
           conversationId: conv.id,
@@ -413,10 +608,10 @@ async function sendMessage(textarea) {
         },
       },
     });
-    const list = state.messagesByConv.get(conv.id) || [];
-    list.push(sent.message);
-    state.messagesByConv.set(conv.id, list);
-    // Update lastMessage in conversation summary.
+    // Swap the optimistic entry with the server-acknowledged message.
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = sent.message;
+    else list.push(sent.message);
     conv.lastMessage = sent.message;
     state.conversations.sort((a, b) => {
       const ax = a.lastMessage?.serverReceivedAt ?? a.createdAt;
@@ -427,8 +622,10 @@ async function sendMessage(textarea) {
     renderSidebar();
   } catch (e) {
     if (e.status === 401) return logout();
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = { ...optimistic, _status: 'failed' };
+    renderActivePanel();
     toast('전송 실패: ' + e.message, 'error');
-    textarea.value = text;
   }
 }
 

@@ -13,6 +13,13 @@ export class FakeEphemeralStoreService {
   async delete(key: string): Promise<void> {
     this.values.delete(key);
   }
+
+  async takeJson<T>(key: string): Promise<T | null> {
+    const value = this.values.get(key);
+    if (!value) return null;
+    this.values.delete(key);
+    return JSON.parse(value) as T;
+  }
 }
 
 export class FakeConfigService {

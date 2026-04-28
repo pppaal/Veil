@@ -31,6 +31,7 @@ type ConversationRecord = {
   id: string;
   type: 'direct';
   createdAt: Date;
+  directKey?: string | null;
 };
 
 type ConversationMemberRecord = {
@@ -161,6 +162,29 @@ export class FakePrismaService {
   conversationMember = {
     findMany: async (_args: any) => [] as any[],
     findUnique: async (_args: any) => undefined as any,
+  };
+
+  // Stubs for the safety-related tables — returning empty defaults is enough
+  // for the e2e suite, which exercises the happy path through createDirect /
+  // sendMessage where neither side has blocked the other.
+  userBlock = {
+    findFirst: async (_args: any) => null,
+    findMany: async (_args: any) => [] as any[],
+    create: async (_args: any) => undefined as any,
+    delete: async (_args: any) => undefined as any,
+    deleteMany: async (_args: any) => ({ count: 0 }),
+  };
+
+  conversationMute = {
+    findFirst: async (_args: any) => null,
+    findUnique: async (_args: any) => null,
+    findMany: async (_args: any) => [] as any[],
+    upsert: async (_args: any) => undefined as any,
+    delete: async (_args: any) => undefined as any,
+  };
+
+  abuseReport = {
+    create: async (_args: any) => undefined as any,
   };
 
   attachment = {
@@ -381,11 +405,14 @@ export class FakePrismaService {
       return record;
     };
 
-    this.conversation.findUnique = async ({ where, select }: any) => {
-      const record = this.conversations.find((item) => item.id === where.id);
+    this.conversation.findUnique = async ({ where, select, include }: any) => {
+      const record = where?.directKey
+        ? this.conversations.find((item) => item.directKey === where.directKey)
+        : this.conversations.find((item) => item.id === where.id);
       if (!record) {
         return null;
       }
+      if (include) return this.hydrateConversation(record, include);
       return select ? this.pick(record, select) : record;
     };
 
@@ -401,10 +428,23 @@ export class FakePrismaService {
     };
 
     this.conversation.create = async ({ data, include }: any) => {
+      // Mirror the unique index on direct_key — a duplicate insert from
+      // concurrent createDirect calls should surface as P2002 so the
+      // service's catch-and-lookup branch behaves the same in tests.
+      if (data.directKey) {
+        const conflict = this.conversations.find((c) => c.directKey === data.directKey);
+        if (conflict) {
+          throw Object.assign(new Error('Unique constraint failed on direct_key'), {
+            code: 'P2002',
+            clientVersion: 'fake',
+          });
+        }
+      }
       const record: ConversationRecord = {
         id: makeId('conv'),
         type: data.type,
         createdAt: new Date(),
+        directKey: data.directKey ?? null,
       };
       this.conversations.push(record);
       for (const member of data.members.create as Array<{ userId: string }>) {

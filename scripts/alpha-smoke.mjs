@@ -2,6 +2,7 @@ import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { URL } from 'node:url';
+import { io } from 'socket.io-client';
 
 function rawPut(url, headers, body) {
   return new Promise((resolve, reject) => {
@@ -146,6 +147,23 @@ async function run() {
   });
   const tokenA = verifyA.accessToken;
 
+  // Bob also logs in so we can connect his WS and assert that the realtime
+  // gateway fans out message.new when Alice sends. This catches contract
+  // drift (renamed events, missing fields) that the REST-only smoke missed.
+  const challengeB = await requestJson('/auth/challenge', {
+    method: 'POST',
+    body: { handle: handleB, deviceId: regB.deviceId },
+  });
+  const verifyB = await requestJson('/auth/verify', {
+    method: 'POST',
+    body: {
+      challengeId: challengeB.challengeId,
+      deviceId: regB.deviceId,
+      signature: signChallenge(challengeB.challenge, accountB.authPrivateKey),
+    },
+  });
+  const tokenB = verifyB.accessToken;
+
   const conversation = await requestJson('/conversations/direct', {
     method: 'POST',
     token: tokenA,
@@ -177,6 +195,30 @@ async function run() {
     },
   });
 
+  // Subscribe Bob via WebSocket and remember every message.new that arrives.
+  // We assert below that the send fan-out hits the realtime channel.
+  const wsUrl = baseUrl.replace(/\/v1$/, '');
+  const bobSocket = io(wsUrl, {
+    path: '/v1/realtime',
+    auth: { token: tokenB },
+    transports: ['websocket'],
+    forceNew: true,
+    reconnection: false,
+  });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Bob WS connect timed out')), 5000);
+    bobSocket.once('connect', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    bobSocket.once('connect_error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+  });
+  const wsMessages = [];
+  bobSocket.on('message.new', (msg) => wsMessages.push(msg));
+
   const sent = await requestJson('/messages', {
     method: 'POST',
     token: tokenA,
@@ -206,6 +248,30 @@ async function run() {
       },
     },
   });
+
+  // Wait a tick for the WS fan-out to arrive, then assert the send was
+  // delivered through the realtime channel.
+  const wsArrival = await new Promise((resolve) => {
+    const found = () => wsMessages.find((m) => m.id === sent.message.id);
+    const cached = found();
+    if (cached) return resolve(cached);
+    const handler = () => {
+      const match = found();
+      if (match) {
+        bobSocket.off('message.new', handler);
+        resolve(match);
+      }
+    };
+    bobSocket.on('message.new', handler);
+    setTimeout(() => resolve(found() ?? null), 3000);
+  });
+  bobSocket.disconnect();
+  if (!wsArrival) {
+    throw new Error('Bob did not receive message.new over WebSocket');
+  }
+  if (wsArrival.id !== sent.message.id) {
+    throw new Error(`Bob WS event id ${wsArrival.id} != sent id ${sent.message.id}`);
+  }
 
   const listed = await requestJson(
     `/conversations/${conversation.conversation.id}/messages?limit=10`,
@@ -273,6 +339,7 @@ async function run() {
         downloadTicket: typeof download.ticket.downloadUrl === 'string',
         transferCompleted: transferComplete.newDeviceId != null,
         revokedDeviceId: transferComplete.revokedDeviceId,
+        wsMessageDelivered: true,
       },
       null,
       2,

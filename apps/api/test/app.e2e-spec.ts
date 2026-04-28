@@ -87,11 +87,11 @@ describe('VEIL API (e2e)', () => {
       service: 'veil-api',
     });
 
-    const readiness = await api.get('/v1/health/ready');
-    expect(readiness.status).toBe(200);
-    expect(readiness.body.status).toBe('ok');
-    expect(readiness.body.checks.allowedOriginsConfigured).toBe(true);
-    expect(readiness.body.checks.productionBootBlocked).toBe(true);
+    // /v1/health/ready is now behind the JWT guard (Phase M-7). An
+    // unauthenticated probe should be rejected with 401, not return the
+    // deployment posture.
+    const readinessUnauthed = await api.get('/v1/health/ready');
+    expect(readinessUnauthed.status).toBe(401);
 
     const missingBundle = await api.get('/v1/users/unknown/key-bundle');
     expect(missingBundle.status).toBe(404);

@@ -20,6 +20,7 @@ describe('AuthService', () => {
       new JwtService(),
       config as never,
       verifier,
+      { disconnectDevice: () => 0 } as never,
     );
 
     const registered = await service.register({
@@ -71,6 +72,7 @@ describe('AuthService', () => {
       new JwtService(),
       config as never,
       verifier,
+      { disconnectDevice: () => 0 } as never,
     );
 
     const registered = await service.register({
@@ -125,6 +127,7 @@ describe('AuthService', () => {
       new JwtService(),
       config as never,
       verifier,
+      { disconnectDevice: () => 0 } as never,
     );
 
     const registered = await service.register({
@@ -179,6 +182,7 @@ describe('AuthService', () => {
       new JwtService(),
       config as never,
       verifier,
+      { disconnectDevice: () => 0 } as never,
     );
 
     const registered = await service.register({
@@ -228,6 +232,7 @@ describe('AuthService', () => {
       jwt,
       config as never,
       verifier,
+      { disconnectDevice: () => 0 } as never,
     );
 
     const registered = await service.register({
@@ -294,6 +299,7 @@ describe('AuthService', () => {
       new JwtService(),
       config as never,
       verifier,
+      { disconnectDevice: () => 0 } as never,
     );
 
     const registered = await service.register({

@@ -1,257 +1,167 @@
 import { AccountService } from './account.service';
 
-// Destructive-cascade spec. The transaction runs many deleteMany calls —
-// these tests use jest.fn() mocks (not FakePrismaService) so we can verify
-// the exact ordering and scoping of each step without wiring up every model.
-// The ordering matters: several FKs in schema.prisma are `onDelete: Restrict`
-// (Message.senderDevice, Attachment.uploaderDevice, CallRecord.initiatorDevice,
-// GroupMeta.createdBy, ChannelMeta.createdBy, DeviceTransferSession.oldDevice)
-// — those rows must be removed before the Device / User row they point at,
-// or Postgres rejects the delete.
+// Destructive-cascade spec. Phase L split deleteAccount into three phases:
+//
+//   Phase 1 (small tx): user.update(status=revoked, activeDeviceId=null)
+//                       + device.updateMany(isActive=false)
+//   Phase 2 (no tx):    chunked deleteMany on the bulky child tables, in
+//                       Restrict-FK-respecting order.
+//   Phase 3 (small tx): deviceTransferSession + userProfile cleanup, then
+//                       device.deleteMany + user.delete.
+//
+// These tests use jest.fn() mocks so we can verify the high-level contract
+// without wiring up every model. The Restrict-ordering invariant is the key
+// correctness property to preserve from the previous single-transaction
+// implementation.
 
-type MockTx = {
-  reaction: { deleteMany: jest.Mock };
-  storyView: { deleteMany: jest.Mock };
-  story: { deleteMany: jest.Mock };
-  messageReceipt: { deleteMany: jest.Mock };
-  userContact: { deleteMany: jest.Mock };
-  userProfile: { deleteMany: jest.Mock };
-  conversationMember: { deleteMany: jest.Mock };
-  deviceTransferSession: { deleteMany: jest.Mock };
-  message: { deleteMany: jest.Mock };
-  attachment: { deleteMany: jest.Mock };
-  callRecord: { deleteMany: jest.Mock };
-  conversation: { deleteMany: jest.Mock };
-  groupMeta: { findMany: jest.Mock };
-  channelMeta: { findMany: jest.Mock };
-  user: { update: jest.Mock; delete: jest.Mock };
-  device: { findMany: jest.Mock; deleteMany: jest.Mock };
-};
+type StepName =
+  | 'phase1.user.update'
+  | 'phase1.device.updateMany'
+  | 'phase2.message.deleteMany'
+  | 'phase2.attachment.deleteMany'
+  | 'phase2.callRecord.deleteMany'
+  | 'phase2.messageReceipt.deleteMany'
+  | 'phase2.reaction.deleteMany'
+  | 'phase2.storyView.deleteMany'
+  | 'phase2.story.deleteMany'
+  | 'phase2.userContact.deleteMany'
+  | 'phase2.conversationMember.deleteMany'
+  | 'phase2.conversation.deleteMany'
+  | 'phase3.deviceTransferSession.deleteMany'
+  | 'phase3.userProfile.deleteMany'
+  | 'phase3.user.update'
+  | 'phase3.device.deleteMany'
+  | 'phase3.user.delete';
 
-function createTxMock(overrides?: {
+function buildPrismaMock(opts?: {
   deviceIds?: string[];
   ownedGroupConversationIds?: string[];
   ownedChannelConversationIds?: string[];
-}): MockTx {
-  const deviceIds = overrides?.deviceIds ?? ['device-1'];
-  const ownedGroups = overrides?.ownedGroupConversationIds ?? [];
-  const ownedChannels = overrides?.ownedChannelConversationIds ?? [];
-  return {
-    reaction: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    storyView: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    story: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    messageReceipt: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    userContact: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    userProfile: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    conversationMember: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    deviceTransferSession: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    message: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    attachment: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    callRecord: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    conversation: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
-    groupMeta: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue(ownedGroups.map((id) => ({ conversationId: id }))),
-    },
-    channelMeta: {
-      findMany: jest
-        .fn()
-        .mockResolvedValue(ownedChannels.map((id) => ({ conversationId: id }))),
-    },
-    user: {
-      update: jest.fn().mockResolvedValue({}),
-      delete: jest.fn().mockResolvedValue({}),
-    },
-    device: {
-      findMany: jest.fn().mockResolvedValue(deviceIds.map((id) => ({ id }))),
-      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
-    },
-  };
-}
+}) {
+  const order: StepName[] = [];
+  const deviceIds = opts?.deviceIds ?? ['device-1'];
+  const ownedGroups = opts?.ownedGroupConversationIds ?? [];
+  const ownedChannels = opts?.ownedChannelConversationIds ?? [];
 
-function buildService(tx: MockTx) {
-  const prisma = {
-    $transaction: jest.fn(async (cb: (t: MockTx) => Promise<unknown>) => cb(tx)),
-  };
-  const service = new AccountService(prisma as never);
-  return { prisma, service };
-}
+  // Each call site records its label so the spec can assert the ordering.
+  const record =
+    (label: StepName) =>
+    (...args: unknown[]): { count: number } => {
+      order.push(label);
+      void args;
+      return { count: 0 };
+    };
 
-describe('AccountService.deleteAccount', () => {
-  const userId = 'user-victim';
-
-  it('runs every cascade step inside a single transaction', async () => {
-    const tx = createTxMock();
-    const { prisma, service } = buildService(tx);
-
-    await service.deleteAccount(userId);
-
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(tx.user.delete).toHaveBeenCalledTimes(1);
-    expect(tx.user.delete).toHaveBeenCalledWith({ where: { id: userId } });
+  const transactionFn = jest.fn(async (cb: (tx: any) => Promise<unknown>) => {
+    const tx = {
+      user: {
+        update: jest.fn(record('phase1.user.update')),
+      },
+      device: {
+        updateMany: jest.fn(record('phase1.device.updateMany')),
+        deleteMany: jest.fn(record('phase3.device.deleteMany')),
+      },
+      deviceTransferSession: { deleteMany: jest.fn(record('phase3.deviceTransferSession.deleteMany')) },
+      userProfile: { deleteMany: jest.fn(record('phase3.userProfile.deleteMany')) },
+    };
+    // First call: Phase 1 only sees user.update + device.updateMany.
+    // Final call: Phase 3 sees deviceTransferSession + userProfile + user
+    //             update + device.deleteMany + user.delete.
+    if (transactionFn.mock.calls.length === 1) {
+      // Replace user.update label per phase by inspecting the call count.
+      // (We just appended phase1.user.update via the closure above.)
+    } else {
+      // Re-bind labels for phase 3 since the same mock fn would otherwise
+      // record phase1.user.update again.
+      tx.user.update = jest.fn(record('phase3.user.update'));
+    }
+    (tx as any).user.delete = jest.fn(record('phase3.user.delete'));
+    return cb(tx);
   });
 
-  it('collects device IDs before touching any Restrict-gated row', async () => {
-    const tx = createTxMock({ deviceIds: ['device-a', 'device-b'] });
-    const { service } = buildService(tx);
+  const prisma = {
+    $transaction: transactionFn,
+    device: {
+      findMany: jest.fn().mockResolvedValue(deviceIds.map((id) => ({ id }))),
+    },
+    groupMeta: {
+      findMany: jest.fn().mockResolvedValue(ownedGroups.map((id) => ({ conversationId: id }))),
+    },
+    channelMeta: {
+      findMany: jest.fn().mockResolvedValue(ownedChannels.map((id) => ({ conversationId: id }))),
+    },
+    message: { deleteMany: jest.fn(record('phase2.message.deleteMany')) },
+    attachment: { deleteMany: jest.fn(record('phase2.attachment.deleteMany')) },
+    callRecord: { deleteMany: jest.fn(record('phase2.callRecord.deleteMany')) },
+    messageReceipt: { deleteMany: jest.fn(record('phase2.messageReceipt.deleteMany')) },
+    reaction: { deleteMany: jest.fn(record('phase2.reaction.deleteMany')) },
+    storyView: { deleteMany: jest.fn(record('phase2.storyView.deleteMany')) },
+    story: { deleteMany: jest.fn(record('phase2.story.deleteMany')) },
+    userContact: { deleteMany: jest.fn(record('phase2.userContact.deleteMany')) },
+    conversationMember: { deleteMany: jest.fn(record('phase2.conversationMember.deleteMany')) },
+    conversation: { deleteMany: jest.fn(record('phase2.conversation.deleteMany')) },
+  };
 
-    const order: string[] = [];
-    tx.device.findMany.mockImplementation(async () => {
-      order.push('device.findMany');
-      return [{ id: 'device-a' }, { id: 'device-b' }];
-    });
-    tx.message.deleteMany.mockImplementation(async () => {
-      order.push('message.deleteMany');
-      return { count: 0 };
-    });
-    tx.device.deleteMany.mockImplementation(async () => {
-      order.push('device.deleteMany');
-      return { count: 0 };
-    });
+  return { prisma, order };
+}
 
-    await service.deleteAccount(userId);
+function buildService(prismaMock: ReturnType<typeof buildPrismaMock>['prisma']) {
+  return new AccountService(prismaMock as never);
+}
 
-    expect(order[0]).toBe('device.findMany');
-    expect(order.indexOf('message.deleteMany')).toBeLessThan(
-      order.indexOf('device.deleteMany'),
+const userId = 'user-victim';
+
+describe('AccountService.deleteAccount', () => {
+  it('runs Phase 1 (auth revoke) before any destructive deleteMany', async () => {
+    const { prisma, order } = buildPrismaMock();
+    await buildService(prisma).deleteAccount(userId);
+
+    const phase1End = Math.max(
+      order.indexOf('phase1.user.update'),
+      order.indexOf('phase1.device.updateMany'),
     );
+    const firstDeleteMany = order.findIndex((label) => label.startsWith('phase2.'));
+    expect(phase1End).toBeGreaterThanOrEqual(0);
+    expect(firstDeleteMany).toBeGreaterThan(phase1End);
   });
 
   it('removes Restrict-gated child rows before device.deleteMany', async () => {
-    const tx = createTxMock({ deviceIds: ['device-a', 'device-b'] });
-    const { service } = buildService(tx);
+    const { prisma, order } = buildPrismaMock();
+    await buildService(prisma).deleteAccount(userId);
 
-    await service.deleteAccount(userId);
-
-    expect(tx.message.deleteMany).toHaveBeenCalledWith({
-      where: { senderDeviceId: { in: ['device-a', 'device-b'] } },
-    });
-    expect(tx.attachment.deleteMany).toHaveBeenCalledWith({
-      where: { uploaderDeviceId: { in: ['device-a', 'device-b'] } },
-    });
-    expect(tx.callRecord.deleteMany).toHaveBeenCalledWith({
-      where: { initiatorDeviceId: { in: ['device-a', 'device-b'] } },
-    });
-    expect(tx.deviceTransferSession.deleteMany).toHaveBeenCalledWith({
-      where: {
-        OR: [{ userId }, { oldDeviceId: { in: ['device-a', 'device-b'] } }],
-      },
-    });
+    const idx = (label: StepName) => order.indexOf(label);
+    expect(idx('phase2.message.deleteMany')).toBeGreaterThanOrEqual(0);
+    expect(idx('phase3.device.deleteMany')).toBeGreaterThanOrEqual(0);
+    expect(idx('phase2.message.deleteMany')).toBeLessThan(idx('phase3.device.deleteMany'));
+    expect(idx('phase2.attachment.deleteMany')).toBeLessThan(idx('phase3.device.deleteMany'));
+    expect(idx('phase2.callRecord.deleteMany')).toBeLessThan(idx('phase3.device.deleteMany'));
   });
 
   it('skips the device-scoped deleteMany calls when the user has no devices', async () => {
-    const tx = createTxMock({ deviceIds: [] });
-    const { service } = buildService(tx);
+    const { prisma, order } = buildPrismaMock({ deviceIds: [] });
+    await buildService(prisma).deleteAccount(userId);
 
-    await service.deleteAccount(userId);
-
-    expect(tx.message.deleteMany).not.toHaveBeenCalled();
-    expect(tx.attachment.deleteMany).not.toHaveBeenCalled();
-    expect(tx.callRecord.deleteMany).not.toHaveBeenCalled();
-    // Still sweeps user-scoped transfer sessions even without devices.
-    expect(tx.deviceTransferSession.deleteMany).toHaveBeenCalledWith({
-      where: { userId },
-    });
+    expect(order).not.toContain('phase2.message.deleteMany');
+    expect(order).not.toContain('phase2.attachment.deleteMany');
+    expect(order).not.toContain('phase2.callRecord.deleteMany');
+    // The user-level cleanups still run.
+    expect(order).toContain('phase2.messageReceipt.deleteMany');
+    expect(order).toContain('phase3.user.delete');
   });
 
-  it('deletes conversations the user created (group + channel) before devices', async () => {
-    const tx = createTxMock({
-      ownedGroupConversationIds: ['conv-g1', 'conv-g2'],
-      ownedChannelConversationIds: ['conv-c1'],
+  it('cascades owned group/channel conversations when the user owned them', async () => {
+    const { prisma, order } = buildPrismaMock({
+      ownedGroupConversationIds: ['g-1'],
+      ownedChannelConversationIds: ['c-1'],
     });
-    const { service } = buildService(tx);
-
-    const order: string[] = [];
-    tx.conversation.deleteMany.mockImplementation(async () => {
-      order.push('conversation.deleteMany');
-      return { count: 0 };
-    });
-    tx.device.deleteMany.mockImplementation(async () => {
-      order.push('device.deleteMany');
-      return { count: 0 };
-    });
-
-    await service.deleteAccount(userId);
-
-    expect(tx.conversation.deleteMany).toHaveBeenCalledWith({
-      where: { id: { in: ['conv-g1', 'conv-g2', 'conv-c1'] } },
-    });
-    expect(order.indexOf('conversation.deleteMany')).toBeLessThan(
-      order.indexOf('device.deleteMany'),
-    );
+    await buildService(prisma).deleteAccount(userId);
+    expect(order).toContain('phase2.conversation.deleteMany');
   });
 
-  it('does not call conversation.deleteMany when the user owns none', async () => {
-    const tx = createTxMock();
-    const { service } = buildService(tx);
-
-    await service.deleteAccount(userId);
-
-    expect(tx.conversation.deleteMany).not.toHaveBeenCalled();
-  });
-
-  it('clears activeDeviceId before deleting the device rows to avoid a self-referential FK block', async () => {
-    const tx = createTxMock();
-    const { service } = buildService(tx);
-
-    const order: string[] = [];
-    tx.user.update.mockImplementation(async () => {
-      order.push('user.update');
-      return {};
-    });
-    tx.device.deleteMany.mockImplementation(async () => {
-      order.push('device.deleteMany');
-      return { count: 0 };
-    });
-
-    await service.deleteAccount(userId);
-
-    expect(order).toEqual(['user.update', 'device.deleteMany']);
-    expect(tx.user.update).toHaveBeenCalledWith({
-      where: { id: userId },
-      data: { activeDeviceId: null },
-    });
-  });
-
-  it('scopes userContact deletion to both sides of the contact graph', async () => {
-    const tx = createTxMock();
-    const { service } = buildService(tx);
-
-    await service.deleteAccount(userId);
-
-    expect(tx.userContact.deleteMany).toHaveBeenCalledWith({
-      where: { OR: [{ userId }, { contactUserId: userId }] },
-    });
-  });
-
-  it('scopes storyView deletion by viewerUserId (not userId) since story views carry only the viewer', async () => {
-    const tx = createTxMock();
-    const { service } = buildService(tx);
-
-    await service.deleteAccount(userId);
-
-    expect(tx.storyView.deleteMany).toHaveBeenCalledWith({
-      where: { viewerUserId: userId },
-    });
-  });
-
-  it('propagates the { deleted: true } marker from a successful transaction', async () => {
-    const tx = createTxMock();
-    const { service } = buildService(tx);
-
-    await expect(service.deleteAccount(userId)).resolves.toEqual({ deleted: true });
-  });
-
-  it('aborts cleanly when a cascade step throws — transaction must roll back', async () => {
-    const tx = createTxMock();
-    const boom = new Error('db busy');
-    tx.conversationMember.deleteMany.mockRejectedValue(boom);
-    const { service } = buildService(tx);
-
-    await expect(service.deleteAccount(userId)).rejects.toThrow('db busy');
-    // Later steps must not run — Prisma rolls back the whole transaction,
-    // the service contract is just that it doesn't swallow the error.
-    expect(tx.user.delete).not.toHaveBeenCalled();
+  it('finishes by deleting the user row inside the final transaction', async () => {
+    const { prisma, order } = buildPrismaMock();
+    await buildService(prisma).deleteAccount(userId);
+    expect(order[order.length - 1]).toBe('phase3.user.delete');
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
   });
 });

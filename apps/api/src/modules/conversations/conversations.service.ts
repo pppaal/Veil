@@ -6,7 +6,6 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import type {
   ConversationMessageSummary,
   ConversationSummary,
@@ -174,7 +173,10 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
         },
       });
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      // Both the real PrismaClientKnownRequestError and the fake-prisma test
+      // double surface the unique-constraint conflict via `code === 'P2002'`.
+      const code = (error as { code?: string })?.code;
+      if (code === 'P2002') {
         const existing = await this.prisma.conversation.findUnique({
           where: { directKey },
           include: {

@@ -152,6 +152,11 @@ export interface ListMessagesResponse {
   nextCursor?: string | null;
 }
 
+export interface ListConversationsResponse {
+  items: ConversationSummary[];
+  nextCursor?: string | null;
+}
+
 export interface SendMessageRequest {
   conversationId: string;
   clientMessageId: string;

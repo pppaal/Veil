@@ -105,16 +105,9 @@ services:
       VEIL_PUSH_PROVIDER: none
       VEIL_PUSH_ENABLE_DELIVERY: "false"
       VEIL_LOG_LEVEL: info
-    # Use prisma db push instead of migrate deploy so the demo doesn't depend
-    # on consolidated migrations (the schema currently has features that
-    # never made it into a numbered migration; that gets cleaned up in the
-    # backend-debt phase).
-    command:
-      - sh
-      - -c
-      - |
-        ./node_modules/.bin/prisma db push --accept-data-loss --schema prisma/schema.prisma
-        exec pnpm start
+    # Migrations are now consolidated, so plain migrate deploy works on a
+    # fresh database. The demo entrypoint already does this, so we just
+    # delegate to it.
     depends_on:
       postgres:
         condition: service_healthy

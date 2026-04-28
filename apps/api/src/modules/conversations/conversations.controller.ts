@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type {
-  ConversationSummary,
   CreateDirectConversationResponse,
+  ListConversationsResponse,
   ListMessagesResponse,
   SetDisappearingTimerResponse,
 } from '@veil/contracts';
@@ -28,8 +28,9 @@ export class ConversationsController {
   }
 
   @Get()
-  list(@Req() request: AuthenticatedRequest): Promise<ConversationSummary[]> {
-    return this.conversationsService.listForUser(request.auth.userId);
+  async list(@Req() request: AuthenticatedRequest): Promise<ListConversationsResponse> {
+    const items = await this.conversationsService.listForUser(request.auth.userId);
+    return { items, nextCursor: null };
   }
 
   @Get(':id/messages')

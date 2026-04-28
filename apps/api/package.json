@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "start:dev": "tsx watch src/main.ts",
+    "start:dev": "node ./dev.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",

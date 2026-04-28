@@ -11,9 +11,9 @@ implemented.
 
 Related docs:
 
-- [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- [crypto-mobile-bridge-design.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-mobile-bridge-design.md)
-- [mock-crypto-replacement.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/mock-crypto-replacement.md)
+- [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
+- [crypto-mobile-bridge-design.md](docs/crypto-mobile-bridge-design.md)
+- [mock-crypto-replacement.md](docs/mock-crypto-replacement.md)
 
 ## Migration goal
 

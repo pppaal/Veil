@@ -9,8 +9,8 @@ This runbook is not for production.
 
 Related docs:
 
-- [apple-firebase-credential-setup-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/apple-firebase-credential-setup-checklist.md)
-- [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
+- [apple-firebase-credential-setup-checklist.md](docs/apple-firebase-credential-setup-checklist.md)
+- [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md)
 
 ## Preconditions
 

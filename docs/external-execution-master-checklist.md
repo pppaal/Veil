@@ -37,9 +37,9 @@ Status:
 - external audit still required
 
 Primary doc:
-- [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- [audited-crypto-library-decision.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-library-decision.md)
-- [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md)
+- [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
+- [audited-crypto-library-decision.md](docs/audited-crypto-library-decision.md)
+- [crypto-adapter-architecture.md](docs/crypto-adapter-architecture.md)
 
 Required outputs:
 - external cryptographic audit of LibCryptoAdapter
@@ -63,7 +63,7 @@ Status:
 - delivery remains intentionally disabled
 
 Primary doc:
-- [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
+- [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md)
 
 Quick readiness check:
 - `pnpm beta:push:readiness`
@@ -91,8 +91,8 @@ Status:
 - measurements still need to be captured on hardware
 
 Primary docs:
-- [real-device-performance-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
-- [real-device-performance-results-template.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-results-template.md)
+- [real-device-performance-execution.md](docs/real-device-performance-execution.md)
+- [real-device-performance-results-template.md](docs/real-device-performance-results-template.md)
 
 Required outputs:
 - Android mid-range run
@@ -118,7 +118,7 @@ Status:
 - actual external review still required
 
 Primary doc:
-- [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
+- [external-security-review-packet.md](docs/external-security-review-packet.md)
 
 Required outputs:
 - reviewer scope confirmation
@@ -158,11 +158,11 @@ No-Go if:
 
 ## Related docs
 
-- [final-technical-status.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/final-technical-status.md)
-- [private-beta-readiness-report.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-readiness-report.md)
-- [private-beta-release-process.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-release-process.md)
-- [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
-- [real-device-performance-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
-- [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)
+- [final-technical-status.md](docs/final-technical-status.md)
+- [private-beta-readiness-report.md](docs/private-beta-readiness-report.md)
+- [private-beta-release-process.md](docs/private-beta-release-process.md)
+- [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
+- [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md)
+- [real-device-performance-execution.md](docs/real-device-performance-execution.md)
+- [external-security-review-packet.md](docs/external-security-review-packet.md)
+- [external-review-remediation-tracker.md](docs/external-review-remediation-tracker.md)

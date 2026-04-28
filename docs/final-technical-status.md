@@ -139,7 +139,7 @@ These are the main tasks that cannot be finished purely inside this repository:
 4. external security review execution
 
 Master checklist:
-- [external-execution-master-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-execution-master-checklist.md)
+- [external-execution-master-checklist.md](docs/external-execution-master-checklist.md)
 
 ## Bottom line
 

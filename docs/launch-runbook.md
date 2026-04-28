@@ -62,7 +62,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
    npx prisma migrate deploy
    ```
 3. Deploy image (Dockerfile in `apps/api/`) behind TLS at `api.veil.app`.
-4. Verify health probe `/healthz` and `/readyz`. Turnstile realtime socket should connect with a valid JWT.
+4. Verify health probe `/v1/health` returns `{"status":"ok","service":"veil-api"}`. Turnstile realtime socket should connect with a valid JWT at `wss://<host>/v1/realtime`.
 
 ## 6. Launch gate — must be green before Submit for Review
 
@@ -94,14 +94,14 @@ The app is wired with `RemotePushService` + `PushTokenCoordinator` but ships wit
 1. Set in `apps/api/.env.production`:
    ```
    VEIL_PUSH_PROVIDER=fcm             # or apns
-   VEIL_PUSH_DELIVERY_ENABLED=true
+   VEIL_PUSH_ENABLE_DELIVERY=true
    VEIL_FCM_PROJECT_ID=<gcp-project-id>
    VEIL_FCM_SERVICE_ACCOUNT_JSON=<minified service account JSON>
    # or for APNs:
    # VEIL_APNS_TEAM_ID=...
    # VEIL_APNS_KEY_ID=...
    # VEIL_APNS_BUNDLE_ID=app.veil.messenger
-   # VEIL_APNS_PRIVATE_KEY=<PEM contents>
+   # VEIL_APNS_PRIVATE_KEY_PEM=<PEM contents>
    ```
 2. The `push` module picks the provider at boot — no code change.
 

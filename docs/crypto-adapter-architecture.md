@@ -50,11 +50,11 @@ The current mobile boundary is split into:
 
 Files:
 
-- [crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/crypto_engine.dart)
-- [crypto_adapter_registry.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/crypto_adapter_registry.dart)
-- [lib_crypto_adapter.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart)
-- [mock_crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/mock_crypto_engine.dart) (test-only)
-- [packages/shared/src/crypto/types.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/types.ts)
+- [crypto_engine.dart](apps/mobile/lib/src/core/crypto/crypto_engine.dart)
+- [crypto_adapter_registry.dart](apps/mobile/lib/src/core/crypto/crypto_adapter_registry.dart)
+- [lib_crypto_adapter.dart](apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart)
+- [mock_crypto_engine.dart](apps/mobile/lib/src/core/crypto/mock_crypto_engine.dart) (test-only)
+- [packages/shared/src/crypto/types.ts](packages/shared/src/crypto/types.ts)
 
 Runtime consumption:
 
@@ -132,5 +132,5 @@ Current architecture checks already assert:
 
 The future fixture contract is defined in:
 
-- [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
-- [crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)
+- [packages/shared/src/crypto/fixtures.ts](packages/shared/src/crypto/fixtures.ts)
+- [crypto-interoperability-fixtures.md](docs/crypto-interoperability-fixtures.md)

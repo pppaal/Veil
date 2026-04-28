@@ -6,9 +6,9 @@ Use this checklist when an external reviewer agrees to take the VEIL review.
 
 Related docs:
 
-- [external-security-review-request-template.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-request-template.md)
-- [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)
+- [external-security-review-request-template.md](docs/external-security-review-request-template.md)
+- [external-security-review-packet.md](docs/external-security-review-packet.md)
+- [external-review-remediation-tracker.md](docs/external-review-remediation-tracker.md)
 
 ## Before sending the packet
 

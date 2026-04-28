@@ -16,6 +16,9 @@ RUN pnpm install --frozen-lockfile
 
 COPY packages packages
 COPY apps/api apps/api
+# main.ts mounts apps/web-demo as a static directory at /demo when not in
+# production mode. Without this copy the demo container ships a 404 at /demo/.
+COPY apps/web-demo apps/web-demo
 
 RUN ./node_modules/.bin/tsc -p packages/shared/tsconfig.json \
   && ./node_modules/.bin/tsc -p packages/contracts/tsconfig.json \

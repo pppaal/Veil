@@ -41,7 +41,7 @@ See [`docs/phone-access.md`](docs/phone-access.md) for the full walkthrough.
 ## Local development
 
 1. Copy `.env.example` to `.env` and `apps/api/.env.example` to `apps/api/.env`.
-2. Use Node `22.20.0` from [`.nvmrc`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.nvmrc).
+2. Use Node `22.20.0` from [`.nvmrc`](.nvmrc).
 3. Run `pnpm install`.
 4. Run `pnpm docker:up`.
 5. Run `pnpm db:generate`.
@@ -104,7 +104,7 @@ Mobile release identity:
 
 ## CI
 
-GitHub Actions CI is defined in [`.github/workflows/ci.yml`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.github/workflows/ci.yml) and runs:
+GitHub Actions CI is defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and runs:
 
 - `pnpm ci:api`
 - `pnpm ci:mobile`

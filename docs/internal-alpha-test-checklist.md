@@ -53,11 +53,11 @@
 
 ## Security Status
 - Open Security Status and confirm it accurately reflects device binding, local secret refs, app lock, runtime connectivity, and cache state.
-- Confirm the screen still warns that mock crypto is active in internal alpha.
+- Confirm the screen states that the production crypto adapter (`lib-x25519-aes256gcm-v2`) is wired and that external audit attestation is still pending before `VEIL_ENV=production`.
 
 ## Private Beta Release Gate
 - Run `pnpm ci:api` and confirm build, lint, policy checks, unit tests, and API e2e all pass.
 - Run `pnpm ci:mobile` and confirm codegen, analyze, and mobile tests all pass.
 - Run `pnpm alpha:smoke` against a running stack and confirm the smoke script succeeds end to end.
 - Confirm no crash-reporting SDK has been added and no mobile console logging is present.
-- Confirm release notes and tester instructions still state that mock crypto is active and production security claims are not yet valid.
+- Confirm release notes and tester instructions state that the production crypto adapter is wired but external audit attestation is still pending, and that production boot remains blocked by `VEIL_AUDITED_CRYPTO_ATTESTED`.

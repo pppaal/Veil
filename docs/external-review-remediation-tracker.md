@@ -69,6 +69,6 @@ Every closed finding should link to:
 
 ## Related docs
 
-- [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [external-execution-master-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-execution-master-checklist.md)
-- [final-technical-status.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/final-technical-status.md)
+- [external-security-review-packet.md](docs/external-security-review-packet.md)
+- [external-execution-master-checklist.md](docs/external-execution-master-checklist.md)
+- [final-technical-status.md](docs/final-technical-status.md)

@@ -26,7 +26,7 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
   - upload or download URLs
   - auth public/private material
   - push tokens
-- All backend metadata flows through the redaction layer in [app-logger.service.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/src/common/logger/app-logger.service.ts).
+- All backend metadata flows through the redaction layer in [app-logger.service.ts](apps/api/src/common/logger/app-logger.service.ts).
 
 ## Mobile logging rules
 
@@ -38,11 +38,11 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
 
 - Push payloads remain metadata-only.
 - `VEIL_PUSH_PROVIDER` may select `none`, `apns`, or `fcm`, but every provider must
-  stay behind the seam in [push.service.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/src/modules/push/push.service.ts).
+  stay behind the seam in [push.service.ts](apps/api/src/modules/push/push.service.ts).
 - `VEIL_PUSH_ENABLE_DELIVERY` must stay `false` until provider credentials are
   configured and the specific provider path has passed privacy review.
 - The review process is defined in
-  [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md).
+  [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md).
 - Provider selection does not authorize plaintext payload fields. The payload
   contract stays metadata-only regardless of provider kind.
 - Alerts should key on error codes, health checks, queue growth, and storage failures.
@@ -64,7 +64,7 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
 
 ## CI enforcement
 
-Policy checks in [policy-check.mjs](c:/Users/pjyrh/OneDrive/Desktop/Veil/scripts/policy-check.mjs) currently enforce:
+Policy checks in [policy-check.mjs](scripts/policy-check.mjs) currently enforce:
 
 - no wildcard realtime CORS
 - security headers in API bootstrap

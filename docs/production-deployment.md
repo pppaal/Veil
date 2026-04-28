@@ -2,14 +2,15 @@
 
 VEIL is not production-ready yet. This checklist is the minimum path to get there without violating the product philosophy.
 
-The current API intentionally blocks `VEIL_ENV=production` at startup because the mock crypto boundary is still wired.
+The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true`, and the production crypto adapter (`LibCryptoAdapter`, `lib-x25519-aes256gcm-v2`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
 
-## 1. Replace mock crypto
+## 1. Complete external crypto audit and attestation
 
-- Replace the mock `CryptoEngine` adapters on mobile with audited real messaging/session primitives.
-- Keep the existing envelope and adapter boundary intact.
+- Hand off the external review packet (see `docs/external-security-review-packet.md`).
+- Track findings in `docs/external-review-remediation-tracker.md`.
+- Once findings are remediated, set `VEIL_AUDITED_CRYPTO_ATTESTED=true`.
+- Keep cross-platform crypto interoperability tests green before rollout.
 - Do not add server-side decryption helpers.
-- Add cross-platform crypto interoperability tests before rollout.
 
 ## 2. Harden device auth
 

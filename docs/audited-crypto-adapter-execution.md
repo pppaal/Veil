@@ -90,7 +90,7 @@ Required artifact:
 - `docs/audited-crypto-library-decision.md`
 
 Current recommendation:
-- [audited-crypto-library-decision.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-library-decision.md)
+- [audited-crypto-library-decision.md](docs/audited-crypto-library-decision.md)
 
 ### 2. Flutter bridge design
 
@@ -108,7 +108,7 @@ Required artifact:
 - `docs/crypto-mobile-bridge-design.md`
 
 Current bridge design draft:
-- [crypto-mobile-bridge-design.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-mobile-bridge-design.md)
+- [crypto-mobile-bridge-design.md](docs/crypto-mobile-bridge-design.md)
 
 ### 3. Adapter contract mapping
 
@@ -126,9 +126,9 @@ Tasks:
 - confirm fixture contract coverage
 
 Relevant files:
-- [crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/crypto_engine.dart)
-- [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md)
-- [crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)
+- [crypto_engine.dart](apps/mobile/lib/src/core/crypto/crypto_engine.dart)
+- [crypto-adapter-architecture.md](docs/crypto-adapter-architecture.md)
+- [crypto-interoperability-fixtures.md](docs/crypto-interoperability-fixtures.md)
 
 ### 4. Local state and migration design
 
@@ -166,8 +166,8 @@ Tasks:
 - verify mobile/shared contract compatibility
 
 Relevant files:
-- [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
-- [docs/crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)
+- [packages/shared/src/crypto/fixtures.ts](packages/shared/src/crypto/fixtures.ts)
+- [docs/crypto-interoperability-fixtures.md](docs/crypto-interoperability-fixtures.md)
 
 ### 6. Integration and regression testing
 
@@ -194,8 +194,8 @@ Tasks:
 - hand off for external review
 
 Relevant docs:
-- [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [private-beta-audit.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-audit.md)
+- [external-security-review-packet.md](docs/external-security-review-packet.md)
+- [private-beta-audit.md](docs/private-beta-audit.md)
 
 ## Explicit non-go conditions
 

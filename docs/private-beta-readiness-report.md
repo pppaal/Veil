@@ -24,7 +24,7 @@ The current repository is not suitable for:
 - root verification scripts exist for API and mobile
 - CI runs API/package verification, mobile codegen/analyze/test, and API container build
 - alpha smoke is scripted
-- Node version is pinned in [`.nvmrc`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.nvmrc)
+- Node version is pinned in [`.nvmrc`](.nvmrc)
 
 ### Messaging and lifecycle
 
@@ -58,11 +58,11 @@ Automated coverage now includes:
 
 The release gate is now documented in:
 
-- [Private Beta Release Process](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-release-process.md)
-- [Private Beta Performance Profile](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)
-- [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [Observability Hygiene](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
-- [Internal Alpha Test Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-test-checklist.md)
+- [Private Beta Release Process](docs/private-beta-release-process.md)
+- [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
+- [External Security Review Packet](docs/external-security-review-packet.md)
+- [Observability Hygiene](docs/observability-hygiene.md)
+- [Internal Alpha Test Checklist](docs/internal-alpha-test-checklist.md)
 - `pnpm beta:release:evidence` writes a machine-readable handoff file to `artifacts/private-beta-release-evidence.json`
 
 ## Security assumptions

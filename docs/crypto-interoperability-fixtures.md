@@ -6,7 +6,7 @@ be validated without changing product logic.
 
 Authoritative code contract:
 
-- [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
+- [packages/shared/src/crypto/fixtures.ts](packages/shared/src/crypto/fixtures.ts)
 
 ## Purpose
 

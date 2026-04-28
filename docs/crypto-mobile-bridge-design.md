@@ -26,7 +26,7 @@ Preferred bridge model:
 
 This should remain behind the current `CryptoAdapter` interfaces in:
 
-- [crypto_engine.dart](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/lib/src/core/crypto/crypto_engine.dart)
+- [crypto_engine.dart](apps/mobile/lib/src/core/crypto/crypto_engine.dart)
 
 ## Why platform channels first
 
@@ -206,6 +206,6 @@ Bridge integration is not acceptable without:
 
 ## Related docs
 
-- [audited-crypto-library-decision.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-library-decision.md)
-- [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md)
+- [audited-crypto-library-decision.md](docs/audited-crypto-library-decision.md)
+- [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
+- [crypto-adapter-architecture.md](docs/crypto-adapter-architecture.md)

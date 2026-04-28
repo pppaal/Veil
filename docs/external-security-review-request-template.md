@@ -6,9 +6,9 @@ Use this as the initial email or message to an external reviewer.
 
 Related docs:
 
-- [external-security-review-packet.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)
-- [final-technical-status.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/final-technical-status.md)
+- [external-security-review-packet.md](docs/external-security-review-packet.md)
+- [external-review-remediation-tracker.md](docs/external-review-remediation-tracker.md)
+- [final-technical-status.md](docs/final-technical-status.md)
 
 ## Subject
 
@@ -107,5 +107,5 @@ After the reviewer responds:
 1. capture the agreed scope
 2. create a findings record from the reply
 3. move findings into
-   [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)
+   [external-review-remediation-tracker.md](docs/external-review-remediation-tracker.md)
 4. route implementation findings back into the repo for patching

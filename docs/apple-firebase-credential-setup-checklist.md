@@ -10,8 +10,8 @@ claims, and it does not replace the separate push privacy review.
 
 Related docs:
 
-- [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
-- [external-execution-master-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-execution-master-checklist.md)
+- [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md)
+- [external-execution-master-checklist.md](docs/external-execution-master-checklist.md)
 
 ## Goal
 
@@ -197,7 +197,7 @@ Only after credentials are present:
 
 1. keep `VEIL_PUSH_ENABLE_DELIVERY=false`
 2. run the payload inspection and privacy review in
-   [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
+   [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md)
 3. capture evidence
 4. get sign-off
 

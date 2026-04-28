@@ -18,27 +18,27 @@ Do not treat the current build as externally audited production E2EE until the e
 ## Required packet contents
 
 1. Product philosophy and non-negotiables
-   - [no-recovery.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/no-recovery.md)
-   - [trusted-device-graph.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/trusted-device-graph.md)
+   - [no-recovery.md](docs/no-recovery.md)
+   - [trusted-device-graph.md](docs/trusted-device-graph.md)
 2. System and threat model
-   - [architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/architecture.md)
-   - [threat-model.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/threat-model.md)
+   - [architecture.md](docs/architecture.md)
+   - [threat-model.md](docs/threat-model.md)
 3. Messaging, transfer, and attachment flows
-   - [message-flow.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/message-flow.md)
-   - [device-transfer-flow.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/device-transfer-flow.md)
-   - [attachment-flow.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/attachment-flow.md)
+   - [message-flow.md](docs/message-flow.md)
+   - [device-transfer-flow.md](docs/device-transfer-flow.md)
+   - [attachment-flow.md](docs/attachment-flow.md)
 4. Local security and observability posture
-   - [mobile-device-security.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/mobile-device-security.md)
-   - [observability-hygiene.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
+   - [mobile-device-security.md](docs/mobile-device-security.md)
+   - [observability-hygiene.md](docs/observability-hygiene.md)
 5. Crypto boundary and migration posture
-   - [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md)
-   - [mock-crypto-replacement.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/mock-crypto-replacement.md)
-   - [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
+   - [crypto-adapter-architecture.md](docs/crypto-adapter-architecture.md)
+   - [mock-crypto-replacement.md](docs/mock-crypto-replacement.md)
+   - [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
 6. Release posture and known limits
-   - [private-beta-audit.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-audit.md)
-   - [private-beta-readiness-report.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-readiness-report.md)
-   - [production-deployment.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/production-deployment.md)
-   - [push-privacy-review-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
+   - [private-beta-audit.md](docs/private-beta-audit.md)
+   - [private-beta-readiness-report.md](docs/private-beta-readiness-report.md)
+   - [production-deployment.md](docs/production-deployment.md)
+   - [push-privacy-review-checklist.md](docs/push-privacy-review-checklist.md)
 
 ## Questions the review must answer
 
@@ -73,7 +73,7 @@ Do not treat the current build as externally audited production E2EE until the e
 When findings arrive:
 
 1. record them in
-   [external-review-remediation-tracker.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-review-remediation-tracker.md)
+   [external-review-remediation-tracker.md](docs/external-review-remediation-tracker.md)
 2. patch the repo
 3. re-run verification
 4. attach retest evidence

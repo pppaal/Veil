@@ -224,7 +224,7 @@ Recommended owners:
 
 ## Related docs
 
-- [private-beta-performance-profile.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)
-- [real-device-performance-results-template.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-results-template.md)
-- [private-beta-release-process.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-release-process.md)
-- [internal-alpha-test-checklist.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-test-checklist.md)
+- [private-beta-performance-profile.md](docs/private-beta-performance-profile.md)
+- [real-device-performance-results-template.md](docs/real-device-performance-results-template.md)
+- [private-beta-release-process.md](docs/private-beta-release-process.md)
+- [internal-alpha-test-checklist.md](docs/internal-alpha-test-checklist.md)

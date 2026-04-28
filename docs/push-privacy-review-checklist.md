@@ -14,9 +14,9 @@ The goal is delivery reliability without plaintext leakage.
 
 Review the current metadata-only push path implemented behind:
 
-- [push.service.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/src/modules/push/push.service.ts)
-- [apns-push.provider.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/src/modules/push/apns-push.provider.ts)
-- [fcm-push.provider.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/src/modules/push/fcm-push.provider.ts)
+- [push.service.ts](apps/api/src/modules/push/push.service.ts)
+- [apns-push.provider.ts](apps/api/src/modules/push/apns-push.provider.ts)
+- [fcm-push.provider.ts](apps/api/src/modules/push/fcm-push.provider.ts)
 
 The review is not optional.
 
@@ -138,7 +138,7 @@ Related runtime expectations:
 
 Check against:
 
-- [observability-hygiene.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
+- [observability-hygiene.md](docs/observability-hygiene.md)
 
 Required:
 

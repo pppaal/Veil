@@ -1,5 +1,12 @@
-// VEIL demo — Phase A: auth + sidebar + single chat send/receive + toasts.
-// IndexedDB / WS / real crypto / token refresh land in later phases.
+// VEIL web demo client.
+// Vanilla-JS chat shell that talks to the NestJS API at /v1 and the realtime
+// gateway at /v1/realtime. Messages are end-to-end encrypted with X25519 ECDH
+// + HKDF-SHA256 + AES-256-GCM (see deriveSharedAesKey / encryptWithKey). The
+// server only ever sees ciphertext.
+//
+// State is held in the `state` object below and persisted in IndexedDB
+// (`veil-demo`): session, conversations, messages (ciphertext only), drafts,
+// outbound queue. Re-derive plaintext on hydrate via the same shared key.
 
 const API = '/v1';
 const STORE = 'veil-demo-session';
@@ -200,12 +207,6 @@ async function getSharedKeyForConv(convId) {
 async function decryptMessage(msg) {
   if (msg._plaintext != null) return; // already done
   const ct = msg.ciphertext || '';
-  // Legacy DEMO-LABEL still in DB from earlier phases.
-  if (ct.startsWith('DEMO-PLAINTEXT-LABEL[') && ct.endsWith(']')) {
-    msg._plaintext = ct.slice('DEMO-PLAINTEXT-LABEL['.length, -1);
-    msg._replyTo = null;
-    return;
-  }
   if (!ct.startsWith('v1.')) {
     msg._plaintext = '(평문 아님)';
     msg._replyTo = null;
@@ -626,8 +627,17 @@ const state = {
   typing: new Map(),           // convId -> Map<userId, { handle, expiresAt }>
   replyDraftByConv: new Map(), // convId -> { id, snippet, sender } awaiting send
 };
-// Expose for diagnostics — handy in DevTools and Playwright probes.
-if (typeof window !== 'undefined') window.__veil = state;
+// Diagnostic handle, gated to localhost so a deployed copy doesn't leak the
+// access/refresh tokens and private JWKs to anything that can run JS in the
+// page. Playwright runs against localhost so its probes still work.
+const __isDevHost = typeof location !== 'undefined' && (
+  location.hostname === 'localhost' ||
+  location.hostname === '127.0.0.1' ||
+  location.hostname.endsWith('.local')
+);
+if (typeof window !== 'undefined' && __isDevHost) {
+  window.__veil = state;
+}
 
 // ---------- render ----------
 async function showAuth() {
@@ -717,10 +727,8 @@ function renderPreview(msgOrCiphertext) {
     if (msgOrCiphertext._plaintext != null) return msgOrCiphertext._plaintext;
     return '🔒 암호화됨';
   }
-  // Legacy string fallback (the sidebar lastMessage or rare callers passing ct).
+  // Rare callers passing a raw ciphertext string instead of a message object.
   const ct = msgOrCiphertext;
-  const m = /^DEMO-PLAINTEXT-LABEL\[(.*)\]$/s.exec(ct);
-  if (m) return m[1];
   if (ct.startsWith('v1.')) return '🔒 암호화됨';
   return ct;
 }

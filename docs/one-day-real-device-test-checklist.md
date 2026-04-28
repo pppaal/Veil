@@ -7,8 +7,8 @@ validation pass before or during private-beta release prep.
 
 This is the short operational version of:
 
-- [real-device-performance-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
-- [real-device-performance-results-template.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-results-template.md)
+- [real-device-performance-execution.md](docs/real-device-performance-execution.md)
+- [real-device-performance-results-template.md](docs/real-device-performance-results-template.md)
 
 ## Devices
 

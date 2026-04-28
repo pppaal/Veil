@@ -5,7 +5,7 @@ Last updated: 2026-04-07
 Use this template to record an actual VEIL performance run on real devices.
 
 Related execution plan:
-- [real-device-performance-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
+- [real-device-performance-execution.md](docs/real-device-performance-execution.md)
 
 ## Run metadata
 

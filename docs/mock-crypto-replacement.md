@@ -10,7 +10,7 @@ The mock crypto adapter has been replaced with a production `LibCryptoAdapter`.
 - The mock adapter remains available for unit tests only.
 - The API stores opaque ciphertext payloads, nonces, and attachment metadata (unchanged).
 
-See the adapter architecture in [crypto-adapter-architecture.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-adapter-architecture.md).
+See the adapter architecture in [crypto-adapter-architecture.md](docs/crypto-adapter-architecture.md).
 
 ## Design constraints (preserved)
 
@@ -32,8 +32,8 @@ See the adapter architecture in [crypto-adapter-architecture.md](c:/Users/pjyrh/
    - `remoteDeviceId`
    - `remoteIdentityFingerprint`
 6. Interoperability tests and versioned fixtures should be expanded:
-   - [packages/shared/src/crypto/fixtures.ts](c:/Users/pjyrh/OneDrive/Desktop/Veil/packages/shared/src/crypto/fixtures.ts)
-   - [crypto-interoperability-fixtures.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-interoperability-fixtures.md)
+   - [packages/shared/src/crypto/fixtures.ts](packages/shared/src/crypto/fixtures.ts)
+   - [crypto-interoperability-fixtures.md](docs/crypto-interoperability-fixtures.md)
 7. External security review still required before production traffic.
 
 ## Non-negotiable constraints

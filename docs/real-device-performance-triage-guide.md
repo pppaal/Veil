@@ -6,8 +6,8 @@ Use this guide after real-device results are captured.
 
 Related docs:
 
-- [real-device-performance-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
-- [real-device-performance-results-template.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-results-template.md)
+- [real-device-performance-execution.md](docs/real-device-performance-execution.md)
+- [real-device-performance-results-template.md](docs/real-device-performance-results-template.md)
 
 ## Purpose
 

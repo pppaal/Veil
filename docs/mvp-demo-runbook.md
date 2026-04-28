@@ -58,11 +58,13 @@ For iOS simulator, replace `10.0.2.2` with `localhost`.
 
 ## 4. Current demo limitations
 
-- Crypto is mock-only.
-- Attachment upload uses encrypted placeholder bytes.
+- The mobile app uses the production `LibCryptoAdapter` (X25519 + AES-256-GCM + Double Ratchet); production boot is gated on external audit attestation.
+- Attachment upload uses real encrypted bytes via the presigned PUT flow.
 - The new device side of transfer is scaffolded, not a separate running mobile instance.
 - Push fallback is metadata-only and the real APNs/FCM provider is not wired.
 - Drift cache requires local codegen before the app will compile.
+
+> For the web demo (browser-based, no Flutter required) see [`phone-access.md`](phone-access.md).
 
 ## 5. Verification commands
 

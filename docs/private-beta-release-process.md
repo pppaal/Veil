@@ -4,14 +4,14 @@ This process is for a serious private-beta release candidate, not a demo build.
 
 ## 1. Toolchain baseline
 
-- Node: `22.20.0` from [`.nvmrc`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.nvmrc)
+- Node: `22.20.0` from [`.nvmrc`](.nvmrc)
 - pnpm: `10.28.0`
 - Flutter: stable channel used by CI
 
 ## 2. Environment separation
 
-- Local development uses [`.env.example`](c:/Users/pjyrh/OneDrive/Desktop/Veil/.env.example).
-- Containerized alpha/private-beta rehearsal uses [`apps/api/.env.alpha.example`](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/.env.alpha.example).
+- Local development uses [`.env.example`](.env.example).
+- Containerized alpha/private-beta rehearsal uses [`apps/api/.env.alpha.example`](apps/api/.env.alpha.example).
 - `VEIL_ENV=production` must stay blocked while the mock crypto seam remains in place.
 
 ## 3. Pre-release verification gate
@@ -44,7 +44,7 @@ Notes:
 
 - `apps/api/.env.alpha.example` is only a wiring example.
 - Replace placeholder JWT and provider secrets in the actual env file before expecting preflight to pass.
-- CI uses [`apps/api/.env.beta.ci.example`](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/api/.env.beta.ci.example)
+- CI uses [`apps/api/.env.beta.ci.example`](apps/api/.env.beta.ci.example)
   to prove that the deploy preflight and beta artifact generation still work with a
   non-placeholder private-beta fixture.
 
@@ -52,9 +52,9 @@ Notes:
 
 Use these documents together:
 
-- [Internal Alpha Runbook](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-runbook.md)
-- [Internal Alpha Desktop QA](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-desktop-qa.md)
-- [Internal Alpha Test Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/internal-alpha-test-checklist.md)
+- [Internal Alpha Runbook](docs/internal-alpha-runbook.md)
+- [Internal Alpha Desktop QA](docs/internal-alpha-desktop-qa.md)
+- [Internal Alpha Test Checklist](docs/internal-alpha-test-checklist.md)
 
 Required manual checks:
 
@@ -72,8 +72,8 @@ Required manual checks:
 
 Before any private-beta build is distributed:
 
-- review [Observability Hygiene](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/observability-hygiene.md)
-- review [Push Privacy Review Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
+- review [Observability Hygiene](docs/observability-hygiene.md)
+- review [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)
 - confirm no plaintext fields in logs or push hints
 - confirm no crash SDK has been added
 - confirm request IDs propagate in API responses
@@ -86,7 +86,7 @@ Before any private-beta build is distributed:
 - Keep release notes explicit that mock crypto is still in place.
 - Run `pnpm beta:release:evidence` and attach the generated JSON to the candidate build handoff.
 - Android package identity is `io.veil.mobile`. Release signing should come from
-  [`apps/mobile/android/keystore.properties.example`](c:/Users/pjyrh/OneDrive/Desktop/Veil/apps/mobile/android/keystore.properties.example),
+  [`apps/mobile/android/keystore.properties.example`](apps/mobile/android/keystore.properties.example),
   not the debug keystore, for any distributed private-beta build.
 - iOS bundle identifier is `io.veil.mobile`. Automatic signing is acceptable for
   internal development, but distributed private-beta archives should be cut with the
@@ -119,8 +119,8 @@ Do not claim any of the following in private beta:
 
 ## 9. Required handoff docs
 
-- [External Security Review Packet](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/external-security-review-packet.md)
-- [Private Beta Performance Profile](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/private-beta-performance-profile.md)
-- [Real-Device Performance Execution Plan](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/real-device-performance-execution.md)
-- [Audited Crypto Adapter Execution Plan](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- [Push Privacy Review Checklist](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/push-privacy-review-checklist.md)
+- [External Security Review Packet](docs/external-security-review-packet.md)
+- [Private Beta Performance Profile](docs/private-beta-performance-profile.md)
+- [Real-Device Performance Execution Plan](docs/real-device-performance-execution.md)
+- [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
+- [Push Privacy Review Checklist](docs/push-privacy-review-checklist.md)

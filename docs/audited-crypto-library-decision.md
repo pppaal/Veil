@@ -131,8 +131,8 @@ Before final sign-off, confirm:
 
 ## Required next artifacts
 
-- [audited-crypto-adapter-execution.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/audited-crypto-adapter-execution.md)
-- [crypto-mobile-bridge-design.md](c:/Users/pjyrh/OneDrive/Desktop/Veil/docs/crypto-mobile-bridge-design.md)
+- [audited-crypto-adapter-execution.md](docs/audited-crypto-adapter-execution.md)
+- [crypto-mobile-bridge-design.md](docs/crypto-mobile-bridge-design.md)
 - `docs/crypto-session-state-migration.md`
 
 ## Non-claims

@@ -21,6 +21,7 @@ import {
 } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { RegisterDto } from './dto/register.dto';
 import { ChallengeDto, VerifyDto } from './dto/challenge.dto';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from './device-auth-verifier';
@@ -56,6 +57,7 @@ export class AuthService {
     private readonly config: AppConfigService,
     @Inject(DEVICE_AUTH_VERIFIER)
     private readonly deviceAuthVerifier: DeviceAuthVerifier,
+    private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
   async register(dto: RegisterDto): Promise<RegisterResponse> {
@@ -223,16 +225,17 @@ export class AuthService {
     }
 
     const tokenHash = hashToken(refreshToken);
-    const stored = await this.ephemeralStore.getJson<StoredRefreshToken>(
+    // Atomic get-and-delete defeats the replay race where two concurrent
+    // refresh calls would both pass the existence check before either delete
+    // landed. Only one caller can win takeJson; the loser sees null and gets
+    // a fresh refresh_token_invalid as expected.
+    const stored = await this.ephemeralStore.takeJson<StoredRefreshToken>(
       refreshTokenKey(tokenHash),
     );
 
     if (!stored) {
       throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
     }
-
-    // Single-use refresh: revoke the presented token immediately to block replay.
-    await this.ephemeralStore.delete(refreshTokenKey(tokenHash));
 
     const device = await this.prisma.device.findUnique({
       where: { id: stored.deviceId },
@@ -285,6 +288,11 @@ export class AuthService {
         ttlSeconds,
       );
     }
+
+    // Forcibly cut any active WS sockets bound to this device so the realtime
+    // channel doesn't outlive the access token. The blacklist check above
+    // also stops new sockets, but existing ones don't re-verify the JWT.
+    this.realtimeGateway.disconnectDevice(authContext.deviceId);
 
     return { ok: true };
   }

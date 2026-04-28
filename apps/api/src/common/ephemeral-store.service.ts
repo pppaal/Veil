@@ -61,6 +61,28 @@ export class EphemeralStoreService implements OnModuleDestroy {
     this.fallback.delete(key);
   }
 
+  /**
+   * Atomic get-and-delete. Returns the parsed value if the key existed (and
+   * also removes it in the same hop); returns null if the key was already
+   * gone — concurrent callers with the same key get exactly one non-null
+   * result. Used by refresh-token rotation to defeat replay races.
+   */
+  async takeJson<T>(key: string): Promise<T | null> {
+    this.purgeExpiredFallbackEntries();
+    if (this.redis) {
+      // GETDEL is atomic in Redis ≥ 6.2.
+      const raw = await this.redis.getdel(key);
+      return raw ? (JSON.parse(raw) as T) : null;
+    }
+    const entry = this.fallback.get(key);
+    if (!entry || entry.expiresAt <= Date.now()) {
+      this.fallback.delete(key);
+      return null;
+    }
+    this.fallback.delete(key);
+    return JSON.parse(entry.value) as T;
+  }
+
   private purgeExpiredFallbackEntries(): void {
     if (this.redis || this.fallback.size === 0) {
       return;

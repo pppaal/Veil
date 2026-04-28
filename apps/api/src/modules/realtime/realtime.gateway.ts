@@ -11,13 +11,17 @@ import type { Server, Socket } from 'socket.io';
 import type { RealtimeEventMap } from '@veil/contracts';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 
 interface AccessTokenPayload {
   sub: string;
   deviceId: string;
   handle: string;
+  jti?: string;
 }
+
+const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 
 @Injectable()
 @WebSocketGateway({
@@ -37,6 +41,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly jwtService: JwtService,
     private readonly config: AppConfigService,
     private readonly prisma: PrismaService,
+    private readonly ephemeralStore: EphemeralStoreService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -63,6 +68,19 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         audience: this.config.jwtAudience,
         issuer: this.config.jwtIssuer,
       });
+
+      // Reject sockets whose access token has been logged out. The same
+      // blacklist key the HTTP guard checks; without this a logged-out
+      // session keeps its WS channel alive until the socket disconnects.
+      if (payload.jti) {
+        const blacklisted = await this.ephemeralStore.getJson<unknown>(
+          jtiBlacklistKey(payload.jti),
+        );
+        if (blacklisted) {
+          client.disconnect(true);
+          return;
+        }
+      }
 
       const device = await this.prisma.device.findUnique({
         where: { id: payload.deviceId },
@@ -200,6 +218,25 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return [...connectedDeviceIds];
   }
 
+  /**
+   * Force every socket bound to the given device to disconnect. Called from
+   * the auth service when a device logs out, so the WS push channel doesn't
+   * outlive the access token.
+   */
+  disconnectDevice(deviceId: string): number {
+    const socketIds = this.socketsByDeviceId.get(deviceId);
+    if (!socketIds || socketIds.size === 0) return 0;
+    let count = 0;
+    for (const socketId of [...socketIds]) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.disconnect(true);
+        count++;
+      }
+    }
+    return count;
+  }
+
   @SubscribeMessage('typing.start')
   async handleTypingStart(client: Socket, payload: { conversationId: string }): Promise<void> {
     const userId = client.data.userId as string | undefined;
@@ -258,16 +295,4 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return result;
   }
 
-  disconnectDevice(deviceId: string): void {
-    const socketIds = this.socketsByDeviceId.get(deviceId);
-    if (!socketIds) {
-      return;
-    }
-
-    for (const socketId of socketIds) {
-      const socket = this.server.sockets.sockets.get(socketId);
-      socket?.disconnect(true);
-    }
-    this.socketsByDeviceId.delete(deviceId);
-  }
 }

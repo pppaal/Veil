@@ -164,7 +164,17 @@ export class AppConfigService {
   }
 
   isOriginAllowed(origin?: string | null): boolean {
+    // No-Origin requests are server-to-server, native clients (curl, mobile),
+    // and same-origin loads. We allow them only outside production where the
+    // browser-CORS surface is the only thing relying on this gate. Production
+    // requires an explicit Origin header that matches the allowlist.
     if (!origin) {
+      return !this.isProduction;
+    }
+
+    if (this.allowedOrigins.includes('*')) {
+      // Wildcard is intentional for the demo stack (docker-compose.demo.yml)
+      // but is rejected by deploy preflight outside development.
       return true;
     }
 

@@ -94,21 +94,41 @@ const toast = (msg, kind = '') => {
 // security — but it is real end-to-end encryption: the API sees ciphertext
 // only. The Flutter mobile app uses the audited LibCryptoAdapter for the real
 // thing; the web demo trades ratchet complexity for browser-native primitives.
+// Wire format (v2):
+//   ciphertext = "v2." + base64url(AES-GCM ciphertext)
+//   nonce      = base64url(12-byte random IV)  (also doubles as the HKDF salt)
+//   AES key    = HKDF-SHA256(
+//                  ikm  = ECDH(myXPriv, peerXPub),
+//                  salt = nonce,
+//                  info = "veil-demo-v2|aesgcm|" + sorted(myXPub,peerXPub) + "|" + conversationId,
+//                )
+//
+// Per-message key derivation eliminates the nonce-reuse-under-fixed-key risk;
+// even if two messages collide on the random IV, the derived key differs.
+// `info` binds the derived key to the (peer-pair, conversation) tuple so the
+// same ECDH secret can't silently cover a different context.
+//
+// Browser CryptoKey objects are structured-cloneable, so we can store them
+// directly in IndexedDB without ever exporting JWK to disk. Web Crypto applies
+// `extractable` to both halves of an asymmetric pair, so we keep them
+// extractable=true (otherwise we cannot raw-export the public key once) and
+// instead never call exportKey on the private half ourselves.
+
 async function generateIdentityKeys() {
   const ed = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
   const x = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
   return {
-    edJwkPriv: await crypto.subtle.exportKey('jwk', ed.privateKey),
+    edPrivKey: ed.privateKey,
     edPubB64u: b64uEncode(await crypto.subtle.exportKey('raw', ed.publicKey)),
-    xJwkPriv: await crypto.subtle.exportKey('jwk', x.privateKey),
+    xPrivKey: x.privateKey,
     xPubB64u: b64uEncode(await crypto.subtle.exportKey('raw', x.publicKey)),
   };
 }
-async function importEdPriv(jwk) {
-  return await crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, false, ['sign']);
+async function importEdPrivFromJwk(jwk) {
+  return await crypto.subtle.importKey('jwk', jwk, { name: 'Ed25519' }, true, ['sign']);
 }
-async function importXPriv(jwk) {
-  return await crypto.subtle.importKey('jwk', jwk, { name: 'X25519' }, false, ['deriveBits']);
+async function importXPrivFromJwk(jwk) {
+  return await crypto.subtle.importKey('jwk', jwk, { name: 'X25519' }, true, ['deriveBits']);
 }
 async function importXPubFromB64u(b64u) {
   return await crypto.subtle.importKey('raw', b64uDecode(b64u), { name: 'X25519' }, false, []);
@@ -118,43 +138,42 @@ async function signChallenge(edPrivateKey, challenge) {
   return b64uEncode(sig);
 }
 
-async function deriveSharedAesKey(myXPriv, peerXPub) {
-  const bits = await crypto.subtle.deriveBits({ name: 'X25519', public: peerXPub }, myXPriv, 256);
-  const baseKey = await crypto.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey']);
-  return await crypto.subtle.deriveKey(
-    {
-      name: 'HKDF',
-      hash: 'SHA-256',
-      salt: new Uint8Array(0),
-      info: new TextEncoder().encode('veil-demo-v1-aesgcm'),
-    },
-    baseKey,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt'],
-  );
-}
-
-async function encryptWithKey(key, plaintext) {
+async function encryptForConv(convId, plaintext) {
+  const ctx = await getConvCryptoCtx(convId);
+  if (!ctx) return null;
   const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const aesKey = await deriveAesKey(ctx.hkdfBase, nonce, ctx.info);
   const ct = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: nonce },
-    key,
+    aesKey,
     new TextEncoder().encode(plaintext),
   );
-  return { ciphertext: 'v1.' + b64uEncode(ct), nonce: b64uEncode(nonce) };
+  return { ciphertext: 'v2.' + b64uEncode(ct), nonce: b64uEncode(nonce) };
 }
 
-async function decryptWithKey(key, ciphertextV1, nonceB64u) {
-  if (!ciphertextV1?.startsWith('v1.')) return null;
-  const ct = b64uDecode(ciphertextV1.slice(3));
-  const nonce = b64uDecode(nonceB64u);
+async function decryptFromConv(convId, ciphertext, nonceB64u) {
+  if (!ciphertext?.startsWith('v2.')) return null;
+  const ctx = await getConvCryptoCtx(convId);
+  if (!ctx) return null;
+  const nonceBuf = new Uint8Array(b64uDecode(nonceB64u));
+  const ct = b64uDecode(ciphertext.slice(3));
   try {
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, key, ct);
+    const aesKey = await deriveAesKey(ctx.hkdfBase, nonceBuf, ctx.info);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonceBuf }, aesKey, ct);
     return new TextDecoder().decode(pt);
   } catch {
     return null;
   }
+}
+
+async function deriveAesKey(hkdfBase, salt, info) {
+  return await crypto.subtle.deriveKey(
+    { name: 'HKDF', hash: 'SHA-256', salt, info },
+    hkdfBase,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt'],
+  );
 }
 
 // Wrap reply metadata into the encrypted payload so the server never sees
@@ -175,55 +194,92 @@ function unpackPayload(decoded) {
   return { text: decoded, replyTo: null };
 }
 
-// Per-conversation cached AES-GCM key (derived once per peer).
-const sharedKeyByConv = new Map(); // convId -> CryptoKey
+// Per-conversation HKDF context (ECDH base key + domain-separation info).
+const convCryptoCtx = new Map(); // convId -> { hkdfBase: CryptoKey, info: Uint8Array }
 const peerXPubByUserId = new Map(); // userId -> CryptoKey (X25519 pub)
+const peerXPubB64uByUserId = new Map(); // userId -> base64url raw pub (mixed into HKDF info)
 
 async function getPeerXPub(userId, handle) {
   if (peerXPubByUserId.has(userId)) return peerXPubByUserId.get(userId);
   const r = await api(`/users/${handle}/key-bundle`);
-  const pub = await importXPubFromB64u(r.bundle.identityPublicKey);
+  const pubB64u = r.bundle.identityPublicKey;
+  const pub = await importXPubFromB64u(pubB64u);
   peerXPubByUserId.set(userId, pub);
+  peerXPubB64uByUserId.set(userId, pubB64u);
   return pub;
 }
 
-async function getSharedKeyForConv(convId) {
-  if (sharedKeyByConv.has(convId)) return sharedKeyByConv.get(convId);
+async function getConvCryptoCtx(convId) {
+  if (convCryptoCtx.has(convId)) return convCryptoCtx.get(convId);
   const conv = state.conversations.find((c) => c.id === convId);
   if (!conv || !state.me?.xPrivKey) return null;
   const peer = (conv.members || []).find((m) => m.userId !== state.me.userId);
   if (!peer) return null;
   try {
     const peerXPub = await getPeerXPub(peer.userId, peer.handle);
-    const key = await deriveSharedAesKey(state.me.xPrivKey, peerXPub);
-    sharedKeyByConv.set(convId, key);
-    return key;
+    const ecdhBits = await crypto.subtle.deriveBits(
+      { name: 'X25519', public: peerXPub },
+      state.me.xPrivKey,
+      256,
+    );
+    const hkdfBase = await crypto.subtle.importKey('raw', ecdhBits, 'HKDF', false, ['deriveKey']);
+    const peerPubB64u = peerXPubB64uByUserId.get(peer.userId) ?? '';
+    const sortedPubs = [state.me.xPubB64u, peerPubB64u].sort().join('|');
+    const info = new TextEncoder().encode(`veil-demo-v2|aesgcm|${sortedPubs}|${convId}`);
+    const ctx = { hkdfBase, info };
+    convCryptoCtx.set(convId, ctx);
+    return ctx;
   } catch (e) {
-    console.warn('shared key derive failed', e);
+    console.warn('shared secret derive failed', e);
     return null;
   }
 }
 
+// Drop the cached HKDF base for a conversation. Called when decrypts start
+// failing in a row (e.g., the peer rotated their X25519 key on re-register).
+function invalidateConvCrypto(convId) {
+  convCryptoCtx.delete(convId);
+}
+function invalidatePeerXPub(userId) {
+  peerXPubByUserId.delete(userId);
+  peerXPubB64uByUserId.delete(userId);
+}
+
+// Track consecutive decrypt failures per conversation so we know when to
+// invalidate the cached HKDF base — e.g., the peer rotated their X25519 key.
+const decryptFailureCount = new Map(); // convId -> int
+const PEER_ROTATION_FAILURE_THRESHOLD = 3;
+
 async function decryptMessage(msg) {
   if (msg._plaintext != null) return; // already done
   const ct = msg.ciphertext || '';
-  if (!ct.startsWith('v1.')) {
+  if (!ct.startsWith('v2.')) {
     msg._plaintext = '(평문 아님)';
     msg._replyTo = null;
     return;
   }
-  const key = await getSharedKeyForConv(msg.conversationId);
-  if (!key) {
+  if (!await getConvCryptoCtx(msg.conversationId)) {
     msg._plaintext = '🔒 키 미해결';
     msg._replyTo = null;
     return;
   }
-  const pt = await decryptWithKey(key, ct, msg.nonce);
+  const pt = await decryptFromConv(msg.conversationId, ct, msg.nonce);
   if (pt == null) {
     msg._plaintext = '🔒 복호화 실패';
     msg._replyTo = null;
+    const failures = (decryptFailureCount.get(msg.conversationId) ?? 0) + 1;
+    decryptFailureCount.set(msg.conversationId, failures);
+    if (failures >= PEER_ROTATION_FAILURE_THRESHOLD) {
+      // Peer probably rotated keys; flush caches so the next render re-fetches.
+      invalidateConvCrypto(msg.conversationId);
+      const conv = state.conversations.find((c) => c.id === msg.conversationId);
+      const peer = conv?.members?.find((m) => m.userId !== state.me?.userId);
+      if (peer) invalidatePeerXPub(peer.userId);
+      decryptFailureCount.delete(msg.conversationId);
+    }
     return;
   }
+  decryptFailureCount.delete(msg.conversationId);
   const { text, replyTo } = unpackPayload(pt);
   msg._plaintext = text;
   msg._replyTo = replyTo;
@@ -282,14 +338,14 @@ async function refreshAccessToken() {
           });
           state.me.accessToken = r.accessToken;
           state.me.refreshToken = r.refreshToken;
-          await session.save(serializableMe(state.me));
+          await session.save(state.me);
           return state.me.accessToken;
         } catch {
           // refresh token expired/revoked — fall through to re-auth
         }
       }
       const stored = await session.load();
-      if (stored?.edJwkPriv) {
+      if (stored?.edPrivKey || stored?.edJwkPriv) {
         await doRestore(stored);
         return state.me?.accessToken ?? null;
       }
@@ -502,7 +558,10 @@ function emitTypingStop(convId) {
 // ---------- IndexedDB ----------
 // One DB per browser. Stores:
 //   session     - { id: 'me', value: { handle, userId, deviceId, accessToken, refreshToken,
-//                                       edJwkPriv, xJwkPriv, xPubB64u } }
+//                                       edPrivKey, xPrivKey, edPubB64u, xPubB64u } }
+//                 (CryptoKey objects are stored directly via structured clone;
+//                  legacy JWK fields edJwkPriv/xJwkPriv are auto-migrated on
+//                  first restore.)
 //   conversations - ConversationSummary keyed by id
 //   messages    - { ...ConversationMessageSummary, _key: convId + ':' + conversationOrder },
 //                 indexed by convId
@@ -1278,8 +1337,7 @@ async function doRegister(displayName, handle) {
     method: 'POST',
     body: { handle: reg.handle, deviceId: reg.deviceId },
   });
-  const edPriv = await importEdPriv(keys.edJwkPriv);
-  const signature = await signChallenge(edPriv, ch.challenge);
+  const signature = await signChallenge(keys.edPrivKey, ch.challenge);
   const ver = await api('/auth/verify', {
     method: 'POST',
     body: { challengeId: ch.challengeId, deviceId: reg.deviceId, signature },
@@ -1288,39 +1346,43 @@ async function doRegister(displayName, handle) {
     handle: reg.handle,
     userId: reg.userId,
     deviceId: reg.deviceId,
-    edJwkPriv: keys.edJwkPriv,
-    xJwkPriv: keys.xJwkPriv,
+    edPrivKey: keys.edPrivKey,    // CryptoKey, never exported as JWK
+    xPrivKey: keys.xPrivKey,      // CryptoKey, never exported as JWK
     xPubB64u: keys.xPubB64u,
+    edPubB64u: keys.edPubB64u,
     accessToken: ver.accessToken,
     refreshToken: ver.refreshToken,
   };
-  state.me.xPrivKey = await importXPriv(keys.xJwkPriv);
-  await session.save(serializableMe(state.me));
+  await session.save(state.me);
 }
 
 async function doRestore(stored) {
-  if (!stored.edJwkPriv || !stored.xJwkPriv) {
-    throw Object.assign(new Error('이 브라우저의 세션은 새 암호화 형식과 호환되지 않아요. 다시 등록해주세요.'), { status: 0 });
+  // Auto-migrate sessions that still hold JWK material from earlier phases.
+  if (stored.edJwkPriv && !stored.edPrivKey) {
+    stored.edPrivKey = await importEdPrivFromJwk(stored.edJwkPriv);
+    delete stored.edJwkPriv;
+  }
+  if (stored.xJwkPriv && !stored.xPrivKey) {
+    stored.xPrivKey = await importXPrivFromJwk(stored.xJwkPriv);
+    delete stored.xJwkPriv;
+  }
+  if (!stored.edPrivKey || !stored.xPrivKey) {
+    throw Object.assign(
+      new Error('이 브라우저의 세션은 새 암호화 형식과 호환되지 않아요. 다시 등록해주세요.'),
+      { status: 0 },
+    );
   }
   const ch = await api('/auth/challenge', {
     method: 'POST',
     body: { handle: stored.handle, deviceId: stored.deviceId },
   });
-  const edPriv = await importEdPriv(stored.edJwkPriv);
-  const signature = await signChallenge(edPriv, ch.challenge);
+  const signature = await signChallenge(stored.edPrivKey, ch.challenge);
   const ver = await api('/auth/verify', {
     method: 'POST',
     body: { challengeId: ch.challengeId, deviceId: stored.deviceId, signature },
   });
   state.me = { ...stored, accessToken: ver.accessToken, refreshToken: ver.refreshToken };
-  state.me.xPrivKey = await importXPriv(stored.xJwkPriv);
-  await session.save(serializableMe(state.me));
-}
-
-// CryptoKey objects can't be JSON-serialized. Strip them before saving.
-function serializableMe(me) {
-  const { xPrivKey, ...rest } = me;
-  return rest;
+  await session.save(state.me);
 }
 
 async function loadConversations() {
@@ -1352,7 +1414,7 @@ async function openConversation(convId) {
   renderActivePanel();
   // Pre-fetch the peer key so the first send doesn't have to wait on a
   // network round trip. Failures are non-fatal — sendMessage will retry.
-  getSharedKeyForConv(convId).catch(() => {});
+  getConvCryptoCtx(convId).catch(() => {});
   await refreshMessages(convId);
 }
 
@@ -1481,17 +1543,17 @@ async function sendMessage(textarea, convId) {
   const peer = conv.members.find((m) => m.userId !== state.me.userId);
   const clientMessageId = 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
-  // Encrypt the body with the per-peer derived AES-GCM key. The server only
-  // ever sees `ciphertext` and `nonce`.
-  const sharedKey = await getSharedKeyForConv(target);
-  if (!sharedKey) {
-    toast('상대 키를 찾지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
-    return;
-  }
+  // Encrypt the body with a fresh per-message AES-GCM key derived from the
+  // per-peer ECDH secret. The server only ever sees `ciphertext` and `nonce`.
   const replyDraft = state.replyDraftByConv.get(target);
   const replyToId = replyDraft?.id ?? null;
   const payload = packPayload(text, replyToId);
-  const { ciphertext, nonce } = await encryptWithKey(sharedKey, payload);
+  const envelope = await encryptForConv(target, payload);
+  if (!envelope) {
+    toast('상대 키를 찾지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
+    return;
+  }
+  const { ciphertext, nonce } = envelope;
 
   // Optimistic insert with pending status so the bubble appears immediately.
   const optimistic = {

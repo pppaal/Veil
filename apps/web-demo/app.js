@@ -259,7 +259,7 @@ async function decryptMessage(msg) {
   if (msg._plaintext != null) return; // already done
   const ct = msg.ciphertext || '';
   if (!ct.startsWith('v2.')) {
-    msg._plaintext = '(평문 아님)';
+    msg._plaintext = '🔒 이전 형식';
     msg._replyTo = null;
     return;
   }
@@ -711,11 +711,12 @@ async function showAuth() {
   if (stored) {
     $('restore-row').classList.remove('hidden');
     $('restore-handle').textContent = '@' + stored.handle;
-    $('wipe-btn').classList.remove('hidden');
   } else {
     $('restore-row').classList.add('hidden');
-    $('wipe-btn').classList.add('hidden');
   }
+  // wipe-btn stays visible regardless. A user with a corrupted/partially
+  // restored session needs to be able to nuke local state without first
+  // succeeding at restore.
 }
 
 function showApp() {
@@ -732,7 +733,7 @@ function renderMe() {
     avatarFor(state.me.handle, 'sm'),
     el('div', {}, [
       el('div', { style: 'font-weight:600' }, ['@' + state.me.handle]),
-      el('div', { style: 'font-size:11px;color:var(--fg-faint)' }, ['device ' + state.me.deviceId.slice(0, 8)]),
+      el('div', { style: 'font-size:11px;color:var(--fg-faint)' }, ['기기 ' + state.me.deviceId.slice(0, 8)]),
     ]),
   );
 }
@@ -747,7 +748,7 @@ function renderSidebar() {
 
   if (filtered.length === 0) {
     list.replaceChildren(el('div', { class: 'conv-empty' }, [
-      q ? `"${q}" 검색 결과 없음` : '대화 없음. 위에서 새 대화를 시작하세요.',
+      q ? `"${q}" 검색 결과 없음` : '대화 없음. + 새 대화 버튼으로 시작하세요.',
     ]));
     return;
   }
@@ -1875,7 +1876,13 @@ $('restore-btn').addEventListener('click', async () => {
 });
 
 $('wipe-btn').addEventListener('click', async () => {
-  if (!confirm('이 브라우저의 키를 전부 삭제합니다. 이 핸들로는 다시 로그인할 수 없어요.')) return;
+  const ok = await uiConfirm({
+    title: '키 · 캐시 삭제',
+    body: '이 브라우저의 키를 전부 삭제합니다. 이 핸들로는 다시 로그인할 수 없어요.',
+    okLabel: '삭제',
+    destructive: true,
+  });
+  if (!ok) return;
   await session.wipe();
   await showAuth();
   toast('키를 삭제했습니다');
@@ -1898,6 +1905,58 @@ function closeDialog(dialogId) {
   }
   dialogReturnFocusEl = null;
 }
+// Themed replacement for native confirm(). Returns a Promise<boolean>.
+// Uses the same .dialog-backdrop / .dialog markup as the new-chat dialog so
+// it inherits focus trap + Esc + click-outside-to-cancel behavior.
+function uiConfirm({
+  title = '확인',
+  body = '',
+  okLabel = '확인',
+  cancelLabel = '취소',
+  destructive = false,
+} = {}) {
+  return new Promise((resolve) => {
+    const dialog = $('confirm-dialog');
+    if (!dialog) {
+      resolve(false);
+      return;
+    }
+    $('confirm-title').textContent = title;
+    $('confirm-body').textContent = body;
+    const okBtn = $('confirm-ok');
+    const cancelBtn = $('confirm-cancel');
+    okBtn.textContent = okLabel;
+    cancelBtn.textContent = cancelLabel;
+    okBtn.classList.toggle('btn-primary', !destructive);
+    okBtn.classList.toggle('btn-secondary', destructive);
+    okBtn.style.background = destructive ? 'var(--bad)' : '';
+    okBtn.style.borderColor = destructive ? 'var(--bad)' : '';
+
+    const cleanup = (result) => {
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      dialog.removeEventListener('click', onBackdrop);
+      dialog.removeEventListener('keydown', onKey);
+      okBtn.style.background = '';
+      okBtn.style.borderColor = '';
+      closeDialog('confirm-dialog');
+      resolve(result);
+    };
+    const onOk = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onBackdrop = (e) => { if (e.target === dialog) cleanup(false); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+      else trapFocus('confirm-dialog', e);
+    };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    dialog.addEventListener('click', onBackdrop);
+    dialog.addEventListener('keydown', onKey);
+    openDialog('confirm-dialog', 'confirm-cancel');
+  });
+}
+
 function trapFocus(dialogId, e) {
   if (e.key !== 'Tab') return;
   const dialog = $(dialogId).querySelector('.dialog');
@@ -1989,9 +2048,13 @@ $('menu').addEventListener('click', async (e) => {
     const status = state.socket?.connected ? '실시간 (WebSocket)' : '폴링 (' + (POLL_MS / 1000) + '초)';
     toast('연결: ' + status, 'good');
   } else if (action === 'wipe') {
-    if (confirm('로그아웃하고 이 브라우저의 키를 전부 삭제합니다.')) {
-      await logout();
-    }
+    const ok = await uiConfirm({
+      title: '로그아웃 + 키 삭제',
+      body: '로그아웃하고 이 브라우저의 키를 전부 삭제합니다. 이 핸들로는 다시 로그인할 수 없어요.',
+      okLabel: '삭제',
+      destructive: true,
+    });
+    if (ok) await logout();
   }
 });
 

@@ -290,6 +290,38 @@ a { color: var(--accent); text-decoration: none; }
 .field input:focus { border-color: var(--accent); background: var(--bg-hover); }
 .field-hint { font-size: 11px; color: var(--fg-faint); }
 
+.auth-explainer {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 0 14px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+.auth-explainer summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 0;
+  color: var(--accent-strong);
+  font-weight: 500;
+  user-select: none;
+}
+.auth-explainer summary::-webkit-details-marker { display: none; }
+.auth-explainer summary::after {
+  content: " ▾";
+  color: var(--fg-faint);
+  margin-left: 4px;
+}
+.auth-explainer[open] summary::after { content: " ▴"; }
+.auth-explainer-body {
+  padding-bottom: 12px;
+  line-height: 1.55;
+}
+.auth-explainer-body p { margin: 0 0 8px; }
+.auth-explainer-body p:last-child { margin-bottom: 0; }
+.auth-explainer-body strong { color: var(--bad); }
+
 .auth-meta {
   margin-top: 18px;
   padding-top: 16px;
@@ -520,6 +552,15 @@ a { color: var(--accent); text-decoration: none; }
   white-space: nowrap;
   height: 100%;
   border-radius: 0;
+  max-width: 180px;
+  overflow: hidden;
+}
+.tab > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .tab:hover { color: var(--fg); background: var(--bg-hover); }
 .tab.active {

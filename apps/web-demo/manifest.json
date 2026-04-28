@@ -1,0 +1,15 @@
+{
+  "name": "VEIL",
+  "short_name": "VEIL",
+  "description": "No backup. No recovery. No leaks. 디바이스에 묶이는 E2E 메신저 (Private Beta).",
+  "start_url": "/demo/",
+  "scope": "/demo/",
+  "display": "standalone",
+  "background_color": "#0b0c10",
+  "theme_color": "#0b0c10",
+  "lang": "ko",
+  "icons": [
+    { "src": "./icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any" },
+    { "src": "./icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "maskable" }
+  ]
+}

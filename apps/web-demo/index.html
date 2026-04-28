@@ -6,6 +6,19 @@
 <meta name="theme-color" content="#0b0c10" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="description" content="VEIL — 백업 없음, 복구 없음, 디바이스에 묶이는 종단간 암호화 메신저. 베타." />
+<meta name="color-scheme" content="dark" />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="VEIL · Private Beta" />
+<meta property="og:description" content="No backup. No recovery. No leaks. 디바이스에 묶이는 E2E 메신저." />
+<meta property="og:site_name" content="VEIL" />
+<meta property="og:image" content="./icon.svg" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="VEIL · Private Beta" />
+<meta name="twitter:description" content="No backup. No recovery. No leaks. 디바이스에 묶이는 E2E 메신저." />
+<link rel="icon" type="image/svg+xml" href="./icon.svg" />
+<link rel="apple-touch-icon" href="./icon.svg" />
+<link rel="manifest" href="./manifest.json" />
 <title>VEIL</title>
 <link rel="stylesheet" href="./app.css" />
 <script src="./socket.io.min.js" defer></script>
@@ -17,7 +30,7 @@
 <div id="beta-banner" class="beta-banner hidden" role="status">
   <div class="beta-banner-body">
     <strong>PRIVATE BETA</strong>
-    <span> · 외부 크립토 감사 미완료 · 백업/복구 없음 · 디바이스 묶임</span>
+    <span> · 외부 크립토 감사 미완료 · 백업/복구 없음 · 이 기기에서만 사용</span>
   </div>
   <button class="beta-banner-close" id="beta-banner-close" aria-label="배너 닫기">×</button>
 </div>
@@ -30,6 +43,17 @@
       <div class="brand-title">VEIL</div>
       <div class="brand-tag">private beta</div>
     </div>
+
+    <details class="auth-explainer">
+      <summary>VEIL 이 뭐예요?</summary>
+      <div class="auth-explainer-body">
+        <p><strong>이 기기에서만</strong> 동작하는 종단간 암호화 메신저입니다.
+          서버는 ciphertext 만 보고, 평문은 절대 갖지 않아요.</p>
+        <p><strong>주의</strong>: 백업·복구·비밀번호 재설정 없습니다.
+          기기를 잃어버리거나 브라우저를 지우면 메시지·핸들 모두 영구 손실.
+          다른 기기로 옮기려면 이 기기에서 직접 이전(transfer) 절차를 밟아야 합니다.</p>
+      </div>
+    </details>
 
     <div id="restore-row" class="restore-row hidden">
       <div class="restore-info">
@@ -54,10 +78,10 @@
 
     <div class="auth-meta">
       <div class="meta-line">서버는 ciphertext만 봅니다</div>
-      <div class="meta-line">백업 없음 · 복구 없음 · 디바이스 묶임</div>
+      <div class="meta-line">백업 없음 · 복구 없음 · 이 기기에서만 사용</div>
     </div>
 
-    <button id="wipe-btn" class="link-btn link-danger hidden">이 브라우저의 키 전부 삭제</button>
+    <button id="wipe-btn" class="link-btn link-danger">이 브라우저의 키 · 캐시 전부 삭제</button>
   </div>
 </section>
 
@@ -121,6 +145,19 @@
     <button class="menu-item" data-action="ws-info" role="menuitem">연결 상태</button>
     <div class="menu-sep"></div>
     <button class="menu-item menu-danger" data-action="wipe" role="menuitem">로그아웃 + 키 삭제</button>
+  </div>
+</div>
+
+<!-- Confirm dialog (destructive actions: wipe, logout). Lives at body root so
+     it works on both the auth screen and the main app. -->
+<div class="dialog-backdrop hidden" id="confirm-dialog" role="presentation">
+  <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <div class="dialog-title" id="confirm-title">확인</div>
+    <div class="dialog-sub" id="confirm-body"></div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="confirm-cancel">취소</button>
+      <button class="btn btn-primary" id="confirm-ok">확인</button>
+    </div>
   </div>
 </div>
 

@@ -150,6 +150,24 @@ async function decryptWithKey(key, ciphertextV1, nonceB64u) {
   }
 }
 
+// Wrap reply metadata into the encrypted payload so the server never sees
+// which message is being answered. The wire format inside the ciphertext is
+// either a plain UTF-8 string (legacy) or a JSON object {v:1, text, replyTo}.
+function packPayload(text, replyToId) {
+  if (!replyToId) return text;
+  return JSON.stringify({ v: 1, text, replyTo: replyToId });
+}
+function unpackPayload(decoded) {
+  if (typeof decoded !== 'string') return { text: '', replyTo: null };
+  if (decoded.startsWith('{"v":1,')) {
+    try {
+      const o = JSON.parse(decoded);
+      if (o?.v === 1) return { text: o.text ?? '', replyTo: o.replyTo ?? null };
+    } catch {}
+  }
+  return { text: decoded, replyTo: null };
+}
+
 // Per-conversation cached AES-GCM key (derived once per peer).
 const sharedKeyByConv = new Map(); // convId -> CryptoKey
 const peerXPubByUserId = new Map(); // userId -> CryptoKey (X25519 pub)
@@ -185,19 +203,29 @@ async function decryptMessage(msg) {
   // Legacy DEMO-LABEL still in DB from earlier phases.
   if (ct.startsWith('DEMO-PLAINTEXT-LABEL[') && ct.endsWith(']')) {
     msg._plaintext = ct.slice('DEMO-PLAINTEXT-LABEL['.length, -1);
+    msg._replyTo = null;
     return;
   }
   if (!ct.startsWith('v1.')) {
     msg._plaintext = '(평문 아님)';
+    msg._replyTo = null;
     return;
   }
   const key = await getSharedKeyForConv(msg.conversationId);
   if (!key) {
     msg._plaintext = '🔒 키 미해결';
+    msg._replyTo = null;
     return;
   }
   const pt = await decryptWithKey(key, ct, msg.nonce);
-  msg._plaintext = pt ?? '🔒 복호화 실패';
+  if (pt == null) {
+    msg._plaintext = '🔒 복호화 실패';
+    msg._replyTo = null;
+    return;
+  }
+  const { text, replyTo } = unpackPayload(pt);
+  msg._plaintext = text;
+  msg._replyTo = replyTo;
 }
 
 async function decryptAllForConv(convId) {
@@ -233,6 +261,62 @@ async function api(path, { method = 'GET', body, token } = {}) {
     throw Object.assign(new Error(msg), { status: r.status });
   }
   return text ? JSON.parse(text) : {};
+}
+
+// Authed wrapper that auto-refreshes the access token on 401. The refresh
+// endpoint runs first (cheap, server-side validation only). If that also
+// fails, fall back to re-running challenge/verify with the stored Ed25519
+// key — the device-bound auth that registered the session in the first
+// place. Single-flight so a burst of 401s doesn't kick off N refreshes.
+let refreshInFlight = null;
+async function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = (async () => {
+    try {
+      if (state.me?.refreshToken) {
+        try {
+          const r = await api('/auth/refresh', {
+            method: 'POST',
+            body: { refreshToken: state.me.refreshToken },
+          });
+          state.me.accessToken = r.accessToken;
+          state.me.refreshToken = r.refreshToken;
+          await session.save(serializableMe(state.me));
+          return state.me.accessToken;
+        } catch {
+          // refresh token expired/revoked — fall through to re-auth
+        }
+      }
+      const stored = await session.load();
+      if (stored?.edJwkPriv) {
+        await doRestore(stored);
+        return state.me?.accessToken ?? null;
+      }
+      return null;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+async function authedApi(path, opts = {}) {
+  const token = state.me?.accessToken;
+  try {
+    return await api(path, { ...opts, token });
+  } catch (e) {
+    if (e.status !== 401 || !state.me) throw e;
+    const fresh = await refreshAccessToken();
+    if (!fresh) {
+      await logout();
+      throw e;
+    }
+    // Reconnect WS with the new token and retry once.
+    if (state.socket) {
+      try { state.socket.auth = { token: fresh }; state.socket.disconnect().connect(); } catch {}
+    }
+    return await api(path, { ...opts, token: fresh });
+  }
 }
 
 // ---------- websocket ----------
@@ -540,6 +624,7 @@ const state = {
   socket: null,                // socket.io client
   online: new Set(),           // userId set, populated from presence.update
   typing: new Map(),           // convId -> Map<userId, { handle, expiresAt }>
+  replyDraftByConv: new Map(), // convId -> { id, snippet, sender } awaiting send
 };
 // Expose for diagnostics — handy in DevTools and Playwright probes.
 if (typeof window !== 'undefined') window.__veil = state;
@@ -737,6 +822,39 @@ function statusLabel(status) {
 const scrollPosByConv = new Map();
 const NEAR_BOTTOM_PX = 120;
 
+function renderReplyHead(replyToId, allMsgs) {
+  const target = allMsgs.find((m) => m.id === replyToId);
+  const sender = target
+    ? (target.senderDeviceId === state.me.deviceId ? state.me.handle : null)
+    : null;
+  const snippet = target?._plaintext != null
+    ? (target._plaintext.length > 80 ? target._plaintext.slice(0, 80) + '…' : target._plaintext)
+    : '이전 메시지';
+  return el('div', { class: 'msg-reply-head' }, [
+    el('span', { class: 'msg-reply-icon' }, ['↩']),
+    el('span', { class: 'msg-reply-snippet' }, [snippet]),
+  ]);
+}
+
+function startReply(convId, msg) {
+  const sender = msg.senderDeviceId === state.me.deviceId ? state.me.handle : null;
+  const snippet = msg._plaintext != null
+    ? (msg._plaintext.length > 60 ? msg._plaintext.slice(0, 60) + '…' : msg._plaintext)
+    : '이전 메시지';
+  state.replyDraftByConv.set(convId, { id: msg.id, snippet, sender });
+  renderActivePanel();
+  // Focus the textarea after re-render.
+  requestAnimationFrame(() => {
+    const ta = document.querySelector(`.panel[data-conv="${convId}"] .panel-input textarea`);
+    if (ta) ta.focus();
+  });
+}
+
+function cancelReply(convId) {
+  state.replyDraftByConv.delete(convId);
+  renderActivePanel();
+}
+
 function renderActivePanel() {
   const panels = $('panels');
   const slots = [state.activeConv, state.splitView ? state.secondaryConv : null].filter(Boolean);
@@ -795,7 +913,30 @@ function renderOnePanel(convId) {
         if (i === group.msgs.length - 1) cls.push('last-of-group');
         if (m._status === 'pending') cls.push('pending');
         if (m._status === 'failed') cls.push('failed');
-        stack.appendChild(el('div', { class: cls.join(' ') }, [renderPreview(m)]));
+        // Reply header on the bubble that's answering an earlier message.
+        const replyHead = m._replyTo ? renderReplyHead(m._replyTo, msgs) : null;
+        // Reply button (visible on hover, accessible by keyboard).
+        const replyBtn = m.id?.startsWith('__pending__') ? null : el(
+          'button',
+          {
+            class: 'msg-reply-btn',
+            'aria-label': '답장',
+            title: '답장',
+            onclick: (e) => { e.stopPropagation(); startReply(convId, m); },
+          },
+          ['↩'],
+        );
+        const bubble = el('div', { class: cls.join(' ') }, [
+          replyHead,
+          el('span', { class: 'msg-text' }, [renderPreview(m)]),
+        ]);
+        const wrap = el('div', { class: 'msg-row ' + (group.isMe ? 'me' : 'them') }, [
+          group.isMe ? replyBtn : null,
+          bubble,
+          group.isMe ? null : replyBtn,
+        ]);
+        wrap.dataset.msgId = m.id;
+        stack.appendChild(wrap);
       }
       const last = group.msgs[group.msgs.length - 1];
       const lastT = new Date(last.serverReceivedAt || last._localAt || Date.now());
@@ -885,6 +1026,22 @@ function renderOnePanel(convId) {
   headerAvatar.appendChild(el('span', { class: 'presence-dot' }));
   if (peerOnline) headerAvatar.classList.add('online');
 
+  const replyDraft = state.replyDraftByConv.get(convId);
+  const replyBanner = replyDraft
+    ? el('div', { class: 'reply-banner' }, [
+        el('span', { class: 'reply-banner-icon' }, ['↩']),
+        el('div', { class: 'reply-banner-body' }, [
+          el('div', { class: 'reply-banner-meta' }, ['답장: @' + (replyDraft.sender ?? peer?.handle ?? '?')]),
+          el('div', { class: 'reply-banner-snippet' }, [replyDraft.snippet]),
+        ]),
+        el('button', {
+          class: 'reply-banner-close',
+          'aria-label': '답장 취소',
+          onclick: () => cancelReply(convId),
+        }, ['×']),
+      ])
+    : null;
+
   const panelNode = el('div', { class: 'panel', dataset: { conv: convId } }, [
     el('div', { class: 'panel-header' }, [
       headerAvatar,
@@ -894,7 +1051,10 @@ function renderOnePanel(convId) {
       ]),
     ]),
     msgsNode,
-    el('div', { class: 'panel-input' }, [textarea, sendBtn]),
+    el('div', { class: 'panel-input-wrap' }, [
+      replyBanner,
+      el('div', { class: 'panel-input' }, [textarea, sendBtn]),
+    ]),
   ]);
 
   // Restore scroll: if user was near the bottom, snap to bottom; otherwise keep
@@ -909,25 +1069,52 @@ function renderOnePanel(convId) {
   });
 
   // Mark visible peer messages as read in the background (only for primary tab).
-  if (state.activeConv === convId) markVisibleAsRead(convId, msgs);
+  if (state.activeConv === convId || state.secondaryConv === convId) {
+    requestAnimationFrame(() => attachReadObserver(convId, msgsNode));
+  }
 
   return panelNode;
 }
 
+// Track which messages we've already marked as read so we don't hammer the
+// /read endpoint. Survives across re-renders for the lifetime of the session.
 const readMarked = new Set();
-async function markVisibleAsRead(convId, msgs) {
-  if (document.hidden) return;
-  for (const m of msgs) {
-    if (m.senderDeviceId === state.me.deviceId) continue;
-    if (m.readAt) continue;
-    if (readMarked.has(m.id)) continue;
-    readMarked.add(m.id);
-    try {
-      await api(`/messages/${m.id}/read`, { method: 'POST', token: state.me.accessToken, body: {} });
-    } catch (e) {
-      readMarked.delete(m.id); // allow retry next render
-      if (e.status === 401) return;
+
+async function markOneAsRead(messageId) {
+  if (readMarked.has(messageId)) return;
+  readMarked.add(messageId);
+  try {
+    await authedApi(`/messages/${messageId}/read`, { method: 'POST', body: {} });
+  } catch (e) {
+    readMarked.delete(messageId);
+    if (e.status === 401) return;
+  }
+}
+
+// Per-panel IntersectionObservers. Old ones are torn down on re-render.
+const panelObservers = new Map(); // convId -> IntersectionObserver
+
+function attachReadObserver(convId, msgsNode) {
+  const prev = panelObservers.get(convId);
+  if (prev) prev.disconnect();
+  const obs = new IntersectionObserver((entries) => {
+    if (document.visibilityState !== 'visible') return;
+    if (state.activeConv !== convId && state.secondaryConv !== convId) return;
+    for (const entry of entries) {
+      if (entry.intersectionRatio < 0.5) continue;
+      const msgId = entry.target.dataset.msgId;
+      if (!msgId || msgId.startsWith('__pending__')) continue;
+      const list = state.messagesByConv.get(convId) || [];
+      const m = list.find((x) => x.id === msgId);
+      if (!m || m.senderDeviceId === state.me.deviceId || m.readAt) continue;
+      markOneAsRead(msgId);
+      obs.unobserve(entry.target);
     }
+  }, { root: msgsNode, threshold: [0.5] });
+  panelObservers.set(convId, obs);
+  // Observe every peer message that hasn't been read yet.
+  for (const row of msgsNode.querySelectorAll('.msg-row.them')) {
+    obs.observe(row);
   }
 }
 
@@ -1004,9 +1191,8 @@ async function drainOutbound() {
   for (const item of items) {
     if (item.nextRetryAt && item.nextRetryAt > Date.now()) continue;
     try {
-      const sent = await api('/messages', {
+      const sent = await authedApi('/messages', {
         method: 'POST',
-        token: state.me.accessToken,
         body: {
           conversationId: item.conversationId,
           clientMessageId: item.clientMessageId,
@@ -1131,7 +1317,7 @@ function serializableMe(me) {
 
 async function loadConversations() {
   try {
-    const r = await api('/conversations', { token: state.me.accessToken });
+    const r = await authedApi('/conversations');
     state.conversations = Array.isArray(r) ? r : (r.items ?? []);
     // Decrypt each conversation's lastMessage for the sidebar preview before
     // rendering so we don't flash "🔒 암호화됨" on every refresh.
@@ -1253,7 +1439,7 @@ async function refreshMessages(convId) {
   const target = convId ?? state.activeConv;
   if (!target) return;
   try {
-    const r = await api(`/conversations/${target}/messages?limit=50`, { token: state.me.accessToken });
+    const r = await authedApi(`/conversations/${target}/messages?limit=50`);
     // Preserve any pending optimistic entries that haven't been ACKed yet.
     const prev = state.messagesByConv.get(target) || [];
     const pendings = prev.filter((m) => m._status === 'pending' || m._status === 'failed');
@@ -1294,7 +1480,10 @@ async function sendMessage(textarea, convId) {
     toast('상대 키를 찾지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
     return;
   }
-  const { ciphertext, nonce } = await encryptWithKey(sharedKey, text);
+  const replyDraft = state.replyDraftByConv.get(target);
+  const replyToId = replyDraft?.id ?? null;
+  const payload = packPayload(text, replyToId);
+  const { ciphertext, nonce } = await encryptWithKey(sharedKey, payload);
 
   // Optimistic insert with pending status so the bubble appears immediately.
   const optimistic = {
@@ -1309,7 +1498,10 @@ async function sendMessage(textarea, convId) {
     _localAt: new Date().toISOString(),
     _status: 'pending',
     _plaintext: text,
+    _replyTo: replyToId,
   };
+  // Reply consumed — clear the banner.
+  if (replyToId) state.replyDraftByConv.delete(target);
   const list = state.messagesByConv.get(conv.id) || [];
   list.push(optimistic);
   state.messagesByConv.set(conv.id, list);
@@ -1320,9 +1512,8 @@ async function sendMessage(textarea, convId) {
   renderActivePanel();
 
   try {
-    const sent = await api('/messages', {
+    const sent = await authedApi('/messages', {
       method: 'POST',
-      token: state.me.accessToken,
       body: {
         conversationId: conv.id,
         clientMessageId,
@@ -1510,9 +1701,8 @@ $('new-confirm').addEventListener('click', async () => {
   }
   $('new-confirm').disabled = true;
   try {
-    const r = await api('/conversations/direct', {
+    const r = await authedApi('/conversations/direct', {
       method: 'POST',
-      token: state.me.accessToken,
       body: { peerHandle: peer },
     });
     $('new-chat-dialog').classList.add('hidden');

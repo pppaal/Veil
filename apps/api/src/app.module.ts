@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { CoreModule } from './common/core.module';
 import { envSchema } from './common/config/env.schema';
 import { AppConfigService } from './common/config/app-config.service';
+import { CfThrottlerGuard } from './common/guards/cf-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { AttachmentsModule } from './modules/attachments/attachments.module';
@@ -65,7 +66,7 @@ import { SafetyModule } from './modules/safety/safety.module';
   providers: [
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: CfThrottlerGuard,
     },
     {
       provide: APP_GUARD,

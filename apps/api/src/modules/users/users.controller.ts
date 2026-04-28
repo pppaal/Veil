@@ -12,15 +12,19 @@ import { UsersService } from './users.service';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // These endpoints take a handle and reveal whether it exists, so an
+  // attacker can enumerate the namespace by spraying lookups. The CF tracker
+  // makes 10/min per ingress IP a tight ceiling for unauthed lookups while
+  // still being workable for legitimate "who is @bob" probes from a client.
   @Public()
-  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Get(':handle')
   getByHandle(@Param('handle') handle: string): Promise<UserProfileResponse> {
     return this.usersService.getUserByHandle(handle);
   }
 
   @Public()
-  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Get(':handle/key-bundle')
   getKeyBundle(@Param('handle') handle: string): Promise<KeyBundleResponse> {
     return this.usersService.getKeyBundle(handle);

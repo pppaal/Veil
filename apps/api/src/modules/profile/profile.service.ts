@@ -27,11 +27,17 @@ export class ProfileService {
       throw notFound('profile_not_found', 'User not found');
     }
 
-    const profile = await this.prisma.userProfile.upsert({
+    // Avoid a per-read upsert: a missing profile is the rare case (only for
+    // accounts that never wrote profile fields), so a findUnique + create
+    // fallback is much cheaper than an upsert that always allocates.
+    let profile = await this.prisma.userProfile.findUnique({
       where: { userId: auth.userId },
-      update: {},
-      create: { userId: auth.userId },
     });
+    if (!profile) {
+      profile = await this.prisma.userProfile.create({
+        data: { userId: auth.userId },
+      });
+    }
 
     return {
       id: user.id,

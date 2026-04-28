@@ -37,7 +37,9 @@ interface StoredRefreshToken {
   issuedAt: number;
 }
 
-const ACCESS_TOKEN_TTL_SECONDS = 60 * 60 * 12;
+// Short access tokens limit the blast radius of token theft. Clients refresh
+// using the long-lived refresh token, which is store-bound and revocable.
+const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 const challengeKey = (challengeId: string): string => `auth:challenge:${challengeId}`;
@@ -187,7 +189,8 @@ export class AuthService {
     if (
       !device ||
       !device.isActive ||
-      device.revokedAt
+      device.revokedAt ||
+      device.user.status !== UserStatus.active
     ) {
       throw unauthorized('device_not_active', 'Device is not active');
     }
@@ -246,7 +249,8 @@ export class AuthService {
       !device ||
       device.userId !== stored.userId ||
       !device.isActive ||
-      device.revokedAt
+      device.revokedAt ||
+      device.user.status !== UserStatus.active
     ) {
       throw unauthorized('device_not_active', 'Device is not active');
     }

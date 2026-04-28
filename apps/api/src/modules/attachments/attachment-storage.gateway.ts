@@ -76,7 +76,11 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
 
   private readonly internalClient: S3Client;
   private readonly publicClient: S3Client;
-  private static readonly expirySeconds = 600;
+  // Uploads need a wider window so a slow phone with a big attachment doesn't
+  // race the clock. Downloads are quick and re-issuable, so keep the URL
+  // tight to limit how long a leaked link stays useful.
+  private static readonly uploadExpirySeconds = 600;
+  private static readonly downloadExpirySeconds = 90;
 
   async createUploadTarget(
     storageKey: string,
@@ -95,12 +99,12 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
       },
     });
     const expiresAt = new Date(
-      Date.now() + S3AttachmentStorageGateway.expirySeconds * 1000,
+      Date.now() + S3AttachmentStorageGateway.uploadExpirySeconds * 1000,
     ).toISOString();
 
     return {
       url: await getSignedUrl(this.publicClient, command, {
-        expiresIn: S3AttachmentStorageGateway.expirySeconds,
+        expiresIn: S3AttachmentStorageGateway.uploadExpirySeconds,
         unhoistableHeaders: new Set([
           'cache-control',
           'x-amz-meta-encrypted',
@@ -147,7 +151,7 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
 
   async createDownloadTarget(storageKey: string): Promise<AttachmentDownloadTarget> {
     const expiresAt = new Date(
-      Date.now() + S3AttachmentStorageGateway.expirySeconds * 1000,
+      Date.now() + S3AttachmentStorageGateway.downloadExpirySeconds * 1000,
     ).toISOString();
     const url = await getSignedUrl(
       this.publicClient,
@@ -155,7 +159,7 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
         Bucket: this.config.s3Bucket,
         Key: storageKey,
       }),
-      { expiresIn: S3AttachmentStorageGateway.expirySeconds },
+      { expiresIn: S3AttachmentStorageGateway.downloadExpirySeconds },
     );
 
     return {

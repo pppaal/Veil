@@ -9,6 +9,20 @@ import { Observable, tap } from 'rxjs';
 
 import { AppLoggerService } from '../logger/app-logger.service';
 
+// Logs are durable, so it is dangerous to ship per-request URLs that include
+// social handles — if logs leak we hand attackers a verified handle list.
+// Redact the handle segment of /users/:handle and any UUID-looking segment.
+function redactUrl(url: string): string {
+  const [path, query] = url.split('?', 2);
+  const segments = path.split('/');
+  const redacted = segments.map((seg, i) => {
+    if (segments[1] === 'users' && i === 2 && seg.length > 0) return '*';
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) return '*';
+    return seg;
+  });
+  return query ? `${redacted.join('/')}?*` : redacted.join('/');
+}
+
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
   constructor(private readonly logger: AppLoggerService) {}
@@ -31,7 +45,7 @@ export class LoggingInterceptor implements NestInterceptor {
       randomUUID();
     response.setHeader('x-request-id', request.requestId);
     const method = request?.method ?? 'UNKNOWN';
-    const url = request?.url ?? 'UNKNOWN';
+    const url = redactUrl(request?.url ?? 'UNKNOWN');
     const startedAt = Date.now();
 
     return next.handle().pipe(

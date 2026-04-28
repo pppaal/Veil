@@ -79,7 +79,8 @@ export class JwtAuthGuard implements CanActivate {
         !device ||
         device.userId !== payload.sub ||
         !device.isActive ||
-        device.revokedAt
+        device.revokedAt ||
+        device.user.status !== 'active'
       ) {
         throw unauthorized('device_not_active', 'Device is not active');
       }

@@ -268,6 +268,8 @@ function connectSocket() {
     // Slow polling to a heartbeat once we have the WS push channel.
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(loadConversations, 30000);
+    // Reconnect is the moment to retry anything we couldn't send while offline.
+    drainOutbound();
   });
   s.on('disconnect', (reason) => {
     setConnPill('connecting', reason === 'io server disconnect' ? '연결 끊김' : '재연결 중…');
@@ -412,11 +414,117 @@ function emitTypingStop(convId) {
   }
 }
 
+// ---------- IndexedDB ----------
+// One DB per browser. Stores:
+//   session     - { id: 'me', value: { handle, userId, deviceId, accessToken, refreshToken,
+//                                       edJwkPriv, xJwkPriv, xPubB64u } }
+//   conversations - ConversationSummary keyed by id
+//   messages    - { ...ConversationMessageSummary, _key: convId + ':' + conversationOrder },
+//                 indexed by convId
+//   outbound    - pending sends keyed by clientMessageId
+//   drafts      - { convId: textareaValue }
+const IDB_NAME = 'veil-demo';
+const IDB_VERSION = 1;
+
+function openIdb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains('session')) db.createObjectStore('session', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('conversations')) db.createObjectStore('conversations', { keyPath: 'id' });
+      if (!db.objectStoreNames.contains('messages')) {
+        const ms = db.createObjectStore('messages', { keyPath: '_key' });
+        ms.createIndex('byConv', 'conversationId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('outbound')) db.createObjectStore('outbound', { keyPath: 'clientMessageId' });
+      if (!db.objectStoreNames.contains('drafts')) db.createObjectStore('drafts', { keyPath: 'convId' });
+    };
+  });
+}
+
+let _db = null;
+async function db() {
+  if (!_db) _db = await openIdb();
+  return _db;
+}
+async function idbGet(store, key) {
+  const tx = (await db()).transaction(store, 'readonly');
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbPut(store, value) {
+  const tx = (await db()).transaction(store, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(store).put(value);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbDelete(store, key) {
+  const tx = (await db()).transaction(store, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(store).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbAll(store) {
+  const tx = (await db()).transaction(store, 'readonly');
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbAllByIndex(store, indexName, key) {
+  const tx = (await db()).transaction(store, 'readonly');
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(store).index(indexName).getAll(key);
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbClear(store) {
+  const tx = (await db()).transaction(store, 'readwrite');
+  return new Promise((resolve, reject) => {
+    const req = tx.objectStore(store).clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbWipeAll() {
+  for (const s of ['session', 'conversations', 'messages', 'outbound', 'drafts']) {
+    try { await idbClear(s); } catch {}
+  }
+}
+
 // ---------- session ----------
 const session = {
-  load() { try { return JSON.parse(localStorage.getItem(STORE) ?? 'null'); } catch { return null; } },
-  save(s) { localStorage.setItem(STORE, JSON.stringify(s)); },
-  wipe() { localStorage.removeItem(STORE); },
+  // Migration: legacy localStorage entry from earlier phases.
+  async load() {
+    const fromIdb = await idbGet('session', 'me');
+    if (fromIdb?.value) return fromIdb.value;
+    try {
+      const legacy = JSON.parse(localStorage.getItem(STORE) ?? 'null');
+      if (legacy) {
+        await idbPut('session', { id: 'me', value: legacy });
+        localStorage.removeItem(STORE);
+        return legacy;
+      }
+    } catch {}
+    return null;
+  },
+  async save(me) { await idbPut('session', { id: 'me', value: me }); },
+  async wipe() {
+    try { localStorage.removeItem(STORE); } catch {}
+    await idbWipeAll();
+  },
 };
 
 // ---------- state ----------
@@ -437,10 +545,10 @@ const state = {
 if (typeof window !== 'undefined') window.__veil = state;
 
 // ---------- render ----------
-function showAuth() {
+async function showAuth() {
   $('auth-screen').classList.remove('hidden');
   $('app').classList.add('hidden');
-  const stored = session.load();
+  const stored = await session.load();
   if (stored) {
     $('restore-row').classList.remove('hidden');
     $('restore-handle').textContent = '@' + stored.handle;
@@ -730,18 +838,22 @@ function renderOnePanel(convId) {
     rows: '1',
     'aria-label': '메시지 입력',
   });
+  // Restore the draft if we have one cached for this conversation.
+  const cachedDraft = draftCache.get(convId);
+  if (cachedDraft) textarea.value = cachedDraft;
   const sendBtn = el(
     'button',
     { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea, convId) },
     [el('span', { 'aria-hidden': 'true' }, ['↑'])],
   );
-  // Auto-grow + emit typing while user is composing.
+  // Auto-grow + emit typing + persist the draft on every input.
   const autoGrow = () => {
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
     sendBtn.disabled = textarea.value.trim().length === 0;
     if (textarea.value.trim().length > 0) emitTypingStart(convId);
     else emitTypingStop(convId);
+    saveDraft(convId, textarea.value);
   };
   textarea.addEventListener('input', autoGrow);
   textarea.addEventListener('blur', () => emitTypingStop(convId));
@@ -819,6 +931,138 @@ async function markVisibleAsRead(convId, msgs) {
   }
 }
 
+// ---------- cache hydration ----------
+// Pull conversations + messages from IDB so the UI paints something before the
+// network refresh comes back. We never store plaintext on disk — only the
+// ciphertext envelope — and re-derive _plaintext via decryptAllForConv.
+async function hydrateFromCache() {
+  try {
+    const cachedConvs = await idbAll('conversations');
+    if (cachedConvs.length > 0) {
+      state.conversations = cachedConvs.sort((a, b) => {
+        const ax = a.lastMessage?.serverReceivedAt ?? a.createdAt;
+        const bx = b.lastMessage?.serverReceivedAt ?? b.createdAt;
+        return bx.localeCompare(ax);
+      });
+      const allMsgs = await idbAll('messages');
+      const byConv = new Map();
+      for (const m of allMsgs) {
+        const list = byConv.get(m.conversationId) ?? [];
+        list.push(m);
+        byConv.set(m.conversationId, list);
+      }
+      for (const [convId, list] of byConv) {
+        list.sort((a, b) => a.conversationOrder - b.conversationOrder);
+        state.messagesByConv.set(convId, list);
+      }
+      // Decrypt cached payloads in parallel (uses our keys so this is local).
+      await Promise.all(state.conversations.map((c) => decryptAllForConv(c.id)));
+      await decryptAllConversations();
+    }
+  } catch (e) {
+    console.warn('hydrate from cache failed', e);
+  }
+}
+
+async function persistConversation(conv) {
+  // Strip _plaintext before writing to disk.
+  const clean = { ...conv };
+  if (clean.lastMessage) {
+    const { _plaintext, ...lm } = clean.lastMessage;
+    clean.lastMessage = lm;
+  }
+  try { await idbPut('conversations', clean); } catch {}
+}
+
+async function persistAllConversations() {
+  for (const c of state.conversations) await persistConversation(c);
+}
+
+async function persistMessage(msg) {
+  if (!msg.id || !msg.conversationId || msg.id.startsWith('__pending__')) return;
+  const { _plaintext, _status, _localAt, ...clean } = msg;
+  clean._key = msg.conversationId + ':' + msg.conversationOrder;
+  try { await idbPut('messages', clean); } catch {}
+}
+
+async function persistMessages(convId) {
+  const list = state.messagesByConv.get(convId) || [];
+  for (const m of list) await persistMessage(m);
+}
+
+// ---------- outbound queue ----------
+async function enqueueOutbound(entry) {
+  await idbPut('outbound', entry);
+}
+async function dequeueOutbound(clientMessageId) {
+  await idbDelete('outbound', clientMessageId);
+}
+async function drainOutbound() {
+  if (!state.me) return;
+  const items = await idbAll('outbound');
+  if (items.length === 0) return;
+  for (const item of items) {
+    if (item.nextRetryAt && item.nextRetryAt > Date.now()) continue;
+    try {
+      const sent = await api('/messages', {
+        method: 'POST',
+        token: state.me.accessToken,
+        body: {
+          conversationId: item.conversationId,
+          clientMessageId: item.clientMessageId,
+          envelope: item.envelope,
+        },
+      });
+      sent.message._plaintext = item.plaintext;
+      const list = state.messagesByConv.get(item.conversationId) || [];
+      const idx = list.findIndex((m) => m.clientMessageId === item.clientMessageId);
+      if (idx >= 0) list[idx] = sent.message;
+      else list.push(sent.message);
+      state.messagesByConv.set(item.conversationId, list);
+      const conv = state.conversations.find((c) => c.id === item.conversationId);
+      if (conv) conv.lastMessage = sent.message;
+      await dequeueOutbound(item.clientMessageId);
+      await persistMessage(sent.message);
+      if (item.conversationId === state.activeConv || item.conversationId === state.secondaryConv) {
+        renderActivePanel();
+      }
+      renderSidebar();
+    } catch (e) {
+      // Bump retry with exponential backoff up to 30s.
+      const attempts = (item.attempts ?? 0) + 1;
+      const delay = Math.min(30_000, 1000 * 2 ** attempts);
+      await idbPut('outbound', { ...item, attempts, nextRetryAt: Date.now() + delay });
+      if (e.status && e.status >= 400 && e.status < 500 && e.status !== 429) {
+        // Permanent failure — surface to the user, mark as failed locally.
+        await dequeueOutbound(item.clientMessageId);
+        const list = state.messagesByConv.get(item.conversationId) || [];
+        const idx = list.findIndex((m) => m.clientMessageId === item.clientMessageId);
+        if (idx >= 0) list[idx] = { ...list[idx], _status: 'failed' };
+        toast('전송 실패: ' + e.message, 'error');
+        renderActivePanel();
+      }
+    }
+  }
+}
+
+// ---------- drafts ----------
+const draftCache = new Map(); // convId -> text (mirrors IDB; written on input, read on render)
+async function loadDraftsFromIdb() {
+  try {
+    const all = await idbAll('drafts');
+    for (const d of all) draftCache.set(d.convId, d.text);
+  } catch {}
+}
+async function saveDraft(convId, text) {
+  if (!convId) return;
+  draftCache.set(convId, text);
+  if (text) {
+    try { await idbPut('drafts', { convId, text }); } catch {}
+  } else {
+    try { await idbDelete('drafts', convId); } catch {}
+  }
+}
+
 // ---------- actions ----------
 async function doRegister(displayName, handle) {
   const keys = await generateIdentityKeys();
@@ -857,7 +1101,7 @@ async function doRegister(displayName, handle) {
     refreshToken: ver.refreshToken,
   };
   state.me.xPrivKey = await importXPriv(keys.xJwkPriv);
-  session.save(serializableMe(state.me));
+  await session.save(serializableMe(state.me));
 }
 
 async function doRestore(stored) {
@@ -876,7 +1120,7 @@ async function doRestore(stored) {
   });
   state.me = { ...stored, accessToken: ver.accessToken, refreshToken: ver.refreshToken };
   state.me.xPrivKey = await importXPriv(stored.xJwkPriv);
-  session.save(serializableMe(state.me));
+  await session.save(serializableMe(state.me));
 }
 
 // CryptoKey objects can't be JSON-serialized. Strip them before saving.
@@ -893,6 +1137,8 @@ async function loadConversations() {
     // rendering so we don't flash "🔒 암호화됨" on every refresh.
     await decryptAllConversations();
     renderSidebar();
+    persistAllConversations();
+    drainOutbound();
   } catch (e) {
     if (e.status === 401) return logout();
     toast(e.message, 'error');
@@ -910,6 +1156,9 @@ async function openConversation(convId) {
   renderSidebar();
   renderTabs();
   renderActivePanel();
+  // Pre-fetch the peer key so the first send doesn't have to wait on a
+  // network round trip. Failures are non-fatal — sendMessage will retry.
+  getSharedKeyForConv(convId).catch(() => {});
   await refreshMessages(convId);
 }
 
@@ -1023,6 +1272,7 @@ async function refreshMessages(convId) {
     state.messagesByConv.set(target, merged);
     await decryptAllForConv(target);
     if (target === state.activeConv || target === state.secondaryConv) renderActivePanel();
+    persistMessages(target);
   } catch (e) {
     if (e.status === 401) return logout();
   }
@@ -1098,19 +1348,47 @@ async function sendMessage(textarea, convId) {
       const bx = b.lastMessage?.serverReceivedAt ?? b.createdAt;
       return bx.localeCompare(ax);
     });
+    persistMessage(sent.message);
+    persistConversation(conv);
     renderActivePanel();
     renderSidebar();
   } catch (e) {
     if (e.status === 401) return logout();
-    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
-    if (idx >= 0) list[idx] = { ...optimistic, _status: 'failed' };
-    renderActivePanel();
-    toast('전송 실패: ' + e.message, 'error');
+    // Network or 5xx error — enqueue the encrypted envelope so it can be
+    // retried after reconnect. Permanent 4xx (other than 429) bubbles up.
+    const isRetryable = !e.status || e.status >= 500 || e.status === 429;
+    if (isRetryable) {
+      await enqueueOutbound({
+        clientMessageId,
+        conversationId: conv.id,
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId: conv.id,
+          senderDeviceId: state.me.deviceId,
+          recipientUserId: peer.userId,
+          ciphertext,
+          nonce,
+          messageType: 'text',
+        },
+        plaintext: text,
+        attempts: 0,
+        nextRetryAt: 0, // try immediately on the next drain opportunity
+      });
+      const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+      if (idx >= 0) list[idx] = { ...list[idx], _status: 'pending' };
+      renderActivePanel();
+      toast('연결 안 됨 — 큐잉 후 자동 재시도합니다');
+    } else {
+      const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+      if (idx >= 0) list[idx] = { ...optimistic, _status: 'failed' };
+      renderActivePanel();
+      toast('전송 실패: ' + e.message, 'error');
+    }
   }
 }
 
-function logout() {
-  session.wipe();
+async function logout() {
+  await session.wipe();
   state.me = null;
   state.conversations = [];
   state.messagesByConv.clear();
@@ -1145,15 +1423,19 @@ function startPolling() {
 
 // ---------- event wiring ----------
 async function bootIfSession() {
-  const stored = session.load();
+  const stored = await session.load();
   if (!stored) {
-    showAuth();
+    await showAuth();
     return;
   }
   try {
     await doRestore(stored);
-    await loadConversations();
+    await loadDraftsFromIdb();
+    // Hydrate from cache before going to network so the UI paints instantly.
+    await hydrateFromCache();
     showApp();
+    // Then refresh in the background.
+    loadConversations().catch(() => {});
     startPolling();
     connectSocket();
   } catch (e) {
@@ -1184,7 +1466,7 @@ $('register-form').addEventListener('submit', async (e) => {
 });
 
 $('restore-btn').addEventListener('click', async () => {
-  const stored = session.load();
+  const stored = await session.load();
   if (!stored) return;
   $('restore-btn').disabled = true;
   try {
@@ -1200,10 +1482,10 @@ $('restore-btn').addEventListener('click', async () => {
   }
 });
 
-$('wipe-btn').addEventListener('click', () => {
+$('wipe-btn').addEventListener('click', async () => {
   if (!confirm('이 브라우저의 키를 전부 삭제합니다. 이 핸들로는 다시 로그인할 수 없어요.')) return;
-  session.wipe();
-  showAuth();
+  await session.wipe();
+  await showAuth();
   toast('키를 삭제했습니다');
 });
 
@@ -1274,11 +1556,11 @@ $('menu').addEventListener('click', async (e) => {
       toast('클립보드 접근 실패', 'error');
     }
   } else if (action === 'ws-info') {
-    toast('연결: 폴링 (' + POLL_MS / 1000 + '초). WebSocket은 다음 단계에서.', 'good');
+    const status = state.socket?.connected ? '실시간 (WebSocket)' : '폴링 (' + (POLL_MS / 1000) + '초)';
+    toast('연결: ' + status, 'good');
   } else if (action === 'wipe') {
     if (confirm('로그아웃하고 이 브라우저의 키를 전부 삭제합니다.')) {
-      logout();
-      session.wipe();
+      await logout();
     }
   }
 });

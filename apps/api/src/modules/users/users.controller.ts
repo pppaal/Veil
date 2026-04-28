@@ -13,14 +13,14 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Public()
-  @Throttle({ default: { ttl: 60_000, limit: 15 } })
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @Get(':handle')
   getByHandle(@Param('handle') handle: string): Promise<UserProfileResponse> {
     return this.usersService.getUserByHandle(handle);
   }
 
   @Public()
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @Get(':handle/key-bundle')
   getKeyBundle(@Param('handle') handle: string): Promise<KeyBundleResponse> {
     return this.usersService.getKeyBundle(handle);

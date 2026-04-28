@@ -8,10 +8,16 @@ class VeilApiClient {
   VeilApiClient({
     required this.baseUrl,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+    Future<String?> Function()? tokenRefresher,
+  })  : _client = client ?? http.Client(),
+        _tokenRefresher = tokenRefresher;
 
   final String baseUrl;
   final http.Client _client;
+  // Resolved by the auth controller so the API client doesn't need a hard
+  // reference to AppState. When a request comes back 401, _authedRequest
+  // calls this to mint a fresh access token and replays the original call.
+  final Future<String?> Function()? _tokenRefresher;
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> body) async {
     return _post('/auth/register', body);
@@ -44,8 +50,10 @@ class VeilApiClient {
     return _get('/users/$handle/key-bundle');
   }
 
-  Future<List<dynamic>> getConversations(String accessToken) async {
-    return _getList('/conversations', accessToken: accessToken);
+  // /conversations returns {items, nextCursor} per the contracts package, not
+  // a raw array — the original _getList shape was a stale assumption.
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
+    return _get('/conversations', accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> createDirectConversation(
@@ -71,9 +79,9 @@ class VeilApiClient {
     };
     final uri = Uri.parse('$baseUrl/conversations/$conversationId/messages')
         .replace(queryParameters: query);
-    final response = await _client.get(
-      uri,
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) => _client.get(uri, headers: _headers(token)),
+      accessToken,
     );
     return _decodeMap(response);
   }
@@ -234,9 +242,10 @@ class VeilApiClient {
   }
 
   Future<List<dynamic>> getContacts(String accessToken) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/contacts'),
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) =>
+          _client.get(Uri.parse('$baseUrl/contacts'), headers: _headers(token)),
+      accessToken,
     );
     return _decodeList(response);
   }
@@ -258,9 +267,10 @@ class VeilApiClient {
   // Stories endpoints
 
   Future<List<dynamic>> getStories(String accessToken) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/stories'),
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) =>
+          _client.get(Uri.parse('$baseUrl/stories'), headers: _headers(token)),
+      accessToken,
     );
     return _decodeList(response);
   }
@@ -296,9 +306,10 @@ class VeilApiClient {
   }
 
   Future<List<dynamic>> getCallHistory(String accessToken) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl/calls'),
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) =>
+          _client.get(Uri.parse('$baseUrl/calls'), headers: _headers(token)),
+      accessToken,
     );
     return _decodeList(response);
   }
@@ -454,9 +465,12 @@ class VeilApiClient {
     String path, {
     String? accessToken,
   }) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) => _client.get(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(token),
+      ),
+      accessToken,
     );
     return _decodeMap(response);
   }
@@ -465,9 +479,12 @@ class VeilApiClient {
     String path, {
     String? accessToken,
   }) async {
-    final response = await _client.get(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) => _client.get(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(token),
+      ),
+      accessToken,
     );
     final decoded = _decode(response) as List<dynamic>;
     return decoded;
@@ -478,10 +495,13 @@ class VeilApiClient {
     Map<String, dynamic> body, {
     String? accessToken,
   }) async {
-    final response = await _client.post(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(accessToken),
-      body: jsonEncode(body),
+    final response = await _authedRequest(
+      (token) => _client.post(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(token),
+        body: jsonEncode(body),
+      ),
+      accessToken,
     );
     return _decodeMap(response);
   }
@@ -490,9 +510,12 @@ class VeilApiClient {
     String path, {
     String? accessToken,
   }) async {
-    final response = await _client.delete(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(accessToken),
+    final response = await _authedRequest(
+      (token) => _client.delete(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(token),
+      ),
+      accessToken,
     );
     return _decodeMap(response);
   }
@@ -502,12 +525,38 @@ class VeilApiClient {
     Map<String, dynamic> body, {
     String? accessToken,
   }) async {
-    final response = await _client.patch(
-      Uri.parse('$baseUrl$path'),
-      headers: _headers(accessToken),
-      body: jsonEncode(body),
+    final response = await _authedRequest(
+      (token) => _client.patch(
+        Uri.parse('$baseUrl$path'),
+        headers: _headers(token),
+        body: jsonEncode(body),
+      ),
+      accessToken,
     );
     return _decodeMap(response);
+  }
+
+  // Wraps a single HTTP call with a one-shot 401 → refresh → retry. We only
+  // retry when the caller actually had a token; refresh and unauthed calls
+  // are passed straight through. The refresher is allowed to return null
+  // (session truly dead) — in that case we surface the original 401.
+  Future<http.Response> _authedRequest(
+    Future<http.Response> Function(String? token) makeRequest,
+    String? accessToken,
+  ) async {
+    final initial = await makeRequest(accessToken);
+    final refresher = _tokenRefresher;
+    if (initial.statusCode != 401 ||
+        accessToken == null ||
+        accessToken.isEmpty ||
+        refresher == null) {
+      return initial;
+    }
+    final fresh = await refresher();
+    if (fresh == null || fresh.isEmpty || fresh == accessToken) {
+      return initial;
+    }
+    return makeRequest(fresh);
   }
 
   List<dynamic> _decodeList(http.Response response) {

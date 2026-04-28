@@ -1182,29 +1182,31 @@ class _FakeVeilApiClient extends VeilApiClient {
   }
 
   @override
-  Future<List<dynamic>> getConversations(String accessToken) async {
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
     conversationFetchCount += 1;
-    return _conversationsResponse ??
+    final items = _conversationsResponse ??
         [
-      {
-        'id': 'conv-1',
-        'type': 'direct',
-        'createdAt': DateTime.utc(2026, 3, 30, 10, 0, 0).toIso8601String(),
-        'members': [
           {
-            'userId': 'user-local',
-            'handle': 'atlas',
-            'displayName': 'Atlas',
+            'id': 'conv-1',
+            'type': 'direct',
+            'createdAt':
+                DateTime.utc(2026, 3, 30, 10, 0, 0).toIso8601String(),
+            'members': [
+              {
+                'userId': 'user-local',
+                'handle': 'atlas',
+                'displayName': 'Atlas',
+              },
+              {
+                'userId': 'user-selene',
+                'handle': 'selene',
+                'displayName': 'Selene',
+              },
+            ],
+            'lastMessage': null,
           },
-          {
-            'userId': 'user-selene',
-            'handle': 'selene',
-            'displayName': 'Selene',
-          },
-        ],
-        'lastMessage': null,
-      },
-    ];
+        ];
+    return {'items': items, 'nextCursor': null};
   }
 
   @override

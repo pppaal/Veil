@@ -279,11 +279,15 @@ class _LibCryptoEnvelopeCodec
 
   @override
   Map<String, dynamic> encodeApiEnvelope(CryptoEnvelope envelope) {
+    // Group sends use an empty recipientUserId because there is no single
+    // recipient. The server validates the field as UUID-or-absent, so an
+    // empty string would 400 — strip it before serializing.
+    final recipientUserId = envelope.recipientUserId;
     return {
       'version': envelope.version,
       'conversationId': envelope.conversationId,
       'senderDeviceId': envelope.senderDeviceId,
-      'recipientUserId': envelope.recipientUserId,
+      if (recipientUserId.isNotEmpty) 'recipientUserId': recipientUserId,
       'ciphertext': envelope.ciphertext,
       'nonce': envelope.nonce,
       'messageType': envelope.messageKind.name,

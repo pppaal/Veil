@@ -773,7 +773,9 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     final response = await _apiClient.getConversations(_session.accessToken!);
-    _conversations = response.map(_conversationFromApi).toList()
+    final items = (response['items'] as List<dynamic>? ?? const [])
+        .cast<Map<String, dynamic>>();
+    _conversations = items.map(_conversationFromApi).toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     await _cacheService?.storeConversations(_conversations);
     await _reconcileExpiringState();

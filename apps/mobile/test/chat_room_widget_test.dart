@@ -305,40 +305,44 @@ class _FakeChatApiClient extends VeilApiClient {
   final CryptoEnvelope _envelope;
 
   @override
-  Future<List<dynamic>> getConversations(String accessToken) async {
-    return [
-      {
-        'id': 'conv-1',
-        'createdAt': DateTime.utc(2026, 4, 7, 8).toIso8601String(),
-        'members': [
-          {
-            'userId': 'user-local',
-            'handle': 'atlas',
-            'displayName': 'Atlas',
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
+    return {
+      'items': [
+        {
+          'id': 'conv-1',
+          'createdAt': DateTime.utc(2026, 4, 7, 8).toIso8601String(),
+          'members': [
+            {
+              'userId': 'user-local',
+              'handle': 'atlas',
+              'displayName': 'Atlas',
+            },
+            {
+              'userId': 'user-peer',
+              'handle': 'selene',
+              'displayName': 'Selene',
+            },
+          ],
+          'lastMessage': {
+            'id': 'msg-1',
+            'clientMessageId': null,
+            'conversationId': 'conv-1',
+            'senderDeviceId': 'device-local',
+            'recipientUserId': 'user-peer',
+            'ciphertext': _envelope.ciphertext,
+            'nonce': _envelope.nonce,
+            'version': _envelope.version,
+            'messageType': _envelope.messageKind.name,
+            'serverReceivedAt':
+                DateTime.utc(2026, 4, 7, 9, 30).toIso8601String(),
+            'conversationOrder': 1,
+            'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
+            'readAt': null,
           },
-          {
-            'userId': 'user-peer',
-            'handle': 'selene',
-            'displayName': 'Selene',
-          },
-        ],
-        'lastMessage': {
-          'id': 'msg-1',
-          'clientMessageId': null,
-          'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
-          'ciphertext': _envelope.ciphertext,
-          'nonce': _envelope.nonce,
-          'version': _envelope.version,
-          'messageType': _envelope.messageKind.name,
-          'serverReceivedAt': DateTime.utc(2026, 4, 7, 9, 30).toIso8601String(),
-          'conversationOrder': 1,
-          'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
-          'readAt': null,
         },
-      },
-    ];
+      ],
+      'nextCursor': null,
+    };
   }
 
   @override
@@ -389,40 +393,44 @@ class _FakePagedChatApiClient extends VeilApiClient {
   final CryptoEnvelope olderEnvelope;
 
   @override
-  Future<List<dynamic>> getConversations(String accessToken) async {
-    return [
-      {
-        'id': 'conv-1',
-        'createdAt': DateTime.utc(2026, 4, 7, 8).toIso8601String(),
-        'members': [
-          {
-            'userId': 'user-local',
-            'handle': 'atlas',
-            'displayName': 'Atlas',
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
+    return {
+      'items': [
+        {
+          'id': 'conv-1',
+          'createdAt': DateTime.utc(2026, 4, 7, 8).toIso8601String(),
+          'members': [
+            {
+              'userId': 'user-local',
+              'handle': 'atlas',
+              'displayName': 'Atlas',
+            },
+            {
+              'userId': 'user-peer',
+              'handle': 'selene',
+              'displayName': 'Selene',
+            },
+          ],
+          'lastMessage': {
+            'id': 'msg-2',
+            'clientMessageId': null,
+            'conversationId': 'conv-1',
+            'senderDeviceId': 'device-local',
+            'recipientUserId': 'user-peer',
+            'ciphertext': latestEnvelope.ciphertext,
+            'nonce': latestEnvelope.nonce,
+            'version': latestEnvelope.version,
+            'messageType': latestEnvelope.messageKind.name,
+            'serverReceivedAt':
+                DateTime.utc(2026, 4, 7, 9, 30).toIso8601String(),
+            'conversationOrder': 2,
+            'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
+            'readAt': null,
           },
-          {
-            'userId': 'user-peer',
-            'handle': 'selene',
-            'displayName': 'Selene',
-          },
-        ],
-        'lastMessage': {
-          'id': 'msg-2',
-          'clientMessageId': null,
-          'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
-          'ciphertext': latestEnvelope.ciphertext,
-          'nonce': latestEnvelope.nonce,
-          'version': latestEnvelope.version,
-          'messageType': latestEnvelope.messageKind.name,
-          'serverReceivedAt': DateTime.utc(2026, 4, 7, 9, 30).toIso8601String(),
-          'conversationOrder': 2,
-          'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
-          'readAt': null,
         },
-      },
-    ];
+      ],
+      'nextCursor': null,
+    };
   }
 
   @override

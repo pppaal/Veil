@@ -125,11 +125,12 @@ class _MockCryptoEnvelopeCodec implements CryptoEnvelopeCodec {
 
   @override
   Map<String, dynamic> encodeApiEnvelope(CryptoEnvelope envelope) {
+    final recipientUserId = envelope.recipientUserId;
     return {
       'version': envelope.version,
       'conversationId': envelope.conversationId,
       'senderDeviceId': envelope.senderDeviceId,
-      'recipientUserId': envelope.recipientUserId,
+      if (recipientUserId.isNotEmpty) 'recipientUserId': recipientUserId,
       'ciphertext': envelope.ciphertext,
       'nonce': envelope.nonce,
       'messageType': envelope.messageKind.name,

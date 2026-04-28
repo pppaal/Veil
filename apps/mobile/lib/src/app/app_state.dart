@@ -77,7 +77,14 @@ final conversationCacheProvider =
 final apiClientProvider = Provider<VeilApiClient>((ref) {
   final pins = parsePinList(VeilConfig.tlsPins);
   final httpClient = buildPinnedHttpClient(allowedFingerprints: pins);
-  return VeilApiClient(baseUrl: VeilConfig.apiBaseUrl, client: httpClient);
+  return VeilApiClient(
+    baseUrl: VeilConfig.apiBaseUrl,
+    client: httpClient,
+    // Resolved lazily so the api client and session controller can refer to
+    // each other without a Riverpod cycle. Returns null when there is no
+    // refresh token, which keeps the original 401 surface to the caller.
+    tokenRefresher: () => ref.read(appSessionProvider.notifier).refreshSession(),
+  );
 });
 
 final attachmentTempFileStoreProvider =

@@ -537,17 +537,22 @@ class _FakeConversationApiClient extends VeilApiClient {
   final Map<String, List<Map<String, dynamic>>>? _messagesByConversation;
 
   @override
-  Future<List<dynamic>> getConversations(String accessToken) async {
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
     final conversations = _conversations;
     if (conversations != null) {
-      return conversations;
+      return {'items': conversations, 'nextCursor': null};
     }
-    return _envelope == null ? const [] : [_conversationMap(
-      id: 'conv-1',
-      peerHandle: 'selene',
-      peerDisplayName: 'Selene',
-      envelope: _envelope,
-    )];
+    final items = _envelope == null
+        ? const <Map<String, dynamic>>[]
+        : [
+            _conversationMap(
+              id: 'conv-1',
+              peerHandle: 'selene',
+              peerDisplayName: 'Selene',
+              envelope: _envelope,
+            ),
+          ];
+    return {'items': items, 'nextCursor': null};
   }
 
   @override

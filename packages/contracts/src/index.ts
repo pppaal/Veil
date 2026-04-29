@@ -142,6 +142,13 @@ export interface ConversationMessageSummary {
   viewOnce?: boolean;
   serverReceivedAt: string;
   deletedAt?: string | null;
+  // Set when the sender re-encrypted this message. The current ciphertext
+  // is the latest revision; we keep no server-side history.
+  editedAt?: string | null;
+  editCount?: number;
+  // FK to another message in the same conversation when this is a reply.
+  // Null when the parent was deleted; the UI shows "원본 삭제됨".
+  replyToMessageId?: string | null;
   deliveredAt?: string | null;
   readAt?: string | null;
   reactions?: MessageReactionSummary[];
@@ -161,11 +168,27 @@ export interface SendMessageRequest {
   conversationId: string;
   clientMessageId: string;
   envelope: CryptoEnvelope;
+  replyToMessageId?: string | null;
 }
 
 export interface SendMessageResponse {
   message: ConversationMessageSummary;
   idempotent: boolean;
+}
+
+export interface EditMessageRequest {
+  ciphertext: string;
+  nonce: string;
+  version: string;
+}
+
+export interface EditMessageResponse {
+  message: ConversationMessageSummary;
+}
+
+export interface DeleteMessageResponse {
+  messageId: string;
+  deletedAt: string;
 }
 
 export interface MarkMessageReadResponse {
@@ -384,6 +407,8 @@ export interface RealtimeEventMap {
   'message.delivered': { messageId: string; userId: string; deliveredAt: string };
   'message.read': { messageId: string; userId: string; readAt: string };
   'message.reaction': { messageId: string; userId: string; emoji: string; action: 'add' | 'remove' };
+  'message.edited': ConversationMessageSummary;
+  'message.deleted': { messageId: string; deletedAt: string };
   'presence.update': { userId: string; status: 'online' | 'offline'; updatedAt: string };
   'typing.start': { conversationId: string; userId: string; handle: string };
   'typing.stop': { conversationId: string; userId: string; handle: string };

@@ -131,4 +131,25 @@ export class SendMessageDto {
   @ValidateNested()
   @Type(() => EnvelopeDto)
   envelope!: EnvelopeDto;
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  replyToMessageId?: string | null;
+}
+
+export class EditMessageDto {
+  @ApiProperty()
+  @IsString()
+  @MaxLength(16384)
+  ciphertext!: string;
+
+  @ApiProperty()
+  @IsString()
+  @Matches(/^[A-Za-z0-9._:-]{1,512}$/)
+  nonce!: string;
+
+  @ApiProperty()
+  @IsIn(SUPPORTED_ENVELOPE_VERSIONS)
+  version!: string;
 }

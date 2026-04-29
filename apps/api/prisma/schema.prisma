@@ -244,6 +244,15 @@ model Message {
   attachmentId     String?       @map("attachment_id") @db.Uuid
   attachmentRef    Json?         @map("attachment_ref")
   serverReceivedAt DateTime      @default(now()) @map("server_received_at")
+  // Reply / quote support. Null on first-class messages; UUID FK to
+  // another message when this is a reply. ON DELETE SET NULL so the
+  // chip survives a deleted parent (UI shows "원본 삭제됨").
+  replyToMessageId String?       @map("reply_to_message_id") @db.Uuid
+  // Set when the sender re-encrypts the body. The original ciphertext is
+  // overwritten — we keep no edit history server-side. editCount lets
+  // the UI show "(수정됨)" without storing revisions the user can't view.
+  editedAt         DateTime?     @map("edited_at")
+  editCount        Int           @default(0) @map("edit_count")
   deletedAt        DateTime?     @map("deleted_at")
   expiresAt        DateTime?     @map("expires_at")
   // View-once messages are hard-deleted as soon as any non-sender member
@@ -253,6 +262,8 @@ model Message {
   conversation     Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderDevice     Device        @relation(fields: [senderDeviceId], references: [id], onDelete: Restrict)
   attachment       Attachment?   @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  replyTo          Message?      @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  replies          Message[]     @relation("MessageReplies")
   receipts         MessageReceipt[]
   reactions        Reaction[]
 
@@ -264,6 +275,7 @@ model Message {
   @@unique([conversationId, conversationOrder])
   @@index([conversationId, serverReceivedAt])
   @@index([attachmentId])
+  @@index([replyToMessageId])
   @@map("messages")
 }
 

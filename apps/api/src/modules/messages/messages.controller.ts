@@ -1,15 +1,17 @@
-import { Body, Controller, Delete, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Param, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type {
   DeleteLocalMessageResponse,
+  DeleteMessageResponse,
+  EditMessageResponse,
   MarkMessageReadResponse,
   SendMessageResponse,
 } from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { MessagesService } from './messages.service';
-import { SendMessageDto } from './dto/send-message.dto';
+import { EditMessageDto, SendMessageDto } from './dto/send-message.dto';
 import { ReactionDto } from './dto/reaction.dto';
 
 @ApiTags('messages')
@@ -61,5 +63,28 @@ export class MessagesController {
     @Param('id') id: string,
   ) {
     return this.messagesService.removeReaction(request.auth, id);
+  }
+
+  // Edit replaces the ciphertext in place. Only the original sender's
+  // active device can re-encrypt — recipients re-derive the same per-
+  // message key from the new envelope and decrypt locally.
+  @Patch(':id')
+  edit(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: EditMessageDto,
+  ): Promise<EditMessageResponse> {
+    return this.messagesService.edit(request.auth, id, dto);
+  }
+
+  // Soft delete. The row stays so reply chains still resolve, but the
+  // ciphertext is wiped to a tombstone so the server cannot re-deliver
+  // the original body even by accident.
+  @Delete(':id')
+  delete(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+  ): Promise<DeleteMessageResponse> {
+    return this.messagesService.delete(request.auth, id);
   }
 }

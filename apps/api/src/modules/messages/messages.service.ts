@@ -194,6 +194,7 @@ export class MessagesService {
                   : undefined,
                 expiresAt: dto.envelope.expiresAt ? new Date(dto.envelope.expiresAt) : null,
                 viewOnce: dto.envelope.viewOnce === true,
+                replyToMessageId: dto.replyToMessageId ?? null,
                 receipts: {
                   create: members
                     .filter((member) => member.userId !== auth.userId)
@@ -412,6 +413,9 @@ export class MessagesService {
     viewOnce?: boolean;
     serverReceivedAt: Date;
     deletedAt: Date | null;
+    editedAt?: Date | null;
+    editCount?: number;
+    replyToMessageId?: string | null;
     receipts?: Array<{ deliveredAt: Date | null; readAt: Date | null }>;
     reactions?: Array<{ userId: string; emoji: string }>;
   }): ConversationMessageSummary {
@@ -430,6 +434,9 @@ export class MessagesService {
       viewOnce: message.viewOnce === true,
       serverReceivedAt: message.serverReceivedAt.toISOString(),
       deletedAt: message.deletedAt?.toISOString() ?? null,
+      editedAt: message.editedAt?.toISOString() ?? null,
+      editCount: message.editCount ?? 0,
+      replyToMessageId: message.replyToMessageId ?? null,
       deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
       readAt: receipt?.readAt?.toISOString() ?? null,
       reactions: (message.reactions ?? []).map((reaction) => ({
@@ -437,6 +444,97 @@ export class MessagesService {
         emoji: reaction.emoji,
       })),
     };
+  }
+
+  // Edit replaces the ciphertext in place. Only the original sender's
+  // active device may rewrite. We bump editCount so the UI can show
+  // "(수정됨)" without us storing prior revisions — one of the
+  // no-recovery non-negotiables is "server keeps no plaintext history".
+  async edit(
+    auth: { userId: string; deviceId: string },
+    messageId: string,
+    dto: { ciphertext: string; nonce: string; version: string },
+  ): Promise<{ message: ConversationMessageSummary }> {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: { include: { members: true } } },
+    });
+    if (!message) {
+      throw notFound('message_not_found', 'Message not found');
+    }
+    if (message.senderDeviceId !== auth.deviceId) {
+      throw forbidden('message_not_owned', 'Only the original sender may edit');
+    }
+    if (message.deletedAt) {
+      throw forbidden('message_deleted', 'Cannot edit a deleted message');
+    }
+    if (message.viewOnce) {
+      throw forbidden('view_once_immutable', 'View-once messages cannot be edited');
+    }
+
+    const updated = await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        ciphertext: dto.ciphertext,
+        nonce: dto.nonce,
+        editedAt: new Date(),
+        editCount: { increment: 1 },
+      },
+      include: { receipts: true, reactions: true },
+    });
+
+    const summary = this.toMessageSummary(updated);
+    this.realtimeGateway.emitConversationMembers(
+      message.conversation.members,
+      'message.edited',
+      summary,
+    );
+    return { message: summary };
+  }
+
+  // Soft delete. The row stays so reply chains still resolve, but the
+  // ciphertext is replaced with a small tombstone so the server cannot
+  // re-deliver the original body even by accident.
+  async delete(
+    auth: { userId: string; deviceId: string },
+    messageId: string,
+  ): Promise<{ messageId: string; deletedAt: string }> {
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      include: { conversation: { include: { members: true } } },
+    });
+    if (!message) {
+      throw notFound('message_not_found', 'Message not found');
+    }
+    if (message.senderDeviceId !== auth.deviceId) {
+      throw forbidden('message_not_owned', 'Only the original sender may delete');
+    }
+    if (message.deletedAt) {
+      // Idempotent — same response on re-issue.
+      return {
+        messageId: message.id,
+        deletedAt: message.deletedAt.toISOString(),
+      };
+    }
+
+    const deletedAt = new Date();
+    await this.prisma.message.update({
+      where: { id: messageId },
+      data: {
+        deletedAt,
+        ciphertext: 'deleted',
+        nonce: 'deleted',
+        attachmentRef: Prisma.JsonNull,
+      },
+    });
+
+    this.realtimeGateway.emitConversationMembers(
+      message.conversation.members,
+      'message.deleted',
+      { messageId, deletedAt: deletedAt.toISOString() },
+    );
+
+    return { messageId, deletedAt: deletedAt.toISOString() };
   }
 
   async addReaction(

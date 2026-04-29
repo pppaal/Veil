@@ -43,7 +43,10 @@ export type VeilErrorCode =
   | 'story_already_viewed'
   | 'refresh_token_invalid'
   | 'token_revoked'
-  | 'peer_unreachable';
+  | 'peer_unreachable'
+  | 'message_not_owned'
+  | 'message_deleted'
+  | 'view_once_immutable';
 
 export class ApiError extends HttpException {
   constructor(

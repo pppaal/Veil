@@ -3,6 +3,16 @@
 // gateway at /v1/realtime. Messages are end-to-end encrypted with X25519 ECDH
 // + HKDF-SHA256 + AES-256-GCM (see deriveSharedAesKey / encryptWithKey). The
 // server only ever sees ciphertext.
+
+import { initI18n, t, setLang, activeLang } from './i18n/i18n.js';
+// Initialize translations as early as possible so DOM static strings can be
+// rewritten before the user sees them. Top-level await is supported in
+// modules, which is exactly what this file is.
+await initI18n();
+// Expose for dev console + the lang switcher menu.
+if (typeof window !== 'undefined') {
+  window.__veilI18n = { t, setLang, activeLang };
+}
 //
 // State is held in the `state` object below and persisted in IndexedDB
 // (`veil-demo`): session, conversations, messages (ciphertext only), drafts,

@@ -1,0 +1,63 @@
+groups:
+  - name: veil-api-availability
+    interval: 1m
+    rules:
+      - alert: VeilApiDown
+        expr: up{job="veil-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "VEIL API is unreachable"
+          description: "Prometheus cannot scrape the VEIL API /metrics endpoint. The site is likely down."
+
+      - alert: VeilApiHighErrorRate
+        expr: |
+          sum(rate(veil_http_requests_total{status_class="5xx"}[5m]))
+            /
+          sum(rate(veil_http_requests_total[5m]))
+            > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "VEIL API 5xx rate over 5%"
+          description: "More than 5% of API responses are 5xx for the last 5 minutes."
+
+      - alert: VeilApiSlowRequests
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(veil_http_request_duration_seconds_bucket[5m])) by (le, route_class)
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 latency over 1.5s on {{ $labels.route_class }}"
+          description: "Investigate Postgres or downstream Redis latency."
+
+      - alert: VeilWebsocketDrop
+        expr: |
+          (
+            (sum(rate(veil_ws_connections_active[5m] offset 5m)) - sum(rate(veil_ws_connections_active[5m])))
+              /
+            sum(rate(veil_ws_connections_active[5m] offset 5m))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Active websocket connections dropped over 50%"
+          description: "Mass disconnect — investigate the realtime gateway or upstream Caddy."
+
+  - name: veil-host
+    interval: 1m
+    rules:
+      - alert: VeilHighProcessMemory
+        expr: process_resident_memory_bytes{job="veil-api"} > 700_000_000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API process is using over 700MB"
+          description: "Approaching the 1024MB container limit — restart imminent."

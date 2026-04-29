@@ -1,0 +1,93 @@
+# VEIL Caddy front-end. Two upstreams:
+#   - {$CADDY_PUBLIC_HOSTNAME}    → API + web demo + WS
+#   - {$CADDY_S3_HOSTNAME}        → MinIO public endpoint for presigned PUT/GET
+#
+# Caddy auto-renews TLS via Let's Encrypt. Set ACME_EMAIL in .env.prod for
+# expiry alerts.
+
+{
+	email {$ACME_EMAIL}
+	# Hard-coded HSTS preload header lives below per-site so we don't
+	# accidentally apply it to non-public sites.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+{$CADDY_PUBLIC_HOSTNAME} {
+	encode zstd gzip
+
+	# Security headers — denies framing, blocks MIME sniffing, opts into
+	# strict referrer policy. CSP is intentionally permissive in this
+	# revision (web demo loads its own JS+CSS); tighten once we ship a
+	# nonce-based pipeline.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(self), geolocation=(), interest-cohort=()"
+		-Server
+	}
+
+	# Web demo lives at /demo. It loads its own JS so we just proxy the
+	# static assets that the API container serves at /demo/*.
+	handle_path /demo* {
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# Realtime websocket. Caddy upgrades automatically when it sees the
+	# Upgrade header; explicit handle is here for clarity.
+	@ws {
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @ws {
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# Default API path.
+	handle {
+		reverse_proxy api:3000 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# Trim outgoing access logs to a single line per request and only
+	# keep what we'd actually need to debug. Avoid header dumps so we
+	# don't accidentally log Authorization.
+	log {
+		output file /data/access.log {
+			roll_size 50mb
+			roll_keep 5
+		}
+		format filter {
+			wrap json
+			fields {
+				common_log delete
+				request>headers delete
+				resp_headers delete
+				request>uri delete
+			}
+		}
+	}
+}
+
+{$CADDY_S3_HOSTNAME} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		-Server
+	}
+	# Presigned URLs target this hostname so the browser can PUT directly
+	# to MinIO without the API in the path.
+	reverse_proxy minio:9000 {
+		header_up Host {host}
+		header_up X-Forwarded-Proto https
+	}
+}

@@ -51,6 +51,10 @@
     "demo:tunnel:logs": "docker compose -f docker-compose.demo.yml logs -f cloudflared",
     "demo:tunnel:down": "docker compose -f docker-compose.demo.yml --profile tunnel down",
     "demo:status": "node scripts/demo-status.mjs",
+    "demo:prod:up": "docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build",
+    "demo:prod:obs": "docker compose --env-file .env.prod -f docker-compose.prod.yml --profile observability up -d",
+    "demo:prod:logs": "docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api",
+    "demo:prod:down": "docker compose --env-file .env.prod -f docker-compose.prod.yml down",
     "format": "pnpm -r --filter './packages/*' --filter './apps/api' format",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'apps/api/src/**/*.ts' 'scripts/**/*.mjs'"
   }

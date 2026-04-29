@@ -18,6 +18,7 @@ android/.gradle
 artifacts/
 .env
 .env.local
+.env.prod
 apps/api/prisma/dev.db
 apps/api/prisma/dev.db-journal
 apps/mobile/.dart_tool

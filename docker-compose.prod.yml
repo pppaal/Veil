@@ -1,0 +1,193 @@
+# Production-grade VEIL stack for a single VPS deploy. Differences from
+# docker-compose.demo.yml:
+#
+#   - All credentials read from .env.prod (never committed). The demo
+#     compose hard-codes minioadmin and a placeholder JWT secret.
+#   - Caddy front-end terminates TLS via Let's Encrypt (or stays HTTP for
+#     a Cloudflare-Tunnel-only deploy — see CADDY_PUBLIC_HOSTNAME below).
+#   - Prometheus + Grafana sidecars scrape the API's gated /metrics
+#     endpoint and ship a pre-provisioned dashboard.
+#   - Resource limits on every service so a container OOM doesn't take
+#     out the host.
+#   - restart=always (not unless-stopped) so a host reboot brings the
+#     stack back up cleanly.
+#
+# Bring-up:
+#   cp .env.prod.example .env.prod   # then edit
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+#
+# See docs/vps-deploy-runbook.md for the full procedure.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-veil}
+      POSTGRES_USER: ${POSTGRES_USER:-veil}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1024M }
+    volumes:
+      - veil_prod_postgres:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD required}"]
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+    volumes:
+      - veil_prod_redis:/data
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-07T23-21-09Z
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD required}
+    expose:
+      - "9000"
+      - "9001"
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+    volumes:
+      - veil_prod_minio:/data
+
+  minio-init:
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
+    depends_on:
+      minio: { condition: service_started }
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set veil http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}) do sleep 1; done;
+      /usr/bin/mc mb --ignore-existing veil/${MINIO_BUCKET:-veil-encrypted};
+      /usr/bin/mc anonymous set none veil/${MINIO_BUCKET:-veil-encrypted};
+      exit 0;
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: always
+    expose:
+      - "3000"
+    environment:
+      VEIL_ENV: production
+      VEIL_API_PORT: "3000"
+      VEIL_DATABASE_URL: postgresql://${POSTGRES_USER:-veil}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veil}
+      VEIL_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      VEIL_ALLOWED_ORIGINS: ${VEIL_ALLOWED_ORIGINS:?VEIL_ALLOWED_ORIGINS required}
+      VEIL_TRUST_PROXY: "true"
+      VEIL_ENABLE_SWAGGER: "false"
+      VEIL_S3_ENDPOINT: http://minio:9000
+      VEIL_S3_PUBLIC_ENDPOINT: ${VEIL_S3_PUBLIC_ENDPOINT:?VEIL_S3_PUBLIC_ENDPOINT required}
+      VEIL_S3_REGION: ${VEIL_S3_REGION:-us-east-1}
+      VEIL_S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      VEIL_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      VEIL_S3_BUCKET: ${MINIO_BUCKET:-veil-encrypted}
+      VEIL_JWT_SECRET: ${VEIL_JWT_SECRET:?VEIL_JWT_SECRET required (openssl rand -base64 32)}
+      VEIL_JWT_AUDIENCE: ${VEIL_JWT_AUDIENCE:-veil-mobile}
+      VEIL_JWT_ISSUER: ${VEIL_JWT_ISSUER:-veil-api}
+      VEIL_PUSH_PROVIDER: ${VEIL_PUSH_PROVIDER:-none}
+      VEIL_PUSH_ENABLE_DELIVERY: ${VEIL_PUSH_ENABLE_DELIVERY:-false}
+      VEIL_LOG_LEVEL: ${VEIL_LOG_LEVEL:-info}
+      # Production gate. Refuses to boot if false. Set to true ONLY after
+      # the external crypto audit clears the LibCryptoAdapter and the
+      # remediation tracker is empty.
+      VEIL_AUDITED_CRYPTO_ATTESTED: ${VEIL_AUDITED_CRYPTO_ATTESTED:?must be set explicitly to true after audit}
+      VEIL_METRICS_AUTH_TOKEN: ${VEIL_METRICS_AUTH_TOKEN:?VEIL_METRICS_AUTH_TOKEN required (openssl rand -hex 24)}
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 1024M }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_started }
+      minio-init: { condition: service_completed_successfully }
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CADDY_PUBLIC_HOSTNAME: ${CADDY_PUBLIC_HOSTNAME:?CADDY_PUBLIC_HOSTNAME required (or remove caddy and use cloudflared)}
+      CADDY_S3_HOSTNAME: ${CADDY_S3_HOSTNAME:?CADDY_S3_HOSTNAME required}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - veil_prod_caddy_data:/data
+      - veil_prod_caddy_config:/config
+    depends_on:
+      api: { condition: service_started }
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: always
+    profiles: [observability]
+    expose:
+      - "9090"
+    environment:
+      VEIL_METRICS_AUTH_TOKEN: ${VEIL_METRICS_AUTH_TOKEN}
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - veil_prod_prometheus:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    restart: always
+    profiles: [observability]
+    expose:
+      - "3001"
+    environment:
+      GF_SERVER_HTTP_PORT: "3001"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - veil_prod_grafana:/var/lib/grafana
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512M }
+    depends_on:
+      - prometheus
+
+volumes:
+  veil_prod_postgres:
+  veil_prod_redis:
+  veil_prod_minio:
+  veil_prod_caddy_data:
+  veil_prod_caddy_config:
+  veil_prod_prometheus:
+  veil_prod_grafana:

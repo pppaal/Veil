@@ -55,6 +55,7 @@
     "demo:prod:obs": "docker compose --env-file .env.prod -f docker-compose.prod.yml --profile observability up -d",
     "demo:prod:logs": "docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api",
     "demo:prod:down": "docker compose --env-file .env.prod -f docker-compose.prod.yml down",
+    "audit:handoff": "node scripts/audit-handoff-bundle.mjs",
     "format": "pnpm -r --filter './packages/*' --filter './apps/api' format",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'apps/api/src/**/*.ts' 'scripts/**/*.mjs'"
   }

@@ -81,6 +81,7 @@
       <div class="meta-line">백업 없음 · 복구 없음 · 이 기기에서만 사용</div>
     </div>
 
+    <button id="transfer-new-btn" class="link-btn">기존 기기에서 이전</button>
     <button id="wipe-btn" class="link-btn link-danger">이 브라우저의 키 · 캐시 전부 삭제</button>
   </div>
 </section>
@@ -143,8 +144,34 @@
   <div class="menu hidden" id="menu" role="menu">
     <button class="menu-item" data-action="copy-handle" role="menuitem">내 핸들 복사</button>
     <button class="menu-item" data-action="ws-info" role="menuitem">연결 상태</button>
+    <button class="menu-item" data-action="transfer-start" role="menuitem">다른 기기로 이전</button>
     <div class="menu-sep"></div>
     <button class="menu-item menu-danger" data-action="wipe" role="menuitem">로그아웃 + 키 삭제</button>
+  </div>
+</div>
+
+<!-- Device transfer: old-device side. Lives in #app since it requires an
+     authenticated session. -->
+<div class="dialog-backdrop hidden" id="transfer-old-dialog" role="presentation">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-old-title">
+    <div class="dialog-title" id="transfer-old-title">이 핸들을 다른 기기로 이전</div>
+    <div class="dialog-sub">
+      새 기기에 아래 코드를 붙여넣으세요. 새 기기가 클레임하면 지문이
+      여기 표시됩니다 — 일치 확인 후 승인하면 이 기기는 자동 로그아웃,
+      같은 핸들로 다시는 못 들어옵니다.
+      <strong>5분 안에 완료</strong>.
+    </div>
+    <textarea id="transfer-old-token" readonly rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.04);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;resize:none"></textarea>
+    <div class="dialog-sub" id="transfer-old-status" style="margin-top:8px">대기 중…</div>
+    <div id="transfer-old-claim" class="hidden" style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.04);border-radius:8px">
+      <div style="font-size:12px;opacity:0.7">새 기기가 클레임 했습니다</div>
+      <div id="transfer-old-fingerprint" style="font-family:ui-monospace,monospace;font-size:14px;margin:4px 0"></div>
+      <div style="font-size:11px;opacity:0.7">이 지문이 새 기기 화면에 표시된 것과 일치하는지 확인하고 승인하세요.</div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="transfer-old-cancel">취소</button>
+      <button class="btn btn-primary hidden" id="transfer-old-approve">승인 + 이 기기 로그아웃</button>
+    </div>
   </div>
 </div>
 
@@ -157,6 +184,35 @@
     <div class="dialog-actions">
       <button class="btn btn-ghost" id="confirm-cancel">취소</button>
       <button class="btn btn-primary" id="confirm-ok">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- Device transfer: new-device side. Lives at body root so it can run on
+     the auth screen (where #app is hidden). -->
+<div class="dialog-backdrop hidden" id="transfer-new-dialog" role="presentation">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-new-title">
+    <div class="dialog-title" id="transfer-new-title">기존 기기에서 이전</div>
+    <div class="dialog-sub">
+      이전 기기에서 받은 코드를 붙여넣으세요. 클레임을 누르면 이 기기의
+      지문이 표시됩니다 — 이전 기기 화면과 일치하는지 확인하고, 이전
+      기기에서 승인해야 핸들이 옮겨옵니다.
+    </div>
+    <label class="field">
+      <span class="field-label">새 기기 이름</span>
+      <input id="transfer-new-name" type="text" placeholder="VEIL Web" maxlength="40" />
+    </label>
+    <textarea id="transfer-new-token" rows="3" placeholder="이전 기기에서 복사한 코드를 여기에…" style="width:100%;font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.04);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;resize:none;box-sizing:border-box"></textarea>
+    <div id="transfer-new-fingerprint" class="hidden" style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.04);border-radius:8px">
+      <div style="font-size:12px;opacity:0.7">이 기기의 지문</div>
+      <div id="transfer-new-fingerprint-text" style="font-family:ui-monospace,monospace;font-size:14px;margin:4px 0"></div>
+      <div style="font-size:11px;opacity:0.7">이전 기기 화면의 지문과 일치하는지 확인하세요.</div>
+    </div>
+    <div class="dialog-error" id="transfer-new-error" role="alert" aria-live="polite"></div>
+    <div class="dialog-sub" id="transfer-new-status"></div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" id="transfer-new-cancel">취소</button>
+      <button class="btn btn-primary" id="transfer-new-claim">클레임</button>
     </div>
   </div>
 </div>

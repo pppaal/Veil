@@ -2085,3 +2085,234 @@ if (betaBanner && betaBannerClose) {
 }
 
 bootIfSession();
+
+// ---------- device transfer ----------
+// Two flows live here, sharing the same dialogs in index.html. The OLD
+// device polls /device-transfer/sessions/:id with its JWT, watches for a
+// claim to land, shows the new device's fingerprint, and approves. The
+// NEW device — which has no session yet — generates a fresh keypair, posts
+// /device-transfer/claim, then retries /device-transfer/complete every
+// 2.5s with the same auth proof until the server returns 200.
+const TRANSFER_POLL_MS = 2500;
+
+let transferOldState = null;
+async function startTransferOld() {
+  if (!state.me) { toast('로그인 후 시도하세요', 'error'); return; }
+  try {
+    const init = await authedApi('/device-transfer/init', {
+      method: 'POST',
+      body: { oldDeviceId: state.me.deviceId },
+    });
+    const blob = JSON.stringify({ sessionId: init.sessionId, transferToken: init.transferToken });
+    const code = btoa(blob).replace(/=+$/, '');
+    transferOldState = { sessionId: init.sessionId, code, polling: true, claimId: null };
+    $('transfer-old-token').value = code;
+    $('transfer-old-status').textContent = '코드 복사 후 새 기기에 붙여넣기 — 새 기기 클레임 대기 중…';
+    $('transfer-old-claim').classList.add('hidden');
+    $('transfer-old-approve').classList.add('hidden');
+    openDialog('transfer-old-dialog', 'transfer-old-token');
+    pollTransferOld();
+  } catch (e) {
+    toast('이전 시작 실패: ' + e.message, 'error');
+  }
+}
+async function pollTransferOld() {
+  while (transferOldState?.polling) {
+    try {
+      const s = await authedApi('/device-transfer/sessions/' + transferOldState.sessionId);
+      if (s.status === 'completed') {
+        $('transfer-old-status').textContent = '완료됨. 이 기기는 이제 로그아웃됩니다.';
+        transferOldState.polling = false;
+        await session.wipe();
+        setTimeout(async () => { closeDialog('transfer-old-dialog'); await showAuth(); }, 1200);
+        return;
+      }
+      if (s.status === 'expired') {
+        $('transfer-old-status').textContent = '만료되었습니다 (5분 초과). 다시 시작하세요.';
+        transferOldState.polling = false; return;
+      }
+      if (s.pendingClaim && !transferOldState.claimId) {
+        transferOldState.claimId = s.pendingClaim.claimId;
+        $('transfer-old-fingerprint').textContent = s.pendingClaim.claimantFingerprint;
+        $('transfer-old-claim').classList.remove('hidden');
+        $('transfer-old-approve').classList.remove('hidden');
+        $('transfer-old-status').textContent = '지문 확인 후 승인하세요.';
+      }
+    } catch (e) {
+      $('transfer-old-status').textContent = '폴링 오류: ' + e.message;
+    }
+    await new Promise((r) => setTimeout(r, TRANSFER_POLL_MS));
+  }
+}
+async function approveTransferOld() {
+  if (!transferOldState?.claimId) return;
+  $('transfer-old-approve').disabled = true;
+  try {
+    await authedApi('/device-transfer/approve', {
+      method: 'POST',
+      body: { sessionId: transferOldState.sessionId, claimId: transferOldState.claimId },
+    });
+    $('transfer-old-status').textContent = '승인됨 — 새 기기가 완료할 때까지 대기…';
+  } catch (e) {
+    toast('승인 실패: ' + e.message, 'error');
+  } finally {
+    $('transfer-old-approve').disabled = false;
+  }
+}
+function cancelTransferOld() {
+  if (transferOldState) transferOldState.polling = false;
+  transferOldState = null;
+  closeDialog('transfer-old-dialog');
+}
+
+let transferNewState = null;
+function openTransferNew() {
+  $('transfer-new-name').value = 'web-' + (navigator.platform || 'browser');
+  $('transfer-new-token').value = '';
+  $('transfer-new-error').textContent = '';
+  $('transfer-new-status').textContent = '';
+  $('transfer-new-fingerprint').classList.add('hidden');
+  $('transfer-new-claim').textContent = '클레임';
+  $('transfer-new-claim').disabled = false;
+  transferNewState = null;
+  openDialog('transfer-new-dialog', 'transfer-new-token');
+}
+async function claimTransferNew() {
+  const code = $('transfer-new-token').value.trim();
+  const name = $('transfer-new-name').value.trim() || 'VEIL';
+  if (!code) { $('transfer-new-error').textContent = '코드가 필요합니다'; return; }
+  let parsed;
+  try {
+    const padded = code + '='.repeat((4 - code.length % 4) % 4);
+    parsed = JSON.parse(atob(padded));
+    if (!parsed.sessionId || !parsed.transferToken) throw new Error('shape');
+  } catch {
+    $('transfer-new-error').textContent = '코드 형식 오류';
+    return;
+  }
+  $('transfer-new-claim').disabled = true;
+  $('transfer-new-error').textContent = '';
+  $('transfer-new-status').textContent = '새 키 생성 중…';
+  try {
+    const keys = await generateIdentityKeys();
+    const fingerprint = keys.edPubB64u.length <= 12
+      ? keys.edPubB64u
+      : keys.edPubB64u.slice(0, 6) + '...' + keys.edPubB64u.slice(-4);
+    $('transfer-new-fingerprint-text').textContent = fingerprint;
+    $('transfer-new-fingerprint').classList.remove('hidden');
+    $('transfer-new-status').textContent = '서버에 클레임 중…';
+    const claimSig = await signChallenge(keys.edPrivKey, `transfer-claim:${parsed.sessionId}:${parsed.transferToken}`);
+    const claim = await api('/device-transfer/claim', {
+      method: 'POST',
+      body: {
+        sessionId: parsed.sessionId,
+        transferToken: parsed.transferToken,
+        newDeviceName: name,
+        platform: 'android',
+        publicIdentityKey: keys.xPubB64u,
+        signedPrekeyBundle: 'web-demo-no-prekey',
+        authPublicKey: keys.edPubB64u,
+        authProof: claimSig,
+      },
+    });
+    transferNewState = { ...parsed, claimId: claim.claimId, keys };
+    $('transfer-new-status').textContent = '이전 기기에서 승인 대기 중…';
+    pollTransferNew();
+  } catch (e) {
+    $('transfer-new-error').textContent = e.message;
+    $('transfer-new-claim').disabled = false;
+  }
+}
+async function pollTransferNew() {
+  if (!transferNewState) return;
+  const { sessionId, transferToken, claimId, keys } = transferNewState;
+  const completeSig = await signChallenge(
+    keys.edPrivKey,
+    `transfer-complete:${sessionId}:${claimId}:${transferToken}`,
+  );
+  while (transferNewState) {
+    try {
+      const res = await api('/device-transfer/complete', {
+        method: 'POST',
+        body: { sessionId, transferToken, claimId, authProof: completeSig },
+      });
+      // Success — save session as the new device and switch to the app.
+      const me = {
+        handle: res.handle,
+        userId: res.handle, // userId not returned; we resolve it on first authedApi
+        deviceId: res.newDeviceId,
+        edPrivKey: keys.edPrivKey,
+        xPrivKey: keys.xPrivKey,
+        xPubB64u: keys.xPubB64u,
+        edPubB64u: keys.edPubB64u,
+        accessToken: null,
+        refreshToken: null,
+      };
+      // We don't get tokens back from /complete — the new device must do
+      // a normal challenge/verify with its newly trusted keypair.
+      const ch = await api('/auth/challenge', {
+        method: 'POST',
+        body: { handle: res.handle, deviceId: res.newDeviceId },
+      });
+      const sig = await signChallenge(keys.edPrivKey, ch.challenge);
+      const ver = await api('/auth/verify', {
+        method: 'POST',
+        body: { challengeId: ch.challengeId, deviceId: res.newDeviceId, signature: sig },
+      });
+      me.userId = ver.userId;
+      me.accessToken = ver.accessToken;
+      me.refreshToken = ver.refreshToken;
+      state.me = me;
+      await session.save({
+        ...me,
+        edPrivJwk: await crypto.subtle.exportKey('jwk', keys.edPrivKey),
+        xPrivJwk: await crypto.subtle.exportKey('jwk', keys.xPrivKey),
+      });
+      transferNewState = null;
+      closeDialog('transfer-new-dialog');
+      toast('이전 완료 — 새 기기로 들어왔습니다', 'good');
+      await loadConversations();
+      showApp();
+      startPolling();
+      connectSocket();
+      return;
+    } catch (e) {
+      const code = e.code || (e.body && e.body.code);
+      if (code === 'transfer_approval_required' || e.status === 403) {
+        $('transfer-new-status').textContent = '이전 기기에서 승인 대기 중…';
+        await new Promise((r) => setTimeout(r, TRANSFER_POLL_MS));
+        continue;
+      }
+      $('transfer-new-error').textContent = e.message;
+      $('transfer-new-status').textContent = '실패. 다시 시도하세요.';
+      $('transfer-new-claim').disabled = false;
+      transferNewState = null;
+      return;
+    }
+  }
+}
+function cancelTransferNew() {
+  transferNewState = null;
+  closeDialog('transfer-new-dialog');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Menu wiring is event-delegated via #menu, but transfer-start is one of
+  // its actions — handle it in the same delegation by extending the menu
+  // click listener. We do that by listening at capture phase here.
+  const menu = $('menu');
+  if (menu) {
+    menu.addEventListener('click', (e) => {
+      const action = e.target?.dataset?.action;
+      if (action === 'transfer-start') {
+        menu.classList.add('hidden');
+        startTransferOld();
+      }
+    }, true);
+  }
+  $('transfer-old-cancel')?.addEventListener('click', cancelTransferOld);
+  $('transfer-old-approve')?.addEventListener('click', approveTransferOld);
+  $('transfer-new-btn')?.addEventListener('click', openTransferNew);
+  $('transfer-new-cancel')?.addEventListener('click', cancelTransferNew);
+  $('transfer-new-claim')?.addEventListener('click', claimTransferNew);
+});

@@ -114,6 +114,18 @@ export class AppConfigService {
     return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
   }
 
+  get metricsAuthToken(): string | undefined {
+    return this.configService.get('VEIL_METRICS_AUTH_TOKEN', { infer: true });
+  }
+
+  get otelEndpoint(): string | undefined {
+    return this.configService.get('VEIL_OTEL_EXPORTER_OTLP_ENDPOINT', { infer: true });
+  }
+
+  get otelServiceName(): string {
+    return this.configService.get('VEIL_OTEL_SERVICE_NAME', { infer: true });
+  }
+
   assertProductionReady(): void {
     if (!this.isProduction) return;
     const errors: string[] = [];

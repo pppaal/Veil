@@ -42,6 +42,13 @@ export const envSchema = z.object({
   VEIL_TRANSFER_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   VEIL_AUTH_CHALLENGE_TTL_SECONDS: z.coerce.number().int().positive().default(120),
   VEIL_AUDITED_CRYPTO_ATTESTED: z.coerce.boolean().default(false),
+  // Bearer token required to scrape /metrics. Empty disables the
+  // endpoint entirely (the route 404s) — preferred default for local
+  // dev so we never accidentally expose internals on the public tunnel.
+  VEIL_METRICS_AUTH_TOKEN: z.string().optional(),
+  // OTel collector — optional. Code is wired but no-ops until set.
+  VEIL_OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  VEIL_OTEL_SERVICE_NAME: z.string().default('veil-api'),
 });
 
 export type EnvConfig = z.infer<typeof envSchema>;

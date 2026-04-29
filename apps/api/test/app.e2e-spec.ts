@@ -320,10 +320,13 @@ describe('VEIL API (e2e)', () => {
     expect(devicesAfterTransfer.status).toBe(200);
     expect(devicesAfterTransfer.body.activeDeviceId).toBe(transferComplete.body.newDeviceId);
     expect(devicesAfterTransfer.body.items).toHaveLength(2);
+    // Phase U.1: transfer atomically revokes the old device. The list
+    // still surfaces it (so the new device can audit "what was the
+    // outgoing device?") but it is no longer active.
     expect(
       devicesAfterTransfer.body.items.some(
         (item: { id: string; isActive: boolean; trustState: string }) =>
-          item.id === registerA.body.deviceId && item.isActive === true && item.trustState === 'trusted',
+          item.id === registerA.body.deviceId && item.isActive === false && item.trustState === 'revoked',
       ),
     ).toBe(true);
     expect(
@@ -335,11 +338,17 @@ describe('VEIL API (e2e)', () => {
       ),
     ).toBe(true);
 
+    // After Phase U.1 the old device's bearer is rejected by the
+    // JwtAuthGuard because device.isActive=false.
     const oldBearerAfterTransfer = await api
       .get('/v1/conversations')
       .set('Authorization', bearer);
-    expect(oldBearerAfterTransfer.status).toBe(200);
+    expect(oldBearerAfterTransfer.status).toBe(401);
 
+    // The new device cannot start a transfer claiming the old device id —
+    // it doesn't own that device id (the JwtAuthGuard binds deviceId to
+    // the bearer), so the controller's auth.deviceId !== dto.oldDeviceId
+    // check fires.
     const foreignInit = await api
       .post('/v1/device-transfer/init')
       .set('Authorization', transferredBearer)

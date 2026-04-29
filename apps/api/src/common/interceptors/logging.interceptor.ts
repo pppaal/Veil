@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { Observable, tap } from 'rxjs';
 
 import { AppLoggerService } from '../logger/app-logger.service';
+import { MetricsService } from '../../modules/metrics/metrics.service';
 
 // Logs are durable, so it is dangerous to ship per-request URLs that include
 // social handles — if logs leak we hand attackers a verified handle list.
@@ -25,13 +26,19 @@ function redactUrl(url: string): string {
 
 @Injectable()
 export class LoggingInterceptor implements NestInterceptor {
-  constructor(private readonly logger: AppLoggerService) {}
+  constructor(
+    private readonly logger: AppLoggerService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest<
       Request & { auth?: { userId: string }; requestId?: string }
     >();
-    const response = context.switchToHttp().getResponse<{ setHeader(name: string, value: string): void }>();
+    const response = context.switchToHttp().getResponse<{
+      setHeader(name: string, value: string): void;
+      statusCode?: number;
+    }>();
     const headers = request.headers as unknown as Record<string, string | string[] | undefined>;
     const requestIdHeader = headers['x-request-id'];
     const incomingRequestId =
@@ -45,19 +52,38 @@ export class LoggingInterceptor implements NestInterceptor {
       randomUUID();
     response.setHeader('x-request-id', request.requestId);
     const method = request?.method ?? 'UNKNOWN';
-    const url = redactUrl(request?.url ?? 'UNKNOWN');
+    const rawUrl = request?.url ?? 'UNKNOWN';
+    const url = redactUrl(rawUrl);
+    const routeClass = this.metrics.classifyRoute(rawUrl);
     const startedAt = Date.now();
+    const finish = (status: number): void => {
+      const durationMs = Date.now() - startedAt;
+      this.logger.info('request.completed', {
+        method,
+        url,
+        requestId: request.requestId,
+        actorUserId: request?.auth?.userId ?? null,
+        durationMs,
+      });
+      this.metrics.httpRequestsTotal
+        .labels({
+          method,
+          route_class: routeClass,
+          status_class: this.metrics.classifyStatus(status),
+        })
+        .inc();
+      this.metrics.httpRequestDurationSeconds
+        .labels({ method, route_class: routeClass })
+        .observe(durationMs / 1000);
+    };
 
     return next.handle().pipe(
       tap({
-        next: () =>
-          this.logger.info('request.completed', {
-            method,
-            url,
-            requestId: request.requestId,
-            actorUserId: request?.auth?.userId ?? null,
-            durationMs: Date.now() - startedAt,
-          }),
+        next: () => finish(response.statusCode ?? 200),
+        error: (err) => {
+          const status = typeof err?.status === 'number' ? err.status : 500;
+          finish(status);
+        },
       }),
     );
   }

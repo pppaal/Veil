@@ -19,6 +19,7 @@ import { DevicesModule } from './modules/devices/devices.module';
 import { GroupsModule } from './modules/groups/groups.module';
 import { HealthModule } from './modules/health/health.module';
 import { MessagesModule } from './modules/messages/messages.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { PushModule } from './modules/push/push.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { ContactsModule } from './modules/contacts/contacts.module';
@@ -44,6 +45,7 @@ import { SafetyModule } from './modules/safety/safety.module';
         limit: 60,
       },
     ]),
+    MetricsModule,
     HealthModule,
     AuthModule,
     UsersModule,

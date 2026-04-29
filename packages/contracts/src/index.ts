@@ -264,6 +264,27 @@ export interface DeviceTransferCompleteResponse {
   completedAt: string;
 }
 
+export type DeviceTransferStatus =
+  | 'pending'
+  | 'claimed'
+  | 'approved'
+  | 'completed'
+  | 'expired';
+
+export interface DeviceTransferSessionStatusResponse {
+  sessionId: string;
+  status: DeviceTransferStatus;
+  expiresAt: string;
+  completedAt?: string | null;
+  pendingClaim?: {
+    claimId: string;
+    claimantFingerprint: string;
+    newDeviceName: string;
+    platform: DevicePlatform;
+    approvedAt?: string | null;
+  } | null;
+}
+
 export type DeviceTrustState = 'current' | 'preferred' | 'trusted' | 'stale' | 'revoked';
 
 export interface RevokeDeviceRequest {

@@ -7,6 +7,8 @@ import type {
   DeviceTransferClaimResponse,
   DeviceTransferCompleteResponse,
   DeviceTransferInitResponse,
+  DeviceTransferSessionStatusResponse,
+  DeviceTransferStatus,
 } from '@veil/contracts';
 import { createHash, randomUUID } from 'node:crypto';
 
@@ -218,6 +220,59 @@ export class DeviceTransferService {
     };
   }
 
+  // Polling endpoint for the old device. New-device polling rides on
+  // /complete instead — same auth proof every retry, server rejects with
+  // transfer_approval_required until the old device has approved.
+  async getSessionStatus(args: {
+    sessionId: string;
+    auth: { userId: string; deviceId: string };
+  }): Promise<DeviceTransferSessionStatusResponse> {
+    const session = await this.prisma.deviceTransferSession.findUnique({
+      where: { id: args.sessionId },
+    });
+
+    if (!session) {
+      throw notFound('transfer_session_not_found', 'Transfer session not found');
+    }
+
+    if (session.userId !== args.auth.userId || session.oldDeviceId !== args.auth.deviceId) {
+      throw notFound('transfer_session_not_found', 'Transfer session not found');
+    }
+
+    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(
+      claimKey(args.sessionId),
+    );
+
+    let status: DeviceTransferStatus;
+    if (session.completedAt) {
+      status = 'completed';
+    } else if (session.expiresAt.getTime() <= Date.now()) {
+      status = 'expired';
+    } else if (pendingClaim?.approvedAt) {
+      status = 'approved';
+    } else if (pendingClaim) {
+      status = 'claimed';
+    } else {
+      status = 'pending';
+    }
+
+    return {
+      sessionId: session.id,
+      status,
+      expiresAt: session.expiresAt.toISOString(),
+      completedAt: session.completedAt ? session.completedAt.toISOString() : null,
+      pendingClaim: pendingClaim
+        ? {
+            claimId: pendingClaim.claimId,
+            claimantFingerprint: pendingClaim.claimantFingerprint,
+            newDeviceName: pendingClaim.newDeviceName,
+            platform: pendingClaim.platform,
+            approvedAt: pendingClaim.approvedAt ?? null,
+          }
+        : null,
+    };
+  }
+
   async complete(dto: DeviceTransferCompleteDto): Promise<DeviceTransferCompleteResponse> {
     const session = await this.prisma.deviceTransferSession.findUnique({
       where: { id: dto.sessionId },
@@ -324,6 +379,20 @@ export class DeviceTransferService {
           },
         });
 
+        // Transfer means "moving to a new device", not "adding a parallel
+        // device", so the old device must be revoked atomically with the
+        // new one being created. Without this, the old device's access
+        // token keeps working until natural expiry — bad if the user is
+        // transferring because the old device was lost or compromised.
+        await tx.device.update({
+          where: { id: session.oldDeviceId },
+          data: {
+            isActive: false,
+            revokedAt: completedAt,
+            pushToken: null,
+          },
+        });
+
         await tx.user.update({
           where: { id: session.userId },
           data: { activeDeviceId: newDevice.id },
@@ -343,11 +412,17 @@ export class DeviceTransferService {
 
     await this.ephemeralStore.delete(claimKey(dto.sessionId));
 
+    // The JwtAuthGuard now rejects any future request from the old device
+    // because device.isActive is false, but a socket that connected before
+    // revoke would otherwise stay open and keep delivering envelopes to a
+    // device the user just told us they don't trust anymore. Cut it.
+    this.realtimeGateway.disconnectDevice(session.oldDeviceId);
+
     return {
       sessionId: session.id,
       claimId: dto.claimId,
       newDeviceId: result.id,
-      revokedDeviceId: null,
+      revokedDeviceId: session.oldDeviceId,
       preferredDeviceId: result.id,
       handle: session.user.handle,
       displayName: session.user.displayName,

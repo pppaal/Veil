@@ -11,7 +11,7 @@ import {
 } from '../support/fake-services';
 
 describe('DeviceTransferService', () => {
-  it('requires the old trusted device and adds the new one without revoking the old device', async () => {
+  it('requires the old trusted device, adds the new one, and revokes the old device atomically', async () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
@@ -93,11 +93,14 @@ describe('DeviceTransferService', () => {
       }),
     });
 
-    expect(completed.revokedDeviceId).toBeNull();
+    expect(completed.revokedDeviceId).toBe('device-old');
     expect(prisma.users[0]!.activeDeviceId).toBe(completed.newDeviceId);
-    expect(prisma.devices.find((item) => item.id == 'device-old')!.isActive).toBe(true);
+    const oldDeviceAfter = prisma.devices.find((item) => item.id == 'device-old')!;
+    expect(oldDeviceAfter.isActive).toBe(false);
+    expect(oldDeviceAfter.revokedAt).toBeInstanceOf(Date);
+    expect(oldDeviceAfter.pushToken).toBeNull();
     expect(prisma.devices.find((item) => item.id == completed.newDeviceId)!.joinedFromDeviceId).toBe('device-old');
-    expect(realtime.disconnectedDevices.has('device-old')).toBe(false);
+    expect(realtime.disconnectedDevices.has('device-old')).toBe(true);
   });
 
   it('rejects an expired join session before claim', async () => {

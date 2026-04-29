@@ -431,6 +431,13 @@ function connectSocket() {
   s.on('message.read', ({ messageId, readAt }) =>
     patchMessage(messageId, { readAt }),
   );
+  s.on('message.reaction', ({ messageId, userId, emoji, action }) => {
+    onReactionEvent(messageId, userId, emoji, action);
+  });
+  s.on('message.edited', (msg) => onMessageEdited(msg));
+  s.on('message.deleted', ({ messageId, deletedAt }) =>
+    patchMessage(messageId, { deletedAt, _plaintext: '🚫 삭제된 메시지' }),
+  );
   s.on('presence.update', ({ userId, status }) => {
     if (status === 'online') state.online.add(userId);
     else state.online.delete(userId);
@@ -999,13 +1006,21 @@ function renderOnePanel(convId) {
           },
           ['↩'],
         );
+        if (m.deletedAt) cls.push('msg-deleted-bubble');
+        const editedBadge = m.editedAt
+          ? el('span', { class: 'msg-edited', style: 'opacity:0.55;font-size:11px;margin-left:6px' }, ['(수정됨)'])
+          : null;
         const bubble = el('div', { class: cls.join(' ') }, [
           replyHead,
           el('span', { class: 'msg-text' }, [renderPreview(m)]),
+          editedBadge,
         ]);
+        const reactionsRow = (m.reactions && m.reactions.length > 0)
+          ? renderReactionsRow(m, convId)
+          : null;
         const wrap = el('div', { class: 'msg-row ' + (group.isMe ? 'me' : 'them') }, [
           group.isMe ? replyBtn : null,
-          bubble,
+          el('div', { class: 'msg-bubble-stack' }, [bubble, reactionsRow]),
           group.isMe ? null : replyBtn,
         ]);
         wrap.dataset.msgId = m.id;
@@ -2316,3 +2331,294 @@ document.addEventListener('DOMContentLoaded', () => {
   $('transfer-new-cancel')?.addEventListener('click', cancelTransferNew);
   $('transfer-new-claim')?.addEventListener('click', claimTransferNew);
 });
+
+// ---------- message actions: react / edit / delete ----------
+// Right-click (or long-press on touch) on a .msg-row pops a small menu.
+// Reactions go through the existing /messages/:id/reactions endpoints
+// (server already had those). Edit re-encrypts the body in place via
+// PATCH /messages/:id; Delete tombstones server-side via DELETE.
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😢', '🔥', '🎉'];
+
+const msgActionStyles = document.createElement('style');
+msgActionStyles.textContent = `
+  .msg-action-menu {
+    position: fixed; z-index: 1000;
+    background: #1c1d22; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px; padding: 6px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    display: flex; flex-direction: column; min-width: 160px;
+  }
+  .msg-action-row { display: flex; gap: 4px; padding: 4px 6px; }
+  .msg-action-row button {
+    background: transparent; border: 0; color: inherit; cursor: pointer;
+    font-size: 20px; padding: 4px 8px; border-radius: 8px;
+  }
+  .msg-action-row button:hover { background: rgba(255,255,255,0.08); }
+  .msg-action-item {
+    background: transparent; border: 0; color: inherit; cursor: pointer;
+    text-align: left; padding: 8px 12px; border-radius: 8px; font-size: 14px;
+  }
+  .msg-action-item:hover { background: rgba(255,255,255,0.08); }
+  .msg-action-item.danger { color: #ff7676; }
+  .msg-action-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0; }
+  .msg-edit-input {
+    background: rgba(255,255,255,0.04); color: inherit;
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 8px;
+    padding: 8px; font-size: 14px; width: 100%; resize: vertical;
+    min-height: 60px; box-sizing: border-box;
+  }
+  .msg-reactions {
+    display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+    padding: 0 8px;
+  }
+  .msg-reaction-chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: rgba(255,255,255,0.08); border-radius: 12px;
+    padding: 2px 8px; font-size: 12px; cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .msg-reaction-chip.mine { border-color: rgba(108,142,255,0.4); background: rgba(108,142,255,0.15); }
+  .msg-deleted-bubble { opacity: 0.5; font-style: italic; }
+`;
+document.head.appendChild(msgActionStyles);
+
+let activeActionMenu = null;
+function closeActionMenu() {
+  if (activeActionMenu) { activeActionMenu.remove(); activeActionMenu = null; }
+}
+document.addEventListener('click', closeActionMenu);
+document.addEventListener('scroll', closeActionMenu, true);
+
+function openActionMenu(x, y, msg, convId) {
+  closeActionMenu();
+  const isMine = msg.senderDeviceId === state.me?.deviceId;
+  const isDeleted = !!msg.deletedAt;
+  if (isDeleted) return; // No actions on tombstones.
+
+  const menu = document.createElement('div');
+  menu.className = 'msg-action-menu';
+  menu.style.left = Math.min(x, window.innerWidth - 200) + 'px';
+  menu.style.top = Math.min(y, window.innerHeight - 240) + 'px';
+
+  const reactRow = document.createElement('div');
+  reactRow.className = 'msg-action-row';
+  for (const e of QUICK_REACTIONS) {
+    const b = document.createElement('button');
+    b.textContent = e;
+    b.title = '반응 추가';
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      doReaction(msg.id, e);
+      closeActionMenu();
+    });
+    reactRow.appendChild(b);
+  }
+  menu.appendChild(reactRow);
+  menu.appendChild(Object.assign(document.createElement('div'), { className: 'msg-action-divider' }));
+
+  const replyItem = document.createElement('button');
+  replyItem.className = 'msg-action-item';
+  replyItem.textContent = '↩  답장';
+  replyItem.addEventListener('click', (ev) => {
+    ev.stopPropagation(); startReply(convId, msg); closeActionMenu();
+  });
+  menu.appendChild(replyItem);
+
+  if (msg._plaintext) {
+    const copyItem = document.createElement('button');
+    copyItem.className = 'msg-action-item';
+    copyItem.textContent = '📋  복사';
+    copyItem.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      try { await navigator.clipboard.writeText(msg._plaintext); toast('복사됨', 'good'); }
+      catch { toast('클립보드 접근 실패', 'error'); }
+      closeActionMenu();
+    });
+    menu.appendChild(copyItem);
+  }
+
+  if (isMine && !msg.id?.startsWith('__pending__')) {
+    const editItem = document.createElement('button');
+    editItem.className = 'msg-action-item';
+    editItem.textContent = '✏️  수정';
+    editItem.addEventListener('click', (ev) => {
+      ev.stopPropagation(); startEdit(msg, convId); closeActionMenu();
+    });
+    menu.appendChild(editItem);
+
+    const delItem = document.createElement('button');
+    delItem.className = 'msg-action-item danger';
+    delItem.textContent = '🗑  삭제';
+    delItem.addEventListener('click', async (ev) => {
+      ev.stopPropagation(); closeActionMenu();
+      const ok = await uiConfirm({
+        title: '메시지 삭제',
+        body: '이 메시지를 삭제합니다. 상대방 화면에서도 삭제 표시로 바뀌어요.',
+        okLabel: '삭제', destructive: true,
+      });
+      if (!ok) return;
+      doDelete(msg.id);
+    });
+    menu.appendChild(delItem);
+  }
+
+  document.body.appendChild(menu);
+  activeActionMenu = menu;
+}
+
+document.addEventListener('contextmenu', (e) => {
+  const row = e.target.closest('.msg-row');
+  if (!row?.dataset?.msgId) return;
+  e.preventDefault();
+  const convId = row.closest('.panel')?.dataset?.conv;
+  if (!convId) return;
+  const msg = (state.messagesByConv.get(convId) || []).find((m) => m.id === row.dataset.msgId);
+  if (msg) openActionMenu(e.clientX, e.clientY, msg, convId);
+});
+
+let touchHoldTimer = null;
+document.addEventListener('touchstart', (e) => {
+  const row = e.target.closest('.msg-row');
+  if (!row?.dataset?.msgId) return;
+  const convId = row.closest('.panel')?.dataset?.conv;
+  if (!convId) return;
+  const msg = (state.messagesByConv.get(convId) || []).find((m) => m.id === row.dataset.msgId);
+  if (!msg) return;
+  const t = e.touches[0];
+  touchHoldTimer = setTimeout(() => openActionMenu(t.clientX, t.clientY, msg, convId), 500);
+}, { passive: true });
+document.addEventListener('touchend', () => { clearTimeout(touchHoldTimer); }, { passive: true });
+document.addEventListener('touchmove', () => { clearTimeout(touchHoldTimer); }, { passive: true });
+
+async function doReaction(messageId, emoji) {
+  try {
+    const list = (() => {
+      for (const l of state.messagesByConv.values()) {
+        const m = l.find((x) => x.id === messageId);
+        if (m) return { msg: m };
+      }
+      return null;
+    })();
+    const mine = list?.msg?.reactions?.find((r) => r.userId === state.me.userId);
+    const sameAsMine = mine?.emoji === emoji;
+    if (sameAsMine) {
+      await authedApi(`/messages/${messageId}/reactions`, { method: 'DELETE' });
+    } else {
+      await authedApi(`/messages/${messageId}/reactions`, { method: 'POST', body: { emoji } });
+    }
+  } catch (e) {
+    toast('반응 실패: ' + e.message, 'error');
+  }
+}
+
+function onReactionEvent(messageId, userId, emoji, action) {
+  for (const list of state.messagesByConv.values()) {
+    const m = list.find((x) => x.id === messageId);
+    if (!m) continue;
+    m.reactions = m.reactions || [];
+    const idx = m.reactions.findIndex((r) => r.userId === userId);
+    if (action === 'remove') {
+      if (idx >= 0) m.reactions.splice(idx, 1);
+    } else {
+      if (idx >= 0) m.reactions[idx].emoji = emoji;
+      else m.reactions.push({ userId, emoji });
+    }
+    renderActivePanel();
+    return;
+  }
+}
+
+function startEdit(msg, convId) {
+  const text = msg._plaintext;
+  if (typeof text !== 'string') {
+    toast('이 메시지는 수정할 수 없어요', 'error');
+    return;
+  }
+  const fresh = window.prompt('메시지 수정', text);
+  if (fresh == null) return;
+  const trimmed = fresh.trim();
+  if (!trimmed || trimmed === text) return;
+  doEdit(msg, convId, trimmed);
+}
+
+async function doEdit(msg, convId, newText) {
+  try {
+    const envelope = await encryptForConv(convId, packPayload(newText, msg._replyTo ?? null));
+    if (!envelope) { toast('재암호화 실패', 'error'); return; }
+    await authedApi(`/messages/${msg.id}`, {
+      method: 'PATCH',
+      body: {
+        ciphertext: envelope.ciphertext,
+        nonce: envelope.nonce,
+        version: 'veil-envelope-v1-dev',
+      },
+    });
+    msg._plaintext = newText;
+    msg.editedAt = new Date().toISOString();
+    msg.editCount = (msg.editCount || 0) + 1;
+    renderActivePanel();
+  } catch (e) {
+    toast('수정 실패: ' + e.message, 'error');
+  }
+}
+
+async function onMessageEdited(serverMsg) {
+  for (const [convId, list] of state.messagesByConv) {
+    const idx = list.findIndex((m) => m.id === serverMsg.id);
+    if (idx < 0) continue;
+    const local = list[idx];
+    // Re-decrypt the new ciphertext into a plaintext we can render.
+    let plaintext = null;
+    try {
+      plaintext = await decryptFromConv(convId, serverMsg.ciphertext, serverMsg.nonce);
+    } catch {}
+    list[idx] = {
+      ...local,
+      ciphertext: serverMsg.ciphertext,
+      nonce: serverMsg.nonce,
+      editedAt: serverMsg.editedAt,
+      editCount: serverMsg.editCount,
+      _plaintext: plaintext != null
+        ? (typeof plaintext === 'object' && plaintext.text != null ? plaintext.text : String(plaintext))
+        : local._plaintext,
+    };
+    if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
+    return;
+  }
+}
+
+async function doDelete(messageId) {
+  try {
+    await authedApi(`/messages/${messageId}`, { method: 'DELETE' });
+  } catch (e) {
+    toast('삭제 실패: ' + e.message, 'error');
+  }
+}
+
+// Bubble reactions row — groups by emoji, shows count, my own reactions
+// get a highlighted border. Click toggles via the same /reactions endpoint
+// the action menu uses, so the picker and the chip share state.
+function renderReactionsRow(msg, convId) {
+  const tally = new Map();
+  for (const r of msg.reactions || []) {
+    const entry = tally.get(r.emoji) || { count: 0, mine: false };
+    entry.count += 1;
+    if (r.userId === state.me?.userId) entry.mine = true;
+    tally.set(r.emoji, entry);
+  }
+  if (tally.size === 0) return null;
+  const row = el('div', { class: 'msg-reactions' });
+  for (const [emoji, entry] of tally) {
+    const chip = el(
+      'span',
+      {
+        class: 'msg-reaction-chip' + (entry.mine ? ' mine' : ''),
+        title: entry.mine ? '내 반응 — 클릭해서 취소' : '같이 반응하기',
+        onclick: (e) => { e.stopPropagation(); doReaction(msg.id, emoji); },
+      },
+      [emoji + ' ' + entry.count],
+    );
+    row.appendChild(chip);
+  }
+  return row;
+}

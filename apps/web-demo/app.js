@@ -295,6 +295,22 @@ async function decryptMessage(msg) {
     return;
   }
   decryptFailureCount.delete(msg.conversationId);
+  // Voice messages encode a JSON object with the audio bytes inline;
+  // the regular text-payload unpack would render the raw JSON. Route
+  // them through the voice materializer instead.
+  if (msg.messageType === 'voice') {
+    try {
+      const payload = JSON.parse(typeof pt === 'string' ? pt : (pt?.text ?? ''));
+      if (payload?.kind === 'voice' && payload.audio) {
+        const bytes = b64uDecode(payload.audio);
+        const blob = new Blob([bytes], { type: payload.mime || 'audio/webm' });
+        msg._voiceUrl = URL.createObjectURL(blob);
+        msg._plaintext = '🎤 음성';
+        msg._replyTo = null;
+        return;
+      }
+    } catch {}
+  }
   const { text, replyTo } = unpackPayload(pt);
   msg._plaintext = text;
   msg._replyTo = replyTo;
@@ -520,6 +536,9 @@ async function onMessageNew(msg) {
   state.messagesByConv.set(convId, list);
   bumpConversation(convId, msg);
   await decryptMessage(msg);
+  // Voice messages carry their audio bytes inline in the encrypted
+  // payload. Reconstruct the playable blob URL once decryption lands.
+  if (msg.messageType === 'voice') await maybeMaterializeVoice(msg, convId);
   // Re-render with the now-plaintext bubble + sidebar preview.
   renderSidebar();
   if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
@@ -806,6 +825,14 @@ function renderPreview(msgOrCiphertext) {
   if (msgOrCiphertext == null) return '';
   // Phase E onward: messages are pre-decrypted into _plaintext on ingest.
   if (typeof msgOrCiphertext === 'object') {
+    if (msgOrCiphertext._voiceUrl) {
+      return el('audio', {
+        controls: 'controls',
+        src: msgOrCiphertext._voiceUrl,
+        preload: 'metadata',
+        style: 'max-width: 240px; height: 32px; vertical-align: middle;',
+      });
+    }
     if (msgOrCiphertext._plaintext != null) return msgOrCiphertext._plaintext;
     return '🔒 암호화됨';
   }
@@ -1111,6 +1138,20 @@ function renderOnePanel(convId) {
     { class: 'send-btn', 'aria-label': '전송', onclick: () => sendMessage(textarea, convId) },
     [el('span', { 'aria-hidden': 'true' }, ['↑'])],
   );
+  const voiceBtn = el(
+    'button',
+    {
+      class: 'voice-btn',
+      'aria-label': '음성 메시지',
+      title: '꾹 눌러 녹음',
+      onmousedown: (e) => { e.preventDefault(); startVoiceRecord(convId, voiceBtn); },
+      onmouseup: () => stopVoiceRecord(convId, voiceBtn),
+      onmouseleave: () => cancelVoiceRecord(voiceBtn),
+      ontouchstart: (e) => { e.preventDefault(); startVoiceRecord(convId, voiceBtn); },
+      ontouchend: () => stopVoiceRecord(convId, voiceBtn),
+    },
+    [el('span', { 'aria-hidden': 'true' }, ['🎤'])],
+  );
   // Auto-grow + emit typing + persist the draft on every input.
   const autoGrow = () => {
     // maxlength is enforced by the browser, but a paste larger than the cap
@@ -1188,7 +1229,7 @@ function renderOnePanel(convId) {
     msgsNode,
     el('div', { class: 'panel-input-wrap' }, [
       replyBanner,
-      el('div', { class: 'panel-input' }, [textarea, sendBtn]),
+      el('div', { class: 'panel-input' }, [textarea, voiceBtn, sendBtn]),
     ]),
   ]);
 
@@ -2632,3 +2673,222 @@ function renderReactionsRow(msg, convId) {
   }
   return row;
 }
+
+// ---------- voice messages ----------
+// Push-to-talk: hold the mic button to record, release to send.
+// MediaRecorder produces opus/webm at the lowest bitrate the browser
+// will give us (defaults are usually 32-48 kbps mono for opus). The
+// bytes are b64-wrapped into the existing per-conversation AES-GCM
+// envelope so the server only ever sees ciphertext, identical to the
+// text path. Server-side ciphertext cap was bumped to 128 KB to fit
+// ~30 s of voice without forcing the attachment-upload flow.
+const VOICE_MAX_MS = 30_000;
+const VOICE_MAX_CIPHERTEXT_LEN = 128 * 1024;
+
+const voiceStyles = document.createElement('style');
+voiceStyles.textContent = `
+  .voice-btn {
+    background: transparent; border: 0; color: inherit;
+    cursor: pointer; font-size: 18px; padding: 0 8px;
+    user-select: none; -webkit-user-select: none;
+  }
+  .voice-btn:hover { color: var(--accent, #6c8eff); }
+  .voice-btn.recording {
+    background: rgba(255, 80, 80, 0.18); border-radius: 50%;
+    animation: voice-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes voice-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 80, 80, 0.6); }
+    50% { box-shadow: 0 0 0 8px rgba(255, 80, 80, 0); }
+  }
+  .voice-recording-indicator {
+    position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+    background: #1c1d22; color: #fff; padding: 6px 14px;
+    border-radius: 999px; font-size: 13px; z-index: 1100;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+`;
+document.head.appendChild(voiceStyles);
+
+let voiceState = null;
+function makeIndicator() {
+  const node = document.createElement('div');
+  node.className = 'voice-recording-indicator';
+  node.textContent = '🔴 녹음 중… 손을 떼면 전송';
+  document.body.appendChild(node);
+  return node;
+}
+
+async function startVoiceRecord(convId, btn) {
+  if (voiceState) return;
+  if (!navigator.mediaDevices?.getUserMedia) {
+    toast('이 브라우저에서 녹음 미지원', 'error');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1,
+      },
+    });
+    const mimeType = pickVoiceMime();
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 32_000 } : undefined);
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data); };
+    const indicator = makeIndicator();
+    btn.classList.add('recording');
+    voiceState = {
+      convId, stream, recorder, chunks, indicator, btn,
+      startedAt: Date.now(), canceled: false, deadline: null,
+    };
+    recorder.onstop = async () => finalizeVoiceRecord();
+    recorder.start();
+    voiceState.deadline = setTimeout(() => stopVoiceRecord(convId, btn), VOICE_MAX_MS);
+  } catch (e) {
+    toast('마이크 권한 필요: ' + (e.message || 'unknown'), 'error');
+  }
+}
+
+function pickVoiceMime() {
+  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+  for (const m of candidates) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)) return m;
+  }
+  return undefined;
+}
+
+function stopVoiceRecord(convId, btn) {
+  if (!voiceState || voiceState.canceled) return;
+  if (voiceState.recorder.state === 'inactive') return;
+  // Too short — treat as cancel.
+  if (Date.now() - voiceState.startedAt < 400) {
+    cancelVoiceRecord(btn);
+    return;
+  }
+  if (voiceState.deadline) { clearTimeout(voiceState.deadline); voiceState.deadline = null; }
+  voiceState.recorder.stop();
+}
+
+function cancelVoiceRecord(btn) {
+  if (!voiceState) return;
+  voiceState.canceled = true;
+  if (voiceState.deadline) { clearTimeout(voiceState.deadline); voiceState.deadline = null; }
+  try { voiceState.recorder.stop(); } catch {}
+  cleanupVoiceState();
+}
+
+function cleanupVoiceState() {
+  if (!voiceState) return;
+  try { voiceState.stream.getTracks().forEach((t) => t.stop()); } catch {}
+  try { voiceState.indicator.remove(); } catch {}
+  voiceState.btn?.classList.remove('recording');
+  voiceState = null;
+}
+
+async function finalizeVoiceRecord() {
+  if (!voiceState || voiceState.canceled) {
+    cleanupVoiceState();
+    return;
+  }
+  const { convId, chunks } = voiceState;
+  const mime = voiceState.recorder.mimeType || 'audio/webm';
+  const blob = new Blob(chunks, { type: mime });
+  cleanupVoiceState();
+  if (blob.size === 0) return;
+
+  // Build a small JSON payload so the receiver can rebuild the audio
+  // blob without a separate metadata channel.
+  const buf = await blob.arrayBuffer();
+  const payload = {
+    kind: 'voice',
+    mime,
+    durationMs: Math.min(VOICE_MAX_MS, Date.now() - (Date.now() - VOICE_MAX_MS)), // best effort
+    audio: b64uEncode(buf),
+  };
+  const envelope = await encryptForConv(convId, JSON.stringify(payload));
+  if (!envelope) { toast('상대 키 누락 — 전송 실패', 'error'); return; }
+  if (envelope.ciphertext.length > VOICE_MAX_CIPHERTEXT_LEN) {
+    toast('녹음이 너무 깁니다. 더 짧게 시도하세요.', 'error');
+    return;
+  }
+
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (!conv) return;
+  const peer = conv.members.find((m) => m.userId !== state.me.userId);
+  const clientMessageId = 'voice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  // Optimistic insert.
+  const optimistic = {
+    id: '__pending__' + clientMessageId,
+    clientMessageId,
+    conversationId: convId,
+    senderDeviceId: state.me.deviceId,
+    ciphertext: envelope.ciphertext,
+    nonce: envelope.nonce,
+    messageType: 'voice',
+    serverReceivedAt: null,
+    _localAt: new Date().toISOString(),
+    _status: 'pending',
+    _voiceUrl: URL.createObjectURL(blob),
+  };
+  const list = state.messagesByConv.get(convId) || [];
+  list.push(optimistic);
+  state.messagesByConv.set(convId, list);
+  renderActivePanel();
+
+  try {
+    const sent = await authedApi('/messages', {
+      method: 'POST',
+      body: {
+        conversationId: convId,
+        clientMessageId,
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId: convId,
+          senderDeviceId: state.me.deviceId,
+          recipientUserId: peer.userId,
+          ciphertext: envelope.ciphertext,
+          nonce: envelope.nonce,
+          messageType: 'voice',
+        },
+      },
+    });
+    sent.message._voiceUrl = optimistic._voiceUrl;
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = sent.message;
+    conv.lastMessage = sent.message;
+    persistMessage(sent.message);
+    persistConversation(conv);
+    renderActivePanel();
+    renderSidebar();
+  } catch (e) {
+    toast('음성 전송 실패: ' + e.message, 'error');
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = { ...list[idx], _status: 'failed' };
+    renderActivePanel();
+  }
+}
+
+// On receive of a voice message, decrypt the JSON payload and rebuild
+// the audio blob so renderPreview can drop it into an <audio> tag.
+async function maybeMaterializeVoice(msg, convId) {
+  if (msg.messageType !== 'voice') return;
+  if (msg._voiceUrl) return;
+  try {
+    const decrypted = await decryptFromConv(convId, msg.ciphertext, msg.nonce);
+    const text = typeof decrypted === 'string' ? decrypted : decrypted?.text;
+    if (!text) return;
+    const payload = JSON.parse(text);
+    if (payload?.kind !== 'voice' || !payload.audio) return;
+    const bytes = b64uDecode(payload.audio);
+    const blob = new Blob([bytes], { type: payload.mime || 'audio/webm' });
+    msg._voiceUrl = URL.createObjectURL(blob);
+    if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
+  } catch {}
+}
+
+// Voice ingestion is hooked at the call site inside onMessageNew —
+// no wrapper required. See `if (msg.messageType === 'voice')` above.

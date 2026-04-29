@@ -88,7 +88,11 @@ class EnvelopeDto {
 
   @ApiProperty()
   @IsString()
-  @MaxLength(16384)
+  // 128KB ceiling — fits a ~30s opus@32kbps voice memo as inline
+  // ciphertext after base64 inflation, which keeps the messages table
+  // out of the attachment flow for short voice notes. Anything larger
+  // must use the attachment upload-ticket path.
+  @MaxLength(131072)
   ciphertext!: string;
 
   @ApiProperty()
@@ -141,7 +145,11 @@ export class SendMessageDto {
 export class EditMessageDto {
   @ApiProperty()
   @IsString()
-  @MaxLength(16384)
+  // 128KB ceiling — fits a ~30s opus@32kbps voice memo as inline
+  // ciphertext after base64 inflation, which keeps the messages table
+  // out of the attachment flow for short voice notes. Anything larger
+  // must use the attachment upload-ticket path.
+  @MaxLength(131072)
   ciphertext!: string;
 
   @ApiProperty()

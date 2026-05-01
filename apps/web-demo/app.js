@@ -1261,6 +1261,7 @@ function renderOnePanel(convId) {
       ])
     : null;
 
+  const searchBar = renderPanelSearch(convId);
   const panelNode = el('div', { class: 'panel', dataset: { conv: convId } }, [
     el('div', { class: 'panel-header' }, [
       headerAvatar,
@@ -1268,7 +1269,19 @@ function renderOnePanel(convId) {
         el('div', { class: 'name' }, ['@' + (peer?.handle ?? '?')]),
         el('div', { class: subClass }, [subText]),
       ]),
+      el(
+        'button',
+        {
+          class: 'icon-btn',
+          'aria-label': '대화에서 찾기 (Ctrl/Cmd+F)',
+          title: '대화에서 찾기',
+          onclick: () => openPanelSearch(convId),
+          style: 'padding: 4px 8px; opacity: 0.7;',
+        },
+        ['🔍'],
+      ),
     ]),
+    searchBar,
     msgsNode,
     el('div', { class: 'panel-input-wrap' }, [
       replyBanner,
@@ -3546,3 +3559,413 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault(); first.focus();
   }
 });
+
+// ---------- Phase AH: in-conversation search + @mention autocomplete ----------
+
+const ahStyles = document.createElement('style');
+ahStyles.textContent = `
+  /* In-conversation search bar slides in below the panel header */
+  .panel-search {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .panel-search input {
+    flex: 1;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 5px 10px;
+    color: inherit;
+    font-size: 13px;
+  }
+  .panel-search button {
+    background: transparent; border: 0; color: inherit; cursor: pointer;
+    padding: 4px 8px; border-radius: 4px; font-size: 13px;
+  }
+  .panel-search button:hover { background: rgba(255,255,255,0.08); }
+  .panel-search .count {
+    font-size: 11px; opacity: 0.6;
+    min-width: 36px; text-align: center;
+  }
+  /* Highlight match inside bubble */
+  .msg-text mark {
+    background: rgba(255, 220, 100, 0.4);
+    color: inherit;
+    padding: 0 2px;
+    border-radius: 2px;
+  }
+  .msg-row.search-active { box-shadow: 0 0 0 2px rgba(255, 220, 100, 0.45); border-radius: 8px; }
+
+  /* @mention chip */
+  .msg-text .mention {
+    background: rgba(108, 142, 255, 0.15);
+    border-radius: 4px;
+    padding: 0 4px;
+    color: var(--accent, #6c8eff);
+    font-weight: 500;
+  }
+
+  /* @mention autocomplete dropdown */
+  .mention-pop {
+    position: absolute;
+    background: #1c1d22;
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+    padding: 4px;
+    z-index: 1100;
+    min-width: 200px;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .mention-pop-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .mention-pop-item:hover, .mention-pop-item.active {
+    background: rgba(108, 142, 255, 0.18);
+  }
+  .mention-pop-empty { padding: 10px; opacity: 0.6; font-size: 12px; text-align: center; }
+`;
+document.head.appendChild(ahStyles);
+
+// --- Search state per conversation. We keep the open/closed flag and
+// the current query in a Map so reopening a conversation that the user
+// was searching restores the state.
+const searchStateByConv = new Map();
+function getSearchState(convId) {
+  if (!searchStateByConv.has(convId)) {
+    searchStateByConv.set(convId, { open: false, query: '', idx: 0 });
+  }
+  return searchStateByConv.get(convId);
+}
+
+function openPanelSearch(convId) {
+  const st = getSearchState(convId);
+  st.open = true;
+  renderActivePanel();
+  requestAnimationFrame(() => {
+    const input = document.querySelector(`.panel[data-conv="${convId}"] .panel-search input`);
+    input?.focus();
+  });
+}
+function closePanelSearch(convId) {
+  const st = getSearchState(convId);
+  st.open = false;
+  st.query = '';
+  st.idx = 0;
+  renderActivePanel();
+}
+
+// Build the search bar DOM. Returns null when search is closed for
+// this conversation.
+function renderPanelSearch(convId) {
+  const st = getSearchState(convId);
+  if (!st.open) return null;
+  const list = state.messagesByConv.get(convId) || [];
+  const q = st.query.trim().toLowerCase();
+  const matches = q
+    ? list.filter((m) => typeof m._plaintext === 'string' && m._plaintext.toLowerCase().includes(q))
+    : [];
+  const total = matches.length;
+  if (st.idx >= total && total > 0) st.idx = total - 1;
+  const counter = total > 0 ? `${st.idx + 1}/${total}` : (q ? '0/0' : '');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'panel-search';
+  wrap.setAttribute('role', 'search');
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '대화에서 찾기…';
+  input.value = st.query;
+  input.setAttribute('aria-label', '메시지 검색');
+  input.addEventListener('input', () => {
+    st.query = input.value;
+    st.idx = 0;
+    renderActivePanel();
+    requestAnimationFrame(() => {
+      const f = document.querySelector(`.panel[data-conv="${convId}"] .panel-search input`);
+      if (f) { f.focus(); f.setSelectionRange(input.value.length, input.value.length); }
+    });
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (total === 0) return;
+      st.idx = e.shiftKey
+        ? (st.idx - 1 + total) % total
+        : (st.idx + 1) % total;
+      scrollToMatch(convId, matches[st.idx]?.id);
+      renderActivePanel();
+      requestAnimationFrame(() => {
+        document.querySelector(`.panel[data-conv="${convId}"] .panel-search input`)?.focus();
+      });
+    } else if (e.key === 'Escape') {
+      closePanelSearch(convId);
+    }
+  });
+
+  const counterEl = document.createElement('span');
+  counterEl.className = 'count';
+  counterEl.textContent = counter;
+
+  const prev = document.createElement('button');
+  prev.textContent = '↑';
+  prev.title = '이전 결과 (Shift+Enter)';
+  prev.addEventListener('click', () => {
+    if (total === 0) return;
+    st.idx = (st.idx - 1 + total) % total;
+    scrollToMatch(convId, matches[st.idx]?.id);
+    renderActivePanel();
+  });
+  const next = document.createElement('button');
+  next.textContent = '↓';
+  next.title = '다음 결과 (Enter)';
+  next.addEventListener('click', () => {
+    if (total === 0) return;
+    st.idx = (st.idx + 1) % total;
+    scrollToMatch(convId, matches[st.idx]?.id);
+    renderActivePanel();
+  });
+  const close = document.createElement('button');
+  close.textContent = '✕';
+  close.title = '닫기 (Esc)';
+  close.addEventListener('click', () => closePanelSearch(convId));
+
+  wrap.append(input, counterEl, prev, next, close);
+  return wrap;
+}
+
+function scrollToMatch(convId, msgId) {
+  if (!msgId) return;
+  const row = document.querySelector(
+    `.panel[data-conv="${convId}"] .msg-row[data-msg-id="${msgId}"]`,
+  );
+  if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// Mark search matches inside the bubble after render. Run after the
+// regular renderActivePanel() call. The search-active class on the
+// row gives a yellow outline; <mark> wraps the substring.
+function highlightSearchMatches() {
+  for (const [convId, st] of searchStateByConv) {
+    if (!st.open) continue;
+    const q = st.query.trim();
+    if (!q) continue;
+    const panel = document.querySelector(`.panel[data-conv="${convId}"]`);
+    if (!panel) continue;
+    const list = state.messagesByConv.get(convId) || [];
+    const matches = list.filter((m) =>
+      typeof m._plaintext === 'string' && m._plaintext.toLowerCase().includes(q.toLowerCase()),
+    );
+    matches.forEach((m, i) => {
+      const row = panel.querySelector(`.msg-row[data-msg-id="${m.id}"]`);
+      if (!row) return;
+      if (i === st.idx) row.classList.add('search-active');
+      const span = row.querySelector('.msg-text');
+      if (!span || !m._plaintext) return;
+      const lower = m._plaintext.toLowerCase();
+      const qLower = q.toLowerCase();
+      let cursor = 0;
+      const out = document.createDocumentFragment();
+      while (cursor < m._plaintext.length) {
+        const found = lower.indexOf(qLower, cursor);
+        if (found === -1) {
+          out.appendChild(document.createTextNode(m._plaintext.slice(cursor)));
+          break;
+        }
+        if (found > cursor) {
+          out.appendChild(document.createTextNode(m._plaintext.slice(cursor, found)));
+        }
+        const mark = document.createElement('mark');
+        mark.textContent = m._plaintext.slice(found, found + q.length);
+        out.appendChild(mark);
+        cursor = found + q.length;
+      }
+      span.replaceChildren(out);
+    });
+  }
+}
+
+// Hook the highlighter into renderActivePanel via a MutationObserver
+// on the panels container. After every render we run the highlighter
+// once so the open search bar's matches show up immediately.
+const __veilSearchObserver = new MutationObserver(() => {
+  // Defer to next frame so the render finishes before we mutate.
+  requestAnimationFrame(highlightSearchMatches);
+});
+setTimeout(() => {
+  const panels = document.getElementById('panels');
+  if (panels) __veilSearchObserver.observe(panels, { childList: true, subtree: true });
+}, 0);
+
+// Open the panel search on Ctrl/Cmd+F when a conversation is active.
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod || (e.key !== 'f' && e.key !== 'F')) return;
+  if (!state.activeConv) return;
+  // Only intercept when not focused in another input — let the user use
+  // the OS find for the rest of the page if they want it.
+  if (isTypingTarget(e.target)) {
+    const inSearch = e.target.closest('.panel-search');
+    if (!inSearch) return;
+  }
+  e.preventDefault();
+  openPanelSearch(state.activeConv);
+});
+
+// Add the search shortcut to the help dialog.
+SHORTCUTS.splice(2, 0, {
+  keys: 'mod+f', label: '대화 안에서 찾기', sequence: ['Ctrl/Cmd', 'F'],
+});
+
+// --- @mention autocomplete inside the message input.
+// On every keystroke we look back from the caret for "@<word>" without
+// whitespace. If found, we show a small popover with members of the
+// active conversation whose handle matches the prefix.
+let mentionPop = null;
+function closeMentionPop() {
+  if (mentionPop) { mentionPop.remove(); mentionPop = null; }
+}
+function getMentionContext(textarea) {
+  const v = textarea.value;
+  const caret = textarea.selectionStart ?? v.length;
+  const left = v.slice(0, caret);
+  const at = left.lastIndexOf('@');
+  if (at < 0) return null;
+  // Whitespace between '@' and caret kills the mention.
+  if (/\s/.test(left.slice(at + 1))) return null;
+  // The '@' must be at start-of-input or follow whitespace/punct.
+  const before = at > 0 ? left[at - 1] : ' ';
+  if (!/\s|[(\[{,.;:!?]/.test(before)) return null;
+  return { start: at, prefix: left.slice(at + 1) };
+}
+function membersForActiveConv() {
+  const conv = state.conversations.find((c) => c.id === state.activeConv);
+  if (!conv) return [];
+  return (conv.members ?? []).filter((m) => m.userId !== state.me?.userId);
+}
+function showMentionPop(textarea, ctx) {
+  closeMentionPop();
+  const candidates = membersForActiveConv()
+    .filter((m) => (m.handle || '').toLowerCase().startsWith(ctx.prefix.toLowerCase()))
+    .slice(0, 6);
+  const pop = document.createElement('div');
+  pop.className = 'mention-pop';
+  pop.setAttribute('role', 'listbox');
+  if (candidates.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'mention-pop-empty';
+    empty.textContent = '일치하는 핸들 없음';
+    pop.appendChild(empty);
+  } else {
+    candidates.forEach((m, i) => {
+      const item = document.createElement('div');
+      item.className = 'mention-pop-item' + (i === 0 ? ' active' : '');
+      item.dataset.handle = m.handle;
+      item.dataset.userId = m.userId;
+      item.setAttribute('role', 'option');
+      const avatar = avatarFor(m.handle, 'sm');
+      const text = document.createElement('div');
+      text.innerHTML = `<div>@${escapeHtml(m.handle || '')}</div>`
+        + (m.displayName ? `<div style="font-size:11px;opacity:0.6">${escapeHtml(m.displayName)}</div>` : '');
+      item.appendChild(avatar);
+      item.appendChild(text);
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        completeMention(textarea, ctx, m.handle);
+      });
+      pop.appendChild(item);
+    });
+  }
+  // Position below the textarea caret. Approximate via textarea bounds.
+  const rect = textarea.getBoundingClientRect();
+  pop.style.left = (rect.left + 8) + 'px';
+  pop.style.bottom = (window.innerHeight - rect.top + 4) + 'px';
+  document.body.appendChild(pop);
+  mentionPop = pop;
+}
+function completeMention(textarea, ctx, handle) {
+  const v = textarea.value;
+  const caret = textarea.selectionStart ?? v.length;
+  const next = v.slice(0, ctx.start) + '@' + handle + ' ' + v.slice(caret);
+  textarea.value = next;
+  const newCaret = ctx.start + handle.length + 2;
+  textarea.setSelectionRange(newCaret, newCaret);
+  textarea.dispatchEvent(new Event('input'));
+  closeMentionPop();
+  textarea.focus();
+}
+
+// Attach the mention listener to every textarea inside .panel-input.
+// We use a single delegated listener on document so newly-rendered
+// textareas pick it up automatically.
+document.addEventListener('input', (e) => {
+  const ta = e.target;
+  if (!(ta instanceof HTMLTextAreaElement)) return;
+  if (!ta.closest('.panel-input')) return;
+  const ctx = getMentionContext(ta);
+  if (!ctx) { closeMentionPop(); return; }
+  showMentionPop(ta, ctx);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (!mentionPop) return;
+  const items = mentionPop.querySelectorAll('.mention-pop-item');
+  if (items.length === 0) return;
+  let active = mentionPop.querySelector('.mention-pop-item.active');
+  let activeIdx = Array.from(items).indexOf(active);
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    activeIdx = (activeIdx + 1) % items.length;
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    activeIdx = (activeIdx - 1 + items.length) % items.length;
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    const handle = items[activeIdx]?.dataset?.handle;
+    const ta = e.target instanceof HTMLTextAreaElement
+      ? e.target
+      : document.querySelector('.panel-input textarea');
+    if (handle && ta) {
+      const ctx = getMentionContext(ta);
+      if (ctx) completeMention(ta, ctx, handle);
+    }
+    return;
+  } else if (e.key === 'Escape') {
+    closeMentionPop();
+    return;
+  } else {
+    return;
+  }
+  items.forEach((it) => it.classList.remove('active'));
+  items[activeIdx].classList.add('active');
+}, true);
+
+// Close the popover on any click outside.
+document.addEventListener('click', (e) => {
+  if (!mentionPop) return;
+  if (!mentionPop.contains(e.target) && !(e.target instanceof HTMLTextAreaElement)) {
+    closeMentionPop();
+  }
+});
+
+// Render @handles inside delivered messages with a styled chip. Hooks
+// into the existing markdown renderer by post-processing its output —
+// renderMessageInline already escaped HTML so we operate on the
+// already-safe HTML string.
+const __veilOriginalRenderInline = renderMessageInline;
+renderMessageInline = function (text) {
+  const out = __veilOriginalRenderInline(text);
+  // Match @ followed by 3-32 lowercase/digit/_ chars, the same shape
+  // the server validates on registration.
+  return out.replace(
+    /(^|[\s(\[{,.;:!?])@([a-z0-9_]{3,32})\b/g,
+    '$1<span class="mention">@$2</span>',
+  );
+};

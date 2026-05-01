@@ -412,6 +412,11 @@ function setConnPill(kind, text) {
   const pill = $('conn-pill');
   pill.className = 'topbar-pill ' + kind;
   pill.textContent = text;
+  // Phase AF: visual feedback class so the user notices a stuck
+  // disconnect even when the pill text is small.
+  pill.classList.remove('is-disconnected', 'is-connecting');
+  if (kind === 'connecting' || kind === 'offline') pill.classList.add('is-connecting');
+  if (kind === 'error' || kind === 'disconnected') pill.classList.add('is-disconnected');
 }
 
 function connectSocket() {
@@ -539,6 +544,12 @@ async function onMessageNew(msg) {
   // Voice messages carry their audio bytes inline in the encrypted
   // payload. Reconstruct the playable blob URL once decryption lands.
   if (msg.messageType === 'voice') await maybeMaterializeVoice(msg, convId);
+  // Phase AF: surface unread count in tab title + OS notification when
+  // the tab is hidden. We only count peer messages, not our own echo.
+  if (msg.senderDeviceId !== state.me?.deviceId) {
+    bumpUnread();
+    maybeShowNotification(msg);
+  }
   // Re-render with the now-plaintext bubble + sidebar preview.
   renderSidebar();
   if (convId === state.activeConv || convId === state.secondaryConv) renderActivePanel();
@@ -833,7 +844,29 @@ function renderPreview(msgOrCiphertext) {
         style: 'max-width: 240px; height: 32px; vertical-align: middle;',
       });
     }
-    if (msgOrCiphertext._plaintext != null) return msgOrCiphertext._plaintext;
+    if (msgOrCiphertext._imageUrl) {
+      const wrap = document.createElement('span');
+      const img = document.createElement('img');
+      img.className = 'msg-inline-image';
+      img.src = msgOrCiphertext._imageUrl;
+      img.alt = 'image';
+      img.onclick = (e) => { e.stopPropagation(); openImageZoom(msgOrCiphertext._imageUrl); };
+      wrap.appendChild(img);
+      if (msgOrCiphertext._plaintext && msgOrCiphertext._plaintext !== '🖼 이미지') {
+        const cap = document.createElement('div');
+        cap.style.marginTop = '4px';
+        cap.innerHTML = renderMessageInline(msgOrCiphertext._plaintext);
+        wrap.appendChild(cap);
+      }
+      return wrap;
+    }
+    if (msgOrCiphertext._plaintext != null) {
+      // Phase AF: minimal markdown + URL auto-link. Returned as a
+      // detached <span> so the caller appends it as a single child.
+      const span = document.createElement('span');
+      span.innerHTML = renderMessageInline(msgOrCiphertext._plaintext);
+      return span;
+    }
     return '🔒 암호화됨';
   }
   // Rare callers passing a raw ciphertext string instead of a message object.
@@ -978,7 +1011,7 @@ function renderActivePanel() {
   if (slots.length === 0) {
     panels.replaceChildren(
       el('div', { class: 'panel-empty', style: 'display:flex' }, [
-        el('div', { class: 'empty-emoji' }, ['💬']),
+        emptyStateSvg('chat'),
         el('div', { class: 'empty-title' }, ['대화를 골라주세요']),
         el('div', { class: 'empty-sub' }, ['좌측에서 대화를 선택하거나 새로 시작하세요']),
       ]),
@@ -1113,9 +1146,9 @@ function renderOnePanel(convId) {
   if (msgs.length === 0) {
     msgsNode.appendChild(
       el('div', { class: 'panel-empty', style: 'display:flex; flex:1' }, [
-        el('div', { class: 'empty-emoji' }, ['👋']),
-        el('div', { class: 'empty-title' }, ['아직 메시지가 없어요']),
-        el('div', { class: 'empty-sub' }, ['아래 입력창으로 첫 메시지를 보내보세요']),
+        emptyStateSvg('wave'),
+        el('div', { class: 'empty-title' }, ['첫 메시지를 보내보세요']),
+        el('div', { class: 'empty-sub' }, ['이 대화의 메시지는 두 사람 외에는 아무도 못 봐요']),
       ]),
     );
   }
@@ -2892,3 +2925,327 @@ async function maybeMaterializeVoice(msg, convId) {
 
 // Voice ingestion is hooked at the call site inside onMessageNew —
 // no wrapper required. See `if (msg.messageType === 'voice')` above.
+
+// ---------- polish: notifications + tab badge + link detection + markdown ----------
+
+const polishStyles = document.createElement('style');
+polishStyles.textContent = `
+  /* Polished link rendering inside messages */
+  .msg-text a {
+    color: var(--accent, #6c8eff);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    word-break: break-all;
+  }
+  .msg-text a:hover { color: var(--accent-strong, #9bb3ff); }
+
+  /* Inline code + bold/italic from minimal markdown */
+  .msg-text code {
+    background: rgba(255,255,255,0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em;
+  }
+  .msg-text strong { font-weight: 600; }
+  .msg-text em { font-style: italic; opacity: 0.95; }
+
+  /* Refined empty-state SVG container */
+  .empty-svg {
+    width: 96px;
+    height: 96px;
+    opacity: 0.55;
+    margin-bottom: 4px;
+  }
+
+  /* Notification permission banner */
+  .notif-prompt {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(108, 142, 255, 0.08);
+    border: 1px solid rgba(108, 142, 255, 0.18);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin: 8px;
+    font-size: 13px;
+  }
+  .notif-prompt button {
+    background: var(--accent, #6c8eff);
+    border: 0;
+    color: white;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .notif-prompt .dismiss {
+    background: transparent;
+    color: inherit;
+    opacity: 0.7;
+    padding: 5px 8px;
+  }
+
+  /* Better connection pill with retry indicator */
+  #conn-pill { transition: background-color 0.2s ease; }
+  #conn-pill.is-disconnected {
+    background: rgba(255, 80, 80, 0.18);
+    color: #ffb3b3;
+  }
+  #conn-pill.is-connecting {
+    background: rgba(255, 180, 80, 0.18);
+    color: #ffd9a3;
+  }
+
+  /* Loading skeleton for sidebar while conversations are fetching */
+  .conv-skeleton {
+    display: flex;
+    gap: 10px;
+    padding: 10px 12px;
+    align-items: center;
+  }
+  .conv-skeleton-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s infinite;
+  }
+  .conv-skeleton-line {
+    height: 10px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s infinite;
+    margin-bottom: 6px;
+  }
+  .conv-skeleton-line.w-60 { width: 60%; }
+  .conv-skeleton-line.w-40 { width: 40%; }
+  @keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  /* Inline image preview inside bubble */
+  .msg-inline-image {
+    max-width: 280px;
+    max-height: 320px;
+    border-radius: 10px;
+    margin-top: 4px;
+    cursor: zoom-in;
+    display: block;
+  }
+  .image-zoom-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 1500;
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out;
+  }
+  .image-zoom-backdrop img {
+    max-width: 92vw;
+    max-height: 92vh;
+    border-radius: 6px;
+  }
+`;
+document.head.appendChild(polishStyles);
+
+// --- Markdown lite: *bold*, _italic_, \`code\`, plus URL auto-link.
+// Order matters: escape HTML first, then transform.
+function escapeHtml(s) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const URL_RE = /\b(https?:\/\/[^\s<>()]+)/g;
+const CODE_RE = /`([^`\n]+)`/g;
+const BOLD_RE = /\*([^*\n]+)\*/g;
+const ITALIC_RE = /(^|[\s(\[])_([^_\n]+)_/g;
+
+function renderMessageInline(text) {
+  if (typeof text !== 'string') return '';
+  const escaped = escapeHtml(text);
+  // Order: code first (preserves contents), then bold, italic, URL.
+  return escaped
+    .replace(CODE_RE, '<code>$1</code>')
+    .replace(BOLD_RE, '<strong>$1</strong>')
+    .replace(ITALIC_RE, '$1<em>$2</em>')
+    .replace(URL_RE, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+// Patch renderPreview so message text gets formatted markup. We keep the
+// non-string fast paths (audio blob, '🔒 …' fallbacks) intact.
+// (Implementation patched at the call site below — globalThis re-bind
+// doesn't reach module-local references.)
+
+function openImageZoom(url) {
+  const back = document.createElement('div');
+  back.className = 'image-zoom-backdrop';
+  const img = document.createElement('img');
+  img.src = url;
+  back.appendChild(img);
+  back.addEventListener('click', () => back.remove());
+  document.body.appendChild(back);
+}
+
+// SVG empty-state illustrations. Two variants: a chat bubble cluster
+// for "no conversation selected" and a wave for "no messages yet".
+// Inline so we don't add an extra HTTP request and so the colors
+// inherit from the theme via currentColor.
+function emptyStateSvg(kind) {
+  const wrap = document.createElement('div');
+  wrap.className = 'empty-svg';
+  const svgNs = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNs, 'svg');
+  svg.setAttribute('viewBox', '0 0 96 96');
+  svg.setAttribute('width', '96');
+  svg.setAttribute('height', '96');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  if (kind === 'chat') {
+    // Two overlapping rounded rectangles + dots.
+    const r1 = document.createElementNS(svgNs, 'rect');
+    r1.setAttribute('x', '14'); r1.setAttribute('y', '20');
+    r1.setAttribute('width', '50'); r1.setAttribute('height', '34');
+    r1.setAttribute('rx', '8');
+    svg.appendChild(r1);
+    const r2 = document.createElementNS(svgNs, 'rect');
+    r2.setAttribute('x', '34'); r2.setAttribute('y', '40');
+    r2.setAttribute('width', '50'); r2.setAttribute('height', '34');
+    r2.setAttribute('rx', '8');
+    r2.setAttribute('opacity', '0.6');
+    svg.appendChild(r2);
+    [29, 39, 49].forEach((cx) => {
+      const c = document.createElementNS(svgNs, 'circle');
+      c.setAttribute('cx', String(cx)); c.setAttribute('cy', '37'); c.setAttribute('r', '1.5');
+      c.setAttribute('fill', 'currentColor'); c.setAttribute('stroke', 'none');
+      svg.appendChild(c);
+    });
+  } else {
+    // Wave + chat bubble outline for "first message" empty.
+    const path = document.createElementNS(svgNs, 'path');
+    path.setAttribute('d', 'M14 60 Q 28 48 42 60 T 70 60 T 82 60');
+    path.setAttribute('opacity', '0.7');
+    svg.appendChild(path);
+    const bubble = document.createElementNS(svgNs, 'path');
+    bubble.setAttribute(
+      'd',
+      'M22 18 H 74 A 8 8 0 0 1 82 26 V 42 A 8 8 0 0 1 74 50 H 42 L 32 60 V 50 H 22 A 8 8 0 0 1 14 42 V 26 A 8 8 0 0 1 22 18 Z',
+    );
+    svg.appendChild(bubble);
+    [32, 44, 56, 68].forEach((cx) => {
+      const c = document.createElementNS(svgNs, 'circle');
+      c.setAttribute('cx', String(cx)); c.setAttribute('cy', '34'); c.setAttribute('r', '1.5');
+      c.setAttribute('fill', 'currentColor'); c.setAttribute('stroke', 'none');
+      svg.appendChild(c);
+    });
+  }
+  wrap.appendChild(svg);
+  return wrap;
+}
+
+// --- Browser notifications + tab badge.
+// Native Notifications API for OS-level alerts when the tab is hidden.
+// Tab title shows an unread count; clears when the tab regains focus.
+
+let unreadCount = 0;
+let notifPromptDismissed = false;
+const NOTIF_DISMISS_KEY = 'veil-demo-notif-prompt-dismissed-v1';
+try { notifPromptDismissed = localStorage.getItem(NOTIF_DISMISS_KEY) === '1'; } catch {}
+
+function updateTabBadge() {
+  const base = document.title.replace(/^\(\d+\)\s*/, '').replace(/^VEIL$/, 'VEIL');
+  document.title = unreadCount > 0 ? `(${unreadCount}) ${base.replace(/^\(\d+\)\s*/, '')}` : 'VEIL';
+}
+
+function bumpUnread() {
+  if (document.visibilityState === 'visible') return;
+  unreadCount += 1;
+  updateTabBadge();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    unreadCount = 0;
+    updateTabBadge();
+  }
+});
+
+function maybeShowNotification(msg) {
+  if (document.visibilityState === 'visible') return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+  // Sender visible when we know it locally.
+  const conv = state.conversations.find((c) => c.id === msg.conversationId);
+  const peer = conv?.members?.find((m) => m.userId !== state.me?.userId);
+  const title = peer?.handle ? `@${peer.handle}` : 'VEIL';
+  // Body is the decrypted plaintext IFF we already have it locally —
+  // otherwise we say "new encrypted message" to avoid faking content.
+  // Plaintext that DOES surface here lives only in the user's own browser
+  // notification system; the server still never sees it.
+  const body = typeof msg._plaintext === 'string' && msg._plaintext.length > 0
+    ? (msg._plaintext.length > 120 ? msg._plaintext.slice(0, 120) + '…' : msg._plaintext)
+    : '🔒 새 암호화 메시지';
+  try {
+    const n = new Notification(title, {
+      body,
+      icon: './icon.svg',
+      tag: 'veil-' + msg.conversationId,
+      silent: false,
+    });
+    n.onclick = () => {
+      window.focus();
+      if (msg.conversationId) state.activeConv = msg.conversationId;
+      try { n.close(); } catch {}
+      if (typeof renderActivePanel === 'function') renderActivePanel();
+    };
+  } catch {}
+}
+
+function ensureNotifPrompt() {
+  if (notifPromptDismissed) return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission !== 'default') return;
+  if (!state.me) return; // only after auth
+  if (document.querySelector('.notif-prompt')) return;
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  const node = document.createElement('div');
+  node.className = 'notif-prompt';
+  node.innerHTML = `
+    <span style="flex:1;line-height:1.4">알림 켤까요?<br><span style="opacity:0.7;font-size:11px">백그라운드에서도 새 메시지를 알려요.</span></span>
+    <button class="enable">켜기</button>
+    <button class="dismiss">나중에</button>
+  `;
+  node.querySelector('.enable').addEventListener('click', async () => {
+    try {
+      const result = await Notification.requestPermission();
+      if (result === 'granted') {
+        toast('알림 켜짐', 'good');
+      } else {
+        toast('알림 거부됨', 'error');
+      }
+    } catch {}
+    node.remove();
+  });
+  node.querySelector('.dismiss').addEventListener('click', () => {
+    notifPromptDismissed = true;
+    try { localStorage.setItem(NOTIF_DISMISS_KEY, '1'); } catch {}
+    node.remove();
+  });
+  sidebar.insertBefore(node, sidebar.firstChild);
+}
+// Poll every 2s to inject the prompt once the user has authenticated.
+setInterval(ensureNotifPrompt, 2000);
+
+// onMessageNew gets the unread bump + notification call inline at its
+// existing call site (search for "if (msg.messageType === 'voice')").
+// setConnPill: we replace by patching the function body directly below.

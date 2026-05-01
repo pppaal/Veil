@@ -544,6 +544,9 @@ async function onMessageNew(msg) {
   // Voice messages carry their audio bytes inline in the encrypted
   // payload. Reconstruct the playable blob URL once decryption lands.
   if (msg.messageType === 'voice') await maybeMaterializeVoice(msg, convId);
+  // Image messages: fetch + decrypt the attachment ciphertext using
+  // the per-attachment key inside the now-decrypted body.
+  if (msg.messageType === 'image') maybeMaterializeImage(msg);
   // Phase AF: surface unread count in tab title + OS notification when
   // the tab is hidden. We only count peer messages, not our own echo.
   if (msg.senderDeviceId !== state.me?.deviceId) {
@@ -3969,3 +3972,290 @@ renderMessageInline = function (text) {
     '$1<span class="mention">@$2</span>',
   );
 };
+
+// ---------- Phase AI: image attachment upload ----------
+// User picks an image → we generate a fresh AES-256-GCM key for this
+// attachment, encrypt the bytes, compute sha256 of the ciphertext,
+// hit the upload-ticket → PUT → complete endpoints, then send a
+// message whose envelope.attachment carries the metadata and whose
+// encrypted body carries the per-attachment key + nonce inside a JSON
+// payload (so the recipient can decrypt after the existing per-conv
+// key unwraps the body).
+
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const IMAGE_MIME_ALLOW = new Set([
+  'image/jpeg', 'image/png', 'image/webp',
+]);
+
+const aiStyles = document.createElement('style');
+aiStyles.textContent = `
+  .image-btn {
+    background: transparent; border: 0; color: inherit;
+    cursor: pointer; font-size: 18px; padding: 0 6px;
+  }
+  .image-btn:hover { color: var(--accent, #6c8eff); }
+  .panel-input.drag-over {
+    background: rgba(108, 142, 255, 0.08);
+    outline: 2px dashed rgba(108, 142, 255, 0.4);
+    outline-offset: -2px;
+    border-radius: 8px;
+  }
+  .image-uploading {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; opacity: 0.7;
+  }
+  .image-uploading::before {
+    content: '';
+    display: inline-block;
+    width: 10px; height: 10px;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+`;
+document.head.appendChild(aiStyles);
+
+async function pickAndSendImage(convId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/jpeg,image/png,image/webp';
+  input.addEventListener('change', async () => {
+    const file = input.files?.[0];
+    if (file) await sendImageFile(convId, file);
+  });
+  input.click();
+}
+
+async function sendImageFile(convId, file) {
+  if (!IMAGE_MIME_ALLOW.has(file.type)) {
+    toast('JPG / PNG / WebP 만 지원해요', 'error');
+    return;
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    toast('이미지가 10MB 를 초과합니다', 'error');
+    return;
+  }
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (!conv) return;
+  const peer = conv.members.find((m) => m.userId !== state.me.userId);
+  const clientMessageId = 'img-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  // Optimistic bubble with the local file as preview while we upload.
+  const localUrl = URL.createObjectURL(file);
+  const optimistic = {
+    id: '__pending__' + clientMessageId,
+    clientMessageId,
+    conversationId: convId,
+    senderDeviceId: state.me.deviceId,
+    ciphertext: '',
+    nonce: '',
+    messageType: 'image',
+    serverReceivedAt: null,
+    _localAt: new Date().toISOString(),
+    _status: 'pending',
+    _imageUrl: localUrl,
+    _plaintext: '🖼 이미지',
+  };
+  const list = state.messagesByConv.get(convId) || [];
+  list.push(optimistic);
+  state.messagesByConv.set(convId, list);
+  renderActivePanel();
+
+  try {
+    // 1) Generate a fresh AES-256-GCM key + nonce, encrypt the file.
+    const aesKey = await crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'],
+    );
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const plaintext = await file.arrayBuffer();
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce },
+      aesKey,
+      plaintext,
+    );
+
+    // 2) sha256 of the ciphertext (the server validates the upload).
+    const sha = await crypto.subtle.digest('SHA-256', ciphertext);
+    const shaHex = Array.from(new Uint8Array(sha))
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+
+    // 3) Get an upload ticket.
+    const ticket = await authedApi('/attachments/upload-ticket', {
+      method: 'POST',
+      body: {
+        contentType: 'application/octet-stream',
+        sizeBytes: ciphertext.byteLength,
+        sha256: shaHex,
+      },
+    });
+
+    // 4) PUT the ciphertext to the presigned URL.
+    const putRes = await fetch(ticket.upload.uploadUrl, {
+      method: 'PUT',
+      headers: ticket.upload.headers,
+      body: ciphertext,
+    });
+    if (!putRes.ok) throw new Error(`upload PUT failed: ${putRes.status}`);
+
+    // 5) Complete the upload.
+    await authedApi('/attachments/complete', {
+      method: 'POST',
+      body: { attachmentId: ticket.attachmentId, uploadStatus: 'uploaded' },
+    });
+
+    // 6) Build the message body — JSON with the per-attachment key +
+    //    nonce so the recipient can decrypt after unwrapping the body
+    //    via the per-conv key the existing path already uses.
+    const rawKey = await crypto.subtle.exportKey('raw', aesKey);
+    const bodyPayload = JSON.stringify({
+      kind: 'image',
+      attachmentId: ticket.attachmentId,
+      mime: file.type,
+      key: b64uEncode(rawKey),
+      nonce: b64uEncode(nonce),
+      width: 0, height: 0,
+    });
+    const envelope = await encryptForConv(convId, bodyPayload);
+    if (!envelope) throw new Error('상대 키를 못 찾았어요');
+
+    // 7) Send via /messages, populating envelope.attachment.
+    const sent = await authedApi('/messages', {
+      method: 'POST',
+      body: {
+        conversationId: convId,
+        clientMessageId,
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId: convId,
+          senderDeviceId: state.me.deviceId,
+          recipientUserId: peer.userId,
+          ciphertext: envelope.ciphertext,
+          nonce: envelope.nonce,
+          messageType: 'image',
+          attachment: {
+            attachmentId: ticket.attachmentId,
+            storageKey: ticket.upload.storageKey ?? '',
+            contentType: 'application/octet-stream',
+            sizeBytes: ciphertext.byteLength,
+            sha256: shaHex,
+            encryption: {
+              encryptedKey: 'web-demo-inline-in-body',
+              nonce: b64uEncode(nonce),
+              algorithmHint: 'dev-wrap',
+            },
+          },
+        },
+      },
+    });
+
+    sent.message._imageUrl = localUrl;
+    sent.message._plaintext = '🖼 이미지';
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = sent.message;
+    conv.lastMessage = sent.message;
+    persistMessage(sent.message);
+    persistConversation(conv);
+    renderActivePanel();
+    renderSidebar();
+    playSendTone();
+  } catch (e) {
+    toast('이미지 전송 실패: ' + (e.message || 'unknown'), 'error');
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = { ...list[idx], _status: 'failed' };
+    renderActivePanel();
+  }
+}
+
+// On receive: an image message arrives with envelope.attachment set
+// and a JSON body holding the AES key. After the regular decryptMessage
+// pass populates _plaintext with the JSON string, we parse it, fetch
+// the ciphertext via download-ticket, decrypt, and attach _imageUrl.
+async function maybeMaterializeImage(msg) {
+  if (msg.messageType !== 'image') return;
+  if (msg._imageUrl) return;
+  if (!msg.attachment?.attachmentId) return;
+  // _plaintext should be the JSON envelope body. Parse it.
+  let payload = null;
+  if (typeof msg._plaintext === 'string') {
+    try { payload = JSON.parse(msg._plaintext); } catch {}
+  }
+  if (!payload || payload.kind !== 'image' || !payload.key) return;
+  try {
+    const ticket = await authedApi(`/attachments/${msg.attachment.attachmentId}/download-ticket`);
+    const res = await fetch(ticket.ticket.downloadUrl);
+    if (!res.ok) throw new Error('download failed: ' + res.status);
+    const buf = await res.arrayBuffer();
+    const aesKey = await crypto.subtle.importKey(
+      'raw', b64uDecode(payload.key), { name: 'AES-GCM' }, false, ['decrypt'],
+    );
+    const nonce = new Uint8Array(b64uDecode(payload.nonce));
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: nonce }, aesKey, buf,
+    );
+    const blob = new Blob([plaintext], { type: payload.mime || 'image/jpeg' });
+    msg._imageUrl = URL.createObjectURL(blob);
+    msg._plaintext = '🖼 이미지';
+    if (msg.conversationId === state.activeConv || msg.conversationId === state.secondaryConv) {
+      renderActivePanel();
+    }
+    renderSidebar();
+  } catch (e) {
+    msg._plaintext = '🖼 이미지 (불러오기 실패)';
+    if (msg.conversationId === state.activeConv) renderActivePanel();
+  }
+}
+
+// Add the 📷 button to the panel input, plus drag-and-drop on the
+// .panel-input element. Done via document-level delegation so the
+// listeners survive renderActivePanel rebuilds.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.image-btn');
+  if (!btn) return;
+  const panel = btn.closest('.panel');
+  const convId = panel?.dataset?.conv;
+  if (convId) pickAndSendImage(convId);
+});
+
+// Inject the image button next to the voice button after every render.
+const __veilImgBtnObserver = new MutationObserver(() => {
+  document.querySelectorAll('.panel-input').forEach((node) => {
+    if (node.querySelector('.image-btn')) return;
+    const voiceBtn = node.querySelector('.voice-btn');
+    const btn = document.createElement('button');
+    btn.className = 'image-btn';
+    btn.setAttribute('aria-label', '이미지 첨부');
+    btn.title = '이미지 첨부';
+    btn.innerHTML = '<span aria-hidden="true">📷</span>';
+    if (voiceBtn) node.insertBefore(btn, voiceBtn);
+    else node.appendChild(btn);
+  });
+});
+setTimeout(() => {
+  const panels = document.getElementById('panels');
+  if (panels) __veilImgBtnObserver.observe(panels, { childList: true, subtree: true });
+}, 0);
+
+// Drag-and-drop image into the panel input.
+document.addEventListener('dragover', (e) => {
+  const target = e.target.closest('.panel-input');
+  if (!target) return;
+  e.preventDefault();
+  target.classList.add('drag-over');
+});
+document.addEventListener('dragleave', (e) => {
+  const target = e.target.closest('.panel-input');
+  if (!target) return;
+  target.classList.remove('drag-over');
+});
+document.addEventListener('drop', (e) => {
+  const target = e.target.closest('.panel-input');
+  if (!target) return;
+  e.preventDefault();
+  target.classList.remove('drag-over');
+  const panel = target.closest('.panel');
+  const convId = panel?.dataset?.conv;
+  const file = e.dataTransfer?.files?.[0];
+  if (convId && file) sendImageFile(convId, file);
+});

@@ -727,6 +727,7 @@ const session = {
 const state = {
   me: null,                    // { handle, userId, deviceId, jwkPriv, accessToken, refreshToken }
   conversations: [],           // ConversationSummary[]
+  conversationsLoaded: false,  // false until first /conversations response lands
   messagesByConv: new Map(),   // convId -> ConversationMessageSummary[]
   openTabs: [],                // convId[] order = open order
   activeConv: null,            // primary panel convId | null
@@ -737,6 +738,7 @@ const state = {
   online: new Set(),           // userId set, populated from presence.update
   typing: new Map(),           // convId -> Map<userId, { handle, expiresAt }>
   replyDraftByConv: new Map(), // convId -> { id, snippet, sender } awaiting send
+  soundsEnabled: false,        // Phase AG: send/receive tones, persisted in localStorage
 };
 // Diagnostic handle, gated to localhost so a deployed copy doesn't leak the
 // access/refresh tokens and private JWKs to anything that can run JS in the
@@ -794,6 +796,14 @@ function renderSidebar() {
   });
 
   if (filtered.length === 0) {
+    // Phase AG: while we're still waiting on the first /conversations
+    // response, show shimmering skeleton rows instead of the "no
+    // conversations" empty state — the empty state would lie to the
+    // user during the brief fetch window.
+    if (!state.conversationsLoaded && !q) {
+      list.replaceChildren(...renderConvSkeletons(4));
+      return;
+    }
     list.replaceChildren(el('div', { class: 'conv-empty' }, [
       q ? `"${q}" 검색 결과 없음` : '대화 없음. + 새 대화 버튼으로 시작하세요.',
     ]));
@@ -1608,6 +1618,7 @@ async function loadConversations() {
   try {
     const r = await authedApi('/conversations');
     state.conversations = Array.isArray(r) ? r : (r.items ?? []);
+    state.conversationsLoaded = true;
     // Decrypt each conversation's lastMessage for the sidebar preview before
     // rendering so we don't flash "🔒 암호화됨" on every refresh.
     await decryptAllConversations();
@@ -1810,6 +1821,7 @@ async function sendMessage(textarea, convId) {
   textarea.style.height = 'auto';
   textarea.dispatchEvent(new Event('input'));
   emitTypingStop(target);
+  playSendTone();
   renderActivePanel();
 
   try {
@@ -3249,3 +3261,288 @@ setInterval(ensureNotifPrompt, 2000);
 // onMessageNew gets the unread bump + notification call inline at its
 // existing call site (search for "if (msg.messageType === 'voice')").
 // setConnPill: we replace by patching the function body directly below.
+
+// ---------- Phase AG: skeleton + sounds + shortcuts + help + a11y ----------
+
+const agStyles = document.createElement('style');
+agStyles.textContent = `
+  /* Skeleton row in sidebar before first /conversations response. */
+  .conv-skeleton-text { flex: 1; }
+
+  /* Help / shortcuts dialog body */
+  .help-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 8px 16px;
+    font-size: 13px;
+  }
+  .help-grid kbd {
+    display: inline-block;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.6;
+  }
+  .help-grid .seq { white-space: nowrap; }
+
+  /* Visible focus outline for keyboard navigation. The default browser
+     ring is suppressed across the dark theme; we add a clear one back
+     for any control that lands focus via Tab. */
+  .app *:focus-visible,
+  .auth-screen *:focus-visible,
+  .dialog *:focus-visible {
+    outline: 2px solid var(--accent, #6c8eff);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Screen-reader-only utility */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+    white-space: nowrap; border: 0;
+  }
+`;
+document.head.appendChild(agStyles);
+
+function renderConvSkeletons(count) {
+  const out = [];
+  for (let i = 0; i < count; i += 1) {
+    const row = document.createElement('div');
+    row.className = 'conv-skeleton';
+    row.setAttribute('aria-hidden', 'true');
+    const av = document.createElement('div');
+    av.className = 'conv-skeleton-avatar';
+    const text = document.createElement('div');
+    text.className = 'conv-skeleton-text';
+    const l1 = document.createElement('div');
+    l1.className = 'conv-skeleton-line w-60';
+    const l2 = document.createElement('div');
+    l2.className = 'conv-skeleton-line w-40';
+    text.appendChild(l1); text.appendChild(l2);
+    row.appendChild(av); row.appendChild(text);
+    out.push(row);
+  }
+  return out;
+}
+
+// --- Sound effects via Web Audio. Two short tones synthesized in code
+// so we don't ship audio assets. Toggleable via the menu; persisted in
+// localStorage. Off by default (privacy-tool defaults: nothing makes
+// noise unless the user opts in).
+const SOUND_KEY = 'veil-demo-sounds-enabled-v1';
+try { state.soundsEnabled = localStorage.getItem(SOUND_KEY) === '1'; } catch {}
+let __veilAudioCtx = null;
+function audioCtx() {
+  if (!__veilAudioCtx) {
+    try {
+      __veilAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch {}
+  }
+  return __veilAudioCtx;
+}
+function playTone({ freq, durationMs, type = 'sine', gain = 0.04 }) {
+  if (!state.soundsEnabled) return;
+  const ctx = audioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(gain, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
+  osc.connect(g).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + durationMs / 1000);
+}
+const playSendTone = () => playTone({ freq: 880, durationMs: 80, type: 'sine' });
+const playReceiveTone = () => playTone({ freq: 660, durationMs: 120, type: 'triangle' });
+
+// --- Keyboard shortcuts. Skip when typing in inputs/textareas, except
+// for the global toggles like Esc and the help binding.
+const SHORTCUTS = [
+  { keys: 'mod+k', label: '대화 검색', sequence: ['Ctrl/Cmd', 'K'] },
+  { keys: 'mod+n', label: '새 대화', sequence: ['Ctrl/Cmd', 'N'] },
+  { keys: 'mod+/', label: '도움말 열기', sequence: ['Ctrl/Cmd', '/'] },
+  { keys: 'mod+shift+s', label: '사운드 토글', sequence: ['Ctrl/Cmd', 'Shift', 'S'] },
+  { keys: 'esc', label: '다이얼로그 / 메뉴 닫기', sequence: ['Esc'] },
+  { keys: 'enter', label: '메시지 전송 (입력창)', sequence: ['Enter'] },
+  { keys: 'shift+enter', label: '입력창에서 줄바꿈', sequence: ['Shift', 'Enter'] },
+];
+
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || el.isContentEditable;
+}
+
+document.addEventListener('keydown', (e) => {
+  const mod = e.ctrlKey || e.metaKey;
+
+  // Esc closes any open dialog or menu, regardless of focus target.
+  if (e.key === 'Escape') {
+    const openDialog = document.querySelector('.dialog-backdrop:not(.hidden)');
+    if (openDialog) {
+      e.preventDefault();
+      openDialog.classList.add('hidden');
+      return;
+    }
+    const openMenu = document.querySelector('.menu:not(.hidden)');
+    if (openMenu) {
+      e.preventDefault();
+      openMenu.classList.add('hidden');
+      return;
+    }
+  }
+
+  if (mod && (e.key === '/' || e.key === '?')) {
+    e.preventDefault();
+    openHelpDialog();
+    return;
+  }
+
+  // The next set of shortcuts skip when the user is typing.
+  if (isTypingTarget(e.target)) return;
+
+  if (mod && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    const search = $('search-input');
+    if (search) { search.focus(); search.select?.(); }
+    return;
+  }
+  if (mod && (e.key === 'n' || e.key === 'N')) {
+    e.preventDefault();
+    $('new-chat-btn')?.click();
+    return;
+  }
+  if (mod && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+    e.preventDefault();
+    toggleSounds();
+    return;
+  }
+});
+
+function toggleSounds() {
+  state.soundsEnabled = !state.soundsEnabled;
+  try { localStorage.setItem(SOUND_KEY, state.soundsEnabled ? '1' : '0'); } catch {}
+  toast(state.soundsEnabled ? '사운드 켜짐' : '사운드 꺼짐', 'good');
+}
+
+function openHelpDialog() {
+  let dialog = document.getElementById('help-dialog');
+  if (!dialog) {
+    dialog = document.createElement('div');
+    dialog.id = 'help-dialog';
+    dialog.className = 'dialog-backdrop hidden';
+    dialog.setAttribute('role', 'presentation');
+    dialog.innerHTML = `
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="help-title">
+        <div class="dialog-title" id="help-title">키보드 단축키</div>
+        <div class="dialog-sub">VEIL 을 더 빠르게 쓰는 법.</div>
+        <div class="help-grid"></div>
+        <div class="dialog-sub" style="margin-top:14px;font-size:11px;opacity:0.6">
+          ${state.soundsEnabled ? '🔊' : '🔇'} 사운드: ${state.soundsEnabled ? '켜짐' : '꺼짐'} (메뉴 또는 Ctrl/Cmd+Shift+S)
+        </div>
+        <div class="dialog-actions">
+          <button class="btn btn-primary" id="help-ok">확인</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(dialog);
+    const grid = dialog.querySelector('.help-grid');
+    for (const s of SHORTCUTS) {
+      const seq = document.createElement('div');
+      seq.className = 'seq';
+      seq.innerHTML = s.sequence.map((k) => `<kbd>${k}</kbd>`).join(' + ');
+      const lbl = document.createElement('div');
+      lbl.textContent = s.label;
+      grid.appendChild(seq);
+      grid.appendChild(lbl);
+    }
+    dialog.querySelector('#help-ok').addEventListener('click', () => {
+      dialog.classList.add('hidden');
+    });
+    dialog.addEventListener('click', (e) => {
+      if (e.target === dialog) dialog.classList.add('hidden');
+    });
+  }
+  dialog.classList.remove('hidden');
+  dialog.querySelector('#help-ok')?.focus();
+}
+
+// Wire the menu actions for sound + help. Defer to the next tick so
+// the menu node exists.
+setTimeout(() => {
+  const menu = document.getElementById('menu');
+  if (!menu) return;
+  if (!menu.querySelector('[data-action="toggle-sounds"]')) {
+    const sep = menu.querySelector('.menu-sep');
+    const sound = document.createElement('button');
+    sound.className = 'menu-item';
+    sound.dataset.action = 'toggle-sounds';
+    sound.setAttribute('role', 'menuitem');
+    sound.textContent = '🔔 사운드 토글';
+    if (sep) menu.insertBefore(sound, sep); else menu.appendChild(sound);
+    const help = document.createElement('button');
+    help.className = 'menu-item';
+    help.dataset.action = 'show-help';
+    help.setAttribute('role', 'menuitem');
+    help.textContent = '⌨️ 단축키';
+    if (sep) menu.insertBefore(help, sep); else menu.appendChild(help);
+  }
+  menu.addEventListener('click', (e) => {
+    const action = e.target?.dataset?.action;
+    if (action === 'toggle-sounds') {
+      menu.classList.add('hidden');
+      toggleSounds();
+    } else if (action === 'show-help') {
+      menu.classList.add('hidden');
+      openHelpDialog();
+    }
+  }, true);
+}, 0);
+
+// Sound triggers — receive on incoming peer message, send on our own.
+// We hook the send path via a global flag set from sendMessage; receive
+// path runs inside maybeShowNotification's onMessageNew hook above so
+// unfocused tabs get OS notification + tone, focused tabs get just tone.
+// We piggy-back on the existing onMessageNew hook by re-wrapping send:
+const __veilOriginalSendMessage = typeof sendMessage === 'function' ? sendMessage : null;
+// Sounds for inbound: hook into onMessageNew via a separate listener.
+// We can't re-bind the function (module scope), but we CAN add another
+// listener on the shared socket so the sound layer is independent.
+const __veilWireSounds = () => {
+  const s = state.socket;
+  if (!s || s.__veilSoundsWired) return;
+  s.__veilSoundsWired = true;
+  s.on('message.new', (msg) => {
+    if (msg && msg.senderDeviceId !== state.me?.deviceId) playReceiveTone();
+  });
+};
+// Run wiring whenever connectSocket initializes the socket. We poll for
+// it because connectSocket is called at boot and on logout/login cycles.
+setInterval(__veilWireSounds, 500);
+
+// a11y: aria-label on menus + dialogs that didn't have one. Body-level
+// keyboard trap inside dialogs (Tab cycles within open dialog).
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Tab') return;
+  const open = document.querySelector('.dialog-backdrop:not(.hidden) .dialog');
+  if (!open) return;
+  const focusable = open.querySelectorAll(
+    'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+  );
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault(); last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault(); first.focus();
+  }
+});

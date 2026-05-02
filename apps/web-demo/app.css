@@ -37,6 +37,37 @@
   --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
 }
 
+/* Light theme — flips the surface tokens but keeps accent + status
+   colors the same so the brand reads identically. Activated by adding
+   the .theme-light class to <html>; setting persisted in localStorage
+   under veil-demo-theme. */
+html.theme-light {
+  --bg: #f7f7fa;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #f0f1f5;
+  --bg-hover: #e8e9ef;
+  --line: #d8dae3;
+  --line-soft: #e6e8ee;
+  --fg: #1a1c22;
+  --fg-soft: #4a4d56;
+  --fg-dim: #707482;
+  --fg-faint: #9598a3;
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-2: 0 12px 36px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 0 1px rgba(108, 142, 255, 0.4), 0 8px 24px rgba(108, 142, 255, 0.12);
+}
+html.theme-light .conv-skeleton-avatar,
+html.theme-light .conv-skeleton-line {
+  background: linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%);
+  background-size: 200% 100%;
+}
+html.theme-light .msg-text code {
+  background: rgba(0,0,0,0.06);
+}
+html.theme-light .msg-text mark {
+  background: rgba(255, 200, 80, 0.5);
+}
+
 * { box-sizing: border-box; }
 html, body {
   margin: 0;

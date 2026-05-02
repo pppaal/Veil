@@ -4592,3 +4592,496 @@ setTimeout(() => {
     }
   }, true);
 }, 0);
+
+// ---------- Phase AQ: code blocks + generic files + forward + WS retry ----------
+
+const aqStyles = document.createElement('style');
+aqStyles.textContent = `
+  /* Multiline code block */
+  .msg-text pre.msg-codeblock {
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 6px 0 4px;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  html.theme-light .msg-text pre.msg-codeblock {
+    background: rgba(0,0,0,0.04);
+    border-color: rgba(0,0,0,0.08);
+  }
+  .msg-text pre.msg-codeblock code {
+    background: transparent;
+    padding: 0; border: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; line-height: 1.5;
+    white-space: pre; color: inherit;
+  }
+  .msg-text pre.msg-codeblock[data-lang]::before {
+    content: attr(data-lang);
+    display: block; font-size: 10px; opacity: 0.5;
+    margin-bottom: 4px; text-transform: lowercase;
+    font-family: var(--font);
+  }
+
+  /* Generic file chip */
+  .msg-file-chip {
+    display: inline-flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    text-decoration: none;
+    color: inherit; cursor: pointer;
+    max-width: 280px;
+  }
+  .msg-file-chip:hover { background: rgba(255,255,255,0.1); }
+  html.theme-light .msg-file-chip { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.06); }
+  .msg-file-chip-icon {
+    width: 36px; height: 36px; flex-shrink: 0;
+    background: rgba(108, 142, 255, 0.18); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .msg-file-chip-meta { display: flex; flex-direction: column; min-width: 0; }
+  .msg-file-chip-name {
+    font-size: 13px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .msg-file-chip-size { font-size: 11px; opacity: 0.6; }
+
+  /* Forward dialog */
+  .forward-list {
+    max-height: 300px; overflow-y: auto;
+    margin: 8px 0;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+  }
+  .forward-list-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .forward-list-item:last-child { border-bottom: 0; }
+  .forward-list-item:hover { background: rgba(108, 142, 255, 0.12); }
+  .forward-list-item.selected { background: rgba(108, 142, 255, 0.22); }
+
+  /* Connection retry counter inside the conn pill */
+  #conn-pill .retry-count {
+    margin-left: 4px;
+    font-size: 10px;
+    opacity: 0.7;
+  }
+`;
+document.head.appendChild(aqStyles);
+
+const FILE_MAX_BYTES = 25 * 1024 * 1024;
+const FILE_ICON_BY_PREFIX = {
+  'application/pdf': '📄',
+  'video/': '🎬',
+  'audio/': '🎵',
+  'text/': '📝',
+  'application/zip': '📦',
+  'application/x-': '📦',
+  'application/octet-stream': '📁',
+};
+function fileIconFor(mime) {
+  for (const [prefix, icon] of Object.entries(FILE_ICON_BY_PREFIX)) {
+    if (mime.startsWith(prefix)) return icon;
+  }
+  return '📁';
+}
+function formatBytes(n) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+async function pickAndSendFile(convId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (IMAGE_MIME_ALLOW.has(file.type)) { showImagePreview(convId, file); return; }
+    if (file.size > FILE_MAX_BYTES) { toast('파일이 25MB 를 초과합니다', 'error'); return; }
+    sendGenericFile(convId, file);
+  });
+  input.click();
+}
+
+async function sendGenericFile(convId, file) {
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (!conv) return;
+  const peer = conv.members.find((m) => m.userId !== state.me.userId);
+  const clientMessageId = 'file-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+
+  const optimistic = {
+    id: '__pending__' + clientMessageId,
+    clientMessageId,
+    conversationId: convId,
+    senderDeviceId: state.me.deviceId,
+    ciphertext: '', nonce: '',
+    messageType: 'file',
+    serverReceivedAt: null,
+    _localAt: new Date().toISOString(),
+    _status: 'pending',
+    _fileMeta: { name: file.name, sizeBytes: file.size, mime: file.type },
+    _plaintext: `📁 ${file.name}`,
+  };
+  const list = state.messagesByConv.get(convId) || [];
+  list.push(optimistic);
+  state.messagesByConv.set(convId, list);
+  renderActivePanel();
+
+  try {
+    const aesKey = await crypto.subtle.generateKey(
+      { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt'],
+    );
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const plaintext = await file.arrayBuffer();
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: nonce }, aesKey, plaintext,
+    );
+    const sha = await crypto.subtle.digest('SHA-256', ciphertext);
+    const shaHex = Array.from(new Uint8Array(sha))
+      .map((b) => b.toString(16).padStart(2, '0')).join('');
+    const ticket = await authedApi('/attachments/upload-ticket', {
+      method: 'POST',
+      body: { contentType: 'application/octet-stream', sizeBytes: ciphertext.byteLength, sha256: shaHex },
+    });
+    const putRes = await fetch(ticket.upload.uploadUrl, {
+      method: 'PUT', headers: ticket.upload.headers, body: ciphertext,
+    });
+    if (!putRes.ok) throw new Error(`upload PUT failed: ${putRes.status}`);
+    await authedApi('/attachments/complete', {
+      method: 'POST',
+      body: { attachmentId: ticket.attachmentId, uploadStatus: 'uploaded' },
+    });
+
+    const rawKey = await crypto.subtle.exportKey('raw', aesKey);
+    const bodyPayload = JSON.stringify({
+      kind: 'file', attachmentId: ticket.attachmentId,
+      mime: file.type || 'application/octet-stream',
+      name: file.name, sizeBytes: file.size,
+      key: b64uEncode(rawKey), nonce: b64uEncode(nonce),
+    });
+    const envelope = await encryptForConv(convId, bodyPayload);
+    if (!envelope) throw new Error('상대 키를 못 찾았어요');
+
+    const sent = await authedApi('/messages', {
+      method: 'POST',
+      body: {
+        conversationId: convId, clientMessageId,
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId: convId,
+          senderDeviceId: state.me.deviceId,
+          recipientUserId: peer.userId,
+          ciphertext: envelope.ciphertext, nonce: envelope.nonce,
+          messageType: 'file',
+          attachment: {
+            attachmentId: ticket.attachmentId,
+            storageKey: ticket.upload.storageKey ?? '',
+            contentType: 'application/octet-stream',
+            sizeBytes: ciphertext.byteLength,
+            sha256: shaHex,
+            encryption: {
+              encryptedKey: 'web-demo-inline-in-body',
+              nonce: b64uEncode(nonce),
+              algorithmHint: 'dev-wrap',
+            },
+          },
+        },
+      },
+    });
+
+    sent.message._fileMeta = {
+      name: file.name, sizeBytes: file.size, mime: file.type,
+      attachmentId: ticket.attachmentId,
+      key: b64uEncode(rawKey), nonce: b64uEncode(nonce),
+    };
+    sent.message._plaintext = `📁 ${file.name}`;
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = sent.message;
+    conv.lastMessage = sent.message;
+    persistMessage(sent.message);
+    persistConversation(conv);
+    renderActivePanel();
+    renderSidebar();
+    playSendTone();
+  } catch (e) {
+    toast('파일 전송 실패: ' + (e.message || 'unknown'), 'error');
+    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
+    if (idx >= 0) list[idx] = { ...list[idx], _status: 'failed' };
+    renderActivePanel();
+  }
+}
+
+async function maybeMaterializeFile(msg) {
+  if (msg.messageType !== 'file') return;
+  if (msg._fileMeta?.attachmentId && msg._fileMeta.key) return;
+  if (typeof msg._plaintext !== 'string') return;
+  try {
+    const payload = JSON.parse(msg._plaintext);
+    if (payload?.kind !== 'file') return;
+    msg._fileMeta = {
+      name: payload.name, sizeBytes: payload.sizeBytes, mime: payload.mime,
+      attachmentId: payload.attachmentId, key: payload.key, nonce: payload.nonce,
+    };
+    msg._plaintext = `📁 ${payload.name}`;
+    if (msg.conversationId === state.activeConv || msg.conversationId === state.secondaryConv) {
+      renderActivePanel();
+    }
+  } catch {}
+}
+
+async function downloadFile(messageId) {
+  let msg = null;
+  for (const list of state.messagesByConv.values()) {
+    msg = list.find((x) => x.id === messageId);
+    if (msg) break;
+  }
+  if (!msg?._fileMeta?.attachmentId || !msg._fileMeta.key) return;
+  const meta = msg._fileMeta;
+  try {
+    toast(`다운로드 중: ${meta.name}…`);
+    const ticket = await authedApi(`/attachments/${meta.attachmentId}/download-ticket`);
+    const res = await fetch(ticket.ticket.downloadUrl);
+    if (!res.ok) throw new Error('download failed: ' + res.status);
+    const buf = await res.arrayBuffer();
+    const aesKey = await crypto.subtle.importKey(
+      'raw', b64uDecode(meta.key), { name: 'AES-GCM' }, false, ['decrypt'],
+    );
+    const nonce = new Uint8Array(b64uDecode(meta.nonce));
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: nonce }, aesKey, buf,
+    );
+    const blob = new Blob([plaintext], { type: meta.mime || 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = meta.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (e) {
+    toast('다운로드 실패: ' + (e.message || 'unknown'), 'error');
+  }
+}
+
+// File chip click → download. Single delegation handles all chips.
+document.addEventListener('click', (e) => {
+  const dl = e.target.closest('.msg-file-chip');
+  if (!dl) return;
+  const id = dl.dataset.msgId;
+  if (id) downloadFile(id);
+}, true);
+
+// Forward dialog — pick another conversation, send the same plaintext
+// as a fresh message (no quote header, no edit linkage).
+function openForwardDialog(msg) {
+  if (typeof msg._plaintext !== 'string' || msg._plaintext === '') {
+    toast('전달할 내용이 없어요', 'error'); return;
+  }
+  const others = state.conversations.filter((c) => c.id !== msg.conversationId);
+  if (others.length === 0) { toast('전달할 다른 대화가 없어요'); return; }
+  const back = document.createElement('div');
+  back.className = 'dialog-backdrop';
+  back.setAttribute('role', 'presentation');
+  back.innerHTML = `
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="fwd-title" style="width:380px;max-width:92vw">
+      <div class="dialog-title" id="fwd-title">메시지 전달</div>
+      <div class="dialog-sub">전달할 대화를 고르세요. 원본 인용 없이 새 메시지로 보내져요.</div>
+      <div class="forward-list"></div>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" id="fwd-cancel">취소</button>
+        <button class="btn btn-primary" id="fwd-confirm" disabled>전달</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(back);
+  const list = back.querySelector('.forward-list');
+  let selected = null;
+  for (const c of others) {
+    const peer = c.members?.find((m) => m.userId !== state.me?.userId);
+    const item = document.createElement('div');
+    item.className = 'forward-list-item';
+    item.dataset.convId = c.id;
+    item.appendChild(avatarFor(peer?.handle ?? '?', 'sm'));
+    const meta = document.createElement('div');
+    meta.style.flex = '1';
+    meta.innerHTML = `<div>@${escapeHtml(peer?.handle ?? '?')}</div>` +
+      (peer?.displayName ? `<div style="font-size:11px;opacity:0.6">${escapeHtml(peer.displayName)}</div>` : '');
+    item.appendChild(meta);
+    item.addEventListener('click', () => {
+      list.querySelectorAll('.forward-list-item').forEach((x) => x.classList.remove('selected'));
+      item.classList.add('selected');
+      selected = c.id;
+      back.querySelector('#fwd-confirm').disabled = false;
+    });
+    list.appendChild(item);
+  }
+  const close = () => back.remove();
+  back.querySelector('#fwd-cancel').addEventListener('click', close);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  back.querySelector('#fwd-confirm').addEventListener('click', async () => {
+    if (!selected) return;
+    const ta = document.createElement('textarea');
+    ta.value = msg._plaintext;
+    close();
+    await sendMessage(ta, selected);
+    toast('전달했습니다', 'good');
+  });
+}
+
+// Inject 🔁 전달 into the action menu when it appears. Same observer
+// pattern Phase AY uses for the file chip.
+const __veilMenuObserver = new MutationObserver(() => {
+  document.querySelectorAll('.msg-action-menu').forEach((menu) => {
+    if (menu.dataset.veilFwdAdded === '1') return;
+    menu.dataset.veilFwdAdded = '1';
+    if (!activeActionMenu) return;
+    // We can't recover the message from the menu alone, so we rebuild
+    // by sniffing the most recently-clicked .msg-row via dataset.
+    const lastRow = document.querySelector('.msg-row[data-veil-last-context="1"]');
+    const msgId = lastRow?.dataset?.msgId;
+    if (!msgId) return;
+    let target = null;
+    for (const list of state.messagesByConv.values()) {
+      const m = list.find((x) => x.id === msgId);
+      if (m) { target = m; break; }
+    }
+    if (!target) return;
+    const fwd = document.createElement('button');
+    fwd.className = 'msg-action-item';
+    fwd.textContent = '🔁  전달';
+    fwd.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeActionMenu();
+      openForwardDialog(target);
+    });
+    menu.appendChild(fwd);
+  });
+});
+setTimeout(() => __veilMenuObserver.observe(document.body, { childList: true, subtree: true }), 0);
+// Mark the row that owned the most recent context-menu so we can
+// recover the message in the menu observer above.
+document.addEventListener('contextmenu', (e) => {
+  document.querySelectorAll('.msg-row[data-veil-last-context]').forEach(
+    (n) => n.removeAttribute('data-veil-last-context'),
+  );
+  const row = e.target.closest('.msg-row');
+  if (row) row.dataset.veilLastContext = '1';
+});
+document.addEventListener('touchstart', (e) => {
+  document.querySelectorAll('.msg-row[data-veil-last-context]').forEach(
+    (n) => n.removeAttribute('data-veil-last-context'),
+  );
+  const row = e.target.closest('.msg-row');
+  if (row) row.dataset.veilLastContext = '1';
+}, { passive: true });
+
+// 📎 file picker button next to 📷 image button.
+const __veilFileBtnObserver = new MutationObserver(() => {
+  document.querySelectorAll('.panel-input').forEach((node) => {
+    if (node.querySelector('.file-btn')) return;
+    const imgBtn = node.querySelector('.image-btn');
+    if (!imgBtn) return;
+    const btn = document.createElement('button');
+    btn.className = 'file-btn image-btn';
+    btn.setAttribute('aria-label', '파일 첨부');
+    btn.title = '파일 첨부 (PDF / 비디오 / 기타)';
+    btn.innerHTML = '<span aria-hidden="true">📎</span>';
+    btn.style.fontSize = '16px';
+    imgBtn.parentNode?.insertBefore(btn, imgBtn);
+    btn.addEventListener('click', () => {
+      const panel = btn.closest('.panel');
+      const convId = panel?.dataset?.conv;
+      if (convId) pickAndSendFile(convId);
+    });
+  });
+});
+setTimeout(() => {
+  const panels = document.getElementById('panels');
+  if (panels) __veilFileBtnObserver.observe(panels, { childList: true, subtree: true });
+}, 0);
+
+// File-message bubble swap: replace the text span with a chip when
+// the row is for a file message. Idempotent via dataset flag.
+const __veilFileChipObserver = new MutationObserver(() => {
+  document.querySelectorAll('.msg-row[data-msg-id]').forEach((row) => {
+    if (row.dataset.veilFileChipDone === '1') return;
+    const msgId = row.dataset.msgId;
+    if (!msgId) return;
+    let msg = null;
+    for (const list of state.messagesByConv.values()) {
+      msg = list.find((x) => x.id === msgId);
+      if (msg) break;
+    }
+    if (!msg || msg.messageType !== 'file' || !msg._fileMeta) return;
+    const text = row.querySelector('.msg-text');
+    if (!text) return;
+    row.dataset.veilFileChipDone = '1';
+    const chip = document.createElement('div');
+    chip.className = 'msg-file-chip';
+    chip.dataset.msgId = msgId;
+    chip.innerHTML = `
+      <div class="msg-file-chip-icon">${fileIconFor(msg._fileMeta.mime || 'application/octet-stream')}</div>
+      <div class="msg-file-chip-meta">
+        <div class="msg-file-chip-name">${escapeHtml(msg._fileMeta.name)}</div>
+        <div class="msg-file-chip-size">${formatBytes(msg._fileMeta.sizeBytes || 0)} · 클릭해서 다운로드</div>
+      </div>
+    `;
+    text.replaceChildren(chip);
+  });
+});
+setTimeout(() => {
+  const panels = document.getElementById('panels');
+  if (panels) __veilFileChipObserver.observe(panels, { childList: true, subtree: true });
+}, 0);
+
+// --- WS connection retry visual ---
+// socket.io's auto-reconnect is silent. Add a small badge on the
+// conn pill while we're in a backoff window so the user sees the
+// retry count instead of the generic "재연결 중…".
+let __veilRetryCount = 0;
+let __veilRetryWired = false;
+function wireRetryVisual() {
+  if (__veilRetryWired || !state.socket) return;
+  __veilRetryWired = true;
+  const s = state.socket;
+  s.io?.on?.('reconnect_attempt', (attempt) => {
+    __veilRetryCount = attempt;
+    const pill = document.getElementById('conn-pill');
+    if (!pill) return;
+    let badge = pill.querySelector('.retry-count');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'retry-count';
+      pill.appendChild(badge);
+    }
+    badge.textContent = `(${attempt})`;
+  });
+  s.io?.on?.('reconnect', () => {
+    __veilRetryCount = 0;
+    const badge = document.querySelector('#conn-pill .retry-count');
+    if (badge) badge.remove();
+  });
+  s.on?.('connect', () => {
+    __veilRetryCount = 0;
+    const badge = document.querySelector('#conn-pill .retry-count');
+    if (badge) badge.remove();
+  });
+}
+setInterval(() => {
+  if (state.socket && !__veilRetryWired) wireRetryVisual();
+  if (!state.socket) __veilRetryWired = false;
+}, 1000);
+
+// Hook file materialization into the existing decrypt path.
+const __veilOriginalDecryptMessage = decryptMessage;
+decryptMessage = async function (msg) {
+  await __veilOriginalDecryptMessage(msg);
+  if (msg.messageType === 'file') await maybeMaterializeFile(msg);
+};

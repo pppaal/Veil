@@ -43,6 +43,28 @@ describe('renderMessageInline — markdown', () => {
       '<code>code</code> and <strong>bold</strong>',
     );
   });
+
+  it('renders triple-backtick code fences', () => {
+    const out = renderMessageInline('before\n```\nline1\nline2\n```\nafter');
+    expect(out).toContain('<pre class="msg-codeblock"><code>line1\nline2</code></pre>');
+  });
+
+  it('preserves the language tag on a fence', () => {
+    const out = renderMessageInline('```ts\nconst x = 1;\n```');
+    expect(out).toContain('data-lang="ts"');
+  });
+
+  it('protects fenced content from inline markdown', () => {
+    const out = renderMessageInline('```\n*not bold* and _not italic_\n```');
+    expect(out).not.toContain('<strong>');
+    expect(out).not.toContain('<em>');
+  });
+
+  it('escapes HTML inside fences', () => {
+    const out = renderMessageInline('```\n<script>1</script>\n```');
+    expect(out).toContain('&lt;script&gt;');
+    expect(out).not.toContain('<script>');
+  });
 });
 
 describe('renderMessageInline — URL auto-link', () => {

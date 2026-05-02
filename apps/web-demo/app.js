@@ -12,6 +12,7 @@ import {
   dayLabel as fmtDayLabel,
   formatBytes as fmtBytes,
 } from './lib/format.js';
+import { parseKakaoExport } from './lib/kakao-import.js';
 // Initialize translations as early as possible so DOM static strings can be
 // rewritten before the user sees them. Top-level await is supported in
 // modules, which is exactly what this file is.
@@ -636,7 +637,11 @@ function emitTypingStop(convId) {
 //   outbound    - pending sends keyed by clientMessageId
 //   drafts      - { convId: textareaValue }
 const IDB_NAME = 'veil-demo';
-const IDB_VERSION = 1;
+// v2 adds the kakao-archives store for Phase AS imports. Bumping the
+// version triggers onupgradeneeded for existing users; we re-check
+// every store and create only the missing ones, so old data
+// (session, conversations, messages, outbound, drafts) survives.
+const IDB_VERSION = 2;
 
 function openIdb() {
   return new Promise((resolve, reject) => {
@@ -653,6 +658,10 @@ function openIdb() {
       }
       if (!db.objectStoreNames.contains('outbound')) db.createObjectStore('outbound', { keyPath: 'clientMessageId' });
       if (!db.objectStoreNames.contains('drafts')) db.createObjectStore('drafts', { keyPath: 'convId' });
+      // Phase AS: KakaoTalk imported archives, read-only on this device.
+      if (!db.objectStoreNames.contains('kakao-archives')) {
+        db.createObjectStore('kakao-archives', { keyPath: 'id' });
+      }
     };
   });
 }
@@ -5070,3 +5079,264 @@ decryptMessage = async function (msg) {
   await __veilOriginalDecryptMessage(msg);
   if (msg.messageType === 'file') await maybeMaterializeFile(msg);
 };
+
+// ---------- Phase AS: KakaoTalk import wizard ----------
+// Korean-market killer feature. User picks an exported .txt; we parse
+// in-browser, store the result in IndexedDB as a read-only archive,
+// and surface it in the sidebar with a 📥 prefix so it's obviously
+// not a live conversation. The bytes never leave the device.
+
+const KAKAO_ARCHIVE_STORE = 'kakao-archives';
+
+const asStyles = document.createElement('style');
+asStyles.textContent = `
+  .kakao-import-summary {
+    background: rgba(255,205,80,0.08);
+    border: 1px solid rgba(255,205,80,0.18);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    font-size: 12px;
+  }
+  .kakao-import-summary strong { color: #ffd25c; }
+  .kakao-archive-banner {
+    background: rgba(255,205,80,0.06);
+    border-bottom: 1px solid rgba(255,205,80,0.2);
+    padding: 8px 16px;
+    font-size: 12px;
+    text-align: center;
+  }
+  .kakao-archive-banner strong { color: #ffd25c; }
+  .kakao-conv-prefix { color: #ffd25c; margin-right: 4px; }
+`;
+document.head.appendChild(asStyles);
+
+// Read the file → parse → preview → save flow lives in one dialog.
+function openKakaoImportDialog() {
+  const back = document.createElement('div');
+  back.className = 'dialog-backdrop';
+  back.setAttribute('role', 'presentation');
+  back.innerHTML = `
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="kakao-title" style="width:480px;max-width:92vw">
+      <div class="dialog-title" id="kakao-title">📥 카카오톡 채팅 가져오기</div>
+      <div class="dialog-sub">
+        카톡 → 채팅방 → 설정 → <strong>대화 내용 내보내기</strong> →
+        텍스트 파일 (.txt) 받은 거 여기에 떨어뜨리세요. <strong>읽기
+        전용 아카이브</strong>로 저장되며, 이 브라우저 밖으로 절대 나가지 않아요.
+      </div>
+      <input type="file" id="kakao-file" accept=".txt,text/plain" />
+      <div id="kakao-preview" class="hidden" style="margin-top:14px"></div>
+      <div class="dialog-error" id="kakao-error" role="alert" aria-live="polite"></div>
+      <div class="dialog-actions">
+        <button class="btn btn-ghost" id="kakao-cancel">취소</button>
+        <button class="btn btn-primary" id="kakao-confirm" disabled>아카이브로 저장</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(back);
+
+  let parsed = null;
+  let archiveTitle = '';
+
+  const fileInput = back.querySelector('#kakao-file');
+  const previewBox = back.querySelector('#kakao-preview');
+  const errorBox = back.querySelector('#kakao-error');
+  const confirmBtn = back.querySelector('#kakao-confirm');
+  const cancelBtn = back.querySelector('#kakao-cancel');
+
+  fileInput.addEventListener('change', async () => {
+    errorBox.textContent = '';
+    const file = fileInput.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.txt')) {
+      errorBox.textContent = '.txt 파일만 지원합니다.';
+      return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+      errorBox.textContent = '50MB 초과 — 아카이브 분할이 필요해요.';
+      return;
+    }
+    try {
+      const text = await file.text();
+      parsed = parseKakaoExport(text);
+      archiveTitle = file.name.replace(/\.txt$/i, '');
+      const summary = `
+        <div class="kakao-import-summary">
+          <div><strong>${parsed.messages.filter((m) => m.kind === 'msg').length}</strong> 개 메시지</div>
+          <div><strong>${parsed.participants.length}</strong> 명 참여 (${parsed.participants.slice(0, 4).map(escapeHtml).join(', ')}${parsed.participants.length > 4 ? ` 외 ${parsed.participants.length - 4}명` : ''})</div>
+          ${parsed.errors.length > 0 ? `<div style="opacity:0.7;margin-top:4px">파싱 경고 ${parsed.errors.length}건 (계속 진행 가능)</div>` : ''}
+        </div>
+      `;
+      previewBox.innerHTML = summary;
+      previewBox.classList.remove('hidden');
+      confirmBtn.disabled = false;
+    } catch (e) {
+      errorBox.textContent = '파일을 읽지 못했어요: ' + (e.message || 'unknown');
+    }
+  });
+
+  const close = () => back.remove();
+  cancelBtn.addEventListener('click', close);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  confirmBtn.addEventListener('click', async () => {
+    if (!parsed) return;
+    confirmBtn.disabled = true;
+    try {
+      const archiveId = 'kakao-' + Date.now().toString(36);
+      await idbPut(KAKAO_ARCHIVE_STORE, {
+        id: archiveId,
+        title: archiveTitle,
+        importedAt: new Date().toISOString(),
+        participants: parsed.participants,
+        messageCount: parsed.messages.filter((m) => m.kind === 'msg').length,
+        messages: parsed.messages,
+      });
+      toast('아카이브로 저장됨', 'good');
+      close();
+      await refreshKakaoArchivesInSidebar();
+    } catch (e) {
+      errorBox.textContent = '저장 실패: ' + (e.message || 'unknown');
+      confirmBtn.disabled = false;
+    }
+  });
+}
+
+// Append Kakao archives to the sidebar conv list. We treat each
+// archive as a pseudo-conversation with id "kakao-..." so existing
+// click handlers route through the read-only viewer below.
+async function loadKakaoArchives() {
+  try {
+    return await idbAll(KAKAO_ARCHIVE_STORE);
+  } catch {
+    return [];
+  }
+}
+
+async function refreshKakaoArchivesInSidebar() {
+  // Trigger a sidebar re-render. The renderSidebar function below has
+  // a small extension to splice in archive rows.
+  if (typeof renderSidebar === 'function') renderSidebar();
+}
+
+// Open archive → render messages in the right panel as read-only.
+function openKakaoArchive(archive) {
+  const main = document.getElementById('main') || document.getElementById('panels');
+  if (!main) return;
+  // Replace the panels container content with a read-only archive view.
+  const panels = document.getElementById('panels');
+  if (!panels) return;
+  panels.replaceChildren(renderKakaoArchivePanel(archive));
+  state.activeConv = archive.id; // so highlight + actions don't break
+}
+
+function renderKakaoArchivePanel(archive) {
+  const wrap = el('div', { class: 'panel', dataset: { conv: archive.id } });
+  wrap.appendChild(el('div', { class: 'panel-header' }, [
+    avatarFor(archive.title || 'kakao', 'md'),
+    el('div', { class: 'panel-title' }, [
+      el('div', { class: 'name' }, ['📥 ' + (archive.title || '카카오 아카이브')]),
+      el('div', { class: 'sub' }, [`${archive.messageCount} 메시지 · 읽기 전용`]),
+    ]),
+  ]));
+  wrap.appendChild(el('div', { class: 'kakao-archive-banner' }, [
+    '📥 ',
+    el('strong', {}, ['카카오톡 아카이브']),
+    ' — 답장 / 전송 불가. 이 브라우저에만 저장됨.',
+  ]));
+  const list = el('div', { class: 'msgs', style: 'flex:1;overflow-y:auto;padding:14px' });
+  let lastDay = null;
+  for (const m of archive.messages) {
+    if (m.kind === 'system') {
+      list.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [m.body])]));
+      continue;
+    }
+    if (!m.sender || !m.sentAt) continue;
+    const d = new Date(m.sentAt);
+    const dk = dayKey(d);
+    if (dk !== lastDay) {
+      list.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [dayLabel(d)])]));
+      lastDay = dk;
+    }
+    const isMe = false; // Without auth context we can't tell; treat all as "them".
+    const bubble = el('div', { class: 'msg first-of-group last-of-group' }, [
+      el('span', { class: 'msg-text' }, [m.body]),
+    ]);
+    const stack = el('div', { class: 'group-stack' }, [
+      el('div', { class: 'group-meta' }, [m.sender]),
+      el('div', { class: 'msg-row them' }, [bubble]),
+      el('div', { class: 'msg-time' }, [formatTime(d)]),
+    ]);
+    list.appendChild(stack);
+  }
+  wrap.appendChild(list);
+  return wrap;
+}
+
+// Hook into renderSidebar to splice archives at the bottom. We patch
+// the function via wrapping (it's a function declaration, mutable
+// binding works inside the same module).
+const __veilOriginalRenderSidebar = renderSidebar;
+renderSidebar = function () {
+  __veilOriginalRenderSidebar();
+  // After the original render has populated the conv list, append a
+  // small section for any Kakao archives.
+  loadKakaoArchives().then((archives) => {
+    if (!archives || archives.length === 0) return;
+    const list = document.getElementById('conv-list');
+    if (!list) return;
+    if (list.querySelector('[data-kakao-section]')) return;
+    const sep = document.createElement('div');
+    sep.dataset.kakaoSection = '1';
+    sep.style.cssText = 'padding:10px 14px 4px;font-size:11px;opacity:0.55;letter-spacing:0.05em;text-transform:uppercase';
+    sep.textContent = '카카오 아카이브';
+    list.appendChild(sep);
+    for (const a of archives) {
+      const row = document.createElement('button');
+      row.className = 'conv-item';
+      row.style.cssText = 'background:transparent;border:0;color:inherit;cursor:pointer;width:100%;display:flex;align-items:center;gap:10px;padding:10px 14px;text-align:left';
+      const avatar = avatarFor(a.title || 'kakao', 'sm');
+      const meta = document.createElement('div');
+      meta.style.flex = '1';
+      meta.innerHTML = `
+        <div style="font-size:13px"><span class="kakao-conv-prefix">📥</span>${escapeHtml(a.title || '아카이브')}</div>
+        <div style="font-size:11px;opacity:0.6">${a.messageCount} 메시지 · 읽기 전용</div>
+      `;
+      row.appendChild(avatar); row.appendChild(meta);
+      row.addEventListener('click', () => openKakaoArchive(a));
+      list.appendChild(row);
+    }
+  }).catch(() => {});
+};
+
+// Inject "📥 카카오톡 가져오기" into the menu before the danger zone.
+setTimeout(() => {
+  const menu = document.getElementById('menu');
+  if (!menu) return;
+  if (menu.querySelector('[data-action="kakao-import"]')) return;
+  const sep = menu.querySelector('.menu-sep');
+  const item = document.createElement('button');
+  item.className = 'menu-item';
+  item.dataset.action = 'kakao-import';
+  item.setAttribute('role', 'menuitem');
+  item.textContent = '📥 카카오톡 가져오기';
+  if (sep) menu.insertBefore(item, sep); else menu.appendChild(item);
+  menu.addEventListener('click', (e) => {
+    if (e.target?.dataset?.action === 'kakao-import') {
+      menu.classList.add('hidden');
+      openKakaoImportDialog();
+    }
+  }, true);
+}, 0);
+
+// Make sure the IDB has the kakao-archives store. The session store
+// upgrade path is in idb.* helpers; we extend the schema by adding a
+// new object store on the same DB. If the helpers don't expose
+// migrate-on-open, this will silently fail and the user will see a
+// "저장 실패" toast — acceptable for a non-critical archive feature.
+(async () => {
+  try {
+    if (typeof __veilEnsureIdbStore === 'function') {
+      await __veilEnsureIdbStore(KAKAO_ARCHIVE_STORE);
+    }
+  } catch {}
+})();

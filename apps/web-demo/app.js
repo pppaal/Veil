@@ -6,6 +6,12 @@
 
 import { initI18n, t, setLang, activeLang } from './i18n/i18n.js';
 import { escapeHtml, renderMessageInline } from './lib/markdown.js';
+import {
+  formatTime as fmtTime,
+  dayKey as fmtDayKey,
+  dayLabel as fmtDayLabel,
+  formatBytes as fmtBytes,
+} from './lib/format.js';
 // Initialize translations as early as possible so DOM static strings can be
 // rewritten before the user sees them. Top-level await is supported in
 // modules, which is exactly what this file is.
@@ -895,40 +901,22 @@ function renderPreview(msgOrCiphertext) {
   return ct;
 }
 
+// Date format helpers live in apps/web-demo/lib/format.js so vitest
+// can hit the same source the runtime does. Locale-aware via
+// activeLang() — Phase AA i18n harness picks the user's choice from
+// localStorage / navigator.language and lib/format.js renders the
+// right token (오늘 / today / 今日, AM/PM / 오전·오후 / 午前·午後).
 function formatRelTime(iso) {
   const d = new Date(iso);
   const now = new Date();
   const sameDay = d.toDateString() === now.toDateString();
-  if (sameDay) return formatTime(d);
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (d.toDateString() === yesterday.toDateString()) return '어제';
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  const lang = (typeof activeLang === 'function' ? activeLang() : 'ko');
+  if (sameDay) return fmtTime(d, lang);
+  return fmtDayLabel(d, lang, now);
 }
-
-function formatTime(d) {
-  const h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h < 12 ? '오전' : '오후';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${ampm} ${h12}:${String(m).padStart(2, '0')}`;
-}
-
-function dayKey(d) {
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-}
-
-function dayLabel(d) {
-  const now = new Date();
-  if (dayKey(d) === dayKey(now)) return '오늘';
-  const yesterday = new Date(now);
-  yesterday.setDate(yesterday.getDate() - 1);
-  if (dayKey(d) === dayKey(yesterday)) return '어제';
-  if (d.getFullYear() === now.getFullYear()) {
-    return `${d.getMonth() + 1}월 ${d.getDate()}일`;
-  }
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-}
+const formatTime = (d) => fmtTime(d, typeof activeLang === 'function' ? activeLang() : 'ko');
+const dayKey = fmtDayKey;
+const dayLabel = (d) => fmtDayLabel(d, typeof activeLang === 'function' ? activeLang() : 'ko');
 
 // Bucket messages into [{ dayKey, dayLabel, groups: [{ senderDeviceId, senderHandle, isMe, msgs[] }] }].
 // Within a day, consecutive messages from the same device within 2 minutes form one group.
@@ -4692,12 +4680,9 @@ function fileIconFor(mime) {
   }
   return '📁';
 }
-function formatBytes(n) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
-  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
+// formatBytes is the shared lib/format.js helper. Local alias keeps
+// the existing call sites unchanged.
+const formatBytes = fmtBytes;
 
 async function pickAndSendFile(convId) {
   const input = document.createElement('input');

@@ -5340,3 +5340,299 @@ setTimeout(() => {
     }
   } catch {}
 })();
+
+// ---------- Phase AT: block / mute / report UI ----------
+// Server endpoints already exist (apps/api/src/modules/safety):
+//   GET    /safety/blocks               list my blocked users
+//   POST   /safety/blocks  {userId}     block
+//   DELETE /safety/blocks/:userId       unblock
+//   POST   /safety/mutes/:cid {mutedForSeconds}  mute (null = unmute)
+//   POST   /safety/reports {...}        file an abuse report
+// This phase wires UI on top: action-menu entries for peer messages,
+// a header toggle for conversation mute, a list inside the settings
+// dialog for managing blocks.
+
+const atStyles = document.createElement('style');
+atStyles.textContent = `
+  .blocked-list {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    margin-top: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .blocked-list:empty::before {
+    content: '차단된 사용자 없음';
+    display: block;
+    padding: 12px;
+    opacity: 0.55;
+    font-size: 12px;
+    text-align: center;
+  }
+  .blocked-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .blocked-row:last-child { border-bottom: 0; }
+  .blocked-row .grow { flex: 1; min-width: 0; }
+  .blocked-row .unblock {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: inherit; padding: 3px 10px;
+    border-radius: 6px; font-size: 12px;
+    cursor: pointer;
+  }
+  .blocked-row .unblock:hover { background: rgba(255,255,255,0.12); }
+  html.theme-light .blocked-list { border-color: rgba(0,0,0,0.06); }
+  html.theme-light .blocked-row { border-bottom-color: rgba(0,0,0,0.04); }
+  .panel-header .mute-toggle {
+    background: transparent; border: 0; color: inherit;
+    cursor: pointer; padding: 4px 8px; opacity: 0.7;
+    margin-left: 6px; font-size: 14px;
+  }
+  .panel-header .mute-toggle:hover { opacity: 1; }
+  .conv-item.muted .conv-meta { opacity: 0.5; }
+  .conv-item.muted .conv-name::after { content: ' 🔕'; }
+`;
+document.head.appendChild(atStyles);
+
+// Per-conversation mute state lives in localStorage so it survives
+// reload before we've fetched it from the server. The server is the
+// source of truth; we hydrate from the server on loadConversations.
+const MUTE_KEY = 'veil-demo-muted-convs-v1';
+let mutedConvIds = (() => {
+  try { return new Set(JSON.parse(localStorage.getItem(MUTE_KEY) || '[]')); }
+  catch { return new Set(); }
+})();
+function persistMutedConvs() {
+  try { localStorage.setItem(MUTE_KEY, JSON.stringify(Array.from(mutedConvIds))); } catch {}
+}
+
+async function blockUser(userId, handle) {
+  const ok = await uiConfirm({
+    title: '@' + handle + ' 차단',
+    body: `이 사용자가 보낸 메시지가 더 이상 도착하지 않고, 이 사용자가 보낸 새 채팅도 시작할 수 없게 됩니다. 언제든지 설정에서 해제할 수 있어요.`,
+    okLabel: '차단', destructive: true,
+  });
+  if (!ok) return;
+  try {
+    await authedApi('/safety/blocks', { method: 'POST', body: { userId } });
+    toast(`@${handle} 차단됨`, 'good');
+  } catch (e) {
+    toast('차단 실패: ' + (e.message || 'unknown'), 'error');
+  }
+}
+
+async function unblockUser(userId, handle) {
+  try {
+    await authedApi(`/safety/blocks/${userId}`, { method: 'DELETE' });
+    toast(`@${handle} 차단 해제됨`, 'good');
+  } catch (e) {
+    toast('해제 실패: ' + (e.message || 'unknown'), 'error');
+  }
+}
+
+async function listBlocked() {
+  try {
+    const res = await authedApi('/safety/blocks');
+    return Array.isArray(res?.items) ? res.items : (Array.isArray(res) ? res : []);
+  } catch {
+    return [];
+  }
+}
+
+async function setConversationMute(conversationId, seconds) {
+  try {
+    await authedApi(`/safety/mutes/${conversationId}`, {
+      method: 'POST',
+      body: { mutedForSeconds: seconds },
+    });
+    if (seconds == null || seconds <= 0) {
+      mutedConvIds.delete(conversationId);
+      toast('알림 켜짐', 'good');
+    } else {
+      mutedConvIds.add(conversationId);
+      toast(`${formatMuteDuration(seconds)} 동안 알림 끔`, 'good');
+    }
+    persistMutedConvs();
+    renderActivePanel();
+    renderSidebar();
+  } catch (e) {
+    toast('알림 설정 실패: ' + (e.message || 'unknown'), 'error');
+  }
+}
+
+function formatMuteDuration(seconds) {
+  if (seconds >= 86400 * 365) return '영구';
+  if (seconds >= 86400) return `${Math.round(seconds / 86400)}일`;
+  if (seconds >= 3600) return `${Math.round(seconds / 3600)}시간`;
+  return `${Math.round(seconds / 60)}분`;
+}
+
+async function reportMessage(messageId, peerUserId, peerHandle) {
+  const reason = window.prompt(
+    `@${peerHandle} 신고 — 사유를 짧게 적어주세요 (이 텍스트는 운영자에게 전송됩니다):`,
+  );
+  if (!reason || reason.trim().length === 0) return;
+  try {
+    await authedApi('/safety/reports', {
+      method: 'POST',
+      body: {
+        targetUserId: peerUserId,
+        relatedMessageId: messageId,
+        category: 'other',
+        details: reason.trim(),
+      },
+    });
+    toast('신고 접수됨', 'good');
+  } catch (e) {
+    toast('신고 실패: ' + (e.message || 'unknown'), 'error');
+  }
+}
+
+// Hook: extend the action menu with 차단 / 신고 entries for peer
+// messages. Same observer pattern Phase AQ uses for forward.
+const __veilSafetyMenuObserver = new MutationObserver(() => {
+  document.querySelectorAll('.msg-action-menu').forEach((menu) => {
+    if (menu.dataset.veilSafetyAdded === '1') return;
+    menu.dataset.veilSafetyAdded = '1';
+    const lastRow = document.querySelector('.msg-row[data-veil-last-context="1"]');
+    const msgId = lastRow?.dataset?.msgId;
+    if (!msgId) return;
+    let target = null;
+    let convId = null;
+    for (const [cid, list] of state.messagesByConv) {
+      const m = list.find((x) => x.id === msgId);
+      if (m) { target = m; convId = cid; break; }
+    }
+    if (!target) return;
+    // Only peer messages get the safety items; you can't block yourself.
+    if (target.senderDeviceId === state.me?.deviceId) return;
+    const conv = state.conversations.find((c) => c.id === convId);
+    const peer = conv?.members?.find((m) => m.userId !== state.me?.userId);
+    if (!peer) return;
+
+    const sep = document.createElement('div');
+    sep.className = 'msg-action-divider';
+    menu.appendChild(sep);
+
+    const blockBtn = document.createElement('button');
+    blockBtn.className = 'msg-action-item danger';
+    blockBtn.textContent = '🚫  차단';
+    blockBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeActionMenu();
+      blockUser(peer.userId, peer.handle);
+    });
+    menu.appendChild(blockBtn);
+
+    const reportBtn = document.createElement('button');
+    reportBtn.className = 'msg-action-item';
+    reportBtn.textContent = '🚨  신고';
+    reportBtn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      closeActionMenu();
+      reportMessage(target.id, peer.userId, peer.handle);
+    });
+    menu.appendChild(reportBtn);
+  });
+});
+setTimeout(() => __veilSafetyMenuObserver.observe(document.body, { childList: true, subtree: true }), 0);
+
+// Mute toggle in the panel header. Adds a 🔔 / 🔕 button after the
+// search button. Click cycles unmute → 1 hour → 24 hours → 영구 →
+// unmute (matches a typical messenger UX).
+const __veilMuteHeaderObserver = new MutationObserver(() => {
+  document.querySelectorAll('.panel').forEach((panel) => {
+    if (panel.dataset.veilMuteWired === '1') return;
+    const header = panel.querySelector('.panel-header');
+    if (!header) return;
+    panel.dataset.veilMuteWired = '1';
+    const convId = panel.dataset.conv;
+    if (!convId || convId.startsWith('kakao-')) return;
+    const btn = document.createElement('button');
+    btn.className = 'mute-toggle';
+    btn.setAttribute('aria-label', '알림 토글');
+    btn.title = '알림 토글';
+    btn.textContent = mutedConvIds.has(convId) ? '🔕' : '🔔';
+    btn.addEventListener('click', async () => {
+      if (mutedConvIds.has(convId)) {
+        await setConversationMute(convId, null);
+        btn.textContent = '🔔';
+      } else {
+        // Cycle: 1h → 24h → forever via a small inline picker.
+        const choice = window.prompt(
+          '알림 끄기 기간을 분 단위로 입력하세요 (예: 60 = 1시간, 1440 = 24시간, 999999 = 영구):',
+          '60',
+        );
+        if (!choice) return;
+        const minutes = Math.max(1, parseInt(choice, 10) || 60);
+        await setConversationMute(convId, minutes * 60);
+        btn.textContent = '🔕';
+      }
+    });
+    header.appendChild(btn);
+  });
+});
+setTimeout(() => {
+  const panels = document.getElementById('panels');
+  if (panels) __veilMuteHeaderObserver.observe(panels, { childList: true, subtree: true });
+}, 0);
+
+// Visual: muted conversations get a dimmed sidebar row.
+const __veilMutedSidebarObserver = new MutationObserver(() => {
+  document.querySelectorAll('.conv-item').forEach((row) => {
+    const id = row.dataset?.convId;
+    if (!id) return;
+    row.classList.toggle('muted', mutedConvIds.has(id));
+  });
+});
+setTimeout(() => {
+  const list = document.getElementById('conv-list');
+  if (list) __veilMutedSidebarObserver.observe(list, { childList: true, subtree: true });
+}, 0);
+
+// Settings dialog gains a "차단된 사용자" section. We extend the
+// existing openSettingsDialog by patching it (function decl =
+// reassignable inside the same module).
+const __veilOriginalOpenSettings = openSettingsDialog;
+openSettingsDialog = function () {
+  __veilOriginalOpenSettings();
+  setTimeout(async () => {
+    const dialog = document.getElementById('settings-dialog');
+    if (!dialog) return;
+    if (dialog.querySelector('[data-blocked-section]')) return;
+    const dialogActions = dialog.querySelector('.dialog-actions');
+    const wrap = document.createElement('div');
+    wrap.dataset.blockedSection = '1';
+    wrap.style.cssText = 'margin-top:10px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px';
+    wrap.innerHTML = `
+      <div class="settings-label" style="margin-bottom:6px">차단된 사용자</div>
+      <div class="blocked-list" id="blocked-list-container"></div>
+    `;
+    if (dialogActions) dialog.querySelector('.dialog').insertBefore(wrap, dialogActions);
+    const container = wrap.querySelector('#blocked-list-container');
+    const items = await listBlocked();
+    if (items.length === 0) return;
+    container.replaceChildren();
+    for (const u of items) {
+      const row = document.createElement('div');
+      row.className = 'blocked-row';
+      const av = avatarFor(u.handle ?? '?', 'sm');
+      const meta = document.createElement('div');
+      meta.className = 'grow';
+      meta.innerHTML = `<div style="font-size:13px">@${escapeHtml(u.handle ?? '?')}</div>` +
+        (u.displayName ? `<div style="font-size:11px;opacity:0.6">${escapeHtml(u.displayName)}</div>` : '');
+      const btn = document.createElement('button');
+      btn.className = 'unblock';
+      btn.textContent = '해제';
+      btn.addEventListener('click', async () => {
+        await unblockUser(u.userId ?? u.id, u.handle ?? '?');
+        row.remove();
+      });
+      row.append(av, meta, btn);
+      container.appendChild(row);
+    }
+  }, 50);
+};

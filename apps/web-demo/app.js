@@ -4325,5 +4325,303 @@ document.addEventListener('drop', (e) => {
   const panel = target.closest('.panel');
   const convId = panel?.dataset?.conv;
   const file = e.dataTransfer?.files?.[0];
-  if (convId && file) sendImageFile(convId, file);
+  if (convId && file) showImagePreview(convId, file);
 });
+
+// Phase AM: image send confirmation. Show a preview modal with the
+// chosen file before we encrypt + upload, so a wrong drag-drop or
+// fat-finger tap doesn't leak. User confirms ("전송") or cancels.
+function showImagePreview(convId, file) {
+  if (!IMAGE_MIME_ALLOW.has(file.type)) {
+    toast('JPG / PNG / WebP 만 지원해요', 'error'); return;
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    toast('이미지가 10MB 를 초과합니다', 'error'); return;
+  }
+  const url = URL.createObjectURL(file);
+  const back = document.createElement('div');
+  back.className = 'image-zoom-backdrop';
+  back.style.cursor = 'default';
+  back.setAttribute('role', 'dialog');
+  back.setAttribute('aria-modal', 'true');
+  const card = document.createElement('div');
+  card.style.cssText = 'background:#1c1d22;padding:16px;border-radius:14px;max-width:480px;width:90vw;display:flex;flex-direction:column;gap:12px';
+  const title = document.createElement('div');
+  title.textContent = '이미지 전송 확인';
+  title.style.cssText = 'font-size:15px;font-weight:600';
+  const sub = document.createElement('div');
+  sub.style.cssText = 'font-size:12px;opacity:0.7';
+  sub.textContent = `${file.name || '이미지'} · ${(file.size / 1024).toFixed(0)} KB`;
+  const img = document.createElement('img');
+  img.src = url;
+  img.style.cssText = 'max-width:100%;max-height:50vh;border-radius:8px;object-fit:contain;background:#0b0c10';
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+  const cancel = document.createElement('button');
+  cancel.className = 'btn btn-ghost'; cancel.textContent = '취소';
+  const send = document.createElement('button');
+  send.className = 'btn btn-primary'; send.textContent = '전송';
+  const close = () => {
+    URL.revokeObjectURL(url);
+    back.remove();
+  };
+  cancel.addEventListener('click', close);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  send.addEventListener('click', () => {
+    URL.revokeObjectURL(url);
+    back.remove();
+    sendImageFile(convId, file);
+  });
+  // Esc cancels.
+  const onKey = (e) => {
+    if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); }
+  };
+  document.addEventListener('keydown', onKey);
+  actions.append(cancel, send);
+  card.append(title, sub, img, actions);
+  back.appendChild(card);
+  document.body.appendChild(back);
+  send.focus();
+}
+
+// Update file picker + drop to route through the preview, not directly
+// to sendImageFile.
+const __veilOriginalPickAndSendImage = pickAndSendImage;
+pickAndSendImage = function (convId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/jpeg,image/png,image/webp';
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (file) showImagePreview(convId, file);
+  });
+  input.click();
+};
+
+// ---------- Phase AM: 5-minute delete-undo ----------
+// When the user deletes a message we run the existing DELETE path
+// immediately — server-side soft-delete is what other recipients see —
+// but we ALSO show a 5-second toast with an "되돌리기" button. Tapping
+// it within the window posts a fresh message restoring the body
+// locally (the recipient sees a new bubble, not an undo, because the
+// real delete has already propagated).
+const undoStateByMsg = new Map(); // messageId → {plaintext, convId, replyToId, expiresAt}
+
+function offerDeleteUndo({ messageId, convId, plaintext, replyToId }) {
+  if (typeof plaintext !== 'string' || plaintext === '') return;
+  undoStateByMsg.set(messageId, {
+    plaintext, convId, replyToId,
+    expiresAt: Date.now() + 5_000,
+  });
+  showUndoToast(messageId);
+  setTimeout(() => undoStateByMsg.delete(messageId), 5_500);
+}
+
+function showUndoToast(messageId) {
+  const root = $('toast-root');
+  if (!root) return;
+  const node = el('div', { class: 'toast' }, [
+    el('span', { style: 'flex:1' }, ['메시지 삭제됨']),
+    el(
+      'button',
+      {
+        class: 'msg-action',
+        style: 'background:rgba(255,255,255,0.12);padding:3px 10px;margin-left:10px;border-radius:6px;border:0;color:inherit;cursor:pointer',
+        onclick: () => { node.remove(); restoreFromUndo(messageId); },
+      },
+      ['되돌리기'],
+    ),
+  ]);
+  node.style.display = 'flex';
+  node.style.alignItems = 'center';
+  root.appendChild(node);
+  setTimeout(() => {
+    node.style.transition = 'opacity 0.2s ease';
+    node.style.opacity = '0';
+    setTimeout(() => node.remove(), 220);
+  }, 5_000);
+}
+
+async function restoreFromUndo(messageId) {
+  const entry = undoStateByMsg.get(messageId);
+  if (!entry) { toast('되돌리기 시간 초과', 'error'); return; }
+  if (Date.now() > entry.expiresAt) {
+    undoStateByMsg.delete(messageId);
+    toast('되돌리기 시간 초과', 'error'); return;
+  }
+  undoStateByMsg.delete(messageId);
+  const ta = document.querySelector(`.panel[data-conv="${entry.convId}"] .panel-input textarea`);
+  if (ta) {
+    // Stage the restored body into the input; user confirms by Enter.
+    ta.value = entry.plaintext;
+    ta.dispatchEvent(new Event('input'));
+    ta.focus();
+    toast('입력창에 복원했어요. Enter 로 다시 전송', 'good');
+  } else {
+    // Fallback: send immediately.
+    const conv = state.conversations.find((c) => c.id === entry.convId);
+    if (conv) {
+      const dummy = document.createElement('textarea');
+      dummy.value = entry.plaintext;
+      sendMessage(dummy, entry.convId);
+    }
+  }
+}
+
+// Hook into doDelete: capture plaintext + convId BEFORE the server
+// delete propagates and replaces _plaintext with the tombstone.
+const __veilOriginalDoDelete = doDelete;
+doDelete = async function (messageId) {
+  // Find the message we're about to delete so we can stash the body
+  // for undo before the WS event clobbers _plaintext.
+  let captured = null;
+  for (const [convId, list] of state.messagesByConv) {
+    const m = list.find((x) => x.id === messageId);
+    if (m && typeof m._plaintext === 'string') {
+      captured = {
+        messageId,
+        convId,
+        plaintext: m._plaintext,
+        replyToId: m._replyTo ?? null,
+      };
+      break;
+    }
+  }
+  await __veilOriginalDoDelete(messageId);
+  if (captured) offerDeleteUndo(captured);
+};
+
+// ---------- Phase AM: unified Settings dialog ----------
+// Replaces the existing "🔔 사운드 토글" and "⌨️ 단축키" menu entries
+// with a single "⚙️ 설정" item that opens a structured dialog. The
+// dialog hosts theme / sounds / language / notifications all in one
+// place — discoverability win, single mental model.
+
+function openSettingsDialog() {
+  const id = 'settings-dialog';
+  let back = document.getElementById(id);
+  if (back) back.remove();
+  back = document.createElement('div');
+  back.id = id;
+  back.className = 'dialog-backdrop';
+  back.setAttribute('role', 'presentation');
+  back.innerHTML = `
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title" style="width:380px;max-width:92vw">
+      <div class="dialog-title" id="settings-title">⚙️ 설정</div>
+      <div class="dialog-sub" style="margin-bottom:12px">VEIL 의 모든 토글을 한 곳에.</div>
+      <div class="settings-row">
+        <div class="settings-label">테마</div>
+        <select class="settings-select" data-key="theme">
+          <option value="dark">다크</option>
+          <option value="light">라이트</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">언어 (재로드 필요)</div>
+        <select class="settings-select" data-key="lang">
+          <option value="ko">한국어</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">사운드 (수신/전송 톤)</div>
+        <input type="checkbox" class="settings-toggle" data-key="sounds" />
+      </div>
+      <div class="settings-row">
+        <div class="settings-label">브라우저 알림</div>
+        <button class="btn btn-ghost" data-key="notif">권한 요청</button>
+      </div>
+      <div class="dialog-actions" style="margin-top:14px">
+        <button class="btn btn-primary" id="settings-close">닫기</button>
+      </div>
+    </div>
+  `;
+  // Inline a small style block once.
+  if (!document.getElementById('settings-dialog-styles')) {
+    const s = document.createElement('style');
+    s.id = 'settings-dialog-styles';
+    s.textContent = `
+      .settings-row {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06);
+      }
+      .settings-row:first-of-type { border-top: 0; }
+      .settings-label { font-size: 13px; }
+      .settings-select {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: inherit; padding: 4px 8px;
+        border-radius: 6px; font-size: 13px;
+      }
+      .settings-toggle { width: 18px; height: 18px; }
+    `;
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(back);
+
+  // Initial values.
+  const themeSel = back.querySelector('[data-key="theme"]');
+  const langSel = back.querySelector('[data-key="lang"]');
+  const sounds = back.querySelector('[data-key="sounds"]');
+  themeSel.value = document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
+  langSel.value = (typeof activeLang === 'function' ? activeLang() : 'ko');
+  sounds.checked = !!state.soundsEnabled;
+
+  themeSel.addEventListener('change', () => {
+    if (themeSel.value === 'light') {
+      document.documentElement.classList.add('theme-light');
+    } else {
+      document.documentElement.classList.remove('theme-light');
+    }
+    try { localStorage.setItem('veil-demo-theme', themeSel.value); } catch {}
+  });
+  langSel.addEventListener('change', () => {
+    if (typeof setLang === 'function') setLang(langSel.value);
+  });
+  sounds.addEventListener('change', () => {
+    state.soundsEnabled = sounds.checked;
+    try { localStorage.setItem(SOUND_KEY, state.soundsEnabled ? '1' : '0'); } catch {}
+  });
+  back.querySelector('[data-key="notif"]').addEventListener('click', async () => {
+    if (!('Notification' in window)) { toast('알림 미지원 브라우저', 'error'); return; }
+    if (Notification.permission === 'granted') { toast('이미 켜짐', 'good'); return; }
+    if (Notification.permission === 'denied') { toast('브라우저 설정에서 풀어주세요', 'error'); return; }
+    const r = await Notification.requestPermission();
+    toast(r === 'granted' ? '알림 켜짐' : '알림 거부됨', r === 'granted' ? 'good' : 'error');
+  });
+  const close = () => back.remove();
+  back.querySelector('#settings-close').addEventListener('click', close);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  back.querySelector('#settings-close').focus();
+}
+
+// Apply the saved theme immediately on every load (before render).
+try {
+  if (localStorage.getItem('veil-demo-theme') === 'light') {
+    document.documentElement.classList.add('theme-light');
+  }
+} catch {}
+
+// Inject "⚙️ 설정" into the menu, deprecating the standalone sound +
+// shortcut items (move shortcut-help into settings dialog later if
+// wanted; for now the keyboard shortcut Ctrl/Cmd+/ still opens the
+// help dialog separately).
+setTimeout(() => {
+  const menu = document.getElementById('menu');
+  if (!menu) return;
+  if (menu.querySelector('[data-action="open-settings"]')) return;
+  const sep = menu.querySelector('.menu-sep');
+  const settings = document.createElement('button');
+  settings.className = 'menu-item';
+  settings.dataset.action = 'open-settings';
+  settings.setAttribute('role', 'menuitem');
+  settings.textContent = '⚙️ 설정';
+  if (sep) menu.insertBefore(settings, sep); else menu.appendChild(settings);
+  menu.addEventListener('click', (e) => {
+    if (e.target?.dataset?.action === 'open-settings') {
+      menu.classList.add('hidden');
+      openSettingsDialog();
+    }
+  }, true);
+}, 0);

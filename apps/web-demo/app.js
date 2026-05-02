@@ -5,6 +5,7 @@
 // server only ever sees ciphertext.
 
 import { initI18n, t, setLang, activeLang } from './i18n/i18n.js';
+import { escapeHtml, renderMessageInline } from './lib/markdown.js';
 // Initialize translations as early as possible so DOM static strings can be
 // rewritten before the user sees them. Top-level await is supported in
 // modules, which is exactly what this file is.
@@ -3116,32 +3117,9 @@ polishStyles.textContent = `
 `;
 document.head.appendChild(polishStyles);
 
-// --- Markdown lite: *bold*, _italic_, \`code\`, plus URL auto-link.
-// Order matters: escape HTML first, then transform.
-function escapeHtml(s) {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-const URL_RE = /\b(https?:\/\/[^\s<>()]+)/g;
-const CODE_RE = /`([^`\n]+)`/g;
-const BOLD_RE = /\*([^*\n]+)\*/g;
-const ITALIC_RE = /(^|[\s(\[])_([^_\n]+)_/g;
-
-function renderMessageInline(text) {
-  if (typeof text !== 'string') return '';
-  const escaped = escapeHtml(text);
-  // Order: code first (preserves contents), then bold, italic, URL.
-  return escaped
-    .replace(CODE_RE, '<code>$1</code>')
-    .replace(BOLD_RE, '<strong>$1</strong>')
-    .replace(ITALIC_RE, '$1<em>$2</em>')
-    .replace(URL_RE, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-}
+// Markdown lite + mention chip rendering live in apps/web-demo/lib/
+// markdown.js. Vitest tests them in __tests__/markdown.test.js — the
+// same source of truth the app uses, so divergence is impossible.
 
 // Patch renderPreview so message text gets formatted markup. We keep the
 // non-string fast paths (audio blob, '🔒 …' fallbacks) intact.
@@ -4026,20 +4004,9 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Render @handles inside delivered messages with a styled chip. Hooks
-// into the existing markdown renderer by post-processing its output —
-// renderMessageInline already escaped HTML so we operate on the
-// already-safe HTML string.
-const __veilOriginalRenderInline = renderMessageInline;
-renderMessageInline = function (text) {
-  const out = __veilOriginalRenderInline(text);
-  // Match @ followed by 3-32 lowercase/digit/_ chars, the same shape
-  // the server validates on registration.
-  return out.replace(
-    /(^|[\s(\[{,.;:!?])@([a-z0-9_]{3,32})\b/g,
-    '$1<span class="mention">@$2</span>',
-  );
-};
+// Mention chip rendering lives inside renderMessageInline (lib/
+// markdown.js), so no separate wrapper here anymore. This keeps the
+// vitest-tested function and the runtime function identical.
 
 // ---------- Phase AI: image attachment upload ----------
 // User picks an image → we generate a fresh AES-256-GCM key for this

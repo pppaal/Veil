@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.28.0",
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^24.6.0",
     "prettier": "^3.6.2",
     "socket.io-client": "^4.8.3",
@@ -13,7 +14,7 @@
     "bootstrap": "pnpm install",
     "build": "pnpm -C packages/shared build && pnpm -C packages/contracts build && pnpm -C apps/api build",
     "lint": "pnpm -C packages/shared lint && pnpm -C packages/contracts lint && pnpm -C apps/api lint",
-    "test": "pnpm -C packages/shared test && pnpm -C packages/contracts test && pnpm -C apps/api test",
+    "test": "pnpm -C packages/shared test && pnpm -C packages/contracts test && pnpm -C apps/api test && pnpm -C apps/web-demo test",
     "architecture:check": "node ./scripts/crypto-architecture-check.mjs",
     "ci:api": "pnpm build && pnpm lint && pnpm policy:check && pnpm architecture:check && pnpm test && pnpm -C apps/api test:e2e",
     "ci:mobile": "pnpm mobile:codegen && pnpm mobile:analyze && pnpm mobile:test",
@@ -56,6 +57,9 @@
     "demo:prod:logs": "docker compose --env-file .env.prod -f docker-compose.prod.yml logs -f api",
     "demo:prod:down": "docker compose --env-file .env.prod -f docker-compose.prod.yml down",
     "audit:handoff": "node scripts/audit-handoff-bundle.mjs",
+    "e2e:web": "playwright test",
+    "e2e:web:ui": "playwright test --ui",
+    "e2e:web:install": "playwright install --with-deps chromium",
     "format": "pnpm -r --filter './packages/*' --filter './apps/api' format",
     "format:check": "prettier --check 'packages/*/src/**/*.ts' 'apps/api/src/**/*.ts' 'scripts/**/*.mjs'"
   }

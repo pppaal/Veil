@@ -166,6 +166,22 @@ jobs:
           curl -fsS -o /dev/null http://127.0.0.1:3000/demo/app.css
           curl -fsS -o /dev/null http://127.0.0.1:3000/demo/socket.io.min.js
 
+      # Phase AN: Playwright e2e against the live demo stack. Chromium
+      # only — Firefox / WebKit are added if the suite stabilises.
+      - name: Install Playwright browsers
+        run: pnpm e2e:web:install
+
+      - name: Run web demo e2e
+        run: pnpm e2e:web
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
       - name: Stop demo stack
         if: always()
         run: pnpm demo:down

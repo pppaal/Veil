@@ -35,7 +35,10 @@ export const envSchema = z.object({
         'application/octet-stream',
       ].join(','),
     ),
-  VEIL_JWT_SECRET: z.string().min(1),
+  // Refuse weak JWT secrets at boot. 32 bytes is the floor for HS256
+  // — anything shorter shrinks the keyspace below the algorithm's
+  // security target. Use `openssl rand -base64 32` to generate one.
+  VEIL_JWT_SECRET: z.string().min(32),
   VEIL_JWT_AUDIENCE: z.string().min(1).default('veil-mobile'),
   VEIL_JWT_ISSUER: z.string().min(1).default('veil-api'),
   VEIL_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),

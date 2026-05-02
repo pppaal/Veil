@@ -66,6 +66,12 @@ type MessageRecord = {
   serverReceivedAt: Date;
   deletedAt: Date | null;
   expiresAt: Date | null;
+  // Phase X reply/edit metadata. Optional on the fake so existing
+  // create paths that don't supply these still type-check.
+  replyToMessageId?: string | null;
+  editedAt?: Date | null;
+  editCount?: number;
+  viewOnce?: boolean;
 };
 
 type MessageReceiptRecord = {
@@ -200,6 +206,7 @@ export class FakePrismaService {
     findMany: async (_args: any) => [] as any[],
     findFirst: async (_args: any) => undefined as any,
     findUnique: async (_args: any) => undefined as any,
+    update: async (_args: any) => undefined as any,
     deleteMany: async (_args: any) => ({ count: 0 }),
   };
 
@@ -639,6 +646,22 @@ export class FakePrismaService {
             }
           : undefined,
       };
+    };
+
+    this.message.update = async ({ where, data, include }: any) => {
+      const record = this.messages.find((item) => item.id === where.id);
+      if (!record) throw Object.assign(new Error('Record not found'), { code: 'P2025' });
+      // Apply scalar updates and the {increment: n} sugar Prisma uses
+      // for atomic counters.
+      for (const [key, value] of Object.entries(data ?? {})) {
+        if (value && typeof value === 'object' && 'increment' in (value as any)) {
+          (record as any)[key] = ((record as any)[key] ?? 0) + (value as any).increment;
+        } else {
+          (record as any)[key] = value;
+        }
+      }
+      if (include) return this.hydrateMessage(record, include);
+      return { ...record };
     };
 
     this.message.findFirst = async ({ where, select }: any) => {

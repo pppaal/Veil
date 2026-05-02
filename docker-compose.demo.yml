@@ -109,7 +109,7 @@ services:
       VEIL_S3_BUCKET: veil-encrypted
       # Generate a fresh secret for any deploy beyond local: openssl rand -base64 32.
       # The placeholder default is rejected by beta-deploy-preflight.
-      VEIL_JWT_SECRET: ${VEIL_JWT_SECRET:-demo-jwt-secret-replace-for-anything-shared}
+      VEIL_JWT_SECRET: ${VEIL_JWT_SECRET:-demo-jwt-secret-replace-with-32-byte-openssl-rand-output}
       VEIL_JWT_AUDIENCE: veil-mobile
       VEIL_JWT_ISSUER: veil-api
       VEIL_PUSH_PROVIDER: none

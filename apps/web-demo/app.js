@@ -466,9 +466,15 @@ function connectSocket() {
     onReactionEvent(messageId, userId, emoji, action);
   });
   s.on('message.edited', (msg) => onMessageEdited(msg));
-  s.on('message.deleted', ({ messageId, deletedAt }) =>
-    patchMessage(messageId, { deletedAt, _plaintext: '🚫 삭제된 메시지' }),
-  );
+  s.on('message.deleted', ({ messageId, deletedAt }) => {
+    // Find the message first so we can release its blob URL before
+    // we drop the references that point at it.
+    for (const list of state.messagesByConv.values()) {
+      const m = list.find((x) => x.id === messageId);
+      if (m) { revokeBlobUrlsForMessage(m); break; }
+    }
+    patchMessage(messageId, { deletedAt, _plaintext: '🚫 삭제된 메시지' });
+  });
   s.on('presence.update', ({ userId, status }) => {
     if (status === 'online') state.online.add(userId);
     else state.online.delete(userId);
@@ -1635,6 +1641,14 @@ async function loadConversations() {
     const r = await authedApi('/conversations');
     state.conversations = Array.isArray(r) ? r : (r.items ?? []);
     state.conversationsLoaded = true;
+    // Phase AK: drop search state for conversations that no longer
+    // exist. Keeps the Map bounded over long sessions.
+    if (typeof searchStateByConv !== 'undefined') {
+      const live = new Set(state.conversations.map((c) => c.id));
+      for (const cid of Array.from(searchStateByConv.keys())) {
+        if (!live.has(cid)) searchStateByConv.delete(cid);
+      }
+    }
     // Decrypt each conversation's lastMessage for the sidebar preview before
     // rendering so we don't flash "🔒 암호화됨" on every refresh.
     await decryptAllConversations();
@@ -1907,15 +1921,38 @@ async function sendMessage(textarea, convId) {
   }
 }
 
+// Phase AK: revoke any blob: URLs we created for voice/image so the
+// browser actually frees the underlying memory. Without this, the
+// Blob bytes stay alive for the page's lifetime even after the user
+// logs out or deletes the message.
+function revokeBlobUrlsForMessage(msg) {
+  if (msg?._voiceUrl?.startsWith('blob:')) {
+    try { URL.revokeObjectURL(msg._voiceUrl); } catch {}
+    msg._voiceUrl = null;
+  }
+  if (msg?._imageUrl?.startsWith('blob:')) {
+    try { URL.revokeObjectURL(msg._imageUrl); } catch {}
+    msg._imageUrl = null;
+  }
+}
+function revokeAllBlobUrls() {
+  for (const list of state.messagesByConv.values()) {
+    for (const msg of list) revokeBlobUrlsForMessage(msg);
+  }
+}
+
 async function logout() {
   await session.wipe();
+  revokeAllBlobUrls();
   state.me = null;
   state.conversations = [];
+  state.conversationsLoaded = false;
   state.messagesByConv.clear();
   state.activeConv = null;
   state.secondaryConv = null;
   state.openTabs = [];
   state.splitView = false;
+  searchStateByConv.clear();
   scrollPosByConv.clear();
   readMarked.clear();
   disconnectSocket();
@@ -3354,6 +3391,7 @@ function renderConvSkeletons(count) {
 const SOUND_KEY = 'veil-demo-sounds-enabled-v1';
 try { state.soundsEnabled = localStorage.getItem(SOUND_KEY) === '1'; } catch {}
 let __veilAudioCtx = null;
+let __veilAudioUnlocked = false;
 function audioCtx() {
   if (!__veilAudioCtx) {
     try {
@@ -3362,6 +3400,22 @@ function audioCtx() {
   }
   return __veilAudioCtx;
 }
+// iOS Safari + some Android browsers refuse to start an AudioContext
+// outside a user gesture. We listen for the first click / touch / key
+// and call ctx.resume() then to unlock subsequent programmatic plays
+// (notification tones triggered by a websocket event are NOT a gesture).
+function unlockAudioOnce() {
+  if (__veilAudioUnlocked) return;
+  const ctx = audioCtx();
+  if (!ctx) return;
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+  __veilAudioUnlocked = true;
+}
+['click', 'touchend', 'keydown'].forEach((evt) => {
+  window.addEventListener(evt, unlockAudioOnce, { once: true, capture: true });
+});
 function playTone({ freq, durationMs, type = 'sine', gain = 0.04 }) {
   if (!state.soundsEnabled) return;
   const ctx = audioCtx();
@@ -3534,15 +3588,29 @@ const __veilOriginalSendMessage = typeof sendMessage === 'function' ? sendMessag
 // listener on the shared socket so the sound layer is independent.
 const __veilWireSounds = () => {
   const s = state.socket;
-  if (!s || s.__veilSoundsWired) return;
+  if (!s || s.__veilSoundsWired) return false;
   s.__veilSoundsWired = true;
   s.on('message.new', (msg) => {
     if (msg && msg.senderDeviceId !== state.me?.deviceId) playReceiveTone();
   });
+  return true;
 };
-// Run wiring whenever connectSocket initializes the socket. We poll for
-// it because connectSocket is called at boot and on logout/login cycles.
-setInterval(__veilWireSounds, 500);
+// One-shot wiring: poll until the first socket exists, wire sounds on
+// it, then stop. socket.io auto-reconnect reuses the same socket
+// object, so listeners survive disconnect/reconnect cycles. On logout
+// the state.socket is cleared; the socket-replacement listener below
+// rewires whenever a fresh socket appears.
+let __veilSoundsTimer = setInterval(() => {
+  if (__veilWireSounds()) {
+    clearInterval(__veilSoundsTimer);
+    __veilSoundsTimer = null;
+    // After logout, state.socket is cleared. A subsequent login builds
+    // a new socket object — restart the one-shot wire then.
+    setInterval(() => {
+      if (state.socket && !state.socket.__veilSoundsWired) __veilWireSounds();
+    }, 1500);
+  }
+}, 500);
 
 // a11y: aria-label on menus + dialogs that didn't have one. Body-level
 // keyboard trap inside dialogs (Tab cycles within open dialog).

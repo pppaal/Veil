@@ -782,4 +782,164 @@ describe('VEIL API (e2e)', () => {
       ),
     ).toBe(true);
   });
+
+  it('edits and soft-deletes a message via Phase X endpoints', async () => {
+    const api = request(app.getHttpServer());
+    const keyPairA = keyHelper.createKeyPair();
+    const keyPairB = keyHelper.createKeyPair();
+
+    const auth = async (handle: string, deviceId: string, kp: {
+      authPublicKey: string;
+      authPrivateKey: string;
+    }): Promise<string> => {
+      const ch = await api.post('/v1/auth/challenge').send({ handle, deviceId });
+      const signature = keyHelper.createProof({
+        challenge: ch.body.challenge,
+        authPrivateKey: kp.authPrivateKey,
+      });
+      const v = await api.post('/v1/auth/verify').send({
+        challengeId: ch.body.challengeId,
+        deviceId,
+        signature,
+      });
+      return v.body.accessToken as string;
+    };
+
+    const registerA = await api.post('/v1/auth/register').send({
+      handle: 'sigma',
+      displayName: 'Sigma',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-sigma',
+      signedPrekeyBundle: 'prekey-sigma',
+      authPublicKey: keyPairA.authPublicKey,
+    });
+    expect(registerA.status).toBe(201);
+    const tokenA = await auth('sigma', registerA.body.deviceId, keyPairA);
+    const bearerA = `Bearer ${tokenA}`;
+
+    const registerB = await api.post('/v1/auth/register').send({
+      handle: 'tau',
+      displayName: 'Tau',
+      deviceName: 'iPhone',
+      platform: 'ios',
+      publicIdentityKey: 'pub-tau',
+      signedPrekeyBundle: 'prekey-tau',
+      authPublicKey: keyPairB.authPublicKey,
+    });
+    expect(registerB.status).toBe(201);
+    const tokenB = await auth('tau', registerB.body.deviceId, keyPairB);
+    const bearerB = `Bearer ${tokenB}`;
+
+    const conversation = await api
+      .post('/v1/conversations/direct')
+      .set('Authorization', bearerA)
+      .send({ peerHandle: 'tau' });
+    expect(conversation.status).toBe(201);
+    const conversationId = conversation.body.conversation.id;
+
+    // Send a message we'll edit and then delete.
+    const sent = await api
+      .post('/v1/messages')
+      .set('Authorization', bearerA)
+      .send({
+        conversationId,
+        clientMessageId: 'client-msg-edit-1',
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId,
+          senderDeviceId: registerA.body.deviceId,
+          recipientUserId: registerB.body.userId,
+          ciphertext: 'cipher-original',
+          nonce: 'nonce-original',
+          messageType: 'text',
+        },
+      });
+    expect(sent.status).toBe(201);
+    const messageId = sent.body.message.id;
+    expect(sent.body.message.editedAt).toBeNull();
+    expect(sent.body.message.editCount ?? 0).toBe(0);
+
+    // Edit by the original sender succeeds.
+    const edited = await api
+      .patch(`/v1/messages/${messageId}`)
+      .set('Authorization', bearerA)
+      .send({
+        ciphertext: 'cipher-edited',
+        nonce: 'nonce-edited',
+        version: 'veil-envelope-v1-dev',
+      });
+    expect(edited.status).toBe(200);
+    expect(edited.body.message.ciphertext).toBe('cipher-edited');
+    expect(edited.body.message.nonce).toBe('nonce-edited');
+    expect(edited.body.message.editedAt).toBeTruthy();
+    expect(edited.body.message.editCount).toBe(1);
+
+    expect(
+      realtime.emitted.some(
+        (event) =>
+          event.event === 'message.edited' &&
+          (event.payload as { id?: string } | undefined)?.id === messageId,
+      ),
+    ).toBe(true);
+
+    // Editing without ownership of the sending device must fail.
+    const editAsPeer = await api
+      .patch(`/v1/messages/${messageId}`)
+      .set('Authorization', bearerB)
+      .send({
+        ciphertext: 'cipher-malicious',
+        nonce: 'nonce-malicious',
+        version: 'veil-envelope-v1-dev',
+      });
+    expect(editAsPeer.status).toBe(403);
+    expect(editAsPeer.body.code).toBe('message_not_owned');
+
+    // Delete by the sender soft-deletes the row.
+    const deleted = await api
+      .delete(`/v1/messages/${messageId}`)
+      .set('Authorization', bearerA);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.messageId).toBe(messageId);
+    expect(deleted.body.deletedAt).toBeTruthy();
+
+    // Idempotent retry: same deletedAt, no errors.
+    const deleted2 = await api
+      .delete(`/v1/messages/${messageId}`)
+      .set('Authorization', bearerA);
+    expect(deleted2.status).toBe(200);
+    expect(deleted2.body.deletedAt).toBe(deleted.body.deletedAt);
+
+    // Editing a deleted message is forbidden.
+    const editDeleted = await api
+      .patch(`/v1/messages/${messageId}`)
+      .set('Authorization', bearerA)
+      .send({
+        ciphertext: 'cipher-after-delete',
+        nonce: 'nonce-after-delete',
+        version: 'veil-envelope-v1-dev',
+      });
+    expect(editDeleted.status).toBe(403);
+    expect(editDeleted.body.code).toBe('message_deleted');
+
+    // Recipient sees the tombstone in the listing.
+    const listing = await api
+      .get(`/v1/conversations/${conversationId}/messages?limit=10`)
+      .set('Authorization', bearerB);
+    expect(listing.status).toBe(200);
+    const tombstone = listing.body.items.find(
+      (item: { id: string }) => item.id === messageId,
+    );
+    expect(tombstone).toBeDefined();
+    expect(tombstone.deletedAt).toBeTruthy();
+    expect(tombstone.ciphertext).toBe('deleted');
+
+    expect(
+      realtime.emitted.some(
+        (event) =>
+          event.event === 'message.deleted' &&
+          (event.payload as { messageId?: string } | undefined)?.messageId === messageId,
+      ),
+    ).toBe(true);
+  });
 });

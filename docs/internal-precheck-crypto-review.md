@@ -70,6 +70,95 @@ recipientUserId || ratchetPub || counterBytes` to both `encrypt` and
 forward into v2 is low-risk and closes the gap before audit. The
 `cryptography` package's `AesGcm.encrypt` accepts an `aad` parameter.
 
+**Status (2026-05):**
+- ✅ **Web demo: applied + tested.** `apps/web-demo/lib/aad.js` is a
+  pure, length-prefixed canonical AAD builder (7 Vitest cases incl.
+  field-boundary confusion). Wired into `encryptForConv` /
+  `decryptFromConv` binding `{conversationId, senderDeviceId}`.
+  `recipientUserId` omitted (empty on group sends, not reliably present
+  at every decrypt call site). conversationId was already bound via the
+  HKDF `info`; the new value is senderDeviceId. Decrypt keeps a legacy
+  no-AAD fallback so pre-F-1 cached messages still open during the
+  transition.
+- ⏳ **Mobile: patch specified below, NOT applied.** The Flutter SDK is
+  not available in the dev sandbox, so the change cannot be unit-tested
+  here. Applying untested edits to the most security-critical file is
+  the exact "risky action without verification" to avoid. Apply on a
+  machine with Flutter and run `pnpm mobile:test` (esp.
+  `crypto_envelope_pinning_test.dart`, `crypto_round_trip_test.dart`,
+  `dh_ratchet_test.dart`) before merge.
+
+### Mobile patch (apply + test on a Flutter machine)
+
+In `lib_crypto_adapter.dart`, build the AAD from the frame fields that
+both sides already have, and pass it to GCM symmetrically.
+
+```dart
+// New helper near the other static crypto helpers:
+static Uint8List _buildAad({
+  required String conversationId,
+  required String senderDeviceId,
+  required List<int> ratchetPub,
+  required List<int> counterBytes,
+}) {
+  final b = BytesBuilder();
+  void field(List<int> bytes) {
+    final len = ByteData(4)..setUint32(0, bytes.length, Endian.big);
+    b.add(len.buffer.asUint8List());
+    b.add(bytes);
+  }
+  b.add(utf8.encode('veil-aad-v1'));
+  field(utf8.encode(conversationId));
+  field(utf8.encode(senderDeviceId));
+  field(ratchetPub);
+  field(counterBytes);
+  return b.toBytes();
+}
+```
+
+In `encryptMessage`, after computing `ratchetPub` and `counterBytes`:
+
+```dart
+final aad = _buildAad(
+  conversationId: conversationId,
+  senderDeviceId: senderDeviceId,
+  ratchetPub: ratchetPub,
+  counterBytes: counterBytes,
+);
+final secretBox = await _aesGcm.encrypt(
+  utf8.encode(payload),
+  secretKey: messageKey,
+  nonce: nonce,
+  aad: aad,                    // <-- add this
+);
+```
+
+In `decryptMessage`, the receiver already parses `incomingPeerPub`
+(== ratchetPub) and `counter`. Rebuild the same AAD before
+`_aesGcm.decrypt`:
+
+```dart
+final counterBytes = ciphertextBytes.sublist(32, 36);
+final aad = _buildAad(
+  conversationId: envelope.conversationId,
+  senderDeviceId: envelope.senderDeviceId,
+  ratchetPub: incomingPeerPub,
+  counterBytes: counterBytes,
+);
+final cleartext = await _aesGcm.decrypt(
+  secretBox,
+  secretKey: messageKey,
+  aad: aad,                    // <-- add this
+);
+```
+
+Wire-break note: this is NOT backward compatible — old envelopes
+decrypt-fail under the new AAD. For a beta with no real persisted
+history that's acceptable (decrypt returns the existing
+`[Decryption failed]` sentinel, no crash). If a transition window is
+needed, mirror the web demo's try-with-aad-then-without fallback.
+Update `crypto_envelope_pinning_test.dart` fixtures to the new tag.
+
 ### F-2 — In-band sentinel plaintext on decryption failure (Low)
 
 `decryptMessage` returns failures as a normal-looking

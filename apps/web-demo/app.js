@@ -13,6 +13,7 @@ import {
   formatBytes as fmtBytes,
 } from './lib/format.js';
 import { parseKakaoExport } from './lib/kakao-import.js';
+import { buildAad } from './lib/aad.js';
 // Initialize translations as early as possible so DOM static strings can be
 // rewritten before the user sees them. Top-level await is supported in
 // modules, which is exactly what this file is.
@@ -161,27 +162,51 @@ async function signChallenge(edPrivateKey, challenge) {
   return b64uEncode(sig);
 }
 
+// F-1 (internal-precheck-crypto-review.md): bind the sending device id
+// to the AES-GCM tag via additionalData so a ciphertext can't be
+// re-attributed to a different device. conversationId is already bound
+// through the HKDF `info`; recipientUserId is omitted because group
+// sends leave it empty and it isn't reliably present at every decrypt
+// call site. Encrypt and decrypt build the AAD with the same pure
+// buildAad() so there's no encode/decode mismatch.
 async function encryptForConv(convId, plaintext) {
   const ctx = await getConvCryptoCtx(convId);
   if (!ctx) return null;
   const nonce = crypto.getRandomValues(new Uint8Array(12));
   const aesKey = await deriveAesKey(ctx.hkdfBase, nonce, ctx.info);
+  const aad = buildAad({ conversationId: convId, senderDeviceId: state.me?.deviceId ?? '' });
   const ct = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce, additionalData: aad },
     aesKey,
     new TextEncoder().encode(plaintext),
   );
   return { ciphertext: 'v2.' + b64uEncode(ct), nonce: b64uEncode(nonce) };
 }
 
-async function decryptFromConv(convId, ciphertext, nonceB64u) {
+async function decryptFromConv(convId, ciphertext, nonceB64u, senderDeviceId) {
   if (!ciphertext?.startsWith('v2.')) return null;
   const ctx = await getConvCryptoCtx(convId);
   if (!ctx) return null;
   const nonceBuf = new Uint8Array(b64uDecode(nonceB64u));
   const ct = b64uDecode(ciphertext.slice(3));
+  const aesKey = await deriveAesKey(ctx.hkdfBase, nonceBuf, ctx.info);
+  // New path: messages encrypted with the F-1 AAD. We need the sender's
+  // device id to rebuild the same AAD; it rides on the message envelope.
+  if (senderDeviceId) {
+    try {
+      const aad = buildAad({ conversationId: convId, senderDeviceId });
+      const pt = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: nonceBuf, additionalData: aad },
+        aesKey,
+        ct,
+      );
+      return new TextDecoder().decode(pt);
+    } catch {
+      // fall through to the legacy (no-AAD) path below
+    }
+  }
+  // Legacy / transition path: messages sent before F-1 carried no AAD.
   try {
-    const aesKey = await deriveAesKey(ctx.hkdfBase, nonceBuf, ctx.info);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonceBuf }, aesKey, ct);
     return new TextDecoder().decode(pt);
   } catch {
@@ -286,7 +311,7 @@ async function decryptMessage(msg) {
     msg._replyTo = null;
     return;
   }
-  const pt = await decryptFromConv(msg.conversationId, ct, msg.nonce);
+  const pt = await decryptFromConv(msg.conversationId, ct, msg.nonce, msg.senderDeviceId);
   if (pt == null) {
     msg._plaintext = '🔒 복호화 실패';
     msg._replyTo = null;
@@ -2717,7 +2742,7 @@ async function onMessageEdited(serverMsg) {
     // Re-decrypt the new ciphertext into a plaintext we can render.
     let plaintext = null;
     try {
-      plaintext = await decryptFromConv(convId, serverMsg.ciphertext, serverMsg.nonce);
+      plaintext = await decryptFromConv(convId, serverMsg.ciphertext, serverMsg.nonce, serverMsg.senderDeviceId);
     } catch {}
     list[idx] = {
       ...local,
@@ -2974,7 +2999,7 @@ async function maybeMaterializeVoice(msg, convId) {
   if (msg.messageType !== 'voice') return;
   if (msg._voiceUrl) return;
   try {
-    const decrypted = await decryptFromConv(convId, msg.ciphertext, msg.nonce);
+    const decrypted = await decryptFromConv(convId, msg.ciphertext, msg.nonce, msg.senderDeviceId);
     const text = typeof decrypted === 'string' ? decrypted : decrypted?.text;
     if (!text) return;
     const payload = JSON.parse(text);

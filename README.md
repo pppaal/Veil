@@ -21,15 +21,15 @@ console logging in mobile.
 
 | Path | Description |
 |---|---|
-| `apps/api/` | NestJS backend — 19 modules, 132 unit + 6 e2e tests, 10 Prisma migrations |
-| `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`) |
-| `apps/web-demo/` | Vanilla-JS web client — full feature surface incl. voice messages, reactions, reply/edit/delete |
+| `apps/api/` | NestJS backend — 19 modules, 132 unit + 7 e2e tests, 10 Prisma migrations |
+| `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`), 27 test files |
+| `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. 40 Vitest unit + 4 Playwright e2e specs |
 | `packages/contracts/` | Typed API + realtime contracts (single source of truth) |
 | `packages/shared/` | Shared envelope versions and protocol constants |
 | `infra/caddy/` | Production TLS reverse proxy |
 | `infra/prometheus/` `grafana/` | Metrics + alerting + 8-panel dashboard, all auto-provisioned |
 | `infra/docker/` | Demo / alpha / production Compose stacks |
-| `docs/` | 50+ documents — architecture, threat model, runbooks, crypto specs, audit handoff |
+| `docs/` | 60+ documents — architecture, threat model, runbooks, crypto specs, audit handoff, pre-audit review |
 | `scripts/` | CI gates, release evidence, audit handoff bundling |
 
 ---
@@ -101,11 +101,24 @@ them will fail CI:
 
 ### Web demo (`apps/web-demo`)
 - Full message UI: reactions (long-press / right-click), reply, edit,
-  delete, voice messages (push-to-talk MediaRecorder, opus, 30s cap)
-- IndexedDB-backed session and message cache, encrypted at rest
-- `i18n/{ko,en,ja}.json` with `?lang=` switcher
-- PWA manifest + iconography
-- Themed confirm dialogs replacing native `confirm()`
+  delete, forward, voice messages (push-to-talk MediaRecorder, opus,
+  30s cap), image attachments (drag-drop + preview confirm + zoom),
+  generic file attachments (PDF/video/zip, 25MB), in-conversation
+  search, @mention autocomplete, 5-minute delete-undo
+- Markdown lite in messages: `*bold*`, `_italic_`, `` `code` ``,
+  ```` ```fenced code blocks``` ````, auto-linked URLs, @mention chips
+- **KakaoTalk import**: drop a `.txt` export → read-only archive,
+  parsed 100% in-browser, bytes never reach the server
+- Block / mute / report UI wired to the safety endpoints
+- Unified settings dialog: dark/light theme, language, sounds,
+  notifications
+- Browser notifications + tab unread badge, keyboard shortcuts
+  (Ctrl/Cmd+K/N/F/+/), Web Audio send/receive tones (opt-in)
+- IndexedDB-backed session + message cache (encrypted at rest);
+  blob URLs revoked on delete/logout to bound memory
+- `i18n/{ko,en,ja}.json` with `?lang=` switcher, locale-aware time
+- PWA manifest + iconography, CSP meta, themed dialogs
+- Testable helpers extracted to `lib/{markdown,format,kakao-import}.js`
 
 ### Mobile (`apps/mobile`)
 - Riverpod state, GoRouter navigation, Drift cache
@@ -158,8 +171,12 @@ Mobile `--dart-define` runtime flags:
 
 ### Daily
 - `pnpm dev:api` — API dev server
-- `pnpm test`, `pnpm lint`, `pnpm format:check`
-- `pnpm -C apps/api test:e2e`
+- `pnpm test` — all unit suites (API Jest + web demo Vitest)
+- `pnpm lint`, `pnpm format:check`
+- `pnpm -C apps/api test:e2e` — API e2e (supertest)
+- `pnpm -C apps/web-demo test` — web demo Vitest (markdown / format / kakao-import)
+- `pnpm e2e:web` — Playwright browser e2e (needs a running demo stack;
+  `pnpm e2e:web:install` once for chromium, `pnpm e2e:web:ui` to debug)
 
 ### Demo / Tunnel
 - `pnpm demo:up` / `demo:logs` / `demo:down` / `demo:reset`
@@ -208,6 +225,7 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 ## Documentation index
 
 ### Start here
+- [사용 설명서 (Korean all-in-one guide)](docs/사용설명서.md) — 한 문서로 보는 VEIL
 - [Architecture](docs/architecture.md)
 - [Threat Model](docs/threat-model.md)
 - [No Recovery rationale](docs/no-recovery.md)
@@ -222,6 +240,7 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 ### Crypto specs
 - [Crypto Envelope Spec](docs/crypto-envelope-spec.md) — current wire format
 - [Forward Secrecy Ratchet Design](docs/forward-secrecy-ratchet-design.md) — implemented mobile ratchet
+- [Internal Pre-Audit Crypto Review](docs/internal-precheck-crypto-review.md) — reading-level review, NOT external audit
 - [Envelope v3 Unified Spec](docs/envelope-v3-unified-spec.md) — design only, not implemented
 - [Group Sender Keys Design](docs/group-sender-keys-design.md) — design only
 - [Sealed Sender Design](docs/sealed-sender-design.md) — design only

@@ -16,6 +16,14 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
   });
+  // Express's default JSON body limit is 100kb, but a message envelope can
+  // legitimately carry up to ~128kb of ciphertext (inline voice / image
+  // notes — see SendMessageDto.ciphertext MaxLength 131072). Without this
+  // override those messages 413 at the body parser before DTO validation
+  // ever runs. 512kb leaves headroom for the envelope JSON overhead while
+  // staying bounded against payload-flood DoS (the messages route is also
+  // throttled to 120/min).
+  app.useBodyParser('json', { limit: '512kb' });
   const config = app.get(AppConfigService);
   config.assertProductionReady();
   const corsOrigin = (

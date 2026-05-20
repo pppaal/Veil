@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
@@ -58,7 +59,10 @@ describe('VEIL API (e2e)', () => {
 
     verifier = moduleRef.get(Ed25519DeviceAuthVerifier);
     keyHelper = new DeviceAuthTestHelper();
-    app = moduleRef.createNestApplication();
+    app = moduleRef.createNestApplication<NestExpressApplication>();
+    // Mirror main.ts: raise the JSON body limit so large (inline voice /
+    // image) message envelopes aren't 413'd before DTO validation.
+    (app as NestExpressApplication).useBodyParser('json', { limit: '512kb' });
     app.setGlobalPrefix('v1');
     app.useGlobalPipes(
       new ValidationPipe({
@@ -941,5 +945,78 @@ describe('VEIL API (e2e)', () => {
           (event.payload as { messageId?: string } | undefined)?.messageId === messageId,
       ),
     ).toBe(true);
+  });
+
+  it('accepts an inline-voice-sized message body over 100KB (body limit)', async () => {
+    const api = request(app.getHttpServer());
+    const keyPairA = keyHelper.createKeyPair();
+    const keyPairB = keyHelper.createKeyPair();
+
+    const auth = async (handle: string, deviceId: string, kp: {
+      authPublicKey: string;
+      authPrivateKey: string;
+    }): Promise<string> => {
+      const ch = await api.post('/v1/auth/challenge').send({ handle, deviceId });
+      const signature = keyHelper.createProof({
+        challenge: ch.body.challenge,
+        authPrivateKey: kp.authPrivateKey,
+      });
+      const v = await api.post('/v1/auth/verify').send({
+        challengeId: ch.body.challengeId,
+        deviceId,
+        signature,
+      });
+      return v.body.accessToken as string;
+    };
+
+    const registerA = await api.post('/v1/auth/register').send({
+      handle: 'bigsndr',
+      displayName: 'Big Sender',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-big',
+      signedPrekeyBundle: 'prekey-big',
+      authPublicKey: keyPairA.authPublicKey,
+    });
+    const bearerA = `Bearer ${await auth('bigsndr', registerA.body.deviceId, keyPairA)}`;
+
+    const registerB = await api.post('/v1/auth/register').send({
+      handle: 'bigrcvr',
+      displayName: 'Big Receiver',
+      deviceName: 'iPhone',
+      platform: 'ios',
+      publicIdentityKey: 'pub-big-b',
+      signedPrekeyBundle: 'prekey-big-b',
+      authPublicKey: keyPairB.authPublicKey,
+    });
+
+    const conversation = await api
+      .post('/v1/conversations/direct')
+      .set('Authorization', bearerA)
+      .send({ peerHandle: 'bigrcvr' });
+    const conversationId = conversation.body.conversation.id;
+
+    // ~120KB of ciphertext — over the Express 100KB default, under the
+    // DTO's 131072 cap. Without the useBodyParser('json', {limit}) bump
+    // this would 413 at the body parser before validation.
+    const bigCiphertext = 'v'.repeat(120_000);
+    const sent = await api
+      .post('/v1/messages')
+      .set('Authorization', bearerA)
+      .send({
+        conversationId,
+        clientMessageId: 'client-msg-big-1',
+        envelope: {
+          version: 'veil-envelope-v1-dev',
+          conversationId,
+          senderDeviceId: registerA.body.deviceId,
+          recipientUserId: registerB.body.userId,
+          ciphertext: bigCiphertext,
+          nonce: 'nonce-big',
+          messageType: 'voice',
+        },
+      });
+    expect(sent.status).toBe(201);
+    expect(sent.body.message.ciphertext).toHaveLength(120_000);
   });
 });

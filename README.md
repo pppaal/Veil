@@ -294,3 +294,22 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 - [Mobile Device Security](docs/mobile-device-security.md)
 - [Observability Hygiene](docs/observability-hygiene.md)
 - [Open Chat Design (draft)](docs/open-chat-design.md)
+
+---
+
+## License
+
+VEIL is free software licensed under the **GNU Affero General Public
+License v3.0 only** (AGPL-3.0-only). See [`LICENSE`](LICENSE) for the full
+text.
+
+The AGPL's network clause (§13) is deliberate: if you run a modified VEIL
+server as a network service, you must offer your users the modified source.
+This keeps the privacy invariants — no plaintext on the server, no recovery
+path, no admin override — from being silently stripped out of a hosted fork.
+
+Being open source under a recognized FOSS license is also what makes VEIL
+eligible for a funded external cryptographic review through programs like
+the [Open Technology Fund](https://www.opentech.fund/) — the review that
+gates the public launch (see
+[`docs/otf-application-template.md`](docs/otf-application-template.md)).

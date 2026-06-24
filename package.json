@@ -2,6 +2,7 @@
   "name": "veil-monorepo",
   "private": true,
   "version": "0.1.0",
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@10.28.0",
   "devDependencies": {
     "@playwright/test": "^1.59.1",

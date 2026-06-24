@@ -17,8 +17,9 @@ android/.gradle
 *.log
 artifacts/
 .env
-.env.local
-.env.prod
+.env.*
+!.env.example
+!.env.*.example
 apps/api/prisma/dev.db
 apps/api/prisma/dev.db-journal
 apps/mobile/.dart_tool

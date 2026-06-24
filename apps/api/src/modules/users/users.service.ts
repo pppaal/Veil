@@ -51,10 +51,7 @@ export class UsersService {
         isActive: true,
         revokedAt: null,
       },
-      orderBy: [
-        { trustedAt: 'desc' },
-        { lastSeenAt: 'desc' },
-      ],
+      orderBy: [{ trustedAt: 'desc' }, { lastSeenAt: 'desc' }],
     });
 
     const resolvedDevice =

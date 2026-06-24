@@ -5,8 +5,7 @@ const repoRoot = process.cwd();
 const args = process.argv.slice(2);
 
 const envFileArgIndex = args.findIndex((value) => value === '--env-file');
-const requestedEnvFile =
-  envFileArgIndex >= 0 ? args[envFileArgIndex + 1] : undefined;
+const requestedEnvFile = envFileArgIndex >= 0 ? args[envFileArgIndex + 1] : undefined;
 
 const candidateFiles = [
   requestedEnvFile,
@@ -62,14 +61,18 @@ requireNonEmpty('VEIL_S3_BUCKET', 'Object storage bucket is required.');
 requireNonEmpty('VEIL_ALLOWED_ORIGINS', 'Allowed origins must be configured.');
 
 if (env.VEIL_ENV === 'production') {
-  failures.push('VEIL_ENV: Production boot must remain blocked until audited crypto is integrated.');
+  failures.push(
+    'VEIL_ENV: Production boot must remain blocked until audited crypto is integrated.',
+  );
 }
 
 if (
   env.VEIL_JWT_SECRET &&
   /replace-me|replace-this-for-alpha|test-secret/i.test(env.VEIL_JWT_SECRET)
 ) {
-  failures.push('VEIL_JWT_SECRET: Placeholder JWT secret must not be used for deployable private beta.');
+  failures.push(
+    'VEIL_JWT_SECRET: Placeholder JWT secret must not be used for deployable private beta.',
+  );
 }
 
 const pushProvider = env.VEIL_PUSH_PROVIDER ?? 'none';
@@ -83,16 +86,24 @@ if (pushProvider === 'apns') {
   requireNonEmpty('VEIL_APNS_BUNDLE_ID', 'APNs bundle id is required when APNs is selected.');
   requireNonEmpty('VEIL_APNS_TEAM_ID', 'APNs team id is required when APNs is selected.');
   requireNonEmpty('VEIL_APNS_KEY_ID', 'APNs key id is required when APNs is selected.');
-  requireNonEmpty('VEIL_APNS_PRIVATE_KEY_PEM', 'APNs private key is required when APNs is selected.');
+  requireNonEmpty(
+    'VEIL_APNS_PRIVATE_KEY_PEM',
+    'APNs private key is required when APNs is selected.',
+  );
 }
 
 if (pushProvider === 'fcm') {
   requireNonEmpty('VEIL_FCM_PROJECT_ID', 'FCM project id is required when FCM is selected.');
-  requireNonEmpty('VEIL_FCM_SERVICE_ACCOUNT_JSON', 'FCM service account JSON is required when FCM is selected.');
+  requireNonEmpty(
+    'VEIL_FCM_SERVICE_ACCOUNT_JSON',
+    'FCM service account JSON is required when FCM is selected.',
+  );
 }
 
 if (!pushDeliveryEnabled) {
-  warnings.push('Push delivery is disabled. Runtime will remain metadata-only but no provider delivery will occur.');
+  warnings.push(
+    'Push delivery is disabled. Runtime will remain metadata-only but no provider delivery will occur.',
+  );
 }
 
 const result = {

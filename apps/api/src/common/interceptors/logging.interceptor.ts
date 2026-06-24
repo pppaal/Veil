@@ -1,9 +1,4 @@
-import {
-  CallHandler,
-  ExecutionContext,
-  Injectable,
-  NestInterceptor,
-} from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { Observable, tap } from 'rxjs';
 
@@ -32,9 +27,9 @@ export class LoggingInterceptor implements NestInterceptor {
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const request = context.switchToHttp().getRequest<
-      Request & { auth?: { userId: string }; requestId?: string }
-    >();
+    const request = context
+      .switchToHttp()
+      .getRequest<Request & { auth?: { userId: string }; requestId?: string }>();
     const response = context.switchToHttp().getResponse<{
       setHeader(name: string, value: string): void;
       statusCode?: number;

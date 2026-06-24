@@ -87,15 +87,11 @@ export class AccountService {
     await tryStep('messageReceipts', () =>
       this.prisma.messageReceipt.deleteMany({ where: { userId } }),
     );
-    await tryStep('reactions', () =>
-      this.prisma.reaction.deleteMany({ where: { userId } }),
-    );
+    await tryStep('reactions', () => this.prisma.reaction.deleteMany({ where: { userId } }));
     await tryStep('storyViews', () =>
       this.prisma.storyView.deleteMany({ where: { viewerUserId: userId } }),
     );
-    await tryStep('stories', () =>
-      this.prisma.story.deleteMany({ where: { userId } }),
-    );
+    await tryStep('stories', () => this.prisma.story.deleteMany({ where: { userId } }));
     await tryStep('userContacts', () =>
       this.prisma.userContact.deleteMany({
         where: { OR: [{ userId }, { contactUserId: userId }] },
@@ -150,10 +146,7 @@ export class AccountService {
     return { deleted: true };
   }
 
-  private async runDelete(
-    label: string,
-    run: () => Promise<{ count: number }>,
-  ): Promise<number> {
+  private async runDelete(label: string, run: () => Promise<{ count: number }>): Promise<number> {
     try {
       const { count } = await run();
       if (count > 0) {

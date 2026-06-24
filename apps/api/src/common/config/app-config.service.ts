@@ -151,7 +151,10 @@ export class AppConfigService {
     // The default JWT secret in dev compose / examples is a known-loose
     // value. Anything that smells like a placeholder is rejected.
     const jwt = this.jwtSecret;
-    if (jwt.length < 32 || /(replace[-_]?me|placeholder|demo|test[-_]?secret|example|change[-_]?me)/i.test(jwt)) {
+    if (
+      jwt.length < 32 ||
+      /(replace[-_]?me|placeholder|demo|test[-_]?secret|example|change[-_]?me)/i.test(jwt)
+    ) {
       errors.push(
         'VEIL_JWT_SECRET is a placeholder or shorter than 32 chars. ' +
           'Generate a real one with `openssl rand -base64 32`.',
@@ -176,12 +179,11 @@ export class AppConfigService {
     // Push delivery without provider credentials silently no-ops; better to
     // refuse to boot than ship a misconfigured deployment.
     if (this.pushDeliveryEnabled) {
-      const hasApns = this.apnsBundleId && this.apnsTeamId && this.apnsKeyId && this.apnsPrivateKeyPem;
+      const hasApns =
+        this.apnsBundleId && this.apnsTeamId && this.apnsKeyId && this.apnsPrivateKeyPem;
       const hasFcm = this.fcmProjectId && this.fcmServiceAccountJson;
       if (!hasApns && !hasFcm) {
-        errors.push(
-          'VEIL_PUSH_ENABLE_DELIVERY=true but no APNs or FCM credentials are set.',
-        );
+        errors.push('VEIL_PUSH_ENABLE_DELIVERY=true but no APNs or FCM credentials are set.');
       }
     }
 
@@ -197,9 +199,7 @@ export class AppConfigService {
     }
 
     if (errors.length > 0) {
-      throw new Error(
-        'VEIL production boot blocked:\n  - ' + errors.join('\n  - '),
-      );
+      throw new Error('VEIL production boot blocked:\n  - ' + errors.join('\n  - '));
     }
   }
 
@@ -260,5 +260,4 @@ export class AppConfigService {
 
     return this.allowedOrigins.includes(origin);
   }
-
 }

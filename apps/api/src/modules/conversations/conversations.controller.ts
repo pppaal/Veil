@@ -48,10 +48,6 @@ export class ConversationsController {
     @Param('id') id: string,
     @Body() dto: SetDisappearingTimerDto,
   ): Promise<SetDisappearingTimerResponse> {
-    return this.conversationsService.setDisappearingTimer(
-      request.auth.userId,
-      id,
-      dto.seconds,
-    );
+    return this.conversationsService.setDisappearingTimer(request.auth.userId, id, dto.seconds);
   }
 }

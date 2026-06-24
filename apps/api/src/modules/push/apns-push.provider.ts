@@ -29,7 +29,12 @@ export class ApnsMetadataPushProvider implements PushProvider {
     | undefined;
 
   constructor(private readonly config: AppConfigService) {
-    if (!config.apnsBundleId || !config.apnsTeamId || !config.apnsKeyId || !config.apnsPrivateKeyPem) {
+    if (
+      !config.apnsBundleId ||
+      !config.apnsTeamId ||
+      !config.apnsKeyId ||
+      !config.apnsPrivateKeyPem
+    ) {
       throw badRequest(
         'internal_error',
         'APNs provider selected but required APNs credentials are missing',
@@ -106,10 +111,7 @@ export class ApnsMetadataPushProvider implements PushProvider {
 
   private issueBearerToken(): string {
     const now = Math.floor(Date.now() / 1000);
-    if (
-      this.cachedBearerToken != null &&
-      this.cachedBearerToken.expiresAt > now + 60
-    ) {
+    if (this.cachedBearerToken != null && this.cachedBearerToken.expiresAt > now + 60) {
       return this.cachedBearerToken.value;
     }
 

@@ -139,11 +139,7 @@ describe('MessagesService', () => {
       const { service, prisma, gateway } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const result = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -158,9 +154,7 @@ describe('MessagesService', () => {
       expect(result.message.conversationId).toBe(conversationId);
       expect(prisma.messages).toHaveLength(1);
 
-      const emittedToBob = gateway.emitted.filter(
-        (entry) => entry.userId === bob.userId,
-      );
+      const emittedToBob = gateway.emitted.filter((entry) => entry.userId === bob.userId);
       expect(emittedToBob.some((e) => e.event === 'message.new')).toBe(true);
       expect(emittedToBob.some((e) => e.event === 'conversation.sync')).toBe(true);
     });
@@ -169,11 +163,7 @@ describe('MessagesService', () => {
       const { service, prisma } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       await expect(
         service.send(
@@ -192,11 +182,7 @@ describe('MessagesService', () => {
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
       const mallory = seedUserAndDevice(prisma, 'mallory');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       await expect(
         service.send(
@@ -214,11 +200,7 @@ describe('MessagesService', () => {
       const { service, prisma } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const dto = buildSendDto({
         conversationId,
@@ -227,14 +209,8 @@ describe('MessagesService', () => {
         clientMessageId: 'client-dedupe-test',
       });
 
-      const first = await service.send(
-        { userId: alice.userId, deviceId: alice.deviceId },
-        dto,
-      );
-      const second = await service.send(
-        { userId: alice.userId, deviceId: alice.deviceId },
-        dto,
-      );
+      const first = await service.send({ userId: alice.userId, deviceId: alice.deviceId }, dto);
+      const second = await service.send({ userId: alice.userId, deviceId: alice.deviceId }, dto);
 
       expect(first.idempotent).toBe(false);
       expect(second.idempotent).toBe(true);
@@ -246,11 +222,7 @@ describe('MessagesService', () => {
       const { service, prisma } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const attachmentId = randomUUID();
       prisma.attachments.push({
@@ -283,11 +255,7 @@ describe('MessagesService', () => {
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
       const eve = seedUserAndDevice(prisma, 'eve');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       await expect(
         service.send(
@@ -307,11 +275,7 @@ describe('MessagesService', () => {
       const bob = seedUserAndDevice(prisma, 'bob', {
         pushToken: 'bob-device-token',
       });
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       // Bob is offline → expect push hint
       await service.send(
@@ -348,11 +312,7 @@ describe('MessagesService', () => {
       const { service, prisma, gateway } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -384,11 +344,7 @@ describe('MessagesService', () => {
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
       const mallory = seedUserAndDevice(prisma, 'mallory');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -400,10 +356,7 @@ describe('MessagesService', () => {
       );
 
       await expect(
-        service.markRead(
-          { userId: mallory.userId, deviceId: mallory.deviceId },
-          sent.message.id,
-        ),
+        service.markRead({ userId: mallory.userId, deviceId: mallory.deviceId }, sent.message.id),
       ).rejects.toThrow('Message not found for actor');
     });
 
@@ -411,11 +364,7 @@ describe('MessagesService', () => {
       const { service, prisma, gateway } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -426,16 +375,10 @@ describe('MessagesService', () => {
         }),
       );
 
-      await service.markRead(
-        { userId: bob.userId, deviceId: bob.deviceId },
-        sent.message.id,
-      );
+      await service.markRead({ userId: bob.userId, deviceId: bob.deviceId }, sent.message.id);
       gateway.emitted.length = 0;
 
-      await service.markRead(
-        { userId: bob.userId, deviceId: bob.deviceId },
-        sent.message.id,
-      );
+      await service.markRead({ userId: bob.userId, deviceId: bob.deviceId }, sent.message.id);
 
       expect(gateway.emitted).toHaveLength(0);
     });
@@ -446,11 +389,7 @@ describe('MessagesService', () => {
       const { service, prisma, gateway } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -462,17 +401,11 @@ describe('MessagesService', () => {
       );
       gateway.emitted.length = 0;
 
-      const reaction = await service.addReaction(
-        { userId: bob.userId },
-        sent.message.id,
-        '👍',
-      );
+      const reaction = await service.addReaction({ userId: bob.userId }, sent.message.id, '👍');
 
       expect(reaction.emoji).toBe('👍');
       const emittedAdd = gateway.emitted.find(
-        (e) =>
-          e.event === 'message.reaction' &&
-          (e.payload as { action: string }).action === 'add',
+        (e) => e.event === 'message.reaction' && (e.payload as { action: string }).action === 'add',
       );
       expect(emittedAdd).toBeDefined();
     });
@@ -481,11 +414,7 @@ describe('MessagesService', () => {
       const { service, prisma, gateway } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -495,19 +424,14 @@ describe('MessagesService', () => {
           recipientUserId: bob.userId,
         }),
       );
-      await service.addReaction(
-        { userId: bob.userId },
-        sent.message.id,
-        '❤️',
-      );
+      await service.addReaction({ userId: bob.userId }, sent.message.id, '❤️');
       gateway.emitted.length = 0;
 
       await service.removeReaction({ userId: bob.userId }, sent.message.id);
 
       const emittedRemove = gateway.emitted.find(
         (e) =>
-          e.event === 'message.reaction' &&
-          (e.payload as { action: string }).action === 'remove',
+          e.event === 'message.reaction' && (e.payload as { action: string }).action === 'remove',
       );
       expect(emittedRemove).toBeDefined();
     });
@@ -517,11 +441,7 @@ describe('MessagesService', () => {
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
       const mallory = seedUserAndDevice(prisma, 'mallory');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -543,11 +463,7 @@ describe('MessagesService', () => {
       const { service, prisma } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },
@@ -558,10 +474,7 @@ describe('MessagesService', () => {
         }),
       );
 
-      const result = await service.deleteLocal(
-        { userId: bob.userId },
-        sent.message.id,
-      );
+      const result = await service.deleteLocal({ userId: bob.userId }, sent.message.id);
       expect(result.acknowledged).toBe(true);
       expect(result.messageId).toBe(sent.message.id);
     });
@@ -571,11 +484,7 @@ describe('MessagesService', () => {
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
       const mallory = seedUserAndDevice(prisma, 'mallory');
-      const conversationId = seedDirectConversation(
-        prisma,
-        alice.userId,
-        bob.userId,
-      );
+      const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
 
       const sent = await service.send(
         { userId: alice.userId, deviceId: alice.deviceId },

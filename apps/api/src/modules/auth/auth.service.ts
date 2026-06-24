@@ -1,7 +1,4 @@
-import {
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { UserStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type {
@@ -14,11 +11,7 @@ import type {
 import { JwtService } from '@nestjs/jwt';
 
 import { AppConfigService } from '../../common/config/app-config.service';
-import {
-  conflict,
-  notFound,
-  unauthorized,
-} from '../../common/errors/api-error';
+import { conflict, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -47,8 +40,7 @@ const activeChallengeKey = (deviceId: string): string => `auth:challenge:device:
 const refreshTokenKey = (tokenHash: string): string => `auth:refresh:${tokenHash}`;
 const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 
-const hashToken = (token: string): string =>
-  createHash('sha256').update(token).digest('hex');
+const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
 @Injectable()
 export class AuthService {
@@ -165,16 +157,14 @@ export class AuthService {
   }
 
   async verify(dto: VerifyDto): Promise<AuthVerifyResponse> {
-    const stored = await this.ephemeralStore.getJson<StoredChallenge>(challengeKey(dto.challengeId));
+    const stored = await this.ephemeralStore.getJson<StoredChallenge>(
+      challengeKey(dto.challengeId),
+    );
     const activeChallengeId = await this.ephemeralStore.getJson<string>(
       activeChallengeKey(dto.deviceId),
     );
 
-    if (
-      !stored ||
-      stored.deviceId !== dto.deviceId ||
-      activeChallengeId !== dto.challengeId
-    ) {
+    if (!stored || stored.deviceId !== dto.deviceId || activeChallengeId !== dto.challengeId) {
       throw unauthorized('challenge_invalid', 'Challenge expired or invalid');
     }
 

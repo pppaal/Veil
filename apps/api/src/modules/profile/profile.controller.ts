@@ -17,18 +17,12 @@ export class ProfileController {
   }
 
   @Patch()
-  updateProfile(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: UpdateProfileDto,
-  ) {
+  updateProfile(@Req() request: AuthenticatedRequest, @Body() dto: UpdateProfileDto) {
     return this.profileService.updateProfile(request.auth, dto);
   }
 
   @Get(':handle')
-  getPublicProfile(
-    @Req() request: AuthenticatedRequest,
-    @Param('handle') handle: string,
-  ) {
+  getPublicProfile(@Req() request: AuthenticatedRequest, @Param('handle') handle: string) {
     return this.profileService.getPublicProfile(request.auth, handle);
   }
 }

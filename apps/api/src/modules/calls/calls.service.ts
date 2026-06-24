@@ -12,10 +12,7 @@ export class CallsService {
     private readonly realtimeGateway: RealtimeGateway,
   ) {}
 
-  async initiateCall(
-    auth: { userId: string; deviceId: string },
-    dto: InitiateCallDto,
-  ) {
+  async initiateCall(auth: { userId: string; deviceId: string }, dto: InitiateCallDto) {
     const membership = await this.prisma.conversationMember.findUnique({
       where: {
         conversationId_userId: {
@@ -64,10 +61,7 @@ export class CallsService {
     return { callId: callRecord.id, status: callRecord.status };
   }
 
-  async endCall(
-    auth: { userId: string },
-    callId: string,
-  ) {
+  async endCall(auth: { userId: string }, callId: string) {
     const callRecord = await this.prisma.callRecord.findUnique({
       where: { id: callId },
       include: {
@@ -95,15 +89,11 @@ export class CallsService {
       },
     });
 
-    this.realtimeGateway.emitConversationMembers(
-      callRecord.conversation.members,
-      'call.ended',
-      {
-        callId: updated.id,
-        conversationId: updated.conversationId,
-        duration,
-      },
-    );
+    this.realtimeGateway.emitConversationMembers(callRecord.conversation.members, 'call.ended', {
+      callId: updated.id,
+      conversationId: updated.conversationId,
+      duration,
+    });
 
     return { callId: updated.id, status: updated.status, duration };
   }
@@ -136,13 +126,12 @@ export class CallsService {
     });
 
     return calls.map((call) => {
-      const otherMember = call.conversation.members.find(
-        (m) => m.userId !== auth.userId,
-      );
-      const counterparty = call.conversation.groupMeta?.name
-        ?? otherMember?.user.displayName
-        ?? otherMember?.user.handle
-        ?? 'Unknown';
+      const otherMember = call.conversation.members.find((m) => m.userId !== auth.userId);
+      const counterparty =
+        call.conversation.groupMeta?.name ??
+        otherMember?.user.displayName ??
+        otherMember?.user.handle ??
+        'Unknown';
       const counterpartyHandle = otherMember?.user.handle ?? null;
 
       return {

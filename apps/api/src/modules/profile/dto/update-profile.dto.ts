@@ -11,8 +11,7 @@ import { IsOptional, IsString, Length } from 'class-validator';
 //   ‪-‮: LRE/RLE/PDF/LRO/RLO
 //   ⁠-⁯: WJ/invisible math/format chars
 //   ﻿ : BOM
-const SANITIZE_RE =
-  /[\x00-\x1F\x7F-\x9F​-‏‪-‮⁠-⁯﻿]/g;
+const SANITIZE_RE = /[\x00-\x1F\x7F-\x9F​-‏‪-‮⁠-⁯﻿]/g;
 
 const sanitize = ({ value }: { value: unknown }): unknown => {
   if (typeof value !== 'string') return value;

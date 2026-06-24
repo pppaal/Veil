@@ -136,8 +136,7 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
       );
       return {
         exists: true,
-        sizeBytes:
-            response.ContentLength == null ? undefined : Number(response.ContentLength),
+        sizeBytes: response.ContentLength == null ? undefined : Number(response.ContentLength),
         contentType: response.ContentType,
         metadata: response.Metadata ?? {},
       };

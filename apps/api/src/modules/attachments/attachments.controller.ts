@@ -9,10 +9,7 @@ import type {
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { AttachmentsService } from './attachments.service';
-import {
-  CompleteAttachmentUploadDto,
-  CreateUploadTicketDto,
-} from './dto/attachment.dto';
+import { CompleteAttachmentUploadDto, CreateUploadTicketDto } from './dto/attachment.dto';
 
 @ApiTags('attachments')
 @ApiBearerAuth()

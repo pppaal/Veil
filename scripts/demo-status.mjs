@@ -38,10 +38,14 @@ async function probe(label, url) {
 }
 
 function probeDocker(name, container) {
-  const out = spawnSync('docker', ['ps', '--filter', `name=${container}`, '--format', '{{.Status}}'], {
-    encoding: 'utf8',
-    timeout: TIMEOUT_MS,
-  });
+  const out = spawnSync(
+    'docker',
+    ['ps', '--filter', `name=${container}`, '--format', '{{.Status}}'],
+    {
+      encoding: 'utf8',
+      timeout: TIMEOUT_MS,
+    },
+  );
   if (out.error) {
     results.push(pad(name, 'warn', 'docker not available'));
     return false;

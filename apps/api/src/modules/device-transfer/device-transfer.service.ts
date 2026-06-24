@@ -1,7 +1,4 @@
-import {
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type {
   DeviceTransferApproveResponse,
   DeviceTransferClaimResponse,
@@ -15,11 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 import { AppConfigService } from '../../common/config/app-config.service';
-import {
-  forbidden,
-  notFound,
-  unauthorized,
-} from '../../common/errors/api-error';
+import { forbidden, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from '../auth/device-auth-verifier';
@@ -53,8 +46,7 @@ const claimFingerprint = (authPublicKey: string): string =>
 
 const claimKey = (sessionId: string): string => `transfer:claim:${sessionId}`;
 
-const hashToken = (token: string): string =>
-  createHash('sha256').update(token).digest('hex');
+const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
 @Injectable()
 export class DeviceTransferService {
@@ -77,10 +69,7 @@ export class DeviceTransferService {
     });
 
     if (auth.deviceId !== dto.oldDeviceId) {
-      throw forbidden(
-        'device_forbidden',
-        'Transfer must be initiated from the trusted old device',
-      );
+      throw forbidden('device_forbidden', 'Transfer must be initiated from the trusted old device');
     }
 
     const oldDevice = await this.prisma.device.findUnique({
@@ -93,7 +82,12 @@ export class DeviceTransferService {
       },
     });
 
-    if (!oldDevice || oldDevice.userId !== auth.userId || !oldDevice.isActive || oldDevice.revokedAt) {
+    if (
+      !oldDevice ||
+      oldDevice.userId !== auth.userId ||
+      !oldDevice.isActive ||
+      oldDevice.revokedAt
+    ) {
       throw forbidden('device_forbidden', 'Old device is not part of the trusted device graph');
     }
 
@@ -134,9 +128,14 @@ export class DeviceTransferService {
       throw forbidden('transfer_session_inactive', 'Transfer session is no longer active');
     }
 
-    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(dto.sessionId));
+    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(
+      claimKey(dto.sessionId),
+    );
     if (!pendingClaim || pendingClaim.claimId !== dto.claimId) {
-      throw forbidden('transfer_claim_required', 'A matching new-device claim is required before approval');
+      throw forbidden(
+        'transfer_claim_required',
+        'A matching new-device claim is required before approval',
+      );
     }
 
     await this.ephemeralStore.setJson<PendingTransferClaim>(
@@ -305,7 +304,9 @@ export class DeviceTransferService {
       );
     }
 
-    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(dto.sessionId));
+    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(
+      claimKey(dto.sessionId),
+    );
 
     if (!pendingClaim || pendingClaim.claimId !== dto.claimId) {
       throw forbidden(
@@ -359,10 +360,7 @@ export class DeviceTransferService {
           select: { completedAt: true },
         });
         if (freshSession?.completedAt) {
-          throw forbidden(
-            'transfer_session_inactive',
-            'Transfer session already completed',
-          );
+          throw forbidden('transfer_session_inactive', 'Transfer session already completed');
         }
 
         const newDevice = await tx.device.create({

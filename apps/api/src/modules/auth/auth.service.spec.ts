@@ -164,9 +164,7 @@ describe('AuthService', () => {
     expect(refreshed.refreshToken).not.toBe(verified.refreshToken);
 
     // Presenting the old refresh token after rotation must fail.
-    await expect(service.refresh(verified.refreshToken)).rejects.toThrow(
-      'Refresh token invalid',
-    );
+    await expect(service.refresh(verified.refreshToken)).rejects.toThrow('Refresh token invalid');
   });
 
   it('rejects refresh against a revoked device', async () => {
@@ -213,9 +211,7 @@ describe('AuthService', () => {
     device.isActive = false;
     device.revokedAt = new Date();
 
-    await expect(service.refresh(verified.refreshToken)).rejects.toThrow(
-      'Device is not active',
-    );
+    await expect(service.refresh(verified.refreshToken)).rejects.toThrow('Device is not active');
   });
 
   it('logout revokes the presented refresh token and blacklists jti', async () => {
@@ -276,13 +272,9 @@ describe('AuthService', () => {
     );
     expect(result.ok).toBe(true);
 
-    await expect(service.refresh(verified.refreshToken)).rejects.toThrow(
-      'Refresh token invalid',
-    );
+    await expect(service.refresh(verified.refreshToken)).rejects.toThrow('Refresh token invalid');
 
-    const blacklisted = await store.getJson<unknown>(
-      `auth:blacklist:${decoded.jti}`,
-    );
+    const blacklisted = await store.getJson<unknown>(`auth:blacklist:${decoded.jti}`);
     expect(blacklisted).not.toBeNull();
   });
 

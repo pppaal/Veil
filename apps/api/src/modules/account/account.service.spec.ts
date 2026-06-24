@@ -61,7 +61,9 @@ function buildPrismaMock(opts?: {
         updateMany: jest.fn(record('phase1.device.updateMany')),
         deleteMany: jest.fn(record('phase3.device.deleteMany')),
       },
-      deviceTransferSession: { deleteMany: jest.fn(record('phase3.deviceTransferSession.deleteMany')) },
+      deviceTransferSession: {
+        deleteMany: jest.fn(record('phase3.deviceTransferSession.deleteMany')),
+      },
       userProfile: { deleteMany: jest.fn(record('phase3.userProfile.deleteMany')) },
     };
     // First call: Phase 1 only sees user.update + device.updateMany.

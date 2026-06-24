@@ -23,17 +23,17 @@ export const envSchema = z.object({
   VEIL_S3_ACCESS_KEY: z.string().min(1),
   VEIL_S3_SECRET_KEY: z.string().min(1),
   VEIL_S3_BUCKET: z.string().min(1),
-  VEIL_ATTACHMENT_MAX_BYTES: z.coerce.number().int().positive().default(50 * 1024 * 1024),
+  VEIL_ATTACHMENT_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(50 * 1024 * 1024),
   VEIL_ATTACHMENT_ALLOWED_MIME_TYPES: z
     .string()
     .default(
-      [
-        'image/jpeg',
-        'image/png',
-        'image/webp',
-        'application/pdf',
-        'application/octet-stream',
-      ].join(','),
+      ['image/jpeg', 'image/png', 'image/webp', 'application/pdf', 'application/octet-stream'].join(
+        ',',
+      ),
     ),
   // Refuse weak JWT secrets at boot. 32 bytes is the floor for HS256
   // — anything shorter shrinks the keyspace below the algorithm's

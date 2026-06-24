@@ -1,10 +1,4 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  HttpException,
-  HttpStatus,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
 import type { Request, Response } from 'express';
 
 import { AppLoggerService } from '../logger/app-logger.service';
@@ -16,12 +10,12 @@ export class ApiExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
-    const request = context.getRequest<Request & { requestId?: string; auth?: { userId: string } }>();
+    const request = context.getRequest<
+      Request & { requestId?: string; auth?: { userId: string } }
+    >();
 
     const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
+      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
 
     const body = this.toErrorBody(exception, status);
 
@@ -60,10 +54,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
     });
   }
 
-  private toErrorBody(
-    exception: unknown,
-    status: number,
-  ): { code: string; message: string } {
+  private toErrorBody(exception: unknown, status: number): { code: string; message: string } {
     if (exception instanceof HttpException) {
       const payload = exception.getResponse();
       if (typeof payload === 'string') {
@@ -80,7 +71,7 @@ export class ApiExceptionFilter implements ExceptionFilter {
         };
         const message = Array.isArray(record.message)
           ? record.message.join('; ')
-          : record.message ?? 'Request rejected';
+          : (record.message ?? 'Request rejected');
 
         return {
           code: record.code ?? this.fallbackCode(status),

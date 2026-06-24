@@ -58,10 +58,7 @@ export class MessagesController {
   }
 
   @Delete(':id/reactions')
-  removeReaction(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  removeReaction(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.messagesService.removeReaction(request.auth, id);
   }
 

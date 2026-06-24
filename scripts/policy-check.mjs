@@ -71,11 +71,7 @@ assertNoMatch(
   'Backend must not add admin message viewers',
 );
 
-assertMatch(
-  'apps/api/src/main.ts',
-  /helmet\(/,
-  'API bootstrap must enable security headers',
-);
+assertMatch('apps/api/src/main.ts', /helmet\(/, 'API bootstrap must enable security headers');
 
 assertMatch(
   'apps/api/src/main.ts',

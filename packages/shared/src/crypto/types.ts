@@ -109,17 +109,12 @@ export interface DeviceIdentityProvider {
 
 export interface DeviceAuthChallengeSigner {
   generateAuthKeyMaterial(): Promise<DeviceAuthKeyMaterial>;
-  signChallenge(input: {
-    challenge: string;
-    keyMaterial: DeviceAuthKeyMaterial;
-  }): Promise<string>;
+  signChallenge(input: { challenge: string; keyMaterial: DeviceAuthKeyMaterial }): Promise<string>;
 }
 
 export interface KeyBundleCodec {
   decodeDirectoryBundle(json: Record<string, unknown>): PublicKeyBundle;
-  decodeDirectoryBundles(
-    json: Array<Record<string, unknown>>,
-  ): PublicKeyBundle[];
+  decodeDirectoryBundles(json: Array<Record<string, unknown>>): PublicKeyBundle[];
 }
 
 export interface CryptoEnvelopeCodec {
@@ -148,9 +143,7 @@ export interface MessageCryptoEngine {
 }
 
 export interface ConversationSessionBootstrapper {
-  bootstrapSession(
-    request: SessionBootstrapRequest,
-  ): Promise<SessionBootstrapMaterial>;
+  bootstrapSession(request: SessionBootstrapRequest): Promise<SessionBootstrapMaterial>;
 }
 
 export interface CryptoAdapter {

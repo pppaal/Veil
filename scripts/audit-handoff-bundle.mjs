@@ -193,13 +193,7 @@ writeFileSync(readmePath, readme, 'utf8');
 
 // Tarball.
 const tarball = join(repoRoot, 'artifacts', `veil-audit-handoff-${sha}.tar.gz`);
-const tarArgs = [
-  '-czf',
-  tarball,
-  '-C',
-  join(repoRoot, 'artifacts'),
-  `audit-handoff-${sha}`,
-];
+const tarArgs = ['-czf', tarball, '-C', join(repoRoot, 'artifacts'), `audit-handoff-${sha}`];
 const tar = spawnSync('tar', tarArgs, { stdio: 'inherit' });
 if (tar.status !== 0) {
   console.error('tar failed; staged dir left at', stagingDir);

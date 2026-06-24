@@ -87,12 +87,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         include: { user: true },
       });
 
-      if (
-        !device ||
-        device.userId !== payload.sub ||
-        !device.isActive ||
-        device.revokedAt
-      ) {
+      if (!device || device.userId !== payload.sub || !device.isActive || device.revokedAt) {
         client.disconnect(true);
         return;
       }
@@ -169,7 +164,11 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return false;
   }
 
-  emitToUser<K extends keyof RealtimeEventMap>(userId: string, event: K, payload: RealtimeEventMap[K]): void {
+  emitToUser<K extends keyof RealtimeEventMap>(
+    userId: string,
+    event: K,
+    payload: RealtimeEventMap[K],
+  ): void {
     const socketIds = this.socketsByUserId.get(userId);
     if (!socketIds) {
       return;
@@ -294,5 +293,4 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
     return result;
   }
-
 }

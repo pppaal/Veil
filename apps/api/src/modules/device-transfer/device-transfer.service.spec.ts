@@ -78,10 +78,13 @@ describe('DeviceTransferService', () => {
       }),
     });
 
-    await service.approve({ userId: 'user-1', deviceId: 'device-old' }, {
-      sessionId: init.sessionId,
-      claimId: claim.claimId,
-    });
+    await service.approve(
+      { userId: 'user-1', deviceId: 'device-old' },
+      {
+        sessionId: init.sessionId,
+        claimId: claim.claimId,
+      },
+    );
 
     const completed = await service.complete({
       sessionId: init.sessionId,
@@ -99,7 +102,9 @@ describe('DeviceTransferService', () => {
     expect(oldDeviceAfter.isActive).toBe(false);
     expect(oldDeviceAfter.revokedAt).toBeInstanceOf(Date);
     expect(oldDeviceAfter.pushToken).toBeNull();
-    expect(prisma.devices.find((item) => item.id == completed.newDeviceId)!.joinedFromDeviceId).toBe('device-old');
+    expect(
+      prisma.devices.find((item) => item.id == completed.newDeviceId)!.joinedFromDeviceId,
+    ).toBe('device-old');
     expect(realtime.disconnectedDevices.has('device-old')).toBe(true);
   });
 

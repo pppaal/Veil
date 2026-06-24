@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma.service';
-import {
-  badRequest,
-  conflict,
-  notFound,
-} from '../../common/errors/api-error';
+import { badRequest, conflict, notFound } from '../../common/errors/api-error';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AddContactDto } from './dto/add-contact.dto';
 

@@ -14,18 +14,12 @@ export class GroupsController {
   constructor(private readonly groupsService: GroupsService) {}
 
   @Post()
-  createGroup(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: CreateGroupDto,
-  ) {
+  createGroup(@Req() request: AuthenticatedRequest, @Body() dto: CreateGroupDto) {
     return this.groupsService.createGroup(request.auth, dto);
   }
 
   @Get(':id')
-  getGroup(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  getGroup(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.groupsService.getGroup(request.auth, id);
   }
 
@@ -57,10 +51,7 @@ export class GroupsController {
   }
 
   @Post(':id/leave')
-  leaveGroup(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  leaveGroup(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.groupsService.leaveGroup(request.auth, id);
   }
 }

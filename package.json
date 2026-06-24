@@ -27,7 +27,7 @@
     "beta:review:manifest": "node ./scripts/external-review-manifest.mjs",
     "beta:review:findings-template": "node ./scripts/external-review-findings-template.mjs",
     "beta:external:status": "node ./scripts/external-execution-status.mjs",
-    "beta:external:bundle": "pnpm beta:release:evidence && pnpm beta:perf:template && pnpm beta:review:manifest && pnpm beta:review:findings-template && pnpm beta:external:status",
+    "beta:external:bundle": "pnpm beta:release:evidence && pnpm beta:perf:template && pnpm beta:review:manifest && pnpm beta:review:findings-template && pnpm beta:external:status && pnpm beta:production:blockers",
     "beta:production:blockers": "node ./scripts/production-blockers-report.mjs",
     "alpha:smoke": "node ./scripts/alpha-smoke.mjs",
     "policy:check": "node ./scripts/policy-check.mjs",

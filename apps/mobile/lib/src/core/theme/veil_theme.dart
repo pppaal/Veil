@@ -236,17 +236,10 @@ class VeilTheme {
       splashFactory: InkSparkle.splashFactory,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
-      // Not const: CupertinoPageTransitionsBuilder's constructor is no
-      // longer const in current Flutter, which made the const map invalid.
-      pageTransitionsTheme: PageTransitionsTheme(
-        builders: <TargetPlatform, PageTransitionsBuilder>{
-          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-        },
-      ),
+      // Use Flutter's default PageTransitionsTheme: it keeps the native
+      // Cupertino swipe transition on iOS/macOS without this file having to
+      // name CupertinoPageTransitionsBuilder, which is not resolvable in the
+      // current Flutter (the explicit override regressed on an SDK bump).
     );
 
     return base.copyWith(

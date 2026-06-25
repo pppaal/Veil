@@ -29,7 +29,9 @@ class VeilApp extends ConsumerWidget {
         title: 'VEIL',
         theme: VeilTheme.light(),
         darkTheme: VeilTheme.dark(),
-        themeMode: ThemeMode.system,
+        // Light is the primary brand surface. Switch back to
+        // ThemeMode.system to auto-follow the OS appearance instead.
+        themeMode: ThemeMode.light,
         debugShowCheckedModeBanner: false,
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,

@@ -67,9 +67,10 @@ describe('DevicesService', () => {
       isActive: true,
       trustState: 'current',
     });
-    expect((listed.items[0] as unknown as { lastTrustedActivityAt?: string | null }).lastTrustedActivityAt).toBe(
-      new Date('2026-04-02T09:00:00.000Z').toISOString(),
-    );
+    expect(
+      (listed.items[0] as unknown as { lastTrustedActivityAt?: string | null })
+        .lastTrustedActivityAt,
+    ).toBe(new Date('2026-04-02T09:00:00.000Z').toISOString());
   });
 
   it('keeps a device trusted when recent sync activity is newer than last seen', async () => {
@@ -286,7 +287,7 @@ describe('DevicesService', () => {
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
-  it('refuses to update a push token on another user\'s device', async () => {
+  it("refuses to update a push token on another user's device", async () => {
     const prisma = new FakePrismaService();
     const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
 

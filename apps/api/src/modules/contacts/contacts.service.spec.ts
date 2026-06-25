@@ -60,10 +60,7 @@ describe('ContactsService', () => {
       const alice = seedUser(prisma, 'alice');
       seedUser(prisma, 'bob');
 
-      const result = await service.addContact(
-        { userId: alice },
-        buildAddDto('bob', 'Bobby'),
-      );
+      const result = await service.addContact({ userId: alice }, buildAddDto('bob', 'Bobby'));
 
       expect(result.handle).toBe('bob');
       expect(result.nickname).toBe('Bobby');
@@ -100,9 +97,9 @@ describe('ContactsService', () => {
         createdAt: new Date(),
       });
 
-      await expect(
-        service.addContact({ userId: alice }, buildAddDto('bob')),
-      ).rejects.toMatchObject({ response: { code: 'contact_already_exists' } });
+      await expect(service.addContact({ userId: alice }, buildAddDto('bob'))).rejects.toMatchObject(
+        { response: { code: 'contact_already_exists' } },
+      );
     });
   });
 
@@ -164,9 +161,9 @@ describe('ContactsService', () => {
       const { service, prisma } = makeService();
       const alice = seedUser(prisma, 'alice');
 
-      await expect(
-        service.removeContact({ userId: alice }, 'ghost'),
-      ).rejects.toMatchObject({ response: { code: 'contact_not_found' } });
+      await expect(service.removeContact({ userId: alice }, 'ghost')).rejects.toMatchObject({
+        response: { code: 'contact_not_found' },
+      });
     });
 
     it('rejects when the contact row does not exist', async () => {
@@ -174,9 +171,9 @@ describe('ContactsService', () => {
       const alice = seedUser(prisma, 'alice');
       seedUser(prisma, 'bob');
 
-      await expect(
-        service.removeContact({ userId: alice }, 'bob'),
-      ).rejects.toMatchObject({ response: { code: 'contact_not_found' } });
+      await expect(service.removeContact({ userId: alice }, 'bob')).rejects.toMatchObject({
+        response: { code: 'contact_not_found' },
+      });
     });
   });
 });

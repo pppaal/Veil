@@ -304,7 +304,10 @@ export class GroupsService {
     }
 
     if (membership.role === 'owner') {
-      throw forbidden('conversation_membership_required', 'Owner cannot leave. Transfer ownership first.');
+      throw forbidden(
+        'conversation_membership_required',
+        'Owner cannot leave. Transfer ownership first.',
+      );
     }
 
     await this.prisma.conversationMember.delete({

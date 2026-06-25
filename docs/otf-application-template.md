@@ -23,7 +23,12 @@ https://github.com/pppaal/veil
 
 ## 4. License
 
-[TODO — confirm; assumes MIT or AGPL-3.0]
+**AGPL-3.0-only** (GNU Affero General Public License v3). Full text in
+[`LICENSE`](../LICENSE). Chosen for strong copyleft plus the network
+(§13) clause: anyone who runs a modified VEIL server as a hosted service
+must publish their source, which prevents a closed-source SaaS fork from
+quietly weakening the privacy invariants. This satisfies OTF's FOSS
+eligibility requirement. (Same posture as the Signal server.)
 
 ## 5. Mission alignment (max 500 words)
 

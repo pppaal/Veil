@@ -70,7 +70,8 @@ export class MetricsService implements OnModuleInit {
       .split('/')
       .map((seg, i) => {
         if (i === 0) return seg;
-        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg)) return ':id';
+        if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg))
+          return ':id';
         if (i === 2 && path.split('/')[1] === 'users') return ':handle';
         return seg;
       })

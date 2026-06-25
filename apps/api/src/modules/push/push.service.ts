@@ -7,10 +7,7 @@ export const PUSH_PROVIDER = Symbol('PUSH_PROVIDER');
 export class NoopPushProvider implements PushProvider {
   readonly kind = 'none' as const;
 
-  async sendMessageHint(
-    pushToken: string,
-    hint: MessagePushHint,
-  ): Promise<void> {
+  async sendMessageHint(pushToken: string, hint: MessagePushHint): Promise<void> {
     void pushToken;
     void hint;
   }
@@ -18,18 +15,13 @@ export class NoopPushProvider implements PushProvider {
 
 @Injectable()
 export class PushService {
-  constructor(
-    @Inject(PUSH_PROVIDER) private readonly provider: PushProvider,
-  ) {}
+  constructor(@Inject(PUSH_PROVIDER) private readonly provider: PushProvider) {}
 
   get providerKind(): PushProvider['kind'] {
     return this.provider.kind;
   }
 
-  async sendMessageHint(
-    pushToken: string,
-    hint: MessagePushHint,
-  ): Promise<void> {
+  async sendMessageHint(pushToken: string, hint: MessagePushHint): Promise<void> {
     try {
       await this.provider.sendMessageHint(pushToken, hint);
     } catch {

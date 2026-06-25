@@ -26,10 +26,7 @@ export class Ed25519DeviceAuthVerifier implements DeviceAuthVerifier {
 
     try {
       const publicKey = createPublicKey({
-        key: Buffer.concat([
-          ED25519_SPKI_PREFIX,
-          Buffer.from(params.authPublicKey, 'base64url'),
-        ]),
+        key: Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(params.authPublicKey, 'base64url')]),
         format: 'der',
         type: 'spki',
       });

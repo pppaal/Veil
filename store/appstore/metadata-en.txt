@@ -2,7 +2,7 @@
 VEIL Messenger
 
 [Subtitle]
-End-to-end encrypted privacy messenger
+Encrypted privacy messenger
 
 [Promotional Text]
 A cold, encrypted messenger with no accounts, no phone numbers, and no recovery path. Conversations live only on your device.

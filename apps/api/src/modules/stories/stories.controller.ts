@@ -17,26 +17,17 @@ export class StoriesController {
   }
 
   @Post()
-  createStory(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: CreateStoryDto,
-  ) {
+  createStory(@Req() request: AuthenticatedRequest, @Body() dto: CreateStoryDto) {
     return this.storiesService.createStory(request.auth, dto);
   }
 
   @Post(':id/view')
-  viewStory(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  viewStory(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.storiesService.viewStory(request.auth, id);
   }
 
   @Delete(':id')
-  deleteStory(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  deleteStory(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.storiesService.deleteStory(request.auth, id);
   }
 }

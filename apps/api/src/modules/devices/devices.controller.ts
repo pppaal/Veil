@@ -14,9 +14,7 @@ export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
   @Get()
-  list(
-    @Req() request: AuthenticatedRequest,
-  ): Promise<ListDevicesResponse> {
+  list(@Req() request: AuthenticatedRequest): Promise<ListDevicesResponse> {
     return this.devicesService.list(request.auth.userId, request.auth.deviceId);
   }
 
@@ -44,9 +42,6 @@ export class DevicesController {
   clearPushToken(
     @Req() request: AuthenticatedRequest,
   ): Promise<{ deviceId: string; clearedAt: string }> {
-    return this.devicesService.clearPushToken(
-      request.auth.userId,
-      request.auth.deviceId,
-    );
+    return this.devicesService.clearPushToken(request.auth.userId, request.auth.deviceId);
   }
 }

@@ -65,7 +65,9 @@ async function requestJson(path, { method = 'GET', body, token } = {}) {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
   } catch (error) {
-    throw new Error(`${path} fetch failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `${path} fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   const text = await response.text();
@@ -176,7 +178,10 @@ async function run() {
     body: {
       contentType: 'application/octet-stream',
       sizeBytes: 2048,
-      sha256: `deadbeef${suffix.replace(/[^a-fA-F0-9]/g, '0').padEnd(56, '0').slice(0, 56)}`,
+      sha256: `deadbeef${suffix
+        .replace(/[^a-fA-F0-9]/g, '0')
+        .padEnd(56, '0')
+        .slice(0, 56)}`,
     },
   });
 
@@ -238,7 +243,10 @@ async function run() {
           storageKey: upload.upload.storageKey,
           contentType: 'application/octet-stream',
           sizeBytes: 2048,
-          sha256: `deadbeef${suffix.replace(/[^a-fA-F0-9]/g, '0').padEnd(56, '0').slice(0, 56)}`,
+          sha256: `deadbeef${suffix
+            .replace(/[^a-fA-F0-9]/g, '0')
+            .padEnd(56, '0')
+            .slice(0, 56)}`,
           encryption: {
             encryptedKey: `wrapped-${suffix}`,
             nonce: `attachment-nonce-${suffix}`,

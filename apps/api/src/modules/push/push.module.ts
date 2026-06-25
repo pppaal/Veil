@@ -3,11 +3,7 @@ import { Module } from '@nestjs/common';
 import { AppConfigService } from '../../common/config/app-config.service';
 import { ApnsMetadataPushProvider } from './apns-push.provider';
 import { FcmMetadataPushProvider } from './fcm-push.provider';
-import {
-  NoopPushProvider,
-  PUSH_PROVIDER,
-  PushService,
-} from './push.service';
+import { NoopPushProvider, PUSH_PROVIDER, PushService } from './push.service';
 import type { PushProvider } from './push.types';
 
 @Module({

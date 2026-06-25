@@ -12,18 +12,12 @@ export class CallsController {
   constructor(private readonly callsService: CallsService) {}
 
   @Post('initiate')
-  initiateCall(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: InitiateCallDto,
-  ) {
+  initiateCall(@Req() request: AuthenticatedRequest, @Body() dto: InitiateCallDto) {
     return this.callsService.initiateCall(request.auth, dto);
   }
 
   @Post(':id/end')
-  endCall(
-    @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
-  ) {
+  endCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.callsService.endCall(request.auth, id);
   }
 

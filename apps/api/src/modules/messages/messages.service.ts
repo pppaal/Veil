@@ -9,11 +9,7 @@ import type {
 import type { EncryptedAttachmentReference } from '@veil/shared';
 
 import { PrismaService } from '../../common/prisma.service';
-import {
-  forbidden,
-  notFound,
-  serviceUnavailable,
-} from '../../common/errors/api-error';
+import { forbidden, notFound, serviceUnavailable } from '../../common/errors/api-error';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SafetyService } from '../safety/safety.service';
@@ -49,7 +45,10 @@ export class MessagesService {
     auth: { userId: string; deviceId: string },
     dto: SendMessageDto,
   ): Promise<SendMessageResponse> {
-    if (dto.envelope.senderDeviceId !== auth.deviceId || dto.conversationId !== dto.envelope.conversationId) {
+    if (
+      dto.envelope.senderDeviceId !== auth.deviceId ||
+      dto.conversationId !== dto.envelope.conversationId
+    ) {
       throw forbidden('envelope_context_mismatch', 'Envelope sender context mismatch');
     }
 
@@ -100,11 +99,11 @@ export class MessagesService {
       .filter((userId) => userId !== auth.userId);
 
     if (conversation?.type === 'direct') {
-      if (
-        recipientUserIds.length !== 1 ||
-        dto.envelope.recipientUserId !== recipientUserIds[0]
-      ) {
-        throw forbidden('direct_peer_mismatch', 'Envelope recipient does not match direct conversation peer');
+      if (recipientUserIds.length !== 1 || dto.envelope.recipientUserId !== recipientUserIds[0]) {
+        throw forbidden(
+          'direct_peer_mismatch',
+          'Envelope recipient does not match direct conversation peer',
+        );
       }
 
       // Either-direction block stops delivery on direct conversations.
@@ -213,14 +212,14 @@ export class MessagesService {
           },
         );
         return { message, idempotent: false };
-        } catch (error) {
-          const code = this.prismaErrorCode(error);
-          if (code === 'P2002') {
-            const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
-            if (existing) {
-              return { message: existing as PersistedMessage, idempotent: true };
-            }
+      } catch (error) {
+        const code = this.prismaErrorCode(error);
+        if (code === 'P2002') {
+          const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
+          if (existing) {
+            return { message: existing as PersistedMessage, idempotent: true };
           }
+        }
         if (code === 'P2034' && attempt < 2) {
           continue;
         }
@@ -228,10 +227,7 @@ export class MessagesService {
       }
     }
 
-    throw serviceUnavailable(
-      'internal_error',
-      'Message relay is temporarily unavailable',
-    );
+    throw serviceUnavailable('internal_error', 'Message relay is temporarily unavailable');
   }
 
   private findExistingMessage(senderDeviceId: string, clientMessageId: string) {
@@ -290,8 +286,7 @@ export class MessagesService {
     // transaction. Without this, a crash between "read recorded" and "row
     // deleted" leaves view-once ciphertext on disk after the read event
     // already fired — exactly the leak window we promise not to have.
-    const isViewOnceConsumption =
-      message.viewOnce && message.senderDevice.userId !== auth.userId;
+    const isViewOnceConsumption = message.viewOnce && message.senderDevice.userId !== auth.userId;
     const updatedReceipt = await this.prisma.$transaction(async (tx) => {
       const receipt = await tx.messageReceipt.upsert({
         where: {
@@ -323,11 +318,15 @@ export class MessagesService {
     });
 
     if (!hadDelivered) {
-      this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.delivered', {
-        messageId,
-        userId: auth.userId,
-        deliveredAt: updatedReceipt.deliveredAt?.toISOString() ?? now.toISOString(),
-      });
+      this.realtimeGateway.emitConversationMembers(
+        message.conversation.members,
+        'message.delivered',
+        {
+          messageId,
+          userId: auth.userId,
+          deliveredAt: updatedReceipt.deliveredAt?.toISOString() ?? now.toISOString(),
+        },
+      );
     }
     if (!hadRead) {
       this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.read', {
@@ -429,7 +428,8 @@ export class MessagesService {
       ciphertext: message.ciphertext,
       nonce: message.nonce,
       messageType: message.messageType,
-      attachment: (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
+      attachment:
+        (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
       expiresAt: message.expiresAt?.toISOString() ?? null,
       viewOnce: message.viewOnce === true,
       serverReceivedAt: message.serverReceivedAt.toISOString(),
@@ -528,20 +528,15 @@ export class MessagesService {
       },
     });
 
-    this.realtimeGateway.emitConversationMembers(
-      message.conversation.members,
-      'message.deleted',
-      { messageId, deletedAt: deletedAt.toISOString() },
-    );
+    this.realtimeGateway.emitConversationMembers(message.conversation.members, 'message.deleted', {
+      messageId,
+      deletedAt: deletedAt.toISOString(),
+    });
 
     return { messageId, deletedAt: deletedAt.toISOString() };
   }
 
-  async addReaction(
-    auth: { userId: string },
-    messageId: string,
-    emoji: string,
-  ) {
+  async addReaction(auth: { userId: string }, messageId: string, emoji: string) {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: {
@@ -578,10 +573,7 @@ export class MessagesService {
     return { reactionId: reaction.id, messageId, emoji };
   }
 
-  async removeReaction(
-    auth: { userId: string },
-    messageId: string,
-  ) {
+  async removeReaction(auth: { userId: string }, messageId: string) {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: {
@@ -615,10 +607,7 @@ export class MessagesService {
     summary: ConversationMessageSummary,
   ): Promise<void> {
     if (
-      await this.safetyService.isConversationMutedForUser(
-        recipientUserId,
-        summary.conversationId,
-      )
+      await this.safetyService.isConversationMutedForUser(recipientUserId, summary.conversationId)
     ) {
       // Muted: the message still persists and flows over the realtime
       // socket if the app is open, but we skip the wake to keep the phone
@@ -626,7 +615,9 @@ export class MessagesService {
       return;
     }
 
-    const connectedDeviceIds = new Set(this.realtimeGateway.connectedDeviceIdsForUser(recipientUserId));
+    const connectedDeviceIds = new Set(
+      this.realtimeGateway.connectedDeviceIdsForUser(recipientUserId),
+    );
     const recipientDevices = await this.prisma.device.findMany({
       where: {
         userId: recipientUserId,

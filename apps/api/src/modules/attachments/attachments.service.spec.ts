@@ -52,11 +52,7 @@ function makeService(): {
   const prisma = new FakePrismaService();
   const config = new FakeConfigService();
   const storage = new FakeAttachmentStorageGateway();
-  const service = new AttachmentsService(
-    prisma as never,
-    config as never,
-    storage as never,
-  );
+  const service = new AttachmentsService(prisma as never, config as never, storage as never);
   return { service, prisma, storage, config };
 }
 
@@ -324,10 +320,7 @@ describe('AttachmentsService', () => {
         uploadStatus: 'uploaded',
       });
 
-      const result = await service.createDownloadTicket(
-        { userId, deviceId },
-        ticket.attachmentId,
-      );
+      const result = await service.createDownloadTicket({ userId, deviceId }, ticket.attachmentId);
       expect(result.ticket.downloadUrl).toContain('signed-download.invalid');
     });
 
@@ -373,10 +366,7 @@ describe('AttachmentsService', () => {
       });
 
       await expect(
-        service.createDownloadTicket(
-          { userId, deviceId },
-          ticket.attachmentId,
-        ),
+        service.createDownloadTicket({ userId, deviceId }, ticket.attachmentId),
       ).rejects.toThrow('not available for download');
     });
 
@@ -385,10 +375,7 @@ describe('AttachmentsService', () => {
       const { userId, deviceId } = seedDeviceAndUser(prisma);
 
       await expect(
-        service.createDownloadTicket(
-          { userId, deviceId },
-          randomUUID(),
-        ),
+        service.createDownloadTicket({ userId, deviceId }, randomUUID()),
       ).rejects.toThrow('Attachment not found');
     });
   });

@@ -14,17 +14,19 @@ describe('UsersService', () => {
     updatedAt: new Date('2026-04-20T00:00:00.000Z'),
   };
 
-  const trustedDevice = (overrides: Partial<{
-    id: string;
-    userId: string;
-    platform: 'ios' | 'android' | 'windows' | 'macos' | 'linux';
-    publicIdentityKey: string;
-    signedPrekeyBundle: string;
-    isActive: boolean;
-    revokedAt: Date | null;
-    trustedAt: Date;
-    lastSeenAt: Date;
-  }>) => ({
+  const trustedDevice = (
+    overrides: Partial<{
+      id: string;
+      userId: string;
+      platform: 'ios' | 'android' | 'windows' | 'macos' | 'linux';
+      publicIdentityKey: string;
+      signedPrekeyBundle: string;
+      isActive: boolean;
+      revokedAt: Date | null;
+      trustedAt: Date;
+      lastSeenAt: Date;
+    }>,
+  ) => ({
     id: overrides.id ?? 'device-1',
     userId: overrides.userId ?? 'user-1',
     platform: overrides.platform ?? 'android',

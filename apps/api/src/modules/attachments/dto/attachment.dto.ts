@@ -2,10 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { AttachmentUploadStatus } from '@prisma/client';
 import { IsEnum, IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 
-import type {
-  CompleteAttachmentUploadRequest,
-  CreateUploadTicketRequest,
-} from '@veil/contracts';
+import type { CompleteAttachmentUploadRequest, CreateUploadTicketRequest } from '@veil/contracts';
 
 export class CreateUploadTicketDto implements CreateUploadTicketRequest {
   @ApiProperty()

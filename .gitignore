@@ -17,8 +17,14 @@ android/.gradle
 *.log
 artifacts/
 .env
-.env.local
-.env.prod
+.env.*
+!.env.example
+!.env.*.example
+
+# Firebase / push config (provision locally or via CI secrets; never commit)
+google-services.json
+GoogleService-Info.plist
+apps/mobile/android/keystore.properties
 apps/api/prisma/dev.db
 apps/api/prisma/dev.db-journal
 apps/mobile/.dart_tool

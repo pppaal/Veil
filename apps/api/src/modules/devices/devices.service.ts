@@ -31,11 +31,7 @@ export class DevicesService {
           },
         },
       },
-      orderBy: [
-        { isActive: 'desc' },
-        { lastSeenAt: 'desc' },
-        { createdAt: 'desc' },
-      ],
+      orderBy: [{ isActive: 'desc' }, { lastSeenAt: 'desc' }, { createdAt: 'desc' }],
     });
 
     return {
@@ -157,11 +153,7 @@ export class DevicesService {
             isActive: true,
             revokedAt: null,
           },
-          orderBy: [
-            { lastSeenAt: 'desc' },
-            { trustedAt: 'desc' },
-            { createdAt: 'desc' },
-          ],
+          orderBy: [{ lastSeenAt: 'desc' }, { trustedAt: 'desc' }, { createdAt: 'desc' }],
         });
         const replacement = candidates.find((candidate) => candidate.id !== dto.deviceId) ?? null;
 

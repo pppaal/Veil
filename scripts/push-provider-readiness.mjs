@@ -62,10 +62,7 @@ const providers = {
     ],
   },
   fcm: {
-    requiredKeys: [
-      'VEIL_FCM_PROJECT_ID',
-      'VEIL_FCM_SERVICE_ACCOUNT_JSON',
-    ],
+    requiredKeys: ['VEIL_FCM_PROJECT_ID', 'VEIL_FCM_SERVICE_ACCOUNT_JSON'],
   },
 };
 
@@ -90,15 +87,11 @@ if (requestedProvider && !['apns', 'fcm'].includes(requestedProvider)) {
 }
 
 if (requestedProvider === 'apns' && !apns.credentialsPresent) {
-  failures.push(
-    `APNs provider is not ready. Missing: ${apns.missing.join(', ')}`,
-  );
+  failures.push(`APNs provider is not ready. Missing: ${apns.missing.join(', ')}`);
 }
 
 if (requestedProvider === 'fcm' && !fcm.credentialsPresent) {
-  failures.push(
-    `FCM provider is not ready. Missing: ${fcm.missing.join(', ')}`,
-  );
+  failures.push(`FCM provider is not ready. Missing: ${fcm.missing.join(', ')}`);
 }
 
 const result = {

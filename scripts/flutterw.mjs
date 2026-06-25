@@ -63,14 +63,10 @@ function maybeCleanNativeAssetOutputs(args, basePath = projectPath) {
   }
 
   if (!existsSync(buildPath)) {
-    spawnSync(
-      'cmd',
-      ['/c', 'mklink', '/J', buildPath, externalBuildPath],
-      {
-        stdio: 'ignore',
-        shell: true,
-      },
-    );
+    spawnSync('cmd', ['/c', 'mklink', '/J', buildPath, externalBuildPath], {
+      stdio: 'ignore',
+      shell: true,
+    });
   }
 
   spawnSync('taskkill', ['/IM', 'veil_mobile.exe', '/F', '/T'], {

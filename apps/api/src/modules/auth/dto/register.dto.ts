@@ -1,13 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
-import {
-  IsEnum,
-  IsOptional,
-  IsString,
-  Length,
-  Matches,
-  MaxLength,
-} from 'class-validator';
+import { IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 import type { RegisterRequest } from '@veil/contracts';
 

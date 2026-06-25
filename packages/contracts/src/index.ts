@@ -287,12 +287,7 @@ export interface DeviceTransferCompleteResponse {
   completedAt: string;
 }
 
-export type DeviceTransferStatus =
-  | 'pending'
-  | 'claimed'
-  | 'approved'
-  | 'completed'
-  | 'expired';
+export type DeviceTransferStatus = 'pending' | 'claimed' | 'approved' | 'completed' | 'expired';
 
 export interface DeviceTransferSessionStatusResponse {
   sessionId: string;
@@ -406,7 +401,12 @@ export interface RealtimeEventMap {
   'message.new': ConversationMessageSummary;
   'message.delivered': { messageId: string; userId: string; deliveredAt: string };
   'message.read': { messageId: string; userId: string; readAt: string };
-  'message.reaction': { messageId: string; userId: string; emoji: string; action: 'add' | 'remove' };
+  'message.reaction': {
+    messageId: string;
+    userId: string;
+    emoji: string;
+    action: 'add' | 'remove';
+  };
   'message.edited': ConversationMessageSummary;
   'message.deleted': { messageId: string; deletedAt: string };
   'presence.update': { userId: string; status: 'online' | 'offline'; updatedAt: string };
@@ -415,7 +415,12 @@ export interface RealtimeEventMap {
   'conversation.sync': { conversationId: string; reason: 'message' | 'membership' | 'refresh' };
   'conversation.timer.changed': { conversationId: string; disappearingTimerSeconds: number | null };
   'message.consumed': { messageId: string; conversationId: string; consumedAt: string };
-  'call.incoming': { callId: string; conversationId: string; callType: 'voice' | 'video'; initiatorHandle: string };
+  'call.incoming': {
+    callId: string;
+    conversationId: string;
+    callType: 'voice' | 'video';
+    initiatorHandle: string;
+  };
   'call.ended': { callId: string; conversationId: string; duration: number };
   'story.new': { storyId: string; userId: string; contentType: string };
 }

@@ -1,7 +1,4 @@
-import {
-  Inject,
-  Injectable,
-} from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type {
   AttachmentDownloadTicketResponse,
   CompleteAttachmentUploadResponse,
@@ -10,20 +7,13 @@ import type {
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../common/prisma.service';
-import {
-  badRequest,
-  forbidden,
-  notFound,
-} from '../../common/errors/api-error';
+import { badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
 } from './attachment-storage.gateway';
-import {
-  CompleteAttachmentUploadDto,
-  CreateUploadTicketDto,
-} from './dto/attachment.dto';
+import { CompleteAttachmentUploadDto, CreateUploadTicketDto } from './dto/attachment.dto';
 
 @Injectable()
 export class AttachmentsService {
@@ -102,11 +92,17 @@ export class AttachmentsService {
     if (dto.uploadStatus === 'uploaded') {
       const objectHead = await this.storageGateway.headObject(attachment.storageKey);
       if (!objectHead.exists) {
-        throw badRequest('attachment_upload_invalid', 'Encrypted blob is missing from object storage');
+        throw badRequest(
+          'attachment_upload_invalid',
+          'Encrypted blob is missing from object storage',
+        );
       }
 
       if (objectHead.sizeBytes !== attachment.sizeBytes) {
-        throw badRequest('attachment_upload_invalid', 'Encrypted blob size does not match upload ticket');
+        throw badRequest(
+          'attachment_upload_invalid',
+          'Encrypted blob size does not match upload ticket',
+        );
       }
 
       if (objectHead.contentType && objectHead.contentType !== attachment.contentType) {
@@ -127,7 +123,10 @@ export class AttachmentsService {
         );
       }
       if (metadata['attachment-id'] !== attachment.id) {
-        throw badRequest('attachment_upload_invalid', 'Encrypted blob attachment binding is invalid');
+        throw badRequest(
+          'attachment_upload_invalid',
+          'Encrypted blob attachment binding is invalid',
+        );
       }
     }
 
@@ -163,7 +162,10 @@ export class AttachmentsService {
     }
 
     if (attachment.uploadStatus !== 'uploaded') {
-      throw badRequest('attachment_upload_invalid', 'Attachment blob is not available for download');
+      throw badRequest(
+        'attachment_upload_invalid',
+        'Attachment blob is not available for download',
+      );
     }
 
     if (attachment.uploaderDeviceId !== auth.deviceId) {

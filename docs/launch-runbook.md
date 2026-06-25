@@ -31,9 +31,9 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 ## 3. Android (Play Store)
 
 1. Generate upload keystore if not done: `keytool -genkeypair -v -keystore veil-upload.jks -keyalg RSA -keysize 4096 -validity 36500 -alias veil`.
-2. Store keystore + `key.properties` **out of the repo**. Reference the path from `android/key.properties` locally or from CI secrets.
-3. Build: `puro flutter build appbundle --release --flavor prod --dart-define=VEIL_ENV=prod`.
-4. Upload `build/app/outputs/bundle/prodRelease/app-prod-release.aab` to Play Console internal track.
+2. Copy `android/keystore.properties.example` → `android/keystore.properties`, point `storeFile` at the keystore, and fill the passwords/alias. Keep both the keystore and `keystore.properties` **out of the repo** (both are gitignored); inject from CI secrets in automated builds. The release `signingConfig` reads this file and the build fails loudly if it is missing — there is no debug-key fallback.
+3. Build: `puro flutter build appbundle --release --dart-define=VEIL_ENV=prod`. (No product flavors are defined, so do **not** pass `--flavor`.)
+4. Upload `build/app/outputs/bundle/release/app-release.aab` to Play Console internal track.
 5. Store listing → paste from [`store/play/title-ko.txt`](../store/play/title-ko.txt), [`short-ko.txt`](../store/play/short-ko.txt), [`full-ko.txt`](../store/play/full-ko.txt) (and `-en.txt` equivalents) into KO and EN language slots.
 6. Data safety form → mirror the declarations in [`store/appstore/app-privacy-answers.md`](../store/appstore/app-privacy-answers.md). Key calls:
    - Data collected: User ID, Device ID (both "App functionality", not tracking).
@@ -112,7 +112,7 @@ The app is wired with `RemotePushService` + `PushTokenCoordinator` but ships wit
 3. Create `lib/src/core/notifications/firebase_remote_push_service.dart` implementing `RemotePushService`:
    - `fetchToken()` → `FirebaseMessaging.instance.getToken()`
    - `tokenRefresh` → `FirebaseMessaging.instance.onTokenRefresh`
-   - `onMessage` → `FirebaseMessaging.onMessage.map((msg) => RemotePushHint(kind: msg.data['kind'] ?? 'message', conversationId: msg.data['conversationId']))`
+   - `onMessage` → `FirebaseMessaging.onMessage.map((msg) => RemotePushHint(kind: msg.data['kind'] ?? 'message'))`. `RemotePushHint` carries **only** an opaque `kind` by design — the payload must not include conversation or message metadata. Do not add a `conversationId`; the app responds to any hint by running its normal unread backfill.
 4. Override the provider in `main.dart`:
    ```dart
    await Firebase.initializeApp();
@@ -123,7 +123,7 @@ The app is wired with `RemotePushService` + `PushTokenCoordinator` but ships wit
    ], child: const VeilApp()));
    ```
 5. iOS: enable the "Push Notifications" and "Background Modes → Remote notifications" capabilities in Xcode. Upload the APNs auth key (.p8) to the Firebase console.
-6. Android: add `POST_NOTIFICATIONS` permission (API 33+). Add the Firebase gradle plugin per flutterfire docs.
+6. Android: the `POST_NOTIFICATIONS` permission (API 33+) is **already declared** in `AndroidManifest.xml`. Add the `com.google.gms.google-services` Gradle plugin (project + app `build.gradle.kts`) per flutterfire docs, and drop the generated `google-services.json` into `apps/mobile/android/app/` (gitignored — inject from CI secrets). Until this plugin + file are added, the FCM meta-data already present in the manifest stays dormant and harmless.
 
 ### Verification
 

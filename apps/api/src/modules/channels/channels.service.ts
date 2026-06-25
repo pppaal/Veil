@@ -215,7 +215,10 @@ export class ChannelsService {
     }
 
     if (membership.role === 'owner') {
-      throw forbidden('conversation_membership_required', 'Owner cannot unsubscribe. Transfer ownership first.');
+      throw forbidden(
+        'conversation_membership_required',
+        'Owner cannot unsubscribe. Transfer ownership first.',
+      );
     }
 
     await this.prisma.conversationMember.delete({

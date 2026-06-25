@@ -151,11 +151,11 @@ describe('GroupsService', () => {
         isPublic: true,
       });
 
-      const result = await service.updateGroup(
-        auth('owner-1'),
-        'conv-1',
-        { name: 'New', description: 'Updated', isPublic: true } as never,
-      );
+      const result = await service.updateGroup(auth('owner-1'), 'conv-1', {
+        name: 'New',
+        description: 'Updated',
+        isPublic: true,
+      } as never);
 
       expect(result.name).toBe('New');
       expect(prisma.groupMeta.update).toHaveBeenCalledTimes(1);

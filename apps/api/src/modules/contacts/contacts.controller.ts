@@ -17,18 +17,12 @@ export class ContactsController {
   }
 
   @Post()
-  addContact(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: AddContactDto,
-  ) {
+  addContact(@Req() request: AuthenticatedRequest, @Body() dto: AddContactDto) {
     return this.contactsService.addContact(request.auth, dto);
   }
 
   @Delete(':handle')
-  removeContact(
-    @Req() request: AuthenticatedRequest,
-    @Param('handle') handle: string,
-  ) {
+  removeContact(@Req() request: AuthenticatedRequest, @Param('handle') handle: string) {
     return this.contactsService.removeContact(request.auth, handle);
   }
 }

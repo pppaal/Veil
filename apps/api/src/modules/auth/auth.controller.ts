@@ -51,10 +51,7 @@ export class AuthController {
 
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post('logout')
-  logout(
-    @Req() request: AuthenticatedRequest,
-    @Body() dto: LogoutDto,
-  ): Promise<{ ok: true }> {
+  logout(@Req() request: AuthenticatedRequest, @Body() dto: LogoutDto): Promise<{ ok: true }> {
     return this.authService.logout(request.auth, dto);
   }
 }

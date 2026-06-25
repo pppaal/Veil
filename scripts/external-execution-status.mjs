@@ -19,8 +19,7 @@ const pushReadiness = readJson('push-provider-readiness.json');
 const reviewFindingsTemplate = readJson('external-review-findings-template.json');
 const productionBlockers = readJson('production-blockers-report.json');
 
-const hasPerfResults =
-  Array.isArray(perfTemplate?.results) && perfTemplate.results.length > 0;
+const hasPerfResults = Array.isArray(perfTemplate?.results) && perfTemplate.results.length > 0;
 const hasReviewManifest = reviewManifest != null;
 const hasReleaseEvidence = releaseEvidence != null;
 const hasReviewFindingsTemplate = reviewFindingsTemplate != null;
@@ -34,10 +33,7 @@ const tracks = {
     status: 'pending',
     reason:
       'Repo boundary is prepared, but an audited adapter and mobile bridge are not integrated.',
-    docs: [
-      'docs/audited-crypto-library-decision.md',
-      'docs/audited-crypto-adapter-execution.md',
-    ],
+    docs: ['docs/audited-crypto-library-decision.md', 'docs/audited-crypto-adapter-execution.md'],
   },
   pushPrivacyReview: {
     status: pushReady ? 'ready_for_review' : 'blocked',

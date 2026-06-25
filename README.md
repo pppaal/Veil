@@ -1,8 +1,16 @@
 # VEIL
 
-Privacy-first end-to-end encrypted messenger.
+**Open-source, end-to-end encrypted messenger** — no phone number, no
+account, no plaintext on the server.
+
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![End-to-end encrypted](https://img.shields.io/badge/encryption-E2E%20X25519%20%2B%20AES--256--GCM-success.svg)](#cryptography)
+[![Privacy invariants: CI-enforced](https://img.shields.io/badge/privacy%20invariants-CI--enforced-orange.svg)](scripts/policy-check.mjs)
 
 > **No backup. No recovery. No leaks.**
+
+Because the code is open source under the AGPL, the privacy claims below
+are not "trust us" — anyone can read the source, run it, and verify them.
 
 The design premise is the inverse of mainstream messengers: there is no
 backup path, no password reset, no admin override, and no plaintext on
@@ -294,3 +302,22 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 - [Mobile Device Security](docs/mobile-device-security.md)
 - [Observability Hygiene](docs/observability-hygiene.md)
 - [Open Chat Design (draft)](docs/open-chat-design.md)
+
+---
+
+## License
+
+VEIL is free software licensed under the **GNU Affero General Public
+License v3.0 only** (AGPL-3.0-only). See [`LICENSE`](LICENSE) for the full
+text.
+
+The AGPL's network clause (§13) is deliberate: if you run a modified VEIL
+server as a network service, you must offer your users the modified source.
+This keeps the privacy invariants — no plaintext on the server, no recovery
+path, no admin override — from being silently stripped out of a hosted fork.
+
+Being open source under a recognized FOSS license is also what makes VEIL
+eligible for a funded external cryptographic review through programs like
+the [Open Technology Fund](https://www.opentech.fund/) — the review that
+gates the public launch (see
+[`docs/otf-application-template.md`](docs/otf-application-template.md)).

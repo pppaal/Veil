@@ -95,10 +95,7 @@ export class FcmMetadataPushProvider implements PushProvider {
 
   private async issueAccessToken(): Promise<string> {
     const now = Math.floor(Date.now() / 1000);
-    if (
-      this.cachedAccessToken != null &&
-      this.cachedAccessToken.expiresAt > now + 60
-    ) {
+    if (this.cachedAccessToken != null && this.cachedAccessToken.expiresAt > now + 60) {
       return this.cachedAccessToken.value;
     }
 

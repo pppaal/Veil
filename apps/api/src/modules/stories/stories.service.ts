@@ -156,7 +156,7 @@ export class StoriesService {
     }
 
     if (story.userId !== auth.userId) {
-      throw forbidden('story_forbidden', 'Cannot delete another user\'s story');
+      throw forbidden('story_forbidden', "Cannot delete another user's story");
     }
 
     await this.prisma.story.delete({

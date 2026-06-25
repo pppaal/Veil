@@ -17,16 +17,13 @@ import type {
   SessionBootstrapMaterial,
   SessionBootstrapRequest,
 } from './types';
-import {
-  DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
-  DEV_ENVELOPE_VERSION,
-} from '../domain/protocol';
+import { DEV_ATTACHMENT_WRAP_ALGORITHM_HINT, DEV_ENVELOPE_VERSION } from '../domain/protocol';
 
 const plaintextRegistry = new Map<string, DecryptedMessage>();
 const opaqueToken = (byteLength: number): string =>
-  Buffer.from(
-    Array.from({ length: byteLength }, () => Math.floor(Math.random() * 256)),
-  ).toString('base64url');
+  Buffer.from(Array.from({ length: byteLength }, () => Math.floor(Math.random() * 256))).toString(
+    'base64url',
+  );
 
 class MockDeviceIdentityProvider implements DeviceIdentityProvider {
   async generateDeviceIdentity(deviceId: string): Promise<DeviceIdentityMaterial> {
@@ -70,9 +67,7 @@ class MockKeyBundleCodec implements KeyBundleCodec {
     };
   }
 
-  decodeDirectoryBundles(
-    json: Array<Record<string, unknown>>,
-  ): PublicKeyBundle[] {
+  decodeDirectoryBundles(json: Array<Record<string, unknown>>): PublicKeyBundle[] {
     return json.map((entry) => this.decodeDirectoryBundle(entry));
   }
 }
@@ -118,8 +113,7 @@ class MockCryptoEnvelopeCodec implements CryptoEnvelopeCodec {
       return null;
     }
 
-    const encryption =
-      (json.encryption as Record<string, unknown> | undefined) ?? {};
+    const encryption = (json.encryption as Record<string, unknown> | undefined) ?? {};
     return {
       attachmentId: json.attachmentId as string,
       storageKey: json.storageKey as string,
@@ -130,8 +124,7 @@ class MockCryptoEnvelopeCodec implements CryptoEnvelopeCodec {
         encryptedKey: encryption.encryptedKey as string,
         nonce: encryption.nonce as string,
         algorithmHint:
-          (encryption.algorithmHint as string | undefined) ??
-          DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
+          (encryption.algorithmHint as string | undefined) ?? DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
       },
     };
   }
@@ -152,9 +145,7 @@ class MockCryptoEnvelopeCodec implements CryptoEnvelopeCodec {
       encryption: {
         encryptedKey: attachment.encryption.encryptedKey,
         nonce: attachment.encryption.nonce,
-        algorithmHint:
-          attachment.encryption.algorithmHint ??
-          DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
+        algorithmHint: attachment.encryption.algorithmHint ?? DEV_ATTACHMENT_WRAP_ALGORITHM_HINT,
       },
     };
   }
@@ -190,10 +181,7 @@ class MockMessageCryptoEngine implements MessageCryptoEngine {
     const parsed = plaintextRegistry.get(envelope.ciphertext);
     if (!parsed) {
       return {
-        body:
-          envelope.messageType === 'file'
-            ? 'Encrypted attachment'
-            : 'Encrypted message',
+        body: envelope.messageType === 'file' ? 'Encrypted attachment' : 'Encrypted message',
         messageType: envelope.messageType,
         expiresAt: envelope.expiresAt ?? null,
         attachment: envelope.attachment ?? null,
@@ -217,12 +205,8 @@ class MockMessageCryptoEngine implements MessageCryptoEngine {
   }
 }
 
-class MockConversationSessionBootstrapper
-  implements ConversationSessionBootstrapper
-{
-  async bootstrapSession(
-    request: SessionBootstrapRequest,
-  ): Promise<SessionBootstrapMaterial> {
+class MockConversationSessionBootstrapper implements ConversationSessionBootstrapper {
+  async bootstrapSession(request: SessionBootstrapRequest): Promise<SessionBootstrapMaterial> {
     return {
       sessionLocator: `session://${request.conversationId}/${opaqueToken(18)}`,
       sessionEnvelopeVersion: DEV_ENVELOPE_VERSION,
@@ -233,8 +217,7 @@ class MockConversationSessionBootstrapper
       remoteIdentityFingerprint: Buffer.from(
         `${request.remoteDeviceId}:${request.remoteIdentityPublicKey}`,
         'utf8',
-      )
-        .toString('base64url'),
+      ).toString('base64url'),
       auditHint: 'mock-session-bootstrap',
     };
   }

@@ -141,7 +141,9 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
 
       const found = existing.find((conversation) => {
         const memberIds = conversation.members.map((member) => member.userId);
-        return memberIds.length === 2 && memberIds.includes(peer.id) && memberIds.includes(currentUserId);
+        return (
+          memberIds.length === 2 && memberIds.includes(peer.id) && memberIds.includes(currentUserId)
+        );
       });
 
       if (found) {
@@ -276,9 +278,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
     const requestedLimit = Number(query.limit ?? 50);
-    const limit = Number.isFinite(requestedLimit)
-      ? Math.min(100, Math.max(1, requestedLimit))
-      : 50;
+    const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 50;
     const membership = await this.prisma.conversationMember.findUnique({
       where: {
         conversationId_userId: {
@@ -345,7 +345,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     const highestConversationOrder =
       messages.length > 0
         ? Math.max(...messages.map((message) => message.conversationOrder))
-        : cursorMessage?.conversationOrder ?? null;
+        : (cursorMessage?.conversationOrder ?? null);
 
     await this.updateDeviceConversationState({
       deviceId: auth.deviceId,
@@ -355,7 +355,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
 
     return {
       items: messages.map((message) => this.toMessageSummary(message, auth.userId)).reverse(),
-      nextCursor: messages.length === limit ? messages.at(-1)?.id ?? null : null,
+      nextCursor: messages.length === limit ? (messages.at(-1)?.id ?? null) : null,
     };
   }
 
@@ -426,10 +426,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
 
   private notExpiredFilter() {
     return {
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: new Date() } },
-      ],
+      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
     };
   }
 
@@ -531,17 +528,20 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private toConversationSummary(conversation: {
-    id: string;
-    type: 'direct' | 'group' | 'channel';
-    createdAt: Date;
-    disappearingTimerSeconds: number | null;
-    members: Array<{
-      userId: string;
-      user: { handle: string; displayName: string | null };
-    }>;
-    messages: HydratedMessage[];
-  }, viewerUserId: string): ConversationSummary {
+  private toConversationSummary(
+    conversation: {
+      id: string;
+      type: 'direct' | 'group' | 'channel';
+      createdAt: Date;
+      disappearingTimerSeconds: number | null;
+      members: Array<{
+        userId: string;
+        user: { handle: string; displayName: string | null };
+      }>;
+      messages: HydratedMessage[];
+    },
+    viewerUserId: string,
+  ): ConversationSummary {
     return {
       id: conversation.id,
       type: conversation.type,
@@ -558,7 +558,10 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private toMessageSummary(message: HydratedMessage, viewerUserId: string): ConversationMessageSummary {
+  private toMessageSummary(
+    message: HydratedMessage,
+    viewerUserId: string,
+  ): ConversationMessageSummary {
     const receipt = this.resolveReceiptForViewer(message, viewerUserId);
     return {
       id: message.id,
@@ -569,7 +572,8 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       ciphertext: message.ciphertext,
       nonce: message.nonce,
       messageType: message.messageType,
-      attachment: (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
+      attachment:
+        (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
       expiresAt: message.expiresAt?.toISOString() ?? null,
       viewOnce: message.viewOnce === true,
       serverReceivedAt: message.serverReceivedAt.toISOString(),
@@ -583,7 +587,10 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private resolveReceiptForViewer(message: HydratedMessage, viewerUserId: string): HydratedReceipt | null {
+  private resolveReceiptForViewer(
+    message: HydratedMessage,
+    viewerUserId: string,
+  ): HydratedReceipt | null {
     if (message.senderDevice.userId === viewerUserId) {
       return message.receipts.find((receipt) => receipt.userId !== viewerUserId) ?? null;
     }
@@ -606,8 +613,10 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
-    const lastSyncedConversationOrder = args.lastSyncedConversationOrder ?? current?.lastSyncedConversationOrder ?? null;
-    const lastReadConversationOrder = args.lastReadConversationOrder ?? current?.lastReadConversationOrder ?? null;
+    const lastSyncedConversationOrder =
+      args.lastSyncedConversationOrder ?? current?.lastSyncedConversationOrder ?? null;
+    const lastReadConversationOrder =
+      args.lastReadConversationOrder ?? current?.lastReadConversationOrder ?? null;
 
     await this.prisma.deviceConversationState.upsert({
       where: {

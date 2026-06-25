@@ -68,8 +68,18 @@ function seedUser(prisma: FakePrismaService, handle: string): { userId: string; 
 function seedDirect(prisma: FakePrismaService, a: string, b: string): string {
   const conversationId = randomUUID();
   prisma.conversations.push({ id: conversationId, type: 'direct', createdAt: new Date() });
-  prisma.conversationMembers.push({ id: randomUUID(), conversationId, userId: a, joinedAt: new Date() });
-  prisma.conversationMembers.push({ id: randomUUID(), conversationId, userId: b, joinedAt: new Date() });
+  prisma.conversationMembers.push({
+    id: randomUUID(),
+    conversationId,
+    userId: a,
+    joinedAt: new Date(),
+  });
+  prisma.conversationMembers.push({
+    id: randomUUID(),
+    conversationId,
+    userId: b,
+    joinedAt: new Date(),
+  });
   return conversationId;
 }
 
@@ -137,18 +147,18 @@ describe('ConversationsService', () => {
       const { service, prisma } = makeService();
       const alice = seedUser(prisma, 'alice');
 
-      await expect(
-        service.createDirect(alice.userId, buildDto('ghost')),
-      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(service.createDirect(alice.userId, buildDto('ghost'))).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
 
     it('throws ForbiddenException when peer is the caller', async () => {
       const { service, prisma } = makeService();
       const alice = seedUser(prisma, 'alice');
 
-      await expect(
-        service.createDirect(alice.userId, buildDto('alice')),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+      await expect(service.createDirect(alice.userId, buildDto('alice'))).rejects.toBeInstanceOf(
+        ForbiddenException,
+      );
     });
   });
 

@@ -1,4 +1,9 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type {
   BlockUserResponse,
   ConversationMuteSummary,
@@ -140,9 +145,7 @@ export class SafetyService {
     }
 
     const mutedUntil =
-      mutedForSeconds === undefined
-        ? null
-        : new Date(Date.now() + mutedForSeconds * 1000);
+      mutedForSeconds === undefined ? null : new Date(Date.now() + mutedForSeconds * 1000);
 
     const mute = await this.prisma.conversationMute.upsert({
       where: {

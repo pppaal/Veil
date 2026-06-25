@@ -32,6 +32,10 @@ describe('VEIL API (e2e)', () => {
 
   beforeEach(async () => {
     process.env.VEIL_DATABASE_URL = 'postgresql://veil:veil@localhost:5432/veil';
+    // envSchema validates at AppModule import time (before the
+    // AppConfigService override applies), so the raw env must satisfy it.
+    // VEIL_JWT_SECRET has no default and requires >=32 chars.
+    process.env.VEIL_JWT_SECRET = 'test-jwt-secret-0123456789abcdef-e2e';
     process.env.VEIL_S3_ENDPOINT = 'http://localhost:9000';
     process.env.VEIL_S3_REGION = 'us-east-1';
     process.env.VEIL_S3_ACCESS_KEY = 'minioadmin';

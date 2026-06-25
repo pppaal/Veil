@@ -236,7 +236,9 @@ class VeilTheme {
       splashFactory: InkSparkle.splashFactory,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
-      pageTransitionsTheme: const PageTransitionsTheme(
+      // Not const: CupertinoPageTransitionsBuilder's constructor is no
+      // longer const in current Flutter, which made the const map invalid.
+      pageTransitionsTheme: PageTransitionsTheme(
         builders: <TargetPlatform, PageTransitionsBuilder>{
           TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
           TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),

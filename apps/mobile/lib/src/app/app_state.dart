@@ -74,7 +74,10 @@ final conversationCacheProvider =
   );
 });
 
-final apiClientProvider = Provider<VeilApiClient>((ref) {
+// Explicit variable type: apiClientProvider and appSessionProvider refer
+// to each other, so the analyzer cannot infer their top-level types
+// without this annotation (top_level_cycle).
+final Provider<VeilApiClient> apiClientProvider = Provider<VeilApiClient>((ref) {
   final pins = parsePinList(VeilConfig.tlsPins);
   final httpClient = buildPinnedHttpClient(allowedFingerprints: pins);
   return VeilApiClient(
@@ -627,7 +630,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   }
 }
 
-final appSessionProvider =
+final StateNotifierProvider<AppSessionController, AppSessionState>
+    appSessionProvider =
     StateNotifierProvider<AppSessionController, AppSessionState>((ref) {
   return AppSessionController(
     ref.read(secureStorageProvider),

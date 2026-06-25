@@ -1,8 +1,16 @@
 # VEIL
 
-Privacy-first end-to-end encrypted messenger.
+**Open-source, end-to-end encrypted messenger** — no phone number, no
+account, no plaintext on the server.
+
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![End-to-end encrypted](https://img.shields.io/badge/encryption-E2E%20X25519%20%2B%20AES--256--GCM-success.svg)](#cryptography)
+[![Privacy invariants: CI-enforced](https://img.shields.io/badge/privacy%20invariants-CI--enforced-orange.svg)](scripts/policy-check.mjs)
 
 > **No backup. No recovery. No leaks.**
+
+Because the code is open source under the AGPL, the privacy claims below
+are not "trust us" — anyone can read the source, run it, and verify them.
 
 The design premise is the inverse of mainstream messengers: there is no
 backup path, no password reset, no admin override, and no plaintext on

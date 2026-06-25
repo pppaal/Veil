@@ -475,6 +475,8 @@ class VeilApiClient {
     return _decodeMap(response);
   }
 
+  // Retained for parity with the API surface; not yet called.
+  // ignore: unused_element
   Future<List<dynamic>> _getList(
     String path, {
     String? accessToken,

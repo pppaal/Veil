@@ -481,7 +481,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     return ListView.separated(
       controller: _scrollController,
       key: PageStorageKey<String>('chat-${widget.conversationId}'),
-      cacheExtent: 1200,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: filteredMessages.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),

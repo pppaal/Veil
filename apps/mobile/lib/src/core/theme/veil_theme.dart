@@ -123,7 +123,7 @@ class VeilPalette {
   LinearGradient get primaryGradient => const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF0A84FF), Color(0xFF5E5CE6)],
+        colors: [Color(0xFF7B66FF), Color(0xFF6E56F8)],
       );
 
   LinearGradient get surfaceGradient => const LinearGradient(
@@ -144,11 +144,12 @@ class VeilPalette {
     // Hairline tier maps to iOS systemGray separators in dark mode.
     stroke: Color(0xFF2A2A30),
     strokeStrong: Color(0xFF3A3A42),
-    // Accent pulled toward iOS system blue (#0A84FF) for a more Apple feel,
-    // keeping a slightly richer tertiary for highlighted states.
-    primary: Color(0xFF0A84FF),
-    primaryStrong: Color(0xFF4FA6FF),
-    primarySoft: Color(0x1F0A84FF),
+    // Brand: Veil Violet. Lighter tint for dark surfaces so it stays
+    // legible against near-black; differentiates from the blue-dominated
+    // messenger field (Signal/Telegram/Messenger).
+    primary: Color(0xFF8B7BFF),
+    primaryStrong: Color(0xFFA99CFF),
+    primarySoft: Color(0x1F8B7BFF),
     // Label tiers align with iOS primary/secondary/tertiary label contrast.
     text: Color(0xFFF2F2F7),
     textMuted: Color(0xFF9A9AA1),
@@ -173,9 +174,10 @@ class VeilPalette {
     surfaceOverlay: Color(0xFFE5E5EA),
     stroke: Color(0xFFD1D1D6),
     strokeStrong: Color(0xFFC6C6C8),
-    primary: Color(0xFF007AFF),
-    primaryStrong: Color(0xFF0A84FF),
-    primarySoft: Color(0x1F007AFF),
+    // Brand: Veil Violet (core tone for the light surface).
+    primary: Color(0xFF6E56F8),
+    primaryStrong: Color(0xFF5A43E0),
+    primarySoft: Color(0x1F6E56F8),
     text: Color(0xFF000000),
     textMuted: Color(0xFF3C3C43),
     textSubtle: Color(0x993C3C43),
@@ -224,21 +226,20 @@ class VeilTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
+      // Pretendard gives identical KO+EN rendering on iOS and Android.
+      // Falls back to the platform default until the font files are
+      // bundled (see pubspec.yaml fonts: section + assets/fonts/).
+      fontFamily: 'Pretendard',
       scaffoldBackgroundColor: palette.canvas,
       canvasColor: palette.canvas,
       dividerColor: palette.stroke,
       splashFactory: InkSparkle.splashFactory,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: <TargetPlatform, PageTransitionsBuilder>{
-          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
-          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
-        },
-      ),
+      // Use Flutter's default PageTransitionsTheme: it keeps the native
+      // Cupertino swipe transition on iOS/macOS without this file having to
+      // name CupertinoPageTransitionsBuilder, which is not resolvable in the
+      // current Flutter (the explicit override regressed on an SDK bump).
     );
 
     return base.copyWith(

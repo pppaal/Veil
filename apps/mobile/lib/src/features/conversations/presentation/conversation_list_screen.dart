@@ -1046,7 +1046,6 @@ class _ConversationListPane extends StatelessWidget {
             onRefresh: controller.refreshConversations,
             child: ListView(
               key: const PageStorageKey<String>('conversation-list-scroll'),
-              cacheExtent: 1200,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
                 ...children,

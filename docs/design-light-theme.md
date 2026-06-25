@@ -25,38 +25,19 @@ primary blended into the field. Violet ties to the product name ("veil"),
 differentiates instantly, and is a natural evolution of the existing purple
 accent.
 
-## Finishing the Pretendard install
+## Pretendard install — done
 
-The font *family name* is already wired in the theme; it renders with the
-platform default until the actual files ship in the bundle. The binary
-font files are **not** committed (keep the repo lean / they are SIL OFL but
-large), so add them once:
+The font is bundled and active. The four static weights (Regular 400,
+Medium 500, SemiBold 600, Bold 700, ~1.5 MB each / ~6 MB total) live in
+`apps/mobile/assets/fonts/` and are declared under `flutter: fonts:` in
+`apps/mobile/pubspec.yaml`, so `fontFamily: 'Pretendard'` now renders the
+real typeface on both platforms.
 
-1. Download Pretendard (SIL OFL, free for commercial use):
-   https://github.com/orioncactus/pretendard/releases
-2. Copy these weights into `apps/mobile/assets/fonts/`:
-   `Pretendard-Regular.otf`, `Pretendard-Medium.otf`,
-   `Pretendard-SemiBold.otf`, `Pretendard-Bold.otf`.
-3. Add to `apps/mobile/pubspec.yaml` under `flutter:`:
+The SIL Open Font License ships alongside the binaries at
+`apps/mobile/assets/fonts/OFL.txt` (required by the license).
 
-   ```yaml
-   fonts:
-     - family: Pretendard
-       fonts:
-         - asset: assets/fonts/Pretendard-Regular.otf
-           weight: 400
-         - asset: assets/fonts/Pretendard-Medium.otf
-           weight: 500
-         - asset: assets/fonts/Pretendard-SemiBold.otf
-           weight: 600
-         - asset: assets/fonts/Pretendard-Bold.otf
-           weight: 700
-   ```
-4. `flutter pub get` and rebuild.
-
-> Do not declare the `fonts:` block before the files exist — Flutter fails
-> the build on a missing font asset. That is why this PR wires only the
-> `fontFamily` string and leaves the asset declaration for the step above.
+To update Pretendard later, replace the `.otf` files from
+https://github.com/orioncactus/pretendard/releases and bump the note here.
 
 ## Verification status
 

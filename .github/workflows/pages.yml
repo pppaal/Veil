@@ -1,0 +1,46 @@
+name: Deploy privacy policy to GitHub Pages
+
+# Publishes site/ (the bilingual VEIL privacy policy) to GitHub Pages.
+# The resulting public URL is required for Google Play / App Store listings.
+#
+# One-time setup (repo Settings → Pages → Build and deployment):
+#   Source = "GitHub Actions"
+# After that, every push to main that touches site/ redeploys automatically.
+# You can also trigger it manually from the Actions tab (Run workflow).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; newer runs cancel in-progress ones.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload site artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

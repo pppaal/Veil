@@ -17,7 +17,10 @@ export class SecretService {
    * decryption key is never sent here; it stays in the link fragment.
    */
   async create(ciphertext: string, ttlSeconds?: number): Promise<CreatedSecret> {
-    const ttl = Math.min(Math.max(ttlSeconds ?? DEFAULT_TTL_SECONDS, MIN_TTL_SECONDS), MAX_TTL_SECONDS);
+    const ttl = Math.min(
+      Math.max(ttlSeconds ?? DEFAULT_TTL_SECONDS, MIN_TTL_SECONDS),
+      MAX_TTL_SECONDS,
+    );
     const expiresAt = new Date(Date.now() + ttl * 1000);
     const blob = await this.prisma.secretBlob.create({
       data: { ciphertext, expiresAt },

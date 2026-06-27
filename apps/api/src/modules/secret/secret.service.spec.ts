@@ -3,10 +3,7 @@ import { SecretService } from './secret.service';
 
 // The project's FakePrismaService doesn't model SecretBlob, so we hand-roll
 // just the prisma.secretBlob methods each test needs.
-function makePrisma(overrides: {
-  create?: jest.Mock;
-  delete?: jest.Mock;
-}) {
+function makePrisma(overrides: { create?: jest.Mock; delete?: jest.Mock }) {
   return {
     secretBlob: {
       create: overrides.create ?? jest.fn(),

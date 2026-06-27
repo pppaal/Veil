@@ -9,6 +9,15 @@ import '../security/device_auth_signer.dart';
 import 'crypto_engine.dart';
 import 'message_padding.dart';
 
+/// Best-effort wipe of a secret key's in-memory bytes via the cryptography
+/// package's `destroy()`, which zeroes the underlying buffer. Dart cannot
+/// guarantee full zeroization — the GC may have copied the bytes, and
+/// `String`s are immutable — so this only shortens the lifetime of the
+/// buffers we directly hold. Defense in depth, not a guarantee.
+void _wipeKey(SecretKey? key) {
+  key?.destroy();
+}
+
 const _envelopeVersion = 'veil-envelope-v1';
 const _attachmentAlgoHint = 'x25519-aes256gcm';
 
@@ -431,7 +440,13 @@ class _SessionState {
   // amortized across message flow.
   void pruneExpiredSkippedKeys({DateTime? now}) {
     final cutoff = (now ?? DateTime.now().toUtc()).subtract(_skippedKeyTtl);
-    skippedMessageKeys.removeWhere((_, entry) => entry.stashedAt.isBefore(cutoff));
+    skippedMessageKeys.removeWhere((_, entry) {
+      if (entry.stashedAt.isBefore(cutoff)) {
+        _wipeKey(entry.key); // wipe abandoned skipped keys on eviction
+        return true;
+      }
+      return false;
+    });
   }
 
   // Counts how many skipped-key slots are currently used by a given epoch
@@ -640,6 +655,9 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
     final session = _sessions[conversationId];
     if (session == null) return false;
     session.hasReceivedSinceLastSend = true;
+    for (final entry in session.skippedMessageKeys.values) {
+      _wipeKey(entry.key);
+    }
     session.skippedMessageKeys.clear();
     await persistImmediately(conversationId);
     return true;
@@ -1087,6 +1105,8 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       secretKey: messageKey,
       nonce: nonce,
     );
+    // Transient per-message key — wipe as soon as encryption consumed it.
+    _wipeKey(messageKey);
 
     // Wire layout: [ratchetPub(32)] [counter(4 BE)] [ciphertext] [mac(16)].
     // ratchetPub is the pub we just rotated to (if we rotated) or the pub
@@ -1186,6 +1206,9 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
         secretBox,
         secretKey: messageKey,
       );
+      // Transient per-message key (freshly derived or a consumed skipped
+      // key already removed from the map) — wipe now that it's been used.
+      _wipeKey(messageKey);
 
       final payloadMap =
           json.decode(utf8.decode(MessagePadding.unpad(cleartext)))

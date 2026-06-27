@@ -453,3 +453,18 @@ model CallRecord {
   @@index([initiatorDeviceId])
   @@map("call_records")
 }
+
+// One-time secret link. Stores ONLY client-encrypted ciphertext — the
+// decryption key never reaches the server (it rides in the link's URL
+// fragment). The row is hard-deleted on first read (burn-after-read) and
+// any leftover is purged after expiresAt. No user binding: a recipient
+// needs no account, which is the whole point of the feature.
+model SecretBlob {
+  id         String   @id @default(uuid()) @db.Uuid
+  ciphertext String
+  createdAt  DateTime @default(now()) @map("created_at")
+  expiresAt  DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("secret_blobs")
+}

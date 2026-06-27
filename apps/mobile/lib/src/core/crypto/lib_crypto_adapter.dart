@@ -7,6 +7,7 @@ import 'package:cryptography/cryptography.dart';
 
 import '../security/device_auth_signer.dart';
 import 'crypto_engine.dart';
+import 'message_padding.dart';
 
 const _envelopeVersion = 'veil-envelope-v1';
 const _attachmentAlgoHint = 'x25519-aes256gcm';
@@ -1079,8 +1080,10 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       if (attachment != null) 'att': _serializeAttachmentRef(attachment),
     });
 
+    // Length-pad the plaintext to a coarse bucket so the ciphertext size
+    // reveals only the bucket, not the exact message length.
     final secretBox = await _aesGcm.encrypt(
-      utf8.encode(payload),
+      MessagePadding.pad(utf8.encode(payload)),
       secretKey: messageKey,
       nonce: nonce,
     );
@@ -1185,7 +1188,8 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       );
 
       final payloadMap =
-          json.decode(utf8.decode(cleartext)) as Map<String, dynamic>;
+          json.decode(utf8.decode(MessagePadding.unpad(cleartext)))
+              as Map<String, dynamic>;
       final body = payloadMap['body'] as String? ?? '';
       final kind = MessageKind.values.firstWhere(
         (k) => k.name == payloadMap['kind'],

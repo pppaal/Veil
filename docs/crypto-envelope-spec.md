@@ -125,6 +125,18 @@ Short keys inside `att` are intentional — attachment references ride inside th
 encrypted payload on every message, so key length has an observable effect on
 envelope size.
 
+### Length padding
+
+Before AES-GCM, the UTF-8 JSON plaintext is length-padded to a coarse bucket
+so the ciphertext size reveals only the bucket, not the exact message length.
+Padding is ISO/IEC 7816-4: append `0x80`, then `0x00` filler, up to the
+smallest bucket that fits `len + 1`. Buckets are powers of two from **256**
+bytes up to 64 KiB, then multiples of 64 KiB. Receivers strip trailing `0x00`
+then one `0x80`; input without a valid delimiter is treated as un-padded
+(legacy-tolerant). Reference: `message_padding.dart`. This raises the minimum
+GCM plaintext to 256 bytes (so a typical frame is ≥ 308 bytes), but the
+≥ 52-byte frame floor above is retained for legacy/unpadded acceptance.
+
 ## Session bootstrap
 
 ### Outbound (initiator)

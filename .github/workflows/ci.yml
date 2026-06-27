@@ -76,6 +76,10 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
+          # Pinned for reproducible builds and to stop `stable`-channel SDK
+          # drift from silently breaking analyze/build. Bump deliberately and
+          # in lockstep with docs/reproducible-builds.md.
+          flutter-version: 3.44.4
           channel: stable
           cache: true
 

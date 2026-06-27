@@ -304,3 +304,108 @@ without running the code:
   visibility as soon as either side performs a DH step (on the next turn flip).
 - Replay protection: receivers reject counters below their consumed window on
   the same peer ratchet pub.
+
+---
+
+## v3 — post-quantum hybrid (PROPOSED, not yet implemented)
+
+This section is the wire-format delta for the hybrid X25519 + ML-KEM-768
+adapter described in [`post-quantum-migration-spec.md`](post-quantum-migration-spec.md).
+It is a **design proposal pending external-audit review** — the v1/v2
+layout above remains the implemented format. v3 is purely additive: a v3
+receiver still parses v2 frames, and the steady-state binary frame is
+unchanged. Only session establishment carries new material.
+
+### Constant deltas
+
+| Name                      | v2                          | v3                                    |
+| ------------------------- | --------------------------- | ------------------------------------- |
+| Envelope version          | `veil-envelope-v1`          | `veil-envelope-v2`                    |
+| Adapter id                | `lib-x25519-aes256gcm-v2`   | `lib-mlkem768-x25519-aes256gcm-v3`    |
+| Session schema version    | `2`                         | `3`                                   |
+| Attachment algorithm hint | `x25519-aes256gcm`          | `mlkem768-x25519-aes256gcm`           |
+| ML-KEM parameter set      | —                           | ML-KEM-768 (FIPS 203)                 |
+| ML-KEM public key size    | —                           | 1184 bytes                            |
+| ML-KEM ciphertext size    | —                           | 1088 bytes                            |
+
+AES-256-GCM, X25519, Ed25519, HKDF-SHA256, counter/nonce/mac sizes are all
+**unchanged** — v3 only adds a KEM leg to key agreement.
+
+### Prekey bundle delta
+
+The `signedPrekeyBundle` gains an `mlkem768` field. The Ed25519 signature
+now covers the concatenation `x25519_pub_bytes || mlkem768_pub_bytes`
+(32 + 1184 bytes), so neither prekey can be stripped or swapped
+independently (binds the classical and PQ prekeys to one identity):
+
+```json
+{
+  "x25519": "<b64url 32 bytes, recipient X25519 public>",
+  "mlkem768": "<b64url 1184 bytes, recipient ML-KEM-768 public>",
+  "sig": "<b64url Ed25519 signature over (x25519 || mlkem768) raw bytes>"
+}
+```
+
+A v3 prekey replenishment publishes ML-KEM prekeys alongside X25519 ones.
+Prekey storage and bundle bandwidth grow by ~1.2 KB per prekey — note in
+the prekey budget.
+
+### Handshake field (envelope JSON)
+
+The initiator's **session-establishing message only** carries the ML-KEM
+ciphertext as a new optional top-level envelope field:
+
+```json
+{
+  "version": "veil-envelope-v2",
+  ...
+  "kemCt": "<base64url of the 1088-byte ML-KEM-768 ciphertext>"
+}
+```
+
+`kemCt` is present only on the first frame of a session (the frame whose
+binary `ratchetPub` opens a new DH ratchet). It is **omitted** on all
+steady-state messages — those are byte-for-byte the v2 frame. The binary
+ciphertext frame layout (`ratchetPub | counter | aesGcmCt | mac`) is
+**unchanged**; the KEM ciphertext rides at the envelope level so the frame
+parser needs no change.
+
+### Session bootstrap delta
+
+Outbound (initiator), replacing steps 1–3 of the v2 bootstrap:
+
+1. Decode the recipient's v3 `signedPrekeyBundle`; verify `sig` over
+   `x25519 || mlkem768`; extract both public keys.
+2. Generate a fresh X25519 ratchet keypair. `ss_x = X25519(ratchetPriv, remoteX25519Pub)`.
+3. `(kemCt, ss_k) = ML-KEM-768.Encaps(remoteMlkem768Pub)`. Put `kemCt` in the
+   envelope's `kemCt` field.
+4. `root_secret = HKDF-SHA256(ikm = ss_x || ss_k, salt = 0,
+   info = "veil-pq-v3" || transcript_hash)` where `transcript_hash =
+   SHA-256(remoteIdentityPub || ratchetPub || remoteX25519Pub ||
+   remoteMlkem768Pub || kemCt)`. Classical secret is concatenated first;
+   ordering is fixed and part of the test vectors.
+5. Continue exactly as v2 (chain keys, ratchet, frame) from the v2 step 5.
+
+Inbound (responder), replacing steps 1–3 of the v2 bootstrap:
+
+1. Extract `peerRatchetPub` from the first 32 bytes of the frame; read
+   `kemCt` from the envelope.
+2. `ss_x = X25519(localX25519Priv, peerRatchetPub)`.
+3. `ss_k = ML-KEM-768.Decaps(localMlkem768Priv, kemCt)`.
+4. Recompute `root_secret` with the same HKDF combiner and transcript hash.
+5. Continue as v2.
+
+Security reduces to **"X25519 OR ML-KEM-768 holds"**: the combiner mixes
+both secrets, so a break in either primitive leaves the root key as strong
+as the other. The transcript binding makes KEM re-encapsulation and
+classical/PQ downgrade detectable (a tampered `kemCt` or stripped prekey
+changes `transcript_hash`, so both sides derive different roots and the
+first GCM tag fails).
+
+### Added verifiable invariants (v3)
+
+- The server still never holds any private key — the ML-KEM private key,
+  like the X25519 and Ed25519 private keys, never leaves the device.
+- `kemCt` is opaque ciphertext to the server; it reveals no key material.
+- Harvest-now-decrypt-later: a recorded v3 session cannot be decrypted by a
+  future CRQC unless it breaks ML-KEM-768 *and* X25519.

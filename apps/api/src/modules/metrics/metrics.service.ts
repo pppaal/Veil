@@ -51,6 +51,13 @@ export class MetricsService implements OnModuleInit {
     registers: [this.registry],
   });
 
+  readonly pushDeliveryTotal = new Counter({
+    name: 'veil_push_delivery_total',
+    help: 'Push hint delivery attempts, labelled by provider and result',
+    labelNames: ['provider', 'result'],
+    registers: [this.registry],
+  });
+
   readonly attachmentsBytesTotal = new Counter({
     name: 'veil_attachments_bytes_total',
     help: 'Cumulative bytes accepted for attachment uploads',

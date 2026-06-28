@@ -276,6 +276,9 @@ model Message {
   @@index([conversationId, serverReceivedAt])
   @@index([attachmentId])
   @@index([replyToMessageId])
+  // The disappearing-message sweep filters on expires_at every ~10 min; without
+  // this index it full-scans the largest table and degrades forever.
+  @@index([expiresAt])
   @@map("messages")
 }
 

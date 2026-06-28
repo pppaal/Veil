@@ -24,10 +24,7 @@ export class CfThrottlerGuard extends ThrottlerGuard {
     }
 
     if (process.env.VEIL_TRUST_PROXY === 'true') {
-      const headers = (req?.headers ?? {}) as Record<
-        string,
-        string | string[] | undefined
-      >;
+      const headers = (req?.headers ?? {}) as Record<string, string | string[] | undefined>;
       const cfHeader = headers['cf-connecting-ip'];
       const cf = Array.isArray(cfHeader) ? cfHeader[0] : cfHeader;
       if (typeof cf === 'string' && cf.trim().length > 0) {

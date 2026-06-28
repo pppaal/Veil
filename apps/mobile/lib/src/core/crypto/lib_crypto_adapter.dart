@@ -18,6 +18,16 @@ void _wipeKey(SecretKey? key) {
   key?.destroy();
 }
 
+/// Constant-time-ish all-zero check. An all-zero X25519 output (or peer key)
+/// signals a low-order/contributory-behaviour attack and must be rejected.
+bool _allZero(List<int> bytes) {
+  var acc = 0;
+  for (final b in bytes) {
+    acc |= b;
+  }
+  return bytes.isNotEmpty && acc == 0;
+}
+
 const _envelopeVersion = 'veil-envelope-v1';
 const _attachmentAlgoHint = 'x25519-aes256gcm';
 
@@ -493,6 +503,28 @@ class _SessionState {
     };
   }
 
+  /// Overwrite this session's mutable receive/ratchet state with [other]'s.
+  /// Used to roll back a receive attempt that failed AEAD authentication so a
+  /// forged frame cannot advance or wedge the ratchet (commit-after-verify).
+  /// Immutable identity fields (locator, fingerprint, device ids) are
+  /// unchanged by a receive, so they are not copied.
+  void restoreFrom(_SessionState other) {
+    rootKey = other.rootKey;
+    sendChainKey = other.sendChainKey;
+    receiveChainKey = other.receiveChainKey;
+    sendCounter = other.sendCounter;
+    receiveCounter = other.receiveCounter;
+    currentSendRatchetPriv = other.currentSendRatchetPriv;
+    currentSendRatchetPub = other.currentSendRatchetPub;
+    lastSeenPeerRatchetPub = other.lastSeenPeerRatchetPub;
+    hasReceivedSinceLastSend = other.hasReceivedSinceLastSend;
+    ratchetRotationCount = other.ratchetRotationCount;
+    lastRatchetRotationAt = other.lastRatchetRotationAt;
+    skippedMessageKeys
+      ..clear()
+      ..addAll(other.skippedMessageKeys);
+  }
+
   static Future<_SessionState?> tryRestore(Map<String, dynamic> json) async {
     try {
       final v = (json['v'] as num?)?.toInt() ?? 0;
@@ -950,6 +982,10 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
         type: KeyPairType.x25519,
       ),
     );
+    // Reject a low-order/contributory peer key (all-zero shared secret).
+    if (_allZero(await dh.extractBytes())) {
+      throw const FormatException('rejected low-order peer ratchet key');
+    }
     final (newRoot, newRecvChain) = await _kdfRootKey(session.rootKey, dh);
     session.rootKey = newRoot;
     session.receiveChainKey = newRecvChain;
@@ -1167,36 +1203,44 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       );
     }
 
-    // DH receive-ratchet step: if the sender rotated, advance our receive
-    // chain via ECDH with their new pub. Skipped-keys from the pre-rotation
-    // chain remain indexed by the old pub, so old stragglers still resolve.
-    if (!_bytesEqual(incomingPeerPub, session.lastSeenPeerRatchetPub)) {
-      try {
-        await _LibSessionBootstrapper.performReceiveDhStep(
-          session,
-          incomingPeerPub,
-        );
-      } catch (_) {
-        return DecryptedMessage(
-          body: '[Decryption failed]',
-          messageKind: envelope.messageKind,
-        );
-      }
-    }
-
-    final messageKey = await _resolveReceiveMessageKey(
-      session,
-      incomingPeerPub,
-      counter,
-    );
-    if (messageKey == null) {
+    // Reject an all-zero peer ratchet key outright (low-order guard).
+    if (_allZero(incomingPeerPub)) {
       return DecryptedMessage(
-        body: '[Replayed or out-of-window message]',
+        body: '[Decryption failed]',
         messageKind: envelope.messageKind,
       );
     }
 
+    // Commit-after-verify: snapshot the receive-ratchet state before any
+    // mutation. The DH step and chain advance below mutate the session, but
+    // a frame that fails AEAD authentication must not be allowed to advance
+    // or wedge the ratchet — so on any non-success we roll back to this
+    // snapshot in the finally. Only a verified GCM decrypt commits.
+    final preDecrypt = await session.snapshot();
+    var verified = false;
     try {
+      // DH receive-ratchet step: if the sender rotated, advance our receive
+      // chain via ECDH with their new pub. Skipped-keys from the pre-rotation
+      // chain remain indexed by the old pub, so old stragglers still resolve.
+      if (!_bytesEqual(incomingPeerPub, session.lastSeenPeerRatchetPub)) {
+        await _LibSessionBootstrapper.performReceiveDhStep(
+          session,
+          incomingPeerPub,
+        );
+      }
+
+      final messageKey = await _resolveReceiveMessageKey(
+        session,
+        incomingPeerPub,
+        counter,
+      );
+      if (messageKey == null) {
+        return DecryptedMessage(
+          body: '[Replayed or out-of-window message]',
+          messageKind: envelope.messageKind,
+        );
+      }
+
       final secretBox = SecretBox(
         encryptedData,
         nonce: nonceBytes,
@@ -1230,8 +1274,9 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
         );
       }
 
-      // A successful receive latches the turn-flag so the next send
-      // performs a DH rotate.
+      // Authenticated — commit. A successful receive latches the turn-flag
+      // so the next send performs a DH rotate.
+      verified = true;
       session.hasReceivedSinceLastSend = true;
       await sessionBootstrapper.notifySessionChanged(envelope.conversationId);
 
@@ -1246,6 +1291,14 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
         body: '[Decryption failed]',
         messageKind: envelope.messageKind,
       );
+    } finally {
+      if (!verified) {
+        // Roll back any pre-auth ratchet mutation a failed/forged frame made.
+        final restored = await _SessionState.tryRestore(preDecrypt);
+        if (restored != null) {
+          session.restoreFrom(restored);
+        }
+      }
     }
   }
 

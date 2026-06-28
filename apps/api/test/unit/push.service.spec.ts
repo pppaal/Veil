@@ -1,7 +1,4 @@
-import {
-  NoopPushProvider,
-  PushService,
-} from '../../src/modules/push/push.service';
+import { NoopPushProvider, PushService } from '../../src/modules/push/push.service';
 import { ApnsMetadataPushProvider } from '../../src/modules/push/apns-push.provider';
 import { FcmMetadataPushProvider } from '../../src/modules/push/fcm-push.provider';
 
@@ -9,9 +6,11 @@ describe('PushService', () => {
   const hint = {
     kind: 'wake' as const,
   };
+  const fakeLogger = { info() {}, warn() {}, error() {} } as never;
+  const fakeMetrics = { pushDeliveryTotal: { inc() {} } } as never;
 
   it('reports none when the noop provider is active', async () => {
-    const service = new PushService(new NoopPushProvider());
+    const service = new PushService(new NoopPushProvider(), fakeLogger, fakeMetrics);
 
     expect(service.providerKind).toBe('none');
     await expect(service.sendMessageHint('push-token', hint)).resolves.toBeUndefined();
@@ -25,7 +24,7 @@ describe('PushService', () => {
       apnsPrivateKeyPem: '-----BEGIN PRIVATE KEY-----mock-----END PRIVATE KEY-----',
       apnsUseSandbox: true,
     } as never);
-    const service = new PushService(provider);
+    const service = new PushService(provider, fakeLogger, fakeMetrics);
     const request = provider.buildRequest('push-token', hint);
 
     expect(service.providerKind).toBe('apns');
@@ -45,7 +44,7 @@ describe('PushService', () => {
       fcmProjectId: 'veil-beta',
       fcmServiceAccountJson: '{"type":"service_account"}',
     } as never);
-    const service = new PushService(provider);
+    const service = new PushService(provider, fakeLogger, fakeMetrics);
     const request = provider.buildRequest('push-token', hint);
 
     expect(service.providerKind).toBe('fcm');
@@ -57,5 +56,29 @@ describe('PushService', () => {
     expect(serialized).not.toContain('messageId');
     expect(serialized).not.toContain('serverReceivedAt');
     await expect(service.sendMessageHint('push-token', hint)).resolves.toBeUndefined();
+  });
+
+  it('counts and logs a delivery failure but still resolves (never blocks relay)', async () => {
+    const incCalls: Array<Record<string, string>> = [];
+    const warnCalls: Array<[string, Record<string, unknown>]> = [];
+    const metrics = {
+      pushDeliveryTotal: { inc: (l: Record<string, string>) => incCalls.push(l) },
+    } as never;
+    const logger = {
+      info() {},
+      error() {},
+      warn: (event: string, meta: Record<string, unknown>) => warnCalls.push([event, meta]),
+    } as never;
+    const provider = {
+      kind: 'apns' as const,
+      sendMessageHint: async () => {
+        throw new Error('410 gone');
+      },
+    } as never;
+    const service = new PushService(provider, logger, metrics);
+
+    await expect(service.sendMessageHint('tok', hint)).resolves.toBeUndefined();
+    expect(incCalls).toContainEqual({ provider: 'apns', result: 'failure' });
+    expect(warnCalls[0][0]).toBe('push.delivery_failed');
   });
 });

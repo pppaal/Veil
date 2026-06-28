@@ -167,6 +167,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 leading: const Icon(Icons.verified_user_outlined),
                 onTap: () => context.push('/security-status'),
               ),
+              VeilListTileCard(
+                title: '일회성 비밀 링크',
+                subtitle: '한 번 읽히면 사라지는 암호화 메시지 — 받는 사람은 앱 없이 열람',
+                leading: const Icon(Icons.link_outlined),
+                onTap: () => context.push('/secret-link'),
+              ),
             ],
           ),
           const SizedBox(height: VeilSpace.md),

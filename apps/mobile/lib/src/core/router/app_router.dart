@@ -12,6 +12,7 @@ import '../../features/ai/presentation/ai_chat_screen.dart';
 import '../../features/calls/presentation/call_history_screen.dart';
 import '../../features/calls/presentation/call_screen.dart';
 import '../../features/chat/presentation/chat_room_screen.dart';
+import '../../features/secret_link/presentation/one_time_link_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
 import '../../features/conversations/data/conversation_models.dart';
 import '../../features/conversations/presentation/conversation_list_screen.dart';
@@ -119,6 +120,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/start-chat',
         pageBuilder: (context, state) =>
             _veilModalPage(state, const StartDirectChatScreen()),
+      ),
+      GoRoute(
+        path: '/secret-link',
+        pageBuilder: (context, state) =>
+            _veilModalPage(state, const OneTimeLinkScreen()),
       ),
       GoRoute(
         path: '/start-group',

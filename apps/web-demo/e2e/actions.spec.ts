@@ -50,6 +50,13 @@ test.describe('VEIL web demo — message actions', () => {
       timeout: 10_000,
     });
 
+    // Edit/delete only attach to a server-confirmed message — the app gates the
+    // menu items on a non-`__pending__` id (app.js: `isMine && !msg.id
+    // .startsWith('__pending__')`). The sender's bubble renders optimistically
+    // with a `__pending__<clientId>` data-msg-id and swaps to the real id once
+    // the server acks. Wait for that swap, else the menu opens without 수정.
+    await expect(myBubble).not.toHaveAttribute('data-msg-id', /^__pending__/);
+
     // Right-click on sender's own message to open the action menu and
     // hit edit. We programmatically dispatch the contextmenu to avoid
     // race issues with Playwright's right-click flake on Linux.

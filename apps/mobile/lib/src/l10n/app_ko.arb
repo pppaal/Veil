@@ -304,5 +304,28 @@
   "@conversationsQueuedMany": {"placeholders": {"count": {"type": "int"}}},
 
   "notificationNewMessageTitle": "VEIL",
-  "notificationNewMessageBody": "새로운 암호화 메시지"
+  "notificationNewMessageBody": "새로운 암호화 메시지",
+
+  "startDirectTitle": "핸들로 찾기",
+  "startDirectEyebrow": "다이렉트 검색",
+  "startDirectHeroTitle": "연락처 동기화 없음",
+  "startDirectHeroBody": "핸들을 직접 입력하세요. VEIL은 연락처·전화번호부·소셜 그래프를 스캔하지 않습니다.",
+  "startDirectPillManual": "수동 검색",
+  "startDirectPillNoGraph": "소셜 그래프 없음",
+  "startDirectPillDirectOnly": "다이렉트 전용",
+  "startDirectBannerTitle": "의도된 검색",
+  "startDirectBannerBody": "정확한 핸들을 알고 있을 때만 대화가 열립니다. 그래프로 인맥을 넓히는 기능은 없습니다.",
+  "startDirectMetricDiscovery": "검색",
+  "startDirectMetricDiscoveryValue": "수동",
+  "startDirectMetricGraph": "그래프",
+  "startDirectMetricGraphValue": "없음",
+  "startDirectMetricMode": "모드",
+  "startDirectMetricModeValue": "1:1 다이렉트",
+  "startDirectFieldLabel": "대상 핸들",
+  "startDirectAwaitingInput": "입력 대기 중",
+  "startDirectFieldCaption": "검색은 수동이며, 다이렉트 대화만 가능합니다.",
+  "startDirectInputLabel": "핸들",
+  "startDirectErrorTitle": "대화를 열 수 없음",
+  "startDirectOpening": "대화 여는 중",
+  "startDirectOpenButton": "다이렉트 대화 열기"
 }

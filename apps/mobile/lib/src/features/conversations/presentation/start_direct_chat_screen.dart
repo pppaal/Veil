@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -26,52 +27,60 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = ref.watch(messengerControllerProvider);
+    final l10n = AppLocalizations.of(context);
 
     return VeilShell(
-      title: 'Find by Handle',
+      title: l10n.startDirectTitle,
       child: ListView(
         children: [
-          const VeilHeroPanel(
-            eyebrow: 'DIRECT DISCOVERY',
-            title: 'No contact sync.',
-            body:
-                'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.',
+          VeilHeroPanel(
+            eyebrow: l10n.startDirectEyebrow,
+            title: l10n.startDirectHeroTitle,
+            body: l10n.startDirectHeroBody,
             bottom: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                VeilStatusPill(label: 'Manual discovery'),
-                VeilStatusPill(label: 'No social graph'),
-                VeilStatusPill(label: 'Direct only'),
+                VeilStatusPill(label: l10n.startDirectPillManual),
+                VeilStatusPill(label: l10n.startDirectPillNoGraph),
+                VeilStatusPill(label: l10n.startDirectPillDirectOnly),
               ],
             ),
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilInlineBanner(
-            title: 'Deliberate discovery',
-            message:
-                'Conversations open only when you know the exact handle. There is no graph expansion layer here.',
+          VeilInlineBanner(
+            title: l10n.startDirectBannerTitle,
+            message: l10n.startDirectBannerBody,
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilMetricStrip(
+          VeilMetricStrip(
             items: [
-              VeilMetricItem(label: 'Discovery', value: 'Manual'),
-              VeilMetricItem(label: 'Graph', value: 'None'),
-              VeilMetricItem(label: 'Mode', value: 'Direct 1:1'),
+              VeilMetricItem(
+                label: l10n.startDirectMetricDiscovery,
+                value: l10n.startDirectMetricDiscoveryValue,
+              ),
+              VeilMetricItem(
+                label: l10n.startDirectMetricGraph,
+                value: l10n.startDirectMetricGraphValue,
+              ),
+              VeilMetricItem(
+                label: l10n.startDirectMetricMode,
+                value: l10n.startDirectMetricModeValue,
+              ),
             ],
           ),
           const SizedBox(height: VeilSpace.md),
           VeilFieldBlock(
-            label: 'TARGET HANDLE',
+            label: l10n.startDirectFieldLabel,
             trailing: _handleController.text.trim().isEmpty
-                ? const VeilStatusPill(label: 'Awaiting input', tone: VeilBannerTone.warn)
+                ? VeilStatusPill(label: l10n.startDirectAwaitingInput, tone: VeilBannerTone.warn)
                 : VeilStatusPill(label: '@${_handleController.text.trim()}'),
-            caption: 'Discovery stays manual. Direct conversations only.',
+            caption: l10n.startDirectFieldCaption,
             child: TextField(
               controller: _handleController,
               onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Handle',
+              decoration: InputDecoration(
+                labelText: l10n.startDirectInputLabel,
                 hintText: 'icarus',
                 prefixText: '@',
               ),
@@ -80,7 +89,7 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
           if (controller.errorMessage != null) ...[
             const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
-              title: 'Unable to open conversation',
+              title: l10n.startDirectErrorTitle,
               message: controller.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
@@ -98,7 +107,7 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
                       context.pop();
                     }
                   },
-            label: controller.isBusy ? 'Opening conversation' : 'Open direct conversation',
+            label: controller.isBusy ? l10n.startDirectOpening : l10n.startDirectOpenButton,
             icon: Icons.arrow_forward_rounded,
           ),
         ],

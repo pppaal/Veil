@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('VEIL web demo — settings + shortcuts', () => {
   test('opens settings dialog from menu and toggles theme', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('./');
     const handle = `cfg${Date.now().toString(36).slice(-7)}`;
     await page.fill('#reg-name', 'Cfg Tester');
     await page.fill('#reg-handle', handle);
@@ -29,7 +29,7 @@ test.describe('VEIL web demo — settings + shortcuts', () => {
   });
 
   test('Ctrl/Cmd+/ opens the keyboard shortcuts dialog', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('./');
     const handle = `kbd${Date.now().toString(36).slice(-7)}`;
     await page.fill('#reg-name', 'Kbd');
     await page.fill('#reg-handle', handle);

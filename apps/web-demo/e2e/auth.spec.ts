@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 test.describe('VEIL web demo — auth', () => {
   test('registers a fresh handle and shows the main app', async ({ page, context }) => {
     await context.clearCookies();
-    await page.goto('/');
+    await page.goto('./');
     // The auth screen shows the brand mark plus a register form.
     await expect(page.locator('#auth-screen')).toBeVisible();
     await expect(page.locator('#app')).toBeHidden();
@@ -30,7 +30,7 @@ test.describe('VEIL web demo — auth', () => {
   });
 
   test('rejects invalid handle shapes client-side', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('./');
     await page.fill('#reg-name', 'E2E');
     // Uppercase + dash — invalid by the input pattern attribute.
     await page.fill('#reg-handle', 'BadHandle-1');

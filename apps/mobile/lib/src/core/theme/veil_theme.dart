@@ -703,7 +703,10 @@ class VeilBlur extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = VeilPalette.dark;
+    // Resolve the palette from the active theme brightness instead of always
+    // using the dark canvas — otherwise the frosted tint stays dark in the
+    // light theme, giving light-mode app bars / toasts a muddy dark cast.
+    final palette = VeilPalette.forBrightness(Theme.of(context).brightness);
     final overlay = (tint ?? palette.canvas).withValues(alpha: tintAlpha);
     final filtered = BackdropFilter(
       filter: ImageFilter.blur(sigmaX: intensity, sigmaY: intensity),

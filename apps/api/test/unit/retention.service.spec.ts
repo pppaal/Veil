@@ -4,12 +4,20 @@ type DeleteArgs = { where: Record<string, unknown> };
 
 const makeService = (retentionDays: number) => {
   const deleteCalls: DeleteArgs[] = [];
+  const secretBlobCalls: DeleteArgs[] = [];
   let deleteResult = { count: 0 };
+  let secretBlobResult = { count: 0 };
   const prisma = {
     callRecord: {
       deleteMany: (args: DeleteArgs) => {
         deleteCalls.push(args);
         return Promise.resolve(deleteResult);
+      },
+    },
+    secretBlob: {
+      deleteMany: (args: DeleteArgs) => {
+        secretBlobCalls.push(args);
+        return Promise.resolve(secretBlobResult);
       },
     },
   } as never;
@@ -25,9 +33,13 @@ const makeService = (retentionDays: number) => {
   return {
     service,
     deleteCalls,
+    secretBlobCalls,
     logs,
     setDeleteResult: (count: number) => {
       deleteResult = { count };
+    },
+    setSecretBlobResult: (count: number) => {
+      secretBlobResult = { count };
     },
   };
 };
@@ -79,6 +91,9 @@ describe('RetentionService', () => {
       callRecord: {
         deleteMany: () => Promise.reject(new Error('db down')),
       },
+      secretBlob: {
+        deleteMany: () => Promise.reject(new Error('db down')),
+      },
     } as never;
     const config = { callRecordRetentionDays: 30 } as never;
     const warns: Array<[string, Record<string, unknown>]> = [];
@@ -90,6 +105,23 @@ describe('RetentionService', () => {
     const service = new RetentionService(prisma, config, logger);
 
     await expect(service.sweep()).resolves.toBeUndefined();
-    expect(warns[0][0]).toBe('retention.call_records_sweep_failed');
+    expect(warns.map((w) => w[0])).toContain('retention.call_records_sweep_failed');
+    expect(warns.map((w) => w[0])).toContain('retention.secret_blobs_sweep_failed');
+  });
+
+  it('prunes expired secret blobs every sweep (independent of call retention)', async () => {
+    const { service, secretBlobCalls, logs, setSecretBlobResult } = makeService(0);
+    setSecretBlobResult(3);
+    const before = Date.now();
+
+    await service.sweep();
+
+    // Runs even when call-record retention is disabled (days=0).
+    expect(secretBlobCalls).toHaveLength(1);
+    const where = secretBlobCalls[0].where as { expiresAt: { lt: Date } };
+    expect(where.expiresAt.lt.getTime()).toBeGreaterThanOrEqual(before);
+    const pruned = logs.find(([e]) => e === 'retention.secret_blobs_pruned');
+    expect(pruned).toBeDefined();
+    expect(pruned![1]).toEqual({ count: 3 });
   });
 });

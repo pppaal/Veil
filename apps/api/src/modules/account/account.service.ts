@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma.service';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 // Right-to-erasure cascade for a full account wipe. Order matters — several
 // FKs in schema.prisma are `onDelete: Restrict` (Message.senderDevice,
@@ -23,7 +24,10 @@ import { PrismaService } from '../../common/prisma.service';
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtimeGateway: RealtimeGateway,
+  ) {}
 
   async deleteAccount(userId: string): Promise<{ deleted: true }> {
     // Phase 1 (small tx): immediately revoke auth so any in-flight tokens
@@ -38,6 +42,11 @@ export class AccountService {
         data: { isActive: false },
       });
     });
+
+    // Cut any live realtime channels now — the handshake check refuses new
+    // connections for a non-active user, but an already-open socket would
+    // otherwise linger until its own disconnect.
+    this.realtimeGateway.disconnectUser(userId);
 
     const deviceIds = (
       await this.prisma.device.findMany({ where: { userId }, select: { id: true } })

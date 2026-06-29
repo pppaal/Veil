@@ -11,7 +11,7 @@ async function registerAndOpen(
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.goto('/');
+  await page.goto('./');
   await page.fill('#reg-name', displayName);
   await page.fill('#reg-handle', handle);
   await page.click('#reg-btn');

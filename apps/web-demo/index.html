@@ -8,8 +8,14 @@
      sets stronger headers; this in-page meta covers the local-dev case
      where the demo is served straight from the API container. The
      img-src + media-src allow blob: so decrypted attachments render
-     inline. connect-src 'self' covers REST + WS to the same origin. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+     inline. connect-src is 'self' (REST + WS) PLUS the object-storage
+     origins the presigned attachment PUT/GET use — these live on a
+     SEPARATE host from the API, so a bare connect-src 'self' silently
+     blocks every attachment upload/download. The localhost:9000 entries
+     cover the dev/CI MinIO; PRODUCTION deployments serving this demo must
+     extend connect-src with their VEIL_S3_PUBLIC_ENDPOINT origin (ideally
+     via a response-header CSP on the serving layer, not this static meta). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:9000 http://127.0.0.1:9000; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="description" content="VEIL — 백업 없음, 복구 없음, 디바이스에 묶이는 종단간 암호화 메신저. 베타." />

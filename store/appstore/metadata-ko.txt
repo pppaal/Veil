@@ -34,7 +34,7 @@ VEIL은 프라이버시를 최우선으로 설계한 메신저입니다.
 안전 주의
 VEIL은 의도적으로 계정 복구 기능이 없습니다. 기기 손실 시 대화가 복구되지 않습니다.
 
-개인정보 처리방침: https://veil.app/privacy
+개인정보 처리방침: https://pppaal.github.io/Veil/
 문의: privacy@veil.app
 
 [Keywords]
@@ -47,4 +47,4 @@ https://veil.app/support
 https://veil.app
 
 [Privacy Policy URL]
-https://veil.app/privacy
+https://pppaal.github.io/Veil/

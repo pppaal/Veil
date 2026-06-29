@@ -87,7 +87,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         include: { user: true },
       });
 
-      if (!device || device.userId !== payload.sub || !device.isActive || device.revokedAt) {
+      if (
+        !device ||
+        device.userId !== payload.sub ||
+        !device.isActive ||
+        device.revokedAt ||
+        device.user.status !== 'active'
+      ) {
+        // Mirror the HTTP JWT guard: a locked/revoked user must not hold a
+        // realtime channel even while a previously-issued access token is still
+        // within its (<=1h) lifetime.
         client.disconnect(true);
         return;
       }
@@ -224,6 +233,25 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
    */
   disconnectDevice(deviceId: string): number {
     const socketIds = this.socketsByDeviceId.get(deviceId);
+    if (!socketIds || socketIds.size === 0) return 0;
+    let count = 0;
+    for (const socketId of [...socketIds]) {
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (socket) {
+        socket.disconnect(true);
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Drop every live socket for a user. Called when an account is revoked/locked
+   * so existing realtime channels are cut immediately, not just refused on the
+   * next reconnect. Pairs with the user-status check in handleConnection.
+   */
+  disconnectUser(userId: string): number {
+    const socketIds = this.socketsByUserId.get(userId);
     if (!socketIds || socketIds.size === 0) return 0;
     let count = 0;
     for (const socketId of [...socketIds]) {

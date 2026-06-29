@@ -108,7 +108,8 @@ function buildPrismaMock(opts?: {
 }
 
 function buildService(prismaMock: ReturnType<typeof buildPrismaMock>['prisma']) {
-  return new AccountService(prismaMock as never);
+  const realtimeGateway = { disconnectUser: () => 0 } as never;
+  return new AccountService(prismaMock as never, realtimeGateway);
 }
 
 const userId = 'user-victim';

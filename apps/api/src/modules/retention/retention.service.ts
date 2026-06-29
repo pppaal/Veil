@@ -51,6 +51,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
 
   async sweep(): Promise<void> {
     await this.pruneTerminalCallRecords();
+    await this.pruneExpiredSecretBlobs();
   }
 
   private async pruneTerminalCallRecords(): Promise<void> {
@@ -75,6 +76,24 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       // Best-effort: the next interval retries. Never throw from a timer.
       this.logger.warn('retention.call_records_sweep_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // One-time secret links are burned on read, but a link that is created and
+  // never opened would otherwise sit as ciphertext past its expiry forever.
+  // Sweep them on the same cadence (uses the secret_blobs expires_at index).
+  private async pruneExpiredSecretBlobs(): Promise<void> {
+    try {
+      const { count } = await this.prisma.secretBlob.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      });
+      if (count > 0) {
+        this.logger.info('retention.secret_blobs_pruned', { count });
+      }
+    } catch (error) {
+      this.logger.warn('retention.secret_blobs_sweep_failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }

@@ -121,6 +121,10 @@ export class AppConfigService {
     return this.configService.get('VEIL_AUTH_CHALLENGE_TTL_SECONDS', { infer: true });
   }
 
+  get callRecordRetentionDays(): number {
+    return this.configService.get('VEIL_CALL_RECORD_RETENTION_DAYS', { infer: true });
+  }
+
   get cryptoAuditAttested(): boolean {
     return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
   }

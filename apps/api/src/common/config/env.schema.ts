@@ -45,6 +45,10 @@ export const envSchema = z.object({
   VEIL_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
   VEIL_TRANSFER_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   VEIL_AUTH_CHALLENGE_TTL_SECONDS: z.coerce.number().int().positive().default(120),
+  // Server-side metadata retention. The threat model says the server should
+  // not hoard who-called-whom forever; terminal call records older than this
+  // are swept. 0 disables the sweep (retain indefinitely). Default 30 days.
+  VEIL_CALL_RECORD_RETENTION_DAYS: z.coerce.number().int().min(0).default(30),
   VEIL_AUDITED_CRYPTO_ATTESTED: z.coerce.boolean().default(false),
   // Bearer token required to scrape /metrics. Empty disables the
   // endpoint entirely (the route 404s) — preferred default for local

@@ -30,6 +30,7 @@ import { AccountModule } from './modules/account/account.module';
 import { CallsModule } from './modules/calls/calls.module';
 import { SafetyModule } from './modules/safety/safety.module';
 import { SecretModule } from './modules/secret/secret.module';
+import { RetentionModule } from './modules/retention/retention.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { SecretModule } from './modules/secret/secret.module';
     AccountModule,
     SafetyModule,
     SecretModule,
+    RetentionModule,
   ],
   providers: [
     {

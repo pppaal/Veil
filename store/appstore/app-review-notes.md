@@ -130,7 +130,7 @@ our App Privacy "nutrition label" answers). Summary:
 - **Not collected:** contacts, location, health/fitness, financial info, browsing
   history, search history, purchases, usage/analytics data, and sensitive info
   (see `app-privacy-answers.md` for the complete "Data Not Collected" list).
-- Privacy policy: https://veil.app/privacy
+- Privacy policy: https://pppaal.github.io/Veil/
 
 ---
 

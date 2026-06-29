@@ -157,7 +157,7 @@ Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/m
 - [ ] Name, Subtitle (**use the corrected ≤30-char EN subtitle from Pre-flight**), Promotional Text,
       Description, Keywords (EN 69 / KO 36 chars — both under the 100 limit).
 - [ ] Support URL `https://veil.app/support`, Marketing URL `https://veil.app`,
-      Privacy Policy URL `https://veil.app/privacy`.
+      Privacy Policy URL `https://pppaal.github.io/Veil/`.
 - [ ] **Verify all three URLs resolve to live pages before submission** — a dead support/privacy
       URL is a common rejection.
 

@@ -2,7 +2,7 @@ export interface MessagePushHint {
   kind: 'wake';
 }
 
-export type PushProviderKind = 'none' | 'apns' | 'fcm';
+export type PushProviderKind = 'none' | 'apns' | 'fcm' | 'unifiedpush';
 
 export interface PushProvider {
   readonly kind: PushProviderKind;

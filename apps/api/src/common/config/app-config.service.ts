@@ -81,6 +81,17 @@ export class AppConfigService {
     return this.configService.get('VEIL_FCM_SERVICE_ACCOUNT_JSON', { infer: true });
   }
 
+  get unifiedPushAllowedHosts(): string[] {
+    const configured = this.configService.get('VEIL_UNIFIEDPUSH_ALLOWED_HOSTS', { infer: true });
+    if (!configured?.trim()) {
+      return [];
+    }
+    return configured
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
   get allowedOrigins(): string[] {
     const configured = this.configService.get('VEIL_ALLOWED_ORIGINS', { infer: true });
     if (configured?.trim()) {
@@ -182,8 +193,13 @@ export class AppConfigService {
       const hasApns =
         this.apnsBundleId && this.apnsTeamId && this.apnsKeyId && this.apnsPrivateKeyPem;
       const hasFcm = this.fcmProjectId && this.fcmServiceAccountJson;
-      if (!hasApns && !hasFcm) {
-        errors.push('VEIL_PUSH_ENABLE_DELIVERY=true but no APNs or FCM credentials are set.');
+      // UnifiedPush needs no server-side credentials — the device's distributor
+      // endpoint is the token — so delivery is valid as soon as it is selected.
+      const isUnifiedPush = this.pushProvider === 'unifiedpush';
+      if (!hasApns && !hasFcm && !isUnifiedPush) {
+        errors.push(
+          'VEIL_PUSH_ENABLE_DELIVERY=true but no APNs, FCM, or UnifiedPush provider is set.',
+        );
       }
     }
 

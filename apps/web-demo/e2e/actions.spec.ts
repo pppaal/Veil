@@ -57,14 +57,13 @@ test.describe('VEIL web demo — message actions', () => {
     // the server acks. Wait for that swap, else the menu opens without 수정.
     await expect(myBubble).not.toHaveAttribute('data-msg-id', /^__pending__/);
 
-    // Right-click on sender's own message to open the action menu and
-    // hit edit. We programmatically dispatch the contextmenu to avoid
-    // race issues with Playwright's right-click flake on Linux. Pass real
-    // viewport coordinates: openActionMenu() positions the fixed menu at
-    // `Math.min(clientX, innerWidth - 200)`, so a coordinate-less dispatch
-    // (clientX = undefined → NaN) renders the menu off-screen and its items
-    // become unclickable ("element is outside of the viewport").
-    await myBubble.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
+    // Open the action menu with a REAL right-click. openActionMenu() positions
+    // the fixed menu at `Math.min(clientX, innerWidth - 200)`, so it needs real
+    // viewport coordinates. Playwright's dispatchEvent('contextmenu', {clientX})
+    // does NOT populate MouseEvent.clientX (it arrives undefined → Math.min →
+    // NaN → menu off-screen, items unclickable), whereas click({button:'right'})
+    // dispatches a genuine MouseEvent carrying the element's on-screen position.
+    await myBubble.click({ button: 'right' });
     await expect(sender.page.locator('.msg-action-menu')).toBeVisible();
 
     // Stub window.prompt so the test doesn't block on the native dialog.
@@ -83,8 +82,8 @@ test.describe('VEIL web demo — message actions', () => {
       { timeout: 10_000 },
     );
 
-    // Delete: open menu again, click delete, confirm.
-    await myBubble.dispatchEvent('contextmenu');
+    // Delete: open menu again (real right-click), click delete, confirm.
+    await myBubble.click({ button: 'right' });
     await expect(sender.page.locator('.msg-action-menu')).toBeVisible();
     await sender.page.locator('.msg-action-menu .danger:has-text("삭제")').click();
     // Confirm dialog

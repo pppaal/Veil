@@ -45,6 +45,10 @@
 ## Residual risks
 
 - production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
+- the message AEAD does **not** yet bind the frame header/routing fields (e.g. `senderDeviceId`, counter) as associated data — those fields are unauthenticated; AAD header binding is a planned hardening (see `crypto-envelope-spec.md`)
+- the session opener bootstraps from the responder's static identity key (no X3DH one-time prekeys yet), so the first message of a session lacks forward secrecy until the first ratchet step
+- group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — Sender Keys are design-only (`group-sender-keys-design.md`)
+- sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is design-only (`sealed-sender-design.md`)
 - attachment upload/download URLs are scaffolds, not hardened presigned-storage production code
 - mobile local database encryption-at-rest is prepared conceptually but not finalized
 - transport/session hardening still needs production infrastructure work

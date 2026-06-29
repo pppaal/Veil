@@ -90,7 +90,11 @@ jobs:
         run: pnpm ci:mobile
 
   runtime-smoke:
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    # Runs on PRs too (not just main): the web-demo e2e + deploy-preflight gates
+    # were main-only, so a string of e2e bugs (navigation, edit-menu, off-screen
+    # menu) stayed hidden until merge. Running them on pull_request catches such
+    # regressions pre-merge. Costs ~6 min/PR (docker stack), worth it.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     needs:
       - api-and-packages
       - mobile

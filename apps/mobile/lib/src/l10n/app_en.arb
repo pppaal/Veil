@@ -304,5 +304,28 @@
   "@conversationsQueuedMany": {"placeholders": {"count": {"type": "int"}}},
 
   "notificationNewMessageTitle": "VEIL",
-  "notificationNewMessageBody": "New encrypted message"
+  "notificationNewMessageBody": "New encrypted message",
+
+  "startDirectTitle": "Find by Handle",
+  "startDirectEyebrow": "DIRECT DISCOVERY",
+  "startDirectHeroTitle": "No contact sync.",
+  "startDirectHeroBody": "Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.",
+  "startDirectPillManual": "Manual discovery",
+  "startDirectPillNoGraph": "No social graph",
+  "startDirectPillDirectOnly": "Direct only",
+  "startDirectBannerTitle": "Deliberate discovery",
+  "startDirectBannerBody": "Conversations open only when you know the exact handle. There is no graph expansion layer here.",
+  "startDirectMetricDiscovery": "Discovery",
+  "startDirectMetricDiscoveryValue": "Manual",
+  "startDirectMetricGraph": "Graph",
+  "startDirectMetricGraphValue": "None",
+  "startDirectMetricMode": "Mode",
+  "startDirectMetricModeValue": "Direct 1:1",
+  "startDirectFieldLabel": "TARGET HANDLE",
+  "startDirectAwaitingInput": "Awaiting input",
+  "startDirectFieldCaption": "Discovery stays manual. Direct conversations only.",
+  "startDirectInputLabel": "Handle",
+  "startDirectErrorTitle": "Unable to open conversation",
+  "startDirectOpening": "Opening conversation",
+  "startDirectOpenButton": "Open direct conversation"
 }

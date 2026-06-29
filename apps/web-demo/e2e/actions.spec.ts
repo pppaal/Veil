@@ -59,8 +59,12 @@ test.describe('VEIL web demo — message actions', () => {
 
     // Right-click on sender's own message to open the action menu and
     // hit edit. We programmatically dispatch the contextmenu to avoid
-    // race issues with Playwright's right-click flake on Linux.
-    await myBubble.dispatchEvent('contextmenu');
+    // race issues with Playwright's right-click flake on Linux. Pass real
+    // viewport coordinates: openActionMenu() positions the fixed menu at
+    // `Math.min(clientX, innerWidth - 200)`, so a coordinate-less dispatch
+    // (clientX = undefined → NaN) renders the menu off-screen and its items
+    // become unclickable ("element is outside of the viewport").
+    await myBubble.dispatchEvent('contextmenu', { clientX: 200, clientY: 200 });
     await expect(sender.page.locator('.msg-action-menu')).toBeVisible();
 
     // Stub window.prompt so the test doesn't block on the native dialog.

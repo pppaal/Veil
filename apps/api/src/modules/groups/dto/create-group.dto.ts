@@ -23,4 +23,11 @@ export class CreateGroupDto {
   @IsBoolean()
   @IsOptional()
   isPublic?: boolean;
+
+  // Opt the new group into Sender Keys (phase AB.2). Defaults false — the
+  // group stays on the legacy shared key until clients implement the crypto.
+  @ApiPropertyOptional()
+  @IsBoolean()
+  @IsOptional()
+  useSenderKeys?: boolean;
 }

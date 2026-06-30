@@ -9,7 +9,13 @@ import type {
 import type { EncryptedAttachmentReference } from '@veil/shared';
 
 import { PrismaService } from '../../common/prisma.service';
-import { forbidden, notFound, serviceUnavailable } from '../../common/errors/api-error';
+import {
+  badRequest,
+  conflict,
+  forbidden,
+  notFound,
+  serviceUnavailable,
+} from '../../common/errors/api-error';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SafetyService } from '../safety/safety.service';
@@ -86,7 +92,7 @@ export class MessagesService {
 
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: dto.conversationId },
-      select: { type: true },
+      select: { type: true, groupUseSenderKeys: true, currentEpoch: true },
     });
 
     const members = await this.prisma.conversationMember.findMany({
@@ -122,6 +128,25 @@ export class MessagesService {
         message: this.toMessageSummary(existing),
         idempotent: true,
       };
+    }
+
+    // Group Sender Keys epoch gate (phase AB.2). Only enforced for groups that
+    // have opted in — legacy groups and direct conversations skip it entirely.
+    // Runs after the idempotency short-circuit so a retry of an already-accepted
+    // message still succeeds even if the epoch has since bumped. A genuinely new
+    // send must carry the current membership generation; a stale epoch (e.g. a
+    // member was removed and the epoch bumped after the sender last synced) is
+    // rejected so the client refetches and re-encrypts.
+    if (conversation?.type === 'group' && conversation.groupUseSenderKeys) {
+      if (dto.groupEpoch === undefined) {
+        throw badRequest('group_epoch_required', 'Group epoch required for this conversation');
+      }
+      if (dto.groupEpoch !== conversation.currentEpoch) {
+        throw conflict(
+          'group_epoch_stale',
+          'Group membership has changed; refetch the current epoch and resend',
+        );
+      }
     }
 
     const created = await this.createMessageWithRetry(auth, dto, attachmentId, members);

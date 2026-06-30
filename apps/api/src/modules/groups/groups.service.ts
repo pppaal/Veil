@@ -35,6 +35,7 @@ export class GroupsService {
       const conv = await tx.conversation.create({
         data: {
           type: 'group',
+          groupUseSenderKeys: dto.useSenderKeys ?? false,
           members: {
             create: [
               { userId: auth.userId, role: 'owner' },
@@ -84,6 +85,8 @@ export class GroupsService {
       name: conversation.groupMeta!.name,
       description: conversation.groupMeta!.description,
       isPublic: conversation.groupMeta!.isPublic,
+      useSenderKeys: conversation.groupUseSenderKeys,
+      epoch: conversation.currentEpoch,
       createdAt: conversation.createdAt.toISOString(),
       members: conversation.members.map((m) => ({
         userId: m.userId,
@@ -135,6 +138,8 @@ export class GroupsService {
       name: conversation.groupMeta!.name,
       description: conversation.groupMeta!.description,
       isPublic: conversation.groupMeta!.isPublic,
+      useSenderKeys: conversation.groupUseSenderKeys,
+      epoch: conversation.currentEpoch,
       createdAt: conversation.createdAt.toISOString(),
       members: conversation.members.map((m) => ({
         userId: m.userId,
@@ -177,6 +182,19 @@ export class GroupsService {
       },
     });
 
+    // The Sender-Keys flag lives on the conversation, not the group meta.
+    // Only touch it when the caller asked to, so a metadata-only edit doesn't
+    // silently reset it.
+    let useSenderKeys = conversation.groupUseSenderKeys;
+    if (dto.useSenderKeys !== undefined) {
+      const updatedConversation = await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { groupUseSenderKeys: dto.useSenderKeys },
+        select: { groupUseSenderKeys: true },
+      });
+      useSenderKeys = updatedConversation.groupUseSenderKeys;
+    }
+
     const members = await this.prisma.conversationMember.findMany({
       where: { conversationId },
       select: { userId: true },
@@ -192,6 +210,7 @@ export class GroupsService {
       name: updated.name,
       description: updated.description,
       isPublic: updated.isPublic,
+      useSenderKeys,
     };
   }
 

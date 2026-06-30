@@ -198,6 +198,11 @@ model Conversation {
   // ciphertext. Always 0 for direct conversations. Int (not BigInt) is
   // ample: a membership change per second for 60+ years stays under 2^31.
   currentEpoch Int               @default(0) @map("current_epoch")
+  // Group Sender Keys opt-in (phase AB.2). When true the server enforces the
+  // group_epoch_stale gate on inbound sends and clients negotiate per-sender
+  // keys; when false (the default, and all existing groups) the group stays
+  // on the legacy single shared key with no epoch enforcement.
+  groupUseSenderKeys Boolean      @default(false) @map("group_use_sender_keys")
   members      ConversationMember[]
   messages     Message[]
   deviceStates DeviceConversationState[]

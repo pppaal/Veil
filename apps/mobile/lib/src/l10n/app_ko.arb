@@ -502,5 +502,10 @@
   "deviceTransferExpiryInMinutes": "{minutes}분 후",
   "@deviceTransferExpiryInMinutes": {"placeholders": {"minutes": {"type": "int"}}},
   "deviceTransferExpiryAt": "{time}",
-  "@deviceTransferExpiryAt": {"placeholders": {"time": {"type": "String"}}}
+  "@deviceTransferExpiryAt": {"placeholders": {"time": {"type": "String"}}},
+  "themeModeTitle": "테마",
+  "themeModeSubtitle": "이 기기에서 VEIL의 표시 방식을 선택하세요.",
+  "themeModeLight": "라이트",
+  "themeModeDark": "다크",
+  "themeModeSystem": "시스템"
 }

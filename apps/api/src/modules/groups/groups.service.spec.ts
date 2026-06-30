@@ -15,6 +15,7 @@ type MockPrisma = {
   conversation: {
     findUnique: jest.Mock;
     create: jest.Mock;
+    update: jest.Mock;
   };
   conversationMember: {
     findUnique: jest.Mock;
@@ -24,6 +25,11 @@ type MockPrisma = {
   };
   groupMeta: {
     update: jest.Mock;
+  };
+  groupMemberEpoch: {
+    upsert: jest.Mock;
+    updateMany: jest.Mock;
+    createMany: jest.Mock;
   };
   $transaction: jest.Mock;
 };
@@ -37,6 +43,8 @@ function createPrismaMock(): MockPrisma {
     conversation: {
       findUnique: jest.fn(),
       create: jest.fn(),
+      // bumpEpochForChange increments and reads back the new epoch.
+      update: jest.fn().mockResolvedValue({ currentEpoch: 1 }),
     },
     conversationMember: {
       findUnique: jest.fn(),
@@ -46,6 +54,11 @@ function createPrismaMock(): MockPrisma {
     },
     groupMeta: {
       update: jest.fn(),
+    },
+    groupMemberEpoch: {
+      upsert: jest.fn(),
+      updateMany: jest.fn(),
+      createMany: jest.fn(),
     },
     $transaction: jest.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(prisma)),
   };
@@ -368,6 +381,131 @@ describe('GroupsService', () => {
       }>;
       expect(membersCreated.filter((m) => m.userId === 'user-1')).toHaveLength(1);
       expect(membersCreated.find((m) => m.userId === 'user-1')?.role).toBe('owner');
+    });
+
+    it('seeds an epoch-0 membership window for every founding member', async () => {
+      const { prisma, service } = buildService();
+      prisma.user.findMany.mockResolvedValue([{ id: 'user-2' }]);
+      prisma.conversation.create.mockResolvedValue({
+        id: 'conv-new',
+        type: 'group',
+        createdAt: new Date('2026-04-23T00:00:00.000Z'),
+        groupMeta: { name: 'Coven', description: null, isPublic: false },
+        members: [
+          { userId: 'user-1', role: 'owner', user: { id: 'user-1', handle: 'a', displayName: null } },
+          { userId: 'user-2', role: 'member', user: { id: 'user-2', handle: 'b', displayName: null } },
+        ],
+      });
+
+      await service.createGroup(auth('user-1'), {
+        name: 'Coven',
+        memberHandles: ['b'],
+      } as never);
+
+      expect(prisma.groupMemberEpoch.createMany).toHaveBeenCalledTimes(1);
+      const seeded = prisma.groupMemberEpoch.createMany.mock.calls[0][0].data as Array<{
+        userId: string;
+        joinedEpoch: number;
+        leftEpoch: number | null;
+      }>;
+      expect(seeded).toEqual([
+        { conversationId: 'conv-new', userId: 'user-1', joinedEpoch: 0, leftEpoch: null },
+        { conversationId: 'conv-new', userId: 'user-2', joinedEpoch: 0, leftEpoch: null },
+      ]);
+    });
+  });
+
+  // Group Sender Keys, phase AB.1: every membership change bumps the
+  // conversation epoch, records the member's joined/left window, and fans a
+  // group.epoch.bumped event to the current members.
+  describe('group epoch bumps', () => {
+    const lastEpochEvent = (realtime: { emitConversationMembers: jest.Mock }) =>
+      realtime.emitConversationMembers.mock.calls.find(
+        (call) => call[1] === 'group.epoch.bumped',
+      );
+
+    it('addMember bumps the epoch and announces a join', async () => {
+      const { prisma, realtime, service } = buildService();
+      prisma.conversationMember.findUnique
+        .mockResolvedValueOnce({ role: 'owner', userId: 'owner-1', conversationId: 'conv-1' })
+        .mockResolvedValueOnce(null);
+      prisma.conversation.findUnique.mockResolvedValue({ id: 'conv-1', type: 'group' });
+      prisma.user.findUnique.mockResolvedValue({ id: 'new-user', handle: 'newbie', displayName: null });
+      prisma.conversation.update.mockResolvedValue({ currentEpoch: 4 });
+
+      await service.addMember(auth('owner-1'), 'conv-1', { handle: 'newbie' } as never);
+
+      expect(prisma.conversation.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { currentEpoch: { increment: 1 } } }),
+      );
+      expect(prisma.groupMemberEpoch.upsert).toHaveBeenCalledTimes(1);
+      const event = lastEpochEvent(realtime);
+      expect(event?.[2]).toEqual({
+        conversationId: 'conv-1',
+        epoch: 4,
+        reason: 'join',
+        userId: 'new-user',
+      });
+    });
+
+    it('removeMember stamps leftEpoch and announces a leave to remaining members only', async () => {
+      const { prisma, realtime, service } = buildService();
+      prisma.conversationMember.findUnique
+        .mockResolvedValueOnce({ role: 'admin', userId: 'admin-1', conversationId: 'conv-1' })
+        .mockResolvedValueOnce({ role: 'member', userId: 'member-2', conversationId: 'conv-1' });
+      prisma.user.findUnique.mockResolvedValue({ id: 'member-2' });
+      prisma.conversationMember.delete.mockResolvedValue(undefined);
+      // Remaining members after the removal.
+      prisma.conversationMember.findMany.mockResolvedValue([{ userId: 'admin-1' }]);
+      prisma.conversation.update.mockResolvedValue({ currentEpoch: 7 });
+
+      await service.removeMember(auth('admin-1'), 'conv-1', 'bob');
+
+      expect(prisma.groupMemberEpoch.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { conversationId: 'conv-1', userId: 'member-2', leftEpoch: null },
+          data: { leftEpoch: 7 },
+        }),
+      );
+      const event = lastEpochEvent(realtime);
+      expect(event?.[2]).toEqual({
+        conversationId: 'conv-1',
+        epoch: 7,
+        reason: 'leave',
+        userId: 'member-2',
+      });
+      // The removed user must not be told the new epoch.
+      const recipients = (event?.[0] as Array<{ userId: string }>).map((m) => m.userId);
+      expect(recipients).not.toContain('member-2');
+      expect(recipients).toEqual(['admin-1']);
+    });
+
+    it('leaveGroup bumps the epoch and announces a leave', async () => {
+      const { prisma, realtime, service } = buildService();
+      prisma.conversationMember.findUnique.mockResolvedValue({
+        role: 'member',
+        userId: 'member-1',
+        conversationId: 'conv-1',
+      });
+      prisma.conversationMember.delete.mockResolvedValue(undefined);
+      prisma.conversationMember.findMany.mockResolvedValue([{ userId: 'owner-1' }]);
+      prisma.conversation.update.mockResolvedValue({ currentEpoch: 2 });
+
+      await service.leaveGroup(auth('member-1'), 'conv-1');
+
+      expect(prisma.groupMemberEpoch.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { conversationId: 'conv-1', userId: 'member-1', leftEpoch: null },
+          data: { leftEpoch: 2 },
+        }),
+      );
+      const event = lastEpochEvent(realtime);
+      expect(event?.[2]).toEqual({
+        conversationId: 'conv-1',
+        epoch: 2,
+        reason: 'leave',
+        userId: 'member-1',
+      });
     });
   });
 });

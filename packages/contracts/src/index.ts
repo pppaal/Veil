@@ -436,4 +436,14 @@ export interface RealtimeEventMap {
     fromDeviceId: string;
   };
   'story.new': { storyId: string; userId: string; contentType: string };
+  // Group Sender Keys (design-only): emitted to all current members when a
+  // group's membership generation changes. `epoch` is the new
+  // conversations.current_epoch; `userId` is the member who joined or left.
+  // Clients that don't implement Sender Keys yet ignore this event.
+  'group.epoch.bumped': {
+    conversationId: string;
+    epoch: number;
+    reason: 'join' | 'leave';
+    userId: string;
+  };
 }

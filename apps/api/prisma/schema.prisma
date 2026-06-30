@@ -97,6 +97,7 @@ model User {
   conversationMutes ConversationMute[]
   reportsFiled     AbuseReport[]          @relation("ReportsFiled")
   reportsAgainst   AbuseReport[]          @relation("ReportsAgainst")
+  groupMemberEpochs GroupMemberEpoch[]
 
   @@index([activeDeviceId])
   @@map("users")
@@ -190,6 +191,13 @@ model Conversation {
   // conversation — one wins, the other catches P2002 and returns the
   // existing conversation.
   directKey String?              @map("direct_key") @db.VarChar(80)
+  // Monotonic group epoch. Incremented on every membership change (join /
+  // leave / remove). Group Sender Keys (design-only, see
+  // docs/group-sender-keys-design.md) use this to scope key material to a
+  // membership generation so a removed member cannot decrypt future
+  // ciphertext. Always 0 for direct conversations. Int (not BigInt) is
+  // ample: a membership change per second for 60+ years stays under 2^31.
+  currentEpoch Int               @default(0) @map("current_epoch")
   members      ConversationMember[]
   messages     Message[]
   deviceStates DeviceConversationState[]
@@ -197,9 +205,30 @@ model Conversation {
   channelMeta  ChannelMeta?
   callRecords  CallRecord[]
   mutes        ConversationMute[]
+  memberEpochs GroupMemberEpoch[]
 
   @@unique([directKey])
   @@map("conversations")
+}
+
+// Per-member epoch window for group Sender Keys. joinedEpoch records the
+// epoch at which a user is first allowed to start decrypting; leftEpoch is
+// stamped when they are removed (or leave) so the server can refuse to
+// deliver post-departure ciphertext and clients can refuse to decrypt it.
+// A user who re-joins gets joinedEpoch reset and leftEpoch cleared.
+// Server-side bookkeeping only — no key material lives here (key
+// distribution rides the existing 1:1 ratchet, see the design doc).
+model GroupMemberEpoch {
+  conversationId String       @map("conversation_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  joinedEpoch    Int          @map("joined_epoch")
+  leftEpoch      Int?         @map("left_epoch")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+  @@map("group_member_epochs")
 }
 
 model ConversationMember {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/prisma.service';
 import { forbidden, notFound } from '../../common/errors/api-error';
@@ -53,6 +54,19 @@ export class GroupsService {
           members: { include: { user: { select: { id: true, handle: true, displayName: true } } } },
           groupMeta: true,
         },
+      });
+
+      // Seed the epoch-0 membership window for every founding member so the
+      // group has a complete member-epoch ledger from creation. No epoch bump
+      // or realtime event here — the group is brand new and nobody is
+      // listening yet.
+      await tx.groupMemberEpoch.createMany({
+        data: conv.members.map((m) => ({
+          conversationId: conv.id,
+          userId: m.userId,
+          joinedEpoch: 0,
+          leftEpoch: null,
+        })),
       });
 
       return conv;
@@ -216,12 +230,18 @@ export class GroupsService {
 
     const role = dto.role ?? 'member';
 
-    await this.prisma.conversationMember.create({
-      data: {
-        conversationId,
+    const epoch = await this.prisma.$transaction(async (tx) => {
+      await tx.conversationMember.create({
+        data: {
+          conversationId,
+          userId: user.id,
+          role,
+        },
+      });
+      return this.bumpEpochForChange(tx, conversationId, {
         userId: user.id,
-        role,
-      },
+        reason: 'join',
+      });
     });
 
     const members = await this.prisma.conversationMember.findMany({
@@ -232,6 +252,12 @@ export class GroupsService {
     this.realtimeGateway.emitConversationMembers(members, 'conversation.sync', {
       conversationId,
       reason: 'membership',
+    });
+    this.realtimeGateway.emitConversationMembers(members, 'group.epoch.bumped', {
+      conversationId,
+      epoch,
+      reason: 'join',
+      userId: user.id,
     });
 
     return { conversationId, userId: user.id, handle: user.handle, role };
@@ -266,13 +292,19 @@ export class GroupsService {
       throw forbidden('conversation_membership_required', 'Cannot remove the group owner');
     }
 
-    await this.prisma.conversationMember.delete({
-      where: {
-        conversationId_userId: {
-          conversationId,
-          userId: user.id,
+    const epoch = await this.prisma.$transaction(async (tx) => {
+      await tx.conversationMember.delete({
+        where: {
+          conversationId_userId: {
+            conversationId,
+            userId: user.id,
+          },
         },
-      },
+      });
+      return this.bumpEpochForChange(tx, conversationId, {
+        userId: user.id,
+        reason: 'leave',
+      });
     });
 
     const members = await this.prisma.conversationMember.findMany({
@@ -285,6 +317,14 @@ export class GroupsService {
       'conversation.sync',
       { conversationId, reason: 'membership' },
     );
+    // Only remaining members get the new epoch — the removed user must not
+    // learn (or act on) the post-departure generation.
+    this.realtimeGateway.emitConversationMembers(members, 'group.epoch.bumped', {
+      conversationId,
+      epoch,
+      reason: 'leave',
+      userId: user.id,
+    });
 
     return { conversationId, removedUserId: user.id };
   }
@@ -310,13 +350,19 @@ export class GroupsService {
       );
     }
 
-    await this.prisma.conversationMember.delete({
-      where: {
-        conversationId_userId: {
-          conversationId,
-          userId: auth.userId,
+    const epoch = await this.prisma.$transaction(async (tx) => {
+      await tx.conversationMember.delete({
+        where: {
+          conversationId_userId: {
+            conversationId,
+            userId: auth.userId,
+          },
         },
-      },
+      });
+      return this.bumpEpochForChange(tx, conversationId, {
+        userId: auth.userId,
+        reason: 'leave',
+      });
     });
 
     const members = await this.prisma.conversationMember.findMany({
@@ -329,8 +375,65 @@ export class GroupsService {
       'conversation.sync',
       { conversationId, reason: 'membership' },
     );
+    this.realtimeGateway.emitConversationMembers(members, 'group.epoch.bumped', {
+      conversationId,
+      epoch,
+      reason: 'leave',
+      userId: auth.userId,
+    });
 
     return { conversationId, left: true };
+  }
+
+  /**
+   * Bump a group's membership epoch and update the member's epoch window,
+   * atomically within the caller's transaction. Returns the new epoch.
+   *
+   * - join: stamp joinedEpoch = new epoch and clear any prior leftEpoch
+   *   (covers re-joins) so the member may decrypt from this generation on.
+   * - leave: stamp leftEpoch = new epoch on the member's open window so the
+   *   server can refuse post-departure delivery and clients can refuse to
+   *   decrypt newer ciphertext.
+   *
+   * Phase AB.1: bookkeeping + realtime signalling only. The actual Sender-Key
+   * redistribution that consumes these epochs is design-only pending external
+   * crypto review (docs/group-sender-keys-design.md).
+   */
+  private async bumpEpochForChange(
+    tx: Prisma.TransactionClient,
+    conversationId: string,
+    change: { userId: string; reason: 'join' | 'leave' },
+  ): Promise<number> {
+    const conversation = await tx.conversation.update({
+      where: { id: conversationId },
+      data: { currentEpoch: { increment: 1 } },
+      select: { currentEpoch: true },
+    });
+    const epoch = conversation.currentEpoch;
+
+    if (change.reason === 'join') {
+      await tx.groupMemberEpoch.upsert({
+        where: {
+          conversationId_userId: { conversationId, userId: change.userId },
+        },
+        update: { joinedEpoch: epoch, leftEpoch: null },
+        create: {
+          conversationId,
+          userId: change.userId,
+          joinedEpoch: epoch,
+          leftEpoch: null,
+        },
+      });
+    } else {
+      // Only close the still-open window; a member with no open window (never
+      // joined, or already left) is a no-op rather than an error.
+      await tx.groupMemberEpoch.updateMany({
+        where: { conversationId, userId: change.userId, leftEpoch: null },
+        data: { leftEpoch: epoch },
+      });
+    }
+
+    return epoch;
   }
 
   private async requireAdminOrOwner(userId: string, conversationId: string): Promise<void> {

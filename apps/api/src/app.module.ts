@@ -31,6 +31,7 @@ import { CallsModule } from './modules/calls/calls.module';
 import { SafetyModule } from './modules/safety/safety.module';
 import { SecretModule } from './modules/secret/secret.module';
 import { RetentionModule } from './modules/retention/retention.module';
+import { RecoveryModule } from './modules/recovery/recovery.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { RetentionModule } from './modules/retention/retention.module';
     SafetyModule,
     SecretModule,
     RetentionModule,
+    RecoveryModule,
   ],
   providers: [
     {

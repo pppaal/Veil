@@ -392,8 +392,16 @@ describe('GroupsService', () => {
         createdAt: new Date('2026-04-23T00:00:00.000Z'),
         groupMeta: { name: 'Coven', description: null, isPublic: false },
         members: [
-          { userId: 'user-1', role: 'owner', user: { id: 'user-1', handle: 'a', displayName: null } },
-          { userId: 'user-2', role: 'member', user: { id: 'user-2', handle: 'b', displayName: null } },
+          {
+            userId: 'user-1',
+            role: 'owner',
+            user: { id: 'user-1', handle: 'a', displayName: null },
+          },
+          {
+            userId: 'user-2',
+            role: 'member',
+            user: { id: 'user-2', handle: 'b', displayName: null },
+          },
         ],
       });
 
@@ -420,9 +428,7 @@ describe('GroupsService', () => {
   // group.epoch.bumped event to the current members.
   describe('group epoch bumps', () => {
     const lastEpochEvent = (realtime: { emitConversationMembers: jest.Mock }) =>
-      realtime.emitConversationMembers.mock.calls.find(
-        (call) => call[1] === 'group.epoch.bumped',
-      );
+      realtime.emitConversationMembers.mock.calls.find((call) => call[1] === 'group.epoch.bumped');
 
     it('addMember bumps the epoch and announces a join', async () => {
       const { prisma, realtime, service } = buildService();
@@ -430,7 +436,11 @@ describe('GroupsService', () => {
         .mockResolvedValueOnce({ role: 'owner', userId: 'owner-1', conversationId: 'conv-1' })
         .mockResolvedValueOnce(null);
       prisma.conversation.findUnique.mockResolvedValue({ id: 'conv-1', type: 'group' });
-      prisma.user.findUnique.mockResolvedValue({ id: 'new-user', handle: 'newbie', displayName: null });
+      prisma.user.findUnique.mockResolvedValue({
+        id: 'new-user',
+        handle: 'newbie',
+        displayName: null,
+      });
       prisma.conversation.update.mockResolvedValue({ currentEpoch: 4 });
 
       await service.addMember(auth('owner-1'), 'conv-1', { handle: 'newbie' } as never);

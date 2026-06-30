@@ -310,6 +310,62 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
   }
 
+  /**
+   * Relay a WebRTC signaling message (SDP offer/answer or ICE candidate)
+   * between the two parties of a 1:1 call. The sender must be a member of the
+   * call's conversation; otherwise the message is dropped silently.
+   *
+   * IMPORTANT: `payload.data` is an opaque E2E media-setup blob. The server
+   * MUST NOT inspect, parse, persist, or otherwise interpret it — WebRTC media
+   * is negotiated end-to-end (DTLS-SRTP). This handler only forwards the blob
+   * to the other conversation members verbatim; nothing here is stored.
+   */
+  @SubscribeMessage('call.signal')
+  async handleCallSignal(
+    client: Socket,
+    payload: { callId: string; kind: 'offer' | 'answer' | 'ice'; data: string },
+  ): Promise<void> {
+    const userId = client.data.userId as string | undefined;
+    const deviceId = client.data.deviceId as string | undefined;
+    if (
+      !userId ||
+      !deviceId ||
+      !payload?.callId ||
+      typeof payload.data !== 'string' ||
+      (payload.kind !== 'offer' && payload.kind !== 'answer' && payload.kind !== 'ice')
+    ) {
+      return;
+    }
+
+    // Resolve the call's conversation members, mirroring how the typing
+    // handlers authorize fan-out against conversation membership.
+    const call = await this.prisma.callRecord.findUnique({
+      where: { id: payload.callId },
+      select: {
+        conversationId: true,
+        conversation: { select: { members: { select: { userId: true } } } },
+      },
+    });
+
+    if (!call) return;
+
+    const members = call.conversation.members;
+    // Drop silently if the sender is not a member of the call's conversation.
+    if (!members.some((m) => m.userId === userId)) return;
+
+    for (const member of members) {
+      if (member.userId !== userId) {
+        this.emitToUser(member.userId, 'call.signal', {
+          callId: payload.callId,
+          kind: payload.kind,
+          data: payload.data,
+          fromUserId: userId,
+          fromDeviceId: deviceId,
+        });
+      }
+    }
+  }
+
   isUserOnline(userId: string): boolean {
     return this.hasConnectedUser(userId);
   }

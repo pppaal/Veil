@@ -422,5 +422,18 @@ export interface RealtimeEventMap {
     initiatorHandle: string;
   };
   'call.ended': { callId: string; conversationId: string; duration: number };
+  'call.accepted': { callId: string; conversationId: string };
+  'call.declined': { callId: string; conversationId: string };
+  // WebRTC signaling relay. `data` is an opaque SDP offer/answer or ICE
+  // candidate blob: the server never parses, inspects, or stores it. Media is
+  // negotiated end-to-end (DTLS-SRTP), so this channel only shuttles setup
+  // material between the two parties.
+  'call.signal': {
+    callId: string;
+    kind: 'offer' | 'answer' | 'ice';
+    data: string;
+    fromUserId: string;
+    fromDeviceId: string;
+  };
   'story.new': { storyId: string; userId: string; contentType: string };
 }

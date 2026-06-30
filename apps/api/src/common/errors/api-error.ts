@@ -44,6 +44,9 @@ export type VeilErrorCode =
   | 'refresh_token_invalid'
   | 'token_revoked'
   | 'peer_unreachable'
+  | 'call_not_found'
+  | 'call_invalid_state'
+  | 'call_initiator_forbidden'
   | 'message_not_owned'
   | 'message_deleted'
   | 'view_once_immutable';

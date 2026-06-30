@@ -102,3 +102,90 @@ describe('RealtimeGateway handshake user-status enforcement', () => {
     expect(gw.disconnectUser('nobody')).toBe(0);
   });
 });
+
+// call.signal relays opaque WebRTC SDP/ICE blobs between the two parties of a
+// call. The sender must be a member of the call's conversation; the server
+// never inspects or stores the `data` payload.
+describe('RealtimeGateway call.signal relay', () => {
+  type Emitted = { userId: string; event: string; payload: unknown };
+
+  const buildGateway = (members: Array<{ userId: string }> | null) => {
+    const prisma = {
+      callRecord: {
+        findUnique: async () =>
+          members === null ? null : { conversationId: 'conv-1', conversation: { members } },
+      },
+    } as never;
+    const gw = new RealtimeGateway(null as never, null as never, prisma, null as never);
+    const emitted: Emitted[] = [];
+    (
+      gw as unknown as {
+        emitToUser: (userId: string, event: string, payload: unknown) => void;
+      }
+    ).emitToUser = (userId, event, payload) => emitted.push({ userId, event, payload });
+    return { gw, emitted };
+  };
+
+  const client = (userId: string | undefined, deviceId: string | undefined) =>
+    ({ data: { userId, deviceId } }) as never;
+
+  it('relays a signal from a member to the peer, never echoing back to the sender', async () => {
+    const { gw, emitted } = buildGateway([{ userId: 'user-a' }, { userId: 'user-b' }]);
+
+    await gw.handleCallSignal(client('user-a', 'device-a'), {
+      callId: 'call-1',
+      kind: 'offer',
+      data: 'opaque-sdp',
+    });
+
+    expect(emitted).toEqual([
+      {
+        userId: 'user-b',
+        event: 'call.signal',
+        payload: {
+          callId: 'call-1',
+          kind: 'offer',
+          data: 'opaque-sdp',
+          fromUserId: 'user-a',
+          fromDeviceId: 'device-a',
+        },
+      },
+    ]);
+  });
+
+  it('drops a signal from a non-member', async () => {
+    const { gw, emitted } = buildGateway([{ userId: 'user-a' }, { userId: 'user-b' }]);
+
+    await gw.handleCallSignal(client('stranger', 'device-x'), {
+      callId: 'call-1',
+      kind: 'ice',
+      data: 'opaque-ice',
+    });
+
+    expect(emitted).toEqual([]);
+  });
+
+  it('drops a signal when the call does not exist', async () => {
+    const { gw, emitted } = buildGateway(null);
+
+    await gw.handleCallSignal(client('user-a', 'device-a'), {
+      callId: 'missing',
+      kind: 'answer',
+      data: 'opaque',
+    });
+
+    expect(emitted).toEqual([]);
+  });
+
+  it('drops a signal with an unknown kind without touching prisma', async () => {
+    const { gw, emitted } = buildGateway([{ userId: 'user-a' }, { userId: 'user-b' }]);
+
+    await gw.handleCallSignal(client('user-a', 'device-a'), {
+      callId: 'call-1',
+      kind: 'bogus' as never,
+      data: 'opaque',
+    });
+
+    expect(emitted).toEqual([]);
+  });
+});

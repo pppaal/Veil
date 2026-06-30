@@ -78,6 +78,10 @@ class SecureStorageService {
   static const _displayNameKey = 'veil.session.display_name';
   static const _onboardingAcceptedKey = 'veil.onboarding.accepted';
   static const _privacyConsentKey = 'veil.privacy.consent_accepted';
+  // User-selected theme mode, stored as a stable string ('light'|'dark'|
+  // 'system'). Non-sensitive, but kept in the same store so the app does not
+  // depend on an additional plain key-value plugin.
+  static const _themeModeKey = 'veil.settings.theme_mode';
   // Double Ratchet per-conversation session snapshots, stored as a single
   // JSON blob {conversationId: <snapshot json string>}. Stored as one key so
   // we don't depend on backend enumeration, which FlutterSecureStorage can't
@@ -445,6 +449,17 @@ class SecureStorageService {
 
   Future<bool> readPrivacyConsent() async {
     return (await _storage.read(key: _privacyConsentKey)) == 'true';
+  }
+
+  /// Persist the selected theme mode as a stable string. Accepts one of
+  /// 'light', 'dark', or 'system'.
+  Future<void> persistThemeMode(String mode) {
+    return _storage.write(key: _themeModeKey, value: mode);
+  }
+
+  /// Read the persisted theme mode string, or null if none has been saved.
+  Future<String?> readThemeMode() async {
+    return _storage.read(key: _themeModeKey);
   }
 
   Future<PinThrottleState> readPinThrottleState() async {

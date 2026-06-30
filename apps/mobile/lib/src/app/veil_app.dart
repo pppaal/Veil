@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/crypto/lib_crypto_adapter.dart';
 import '../core/router/app_router.dart';
+import '../core/theme/theme_mode_controller.dart';
 import '../core/theme/veil_theme.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../shared/presentation/veil_ui.dart';
@@ -29,9 +30,9 @@ class VeilApp extends ConsumerWidget {
         title: 'VEIL',
         theme: VeilTheme.light(),
         darkTheme: VeilTheme.dark(),
-        // Light is the primary brand surface. Switch back to
-        // ThemeMode.system to auto-follow the OS appearance instead.
-        themeMode: ThemeMode.light,
+        // Honor the user's persisted choice. Defaults to ThemeMode.system,
+        // which follows the OS appearance until the user picks light/dark.
+        themeMode: ref.watch(themeModeProvider),
         debugShowCheckedModeBanner: false,
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/theme/theme_mode_controller.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -42,6 +43,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
+    final themeMode = ref.watch(themeModeProvider);
     final l10n = AppLocalizations.of(context);
 
     return VeilShell(
@@ -143,6 +145,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ],
               );
             },
+          ),
+          const SizedBox(height: VeilSpace.md),
+          VeilSectionLabel(l10n.themeModeTitle),
+          const SizedBox(height: VeilSpace.sm),
+          VeilSurfaceCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  l10n.themeModeSubtitle,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: context.veilPalette.textSubtle,
+                      ),
+                ),
+                const SizedBox(height: VeilSpace.md),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<ThemeMode>(
+                    segments: [
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.light,
+                        icon: const Icon(Icons.light_mode_outlined),
+                        label: Text(l10n.themeModeLight),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.dark,
+                        icon: const Icon(Icons.dark_mode_outlined),
+                        label: Text(l10n.themeModeDark),
+                      ),
+                      ButtonSegment<ThemeMode>(
+                        value: ThemeMode.system,
+                        icon: const Icon(Icons.brightness_auto_outlined),
+                        label: Text(l10n.themeModeSystem),
+                      ),
+                    ],
+                    selected: {themeMode},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) {
+                      VeilHaptics.selection();
+                      ref
+                          .read(themeModeProvider.notifier)
+                          .setThemeMode(selection.first);
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: VeilSpace.md),
           const VeilSectionLabel('SECURITY'),

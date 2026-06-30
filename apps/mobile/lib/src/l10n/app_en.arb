@@ -502,5 +502,10 @@
   "deviceTransferExpiryInMinutes": "in {minutes}m",
   "@deviceTransferExpiryInMinutes": {"placeholders": {"minutes": {"type": "int"}}},
   "deviceTransferExpiryAt": "at {time}",
-  "@deviceTransferExpiryAt": {"placeholders": {"time": {"type": "String"}}}
+  "@deviceTransferExpiryAt": {"placeholders": {"time": {"type": "String"}}},
+  "themeModeTitle": "Theme",
+  "themeModeSubtitle": "Choose how VEIL appears on this device.",
+  "themeModeLight": "Light",
+  "themeModeDark": "Dark",
+  "themeModeSystem": "System"
 }

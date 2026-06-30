@@ -29,9 +29,11 @@ type DeviceRecord = {
 
 type ConversationRecord = {
   id: string;
-  type: 'direct';
+  type: 'direct' | 'group' | 'channel';
   createdAt: Date;
   directKey?: string | null;
+  currentEpoch?: number;
+  groupUseSenderKeys?: boolean;
 };
 
 type ConversationMemberRecord = {
@@ -261,7 +263,7 @@ export class FakePrismaService {
         return {
           ...record,
           activeDevice: record.activeDeviceId
-            ? this.devices.find((item) => item.id == record.activeDeviceId) ?? null
+            ? (this.devices.find((item) => item.id == record.activeDeviceId) ?? null)
             : null,
         };
       }
@@ -313,7 +315,9 @@ export class FakePrismaService {
           (!where.userId || item.userId === where.userId) &&
           (where.isActive === undefined || item.isActive === where.isActive) &&
           (where.revokedAt === undefined ||
-            (where.revokedAt === null ? item.revokedAt === null : item.revokedAt === where.revokedAt)),
+            (where.revokedAt === null
+              ? item.revokedAt === null
+              : item.revokedAt === where.revokedAt)),
       );
       if (!record) {
         return null;
@@ -577,7 +581,8 @@ export class FakePrismaService {
         const clauses = where.OR as Array<any>;
         return clauses.some((clause) => {
           if (clause.expiresAt === null) return item.expiresAt === null;
-          if (clause.expiresAt?.gt) return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
+          if (clause.expiresAt?.gt)
+            return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
           return false;
         });
       };
@@ -593,9 +598,7 @@ export class FakePrismaService {
             ? true
             : item.expiresAt !== null && item.expiresAt <= where.expiresAt.lte,
         )
-        .filter((item) =>
-          where?.id?.in === undefined ? true : where.id.in.includes(item.id),
-        )
+        .filter((item) => (where?.id?.in === undefined ? true : where.id.in.includes(item.id)))
         .filter(matchesNotExpired)
         .sort((a, b) => b.conversationOrder - a.conversationOrder);
       if (cursor?.id) {
@@ -642,7 +645,9 @@ export class FakePrismaService {
         conversation: include?.conversation
           ? {
               ...conversation,
-              members: this.conversationMembers.filter((item) => item.conversationId === conversation.id),
+              members: this.conversationMembers.filter(
+                (item) => item.conversationId === conversation.id,
+              ),
             }
           : undefined,
       };
@@ -788,9 +793,7 @@ export class FakePrismaService {
         if (select.displayName) contactUser.displayName = user.displayName;
         if (select.profile) {
           const profile = this.userProfiles.find((item) => item.userId === user.id);
-          contactUser.profile = profile
-            ? this.pick(profile, select.profile.select)
-            : null;
+          contactUser.profile = profile ? this.pick(profile, select.profile.select) : null;
         }
         return { ...record, contactUser };
       });
@@ -962,10 +965,18 @@ export class FakePrismaService {
         const matchesIds = !where?.id?.in || where.id.in.includes(record.id);
         const matchesCompletedAt =
           where?.completedAt === undefined ||
-          (where.completedAt === null ? record.completedAt === null : record.completedAt === where.completedAt);
+          (where.completedAt === null
+            ? record.completedAt === null
+            : record.completedAt === where.completedAt);
         const matchesExpiresAt =
           where?.expiresAt?.lt === undefined || record.expiresAt < where.expiresAt.lt;
-        if (!matchesUser || !matchesOldDevice || !matchesIds || !matchesCompletedAt || !matchesExpiresAt) {
+        if (
+          !matchesUser ||
+          !matchesOldDevice ||
+          !matchesIds ||
+          !matchesCompletedAt ||
+          !matchesExpiresAt
+        ) {
           continue;
         }
         Object.assign(record, data);
@@ -975,10 +986,7 @@ export class FakePrismaService {
     };
   }
 
-  async $transaction<T>(
-    callback: (tx: this) => Promise<T>,
-    _options?: unknown,
-  ): Promise<T> {
+  async $transaction<T>(callback: (tx: this) => Promise<T>, _options?: unknown): Promise<T> {
     return callback(this);
   }
 
@@ -1003,7 +1011,8 @@ export class FakePrismaService {
               if (!whereOr) return true;
               return whereOr.some((clause) => {
                 if (clause.expiresAt === null) return item.expiresAt === null;
-                if (clause.expiresAt?.gt) return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
+                if (clause.expiresAt?.gt)
+                  return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
                 return false;
               });
             })
@@ -1018,11 +1027,15 @@ export class FakePrismaService {
     return {
       ...record,
       senderDevice: include?.senderDevice
-        ? this.pick(this.devices.find((item) => item.id === record.senderDeviceId)!, include.senderDevice.select)
+        ? this.pick(
+            this.devices.find((item) => item.id === record.senderDeviceId)!,
+            include.senderDevice.select,
+          )
         : undefined,
-      attachment: include?.attachment && record.attachmentId
-        ? this.attachments.find((item) => item.id === record.attachmentId) ?? null
-        : null,
+      attachment:
+        include?.attachment && record.attachmentId
+          ? (this.attachments.find((item) => item.id === record.attachmentId) ?? null)
+          : null,
       receipts: include?.receipts
         ? this.messageReceipts.filter((item) => item.messageId === record.id)
         : undefined,
@@ -1030,9 +1043,7 @@ export class FakePrismaService {
         ? this.reactions
             .filter((item) => item.messageId === record.id)
             .map((reaction) =>
-              include.reactions.select
-                ? this.pick(reaction, include.reactions.select)
-                : reaction,
+              include.reactions.select ? this.pick(reaction, include.reactions.select) : reaction,
             )
         : undefined,
     };
@@ -1041,8 +1052,8 @@ export class FakePrismaService {
   private pick(record: Record<string, any>, select: Record<string, boolean>): Record<string, any> {
     return Object.fromEntries(
       Object.entries(select)
-          .filter(([, enabled]) => enabled)
-          .map(([key]) => [key, record[key]]),
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => [key, record[key]]),
     );
   }
 }

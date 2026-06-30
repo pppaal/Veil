@@ -196,6 +196,67 @@ describe('GroupsService', () => {
         service.updateGroup(auth('admin-1'), 'conv-1', { name: 'New' } as never),
       ).resolves.toMatchObject({ name: 'New' });
     });
+
+    it('flips the Sender Keys flag on the conversation when asked', async () => {
+      const { prisma, service } = buildService();
+      prisma.conversationMember.findUnique.mockResolvedValue({
+        conversationId: 'conv-1',
+        userId: 'owner-1',
+        role: 'owner',
+      });
+      prisma.conversation.findUnique.mockResolvedValue({
+        id: 'conv-1',
+        type: 'group',
+        groupUseSenderKeys: false,
+        groupMeta: { name: 'Coven', description: null, isPublic: false },
+      });
+      prisma.groupMeta.update.mockResolvedValue({
+        name: 'Coven',
+        description: null,
+        isPublic: false,
+      });
+      prisma.conversation.update.mockResolvedValue({ groupUseSenderKeys: true });
+
+      const result = await service.updateGroup(auth('owner-1'), 'conv-1', {
+        useSenderKeys: true,
+      } as never);
+
+      expect(prisma.conversation.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'conv-1' },
+          data: { groupUseSenderKeys: true },
+        }),
+      );
+      expect(result.useSenderKeys).toBe(true);
+    });
+
+    it('does not touch the Sender Keys flag on a metadata-only edit', async () => {
+      const { prisma, service } = buildService();
+      prisma.conversationMember.findUnique.mockResolvedValue({
+        conversationId: 'conv-1',
+        userId: 'owner-1',
+        role: 'owner',
+      });
+      prisma.conversation.findUnique.mockResolvedValue({
+        id: 'conv-1',
+        type: 'group',
+        groupUseSenderKeys: true,
+        groupMeta: { name: 'Old', description: null, isPublic: false },
+      });
+      prisma.groupMeta.update.mockResolvedValue({
+        name: 'New',
+        description: null,
+        isPublic: false,
+      });
+
+      const result = await service.updateGroup(auth('owner-1'), 'conv-1', {
+        name: 'New',
+      } as never);
+
+      // The flag is preserved from the existing conversation, untouched.
+      expect(prisma.conversation.update).not.toHaveBeenCalled();
+      expect(result.useSenderKeys).toBe(true);
+    });
   });
 
   describe('removeMember', () => {
@@ -420,6 +481,60 @@ describe('GroupsService', () => {
         { conversationId: 'conv-new', userId: 'user-1', joinedEpoch: 0, leftEpoch: null },
         { conversationId: 'conv-new', userId: 'user-2', joinedEpoch: 0, leftEpoch: null },
       ]);
+    });
+
+    it('opts the new group into Sender Keys when requested', async () => {
+      const { prisma, service } = buildService();
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.conversation.create.mockResolvedValue({
+        id: 'conv-new',
+        type: 'group',
+        createdAt: new Date('2026-04-23T00:00:00.000Z'),
+        groupUseSenderKeys: true,
+        currentEpoch: 0,
+        groupMeta: { name: 'Coven', description: null, isPublic: false },
+        members: [
+          {
+            userId: 'user-1',
+            role: 'owner',
+            user: { id: 'user-1', handle: 'a', displayName: null },
+          },
+        ],
+      });
+
+      const result = await service.createGroup(auth('user-1'), {
+        name: 'Coven',
+        useSenderKeys: true,
+      } as never);
+
+      const createData = prisma.conversation.create.mock.calls[0][0].data;
+      expect(createData.groupUseSenderKeys).toBe(true);
+      expect(result.useSenderKeys).toBe(true);
+      expect(result.epoch).toBe(0);
+    });
+
+    it('defaults Sender Keys off when the flag is omitted', async () => {
+      const { prisma, service } = buildService();
+      prisma.user.findMany.mockResolvedValue([]);
+      prisma.conversation.create.mockResolvedValue({
+        id: 'conv-new',
+        type: 'group',
+        createdAt: new Date('2026-04-23T00:00:00.000Z'),
+        groupUseSenderKeys: false,
+        currentEpoch: 0,
+        groupMeta: { name: 'Coven', description: null, isPublic: false },
+        members: [
+          {
+            userId: 'user-1',
+            role: 'owner',
+            user: { id: 'user-1', handle: 'a', displayName: null },
+          },
+        ],
+      });
+
+      await service.createGroup(auth('user-1'), { name: 'Coven' } as never);
+
+      expect(prisma.conversation.create.mock.calls[0][0].data.groupUseSenderKeys).toBe(false);
     });
   });
 

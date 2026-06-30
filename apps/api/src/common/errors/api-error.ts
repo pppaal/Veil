@@ -49,7 +49,9 @@ export type VeilErrorCode =
   | 'call_initiator_forbidden'
   | 'message_not_owned'
   | 'message_deleted'
-  | 'view_once_immutable';
+  | 'view_once_immutable'
+  | 'group_epoch_required'
+  | 'group_epoch_stale';
 
 export class ApiError extends HttpException {
   constructor(

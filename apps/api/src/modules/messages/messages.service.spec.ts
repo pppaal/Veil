@@ -94,6 +94,30 @@ function seedDirectConversation(
   return conversationId;
 }
 
+function seedGroupConversation(
+  prisma: FakePrismaService,
+  memberUserIds: string[],
+  options: { useSenderKeys?: boolean; currentEpoch?: number } = {},
+): string {
+  const conversationId = randomUUID();
+  prisma.conversations.push({
+    id: conversationId,
+    type: 'group',
+    createdAt: new Date(),
+    currentEpoch: options.currentEpoch ?? 0,
+    groupUseSenderKeys: options.useSenderKeys ?? false,
+  });
+  for (const userId of memberUserIds) {
+    prisma.conversationMembers.push({
+      id: randomUUID(),
+      conversationId,
+      userId,
+      joinedAt: new Date(),
+    });
+  }
+  return conversationId;
+}
+
 function buildSendDto(overrides: {
   conversationId: string;
   senderDeviceId: string;
@@ -101,11 +125,13 @@ function buildSendDto(overrides: {
   clientMessageId?: string;
   ciphertext?: string;
   attachmentId?: string;
+  groupEpoch?: number;
 }): SendMessageDto {
   return {
     conversationId: overrides.conversationId,
     clientMessageId:
       overrides.clientMessageId ?? `client-${randomUUID().replace(/-/g, '').slice(0, 16)}`,
+    groupEpoch: overrides.groupEpoch,
     envelope: {
       version: 'veil.v1',
       conversationId: overrides.conversationId,
@@ -304,6 +330,79 @@ describe('MessagesService', () => {
       );
 
       expect(push.sentHints).toHaveLength(1); // unchanged
+    });
+
+    // Group Sender Keys epoch gate (phase AB.2).
+    it('accepts a group send carrying the current epoch when sender keys are on', async () => {
+      const { service, prisma } = makeService();
+      const alice = seedUserAndDevice(prisma, 'alice');
+      const bob = seedUserAndDevice(prisma, 'bob');
+      const conversationId = seedGroupConversation(prisma, [alice.userId, bob.userId], {
+        useSenderKeys: true,
+        currentEpoch: 5,
+      });
+
+      const result = await service.send(
+        { userId: alice.userId, deviceId: alice.deviceId },
+        buildSendDto({ conversationId, senderDeviceId: alice.deviceId, groupEpoch: 5 }),
+      );
+
+      expect(result.idempotent).toBe(false);
+      expect(prisma.messages).toHaveLength(1);
+    });
+
+    it('rejects a group send under a stale epoch with group_epoch_stale', async () => {
+      const { service, prisma } = makeService();
+      const alice = seedUserAndDevice(prisma, 'alice');
+      const bob = seedUserAndDevice(prisma, 'bob');
+      const conversationId = seedGroupConversation(prisma, [alice.userId, bob.userId], {
+        useSenderKeys: true,
+        currentEpoch: 6,
+      });
+
+      await expect(
+        service.send(
+          { userId: alice.userId, deviceId: alice.deviceId },
+          buildSendDto({ conversationId, senderDeviceId: alice.deviceId, groupEpoch: 5 }),
+        ),
+      ).rejects.toThrow('Group membership has changed');
+      expect(prisma.messages).toHaveLength(0);
+    });
+
+    it('rejects a group send with no epoch when sender keys are on', async () => {
+      const { service, prisma } = makeService();
+      const alice = seedUserAndDevice(prisma, 'alice');
+      const bob = seedUserAndDevice(prisma, 'bob');
+      const conversationId = seedGroupConversation(prisma, [alice.userId, bob.userId], {
+        useSenderKeys: true,
+        currentEpoch: 0,
+      });
+
+      await expect(
+        service.send(
+          { userId: alice.userId, deviceId: alice.deviceId },
+          buildSendDto({ conversationId, senderDeviceId: alice.deviceId }),
+        ),
+      ).rejects.toThrow('Group epoch required');
+      expect(prisma.messages).toHaveLength(0);
+    });
+
+    it('ignores the epoch gate for a legacy group that has not opted in', async () => {
+      const { service, prisma } = makeService();
+      const alice = seedUserAndDevice(prisma, 'alice');
+      const bob = seedUserAndDevice(prisma, 'bob');
+      // useSenderKeys defaults false; no groupEpoch sent, stale-looking state.
+      const conversationId = seedGroupConversation(prisma, [alice.userId, bob.userId], {
+        currentEpoch: 9,
+      });
+
+      const result = await service.send(
+        { userId: alice.userId, deviceId: alice.deviceId },
+        buildSendDto({ conversationId, senderDeviceId: alice.deviceId }),
+      );
+
+      expect(result.idempotent).toBe(false);
+      expect(prisma.messages).toHaveLength(1);
     });
   });
 

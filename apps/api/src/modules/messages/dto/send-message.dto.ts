@@ -140,6 +140,16 @@ export class SendMessageDto {
   @IsOptional()
   @IsUUID()
   replyToMessageId?: string | null;
+
+  // Group Sender Keys (phase AB.2). The membership generation the sender
+  // encrypted under. Required and validated against conversations.current_epoch
+  // only when the group has opted into Sender Keys; ignored otherwise, so
+  // legacy clients and direct conversations are unaffected.
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  groupEpoch?: number;
 }
 
 export class EditMessageDto {

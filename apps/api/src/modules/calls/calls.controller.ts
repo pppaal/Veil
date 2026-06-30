@@ -16,6 +16,16 @@ export class CallsController {
     return this.callsService.initiateCall(request.auth, dto);
   }
 
+  @Post(':id/accept')
+  acceptCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.callsService.acceptCall(request.auth, id);
+  }
+
+  @Post(':id/decline')
+  declineCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.callsService.declineCall(request.auth, id);
+  }
+
   @Post(':id/end')
   endCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.callsService.endCall(request.auth, id);

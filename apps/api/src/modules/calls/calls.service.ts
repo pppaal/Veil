@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma.service';
-import { forbidden, notFound } from '../../common/errors/api-error';
+import { conflict, forbidden, notFound } from '../../common/errors/api-error';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { InitiateCallDto } from './dto/initiate-call.dto';
 
@@ -96,6 +96,78 @@ export class CallsService {
     });
 
     return { callId: updated.id, status: updated.status, duration };
+  }
+
+  async acceptCall(auth: { userId: string }, callId: string) {
+    const callRecord = await this.prisma.callRecord.findUnique({
+      where: { id: callId },
+      include: {
+        conversation: { include: { members: true } },
+        initiatorDevice: { select: { userId: true } },
+      },
+    });
+
+    if (!callRecord) {
+      throw notFound('call_not_found', 'Call record not found');
+    }
+
+    if (!callRecord.conversation.members.some((m) => m.userId === auth.userId)) {
+      throw forbidden('conversation_membership_required', 'Conversation membership required');
+    }
+
+    // The initiator can't accept their own outgoing call; only the callee can.
+    if (callRecord.initiatorDevice?.userId === auth.userId) {
+      throw forbidden('call_initiator_forbidden', 'Call initiator cannot accept the call');
+    }
+
+    if (callRecord.status !== 'ringing') {
+      throw conflict('call_invalid_state', 'Call is not ringing');
+    }
+
+    const updated = await this.prisma.callRecord.update({
+      where: { id: callId },
+      data: { status: 'active' },
+    });
+
+    this.realtimeGateway.emitConversationMembers(callRecord.conversation.members, 'call.accepted', {
+      callId: updated.id,
+      conversationId: updated.conversationId,
+    });
+
+    return { callId: updated.id, status: updated.status };
+  }
+
+  async declineCall(auth: { userId: string }, callId: string) {
+    const callRecord = await this.prisma.callRecord.findUnique({
+      where: { id: callId },
+      include: {
+        conversation: { include: { members: true } },
+      },
+    });
+
+    if (!callRecord) {
+      throw notFound('call_not_found', 'Call record not found');
+    }
+
+    if (!callRecord.conversation.members.some((m) => m.userId === auth.userId)) {
+      throw forbidden('conversation_membership_required', 'Conversation membership required');
+    }
+
+    if (callRecord.status !== 'ringing') {
+      throw conflict('call_invalid_state', 'Call is not ringing');
+    }
+
+    const updated = await this.prisma.callRecord.update({
+      where: { id: callId },
+      data: { status: 'declined', endedAt: new Date() },
+    });
+
+    this.realtimeGateway.emitConversationMembers(callRecord.conversation.members, 'call.declined', {
+      callId: updated.id,
+      conversationId: updated.conversationId,
+    });
+
+    return { callId: updated.id, status: updated.status };
   }
 
   async listCalls(auth: { userId: string }) {

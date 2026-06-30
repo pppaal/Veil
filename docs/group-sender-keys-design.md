@@ -28,8 +28,11 @@ Failure modes:
 4. **Authorship is implicit.** The conversation key alone does not bind
    a sender — a member could replay another member's ciphertext under
    their own deviceId and the receiver has no cryptographic way to
-   detect it. (Today AD binds senderDeviceId, which mitigates the
-   replay but not authorship in stronger threat models.)
+   detect it. (Note: the current 1:1 AEAD path does **not** yet bind
+   `senderDeviceId` as associated data — header/routing fields are
+   unauthenticated today. AAD header binding is a separate, not-yet-
+   shipped hardening tracked as a residual risk in `threat-model.md`;
+   it must not be assumed as an existing mitigation here.)
 
 Signal's "Sender Keys" pattern fixes all four. We adopt it.
 

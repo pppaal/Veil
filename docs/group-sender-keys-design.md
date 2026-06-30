@@ -2,9 +2,19 @@
 
 ## Status
 
-Design draft. **Not implemented**. External crypto review required before
-merge. Current group chats use a single per-conversation symmetric key
-shared across all members; this document covers the upgrade.
+Design draft. **Crypto not implemented** — external crypto review required
+before the Sender-Key key-agreement and authorship paths merge. Current group
+chats still use a single per-conversation symmetric key shared across all
+members; this document covers the upgrade.
+
+**Phase AB.1 (server-side epoch bookkeeping) has shipped.** The server now
+maintains `conversations.current_epoch`, records a per-member
+`group_member_epochs` window (`joined_epoch` / `left_epoch`), bumps the epoch
+on every join/leave/remove, and fans a `group.epoch.bumped` realtime event to
+the remaining members. No key material is involved — this is pure scaffolding
+that the client crypto (phases AB.3+) will consume once it lands. Clients that
+don't implement Sender Keys yet ignore the event, so the change is a no-op for
+the current shared-key behaviour.
 
 ## Why
 
@@ -209,10 +219,15 @@ existing ratchet — server cannot read the chain key.
 
 ## Migration strategy
 
-Phase AB.1 — schema + epoch counter
-  - migration adds current_epoch + group_member_epochs
-  - server emits group.epoch.bumped on member churn (no-op clients
-    ignore for now)
+Phase AB.1 — schema + epoch counter ✅ SHIPPED
+  - migration 0013 adds conversations.current_epoch + group_member_epochs
+  - GroupsService bumps the epoch and updates the member's joined/left
+    window atomically on createGroup / addMember / removeMember / leaveGroup
+  - server emits group.epoch.bumped to remaining members on churn (no-op
+    clients ignore for now); the removed member is deliberately excluded
+  - the inbound-message `group_epoch_stale` gate is intentionally deferred:
+    enabling it before clients send an epoch would reject every group send,
+    so it lands with AB.2 behind the opt-in flag
 
 Phase AB.2 — opt-in flag
   - new `group_use_sender_keys` field on conversation, default false

@@ -98,9 +98,31 @@ model User {
   reportsFiled     AbuseReport[]          @relation("ReportsFiled")
   reportsAgainst   AbuseReport[]          @relation("ReportsAgainst")
   groupMemberEpochs GroupMemberEpoch[]
+  recoveryBlob     RecoveryBlob?
 
   @@index([activeDeviceId])
   @@map("users")
+}
+
+// Passphrase-sealed account recovery backup. Stores ONLY the opaque
+// client-side envelope (mobile BackupEnvelope: PBKDF2-SHA256 600k +
+// AES-256-GCM); the passphrase and the derived key never reach the server,
+// so the server cannot decrypt this even though it holds the user's
+// (encrypted) identity material. One row per user — re-uploading replaces
+// the previous backup. See docs/recovery-backup-design.md. Note: the
+// lost-device *retrieval* auth path is a separate, still-open design
+// decision; this table is the storage substrate only.
+model RecoveryBlob {
+  userId     String   @id @map("user_id") @db.Uuid
+  ciphertext String
+  // Envelope format marker (e.g. "veilbak:v1"), so a future KDF/format bump
+  // is forward-compatible without a schema change.
+  format     String   @default("veilbak:v1") @db.VarChar(32)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("recovery_blobs")
 }
 
 model UserBlock {

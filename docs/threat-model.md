@@ -11,7 +11,11 @@
 ## Defensive product choices
 
 - only encrypted envelopes are stored server-side
-- no password reset and no recovery channels exist
+- no password reset exists; the only recovery path is a user-held,
+  passphrase-sealed backup whose ciphertext the server stores but cannot
+  decrypt (it holds neither the passphrase nor the derived key). The
+  lost-device *retrieval* auth path for that backup is still an open design
+  decision and is not yet built (`recovery-backup-design.md`)
 - device transfer requires explicit action from the active old device
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
@@ -47,7 +51,8 @@
 
 - production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
 - the session opener bootstraps from the responder's static identity key (no X3DH one-time prekeys yet), so the first message of a session lacks forward secrecy until the first ratchet step
-- group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — Sender Keys are design-only (`group-sender-keys-design.md`)
+- group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — server-side epoch bookkeeping and the opt-in flag have shipped (phases AB.1/AB.2), but the Sender-Key client crypto itself is still design-only (`group-sender-keys-design.md`)
+- the recovery backup's security reduces to the user's passphrase strength: the server holds the sealed ciphertext, so a weak passphrase is offline-brute-forceable by anyone who obtains the blob. The lost-device retrieval auth (who may fetch the ciphertext, and whether a recovery code gates it) is an unresolved design decision (`recovery-backup-design.md`)
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is design-only (`sealed-sender-design.md`)
 - attachment upload/download URLs are scaffolds, not hardened presigned-storage production code
 - mobile local database encryption-at-rest is prepared conceptually but not finalized

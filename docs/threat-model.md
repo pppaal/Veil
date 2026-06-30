@@ -25,6 +25,7 @@
 - disappearing messages: per-conversation TTL + periodic global cron that hard-deletes expired rows even in idle conversations
 - view-once messages: server hard-deletes the row on first non-sender read and broadcasts `message.consumed` for cache invalidation
 - backup envelope uses PBKDF2-SHA256 600k + AES-256-GCM with per-seal salt + nonce; empty passphrase rejected; wrong passphrase fails authentication rather than returning garbage
+- the 1:1 message AEAD binds the frame header / routing fields (sender ratchet public key, message counter, `senderDeviceId`) as associated data, so altering any of them invalidates the GCM tag (mobile adapter `lib-x25519-aes256gcm-v3`; see `crypto-envelope-spec.md` → "AEAD associated data (header binding)")
 
 ## Deliberate exclusions
 
@@ -45,7 +46,6 @@
 ## Residual risks
 
 - production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
-- the message AEAD does **not** yet bind the frame header/routing fields (e.g. `senderDeviceId`, counter) as associated data — those fields are unauthenticated; AAD header binding is a planned hardening (see `crypto-envelope-spec.md`)
 - the session opener bootstraps from the responder's static identity key (no X3DH one-time prekeys yet), so the first message of a session lacks forward secrecy until the first ratchet step
 - group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — Sender Keys are design-only (`group-sender-keys-design.md`)
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is design-only (`sealed-sender-design.md`)

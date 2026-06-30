@@ -191,7 +191,7 @@ the first inbound ephemeral cannot be substituted by the server.
 ### F-4 — Version string inconsistency (Informational)
 
 Version tags differ across layers: `_envelopeVersion =
-'veil-envelope-v1'`, `adapterId = 'lib-x25519-aes256gcm-v2'`, KDF info
+'veil-envelope-v1'`, `adapterId = 'lib-x25519-aes256gcm-v3'`, KDF info
 `'veil-dh-rk-v2'`, message info `'veil-msg-v1'`. Not a security issue,
 but the envelope-v3 migration must map these carefully so a v3 client
 negotiating with a v2 client doesn't mis-key.

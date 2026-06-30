@@ -83,7 +83,7 @@ it in storage/bandwidth budgets and the prekey-replenishment logic.
 
 Versioning (per `crypto-envelope-spec.md` conventions):
 
-- Adapter id: `lib-x25519-aes256gcm-v2` → **`lib-mlkem768-x25519-aes256gcm-v3`**
+- Adapter id: `lib-x25519-aes256gcm-v3` → **`lib-mlkem768-x25519-aes256gcm-v3`**
 - Envelope version: `veil-envelope-v1` → **`veil-envelope-v2`** (add to
   `SUPPORTED_ENVELOPE_VERSIONS` in `packages/shared/src/domain/protocol.ts`)
 - Session schema version: `2` → `3`

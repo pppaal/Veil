@@ -72,6 +72,45 @@ bool _bytesEqual(List<int> a, List<int> b) {
   return true;
 }
 
+// Domain-separation label for the per-message AEAD associated data. Bumped
+// alongside the adapter id (v3) when AAD header binding was introduced.
+const _frameAadLabel = 'veil-frame-aad-v3';
+
+// Builds the AES-GCM associated data (AAD) that binds the per-message frame
+// header / routing fields to the ciphertext. The exact same bytes MUST be
+// produced on encrypt and decrypt, or the GCM tag will not verify and the
+// message will fail to decrypt. To guarantee symmetry there is a SINGLE
+// builder, called from both paths — never duplicate this layout.
+//
+// Layout (concatenation):
+//   utf8("veil-frame-aad-v3")        // domain-separation label
+//   || ratchetPub (32 bytes)         // sender DH-ratchet public key
+//   || counter   (4 bytes, BE u32)   // sender message counter
+//   || utf8(senderDeviceId)          // routing/authorship field
+//
+// `senderDeviceId` is variable-length and placed last so it cannot be
+// confused with the fixed-size fields ahead of it (no length-prefix needed).
+// These are exactly the unencrypted header/routing fields carried alongside
+// the ciphertext: ratchetPub + counter are the first 36 bytes of the binary
+// frame, and senderDeviceId is the envelope's transmitted sender field — so
+// an attacker who flips any of them now invalidates the GCM tag.
+Uint8List _buildFrameAad({
+  required List<int> ratchetPub,
+  required int counter,
+  required String senderDeviceId,
+}) {
+  final label = utf8.encode(_frameAadLabel);
+  final senderBytes = utf8.encode(senderDeviceId);
+  final out = BytesBuilder(copy: false);
+  out.add(label);
+  out.add(ratchetPub);
+  final counterBuf = Uint8List(4);
+  ByteData.view(counterBuf.buffer).setUint32(0, counter, Endian.big);
+  out.add(counterBuf);
+  out.add(senderBytes);
+  return out.toBytes();
+}
+
 // Callback that lets the host app wire this engine to a persistent store so
 // Double Ratchet state survives app restart. Optional; with no persister
 // wired, the adapter works in-memory only (same behavior as v1).
@@ -106,7 +145,7 @@ class LibCryptoAdapter implements CryptoAdapter {
   late final _LibMessageCryptoEngine _messagingEngine;
 
   @override
-  String get adapterId => 'lib-x25519-aes256gcm-v2';
+  String get adapterId => 'lib-x25519-aes256gcm-v3';
 
   @override
   DeviceIdentityProvider get identity => _identityProvider;
@@ -1134,20 +1173,29 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       if (attachment != null) 'att': _serializeAttachmentRef(attachment),
     });
 
+    // ratchetPub is the pub we just rotated to (if we rotated) or the pub
+    // carried forward from the previous send. It and the counter form the
+    // unencrypted frame header; bind them (plus the routing senderDeviceId)
+    // as AEAD associated data so a tampered header fails GCM verification.
+    final ratchetPub = session.currentSendRatchetPub.bytes;
+    final aad = _buildFrameAad(
+      ratchetPub: ratchetPub,
+      counter: counter,
+      senderDeviceId: senderDeviceId,
+    );
+
     // Length-pad the plaintext to a coarse bucket so the ciphertext size
     // reveals only the bucket, not the exact message length.
     final secretBox = await _aesGcm.encrypt(
       MessagePadding.pad(utf8.encode(payload)),
       secretKey: messageKey,
       nonce: nonce,
+      aad: aad,
     );
     // Transient per-message key — wipe as soon as encryption consumed it.
     _wipeKey(messageKey);
 
     // Wire layout: [ratchetPub(32)] [counter(4 BE)] [ciphertext] [mac(16)].
-    // ratchetPub is the pub we just rotated to (if we rotated) or the pub
-    // carried forward from the previous send.
-    final ratchetPub = session.currentSendRatchetPub.bytes;
     final counterBytes = _encodeCounter(counter);
     final ciphertextWithKey =
         Uint8List(32 + 4 + secretBox.cipherText.length + 16);
@@ -1246,9 +1294,21 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
         nonce: nonceBytes,
         mac: Mac(macBytes),
       );
+      // Rebuild the SAME associated data the sender bound at encrypt time
+      // from the transmitted header/routing fields: ratchetPub (the first 32
+      // frame bytes = incomingPeerPub), the counter, and senderDeviceId. Any
+      // mismatch — a flipped counter, swapped ratchetPub, or altered sender —
+      // makes the GCM tag fail to verify, so the decrypt throws and the
+      // commit-after-verify rollback in `finally` undoes any ratchet mutation.
+      final aad = _buildFrameAad(
+        ratchetPub: incomingPeerPub,
+        counter: counter,
+        senderDeviceId: envelope.senderDeviceId,
+      );
       final cleartext = await _aesGcm.decrypt(
         secretBox,
         secretKey: messageKey,
+        aad: aad,
       );
       // Transient per-message key (freshly derived or a consumed skipped
       // key already removed from the map) — wipe now that it's been used.

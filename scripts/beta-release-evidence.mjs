@@ -41,7 +41,7 @@ const evidence = {
     'docs/private-beta-performance-profile.md',
   ],
   explicitCaveats: [
-    'Production crypto adapter (X25519 + AES-256-GCM + Double Ratchet, lib-x25519-aes256gcm-v2) is wired by default; external audit attestation is still required before VEIL_AUDITED_CRYPTO_ATTESTED=true is set.',
+    'Production crypto adapter (X25519 + AES-256-GCM + Double Ratchet, lib-x25519-aes256gcm-v3) is wired by default; external audit attestation is still required before VEIL_AUDITED_CRYPTO_ATTESTED=true is set.',
     'Push providers remain metadata-only seams; APNs/FCM credentials and a privacy review are required before VEIL_PUSH_ENABLE_DELIVERY can be flipped on.',
     'Production boot remains blocked until VEIL_AUDITED_CRYPTO_ATTESTED=true is set, which is gated on completing the external crypto audit.',
   ],

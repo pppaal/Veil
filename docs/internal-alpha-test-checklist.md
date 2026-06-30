@@ -53,7 +53,7 @@
 
 ## Security Status
 - Open Security Status and confirm it accurately reflects device binding, local secret refs, app lock, runtime connectivity, and cache state.
-- Confirm the screen states that the production crypto adapter (`lib-x25519-aes256gcm-v2`) is wired and that external audit attestation is still pending before `VEIL_ENV=production`.
+- Confirm the screen states that the production crypto adapter (`lib-x25519-aes256gcm-v3`) is wired and that external audit attestation is still pending before `VEIL_ENV=production`.
 
 ## Private Beta Release Gate
 - Run `pnpm ci:api` and confirm build, lint, policy checks, unit tests, and API e2e all pass.

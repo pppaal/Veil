@@ -9,6 +9,7 @@ import '../../../core/storage/secure_storage_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../domain/safety_numbers.dart';
 
@@ -161,7 +162,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
-    VeilToast.show(context, message: 'Marked as verified');
+    VeilToast.show(
+      context,
+      message: AppLocalizations.of(context).safetyNumbersMarkedVerified,
+    );
   }
 
   Future<void> _clearVerification(_DetailData data) async {
@@ -174,33 +178,33 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
-    VeilToast.show(context, message: 'Verification cleared');
+    VeilToast.show(
+      context,
+      message: AppLocalizations.of(context).safetyNumbersVerificationCleared,
+    );
   }
 
   Future<void> _rotateSessionKeys() async {
     if (_rekeying) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Rotate session keys?'),
-        content: const Text(
-          'This forces a fresh Diffie-Hellman ratchet step on your next message. '
-          'Old skipped message keys for this chat are dropped immediately. '
-          'Use this if you suspect this device or your peer\'s device was '
-          'briefly exposed — past messages stay readable, but any stolen '
-          'session state stops being useful.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Rotate'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        final l10n = AppLocalizations.of(context);
+        return AlertDialog(
+          title: Text(l10n.safetyNumbersRotateDialogTitle),
+          content: Text(l10n.safetyNumbersRotateDialogBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.safetyNumbersCancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.safetyNumbersRotate),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
     if (!mounted) return;
@@ -211,15 +215,20 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       final messenger = ref.read(messengerControllerProvider);
       final armed = await messenger.rekeyConversation(widget.conversationId);
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context);
       VeilToast.show(
         context,
         message: armed
-            ? 'Session keys rotated'
-            : 'No session yet — send a message first',
+            ? l10n.safetyNumbersSessionRotated
+            : l10n.safetyNumbersNoSessionYet,
       );
     } catch (error) {
       if (!mounted) return;
-      VeilToast.show(context, message: 'Rotation failed: $error');
+      VeilToast.show(
+        context,
+        message:
+            AppLocalizations.of(context).safetyNumbersRotationFailed('$error'),
+      );
     } finally {
       if (mounted) {
         setState(() => _rekeying = false);
@@ -229,17 +238,18 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return VeilShell(
-      title: 'Safety Number',
+      title: l10n.safetyNumbersTitle,
       child: FutureBuilder<_SafetyNumbersViewData>(
         future: _loader,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Padding(
-              padding: EdgeInsets.all(VeilSpace.lg),
+            return Padding(
+              padding: const EdgeInsets.all(VeilSpace.lg),
               child: VeilLoadingBlock(
-                title: 'Deriving safety number',
-                body: 'Hashing identity keys locally.',
+                title: l10n.safetyNumbersLoadingTitle,
+                body: l10n.safetyNumbersLoadingBody,
               ),
             );
           }
@@ -257,13 +267,14 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   Widget _buildErrorBody(BuildContext context, Object error) {
+    final l10n = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.all(VeilSpace.lg),
       child: VeilErrorState(
-        title: 'Could not load safety number',
+        title: l10n.safetyNumbersErrorTitle,
         body: error.toString(),
         action: VeilButton(
-          label: 'Retry',
+          label: l10n.safetyNumbersRetry,
           tone: VeilButtonTone.secondary,
           onPressed: _reload,
         ),
@@ -273,13 +284,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   Widget _buildGroupList(BuildContext context, _GroupListData data) {
     final palette = VeilPalette.dark;
+    final l10n = AppLocalizations.of(context);
     if (data.members.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(VeilSpace.lg),
         child: VeilErrorState(
-          title: 'No other members',
-          body:
-              'This group has no other participants yet — invite someone to verify.',
+          title: l10n.safetyNumbersNoMembersTitle,
+          body: l10n.safetyNumbersNoMembersBody,
         ),
       );
     }
@@ -292,14 +303,11 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       ),
       children: [
         VeilHeroPanel(
-          eyebrow: 'VERIFY GROUP MEMBERS',
+          eyebrow: l10n.safetyNumbersGroupEyebrow,
           title: data.groupName == null
-              ? 'Verify each member of this group'
-              : 'Verify each member of ${data.groupName}',
-          body:
-              'Tap a member to see their 60-digit safety number. Compare it on '
-              'a channel you trust — read it aloud over a call or scan the QR. '
-              'A mismatch means that specific member\'s device may be compromised.',
+              ? l10n.safetyNumbersGroupTitleGeneric
+              : l10n.safetyNumbersGroupTitleNamed(data.groupName!),
+          body: l10n.safetyNumbersGroupBody,
         ),
         const SizedBox(height: VeilSpace.md),
         for (final member in data.members)
@@ -323,7 +331,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'ROTATE GROUP SESSION KEYS',
+                l10n.safetyNumbersGroupRotateEyebrow,
                 style: TextStyle(
                   color: palette.textSubtle,
                   fontSize: 11,
@@ -333,14 +341,14 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               ),
               const SizedBox(height: VeilSpace.xs),
               Text(
-                'Forces a fresh DH ratchet step on the next group message and '
-                'drops stashed skipped keys for this group. Affects every '
-                'member — use if any participant\'s device was briefly exposed.',
+                l10n.safetyNumbersGroupRotateBody,
                 style: TextStyle(color: palette.textSubtle, fontSize: 13),
               ),
               const SizedBox(height: VeilSpace.md),
               VeilButton(
-                label: _rekeying ? 'Rotating…' : 'Rotate group session keys',
+                label: _rekeying
+                    ? l10n.safetyNumbersRotatingGroup
+                    : l10n.safetyNumbersRotateGroupButton,
                 tone: VeilButtonTone.secondary,
                 onPressed: _rekeying ? null : _rotateSessionKeys,
               ),
@@ -355,21 +363,23 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     GroupMember member,
     Map<String, SafetyVerificationRecord> verifications,
   ) {
+    final l10n = AppLocalizations.of(context);
     final record = verifications[member.userId];
     if (record == null) {
-      return const VeilStatusPill(
-        label: 'Unverified',
+      return VeilStatusPill(
+        label: l10n.safetyNumbersUnverified,
         tone: VeilBannerTone.info,
       );
     }
-    return const VeilStatusPill(
-      label: 'Verified',
+    return VeilStatusPill(
+      label: l10n.safetyNumbersVerified,
       tone: VeilBannerTone.good,
     );
   }
 
   Widget _buildDetail(BuildContext context, _DetailData data) {
     final palette = VeilPalette.dark;
+    final l10n = AppLocalizations.of(context);
     final verified = data.verification != null &&
         data.verification!.peerIdentityPublicKey == data.peerIdentityPublicKey;
     final keyChanged = data.verification != null && !verified;
@@ -383,16 +393,17 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       ),
       children: [
         VeilHeroPanel(
-          eyebrow: 'VERIFY IDENTITY',
-          title: 'Make sure you\'re talking to ${data.peerDisplay}',
-          body:
-              'Both of you should see the same 60-digit number. Compare on a channel you trust — read it aloud over a call, or scan the QR. If the numbers don\'t match, someone is in the middle of your conversation.',
+          eyebrow: l10n.safetyNumbersDetailEyebrow,
+          title: l10n.safetyNumbersDetailTitle(data.peerDisplay),
+          body: l10n.safetyNumbersDetailBody,
           bottom: Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               VeilStatusPill(
-                label: verified ? 'Verified' : 'Unverified',
+                label: verified
+                    ? l10n.safetyNumbersVerified
+                    : l10n.safetyNumbersUnverified,
                 tone: verified
                     ? VeilBannerTone.good
                     : keyChanged
@@ -410,9 +421,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           const SizedBox(height: VeilSpace.md),
           VeilInlineBanner(
             tone: VeilBannerTone.warn,
-            title: 'Peer identity key changed',
-            message:
-                'The identity key for this peer is different from the one you verified on ${_formatDate(data.verification!.verifiedAt)}. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.',
+            title: l10n.safetyNumbersKeyChangedTitle,
+            message: l10n.safetyNumbersKeyChangedMessage(
+              _formatDate(data.verification!.verifiedAt),
+            ),
           ),
         ],
         const SizedBox(height: VeilSpace.md),
@@ -426,7 +438,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Verified on ${_formatDate(data.verification!.verifiedAt)}',
+                  l10n.safetyNumbersVerifiedOn(
+                    _formatDate(data.verification!.verifiedAt),
+                  ),
                   style: TextStyle(
                     color: palette.text,
                     fontWeight: FontWeight.w600,
@@ -434,12 +448,12 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
                 ),
                 const SizedBox(height: VeilSpace.xs),
                 Text(
-                  'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.',
+                  l10n.safetyNumbersVerifiedNote,
                   style: TextStyle(color: palette.textSubtle, fontSize: 13),
                 ),
                 const SizedBox(height: VeilSpace.md),
                 VeilButton(
-                  label: 'Clear verification',
+                  label: l10n.safetyNumbersClearVerification,
                   tone: VeilButtonTone.ghost,
                   onPressed: () => _clearVerification(data),
                 ),
@@ -448,7 +462,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           )
         else
           VeilButton(
-            label: keyChanged ? 'Re-verify with new key' : 'Mark as verified',
+            label: keyChanged
+                ? l10n.safetyNumbersReVerify
+                : l10n.safetyNumbersMarkVerified,
             onPressed: () => _markVerified(data),
           ),
         if (data.isDirect) ...[
@@ -458,7 +474,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'ROTATE SESSION KEYS',
+                  l10n.safetyNumbersRotateEyebrow,
                   style: TextStyle(
                     color: palette.textSubtle,
                     fontSize: 11,
@@ -468,14 +484,14 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
                 ),
                 const SizedBox(height: VeilSpace.xs),
                 Text(
-                  'Forces a fresh DH ratchet step on your next message and '
-                  'drops any stashed skipped keys. Use if this device or '
-                  'your peer\'s was briefly exposed.',
+                  l10n.safetyNumbersRotateBody,
                   style: TextStyle(color: palette.textSubtle, fontSize: 13),
                 ),
                 const SizedBox(height: VeilSpace.md),
                 VeilButton(
-                  label: _rekeying ? 'Rotating…' : 'Rotate session keys',
+                  label: _rekeying
+                      ? l10n.safetyNumbersRotating
+                      : l10n.safetyNumbersRotateButton,
                   tone: VeilButtonTone.secondary,
                   onPressed: _rekeying ? null : _rotateSessionKeys,
                 ),
@@ -496,12 +512,13 @@ class _SafetyNumberCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = VeilPalette.dark;
+    final l10n = AppLocalizations.of(context);
     return VeilSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'SAFETY NUMBER',
+            l10n.safetyNumbersCardLabel,
             style: TextStyle(
               color: palette.textSubtle,
               fontSize: 11,
@@ -541,6 +558,7 @@ class _QrCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return VeilSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -548,7 +566,7 @@ class _QrCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              'SCAN TO COMPARE',
+              l10n.safetyNumbersScanLabel,
               style: TextStyle(
                 color: palette.textSubtle,
                 fontSize: 11,
@@ -573,7 +591,7 @@ class _QrCard extends StatelessWidget {
           ),
           const SizedBox(height: VeilSpace.sm),
           Text(
-            'This QR encodes only the 60-digit safety number, not your keys.',
+            l10n.safetyNumbersQrNote,
             style: TextStyle(color: palette.textSubtle, fontSize: 12),
             textAlign: TextAlign.center,
           ),

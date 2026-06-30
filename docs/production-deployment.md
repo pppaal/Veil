@@ -2,7 +2,7 @@
 
 VEIL is not production-ready yet. This checklist is the minimum path to get there without violating the product philosophy.
 
-The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true`, and the production crypto adapter (`LibCryptoAdapter`, `lib-x25519-aes256gcm-v2`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
+The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true`, and the production crypto adapter (`LibCryptoAdapter`, `lib-x25519-aes256gcm-v3`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
 
 ## 1. Complete external crypto audit and attestation
 

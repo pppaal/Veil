@@ -28,11 +28,16 @@ Failure modes:
 4. **Authorship is implicit.** The conversation key alone does not bind
    a sender — a member could replay another member's ciphertext under
    their own deviceId and the receiver has no cryptographic way to
-   detect it. (Note: the current 1:1 AEAD path does **not** yet bind
-   `senderDeviceId` as associated data — header/routing fields are
-   unauthenticated today. AAD header binding is a separate, not-yet-
-   shipped hardening tracked as a residual risk in `threat-model.md`;
-   it must not be assumed as an existing mitigation here.)
+   detect it. (Note: the 1:1 AEAD path **does** now bind `senderDeviceId`
+   — along with the ratchet public key and message counter — as associated
+   data, as of mobile adapter `lib-x25519-aes256gcm-v3`; see
+   `crypto-envelope-spec.md` → "AEAD associated data (header binding)". That
+   AAD binding authenticates the 1:1 header fields, but it does **not** by
+   itself give the *group* authorship guarantee described here: in a group,
+   every member holds the shared sender key, so binding `senderDeviceId` to a
+   ciphertext a member produced does not stop a *different* member from
+   re-encrypting content under their own key/header. Per-sender Ed25519
+   signatures (below) are still required for cryptographic group authorship.)
 
 Signal's "Sender Keys" pattern fixes all four. We adopt it.
 

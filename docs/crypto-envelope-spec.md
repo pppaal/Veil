@@ -1,16 +1,20 @@
 # VEIL Crypto Envelope Specification
 
 This document is the canonical wire-format specification for the VEIL production
-crypto adapter (`LibCryptoAdapter`, adapter id `lib-x25519-aes256gcm-v2`). It
+crypto adapter (`LibCryptoAdapter`, adapter id `lib-x25519-aes256gcm-v3`). It
 exists so external auditors, future re-implementers, and anyone reasoning about
 backwards compatibility have a single source of truth that is independent of
 any specific language or source file.
 
-The v2 adapter provides a full Double Ratchet (DH ratchet + symmetric hash
+The adapter provides a full Double Ratchet (DH ratchet + symmetric hash
 ratchet) giving both forward secrecy and post-compromise security. The
-envelope wire layout is identical to v1 — the adapter id was bumped because
-the interpretation of the first 32 bytes (now a rotating DH ratchet public
-key rather than a static ephemeral) and the key-schedule semantics changed.
+envelope wire layout is identical to v1 — the adapter id was bumped to `-v2`
+because the interpretation of the first 32 bytes (now a rotating DH ratchet
+public key rather than a static ephemeral) and the key-schedule semantics
+changed, and bumped again to **`-v3`** because the per-message AES-GCM tag now
+authenticates the frame header / routing fields as associated data (AAD) — see
+"AEAD associated data (header binding)" below. The on-wire byte layout is
+unchanged by the v3 bump; only the AEAD inputs changed.
 
 The reference implementation lives in
 [lib_crypto_adapter.dart](../apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart).
@@ -23,7 +27,7 @@ is stale — file a correction.
 | ------------------------------ | ----------------------------- |
 | Envelope version               | `veil-envelope-v1`            |
 | Attachment algorithm hint      | `x25519-aes256gcm`            |
-| Adapter id                     | `lib-x25519-aes256gcm-v2`     |
+| Adapter id                     | `lib-x25519-aes256gcm-v3`     |
 | Session schema version         | `2`                           |
 | AES-GCM key size               | 256 bits                      |
 | AES-GCM nonce size             | 12 bytes                      |
@@ -98,6 +102,43 @@ Decoded from the envelope's `ciphertext` field:
 
 Minimum valid frame length is 52 bytes (32 + 4 + 0 + 16). Frames shorter than
 this MUST be rejected as invalid.
+
+## AEAD associated data (header binding)
+
+As of adapter id `lib-x25519-aes256gcm-v3`, the per-message AES-256-GCM call
+binds the unencrypted frame header / routing fields as **associated data
+(AAD)** so they are authenticated by the GCM tag. Before v3 these fields rode
+alongside the ciphertext unauthenticated, so an attacker could alter the
+ratchet public key, the counter, or `senderDeviceId` without invalidating the
+tag. v3 closes that gap.
+
+The AAD is the byte concatenation (no separators, fixed field order):
+
+```
+aad =   utf8("veil-frame-aad-v3")     // 17-byte domain-separation label
+      || ratchetPub                   // 32 bytes, the frame's ratchetPub field
+      || counter                      // 4 bytes, big-endian uint32 (frame counter)
+      || utf8(senderDeviceId)         // the envelope's senderDeviceId, variable length
+```
+
+- `ratchetPub` and `counter` are exactly the first 36 bytes of the binary
+  frame above; `senderDeviceId` is the envelope JSON's transmitted sender
+  field. All three are values a receiver already has in hand before decrypt.
+- `senderDeviceId` is variable-length and placed **last** so it cannot be
+  confused with the fixed-size fields ahead of it; no length prefix is needed.
+- The sender passes this `aad` to `AesGcm.encrypt`; the receiver reconstructs
+  the identical bytes from the received frame header + envelope and passes them
+  to `AesGcm.decrypt`. A mismatch in any bound field makes GCM tag
+  verification fail, so the message does not decrypt and the receiver's
+  commit-after-verify rollback leaves the ratchet state untouched.
+- A single builder produces these bytes on both encrypt and decrypt
+  (`_buildFrameAad` in the reference implementation) to guarantee the two
+  paths are byte-identical.
+
+Note: the web-demo client (`apps/web-demo`) talks web↔web only and does not
+cross-decrypt with mobile, so this mobile-side AAD change does not affect it. A
+matching AAD change would be required there **only** if cross-client
+mobile↔web interop is ever introduced.
 
 ## Plaintext payload
 
@@ -293,7 +334,9 @@ is set to `x25519-aes256gcm`.
   different wire format. Breaking changes require a new version string and a
   migration path that lets peers running the previous version fail cleanly.
 - Any change to: HKDF `info` strings, counter encoding, frame layout, chain-key
-  ordering, or key sizes is a breaking change.
+  ordering, key sizes, or the AEAD associated-data construction (the
+  `veil-frame-aad-v3` label or the set/order/encoding of bound header fields)
+  is a breaking change.
 - Any addition of optional JSON fields that older peers can ignore without loss
   of correctness is a compatible change.
 
@@ -333,7 +376,7 @@ unchanged. Only session establishment carries new material.
 | Name                      | v2                          | v3                                    |
 | ------------------------- | --------------------------- | ------------------------------------- |
 | Envelope version          | `veil-envelope-v1`          | `veil-envelope-v2`                    |
-| Adapter id                | `lib-x25519-aes256gcm-v2`   | `lib-mlkem768-x25519-aes256gcm-v3`    |
+| Adapter id                | `lib-x25519-aes256gcm-v3`   | `lib-mlkem768-x25519-aes256gcm-v3`    |
 | Session schema version    | `2`                         | `3`                                   |
 | Attachment algorithm hint | `x25519-aes256gcm`          | `mlkem768-x25519-aes256gcm`           |
 | ML-KEM parameter set      | —                           | ML-KEM-768 (FIPS 203)                 |

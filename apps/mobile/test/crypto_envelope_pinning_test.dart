@@ -13,7 +13,7 @@ import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 void main() {
   group('LibCryptoAdapter constants', () {
     test('adapter id is frozen', () {
-      expect(LibCryptoAdapter().adapterId, 'lib-x25519-aes256gcm-v2');
+      expect(LibCryptoAdapter().adapterId, 'lib-x25519-aes256gcm-v3');
     });
 
     test('envelope version is frozen', () {

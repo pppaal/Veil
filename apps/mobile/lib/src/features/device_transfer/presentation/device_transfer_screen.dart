@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -65,6 +66,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
     final controller = ref.watch(messengerControllerProvider);
     final transferPayload = controller.transferPayload;
@@ -76,21 +78,20 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     }
 
     return VeilShell(
-      title: 'Device Transfer',
+      title: l10n.deviceTransferTitle,
       child: ListView(
         children: [
-          const VeilHeroPanel(
-            eyebrow: 'TRANSFER',
-            title: 'Old device required.',
-            body:
-                'Transfer is a live trusted-device join. The old device issues the session and approves the exact new-device claim. VEIL does not create recovery.',
+          VeilHeroPanel(
+            eyebrow: l10n.deviceTransferHeroEyebrow,
+            title: l10n.deviceTransferHeroTitle,
+            body: l10n.deviceTransferHeroBody,
             bottom: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                VeilStatusPill(label: 'Trusted-device join'),
-                VeilStatusPill(label: 'No fallback'),
-                VeilStatusPill(label: 'No cloud recovery'),
+                VeilStatusPill(label: l10n.deviceTransferPillTrustedJoin),
+                VeilStatusPill(label: l10n.deviceTransferPillNoFallback),
+                VeilStatusPill(label: l10n.deviceTransferPillNoCloud),
               ],
             ),
           ),
@@ -100,30 +101,29 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             runSpacing: 10,
             children: [
               ChoiceChip(
-                label: const Text('Old device'),
+                label: Text(l10n.deviceTransferChipOldDevice),
                 selected: _mode == _TransferMode.oldDevice,
                 onSelected: (_) => setState(() => _mode = _TransferMode.oldDevice),
               ),
               ChoiceChip(
-                label: const Text('New device'),
+                label: Text(l10n.deviceTransferChipNewDevice),
                 selected: _mode == _TransferMode.newDevice,
                 onSelected: (_) => setState(() => _mode = _TransferMode.newDevice),
               ),
             ],
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilDestructiveNotice(
-            title: 'No fallback path',
-            body:
-                'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.',
+          VeilDestructiveNotice(
+            title: l10n.deviceTransferNoFallbackTitle,
+            body: l10n.deviceTransferNoFallbackBody,
           ),
           if (transferExpired || claimExpired) ...[
             const SizedBox(height: VeilSpace.sm),
             VeilInlineBanner(
-              title: 'Transfer window expired',
+              title: l10n.deviceTransferWindowExpiredTitle,
               message: transferExpired
-                  ? 'The old-device transfer session expired. Issue a fresh session from the old device.'
-                  : 'This new-device claim expired. Register a fresh claim and request approval again.',
+                  ? l10n.deviceTransferSessionExpiredMessage
+                  : l10n.deviceTransferClaimExpiredMessage,
               tone: VeilBannerTone.danger,
             ),
           ],
@@ -131,30 +131,33 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
           VeilMetricStrip(
             items: [
               VeilMetricItem(
-                label: 'Mode',
-                value: _mode == _TransferMode.oldDevice ? 'Old device' : 'New device',
+                label: l10n.deviceTransferMetricMode,
+                value: _mode == _TransferMode.oldDevice
+                    ? l10n.deviceTransferMetricModeOld
+                    : l10n.deviceTransferMetricModeNew,
               ),
               VeilMetricItem(
-                label: 'Session',
+                label: l10n.deviceTransferMetricSession,
                 value: transferExpired
-                    ? 'Expired'
+                    ? l10n.deviceTransferSessionExpired
                     : controller.transferSessionId == null
-                        ? 'Idle'
-                        : 'Live',
+                        ? l10n.deviceTransferSessionIdle
+                        : l10n.deviceTransferSessionLive,
               ),
               VeilMetricItem(
-                label: 'Claim',
+                label: l10n.deviceTransferMetricClaim,
                 value: _claimId == null
-                    ? 'Missing'
+                    ? l10n.deviceTransferClaimMissing
                     : claimExpired
-                        ? 'Expired'
-                        : 'Issued',
+                        ? l10n.deviceTransferClaimExpired
+                        : l10n.deviceTransferClaimIssued,
               ),
             ],
           ),
           const SizedBox(height: VeilSpace.md),
           if (_mode == _TransferMode.oldDevice)
             _OldDevicePanel(
+              l10n: l10n,
               isAuthenticated: session.isAuthenticated,
               isBusy: controller.isBusy,
               transferSessionId: controller.transferSessionId,
@@ -178,7 +181,9 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
                         return;
                       }
                       messenger.showSnackBar(
-                        const SnackBar(content: Text('Transfer payload copied.')),
+                        SnackBar(
+                          content: Text(l10n.deviceTransferPayloadCopied),
+                        ),
                       );
                     },
               onClear: () => ref.read(messengerControllerProvider).clearTransferState(),
@@ -186,6 +191,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             )
           else
             _NewDevicePanel(
+              l10n: l10n,
               payloadController: _payloadController,
               sessionIdController: _sessionIdController,
               tokenController: _tokenController,
@@ -208,7 +214,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
             VeilButton(
               onPressed: () => context.go('/conversations'),
               tone: VeilButtonTone.secondary,
-              label: 'Return to conversations',
+              label: l10n.deviceTransferReturnToConversations,
             ),
           ],
         ],
@@ -224,11 +230,12 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   }
 
   void _importPayload() {
+    final l10n = AppLocalizations.of(context);
     final payload = _payloadController.text.trim();
     final parsed = _parseTransferPayload(payload);
     if (parsed == null) {
       setState(() {
-        _completionError = 'Transfer payload format is invalid.';
+        _completionError = l10n.deviceTransferPayloadInvalid;
         _completionMessage = null;
       });
       return;
@@ -241,17 +248,17 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       _claimFingerprint = null;
       _claimExpiresAt = null;
       _completionError = null;
-      _completionMessage =
-          'Transfer payload imported. Register this new device before the transfer window closes.';
+      _completionMessage = l10n.deviceTransferPayloadImported;
     });
   }
 
   Future<void> _claimTransfer() async {
+    final l10n = AppLocalizations.of(context);
     final sessionId = _sessionIdController.text.trim();
     final transferToken = _tokenController.text.trim();
     if (sessionId.isEmpty || transferToken.isEmpty) {
       setState(() {
-        _completionError = 'Import a valid transfer payload first.';
+        _completionError = l10n.deviceTransferImportFirst;
         _completionMessage = null;
       });
       return;
@@ -276,15 +283,15 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         _claimId = result.claimId;
         _claimFingerprint = result.claimantFingerprint;
         _claimExpiresAt = result.expiresAt;
-        _completionMessage =
-            'Claim registered. Give this claim code to the old device and request approval before it expires.';
+        _completionMessage = l10n.deviceTransferClaimRegistered;
       });
     } catch (_) {
       if (!mounted) {
         return;
       }
       setState(() {
-        _completionError = ref.read(appSessionProvider).errorMessage ?? 'Claim failed.';
+        _completionError = ref.read(appSessionProvider).errorMessage ??
+            l10n.deviceTransferClaimFailed;
       });
     } finally {
       if (mounted) {
@@ -296,18 +303,19 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   }
 
   Future<void> _completeTransfer() async {
+    final l10n = AppLocalizations.of(context);
     final sessionId = _sessionIdController.text.trim();
     final transferToken = _tokenController.text.trim();
     if (sessionId.isEmpty || transferToken.isEmpty || _claimId == null) {
       setState(() {
-        _completionError = 'Register this new-device claim before completion.';
+        _completionError = l10n.deviceTransferRegisterBeforeComplete;
         _completionMessage = null;
       });
       return;
     }
     if (_isExpired(_claimExpiresAt)) {
       setState(() {
-        _completionError = 'This new-device claim has expired. Register a fresh claim first.';
+        _completionError = l10n.deviceTransferClaimExpiredRegisterFresh;
         _completionMessage = null;
       });
       return;
@@ -329,7 +337,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         return;
       }
       setState(() {
-        _completionMessage = 'Transfer complete. This device joined the trusted graph.';
+        _completionMessage = l10n.deviceTransferComplete;
       });
       context.go('/conversations');
     } catch (_) {
@@ -337,8 +345,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         return;
       }
       setState(() {
-        _completionError =
-            ref.read(appSessionProvider).errorMessage ?? 'Transfer failed.';
+        _completionError = ref.read(appSessionProvider).errorMessage ??
+            l10n.deviceTransferFailed;
       });
     } finally {
       if (mounted) {
@@ -389,6 +397,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
 
 class _OldDevicePanel extends StatelessWidget {
   const _OldDevicePanel({
+    required this.l10n,
     required this.isAuthenticated,
     required this.isBusy,
     required this.transferSessionId,
@@ -406,6 +415,7 @@ class _OldDevicePanel extends StatelessWidget {
     required this.now,
   });
 
+  final AppLocalizations l10n;
   final bool isAuthenticated;
   final bool isBusy;
   final String? transferSessionId;
@@ -425,9 +435,9 @@ class _OldDevicePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!isAuthenticated) {
-      return const VeilEmptyState(
-        title: 'Old device session required',
-        body: 'Sign in on a currently trusted device to issue and approve a transfer.',
+      return VeilEmptyState(
+        title: l10n.deviceTransferOldRequiredTitle,
+        body: l10n.deviceTransferOldRequiredBody,
         icon: Icons.phonelink_lock_outlined,
       );
     }
@@ -435,15 +445,17 @@ class _OldDevicePanel extends StatelessWidget {
     return Column(
       children: [
         _TransferCard(
-          title: '1. Initiate on old device',
+          title: l10n.deviceTransferStep1Title,
           body: transferExpiresAt == null
-              ? 'Generate a short-lived session and token for the next device.'
-              : 'This transfer session expires ${_formatExpiry(transferExpiresAt!, now)}.',
+              ? l10n.deviceTransferStep1BodyReady
+              : l10n.deviceTransferStep1BodyExpires(
+                  _formatExpiry(transferExpiresAt!, now, l10n),
+                ),
           status: transferSessionId == null
-              ? 'Ready'
+              ? l10n.deviceTransferStatusReady
               : transferExpired
-                  ? 'Expired'
-                  : 'Issued',
+                  ? l10n.deviceTransferStatusExpired
+                  : l10n.deviceTransferStatusIssued,
           tone: transferSessionId == null
               ? VeilBannerTone.info
               : transferExpired
@@ -454,21 +466,23 @@ class _OldDevicePanel extends StatelessWidget {
         VeilButton(
           onPressed: isBusy ? null : onInit,
           tone: VeilButtonTone.secondary,
-          label: isBusy && transferSessionId == null ? 'Issuing token' : 'Issue transfer token',
+          label: isBusy && transferSessionId == null
+              ? l10n.deviceTransferIssuingToken
+              : l10n.deviceTransferIssueToken,
         ),
         const SizedBox(height: VeilSpace.sm),
         _TransferCard(
-          title: '2. Approve on old device',
+          title: l10n.deviceTransferStep2Title,
           body: transferToken == null
-              ? 'No transfer session exists yet.'
+              ? l10n.deviceTransferStep2BodyWaiting
               : transferExpired
-                  ? 'This transfer session expired. Clear it and issue a fresh one.'
-                  : 'Wait for the new device to register its claim, then approve that specific claim code here.',
+                  ? l10n.deviceTransferStep2BodyExpired
+                  : l10n.deviceTransferStep2BodyAwaiting,
           status: transferToken == null
-              ? 'Waiting'
+              ? l10n.deviceTransferStatusWaiting
               : transferExpired
-                  ? 'Expired'
-                  : 'Awaiting claim',
+                  ? l10n.deviceTransferStatusExpired
+                  : l10n.deviceTransferStatusAwaitingClaim,
           tone: transferToken == null
               ? VeilBannerTone.warn
               : transferExpired
@@ -477,13 +491,13 @@ class _OldDevicePanel extends StatelessWidget {
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilFieldBlock(
-          label: 'NEW-DEVICE CLAIM',
-          caption: 'Approve only the exact claim code shown on the new device you trust.',
+          label: l10n.deviceTransferClaimFieldLabel,
+          caption: l10n.deviceTransferClaimFieldCaption,
           child: TextField(
             controller: claimIdController,
-            decoration: const InputDecoration(
-              labelText: 'New-device claim code',
-              hintText: 'Paste the claim code shown on the new device',
+            decoration: InputDecoration(
+              labelText: l10n.deviceTransferClaimInputLabel,
+              hintText: l10n.deviceTransferClaimInputHint,
             ),
           ),
         ),
@@ -491,7 +505,7 @@ class _OldDevicePanel extends StatelessWidget {
         VeilButton(
           onPressed: isBusy || transferSessionId == null || transferExpired ? null : onApprove,
           tone: VeilButtonTone.secondary,
-          label: 'Approve this claim',
+          label: l10n.deviceTransferApproveClaim,
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilSurfaceCard(
@@ -504,27 +518,27 @@ class _OldDevicePanel extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      '3. Hand payload to new device',
+                      l10n.deviceTransferStep3Title,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
                   ),
                   if (transferPayload != null && !transferExpired)
-                    const VeilStatusPill(
-                      label: 'Ready to copy',
+                    VeilStatusPill(
+                      label: l10n.deviceTransferReadyToCopy,
                       tone: VeilBannerTone.good,
                     ),
                 ],
               ),
               const SizedBox(height: VeilSpace.sm),
               SelectableText(
-                transferPayload ?? 'Issue a transfer token first.',
+                transferPayload ?? l10n.deviceTransferIssueTokenFirst,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: VeilSpace.sm),
               Text(
                 transferExpired
-                    ? 'This payload is no longer valid. Clear it and issue a fresh transfer session.'
-                    : 'Complete on the new device. The old device remains trusted until you revoke it explicitly.',
+                    ? l10n.deviceTransferPayloadExpiredNote
+                    : l10n.deviceTransferCompleteOnNewNote,
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: VeilSpace.sm),
@@ -533,12 +547,12 @@ class _OldDevicePanel extends StatelessWidget {
                   VeilButton(
                     onPressed: onCopyPayload,
                     tone: VeilButtonTone.secondary,
-                    label: 'Copy payload',
+                    label: l10n.deviceTransferCopyPayload,
                   ),
                   VeilButton(
                     onPressed: isBusy ? null : onClear,
                     tone: VeilButtonTone.secondary,
-                    label: 'Clear',
+                    label: l10n.deviceTransferClear,
                   ),
                 ],
               ),
@@ -548,7 +562,7 @@ class _OldDevicePanel extends StatelessWidget {
         if (transferStatus != null) ...[
           const SizedBox(height: VeilSpace.md),
           VeilInlineBanner(
-            title: 'Transfer status',
+            title: l10n.deviceTransferStatusTitle,
             message: transferStatus!,
             tone: transferExpired ? VeilBannerTone.warn : VeilBannerTone.info,
           ),
@@ -556,7 +570,7 @@ class _OldDevicePanel extends StatelessWidget {
         if (errorMessage != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
-            title: 'Transfer failed',
+            title: l10n.deviceTransferFailedTitle,
             message: errorMessage!,
             tone: VeilBannerTone.danger,
           ),
@@ -568,6 +582,7 @@ class _OldDevicePanel extends StatelessWidget {
 
 class _NewDevicePanel extends StatelessWidget {
   const _NewDevicePanel({
+    required this.l10n,
     required this.payloadController,
     required this.sessionIdController,
     required this.tokenController,
@@ -586,6 +601,7 @@ class _NewDevicePanel extends StatelessWidget {
     required this.now,
   });
 
+  final AppLocalizations l10n;
   final TextEditingController payloadController;
   final TextEditingController sessionIdController;
   final TextEditingController tokenController;
@@ -608,8 +624,8 @@ class _NewDevicePanel extends StatelessWidget {
     return Column(
       children: [
         VeilFieldBlock(
-          label: 'TRANSFER PAYLOAD',
-          caption: 'Import the short-lived session and token issued by the trusted old device.',
+          label: l10n.deviceTransferPayloadFieldLabel,
+          caption: l10n.deviceTransferPayloadFieldCaption,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -617,8 +633,8 @@ class _NewDevicePanel extends StatelessWidget {
                 controller: payloadController,
                 minLines: 3,
                 maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Paste transfer payload',
+                decoration: InputDecoration(
+                  labelText: l10n.deviceTransferPayloadInputLabel,
                   hintText: 'VEIL_TRANSFER::<sessionId>::<token>',
                 ),
               ),
@@ -627,31 +643,37 @@ class _NewDevicePanel extends StatelessWidget {
                 expanded: false,
                 tone: VeilButtonTone.secondary,
                 onPressed: onImportPayload,
-                label: 'Import payload',
+                label: l10n.deviceTransferImportPayload,
               ),
             ],
           ),
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilFieldBlock(
-          label: 'NEW DEVICE',
-          caption: 'This device proves its own claim. The old device only approves that exact claim.',
+          label: l10n.deviceTransferNewDeviceLabel,
+          caption: l10n.deviceTransferNewDeviceCaption,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
                 controller: deviceNameController,
-                decoration: const InputDecoration(labelText: 'Device name'),
+                decoration: InputDecoration(
+                  labelText: l10n.deviceTransferDeviceNameLabel,
+                ),
               ),
               const SizedBox(height: VeilSpace.sm),
               TextField(
                 controller: sessionIdController,
-                decoration: const InputDecoration(labelText: 'Session id'),
+                decoration: InputDecoration(
+                  labelText: l10n.deviceTransferSessionIdLabel,
+                ),
               ),
               const SizedBox(height: VeilSpace.sm),
               TextField(
                 controller: tokenController,
-                decoration: const InputDecoration(labelText: 'Transfer token'),
+                decoration: InputDecoration(
+                  labelText: l10n.deviceTransferTokenLabel,
+                ),
               ),
               const SizedBox(height: VeilSpace.sm),
               Wrap(
@@ -660,27 +682,35 @@ class _NewDevicePanel extends StatelessWidget {
                 children: [
                   VeilStatusPill(
                     label: claimId == null
-                        ? 'Claim not registered'
+                        ? l10n.deviceTransferClaimNotRegistered
                         : claimExpired
-                            ? 'Claim expired'
-                            : 'Claim registered',
+                            ? l10n.deviceTransferClaimExpiredPill
+                            : l10n.deviceTransferClaimRegisteredPill,
                     tone: claimId == null
                         ? VeilBannerTone.warn
                         : claimExpired
                             ? VeilBannerTone.danger
                             : VeilBannerTone.good,
                   ),
-                  const VeilStatusPill(label: 'Old device approves exact claim'),
+                  VeilStatusPill(label: l10n.deviceTransferOldApprovesExact),
                 ],
               ),
               if (claimId != null) ...[
                 const SizedBox(height: VeilSpace.sm),
-                SelectableText('Claim code $claimId'),
+                SelectableText(l10n.deviceTransferClaimCode(claimId!)),
                 const SizedBox(height: VeilSpace.xs),
-                Text('Claim fingerprint ${claimFingerprint ?? 'Unavailable'}'),
+                Text(
+                  l10n.deviceTransferClaimFingerprint(
+                    claimFingerprint ?? l10n.deviceTransferFingerprintUnavailable,
+                  ),
+                ),
                 if (claimExpiresAt != null) ...[
                   const SizedBox(height: VeilSpace.xs),
-                  Text('Expires ${_formatExpiry(claimExpiresAt!, now)}'),
+                  Text(
+                    l10n.deviceTransferExpires(
+                      _formatExpiry(claimExpiresAt!, now, l10n),
+                    ),
+                  ),
                 ],
               ],
             ],
@@ -690,12 +720,14 @@ class _NewDevicePanel extends StatelessWidget {
         VeilButton(
           onPressed: isClaiming ? null : onClaim,
           tone: VeilButtonTone.secondary,
-          label: isClaiming ? 'Registering claim' : 'Register this new device',
+          label: isClaiming
+              ? l10n.deviceTransferRegisteringClaim
+              : l10n.deviceTransferRegisterNewDevice,
         ),
         if (completionMessage != null) ...[
           const SizedBox(height: VeilSpace.md),
           VeilInlineBanner(
-            title: 'Transfer status',
+            title: l10n.deviceTransferStatusTitle,
             message: completionMessage!,
             tone: VeilBannerTone.good,
           ),
@@ -703,7 +735,7 @@ class _NewDevicePanel extends StatelessWidget {
         if (completionError != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
-            title: 'Transfer failed',
+            title: l10n.deviceTransferFailedTitle,
             message: completionError!,
             tone: VeilBannerTone.danger,
           ),
@@ -711,7 +743,9 @@ class _NewDevicePanel extends StatelessWidget {
         const SizedBox(height: VeilSpace.md),
         VeilButton(
           onPressed: isCompleting || claimId == null || claimExpired ? null : onComplete,
-          label: isCompleting ? 'Completing transfer' : 'Complete on this device',
+          label: isCompleting
+              ? l10n.deviceTransferCompleting
+              : l10n.deviceTransferCompleteOnDevice,
           icon: Icons.arrow_forward_rounded,
         ),
       ],
@@ -753,20 +787,22 @@ class _TransferCard extends StatelessWidget {
   }
 }
 
-String _formatExpiry(DateTime expiresAt, DateTime now) {
+String _formatExpiry(DateTime expiresAt, DateTime now, AppLocalizations l10n) {
   if (!expiresAt.isAfter(now)) {
-    return 'now';
+    return l10n.deviceTransferExpiryNow;
   }
 
   final remaining = expiresAt.difference(now);
   if (remaining.inMinutes < 1) {
-    return 'in ${remaining.inSeconds}s';
+    return l10n.deviceTransferExpiryInSeconds(remaining.inSeconds);
   }
   if (remaining.inHours < 1) {
-    return 'in ${remaining.inMinutes}m';
+    return l10n.deviceTransferExpiryInMinutes(remaining.inMinutes);
   }
 
-  return 'at ${DateFormat('MMM d, HH:mm').format(expiresAt.toLocal())}';
+  return l10n.deviceTransferExpiryAt(
+    DateFormat('MMM d, HH:mm').format(expiresAt.toLocal()),
+  );
 }
 
 class _ParsedTransferPayload {

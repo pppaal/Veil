@@ -144,7 +144,7 @@ For a concise click-by-click Windows flow, see [Internal Alpha Desktop QA](inter
    - app lock status
    - realtime relay state
    - local cache state
-   - mock crypto warning
+   - crypto adapter shows "Production (unaudited)"
 3. Open Settings.
 4. Confirm revoke/logout copy does not imply recovery.
 

@@ -227,10 +227,10 @@ class SecurityStatusScreen extends ConsumerWidget {
       ),
       _SecuritySignal(
         label: 'Crypto adapter',
-        value: 'Mock active',
+        value: 'Production (unaudited)',
         detail:
-            'Dev-only opaque payloads are active. Audited production crypto is still required.',
-        tone: _SignalTone.warn,
+            'Real X25519 + AES-256-GCM + Ed25519 Double Ratchet crypto is active. An external audit is still pending.',
+        tone: _SignalTone.neutral,
       ),
       _SecuritySignal(
         label: 'Push plaintext',
@@ -271,7 +271,8 @@ class SecurityStatusScreen extends ConsumerWidget {
               children: [
                 VeilStatusPill(label: 'Private beta'),
                 VeilStatusPill(
-                    label: 'Mock crypto active', tone: VeilBannerTone.warn),
+                    label: 'Production crypto (unaudited)',
+                    tone: VeilBannerTone.info),
               ],
             ),
           ),

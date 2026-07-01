@@ -1,10 +1,6 @@
 import { MessagesService } from '../../src/modules/messages/messages.service';
 import { FakePrismaService } from '../support/fake-prisma.service';
-import {
-  FakePushService,
-  FakeRealtimeGateway,
-  FakeSafetyService,
-} from '../support/fake-services';
+import { FakePushService, FakeRealtimeGateway, FakeSafetyService } from '../support/fake-services';
 
 describe('MessagesService', () => {
   function createFixture() {
@@ -12,11 +8,13 @@ describe('MessagesService', () => {
     const realtime = new FakeRealtimeGateway();
     const push = new FakePushService();
     const safety = new FakeSafetyService();
+    const metrics = { messagesSentTotal: { inc: () => undefined } };
     const service = new MessagesService(
       prisma as never,
       push as never,
       realtime as never,
       safety as never,
+      metrics as never,
     );
 
     prisma.users.push(
@@ -119,14 +117,8 @@ describe('MessagesService', () => {
   it('deduplicates idempotent sends from the same device', async () => {
     const { prisma, service, push } = createFixture();
 
-    const first = await service.send(
-      { userId: 'user-a', deviceId: 'device-a' },
-      dto as never,
-    );
-    const second = await service.send(
-      { userId: 'user-a', deviceId: 'device-a' },
-      dto as never,
-    );
+    const first = await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
+    const second = await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
 
     expect(first.idempotent).toBe(false);
     expect(second.idempotent).toBe(true);

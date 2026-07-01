@@ -23,7 +23,7 @@
 - rate limiting on auth, user lookup, key bundle, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening)
 - Helmet security headers (CSP, HSTS, COEP) in production
 - Swagger disabled by default in production
-- bidirectional user blocks enforced at conversation creation and message send (direct), with opaque "NotFound" framing that hides block state from the blocked user
+- bidirectional user blocks enforced at conversation creation, direct message send, and direct call initiation, with opaque "NotFound" / "unreachable" framing that hides block state from the blocked user
 - per-conversation mutes suppress push wakes only — realtime + persistence stay consistent across devices
 - abuse reports throttled to 6/min/user so the moderation queue can't be weaponized as DoS
 - disappearing messages: per-conversation TTL + periodic global cron that hard-deletes expired rows even in idle conversations

@@ -17,8 +17,15 @@ type CallRow = {
 
 type Emitted = { event: string; members: Array<{ userId: string }>; payload: unknown };
 
-function createFixture(call: CallRow | null) {
+function createFixture(
+  call: CallRow | null,
+  opts: {
+    conversation?: { type: string; members: Array<{ userId: string }> } | null;
+    blocked?: boolean;
+  } = {},
+) {
   const emitted: Emitted[] = [];
+  const created: Array<Record<string, unknown>> = [];
 
   const prisma = {
     callRecord: {
@@ -27,6 +34,17 @@ function createFixture(call: CallRow | null) {
         if (call) Object.assign(call, data);
         return call;
       },
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        const row = { id: 'new-call', ...data };
+        created.push(row);
+        return row;
+      },
+    },
+    conversation: {
+      findUnique: async () => opts.conversation ?? null,
+    },
+    user: {
+      findUnique: async () => ({ handle: 'caller' }),
     },
   };
 
@@ -40,8 +58,12 @@ function createFixture(call: CallRow | null) {
     },
   };
 
-  const service = new CallsService(prisma as never, realtime as never);
-  return { service, emitted };
+  const safety = {
+    isBlockedEitherWay: async () => opts.blocked ?? false,
+  };
+
+  const service = new CallsService(prisma as never, realtime as never, safety as never);
+  return { service, emitted, created };
 }
 
 function ringingCall(): CallRow {
@@ -57,6 +79,58 @@ function ringingCall(): CallRow {
     initiatorDevice: { userId: 'user-a' },
   };
 }
+
+describe('CallsService initiateCall block enforcement', () => {
+  const directConv = { type: 'direct', members: [{ userId: 'user-a' }, { userId: 'user-b' }] };
+  const dto = { conversationId: 'conv-1', callType: 'voice' } as never;
+
+  it('rings the peer when not blocked', async () => {
+    const { service, emitted, created } = createFixture(null, {
+      conversation: directConv,
+      blocked: false,
+    });
+
+    await service.initiateCall({ userId: 'user-a', deviceId: 'dev-a' }, dto);
+
+    expect(created).toHaveLength(1);
+    expect(emitted).toHaveLength(1);
+    expect(emitted[0].event).toBe('call.incoming');
+    // Fan-out excludes the initiator.
+    expect(emitted[0].members).toEqual([{ userId: 'user-b' }]);
+  });
+
+  it('refuses to ring a blocked peer and creates no call record', async () => {
+    const { service, created, emitted } = createFixture(null, {
+      conversation: directConv,
+      blocked: true,
+    });
+
+    await expect(
+      service.initiateCall({ userId: 'user-a', deviceId: 'dev-a' }, dto),
+    ).rejects.toMatchObject({ response: { code: 'peer_unreachable' } });
+    expect(created).toHaveLength(0);
+    expect(emitted).toHaveLength(0);
+  });
+
+  it('rejects a non-member initiator', async () => {
+    const { service } = createFixture(null, { conversation: directConv, blocked: false });
+    await expect(
+      service.initiateCall({ userId: 'stranger', deviceId: 'dev-x' }, dto),
+    ).rejects.toMatchObject({ response: { code: 'conversation_membership_required' } });
+  });
+
+  it('does not apply the block gate to group calls (direct-only)', async () => {
+    const groupConv = {
+      type: 'group',
+      members: [{ userId: 'user-a' }, { userId: 'user-b' }, { userId: 'user-c' }],
+    };
+    // blocked=true must be ignored for a group conversation.
+    const { service, created } = createFixture(null, { conversation: groupConv, blocked: true });
+
+    await service.initiateCall({ userId: 'user-a', deviceId: 'dev-a' }, dto);
+    expect(created).toHaveLength(1);
+  });
+});
 
 describe('CallsService accept/decline', () => {
   describe('acceptCall', () => {

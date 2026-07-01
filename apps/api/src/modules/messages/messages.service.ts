@@ -16,6 +16,7 @@ import {
   notFound,
   serviceUnavailable,
 } from '../../common/errors/api-error';
+import { MetricsService } from '../metrics/metrics.service';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SafetyService } from '../safety/safety.service';
@@ -45,6 +46,7 @@ export class MessagesService {
     private readonly pushService: PushService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly safetyService: SafetyService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async send(
@@ -152,6 +154,16 @@ export class MessagesService {
     const created = await this.createMessageWithRetry(auth, dto, attachmentId, members);
 
     const summary = this.toMessageSummary(created.message);
+
+    if (!created.idempotent) {
+      // Throughput signal only, labelled by message type — no conversation or
+      // device identity. Guarded so telemetry can't fail an accepted message.
+      try {
+        this.metrics.messagesSentTotal.inc({ message_type: summary.messageType });
+      } catch {
+        // best-effort telemetry
+      }
+    }
     await this.prisma.deviceConversationState.upsert({
       where: {
         deviceId_conversationId: {

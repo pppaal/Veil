@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../common/prisma.service';
 import { badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
+import { MetricsService } from '../metrics/metrics.service';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
@@ -22,6 +23,7 @@ export class AttachmentsService {
     private readonly config: AppConfigService,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly storageGateway: AttachmentStorageGateway,
+    private readonly metrics: MetricsService,
   ) {}
 
   async createUploadTicket(
@@ -134,6 +136,17 @@ export class AttachmentsService {
       where: { id: dto.attachmentId },
       data: { uploadStatus: dto.uploadStatus },
     });
+
+    if (dto.uploadStatus === 'uploaded') {
+      // Cumulative accepted ciphertext bytes (operational throughput only —
+      // no per-attachment identity). Guarded so a metrics hiccup never fails
+      // an otherwise-successful upload.
+      try {
+        this.metrics.attachmentsBytesTotal.inc(attachment.sizeBytes);
+      } catch {
+        // best-effort telemetry
+      }
+    }
 
     return {
       attachmentId: updated.id,

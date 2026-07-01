@@ -14,6 +14,7 @@ type Seed = {
   gateway: FakeRealtimeGateway;
   push: FakePushService;
   safety: FakeSafetyService;
+  metrics: { messagesSentTotal: { inc: jest.Mock } };
   service: MessagesService;
 };
 
@@ -22,13 +23,15 @@ function makeService(): Seed {
   const gateway = new FakeRealtimeGateway();
   const push = new FakePushService();
   const safety = new FakeSafetyService();
+  const metrics = { messagesSentTotal: { inc: jest.fn() } };
   const service = new MessagesService(
     prisma as never,
     push as never,
     gateway as never,
     safety as never,
+    metrics as never,
   );
-  return { prisma, gateway, push, safety, service };
+  return { prisma, gateway, push, safety, metrics, service };
 }
 
 function seedUserAndDevice(
@@ -162,7 +165,7 @@ function buildSendDto(overrides: {
 describe('MessagesService', () => {
   describe('send', () => {
     it('persists the message and emits realtime events to the peer', async () => {
-      const { service, prisma, gateway } = makeService();
+      const { service, prisma, gateway, metrics } = makeService();
       const alice = seedUserAndDevice(prisma, 'alice');
       const bob = seedUserAndDevice(prisma, 'bob');
       const conversationId = seedDirectConversation(prisma, alice.userId, bob.userId);
@@ -183,6 +186,9 @@ describe('MessagesService', () => {
       const emittedToBob = gateway.emitted.filter((entry) => entry.userId === bob.userId);
       expect(emittedToBob.some((e) => e.event === 'message.new')).toBe(true);
       expect(emittedToBob.some((e) => e.event === 'conversation.sync')).toBe(true);
+
+      // Throughput counter incremented once, labelled by message type.
+      expect(metrics.messagesSentTotal.inc).toHaveBeenCalledWith({ message_type: 'text' });
     });
 
     it('rejects when envelope senderDeviceId does not match auth device', async () => {

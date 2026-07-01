@@ -48,12 +48,19 @@ function makeService(): {
   prisma: FakePrismaService;
   storage: FakeAttachmentStorageGateway;
   config: FakeConfigService;
+  metrics: { attachmentsBytesTotal: { inc: jest.Mock } };
 } {
   const prisma = new FakePrismaService();
   const config = new FakeConfigService();
   const storage = new FakeAttachmentStorageGateway();
-  const service = new AttachmentsService(prisma as never, config as never, storage as never);
-  return { service, prisma, storage, config };
+  const metrics = { attachmentsBytesTotal: { inc: jest.fn() } };
+  const service = new AttachmentsService(
+    prisma as never,
+    config as never,
+    storage as never,
+    metrics as never,
+  );
+  return { service, prisma, storage, config, metrics };
 }
 
 describe('AttachmentsService', () => {
@@ -137,7 +144,7 @@ describe('AttachmentsService', () => {
 
   describe('completeUpload', () => {
     it('marks a correctly-uploaded blob as uploaded after HEAD validation', async () => {
-      const { service, prisma, storage } = makeService();
+      const { service, prisma, storage, metrics } = makeService();
       const { deviceId } = seedDeviceAndUser(prisma);
 
       const ticket = await service.createUploadTicket(deviceId, {
@@ -163,6 +170,8 @@ describe('AttachmentsService', () => {
 
       expect(result.uploadStatus).toBe('uploaded');
       expect(prisma.attachments[0].uploadStatus).toBe('uploaded');
+      // Accepted ciphertext bytes counted once.
+      expect(metrics.attachmentsBytesTotal.inc).toHaveBeenCalledWith(1024);
     });
 
     it('rejects completion if the blob is missing from storage', async () => {

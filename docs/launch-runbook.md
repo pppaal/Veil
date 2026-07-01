@@ -50,7 +50,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 4. Upload via Transporter or Xcode → App Store Connect.
 5. App Store Connect → App Privacy → answer each question using [`store/appstore/app-privacy-answers.md`](../store/appstore/app-privacy-answers.md) as the source of truth.
 6. Listing content → paste from [`store/appstore/metadata-ko.txt`](../store/appstore/metadata-ko.txt) and `metadata-en.txt`.
-7. Export compliance: the app uses standard crypto (X25519, AES-GCM, Ed25519). Tick "Standard encryption algorithms (exempt)" and confirm the annual self-classification report filed with the U.S. Bureau of Industry and Security (BIS) — see `docs/production-deployment.md` for the process if not already filed.
+7. Export compliance: the app ships its own end-to-end encryption (X25519, AES-256-GCM, Ed25519, HKDF-SHA256), so it is **not** OS/auth/HTTPS-only exempt — `ITSAppUsesNonExemptEncryption` is `YES`. Because the algorithms are standard and published (no proprietary crypto), it qualifies for the mass-market self-classification exemption (15 CFR 740.17(b)(1)): in App Store Connect answer encryption = Yes → qualifies for exemption → standard/published algorithms; **no CCATS/ERN**. File the annual BIS (crypt@bis.doc.gov) + NSA (enc@nsa.gov) self-classification report (ECCN 5D992.c), and the French/ANSSI declaration if distributing in France. See [`docs/launch/app-store-listing.md`](launch/app-store-listing.md) → "Export compliance".
 8. Age rating: 12+ (user-generated content, unfiltered by us).
 
 ## 5. Backend production deploy

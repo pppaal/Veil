@@ -51,8 +51,13 @@ Please review the following areas:
 
 ## Important implementation note
 
-The current crypto layer is still mock-backed for architecture and development
-workflow reasons. We are not making a production cryptography claim yet.
+The production crypto adapter (X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256
+Double Ratchet, `apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart`) is
+integrated and is the default engine — it is **not** mock-backed. It has not
+yet been externally audited, which is the purpose of this engagement;
+production API boot stays blocked (`VEIL_AUDITED_CRYPTO_ATTESTED=false`) until
+that audit closes. (Note: `docs/audit-rfp-email-en.md` is the current outbound
+RFP; this template is retained for reference.)
 
 We do want review of:
 

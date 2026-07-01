@@ -143,14 +143,27 @@ two installs will be visible only on those installs.
 
 ## Export compliance
 
-Veil uses end-to-end encryption. For App Store submission:
+Veil uses end-to-end encryption with only standard, published algorithms
+(X25519, AES-256-GCM, Ed25519, HKDF-SHA256 — see `docs/crypto-envelope-spec.md`).
+It implements no proprietary cryptography, so it qualifies for the mass-market
+self-classification exemption under 15 CFR 740.17(b)(1). For App Store
+submission:
 
-- `ITSAppUsesNonExemptEncryption` = `YES`
-- `ITSEncryptionExportComplianceCode` = <issued BIS CCATS / ERN>
-- Submission requires a BIS annual self-classification report (CCATS or
-  ERN — coordinate with legal; Signal files under ERN).
+- `ITSAppUsesNonExemptEncryption` = `YES` (already set in `Info.plist`) — the
+  encryption is not OS/auth/HTTPS-only, so this is the truthful value.
+- Do **not** add `ITSEncryptionExportComplianceCode`. That key is only for apps
+  that hold an issued BIS CCATS/ERN. Standard-algorithm mass-market software
+  self-classifies (ECCN 5D992.c) and needs **no CCATS**.
+- In App Store Connect answer: encryption = Yes → qualifies for exemption →
+  standard/published algorithms (not proprietary), and confirm the annual BIS
+  self-classification report.
+- File the annual BIS (crypt@bis.doc.gov) + NSA (enc@nsa.gov) self-classification
+  report (ECCN 5D992.c) on first export and by Feb 1 each year.
+- If distributing in France, file the ANSSI encryption declaration (or
+  geo-restrict FR to skip it).
 
-If export compliance isn't filed, submission will be rejected.
+If the self-classification report isn't filed, submission answers can't be
+completed truthfully.
 
 ## Localization
 
@@ -161,7 +174,7 @@ after launch: Japanese, Chinese (Traditional), German.
 
 - [ ] Privacy policy URL responds with 200
 - [ ] All test accounts work
-- [ ] Export compliance CCATS/ERN filed
+- [ ] Annual BIS self-classification report filed (5D992.c) + French/ANSSI declaration filed (if FR distribution)
 - [ ] Age rating questionnaire answered honestly (17+)
 - [ ] No placeholders in Promotional text / Description
 - [ ] Screenshots exist for every required device class

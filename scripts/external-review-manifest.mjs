@@ -36,9 +36,9 @@ const manifest = {
     'artifacts/private-beta-performance-template.json',
   ],
   explicitCaveats: [
-    'Mock crypto remains active.',
+    'Production crypto adapter (X25519 + AES-256-GCM Double Ratchet, lib_crypto_adapter.dart) is integrated but not yet externally audited.',
     'Push providers require separate privacy review before delivery is enabled.',
-    'Production boot remains blocked.',
+    'Production boot remains blocked until VEIL_AUDITED_CRYPTO_ATTESTED=true (set only after the external audit closes).',
   ],
   reviewQuestions: [
     'Does the architecture preserve no-recovery and device-bound identity?',

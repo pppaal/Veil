@@ -1,8 +1,12 @@
 # VEIL Crypto Interoperability Fixtures
 
-VEIL does not ship production cryptography yet. This document defines the
-fixture contract that future audited adapters must emit so that replacement can
-be validated without changing product logic.
+VEIL ships an integrated production crypto adapter (X25519 + AES-256-GCM +
+Ed25519 + HKDF-SHA256 Double Ratchet, `apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart`),
+which is not yet externally audited. This document defines the fixture contract
+that any adapter — the current one, or a replacement such as a libsignal-backed
+engine — must emit so a swap can be validated without changing product logic.
+For primitive-level known-answer vectors an auditor can reproduce independently,
+see `docs/crypto-test-vectors.md`.
 
 Authoritative code contract:
 

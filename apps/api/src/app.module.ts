@@ -32,6 +32,7 @@ import { SafetyModule } from './modules/safety/safety.module';
 import { SecretModule } from './modules/secret/secret.module';
 import { RetentionModule } from './modules/retention/retention.module';
 import { RecoveryModule } from './modules/recovery/recovery.module';
+import { PrekeysModule } from './modules/prekeys/prekeys.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { RecoveryModule } from './modules/recovery/recovery.module';
     SecretModule,
     RetentionModule,
     RecoveryModule,
+    PrekeysModule,
   ],
   providers: [
     {

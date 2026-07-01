@@ -193,10 +193,36 @@ model Device {
   joinedDevices     Device[]                @relation("JoinedDeviceGraph")
   conversationStates DeviceConversationState[]
   initiatedCalls     CallRecord[]
+  oneTimePrekeys     OneTimePrekey[]
 
   @@index([userId, isActive])
   @@index([joinedFromDeviceId])
   @@map("devices")
+}
+
+// X3DH one-time prekeys (OPKs). A pool of single-use public prekeys per
+// device. The server stores ONLY the public key — the private half never
+// leaves the device. A session initiator claims exactly one unused OPK
+// (atomic, never handed out twice); the owner replenishes the pool when it
+// runs low. When the pool is empty the initiator falls back to signed-prekey-
+// only X3DH. Consumed rows are kept (consumedAt set) so keyIds are never
+// reused; a retention sweep can prune old consumed rows later. See
+// docs/libsignal-migration-design.md (phase L.4).
+model OneTimePrekey {
+  id         String    @id @default(uuid()) @db.Uuid
+  deviceId   String    @map("device_id") @db.Uuid
+  // Client-assigned id for this prekey, unique within the device so the
+  // client can correlate its stored private half.
+  keyId      Int       @map("key_id")
+  publicKey  String    @map("public_key")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  device     Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, keyId])
+  // Claim path filters (deviceId, consumedAt IS NULL) ordered by keyId.
+  @@index([deviceId, consumedAt])
+  @@map("one_time_prekeys")
 }
 
 model Conversation {

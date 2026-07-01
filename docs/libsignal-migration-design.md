@@ -97,7 +97,16 @@ new engines coexist.
 
 **Phase L.4 — X3DH prekeys (bonus, closes a current residual risk)**
 - libsignal brings real X3DH one-time prekeys, removing today's "first message
-  lacks forward secrecy" gap. Wire the prekey publish/replenish endpoints.
+  lacks forward secrecy" gap.
+- **Server side shipped**: `one_time_prekeys` per-device pool with authenticated
+  upload/replenish (`POST /v1/prekeys`), count (`GET /v1/prekeys/count`), and a
+  public atomic single-use claim (`POST /v1/prekeys/claim/:handle`) that hands
+  out each prekey exactly once and returns null when depleted (initiator falls
+  back to signed-prekey-only X3DH).
+- **Pending (client / device)**: publish a prekey pool at registration, consume
+  a claimed prekey in the session bootstrap, and replenish when the count runs
+  low. This lands with the engine work (L.3) since it's the engine that mixes
+  the OPK into the X3DH derivation.
 
 **Phase L.5 — dual-run + cutover**
 - Run both engines against shared test vectors; enable Signal engine for new

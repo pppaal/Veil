@@ -50,7 +50,7 @@
 ## Residual risks
 
 - production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
-- the session opener bootstraps from the responder's static identity key (no X3DH one-time prekeys yet), so the first message of a session lacks forward secrecy until the first ratchet step
+- the session opener bootstraps from the responder's static identity key, so the first message of a session lacks forward secrecy until the first ratchet step. The server-side X3DH one-time-prekey pool now exists (per-device upload/count + atomic single-use claim; `libsignal-migration-design.md` phase L.4), but the client is not yet wired to publish/consume prekeys, so this gap is closed on the server and pending on the client
 - group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — server-side epoch bookkeeping and the opt-in flag have shipped (phases AB.1/AB.2), but the Sender-Key client crypto itself is still design-only (`group-sender-keys-design.md`)
 - the recovery backup's security reduces to the user's passphrase strength: the server holds the sealed ciphertext, so a weak passphrase is offline-brute-forceable by anyone who obtains the blob. The lost-device retrieval auth (who may fetch the ciphertext, and whether a recovery code gates it) is an unresolved design decision (`recovery-backup-design.md`)
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is design-only (`sealed-sender-design.md`)

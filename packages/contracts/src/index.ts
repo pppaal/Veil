@@ -87,6 +87,38 @@ export interface KeyBundleResponse {
   deviceBundles: PublicKeyBundle[];
 }
 
+// X3DH one-time prekeys. The server stores only the public half; the private
+// key never leaves the owning device.
+export interface OneTimePrekeyUpload {
+  keyId: number;
+  publicKey: string;
+}
+
+export interface UploadOneTimePrekeysRequest {
+  prekeys: OneTimePrekeyUpload[];
+}
+
+export interface UploadOneTimePrekeysResponse {
+  // How many of the submitted prekeys were newly stored (duplicates by
+  // (device, keyId) are skipped).
+  uploaded: number;
+  // Remaining unconsumed prekeys after the upload, so the client knows
+  // whether it still needs to replenish.
+  available: number;
+}
+
+export interface OneTimePrekeyCountResponse {
+  available: number;
+}
+
+// A claimed single-use prekey for the target's active device. `prekey` is null
+// when the pool is depleted — the initiator then falls back to signed-prekey-
+// only X3DH.
+export interface ClaimOneTimePrekeyResponse {
+  deviceId: string;
+  prekey: OneTimePrekeyUpload | null;
+}
+
 export interface ConversationMemberSummary {
   userId: string;
   handle: string;

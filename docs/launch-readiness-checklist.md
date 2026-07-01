@@ -16,6 +16,18 @@ App-Store-same-day는 **불가능**합니다. 이유는 단순합니다:
 
 ## (1) 오늘 코드로 끝낼 수 있는 것 (owner = code-today)
 
+> **갱신 2026-07-01 — 버킷 1 code-today 항목 전부 처리/확인 완료.**
+> - ✅ cydia jailbreak-probe: 이미 제거됨 (Info.plist에 `LSApplicationQueriesSchemes`/`cydia` 없음).
+> - ✅ `ITSAppUsesNonExemptEncryption = YES`: 이미 설정됨 (`ios/Runner/Info.plist`).
+> - ✅ 수출 규정 교정: `docs/launch/app-store-listing.md`(CCATS/ERN 안내 삭제 → 표준 알고리즘 mass-market 자가분류 + 연례 BIS/NSA report + ANSSI)와 `docs/launch-runbook.md` 7단계 재작성.
+> - ✅ EN 서브타이틀: "Encrypted privacy messenger" (27자 ≤ 30) 확인.
+> - ✅ App Review Notes / 카테고리 / 스크린샷 스펙: `store/appstore/`에 `app-review-notes.md`·`submission-checklist.md`·`screenshot-spec.md` 존재.
+> - ✅ mock-vs-real 암호 모순 제거: `scripts/external-review-manifest.mjs` caveat + `docs/external-security-review-request-template.md`를 "프로덕션 어댑터 통합됨, 외부 감사 전"으로 교정.
+> - ✅ `CFBundleURLName`을 `io.veil.mobile`로 정렬.
+> - ✅ handoff 재생성 체인: `beta:external:bundle`가 이미 `beta:production:blockers`로 끝남.
+>
+> 남은 블로커는 전부 버킷 2~4 (Mac / 계정 / 외부 감사) — 이 환경에서 코드로 끝낼 수 없음.
+
 이 환경(Linux, Mac/계정 불필요)에서 즉시 처리 가능. App Store 거절 위험을 제거하고 제출 메타데이터를 정리합니다.
 
 - [ ] **Cydia jailbreak-probe 제거 (App Store 거절 위험)** — `apps/mobile/ios/Runner/Info.plist`의 `LSApplicationQueriesSchemes` 배열(29~32행, `cydia` 항목)을 삭제. Apple은 jailbreak 스킴 탐지를 흔히 거절하며 이 앱에서 기능적 용도가 없음. (참고: `README.md:129`는 이미 "removed cydia probe"라고 주장하지만 실제 plist에는 남아 있어 README와 불일치 — 코드 수정으로 정합성 회복.)

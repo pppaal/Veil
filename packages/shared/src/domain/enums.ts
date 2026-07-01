@@ -22,5 +22,11 @@ export type MessageType = (typeof messageTypes)[number];
 export const attachmentUploadStatuses = ['pending', 'uploaded', 'failed'] as const;
 export type AttachmentUploadStatus = (typeof attachmentUploadStatuses)[number];
 
-export const transferSessionStatuses = ['pending', 'approved', 'completed', 'expired'] as const;
+export const transferSessionStatuses = [
+  'pending',
+  'claimed',
+  'approved',
+  'completed',
+  'expired',
+] as const;
 export type TransferSessionStatus = (typeof transferSessionStatuses)[number];

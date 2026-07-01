@@ -99,7 +99,7 @@ export class StoriesService {
     };
 
     for (const contact of contacts) {
-      this.realtimeGateway.emitToUser(contact.userId, 'story.new' as any, payload);
+      this.realtimeGateway.emitToUser(contact.userId, 'story.new', payload);
     }
 
     return {

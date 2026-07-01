@@ -125,6 +125,10 @@ export class AppConfigService {
     return this.configService.get('VEIL_CALL_RECORD_RETENTION_DAYS', { infer: true });
   }
 
+  get prekeyConsumedRetentionDays(): number {
+    return this.configService.get('VEIL_PREKEY_CONSUMED_RETENTION_DAYS', { infer: true });
+  }
+
   get cryptoAuditAttested(): boolean {
     return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
   }

@@ -2,11 +2,13 @@ import { RetentionService } from '../../src/modules/retention/retention.service'
 
 type DeleteArgs = { where: Record<string, unknown> };
 
-const makeService = (retentionDays: number) => {
+const makeService = (retentionDays: number, prekeyRetentionDays = retentionDays) => {
   const deleteCalls: DeleteArgs[] = [];
   const secretBlobCalls: DeleteArgs[] = [];
+  const prekeyCalls: DeleteArgs[] = [];
   let deleteResult = { count: 0 };
   let secretBlobResult = { count: 0 };
+  let prekeyResult = { count: 0 };
   const prisma = {
     callRecord: {
       deleteMany: (args: DeleteArgs) => {
@@ -20,8 +22,17 @@ const makeService = (retentionDays: number) => {
         return Promise.resolve(secretBlobResult);
       },
     },
+    oneTimePrekey: {
+      deleteMany: (args: DeleteArgs) => {
+        prekeyCalls.push(args);
+        return Promise.resolve(prekeyResult);
+      },
+    },
   } as never;
-  const config = { callRecordRetentionDays: retentionDays } as never;
+  const config = {
+    callRecordRetentionDays: retentionDays,
+    prekeyConsumedRetentionDays: prekeyRetentionDays,
+  } as never;
   const logs: Array<[string, Record<string, unknown>]> = [];
   const logger = {
     info: (e: string, m: Record<string, unknown>) => logs.push([e, m]),
@@ -34,12 +45,16 @@ const makeService = (retentionDays: number) => {
     service,
     deleteCalls,
     secretBlobCalls,
+    prekeyCalls,
     logs,
     setDeleteResult: (count: number) => {
       deleteResult = { count };
     },
     setSecretBlobResult: (count: number) => {
       secretBlobResult = { count };
+    },
+    setPrekeyResult: (count: number) => {
+      prekeyResult = { count };
     },
   };
 };
@@ -94,8 +109,11 @@ describe('RetentionService', () => {
       secretBlob: {
         deleteMany: () => Promise.reject(new Error('db down')),
       },
+      oneTimePrekey: {
+        deleteMany: () => Promise.reject(new Error('db down')),
+      },
     } as never;
-    const config = { callRecordRetentionDays: 30 } as never;
+    const config = { callRecordRetentionDays: 30, prekeyConsumedRetentionDays: 30 } as never;
     const warns: Array<[string, Record<string, unknown>]> = [];
     const logger = {
       info() {},
@@ -107,6 +125,32 @@ describe('RetentionService', () => {
     await expect(service.sweep()).resolves.toBeUndefined();
     expect(warns.map((w) => w[0])).toContain('retention.call_records_sweep_failed');
     expect(warns.map((w) => w[0])).toContain('retention.secret_blobs_sweep_failed');
+    expect(warns.map((w) => w[0])).toContain('retention.consumed_prekeys_sweep_failed');
+  });
+
+  it('prunes only consumed prekeys older than the cutoff, never unconsumed ones', async () => {
+    const { service, prekeyCalls, logs, setPrekeyResult } = makeService(0, 30);
+    setPrekeyResult(5);
+    const before = Date.now();
+
+    await service.sweep();
+
+    // Runs even when call-record retention is disabled (days=0).
+    expect(prekeyCalls).toHaveLength(1);
+    const where = prekeyCalls[0].where as { consumedAt: { not: null; lt: Date } };
+    // Only consumed rows are eligible; unconsumed pool prekeys are untouched.
+    expect(where.consumedAt.not).toBeNull();
+    const cutoffMs = where.consumedAt.lt.getTime();
+    expect(Math.abs(cutoffMs - (before - 30 * 24 * 60 * 60 * 1000))).toBeLessThan(5_000);
+
+    const pruned = logs.find(([e]) => e === 'retention.consumed_prekeys_pruned');
+    expect(pruned![1]).toEqual({ count: 5, retentionDays: 30 });
+  });
+
+  it('does not prune prekeys when prekey retention is disabled (0 days)', async () => {
+    const { service, prekeyCalls } = makeService(30, 0);
+    await service.sweep();
+    expect(prekeyCalls).toHaveLength(0);
   });
 
   it('prunes expired secret blobs every sweep (independent of call retention)', async () => {

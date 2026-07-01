@@ -133,4 +133,29 @@ describe('PrekeysService.claim', () => {
     const svc = new PrekeysService(makePrisma({ user: { findUnique: jest.fn(async () => null) } }));
     await expect(svc.claim('ghost')).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it('gives up with prekey=null after losing the race CLAIM_MAX_ATTEMPTS times', async () => {
+    // A candidate is always available but every claim loses the race
+    // (count:0) — the loop must terminate and report the pool as depleted
+    // rather than spin forever.
+    const findFirst = jest.fn(async () => ({ id: 'row', keyId: 1, publicKey: 'pk' }));
+    const updateMany = jest.fn(async () => ({ count: 0 }));
+    const svc = new PrekeysService(
+      makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst, updateMany } }),
+    );
+
+    expect(await svc.claim('alice')).toEqual({ deviceId: DEVICE, prekey: null });
+    // 5 attempts (CLAIM_MAX_ATTEMPTS), all lost.
+    expect(updateMany).toHaveBeenCalledTimes(5);
+  });
+
+  it('rejects when the handle exists but has no active/trusted device', async () => {
+    const svc = new PrekeysService(
+      makePrisma({
+        user: { findUnique: jest.fn(async () => ({ id: USER, activeDeviceId: DEVICE })) },
+        device: { findMany: jest.fn(async () => []) },
+      }),
+    );
+    await expect(svc.claim('alice')).rejects.toBeInstanceOf(NotFoundException);
+  });
 });

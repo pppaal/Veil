@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { conflict, forbidden, notFound } from '../../common/errors/api-error';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SafetyService } from '../safety/safety.service';
 import { InitiateCallDto } from './dto/initiate-call.dto';
 
 @Injectable()
@@ -10,21 +11,28 @@ export class CallsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly safety: SafetyService,
   ) {}
 
   async initiateCall(auth: { userId: string; deviceId: string }, dto: InitiateCallDto) {
-    const membership = await this.prisma.conversationMember.findUnique({
-      where: {
-        conversationId_userId: {
-          conversationId: dto.conversationId,
-          userId: auth.userId,
-        },
-      },
-      select: { id: true },
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: dto.conversationId },
+      select: { type: true, members: { select: { userId: true } } },
     });
 
-    if (!membership) {
+    if (!conversation || !conversation.members.some((m) => m.userId === auth.userId)) {
       throw forbidden('conversation_membership_required', 'Conversation membership required');
+    }
+
+    // Mirror the direct-message block gate: an either-direction block makes the
+    // peer unreachable, so a blocked/blocking pair can't ring each other even
+    // through a pre-existing direct conversation. Opaque "unreachable" framing
+    // hides block state from the caller.
+    if (conversation.type === 'direct') {
+      const peer = conversation.members.find((m) => m.userId !== auth.userId);
+      if (peer && (await this.safety.isBlockedEitherWay(auth.userId, peer.userId))) {
+        throw forbidden('peer_unreachable', 'Peer is unreachable');
+      }
     }
 
     const callRecord = await this.prisma.callRecord.create({
@@ -37,18 +45,13 @@ export class CallsService {
       },
     });
 
-    const members = await this.prisma.conversationMember.findMany({
-      where: { conversationId: dto.conversationId },
-      select: { userId: true },
-    });
-
     const initiator = await this.prisma.user.findUnique({
       where: { id: auth.userId },
       select: { handle: true },
     });
 
     this.realtimeGateway.emitConversationMembers(
-      members.filter((m) => m.userId !== auth.userId),
+      conversation.members.filter((m) => m.userId !== auth.userId),
       'call.incoming',
       {
         callId: callRecord.id,

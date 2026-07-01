@@ -9,7 +9,13 @@ describe('RealtimeGateway typing throttle', () => {
   beforeEach(() => {
     // Constructor deps aren't exercised by the throttle method; null-cast
     // is fine for this isolated unit.
-    gw = new RealtimeGateway(null as never, null as never, null as never, null as never);
+    gw = new RealtimeGateway(
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+      null as never,
+    );
   });
 
   it('lets the first call through and throttles the next call inside 500ms', () => {
@@ -73,7 +79,10 @@ describe('RealtimeGateway handshake user-status enforcement', () => {
       },
     } as never;
     const ephemeralStore = { getJson: async () => null } as never;
-    return new RealtimeGateway(jwtService, config, prisma, ephemeralStore);
+    const metrics = {
+      wsConnectionsActive: { inc: () => undefined, dec: () => undefined },
+    } as never;
+    return new RealtimeGateway(jwtService, config, prisma, ephemeralStore, metrics);
   };
 
   it.each(['locked', 'revoked'] as const)('disconnects a %s user mid-token', async (status) => {
@@ -116,7 +125,13 @@ describe('RealtimeGateway call.signal relay', () => {
           members === null ? null : { conversationId: 'conv-1', conversation: { members } },
       },
     } as never;
-    const gw = new RealtimeGateway(null as never, null as never, prisma, null as never);
+    const gw = new RealtimeGateway(
+      null as never,
+      null as never,
+      prisma,
+      null as never,
+      null as never,
+    );
     const emitted: Emitted[] = [];
     (
       gw as unknown as {

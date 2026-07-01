@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type {
   DeviceTransferApproveResponse,
   DeviceTransferClaimResponse,
@@ -16,6 +16,7 @@ import { forbidden, notFound, unauthorized } from '../../common/errors/api-error
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from '../auth/device-auth-verifier';
+import { MetricsService } from '../metrics/metrics.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import {
   DeviceTransferApproveDto,
@@ -57,7 +58,18 @@ export class DeviceTransferService {
     @Inject(DEVICE_AUTH_VERIFIER)
     private readonly deviceAuthVerifier: DeviceAuthVerifier,
     private readonly realtimeGateway: RealtimeGateway,
+    // Optional so positional-construction unit tests don't need the arg;
+    // NestJS injects the @Global MetricsService in the real app.
+    @Optional() private readonly metrics?: MetricsService,
   ) {}
+
+  private countTransfer(stage: 'init' | 'claim' | 'approve' | 'complete'): void {
+    try {
+      this.metrics?.transferEventsTotal.inc({ stage });
+    } catch {
+      // best-effort telemetry
+    }
+  }
 
   async init(
     auth: { userId: string; deviceId: string },
@@ -105,6 +117,8 @@ export class DeviceTransferService {
       },
     });
 
+    this.countTransfer('init');
+
     return {
       sessionId: session.id,
       transferToken,
@@ -146,6 +160,8 @@ export class DeviceTransferService {
       },
       this.config.transferTokenTtlSeconds,
     );
+
+    this.countTransfer('approve');
 
     return {
       sessionId: dto.sessionId,
@@ -210,6 +226,8 @@ export class DeviceTransferService {
       pendingClaim,
       this.config.transferTokenTtlSeconds,
     );
+
+    this.countTransfer('claim');
 
     return {
       sessionId: dto.sessionId,
@@ -415,6 +433,8 @@ export class DeviceTransferService {
     // revoke would otherwise stay open and keep delivering envelopes to a
     // device the user just told us they don't trust anymore. Cut it.
     this.realtimeGateway.disconnectDevice(session.oldDeviceId);
+
+    this.countTransfer('complete');
 
     return {
       sessionId: session.id,

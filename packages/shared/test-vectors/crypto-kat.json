@@ -1,0 +1,66 @@
+{
+  "schema": "veil-crypto-kat-v1",
+  "description": "Known-answer test vectors for VEIL message-crypto primitives. All hex. Reproduce every output by feeding the inputs to the target implementation. Regenerate/verify with scripts/crypto-test-vectors.mjs.",
+  "generator": "node v22.22.2 / OpenSSL via node:crypto",
+  "rfcAnchors": [
+    "RFC 7748 §6.1 (X25519)",
+    "RFC 5869 §A.1 (HKDF-SHA256)"
+  ],
+  "vectors": {
+    "x25519": {
+      "algorithm": "X25519 (RFC 7748)",
+      "cases": [
+        {
+          "note": "RFC 7748 §6.1 anchor",
+          "alicePrivate": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+          "alicePublic": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+          "bobPrivate": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+          "bobPublic": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+          "sharedSecret": "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+        }
+      ]
+    },
+    "ed25519": {
+      "algorithm": "Ed25519 (RFC 8032, deterministic)",
+      "cases": [
+        {
+          "note": "fixed seed + utf8 message",
+          "seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+          "publicKey": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+          "messageHex": "7665696c2d6b61743a2074686520717569636b2062726f776e20666f78",
+          "signature": "74f2f590031925a49da13bba8ef72730201a93fc63918513cd316be145ee027dfd9a90f3129b50403daffeacd5cf1d76e4d13edda340891b0ecc8ee96bae5b05",
+          "verifies": true,
+          "tamperedMessageHex": "7665696c2d6b61743a2074686520717569636b2062726f776e20464f58",
+          "tamperedVerifies": false
+        }
+      ]
+    },
+    "hkdfSha256": {
+      "algorithm": "HKDF-SHA256 (RFC 5869)",
+      "cases": [
+        {
+          "note": "RFC 5869 §A.1 anchor",
+          "ikm": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+          "salt": "000102030405060708090a0b0c",
+          "info": "f0f1f2f3f4f5f6f7f8f9",
+          "length": 42,
+          "okm": "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865"
+        }
+      ]
+    },
+    "aes256gcm": {
+      "algorithm": "AES-256-GCM",
+      "cases": [
+        {
+          "note": "fixed key/nonce/aad",
+          "key": "0101020305080d1522375990e97962db3d61a3e5c8f1e2d4b6a89b7c5e3f1a2b3",
+          "nonce": "111213141516171819202122",
+          "aad": "7665696c2d6672616d652d6161642d76337c6b6174",
+          "plaintextHex": "61747461636b206174206461776e20e28094207665696c204b415420706c61696e74657874",
+          "ciphertext": "446454b6d9ecec669f2046473484a726a5e518f22616b9dfbf52ca26c1b70d100c911eb4c7",
+          "tag": "d3969cfc5c137133c12d7615785462b1"
+        }
+      ]
+    }
+  }
+}

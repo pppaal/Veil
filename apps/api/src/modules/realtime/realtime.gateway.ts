@@ -13,6 +13,7 @@ import type { RealtimeEventMap } from '@veil/contracts';
 import { AppConfigService } from '../../common/config/app-config.service';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 interface AccessTokenPayload {
   sub: string;
@@ -42,6 +43,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     private readonly config: AppConfigService,
     private readonly prisma: PrismaService,
     private readonly ephemeralStore: EphemeralStoreService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async handleConnection(client: Socket): Promise<void> {
@@ -113,6 +115,16 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       deviceSockets.add(client.id);
       this.socketsByDeviceId.set(payload.deviceId, deviceSockets);
 
+      // Operational gauge: one registered socket. Balanced by the dec in
+      // handleDisconnect (which runs only for sockets that reached here, since
+      // client.data.userId is set above). Guarded so telemetry can't drop a
+      // connection.
+      try {
+        this.metrics.wsConnectionsActive.inc();
+      } catch {
+        // best-effort telemetry
+      }
+
       this.emitToUser(payload.sub, 'presence.update', {
         userId: payload.sub,
         status: 'online',
@@ -128,6 +140,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     const deviceId = client.data.deviceId as string | undefined;
     if (!userId) {
       return;
+    }
+
+    // Balances the inc in handleConnection: a userId is only ever set on a
+    // socket that registered, so exactly the registered sockets decrement.
+    try {
+      this.metrics.wsConnectionsActive.dec();
+    } catch {
+      // best-effort telemetry
     }
 
     const sockets = this.socketsByUserId.get(userId);

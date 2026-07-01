@@ -49,6 +49,11 @@ export const envSchema = z.object({
   // not hoard who-called-whom forever; terminal call records older than this
   // are swept. 0 disables the sweep (retain indefinitely). Default 30 days.
   VEIL_CALL_RECORD_RETENTION_DAYS: z.coerce.number().int().min(0).default(30),
+  // Consumed X3DH one-time prekeys are kept briefly after use (so a keyId is
+  // never reused mid-flight), then pruned. Clients issue monotonic keyIds and
+  // never resubmit consumed ones, so a bounded window is safe. 0 disables the
+  // sweep (retain indefinitely). Default 30 days.
+  VEIL_PREKEY_CONSUMED_RETENTION_DAYS: z.coerce.number().int().min(0).default(30),
   VEIL_AUDITED_CRYPTO_ATTESTED: z.coerce.boolean().default(false),
   // Bearer token required to scrape /metrics. Empty disables the
   // endpoint entirely (the route 404s) — preferred default for local

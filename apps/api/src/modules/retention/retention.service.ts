@@ -52,6 +52,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   async sweep(): Promise<void> {
     await this.pruneTerminalCallRecords();
     await this.pruneExpiredSecretBlobs();
+    await this.pruneConsumedPrekeys();
   }
 
   private async pruneTerminalCallRecords(): Promise<void> {
@@ -76,6 +77,33 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       // Best-effort: the next interval retries. Never throw from a timer.
       this.logger.warn('retention.call_records_sweep_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Consumed X3DH one-time prekeys are dead weight once used: the session that
+  // claimed one has long since bootstrapped. We keep them briefly so a keyId is
+  // never reused mid-flight, then prune. Only rows with consumed_at set and
+  // older than the window are eligible — unconsumed prekeys in a device's pool
+  // are never touched. (Unclaimed prekeys are cleaned up by the device FK
+  // cascade when the device is revoked/deleted.)
+  private async pruneConsumedPrekeys(): Promise<void> {
+    const days = this.config.prekeyConsumedRetentionDays;
+    if (days <= 0) {
+      return; // Retention disabled — keep indefinitely.
+    }
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    try {
+      const { count } = await this.prisma.oneTimePrekey.deleteMany({
+        where: { consumedAt: { not: null, lt: cutoff } },
+      });
+      if (count > 0) {
+        this.logger.info('retention.consumed_prekeys_pruned', { count, retentionDays: days });
+      }
+    } catch (error) {
+      this.logger.warn('retention.consumed_prekeys_sweep_failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }

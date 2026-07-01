@@ -175,14 +175,14 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'image/png', sizeBytes: 2048, sha256: 'abcdef1234567890' });
+      .send({ contentType: 'image/png', sizeBytes: 2048, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 2048,
       contentType: 'image/png',
       metadata: {
         encrypted: 'true',
-        sha256: 'abcdef1234567890',
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
         'attachment-id': upload.body.attachmentId,
       },
     });
@@ -212,7 +212,7 @@ describe('VEIL API (e2e)', () => {
             storageKey: 'attachments/mock/blob',
             contentType: 'image/png',
             sizeBytes: 2048,
-            sha256: 'abcdef1234567890',
+            sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
             encryption: {
               encryptedKey: 'wrapped-key',
               nonce: 'attachment-nonce',
@@ -425,14 +425,14 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearerA)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'abcdef1234567890' });
+      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 1024,
       contentType: 'application/octet-stream',
       metadata: {
         encrypted: 'true',
-        sha256: 'abcdef1234567890',
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
         'attachment-id': upload.body.attachmentId,
       },
     });
@@ -491,14 +491,14 @@ describe('VEIL API (e2e)', () => {
     const rejectedMime = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'text/plain', sizeBytes: 128, sha256: 'abcdef12' });
+      .send({ contentType: 'text/plain', sizeBytes: 128, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
     expect(rejectedMime.status).toBe(400);
     expect(rejectedMime.body.code).toBe('attachment_upload_invalid');
 
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'abcdef1234567890' });
+      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
     expect(upload.status).toBe(201);
 
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
@@ -506,7 +506,7 @@ describe('VEIL API (e2e)', () => {
       contentType: 'application/octet-stream',
       metadata: {
         encrypted: 'true',
-        sha256: 'abcdef1234567890',
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
         'attachment-id': upload.body.attachmentId,
       },
     });

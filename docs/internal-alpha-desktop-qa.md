@@ -34,7 +34,7 @@ Use this when the Windows desktop client is already running.
     - app lock status
     - realtime state
     - local cache state
-    - mock crypto warning
+    - crypto adapter shows "Production (unaudited)"
 
 ## Failure Checks
 

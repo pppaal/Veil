@@ -1,6 +1,6 @@
 {
-  "schema": "veil-crypto-kat-v1",
-  "description": "Known-answer test vectors for VEIL message-crypto primitives. All hex. Reproduce every output by feeding the inputs to the target implementation. Regenerate/verify with scripts/crypto-test-vectors.mjs.",
+  "schema": "veil-crypto-kat-v2",
+  "description": "Known-answer test vectors for VEIL message-crypto primitives and the lib-x25519-aes256gcm-v3 protocol derivation schedule. All hex. Reproduce every output by feeding the inputs to the target implementation. Regenerate/verify with scripts/crypto-test-vectors.mjs.",
   "generator": "node v22.22.2 / OpenSSL via node:crypto",
   "rfcAnchors": [
     "RFC 7748 §6.1 (X25519)",
@@ -61,6 +61,73 @@
           "tag": "d3969cfc5c137133c12d7615785462b1"
         }
       ]
+    },
+    "protocol": {
+      "algorithm": "veil-envelope-v1 / lib-x25519-aes256gcm-v3 derivation schedule (docs/crypto-envelope-spec.md; reference lib_crypto_adapter.dart)",
+      "sessionSetup": {
+        "note": "Bootstrap: sharedSecret = X25519(initiatorRatchetPriv, responderPub); rootKey / chainKeyA / chainKeyB = HKDF-SHA256(ikm=sharedSecret, salt=utf8(conversationId), info=label, L=32) with labels \"veil-root-v2\" / \"veil-chain-A-v2\" / \"veil-chain-B-v2\". The peer with the lexicographically smaller deviceId is \"A\": sends on chainKeyA, receives on chainKeyB; the other peer mirrors.",
+        "conversationId": "veil-kat-conversation-01",
+        "initiatorDeviceId": "device-a-0001",
+        "responderDeviceId": "device-b-0002",
+        "initiatorRatchetPrivate": "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf",
+        "initiatorRatchetPublic": "605a725d2a4adfeeb1a29e17edd621c1b7593ee8cdbc44ac6c4ab6e2f805d23c",
+        "responderPrivate": "c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf",
+        "responderPublic": "dc2cca31e8e43bbd91dff7e475cca3347eb478107d5bd765aba4ae4a30c35d44",
+        "sharedSecret": "3b87c5035cce13678dd93d2dbc3a3d42039ebec86444a1ff82cd61b84c6fe968",
+        "rootKey": "53c6d8b6934a9f2b32c03c151a4d9a2d8a3b2baa5367e207e7f56dadac5eefeb",
+        "chainKeyA": "fdba7a6ba15213be6e4d1ea638bb48330587a70798e605c620cd4de750767600",
+        "chainKeyB": "7cfbba078937242d0597a882e011dc3cdd27a8e3b3b13086b59af0b118b6e798"
+      },
+      "dhRatchetStep": {
+        "note": "DH ratchet: kdfOutput = HKDF-SHA256(ikm=X25519(newRatchetPriv, peerPub), salt=previousRootKey, info=\"veil-dh-rk-v2\", L=64); newRootKey = kdfOutput[0..32], newSendChainKey = kdfOutput[32..64]; the send counter resets to 0 and newRatchetPublic goes on the next frame wire.",
+        "newRatchetPrivate": "404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f",
+        "newRatchetPublic": "79a631eede1bf9c98f12032cdeadd0e7a079398fc786b88cc846ec89af85a51a",
+        "peerPublic": "dc2cca31e8e43bbd91dff7e475cca3347eb478107d5bd765aba4ae4a30c35d44",
+        "dhOutput": "bb9c6312862aa50c61988db42bfbaf6c7c8dc070d12cb63e52c8c73747dc6b31",
+        "previousRootKey": "53c6d8b6934a9f2b32c03c151a4d9a2d8a3b2baa5367e207e7f56dadac5eefeb",
+        "newRootKey": "d6116841f2a26bca86c3a92e55a7fe7b35f0a07826e0c8119c1b036e3ca2606d",
+        "newSendChainKey": "9f6209d9359d1dc0d00b75e0b5cf9a1e184d069697fb124fc3e0e0e492d8246e"
+      },
+      "messageChain": {
+        "note": "Symmetric ratchet from sessionSetup.chainKeyA: messageKey_n = HKDF-SHA256(ikm=chainKey_n, salt=utf8(\"veil-msg-n\"+decimal(n)), info=\"veil-msg-v1\", L=32); chainKey_{n+1} = HKDF-SHA256(ikm=chainKey_n, salt=[0x00], info=\"veil-chain-next-v1\", L=32).",
+        "steps": [
+          {
+            "counter": 0,
+            "chainKey": "fdba7a6ba15213be6e4d1ea638bb48330587a70798e605c620cd4de750767600",
+            "messageKey": "c0f849c085cf79c3826329716606f863b9570a9ec12f0e4fedefa5a01f8dea66"
+          },
+          {
+            "counter": 1,
+            "chainKey": "1862f75a6b1f1fdfc582592769194ca0b47249bc07642f440b69882518d0d95d",
+            "messageKey": "ca6b280b1302b55dd2308d2ae6fec8bb6c885ccf4f0bcd28e8d57f24476596fc"
+          },
+          {
+            "counter": 2,
+            "chainKey": "9d1685c3c89d3e605b62b2cf589b19f76a1a94ddac92561609c1ef4690390cc9",
+            "messageKey": "d08a58412e2eb204c7bd5e6266e94aee58964d6214c8d1044e1c5ade0e0854fb"
+          }
+        ]
+      },
+      "frame": {
+        "note": "Full wire frame: plaintext payload JSON is ISO/IEC 7816-4 padded to the 256-byte bucket (append 0x80 then 0x00 filler), then AES-256-GCM with AAD = utf8(\"veil-frame-aad-v3\") || ratchetPub(32) || counter(4 BE) || utf8(senderDeviceId). Key is messageChain steps[counter].messageKey. frameHex = ratchetPub || counter || ciphertext || tag.",
+        "senderDeviceId": "device-a-0001",
+        "ratchetPublic": "605a725d2a4adfeeb1a29e17edd621c1b7593ee8cdbc44ac6c4ab6e2f805d23c",
+        "counter": 2,
+        "key": "d08a58412e2eb204c7bd5e6266e94aee58964d6214c8d1044e1c5ade0e0854fb",
+        "nonce": "000102030405060708090a0b",
+        "payloadJson": "{\"body\":\"hello from the veil KAT\",\"kind\":\"text\"}",
+        "paddedPlaintextHex": "7b22626f6479223a2268656c6c6f2066726f6d20746865207665696c204b4154222c226b696e64223a2274657874227d80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        "aad": "7665696c2d6672616d652d6161642d7633605a725d2a4adfeeb1a29e17edd621c1b7593ee8cdbc44ac6c4ab6e2f805d23c000000026465766963652d612d30303031",
+        "ciphertext": "56b2972f054fa3a7e0a4f967f51799837c3a8c1df76be631b1de96792f9cf188642553b6237a60a7601f2e90232f9717d66974257379a6f45947d0d48f3c82e0d16580f75905eeb5af0c2f7e7eb2605485d750f8b980b6a3ae60e6873d9590946a58210ceb0ee43001004d63c7f25f95898380d1e700d48217b2aaa84f0dc1f43508ee6e9c79e53da16322e060ca7567e06409eb3eed02a3fc0c41da2f9e88d7f6a652d3eff8ec4ba0b48f114a8853ba35a39ec531928e469f08a9cc44b7553cf6ec712f27596b6904293556f4f624ce8be93fdaca6d30cb34ffe3991c0388107782881deafa7ed34683a62ea1f352a794e92526176c9c47b06afdaf17087bad",
+        "tag": "be78a7d4784285a5f1a1282687672cc1",
+        "frameHex": "605a725d2a4adfeeb1a29e17edd621c1b7593ee8cdbc44ac6c4ab6e2f805d23c0000000256b2972f054fa3a7e0a4f967f51799837c3a8c1df76be631b1de96792f9cf188642553b6237a60a7601f2e90232f9717d66974257379a6f45947d0d48f3c82e0d16580f75905eeb5af0c2f7e7eb2605485d750f8b980b6a3ae60e6873d9590946a58210ceb0ee43001004d63c7f25f95898380d1e700d48217b2aaa84f0dc1f43508ee6e9c79e53da16322e060ca7567e06409eb3eed02a3fc0c41da2f9e88d7f6a652d3eff8ec4ba0b48f114a8853ba35a39ec531928e469f08a9cc44b7553cf6ec712f27596b6904293556f4f624ce8be93fdaca6d30cb34ffe3991c0388107782881deafa7ed34683a62ea1f352a794e92526176c9c47b06afdaf17087badbe78a7d4784285a5f1a1282687672cc1",
+        "tamperedHeader": {
+          "note": "Same key/nonce/ciphertext/tag with the AAD rebuilt from a header whose counter was flipped to 3. GCM tag verification MUST fail: the message does not decrypt and the receiver rolls back ratchet state.",
+          "counter": 3,
+          "aad": "7665696c2d6672616d652d6161642d7633605a725d2a4adfeeb1a29e17edd621c1b7593ee8cdbc44ac6c4ab6e2f805d23c000000036465766963652d612d30303031",
+          "decryptFails": true
+        }
+      }
     }
   }
 }

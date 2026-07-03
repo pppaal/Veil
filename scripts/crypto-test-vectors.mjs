@@ -107,6 +107,25 @@ function aes256gcmEncrypt(keyHex, ivHex, aadHex, plaintextHex) {
   return { ciphertext: toHex(ct), tag: toHex(cipher.getAuthTag()) };
 }
 
+function aes256gcmDecrypt(keyHex, ivHex, aadHex, ciphertextHex, tagHex) {
+  const decipher = crypto.createDecipheriv('aes-256-gcm', fromHex(keyHex), fromHex(ivHex));
+  if (aadHex) decipher.setAAD(fromHex(aadHex));
+  decipher.setAuthTag(fromHex(tagHex));
+  return toHex(Buffer.concat([decipher.update(fromHex(ciphertextHex)), decipher.final()]));
+}
+
+const utf8Hex = (s) => toHex(Buffer.from(s, 'utf8'));
+
+// ISO/IEC 7816-4 padding to the 256-byte bucket, exactly as the adapter pads
+// payload JSON before AES-GCM (message_padding.dart): append 0x80, then 0x00
+// filler to the smallest bucket that fits len + 1.
+function pad7816ToBucket(plainBuf, bucket) {
+  if (plainBuf.length + 1 > bucket) {
+    throw new Error(`KAT plaintext exceeds the ${bucket}-byte padding bucket`);
+  }
+  return Buffer.concat([plainBuf, Buffer.from([0x80]), Buffer.alloc(bucket - plainBuf.length - 1)]);
+}
+
 function assertEq(label, actual, expected) {
   if (actual !== expected) {
     throw new Error(
@@ -158,10 +177,121 @@ function build() {
   const gcmPlain = toHex(Buffer.from('attack at dawn — veil KAT plaintext', 'utf8'));
   const gcm = aes256gcmEncrypt(gcmKey, gcmIv, gcmAad, gcmPlain);
 
+  // --- Protocol-level KATs: the lib-x25519-aes256gcm-v3 derivation schedule ---
+  //
+  // These compose the primitives above exactly the way the production adapter
+  // does (docs/crypto-envelope-spec.md; reference lib_crypto_adapter.dart).
+  // Every HKDF label below ("veil-root-v2", "veil-chain-A-v2", ...) is wire
+  // format: an implementation that drifts on any label, salt, field order, or
+  // counter encoding will fail these vectors — which is the point.
+
+  // Session bootstrap: sharedSecret = X25519(initiatorRatchetPriv, responderPub).
+  const conversationId = 'veil-kat-conversation-01';
+  const initiatorDeviceId = 'device-a-0001'; // lexicographically smaller => "A"
+  const responderDeviceId = 'device-b-0002';
+  const initRatchetPriv = 'a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf';
+  const respPriv = 'c0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedf';
+  const initRatchetPub = x25519PubFromPriv(importX25519Priv(initRatchetPriv));
+  const respPub = x25519PubFromPriv(importX25519Priv(respPriv));
+  const x3dhShared = x25519Shared(initRatchetPriv, respPub);
+  // Both sides must agree on the shared secret before anything is emitted.
+  assertEq(
+    'protocol bootstrap shared symmetric',
+    x25519Shared(respPriv, initRatchetPub),
+    x3dhShared,
+  );
+
+  const convSalt = utf8Hex(conversationId);
+  const rootKey = hkdfSha256(x3dhShared, convSalt, utf8Hex('veil-root-v2'), 32);
+  const chainKeyA = hkdfSha256(x3dhShared, convSalt, utf8Hex('veil-chain-A-v2'), 32);
+  const chainKeyB = hkdfSha256(x3dhShared, convSalt, utf8Hex('veil-chain-B-v2'), 32);
+
+  // DH ratchet step: fresh keypair × last seen peer pub, mixed with the root.
+  const stepPriv = '404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f';
+  const stepPub = x25519PubFromPriv(importX25519Priv(stepPriv));
+  const dhOut = x25519Shared(stepPriv, respPub);
+  const dhKdfOut = hkdfSha256(dhOut, rootKey, utf8Hex('veil-dh-rk-v2'), 64);
+  const newRootKey = dhKdfOut.slice(0, 64);
+  const newSendChainKey = dhKdfOut.slice(64, 128);
+
+  // Symmetric (hash) ratchet: three steps of the initiator's send chain.
+  const chainSteps = [];
+  let chainKey = chainKeyA;
+  for (let counter = 0; counter <= 2; counter += 1) {
+    const messageKey = hkdfSha256(
+      chainKey,
+      utf8Hex(`veil-msg-n${counter}`),
+      utf8Hex('veil-msg-v1'),
+      32,
+    );
+    chainSteps.push({ counter, chainKey, messageKey });
+    chainKey = hkdfSha256(chainKey, '00', utf8Hex('veil-chain-next-v1'), 32);
+  }
+
+  // Full frame under veil-frame-aad-v3 header binding, keyed by the chain
+  // step whose counter matches the frame header (counter = 2).
+  const frameStep = chainSteps[2];
+  const frameNonce = '000102030405060708090a0b';
+  const framePayloadJson = '{"body":"hello from the veil KAT","kind":"text"}';
+  const framePadded = pad7816ToBucket(Buffer.from(framePayloadJson, 'utf8'), 256);
+  const frameCounterBe = Buffer.alloc(4);
+  frameCounterBe.writeUInt32BE(frameStep.counter);
+  const frameAad = Buffer.concat([
+    Buffer.from('veil-frame-aad-v3', 'utf8'),
+    fromHex(initRatchetPub),
+    frameCounterBe,
+    Buffer.from(initiatorDeviceId, 'utf8'),
+  ]);
+  const frameEnc = aes256gcmEncrypt(
+    frameStep.messageKey,
+    frameNonce,
+    toHex(frameAad),
+    toHex(framePadded),
+  );
+  const frameHex = initRatchetPub + toHex(frameCounterBe) + frameEnc.ciphertext + frameEnc.tag;
+
+  // Tampered header: same ciphertext/tag, AAD rebuilt with counter+1. The GCM
+  // tag must not verify. Prove both directions with the oracle before emitting.
+  const tamperedCounterBe = Buffer.alloc(4);
+  tamperedCounterBe.writeUInt32BE(frameStep.counter + 1);
+  const tamperedAad = Buffer.concat([
+    Buffer.from('veil-frame-aad-v3', 'utf8'),
+    fromHex(initRatchetPub),
+    tamperedCounterBe,
+    Buffer.from(initiatorDeviceId, 'utf8'),
+  ]);
+  assertEq(
+    'frame decrypt with bound header',
+    aes256gcmDecrypt(
+      frameStep.messageKey,
+      frameNonce,
+      toHex(frameAad),
+      frameEnc.ciphertext,
+      frameEnc.tag,
+    ),
+    toHex(framePadded),
+  );
+  let tamperedDecryptFails = false;
+  try {
+    aes256gcmDecrypt(
+      frameStep.messageKey,
+      frameNonce,
+      toHex(tamperedAad),
+      frameEnc.ciphertext,
+      frameEnc.tag,
+    );
+  } catch {
+    tamperedDecryptFails = true;
+  }
+  if (!tamperedDecryptFails) {
+    throw new Error('tampered-header frame unexpectedly decrypted — AAD binding is broken');
+  }
+
   return {
-    schema: 'veil-crypto-kat-v1',
+    schema: 'veil-crypto-kat-v2',
     description:
-      'Known-answer test vectors for VEIL message-crypto primitives. All hex. ' +
+      'Known-answer test vectors for VEIL message-crypto primitives and the ' +
+      'lib-x25519-aes256gcm-v3 protocol derivation schedule. All hex. ' +
       'Reproduce every output by feeding the inputs to the target implementation. ' +
       'Regenerate/verify with scripts/crypto-test-vectors.mjs.',
     generator: `node ${process.version} / OpenSSL via node:crypto`,
@@ -221,6 +351,81 @@ function build() {
             tag: gcm.tag,
           },
         ],
+      },
+      protocol: {
+        algorithm:
+          'veil-envelope-v1 / lib-x25519-aes256gcm-v3 derivation schedule ' +
+          '(docs/crypto-envelope-spec.md; reference lib_crypto_adapter.dart)',
+        sessionSetup: {
+          note:
+            'Bootstrap: sharedSecret = X25519(initiatorRatchetPriv, responderPub); ' +
+            'rootKey / chainKeyA / chainKeyB = HKDF-SHA256(ikm=sharedSecret, ' +
+            'salt=utf8(conversationId), info=label, L=32) with labels ' +
+            '"veil-root-v2" / "veil-chain-A-v2" / "veil-chain-B-v2". The peer with ' +
+            'the lexicographically smaller deviceId is "A": sends on chainKeyA, ' +
+            'receives on chainKeyB; the other peer mirrors.',
+          conversationId,
+          initiatorDeviceId,
+          responderDeviceId,
+          initiatorRatchetPrivate: initRatchetPriv,
+          initiatorRatchetPublic: initRatchetPub,
+          responderPrivate: respPriv,
+          responderPublic: respPub,
+          sharedSecret: x3dhShared,
+          rootKey,
+          chainKeyA,
+          chainKeyB,
+        },
+        dhRatchetStep: {
+          note:
+            'DH ratchet: kdfOutput = HKDF-SHA256(ikm=X25519(newRatchetPriv, peerPub), ' +
+            'salt=previousRootKey, info="veil-dh-rk-v2", L=64); newRootKey = ' +
+            'kdfOutput[0..32], newSendChainKey = kdfOutput[32..64]; the send counter ' +
+            'resets to 0 and newRatchetPublic goes on the next frame wire.',
+          newRatchetPrivate: stepPriv,
+          newRatchetPublic: stepPub,
+          peerPublic: respPub,
+          dhOutput: dhOut,
+          previousRootKey: rootKey,
+          newRootKey,
+          newSendChainKey,
+        },
+        messageChain: {
+          note:
+            'Symmetric ratchet from sessionSetup.chainKeyA: messageKey_n = ' +
+            'HKDF-SHA256(ikm=chainKey_n, salt=utf8("veil-msg-n"+decimal(n)), ' +
+            'info="veil-msg-v1", L=32); chainKey_{n+1} = HKDF-SHA256(ikm=chainKey_n, ' +
+            'salt=[0x00], info="veil-chain-next-v1", L=32).',
+          steps: chainSteps,
+        },
+        frame: {
+          note:
+            'Full wire frame: plaintext payload JSON is ISO/IEC 7816-4 padded to the ' +
+            '256-byte bucket (append 0x80 then 0x00 filler), then AES-256-GCM with ' +
+            'AAD = utf8("veil-frame-aad-v3") || ratchetPub(32) || counter(4 BE) || ' +
+            'utf8(senderDeviceId). Key is messageChain steps[counter].messageKey. ' +
+            'frameHex = ratchetPub || counter || ciphertext || tag.',
+          senderDeviceId: initiatorDeviceId,
+          ratchetPublic: initRatchetPub,
+          counter: frameStep.counter,
+          key: frameStep.messageKey,
+          nonce: frameNonce,
+          payloadJson: framePayloadJson,
+          paddedPlaintextHex: toHex(framePadded),
+          aad: toHex(frameAad),
+          ciphertext: frameEnc.ciphertext,
+          tag: frameEnc.tag,
+          frameHex,
+          tamperedHeader: {
+            note:
+              'Same key/nonce/ciphertext/tag with the AAD rebuilt from a header whose ' +
+              'counter was flipped to 3. GCM tag verification MUST fail: the message ' +
+              'does not decrypt and the receiver rolls back ratchet state.',
+            counter: frameStep.counter + 1,
+            aad: toHex(tamperedAad),
+            decryptFails: tamperedDecryptFails,
+          },
+        },
       },
     },
   };

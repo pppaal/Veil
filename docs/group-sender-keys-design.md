@@ -202,20 +202,33 @@ CREATE TABLE group_member_epochs (
 ## Protocol additions
 
 ```
-POST /v1/conversations/:id/members        existing — emits group.epoch.bumped
-DELETE /v1/conversations/:id/members/:uid existing — emits group.epoch.bumped
-POST /v1/conversations/:id/key-distribute new endpoint:
+POST /v1/conversations/group/:id/members        existing — emits group.epoch.bumped
+DELETE /v1/conversations/group/:id/members/:h   existing — emits group.epoch.bumped
+POST /v1/conversations/group/:id/key-distribute ✅ SHIPPED:
   body: {
     epoch: number,
     distributions: Array<{ recipientUserId, encryptedChainKey, nonce, version }>
   }
-  Server holds these blobs ephemeral with TTL=30 min, dispatches via
-  1:1 message channel as a system message of messageType='system' with
-  a special key-distribution body.
+  Guards: caller must be a current member, the group must have
+  group_use_sender_keys enabled, epoch must equal current_epoch
+  (else group_epoch_stale), and every recipient must be a current
+  member other than the sender (else key_distribution_invalid).
+  The server buffers each blob ephemerally (Redis, TTL=30 min, keyed
+  per conversation/epoch/recipient/sender so redistribution within an
+  epoch is an idempotent overwrite) and fans out a
+  group.key.distribution realtime event to each recipient.
+GET /v1/conversations/group/:id/key-distributions ✅ SHIPPED:
+  Offline-pickup path: returns every still-buffered blob addressed to
+  the caller for the group's current epoch. Non-consuming; blobs
+  disappear on TTL expiry or epoch bump, after which the recipient
+  asks senders to redistribute.
 ```
 
 The key-distribution payload is itself a 1:1 ciphertext under the
-existing ratchet — server cannot read the chain key.
+existing ratchet — server cannot read the chain key. (The earlier
+draft dispatched via a 1:1 system message; the shipped shape uses a
+dedicated realtime event plus the TTL buffer instead, which keeps key
+material out of the durable messages table entirely.)
 
 ## Migration strategy
 
@@ -229,10 +242,13 @@ Phase AB.1 — schema + epoch counter ✅ SHIPPED
     enabling it before clients send an epoch would reject every group send,
     so it lands with AB.2 behind the opt-in flag
 
-Phase AB.2 — opt-in flag
+Phase AB.2 — opt-in flag ✅ SHIPPED
   - new `group_use_sender_keys` field on conversation, default false
   - clients that set the flag negotiate sender keys; others stay on
     the shared key
+  - server-side key-distribution relay (POST key-distribute + GET
+    key-distributions + group.key.distribution event) shipped with it;
+    the blobs it relays stay opaque so no crypto-review dependency
 
 Phase AB.3 — clients implement
   - mobile first (already has Ed25519 + ratchet primitives)

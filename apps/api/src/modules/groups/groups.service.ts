@@ -1,19 +1,48 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type {
+  GroupKeyDistributeResponse,
+  GroupKeyDistributionItem,
+  GroupKeyDistributionsResponse,
+} from '@veil/contracts';
 
 import { PrismaService } from '../../common/prisma.service';
-import { forbidden, notFound } from '../../common/errors/api-error';
+import { EphemeralStoreService } from '../../common/ephemeral-store.service';
+import { badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import type { AuthContext } from '../../common/guards/authenticated-request';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { ManageMemberDto } from './dto/manage-member.dto';
+import { KeyDistributeDto } from './dto/key-distribute.dto';
+
+// How long distributed chain-key blobs are buffered for offline recipients.
+// Past the TTL a recipient recovers by asking senders to redistribute (the
+// design's self-heal path), so the server never holds key material for long.
+const KEY_DISTRIBUTION_TTL_SECONDS = 30 * 60;
+
+const keyDistributionKey = (
+  conversationId: string,
+  epoch: number,
+  recipientUserId: string,
+  senderUserId: string,
+): string => `group:keydist:${conversationId}:${epoch}:${recipientUserId}:${senderUserId}`;
+
+interface StoredKeyDistribution {
+  fromUserId: string;
+  fromDeviceId: string;
+  encryptedChainKey: string;
+  nonce: string;
+  version: string;
+  createdAt: string;
+}
 
 @Injectable()
 export class GroupsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly ephemeralStore: EphemeralStoreService,
   ) {}
 
   async createGroup(auth: AuthContext, dto: CreateGroupDto) {
@@ -402,6 +431,137 @@ export class GroupsService {
     });
 
     return { conversationId, left: true };
+  }
+
+  /**
+   * Accept a batch of sender-key chain-key distributions from one member and
+   * relay them to the addressed members. Every blob is opaque: it was
+   * encrypted under the sender↔recipient 1:1 ratchet before it reached us,
+   * so the server buffers and forwards ciphertext it cannot read.
+   *
+   * Guards: caller must be a current member, the conversation must be a
+   * group with Sender Keys enabled, the stamped epoch must be current, and
+   * every recipient must be a current member other than the sender. Blobs are
+   * buffered for KEY_DISTRIBUTION_TTL_SECONDS (offline pickup via
+   * getKeyDistributions) and fanned out live as group.key.distribution.
+   * A re-send for the same (epoch, recipient) overwrites — redistribution is
+   * idempotent within an epoch.
+   */
+  async distributeKeys(
+    auth: AuthContext,
+    conversationId: string,
+    dto: KeyDistributeDto,
+  ): Promise<GroupKeyDistributeResponse> {
+    const conversation = await this.requireSenderKeysGroup(conversationId, auth.userId);
+
+    if (dto.epoch !== conversation.currentEpoch) {
+      throw badRequest(
+        'group_epoch_stale',
+        `Epoch ${dto.epoch} is not the conversation's current epoch`,
+      );
+    }
+
+    const memberIds = new Set(conversation.members.map((member) => member.userId));
+    for (const distribution of dto.distributions) {
+      if (distribution.recipientUserId === auth.userId) {
+        throw badRequest('key_distribution_invalid', 'Cannot distribute a chain key to yourself');
+      }
+      if (!memberIds.has(distribution.recipientUserId)) {
+        throw badRequest(
+          'key_distribution_invalid',
+          'Every recipient must be a current group member',
+        );
+      }
+    }
+
+    const createdAt = new Date().toISOString();
+    for (const distribution of dto.distributions) {
+      const stored: StoredKeyDistribution = {
+        fromUserId: auth.userId,
+        fromDeviceId: auth.deviceId,
+        encryptedChainKey: distribution.encryptedChainKey,
+        nonce: distribution.nonce,
+        version: distribution.version,
+        createdAt,
+      };
+      await this.ephemeralStore.setJson(
+        keyDistributionKey(conversationId, dto.epoch, distribution.recipientUserId, auth.userId),
+        stored,
+        KEY_DISTRIBUTION_TTL_SECONDS,
+      );
+      this.realtimeGateway.emitToUser(distribution.recipientUserId, 'group.key.distribution', {
+        conversationId,
+        epoch: dto.epoch,
+        fromUserId: auth.userId,
+        fromDeviceId: auth.deviceId,
+        encryptedChainKey: distribution.encryptedChainKey,
+        nonce: distribution.nonce,
+        version: distribution.version,
+      });
+    }
+
+    return {
+      conversationId,
+      epoch: dto.epoch,
+      accepted: dto.distributions.length,
+      expiresInSeconds: KEY_DISTRIBUTION_TTL_SECONDS,
+    };
+  }
+
+  /**
+   * Offline-pickup path: return every still-buffered chain-key blob addressed
+   * to the caller for the group's current epoch. Non-consuming — a flaky
+   * client can safely re-fetch until the TTL expires; there is nothing to
+   * protect server-side since each blob is ciphertext only the caller can
+   * open.
+   */
+  async getKeyDistributions(
+    auth: AuthContext,
+    conversationId: string,
+  ): Promise<GroupKeyDistributionsResponse> {
+    const conversation = await this.requireSenderKeysGroup(conversationId, auth.userId);
+    const epoch = conversation.currentEpoch;
+
+    const distributions: GroupKeyDistributionItem[] = [];
+    for (const member of conversation.members) {
+      if (member.userId === auth.userId) {
+        continue;
+      }
+      const stored = await this.ephemeralStore.getJson<StoredKeyDistribution>(
+        keyDistributionKey(conversationId, epoch, auth.userId, member.userId),
+      );
+      if (stored) {
+        distributions.push(stored);
+      }
+    }
+
+    return { conversationId, epoch, distributions };
+  }
+
+  private async requireSenderKeysGroup(
+    conversationId: string,
+    userId: string,
+  ): Promise<{ currentEpoch: number; members: Array<{ userId: string }> }> {
+    const conversation = await this.prisma.conversation.findUnique({
+      where: { id: conversationId, type: 'group' },
+      select: {
+        currentEpoch: true,
+        groupUseSenderKeys: true,
+        members: { select: { userId: true } },
+      },
+    });
+
+    if (!conversation) {
+      throw notFound('handle_not_found', 'Group not found');
+    }
+    if (!conversation.members.some((member) => member.userId === userId)) {
+      throw forbidden('conversation_membership_required', 'You are not a member of this group');
+    }
+    if (!conversation.groupUseSenderKeys) {
+      throw badRequest('group_sender_keys_disabled', 'Sender Keys are not enabled for this group');
+    }
+
+    return conversation;
   }
 
   /**

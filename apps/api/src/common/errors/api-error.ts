@@ -51,7 +51,9 @@ export type VeilErrorCode =
   | 'message_deleted'
   | 'view_once_immutable'
   | 'group_epoch_required'
-  | 'group_epoch_stale';
+  | 'group_epoch_stale'
+  | 'group_sender_keys_disabled'
+  | 'key_distribution_invalid';
 
 export class ApiError extends HttpException {
   constructor(

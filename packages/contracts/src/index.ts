@@ -429,6 +429,46 @@ export interface FileAbuseReportResponse {
   filedAt: string;
 }
 
+// Group Sender Keys chain-key distribution. Each encryptedChainKey is an
+// opaque ciphertext produced under the sender↔recipient 1:1 ratchet session;
+// the server relays and briefly buffers it but can never read the chain key.
+export interface GroupKeyDistributionUpload {
+  recipientUserId: string;
+  encryptedChainKey: string;
+  nonce: string;
+  version: string;
+}
+
+export interface GroupKeyDistributeRequest {
+  // Must equal the conversation's current epoch — distributions for a stale
+  // membership generation are rejected with group_epoch_stale.
+  epoch: number;
+  distributions: GroupKeyDistributionUpload[];
+}
+
+export interface GroupKeyDistributeResponse {
+  conversationId: string;
+  epoch: number;
+  accepted: number;
+  // How long the server buffers each blob for offline recipients.
+  expiresInSeconds: number;
+}
+
+export interface GroupKeyDistributionItem {
+  fromUserId: string;
+  fromDeviceId: string;
+  encryptedChainKey: string;
+  nonce: string;
+  version: string;
+  createdAt: string;
+}
+
+export interface GroupKeyDistributionsResponse {
+  conversationId: string;
+  epoch: number;
+  distributions: GroupKeyDistributionItem[];
+}
+
 export interface RealtimeEventMap {
   'message.new': ConversationMessageSummary;
   'message.delivered': { messageId: string; userId: string; deliveredAt: string };
@@ -485,5 +525,18 @@ export interface RealtimeEventMap {
     epoch: number;
     reason: 'join' | 'leave';
     userId: string;
+  };
+  // A sender-key chain-key distribution addressed to this user. The
+  // encryptedChainKey is opaque to the server (1:1 ratchet ciphertext).
+  // Recipients that were offline recover the same payload via
+  // GET /v1/conversations/group/:id/key-distributions within the buffer TTL.
+  'group.key.distribution': {
+    conversationId: string;
+    epoch: number;
+    fromUserId: string;
+    fromDeviceId: string;
+    encryptedChainKey: string;
+    nonce: string;
+    version: string;
   };
 }

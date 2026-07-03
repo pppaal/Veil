@@ -6,6 +6,7 @@ import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { ManageMemberDto } from './dto/manage-member.dto';
+import { KeyDistributeDto } from './dto/key-distribute.dto';
 
 @ApiTags('groups')
 @ApiBearerAuth()
@@ -53,5 +54,19 @@ export class GroupsController {
   @Post(':id/leave')
   leaveGroup(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     return this.groupsService.leaveGroup(request.auth, id);
+  }
+
+  @Post(':id/key-distribute')
+  distributeKeys(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: KeyDistributeDto,
+  ) {
+    return this.groupsService.distributeKeys(request.auth, id, dto);
+  }
+
+  @Get(':id/key-distributions')
+  getKeyDistributions(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    return this.groupsService.getKeyDistributions(request.auth, id);
   }
 }

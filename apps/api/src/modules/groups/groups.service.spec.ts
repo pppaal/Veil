@@ -66,14 +66,28 @@ function createPrismaMock(): MockPrisma {
 }
 
 function createRealtimeGatewayMock() {
-  return { emitConversationMembers: jest.fn() };
+  return { emitConversationMembers: jest.fn(), emitToUser: jest.fn() };
+}
+
+// In-memory stand-in for the ephemeral (Redis) store; TTLs are not simulated
+// because these tests only assert what was stored and fetched back.
+function createEphemeralStoreMock() {
+  const entries = new Map<string, unknown>();
+  return {
+    entries,
+    setJson: jest.fn(async (key: string, value: unknown) => {
+      entries.set(key, value);
+    }),
+    getJson: jest.fn(async (key: string) => entries.get(key) ?? null),
+  };
 }
 
 function buildService() {
   const prisma = createPrismaMock();
   const realtime = createRealtimeGatewayMock();
-  const service = new GroupsService(prisma as never, realtime as never);
-  return { prisma, realtime, service };
+  const ephemeralStore = createEphemeralStoreMock();
+  const service = new GroupsService(prisma as never, realtime as never, ephemeralStore as never);
+  return { prisma, realtime, ephemeralStore, service };
 }
 
 const auth = (userId: string) => ({ userId, deviceId: 'device-1', handle: `h-${userId}` });
@@ -431,9 +445,13 @@ describe('GroupsService', () => {
         memberHandles: ['alice', 'bob'],
       } as never);
 
-      expect(result.members.find((m) => m.userId === 'user-1')?.role).toBe('owner');
+      expect(result.members.find((m: { userId: string }) => m.userId === 'user-1')?.role).toBe(
+        'owner',
+      );
       // user-1 must appear exactly once — not duplicated as a member
-      expect(result.members.filter((m) => m.userId === 'user-1')).toHaveLength(1);
+      expect(result.members.filter((m: { userId: string }) => m.userId === 'user-1')).toHaveLength(
+        1,
+      );
 
       const createCall = prisma.conversation.create.mock.calls[0][0];
       const membersCreated = createCall.data.members.create as Array<{
@@ -631,6 +649,166 @@ describe('GroupsService', () => {
         reason: 'leave',
         userId: 'member-1',
       });
+    });
+  });
+
+  describe('key distribution', () => {
+    const senderKeysGroup = (overrides?: Partial<Record<string, unknown>>) => ({
+      currentEpoch: 3,
+      groupUseSenderKeys: true,
+      members: [{ userId: 'alice' }, { userId: 'bob' }, { userId: 'carol' }],
+      ...overrides,
+    });
+
+    const distribution = (recipientUserId: string) => ({
+      recipientUserId,
+      encryptedChainKey: 'opaque-ct',
+      nonce: 'nonce-1',
+      version: 'veil-group-v1',
+    });
+
+    it('buffers each blob and fans out group.key.distribution to each recipient', async () => {
+      const { prisma, realtime, ephemeralStore, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(senderKeysGroup());
+
+      const result = await service.distributeKeys(auth('alice'), 'conv-1', {
+        epoch: 3,
+        distributions: [distribution('bob'), distribution('carol')],
+      } as never);
+
+      expect(result).toEqual({
+        conversationId: 'conv-1',
+        epoch: 3,
+        accepted: 2,
+        expiresInSeconds: 30 * 60,
+      });
+      // Buffered per (conversation, epoch, recipient, sender) with a TTL.
+      expect(ephemeralStore.setJson).toHaveBeenCalledTimes(2);
+      expect(ephemeralStore.setJson).toHaveBeenCalledWith(
+        'group:keydist:conv-1:3:bob:alice',
+        expect.objectContaining({
+          fromUserId: 'alice',
+          fromDeviceId: 'device-1',
+          encryptedChainKey: 'opaque-ct',
+        }),
+        30 * 60,
+      );
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'bob',
+        'group.key.distribution',
+        expect.objectContaining({ conversationId: 'conv-1', epoch: 3, fromUserId: 'alice' }),
+      );
+      expect(realtime.emitToUser).toHaveBeenCalledWith(
+        'carol',
+        'group.key.distribution',
+        expect.objectContaining({ fromDeviceId: 'device-1' }),
+      );
+    });
+
+    it('rejects a stale epoch without buffering anything', async () => {
+      const { prisma, ephemeralStore, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(senderKeysGroup({ currentEpoch: 4 }));
+
+      await expect(
+        service.distributeKeys(auth('alice'), 'conv-1', {
+          epoch: 3,
+          distributions: [distribution('bob')],
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'group_epoch_stale' } });
+      expect(ephemeralStore.setJson).not.toHaveBeenCalled();
+    });
+
+    it('rejects recipients outside the current membership, and self-distribution', async () => {
+      const { prisma, ephemeralStore, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(senderKeysGroup());
+
+      await expect(
+        service.distributeKeys(auth('alice'), 'conv-1', {
+          epoch: 3,
+          distributions: [distribution('bob'), distribution('mallory')],
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'key_distribution_invalid' } });
+      await expect(
+        service.distributeKeys(auth('alice'), 'conv-1', {
+          epoch: 3,
+          distributions: [distribution('alice')],
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'key_distribution_invalid' } });
+      // Validation is all-or-nothing: the valid 'bob' entry in the mixed batch
+      // must not have been buffered either.
+      expect(ephemeralStore.setJson).not.toHaveBeenCalled();
+    });
+
+    it('rejects callers who are not members without leaking group state', async () => {
+      const { prisma, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(senderKeysGroup());
+
+      await expect(
+        service.distributeKeys(auth('mallory'), 'conv-1', {
+          epoch: 3,
+          distributions: [distribution('bob')],
+        } as never),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejects groups that have not opted into Sender Keys', async () => {
+      const { prisma, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(
+        senderKeysGroup({ groupUseSenderKeys: false }),
+      );
+
+      await expect(
+        service.distributeKeys(auth('alice'), 'conv-1', {
+          epoch: 3,
+          distributions: [distribution('bob')],
+        } as never),
+      ).rejects.toMatchObject({ response: { code: 'group_sender_keys_disabled' } });
+    });
+
+    it('returns buffered blobs addressed to the caller for the current epoch only', async () => {
+      const { prisma, ephemeralStore, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(senderKeysGroup());
+      const stored = {
+        fromUserId: 'alice',
+        fromDeviceId: 'device-1',
+        encryptedChainKey: 'opaque-ct',
+        nonce: 'nonce-1',
+        version: 'veil-group-v1',
+        createdAt: '2026-07-03T00:00:00.000Z',
+      };
+      ephemeralStore.entries.set('group:keydist:conv-1:3:bob:alice', stored);
+      // Same sender but a previous epoch — must not be returned.
+      ephemeralStore.entries.set('group:keydist:conv-1:2:bob:carol', {
+        ...stored,
+        fromUserId: 'carol',
+      });
+
+      const result = await service.getKeyDistributions(auth('bob'), 'conv-1');
+
+      expect(result).toEqual({
+        conversationId: 'conv-1',
+        epoch: 3,
+        distributions: [stored],
+      });
+    });
+
+    it('is non-consuming: a re-fetch returns the same blobs', async () => {
+      const { prisma, ephemeralStore, service } = buildService();
+      prisma.conversation.findUnique.mockResolvedValue(senderKeysGroup());
+      ephemeralStore.entries.set('group:keydist:conv-1:3:bob:alice', {
+        fromUserId: 'alice',
+        fromDeviceId: 'device-1',
+        encryptedChainKey: 'opaque-ct',
+        nonce: 'nonce-1',
+        version: 'veil-group-v1',
+        createdAt: '2026-07-03T00:00:00.000Z',
+      });
+
+      const first = await service.getKeyDistributions(auth('bob'), 'conv-1');
+      const second = await service.getKeyDistributions(auth('bob'), 'conv-1');
+
+      expect(first.distributions).toHaveLength(1);
+      expect(second.distributions).toEqual(first.distributions);
     });
   });
 });

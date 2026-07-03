@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { ListDevicesResponse, RevokeDeviceResponse } from '@veil/contracts';
+import type {
+  ClearPushTokenResponse,
+  ListDevicesResponse,
+  RevokeDeviceResponse,
+  UpdatePushTokenResponse,
+} from '@veil/contracts';
 
 import { forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
@@ -67,7 +72,7 @@ export class DevicesService {
     userId: string,
     deviceId: string,
     pushToken: string,
-  ): Promise<{ deviceId: string; updatedAt: string }> {
+  ): Promise<UpdatePushTokenResponse> {
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
       select: { id: true, userId: true, isActive: true, revokedAt: true },
@@ -93,10 +98,7 @@ export class DevicesService {
     };
   }
 
-  async clearPushToken(
-    userId: string,
-    deviceId: string,
-  ): Promise<{ deviceId: string; clearedAt: string }> {
+  async clearPushToken(userId: string, deviceId: string): Promise<ClearPushTokenResponse> {
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
       select: { id: true, userId: true },

@@ -2,15 +2,15 @@ import { Body, Controller, Delete, Get, NotFoundException, Put, Req } from '@nes
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
+import type {
+  DeleteRecoveryBackupResponse,
+  RecoveryBackupResponse,
+  UpsertRecoveryBackupResponse,
+} from '@veil/contracts';
+
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { UpsertRecoveryBlobDto } from './dto/upsert-recovery-blob.dto';
 import { RecoveryService } from './recovery.service';
-
-interface RecoveryBlobResponse {
-  ciphertext: string;
-  format: string;
-  updatedAt: string;
-}
 
 // Authenticated account-recovery backup. Every route is user-scoped to the
 // caller — there is no way to address another user's backup. The server only
@@ -28,7 +28,7 @@ export class RecoveryController {
   async upsert(
     @Req() request: AuthenticatedRequest,
     @Body() dto: UpsertRecoveryBlobDto,
-  ): Promise<{ updatedAt: string }> {
+  ): Promise<UpsertRecoveryBackupResponse> {
     const { updatedAt } = await this.recoveryService.upsert(
       request.auth.userId,
       dto.ciphertext,
@@ -38,7 +38,7 @@ export class RecoveryController {
   }
 
   @Get()
-  async get(@Req() request: AuthenticatedRequest): Promise<RecoveryBlobResponse> {
+  async get(@Req() request: AuthenticatedRequest): Promise<RecoveryBackupResponse> {
     const blob = await this.recoveryService.get(request.auth.userId);
     if (!blob) {
       throw new NotFoundException('No recovery backup stored for this account.');
@@ -51,7 +51,7 @@ export class RecoveryController {
   }
 
   @Delete()
-  async remove(@Req() request: AuthenticatedRequest): Promise<{ deleted: boolean }> {
+  async remove(@Req() request: AuthenticatedRequest): Promise<DeleteRecoveryBackupResponse> {
     return this.recoveryService.remove(request.auth.userId);
   }
 }

@@ -50,7 +50,7 @@ App-Store-same-day는 **불가능**합니다. 이유는 단순합니다:
 
 - [ ] **handoff 번들의 production-blockers-report.json 재생성 결함 수정** — `scripts/audit-handoff-bundle.mjs`가 `artifacts/production-blockers-report.json`을 복사하지만 `beta:external:bundle` 체인이 `beta:production:blockers`를 호출하지 않아 stale/누락. root `package.json`의 `beta:external:bundle` 체인에 `pnpm beta:production:blockers`를 추가하거나 번들 스크립트 내에서 copy 전에 호출.
 
-- [ ] **mock-vs-real 암호 모순 제거** — `scripts/external-review-manifest.mjs`의 `explicitCaveats`가 "Mock crypto remains active." 등을 하드코딩하고 `docs/external-security-review-request-template.md`도 "crypto layer is still mock-backed"라고 함. 그러나 packet/master-checklist/threat-model/RFP/OTF는 실제 LibCryptoAdapter 통합을 명시. caveat을 "Production crypto adapter integrated but not yet externally audited"로 수정하고 superseded된 request-template를 폐기/교정 (`docs/audit-rfp-email-en.md`가 대체).
+- [x] **mock-vs-real 암호 모순 제거** (완료: manifest `explicitCaveats`는 "integrated but not yet externally audited"로 교정됐고 request-template도 "not mock-backed"를 명시) — `scripts/external-review-manifest.mjs`의 `explicitCaveats`가 "Mock crypto remains active." 등을 하드코딩하고 `docs/external-security-review-request-template.md`도 "crypto layer is still mock-backed"라고 함. 그러나 packet/master-checklist/threat-model/RFP/OTF는 실제 LibCryptoAdapter 통합을 명시. caveat을 "Production crypto adapter integrated but not yet externally audited"로 수정하고 superseded된 request-template를 폐기/교정 (`docs/audit-rfp-email-en.md`가 대체).
 
 - [ ] **(빌드 검증 — open egress CI 한정) Prisma client 생성 후 API 체인 실행** — `pnpm db:generate`(= `pnpm -C apps/api prisma:generate`)를 API 명령 **최초** 단계로 실행. 없으면 build/lint/unit/e2e 전부 TS2339로 실패. 이후 `pnpm build` → `pnpm lint` → `pnpm -C apps/api test` → `pnpm -C apps/api test:e2e`. (이 sandbox는 Prisma 엔진 CDN egress 차단으로 실패하지만, egress 열린 CI 러너에서는 통과.)
 

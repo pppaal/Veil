@@ -14,7 +14,7 @@ What VEIL is today:
 - strong private-beta architecture
 - strong privacy-first product philosophy
 - strong messaging reliability for private-beta scope
-- strong mobile security posture for a mock-crypto private beta
+- strong mobile security posture: real (unaudited) X25519 + AES-256-GCM + Ed25519 Double Ratchet crypto
 - strong documentation and CI/release discipline
 
 What VEIL is not yet:
@@ -116,7 +116,7 @@ Reasonable to ship as a disciplined private beta if:
 - deploy preflight passes for the target environment
 - runtime smoke passes against the target stack
 - manual QA is executed on real devices
-- release notes clearly state that crypto remains mock-backed
+- release notes clearly state that crypto is real but not yet externally audited
 
 ### Public production
 
@@ -124,7 +124,7 @@ Not ready.
 
 Production should remain blocked until:
 
-- audited crypto replaces the mock boundary
+- the external cryptographic audit completes (the real crypto adapter already shipped; the audit is the gate)
 - push delivery is enabled only after privacy review
 - real-device performance profiling is complete
 - external security review is complete

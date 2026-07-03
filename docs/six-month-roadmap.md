@@ -18,7 +18,7 @@ Last updated: 2026-04-07
 
 This gap exists mainly because of:
 
-- mock-backed crypto
+- real but unaudited crypto (production `LibCryptoAdapter` is active; external audit still pending)
 - real push-provider review still pending
 - real-device performance evidence still pending
 - external security review still pending
@@ -47,7 +47,7 @@ Goal: finish the transition from strong private beta to externally reviewable se
 
 ### Exit criteria
 
-- mock crypto replacement plan is implementation-ready
+- mock crypto replacement is complete — DONE (production `LibCryptoAdapter` shipped; external audit remains the open item)
 - push delivery path is review-ready
 - profiling evidence exists for large history, search, media, and reconnect
 - external review packet is complete
@@ -58,7 +58,7 @@ Goal: production-candidate hardening.
 
 ### Must finish
 
-- audited crypto integration behind the current adapter boundary
+- external audit of the real crypto adapter (the integration behind the current adapter boundary is DONE; the audit is the open item)
 - migration strategy for local session state
 - true provider-backed push delivery with privacy review sign-off
 - large-history performance fixes from real-device findings
@@ -74,7 +74,7 @@ Goal: production-candidate hardening.
 
 ### Exit criteria
 
-- real crypto is active instead of the mock adapter
+- real crypto is active instead of the mock adapter — DONE (`LibCryptoAdapter` shipped; the mock adapter is test-only)
 - external review findings are either fixed or formally accepted
 - production boot guard can be reevaluated
 

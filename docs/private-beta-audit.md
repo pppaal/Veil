@@ -12,7 +12,7 @@ VEIL is now positioned as a technically hardened private beta, not a demo shell.
 - ciphertext-like payloads only on the server
 - no plaintext message content in backend logs or push payloads
 
-The current codebase is suitable for private-beta engineering validation and external security review preparation, but it is not production-ready while the mock crypto boundary remains in place.
+The current codebase is suitable for private-beta engineering validation and external security review preparation. A production-grade crypto implementation is active (real X25519 + AES-256-GCM + Ed25519 Double Ratchet via `LibCryptoAdapter`), but the codebase is not production-ready while the external cryptographic audit remains pending.
 
 ## Critical gaps identified
 
@@ -65,17 +65,17 @@ Before this hardening pass, the highest-risk gaps were:
 
 These items still block true production release:
 
-1. Mock crypto is still active.
+1. The production crypto adapter (`LibCryptoAdapter`) is active but has not yet passed an external cryptographic audit.
 2. Push provider integration is still a seam only.
 3. Attachment blobs still preserve architecture but not audited cryptographic guarantees.
 4. Device transfer UX remains functional but not yet a polished production QR/device-pairing experience.
-5. Production boot remains intentionally blocked until audited crypto is integrated.
+5. Production boot remains intentionally blocked until the external crypto audit completes.
 6. Local message search is still bounded to trusted-device cache state, not a full encrypted archive index.
 
 ## Exact next steps
 
-1. Replace the mock mobile/shared crypto adapters with audited messaging/session primitives behind the current `CryptoEngine` boundary.
+1. Complete the external cryptographic audit of the shipped `LibCryptoAdapter` (the mock-to-real replacement behind the `CryptoEngine` boundary is already done; the mock adapter is test-only).
 2. Add cross-platform crypto interoperability tests and external security review artifacts.
 3. Wire real APNs/FCM providers behind the current metadata-only push seam.
 4. Prepare signed iOS/Android private-beta builds and execute the existing private-beta QA runbooks on real devices.
-5. Keep `VEIL_ENV=production` blocked until the audited crypto replacement is complete.
+5. Keep `VEIL_ENV=production` blocked until the external crypto audit is complete.

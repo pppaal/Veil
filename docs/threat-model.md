@@ -54,6 +54,6 @@
 - group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — server-side epoch bookkeeping and the opt-in flag have shipped (phases AB.1/AB.2), but the Sender-Key client crypto itself is still design-only (`group-sender-keys-design.md`)
 - the recovery backup's security reduces to the user's passphrase strength: the server holds the sealed ciphertext, so a weak passphrase is offline-brute-forceable by anyone who obtains the blob. The lost-device retrieval auth (who may fetch the ciphertext, and whether a recovery code gates it) is an unresolved design decision (`recovery-backup-design.md`)
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is design-only (`sealed-sender-design.md`)
-- attachment upload/download URLs are scaffolds, not hardened presigned-storage production code
+- the attachment presigned MinIO/S3 flow (server-side ticketing, strict 64-hex sha256 integrity validation, size caps, rate limits) is implemented; residual risk is that the object-storage deployment configuration (bucket policy, credential rotation) is environment-specific and the flow has not been externally pentested
 - mobile local database encryption-at-rest is prepared conceptually but not finalized
 - transport/session hardening still needs production infrastructure work

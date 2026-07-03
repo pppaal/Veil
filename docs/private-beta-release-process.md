@@ -12,7 +12,7 @@ This process is for a serious private-beta release candidate, not a demo build.
 
 - Local development uses [`.env.example`](.env.example).
 - Containerized alpha/private-beta rehearsal uses [`apps/api/.env.alpha.example`](apps/api/.env.alpha.example).
-- `VEIL_ENV=production` must stay blocked while the mock crypto seam remains in place.
+- `VEIL_ENV=production` must stay blocked while the external cryptographic audit remains pending (`VEIL_AUDITED_CRYPTO_ATTESTED` stays false until the audit passes).
 
 ## 3. Pre-release verification gate
 
@@ -83,7 +83,7 @@ Before any private-beta build is distributed:
 - Generate mobile code before packaging.
 - Produce signed build artifacts only from a clean tree.
 - Record the commit SHA, env file source, and smoke-test result alongside the build.
-- Keep release notes explicit that mock crypto is still in place.
+- Keep release notes explicit that the crypto implementation is real (X25519 + AES-256-GCM + Ed25519 Double Ratchet) but not yet externally audited.
 - Run `pnpm beta:release:evidence` and attach the generated JSON to the candidate build handoff.
 - Android package identity is `io.veil.mobile`. Release signing should come from
   [`apps/mobile/android/keystore.properties.example`](apps/mobile/android/keystore.properties.example),

@@ -16,7 +16,7 @@ Confirm:
 
 - target commit SHA
 - private beta posture statement
-- mock crypto warning is explicit
+- the "crypto is real but unaudited" warning is explicit
 - requested scope is written down
 
 ## Reviewer intake items

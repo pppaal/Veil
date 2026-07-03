@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { UserStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type {
@@ -15,6 +15,7 @@ import { conflict, notFound, unauthorized } from '../../common/errors/api-error'
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { MetricsService } from '../metrics/metrics.service';
 import { RegisterDto } from './dto/register.dto';
 import { ChallengeDto, VerifyDto } from './dto/challenge.dto';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from './device-auth-verifier';
@@ -52,7 +53,18 @@ export class AuthService {
     @Inject(DEVICE_AUTH_VERIFIER)
     private readonly deviceAuthVerifier: DeviceAuthVerifier,
     private readonly realtimeGateway: RealtimeGateway,
+    // Optional so the many positional-construction unit tests don't need the
+    // arg; NestJS still injects the @Global MetricsService in the real app.
+    @Optional() private readonly metrics?: MetricsService,
   ) {}
+
+  private countAuth(kind: 'register' | 'login' | 'refresh' | 'logout'): void {
+    try {
+      this.metrics?.authEventsTotal.inc({ kind });
+    } catch {
+      // best-effort telemetry
+    }
+  }
 
   async register(dto: RegisterDto): Promise<RegisterResponse> {
     const normalizedHandle = dto.handle.toLowerCase();
@@ -94,6 +106,8 @@ export class AuthService {
 
       return { user, device };
     });
+
+    this.countAuth('register');
 
     return {
       userId: created.user.id,
@@ -202,6 +216,8 @@ export class AuthService {
       data: { lastSeenAt: new Date() },
     });
 
+    this.countAuth('login');
+
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
@@ -252,6 +268,8 @@ export class AuthService {
       data: { lastSeenAt: new Date() },
     });
 
+    this.countAuth('refresh');
+
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
@@ -287,6 +305,8 @@ export class AuthService {
     // channel doesn't outlive the access token. The blacklist check above
     // also stops new sockets, but existing ones don't re-verify the JWT.
     this.realtimeGateway.disconnectDevice(authContext.deviceId);
+
+    this.countAuth('logout');
 
     return { ok: true };
   }

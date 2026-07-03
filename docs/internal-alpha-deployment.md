@@ -105,10 +105,10 @@ pnpm docker:alpha:down
 
 ## 6. Current limits
 
-- Mock crypto is still active.
-- Device auth now uses device-held signing, but the overall crypto stack is still internal-alpha only.
+- The production crypto adapter (real X25519 + AES-256-GCM + Ed25519 Double Ratchet) is active, but it has not been externally audited.
+- Device auth now uses device-held signing, but the overall crypto stack is unaudited and internal-alpha/private-beta only.
 - Local mobile cache is encrypted at rest for this alpha path, but it still depends on the current dev crypto boundary and app-lock posture.
-- Attachment storage still uses alpha placeholder blobs.
+- Attachment storage uses the presigned MinIO/S3 flow (ticketing, sha256 validation, size caps); the object-storage deployment configuration is alpha-grade, not production-hardened.
 - Push fallback is metadata-only and the real APNs/FCM provider seam is still not wired.
 - External endpoints must use TLS in the mobile runtime. Non-local plain HTTP or WS endpoints are rejected at app startup.
 - This deployment path is for internal alpha only.

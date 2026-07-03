@@ -7,7 +7,7 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
 - No plaintext message content in logs, alerts, traces, or push payloads
 - No secrets in request or error telemetry
 - No crash-reporting SDKs until event scrubbing and review are complete
-- No production claims while mock crypto remains active
+- No audited-security or production claims while the external cryptographic audit remains pending
 
 ## Backend logging rules
 
@@ -77,4 +77,4 @@ Policy checks in [policy-check.mjs](scripts/policy-check.mjs) currently enforce:
 
 - External log sinks and alert routing are not yet integrated in this repo.
 - Future tracing or crash tooling can regress privacy if added without policy updates.
-- Mock crypto remains active, so observability review is necessary but not sufficient for production release.
+- The production crypto adapter (`LibCryptoAdapter`) is active but not yet externally audited, so observability review is necessary but not sufficient for production release.

@@ -74,23 +74,25 @@ These assumptions remain explicit:
 - no password reset exists
 - transfer requires the old device
 - private keys and equivalent local device material stay on-device
-- mock crypto is still a placeholder seam and not a production security claim
-- persisted session bootstrap metadata is versioned, but it is still only a
-  migration-ready mock boundary and not real session cryptography
+- the production crypto adapter (`LibCryptoAdapter`, real X25519 + AES-256-GCM +
+  Ed25519 Double Ratchet) is active, but it is unaudited and not yet an audited
+  security claim
+- persisted session bootstrap metadata is versioned and now backs real session
+  cryptography, but that cryptography has not been externally audited
 
 ## Remaining risks
 
-1. Mock crypto is still active and blocks production release.
+1. The crypto implementation is real but unaudited; the pending external cryptographic audit still blocks production release.
 2. Crash reporting is intentionally absent; if added later, it requires privacy review.
 3. Push-provider integrations are still seams and need separate privacy review.
 4. The local encrypted cache is private-beta hardening, not an audited secure mobile database design.
 5. Real iOS/Android signing and store-distribution hardening remain release-engineering work outside this code pass.
 6. Local message search is intentionally cache-backed and size-capped on-device, not a full encrypted archive engine.
-7. Session bootstrap persistence is migration-ready, but real audited
-   per-peer session state and migration logic are still future work.
+7. Session bootstrap persistence and real per-peer session state are in
+   place, but external audit of that session cryptography is still future work.
 
 ## Release recommendation
 
-Recommendation: `Private beta ready with explicit non-production cryptography caveat`.
+Recommendation: `Private beta ready with explicit unaudited-cryptography caveat`.
 
-Do not remove the production boot guard or claim production cryptographic security until the mock crypto replacement plan is complete.
+Do not claim audited security, and do not remove the production boot guard or unblock production boot, until the external cryptographic audit completes.

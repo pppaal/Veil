@@ -258,7 +258,7 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 - [Crypto Interoperability Fixtures](docs/crypto-interoperability-fixtures.md)
 - [Audited Crypto Adapter Execution Plan](docs/audited-crypto-adapter-execution.md)
 - [Audited Crypto Library Decision](docs/audited-crypto-library-decision.md)
-- [Mock Crypto Replacement Plan](docs/mock-crypto-replacement.md)
+- [Mock Crypto Replacement Status](docs/mock-crypto-replacement.md) — replacement complete; mock adapter is test-only
 
 ### Deploy runbooks
 - [MVP Demo Runbook](docs/mvp-demo-runbook.md)

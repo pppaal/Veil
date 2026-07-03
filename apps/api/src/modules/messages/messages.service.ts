@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
+  AddReactionResponse,
   ConversationMessageSummary,
   DeleteLocalMessageResponse,
   MarkMessageReadResponse,
+  RemoveReactionResponse,
   SendMessageResponse,
 } from '@veil/contracts';
 import type { EncryptedAttachmentReference } from '@veil/shared';
@@ -573,7 +575,11 @@ export class MessagesService {
     return { messageId, deletedAt: deletedAt.toISOString() };
   }
 
-  async addReaction(auth: { userId: string }, messageId: string, emoji: string) {
+  async addReaction(
+    auth: { userId: string },
+    messageId: string,
+    emoji: string,
+  ): Promise<AddReactionResponse> {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: {
@@ -610,7 +616,10 @@ export class MessagesService {
     return { reactionId: reaction.id, messageId, emoji };
   }
 
-  async removeReaction(auth: { userId: string }, messageId: string) {
+  async removeReaction(
+    auth: { userId: string },
+    messageId: string,
+  ): Promise<RemoveReactionResponse> {
     const message = await this.prisma.message.findUnique({
       where: { id: messageId },
       include: {

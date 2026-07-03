@@ -201,6 +201,12 @@ export interface SendMessageRequest {
   clientMessageId: string;
   envelope: CryptoEnvelope;
   replyToMessageId?: string | null;
+  // Group Sender Keys (phase AB.2): the membership generation the sender
+  // encrypted under. Required and validated against the conversation's
+  // current epoch only when the group has opted into Sender Keys
+  // (group_epoch_required / group_epoch_stale); ignored otherwise, so legacy
+  // clients and direct conversations are unaffected.
+  groupEpoch?: number;
 }
 
 export interface SendMessageResponse {
@@ -226,6 +232,57 @@ export interface DeleteMessageResponse {
 export interface MarkMessageReadResponse {
   messageId: string;
   readAt: string;
+}
+
+export interface AddReactionRequest {
+  emoji: string;
+}
+
+export interface AddReactionResponse {
+  reactionId: string;
+  messageId: string;
+  emoji: string;
+}
+
+export interface RemoveReactionResponse {
+  messageId: string;
+  acknowledged: boolean;
+}
+
+export interface UpdatePushTokenRequest {
+  pushToken: string;
+}
+
+export interface UpdatePushTokenResponse {
+  deviceId: string;
+  updatedAt: string;
+}
+
+export interface ClearPushTokenResponse {
+  deviceId: string;
+  clearedAt: string;
+}
+
+// Account-recovery backup. The ciphertext is the opaque passphrase-sealed
+// client envelope — the server stores and returns it but can never decrypt it.
+export interface UpsertRecoveryBackupRequest {
+  ciphertext: string;
+  // Envelope format marker, e.g. "veilbak:v1".
+  format?: string;
+}
+
+export interface UpsertRecoveryBackupResponse {
+  updatedAt: string;
+}
+
+export interface RecoveryBackupResponse {
+  ciphertext: string;
+  format: string;
+  updatedAt: string;
+}
+
+export interface DeleteRecoveryBackupResponse {
+  deleted: boolean;
 }
 
 export interface DeleteLocalMessageResponse {

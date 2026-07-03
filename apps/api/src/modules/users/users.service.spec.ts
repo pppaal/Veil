@@ -93,6 +93,53 @@ describe('UsersService', () => {
       expect(result.deviceBundles.map((b) => b.deviceId)).toEqual(['device-2', 'device-1']);
     });
 
+    it('reports unconsumed one-time prekey counts per device without consuming any', async () => {
+      const prisma = new FakePrismaService();
+      prisma.users.push({ ...baseUser, activeDeviceId: 'device-1' });
+      prisma.devices.push(
+        trustedDevice({ id: 'device-1', trustedAt: new Date('2026-04-10T00:00:00.000Z') }),
+        trustedDevice({ id: 'device-2', trustedAt: new Date('2026-01-10T00:00:00.000Z') }),
+      );
+      prisma.oneTimePrekeys.push(
+        // device-1: two live, one consumed. device-2: none at all.
+        {
+          id: 'p1',
+          deviceId: 'device-1',
+          keyId: 1,
+          publicKey: 'otpk-1',
+          consumedAt: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'p2',
+          deviceId: 'device-1',
+          keyId: 2,
+          publicKey: 'otpk-2',
+          consumedAt: null,
+          createdAt: new Date(),
+        },
+        {
+          id: 'p3',
+          deviceId: 'device-1',
+          keyId: 3,
+          publicKey: 'otpk-3',
+          consumedAt: new Date(),
+          createdAt: new Date(),
+        },
+      );
+      const service = new UsersService(prisma as never);
+
+      const result = await service.getKeyBundle('icarus');
+
+      expect(result.bundle.oneTimePrekeyAvailable).toBe(2);
+      expect(result.deviceBundles.map((b) => [b.deviceId, b.oneTimePrekeyAvailable])).toEqual([
+        ['device-1', 2],
+        ['device-2', 0],
+      ]);
+      // Reading the bundle is advisory: nothing was marked consumed.
+      expect(prisma.oneTimePrekeys.filter((p) => p.consumedAt === null)).toHaveLength(2);
+    });
+
     it('falls back to the most recently trusted device when activeDeviceId is null', async () => {
       const prisma = new FakePrismaService();
       prisma.users.push({ ...baseUser, activeDeviceId: null });

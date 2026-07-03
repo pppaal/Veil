@@ -6,6 +6,7 @@ import type {
 } from '@veil/contracts';
 
 import { forbidden, notFound } from '../../common/errors/api-error';
+import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
 
 // How many times the atomic claim retries when it loses the race for a
@@ -121,8 +122,7 @@ export class PrekeysService {
       select: { id: true },
     });
 
-    const resolved =
-      trustedDevices.find((device) => device.id === user.activeDeviceId) ?? trustedDevices[0];
+    const resolved = pickActiveDevice(trustedDevices, user.activeDeviceId);
     if (!resolved) {
       throw notFound('active_device_not_found', 'Active device bundle not found');
     }

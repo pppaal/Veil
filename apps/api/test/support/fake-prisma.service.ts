@@ -121,6 +121,15 @@ type ReactionRecord = {
   createdAt: Date;
 };
 
+type OneTimePrekeyRecord = {
+  id: string;
+  deviceId: string;
+  keyId: number;
+  publicKey: string;
+  consumedAt: Date | null;
+  createdAt: Date;
+};
+
 type DeviceTransferSessionRecord = {
   id: string;
   userId: string;
@@ -143,6 +152,7 @@ export class FakePrismaService {
   messageReceipts: MessageReceiptRecord[] = [];
   deviceConversationStates: DeviceConversationStateRecord[] = [];
   transferSessions: DeviceTransferSessionRecord[] = [];
+  oneTimePrekeys: OneTimePrekeyRecord[] = [];
   reactions: ReactionRecord[] = [];
   userContacts: UserContactRecord[] = [];
   userProfiles: UserProfileRecord[] = [];
@@ -238,6 +248,23 @@ export class FakePrismaService {
   userProfile = {
     findUnique: async (_args: any) => undefined as any,
     upsert: async (_args: any) => undefined as any,
+  };
+
+  oneTimePrekey = {
+    // Only the groupBy shape getKeyBundle uses: count of unconsumed prekeys
+    // per device, restricted to a deviceId in-list.
+    groupBy: async ({ where }: any) => {
+      const counts = new Map<string, number>();
+      for (const item of this.oneTimePrekeys) {
+        if (where?.deviceId?.in && !where.deviceId.in.includes(item.deviceId)) continue;
+        if (where?.consumedAt === null && item.consumedAt !== null) continue;
+        counts.set(item.deviceId, (counts.get(item.deviceId) ?? 0) + 1);
+      }
+      return [...counts.entries()].map(([deviceId, total]) => ({
+        deviceId,
+        _count: { _all: total },
+      }));
+    },
   };
 
   deviceTransferSession = {

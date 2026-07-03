@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { KeyBundleResponse, UserProfileResponse } from '@veil/contracts';
 
 import { notFound } from '../../common/errors/api-error';
+import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
 
 @Injectable()
@@ -54,12 +55,27 @@ export class UsersService {
       orderBy: [{ trustedAt: 'desc' }, { lastSeenAt: 'desc' }],
     });
 
-    const resolvedDevice =
-      trustedDevices.find((device) => device.id === user.activeDeviceId) ?? trustedDevices[0];
+    const resolvedDevice = pickActiveDevice(trustedDevices, user.activeDeviceId);
 
     if (!resolvedDevice || !resolvedDevice.isActive || resolvedDevice.revokedAt) {
       throw notFound('active_device_not_found', 'Active device bundle not found');
     }
+
+    // Advisory per-device count of unconsumed one-time prekeys so an X3DH
+    // initiator knows whether a claim will succeed before making it. Reading
+    // the bundle never consumes anything — claiming stays on
+    // POST /v1/prekeys/claim/:handle.
+    const unconsumed = await this.prisma.oneTimePrekey.groupBy({
+      by: ['deviceId'],
+      where: {
+        deviceId: { in: trustedDevices.map((device) => device.id) },
+        consumedAt: null,
+      },
+      _count: { _all: true },
+    });
+    const availableByDeviceId = new Map<string, number>(
+      unconsumed.map((row) => [row.deviceId, row._count._all] as [string, number]),
+    );
 
     return {
       user: {
@@ -79,6 +95,7 @@ export class UsersService {
         platform: resolvedDevice.platform,
         isActive: resolvedDevice.isActive,
         updatedAt: user.updatedAt.toISOString(),
+        oneTimePrekeyAvailable: availableByDeviceId.get(resolvedDevice.id) ?? 0,
       },
       deviceBundles: trustedDevices.map((device) => ({
         userId: user.id,
@@ -89,6 +106,7 @@ export class UsersService {
         platform: device.platform,
         isActive: device.isActive,
         updatedAt: user.updatedAt.toISOString(),
+        oneTimePrekeyAvailable: availableByDeviceId.get(device.id) ?? 0,
       })),
     };
   }

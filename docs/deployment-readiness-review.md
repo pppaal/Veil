@@ -94,30 +94,35 @@ Nothing in this review changes that recommendation.
 
 ## Non-blocking items worth cleaning up before launch
 
-1. **Stale counts in `README.md`.** It states "132 unit + 7 e2e tests" and "10
-   Prisma migrations"; the tree now has **276 API unit tests** and **16
-   migrations**. Harmless undercount, but the README is the audit-handoff cover
-   sheet, so it should track reality. _(Low effort, doc-only.)_
+> Items 1–4 were **addressed in this branch**; 5–6 remain as tracked follow-ups.
 
-2. **`/v1/health/ready` requires auth.** The deliberate move to gate deployment
-   posture behind a bearer token is reasonable, but note that only the plain
-   `/v1/health` (public) is usable by container/load-balancer probes — the
-   Dockerfile healthcheck already uses the right one. Also, the readiness field
-   `productionBootBlocked: !isProduction` reads backwards (it is `true` when the
-   process is _not_ in production); consider renaming for operator clarity.
+1. **Stale counts in `README.md`.** ✅ _Fixed._ It stated "132 unit + 7 e2e
+   tests / 10 migrations / 19 modules"; the tree actually has **276 API unit
+   tests, 8 e2e, 16 migrations, 23 modules** (plus 32 mobile test files and 47
+   web-demo Vitest tests). The README is the audit-handoff cover sheet, so it
+   should track reality — counts corrected.
 
-3. **Caddy starts on `api: service_started`, not `service_healthy`.** The API
-   has a container healthcheck, but Caddy only waits for the container to start,
-   so it can briefly route to an API that is still running migrations. Caddy's
-   ret+restart smooths this over; tightening the `depends_on` condition would
-   remove the startup 502 window.
+2. **`/v1/health/ready` field naming.** ✅ _Fixed._ The auth-gating (bearer
+   token) is deliberate and left as-is — only the plain `/v1/health` (public) is
+   used by container/load-balancer probes, and the Dockerfile healthcheck
+   already uses the right one. The confusingly-named readiness field
+   `productionBootBlocked: !isProduction` (which read `true` when _not_ in
+   production) was renamed to `productionMode: isProduction`.
 
-4. **Backups are a runbook snippet, not automation.** The daily `pg_dump` cron
-   lives in the tunnel runbook as copy-paste, not in the compose stack. The
-   "no recovery" philosophy is about _message plaintext_; the server's Postgres
-   (accounts, device graph, conversation metadata) still needs durable backups
-   for service continuity. Consider promoting this to a first-class,
-   documented-and-tested job before launch.
+3. **Caddy started on `api: service_started`, not `service_healthy`.** ✅
+   _Fixed._ Caddy could briefly route to an API still running
+   `prisma migrate deploy`, returning 502s. The `depends_on` condition is now
+   `service_healthy`, which waits on the API image's `HEALTHCHECK`.
+
+4. **Backups were a runbook snippet, not automation.** ✅ _Fixed._ Added a
+   first-class `postgres-backup` service to `docker-compose.prod.yml` — same
+   `postgres:16-alpine` image as the DB (version-matched, no new supply-chain
+   image), daily `pg_dump -F c` to the `veil_prod_backups` volume with
+   `BACKUP_RETENTION_DAYS` pruning. Offsite copy (rclone → R2) remains a
+   documented operator step, since an on-box volume alone doesn't survive host
+   loss. The "no recovery" philosophy is about _message plaintext_; server
+   Postgres (accounts, device graph, conversation metadata) still needs durable
+   backups for continuity.
 
 5. **No image publishing / single API replica.** CI builds the API image but
    doesn't push it to a registry; deploys build on the host via compose, and the

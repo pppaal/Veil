@@ -143,25 +143,37 @@ ssh -L 3001:localhost:3001 veil@VPS_IP
 > Alertmanager 와 페이저는 별도 운영자 결정. 무료 Pushover ($5/월) +
 > Pushcut, 또는 Discord/Slack 웹훅이 1인 베타 운영에 충분합니다.
 
-## 6. DB 백업 cron
+## 6. DB 백업
 
+프로덕션 스택(`docker-compose.prod.yml`)에는 `postgres-backup` 서비스가
+포함되어 있어 **호스트 cron 없이도 자동으로 매일 덤프**를 남깁니다. DB 와
+동일한 `postgres:16-alpine` 이미지를 사용해 `pg_dump -F c` 로 덤프하고,
+`BACKUP_RETENTION_DAYS`(기본 14일)보다 오래된 파일은 정리합니다. 덤프는
+`veil_prod_backups` 볼륨에 저장됩니다.
+
+주기·보관 조정은 `.env.prod` 에서:
 ```bash
-mkdir -p $HOME/veil-backups
-crontab -e
-# 매일 03:30, 14일 보관:
-30 3 * * * docker exec veil-postgres-1 pg_dump -U veil -d veil -F c \
-  > $HOME/veil-backups/veil-$(date +\%Y\%m\%d).dump 2>>$HOME/veil-backups/cron.log && \
-  find $HOME/veil-backups -name 'veil-*.dump' -mtime +14 -delete
+BACKUP_RETENTION_DAYS=14      # 보관 일수
+BACKUP_INTERVAL_SECONDS=86400 # 덤프 간격(초). 기본 24h
 ```
 
-복구 시뮬 (월 1회 권장):
+백업 목록 / 로그 확인:
 ```bash
-docker exec -i veil-postgres-1 pg_restore -U veil -d veil --clean --if-exists \
-  < $HOME/veil-backups/veil-YYYYMMDD.dump
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs postgres-backup | tail
+docker run --rm -v veil_prod_backups:/backups alpine ls -lh /backups
 ```
 
-오프사이트: `rclone sync $HOME/veil-backups r2:veil-prod-backups/` (Cloudflare R2,
-$0.015/GB·월, 베타 백업 100GB = 월 $1.50)
+복구 시뮬 (월 1회 권장) — 볼륨의 덤프를 Postgres 로 복원:
+```bash
+docker run --rm -v veil_prod_backups:/backups alpine ls /backups   # 파일명 확인
+docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+  sh -c 'pg_restore -U veil -d veil --clean --if-exists' < ./veil-YYYYMMDD-HHMMSS.dump
+```
+
+오프사이트(권장): 볼륨을 호스트 경로로 마운트했거나 `docker cp` 로 꺼낸 뒤
+`rclone sync ./veil-backups r2:veil-prod-backups/` (Cloudflare R2,
+$0.015/GB·월, 베타 백업 100GB = 월 $1.50). 오프사이트 복사는 여전히 운영자
+단계입니다 — 온박스 볼륨만으로는 호스트 유실에 대비할 수 없습니다.
 
 ## 7. 헬스체크
 

@@ -204,6 +204,52 @@ Bridge integration is not acceptable without:
 - product logic outside the adapter boundary must change materially
 - platform implementations drift in incompatible ways
 
+## Channel method contract
+
+Concrete, implementation-ready mapping from the Dart `CryptoAdapter` boundary
+(`apps/mobile/lib/src/core/crypto/crypto_engine.dart`) to a single
+`MethodChannel('io.veil.crypto/bridge')`. All payloads are JSON-serializable
+maps; binary fields are base64url (no padding), matching the existing
+`LibCryptoAdapter` wire conventions. Every method returns a typed error on
+failure — never a plaintext fallback (see "Failure behavior").
+
+| Channel method | Request fields | Response fields | Maps to (Dart) |
+|---|---|---|---|
+| `generateDeviceIdentity` | `deviceId` | `identityPublicKey`, `identityPrivateKeyRef`, `signedPrekeyBundle` | `DeviceIdentityProvider.generateDeviceIdentity` |
+| `extractIdentityPublicKey` | `identityPrivateKeyRef` | `identityPublicKey` | `DeviceIdentityProvider.extractIdentityPublicKeyFromPrivateRef` |
+| `generateAuthKeyMaterial` | `deviceId` | `publicKey`, `privateKey` | `DeviceAuthChallengeSigner` key gen |
+| `signChallenge` | `privateKey`, `challenge` | `signature` | `DeviceAuthChallengeSigner.signChallenge` |
+| `bootstrapSession` | `SessionBootstrapRequest` fields | `SessionBootstrapMaterial` fields | `ConversationSessionBootstrapper.bootstrapSession` |
+| `bootstrapSessionFromInbound` | `InboundSessionBootstrapRequest` fields | `SessionBootstrapMaterial` fields | `…bootstrapSessionFromInbound` |
+| `encryptMessage` | `conversationId`, `kind`, `plaintext`(b64) | `CryptoEnvelope` (version, ciphertext, header) | `MessageCryptoEngine.encryptMessage` |
+| `decryptMessage` | `CryptoEnvelope` fields | `kind`, `plaintext`(b64), `senderDeviceId` | `MessageCryptoEngine.decryptMessage` |
+| `encryptAttachmentKey` | `conversationId`, `attachmentKey`(b64) | `wrappedKey`, `algoHint` | `MessageCryptoEngine.encryptAttachment` (key-wrap) |
+| `decryptAttachmentKey` | `conversationId`, `wrappedKey`(b64) | `attachmentKey`(b64) | `MessageCryptoEngine.decryptAttachment` (key-unwrap) |
+| `hasSession` | `conversationId` | `present` (bool) | `ConversationSessionBootstrapper.hasSessionFor` |
+| `wipeCryptoState` | `scope` (`all` \| `conversationId`) | `wiped` (bool) | revoke / logout / device-wipe |
+
+Cross-cutting contract rules:
+
+- **Opaque refs only.** `identityPrivateKeyRef` and any per-peer session locator
+  are opaque handles the native side resolves — Dart never receives raw
+  long-term private keys or serialized per-peer session secrets.
+- **Metadata stays in Dart.** `SessionBootstrapMaterial` carries only
+  migration-safe fields already modeled today (`sessionSchemaVersion`,
+  `localDeviceId`, `remoteDeviceId`, `remoteIdentityFingerprint`,
+  `sessionEnvelopeVersion`, `requiresLocalPersistence`). Native owns the
+  session bytes.
+- **Typed errors.** Failures return a channel error with a stable `code`
+  (`sessionNotFound`, `identityMismatch`, `decryptFailed`, `keyWipeRequired`,
+  `bridgeUnavailable`) so the Dart adapter maps them to safe UI states without
+  surfacing library internals. `identityMismatch` forces re-bootstrap.
+- **No debug surface.** No method returns plaintext of another conversation, no
+  admin/inspection method exists, and bridge inputs/outputs are never logged.
+
+This table is the acceptance target for Gate 2 (bridge architecture) in
+`audited-crypto-adapter-execution.md`: an implementation is contract-complete
+when every row is backed by Android (Kotlin) + iOS (Swift) handlers with the
+integration tests listed under "Test requirements".
+
 ## Related docs
 
 - [audited-crypto-library-decision.md](docs/audited-crypto-library-decision.md)

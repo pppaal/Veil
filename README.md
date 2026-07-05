@@ -29,9 +29,9 @@ console logging in mobile.
 
 | Path | Description |
 |---|---|
-| `apps/api/` | NestJS backend — 19 modules, 132 unit + 7 e2e tests, 10 Prisma migrations |
-| `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`), 27 test files |
-| `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. 40 Vitest unit + 4 Playwright e2e specs |
+| `apps/api/` | NestJS backend — 23 modules, 276 unit + 8 e2e tests, 16 Prisma migrations |
+| `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`), 32 test files |
+| `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. 47 Vitest unit + 4 Playwright e2e specs |
 | `packages/contracts/` | Typed API + realtime contracts (single source of truth) |
 | `packages/shared/` | Shared envelope versions and protocol constants |
 | `infra/caddy/` | Production TLS reverse proxy |
@@ -92,10 +92,11 @@ them will fail CI:
   [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md).
 
 ### Backend (`apps/api`)
-- 19 modules: `auth`, `users`, `devices`, `conversations`, `messages`,
+- 23 modules: `auth`, `users`, `devices`, `conversations`, `messages`,
   `attachments`, `realtime`, `device-transfer`, `safety`, `metrics`,
   `push`, `calls`, `stories`, `groups`, `channels`, `contacts`,
-  `profile`, `account`, `health`
+  `profile`, `account`, `prekeys`, `recovery`, `retention`, `secret`,
+  `health`
 - JWT with 1-hour TTL, atomic refresh (Redis `GETDEL`), JTI blacklist,
   WS force-disconnect on logout
 - Custom `CfThrottlerGuard` prefers `cf-connecting-ip`, falls back to

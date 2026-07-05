@@ -139,7 +139,52 @@ services:
       - veil_prod_caddy_data:/data
       - veil_prod_caddy_config:/config
     depends_on:
-      api: { condition: service_started }
+      # Wait for the API container's HEALTHCHECK (defined in apps/api/Dockerfile)
+      # to pass, not just for the container to start. Otherwise Caddy can begin
+      # routing while the API is still running `prisma migrate deploy`, returning
+      # 502s during the startup window.
+      api: { condition: service_healthy }
+
+  # First-class daily Postgres backup. Replaces the copy-paste host cron that
+  # used to live only in docs/vps-deploy-runbook.md. Uses the same
+  # postgres:16-alpine image as the database so pg_dump matches the server
+  # version exactly and no additional (unpinned) image enters the supply chain.
+  # Dumps to a named volume in `-F c` custom format; prunes dumps older than
+  # BACKUP_RETENTION_DAYS. Offsite copy (rclone → R2) is still an operator step
+  # documented in the runbook.
+  postgres-backup:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-veil}
+      POSTGRES_DB: ${POSTGRES_DB:-veil}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    command:
+      - sh
+      - -c
+      - |
+        echo "veil-backup: starting (retention=$${BACKUP_RETENTION_DAYS}d, interval=$${BACKUP_INTERVAL_SECONDS}s)";
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M%S);
+          out="/backups/veil-$${ts}.dump";
+          if pg_dump -h postgres -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -F c -f "$${out}"; then
+            echo "veil-backup: wrote $${out}";
+          else
+            echo "veil-backup: FAILED at $${ts}" >&2;
+            rm -f "$${out}";
+          fi;
+          find /backups -name 'veil-*.dump' -mtime +$${BACKUP_RETENTION_DAYS} -delete;
+          sleep "$${BACKUP_INTERVAL_SECONDS}";
+        done
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256M }
+    depends_on:
+      postgres: { condition: service_healthy }
+    volumes:
+      - veil_prod_backups:/backups
 
   prometheus:
     image: prom/prometheus:v2.55.1
@@ -185,6 +230,7 @@ services:
 
 volumes:
   veil_prod_postgres:
+  veil_prod_backups:
   veil_prod_redis:
   veil_prod_minio:
   veil_prod_caddy_data:

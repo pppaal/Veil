@@ -6,10 +6,12 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.veil.mobile.crypto.VeilCryptoBridge
 import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val channelName = "veil/platform_security"
+    private val cryptoChannelName = "io.veil.crypto/bridge"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -18,6 +20,13 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // Native libsignal crypto bridge (WIP). Only exercised when the Dart
+        // side is built with --dart-define=VEIL_CRYPTO_ADAPTER=libsignal;
+        // otherwise this handler is registered but never called.
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            cryptoChannelName,
+        ).setMethodCallHandler(VeilCryptoBridge(applicationContext))
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelName,

@@ -82,8 +82,7 @@ flutter {
 
 dependencies {
     // Native audited crypto core for the libsignal bridge (VeilCryptoBridge).
-    // Commented until the bridge's libsignal calls are implemented — the
-    // scaffold compiles without it. Uncomment and pin an exact version (record
-    // it in docs/reproducible-builds.md) when wiring the real crypto ops.
-    // implementation("org.signal:libsignal-android:<PINNED_VERSION>")
+    // Pin an exact version and record it in docs/reproducible-builds.md.
+    // 0.86.5 is the latest at time of writing; confirm/bump deliberately.
+    implementation("org.signal:libsignal-android:0.86.5")
 }

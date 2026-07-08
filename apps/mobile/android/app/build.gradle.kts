@@ -79,3 +79,11 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Native audited crypto core for the libsignal bridge (VeilCryptoBridge).
+    // Commented until the bridge's libsignal calls are implemented — the
+    // scaffold compiles without it. Uncomment and pin an exact version (record
+    // it in docs/reproducible-builds.md) when wiring the real crypto ops.
+    // implementation("org.signal:libsignal-android:<PINNED_VERSION>")
+}

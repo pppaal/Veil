@@ -117,8 +117,11 @@ credentials are required to reach full functionality.
 
 - Support URL: `https://…` (required)
 - Marketing URL: `https://…` (optional)
-- Privacy Policy URL: `https://…` (required — must state no-plaintext-on-server,
-  metadata retention windows, no third-party sharing)
+- Privacy Policy URL: **served by `site/index.html`** (the VEIL 개인정보 처리방침 /
+  Privacy Policy page), deployed as a static site via `vercel.json`. Use the
+  Vercel production URL (or a custom domain pointed at it). The page already
+  covers no-plaintext-on-server, metadata retention windows, and no third-party
+  sharing — required by App Store review.
 
 ## Screenshots checklist
 

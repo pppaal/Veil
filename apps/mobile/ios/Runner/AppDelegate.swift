@@ -22,6 +22,10 @@ import UIKit
     let registrar = registry.registrar(forPlugin: "PlatformSecurityPlugin")
     PlatformSecurityPlugin.register(with: registrar)
     PlatformSecurityEventBus.shared.register(with: registrar)
+    // libsignal bridge (active only when Dart is built with
+    // --dart-define=VEIL_CRYPTO_ADAPTER=libsignal). Answers
+    // `bridgeUnavailable` until the LibSignalClient package is linked.
+    VeilCryptoBridgePlugin.register(with: registry.registrar(forPlugin: "VeilCryptoBridgePlugin"))
   }
 }
 

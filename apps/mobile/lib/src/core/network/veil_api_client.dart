@@ -221,6 +221,32 @@ class VeilApiClient {
     return _delete('/conversations/$conversationId/members/$userId', accessToken: accessToken);
   }
 
+  // Group Sender Keys relay (opaque to the server; see
+  // docs/group-sender-keys-design.md → "Protocol additions").
+
+  Future<Map<String, dynamic>> distributeGroupKeys(
+    String accessToken,
+    String conversationId, {
+    required int epoch,
+    required List<Map<String, dynamic>> distributions,
+  }) async {
+    return _post(
+      '/conversations/group/$conversationId/key-distribute',
+      {'epoch': epoch, 'distributions': distributions},
+      accessToken: accessToken,
+    );
+  }
+
+  Future<Map<String, dynamic>> getGroupKeyDistributions(
+    String accessToken,
+    String conversationId,
+  ) async {
+    return _get(
+      '/conversations/group/$conversationId/key-distributions',
+      accessToken: accessToken,
+    );
+  }
+
   // Profile and contacts endpoints
 
   Future<Map<String, dynamic>> getProfile(String accessToken) async {

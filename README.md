@@ -86,8 +86,16 @@ them will fail CI:
 - Web demo: simpler per-message ECDH (envelope v2). Unified envelope
   v3 spec written ([`docs/envelope-v3-unified-spec.md`](docs/envelope-v3-unified-spec.md))
   but implementation deferred to post-audit.
-- Group chats use a shared conversation key today. Sender Keys design
-  in [`docs/group-sender-keys-design.md`](docs/group-sender-keys-design.md).
+- Group chats: new mobile groups use **Sender Keys** (per-member HKDF
+  chains, per-epoch Ed25519 authorship, full re-key on every join/leave;
+  `veil-group-v1`). Groups created by older clients stay on the legacy
+  shared conversation key. Design + implementation notes in
+  [`docs/group-sender-keys-design.md`](docs/group-sender-keys-design.md).
+- **libsignal bridge** (`--dart-define=VEIL_CRYPTO_ADAPTER=libsignal`):
+  Dart adapter + Kotlin/Swift handlers are in the tree but the native side
+  has not been compiled on a real toolchain yet; default builds still use
+  the Dart ratchet. See
+  [`docs/libsignal-migration-implementation.md`](docs/libsignal-migration-implementation.md).
 - Sealed Sender (metadata reduction) design in
   [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md).
 

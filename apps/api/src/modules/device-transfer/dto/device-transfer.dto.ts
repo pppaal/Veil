@@ -1,3 +1,4 @@
+import { MAX_SIGNED_PREKEY_BUNDLE_LENGTH } from '@veil/shared';
 import { ApiProperty } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
 import { IsEnum, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
@@ -52,7 +53,9 @@ export class DeviceTransferClaimDto implements DeviceTransferClaimRequest {
 
   @ApiProperty()
   @IsString()
-  @MaxLength(2048)
+  // libsignal bundles carry a Kyber-1024 prekey (1568 raw bytes) alongside the
+  // signed prekey, so they exceed the 2 KiB that fit the X25519-only bundle.
+  @MaxLength(MAX_SIGNED_PREKEY_BUNDLE_LENGTH)
   signedPrekeyBundle!: string;
 
   @ApiProperty()

@@ -134,6 +134,12 @@ export interface ConversationSummary {
   // Default TTL (seconds) applied to new messages in this conversation.
   // null means disappearing messages are disabled.
   disappearingTimerSeconds?: number | null;
+  // Group Sender Keys (phase AB.3). Present only for `type === 'group'`.
+  // `useSenderKeys` tells clients whether sends must carry `groupEpoch` and
+  // use the `veil-group-v1` envelope; `currentEpoch` is the membership
+  // generation the server will accept for the next send.
+  useSenderKeys?: boolean;
+  currentEpoch?: number;
 }
 
 export interface CreateDirectConversationRequest {

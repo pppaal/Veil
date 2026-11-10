@@ -6,14 +6,72 @@ channel contract). This document is the concrete recipe: dependencies, drop-in
 Dart bridge, native handler skeletons, migration, and a build-and-verify
 checklist._
 
-> **Status: not yet built.** This replaces the self-implemented Dart Double
-> Ratchet (`lib_crypto_adapter.dart`, `lib-x25519-aes256gcm-v3`) with Signal's
-> audited `libsignal` behind the existing `CryptoAdapter` boundary. It requires
-> a Flutter toolchain (Android SDK for Kotlin; **macOS + Xcode for iOS**) to
-> compile and verify — none of that can be done from a headless Linux CI box,
-> which is exactly why crypto code here must be built and tested on a real
-> device before it is trusted. Do **not** flip `VEIL_AUDITED_CRYPTO_ATTESTED`
-> based on this doc; it is pre-audit engineering.
+> **Status: code landed, native side unverified.** The Dart bridge adapter,
+> registry flag, Kotlin handler + Keystore-sealed stores, Swift handler +
+> Keychain stores, Gradle dependency and ProGuard rules are all in the tree
+> (file list in §0). The Dart side is covered by `flutter analyze` + unit
+> tests (`test/libsignal_bridge_adapter_test.dart`) and is what CI runs.
+> **The Kotlin and Swift handlers have not been compiled or run**: that needs
+> an Android SDK and **macOS + Xcode**, neither of which exists on the Linux
+> box this was written on. Every libsignal symbol the native code touches is
+> marked `VERIFY(0.86.5)` — check each against the pinned release's API
+> before the first device build (§9). The default adapter is still the Dart
+> ratchet; nothing changes for users until `--dart-define=VEIL_CRYPTO_ADAPTER=libsignal`
+> is passed. Do **not** flip `VEIL_AUDITED_CRYPTO_ATTESTED` based on this doc;
+> it is pre-audit engineering.
+
+## 0. What is in the tree
+
+| Piece | Path | Verified how |
+|---|---|---|
+| Dart bridge adapter | `apps/mobile/lib/src/core/crypto/libsignal_bridge_adapter.dart` | analyze + 7 unit tests (mock channel) |
+| Registry flag | `apps/mobile/lib/src/core/crypto/crypto_adapter_registry.dart` | unit test |
+| Android handler | `apps/mobile/android/app/src/main/kotlin/io/veil/mobile/crypto/VeilCryptoBridge.kt` | **not compiled** |
+| Android stores | `…/crypto/SealedSignalProtocolStore.kt`, `…/crypto/KeystoreSealedStore.kt` | **not compiled** |
+| Android wiring | `MainActivity.kt` (channel), `app/build.gradle.kts` (`org.signal:libsignal-android:0.86.5`), `proguard-rules.pro` | **not compiled** |
+| iOS handler + stores | `apps/mobile/ios/Runner/Crypto/VeilCryptoBridge.swift` | **not compiled**; guarded by `#if canImport(LibSignalClient)` |
+| iOS wiring | `AppDelegate.swift` registers `VeilCryptoBridgePlugin`; SPM package must be added in Xcode (§2) | **not compiled** |
+| Server allowlist | `packages/shared/src/domain/protocol.ts` accepts `libsignal-v1`; `signedPrekeyBundle` limit raised to 8 KiB for Kyber bundles | API unit tests |
+
+### Decisions baked into the code (confirm or change before audit)
+
+- **Wire format.** `CryptoEnvelope.ciphertext` = serialized libsignal
+  `CiphertextMessage`; `CryptoEnvelope.nonce` = `prekey` or `signal` (the
+  message type), because libsignal manages its own nonces and the server
+  requires a non-empty nonce field. Envelope version `libsignal-v1`.
+- **Inner payload stays in Dart.** `{body, kind, expiresAt, att}` JSON +
+  `MessagePadding` is built in Dart and handed to native as bytes, same as
+  today, so native is "bytes in, bytes out" and never parses app structure.
+- **Key bundle (`signedPrekeyBundle`) v2 shape**: base64url JSON with
+  `registrationId`, `signedPreKey{Id,,Signature}`, `kyberPreKey{Id,,Signature}`
+  (Kyber-1024 last-resort, PQXDH) and one one-time `preKey`. `identityPublicKey`
+  is the 33-byte libsignal-serialized identity key. Prekey *replenishment*
+  (uploading more one-time prekeys as they are consumed) is not wired yet;
+  the last-resort Kyber key keeps bundles usable meanwhile.
+- **Addresses.** VEIL device ids are per-device UUIDs already, so every
+  libsignal `ProtocolAddress` is `(deviceId, 1)`.
+- **Identity ref.** `identityPrivateKeyRef` is the constant
+  `veil-libsignal-identity-v1`; the real key pair lives only in the native
+  store. `extractIdentityPublicKey` resolves it natively.
+- **Trust model.** Stores are trust-on-first-use then pinned: a changed peer
+  identity makes libsignal throw `UntrustedIdentityException`, mapped to
+  `identityMismatch`, which the app surfaces as the Safety-Number-changed
+  state. Keys are never auto-accepted after rotation.
+- **Attachments.** Blob AES-256-GCM stays in Dart (`cryptography`); the
+  content key is wrapped natively with ephemeral X25519 → HKDF → AES-GCM to
+  the recipient's *signed prekey* (signature verified against their identity
+  first). Wire shape `ephPub(33) || ct || tag` under hint `x25519-aes256gcm`,
+  byte-compatible between Android and iOS.
+- **Device auth.** Relay challenge signing keeps the pure-Dart Ed25519 signer;
+  it authenticates to the server and is not message crypto.
+- **Group Sender Keys under libsignal** are *not* wired: the sealer needs the
+  local X25519 private key, which the bridge never exposes. Follow-up: add
+  `sealGroupSenderKey` / `unsealGroupSenderKey` channel methods so sealing runs
+  natively too (`app_state.dart` only builds the group coordinator when the
+  Dart adapter is active).
+- **Storage.** Android: AES-256-GCM key in AndroidKeyStore seals every record
+  into SharedPreferences (no androidx.security dependency). iOS: Keychain,
+  `AfterFirstUnlockThisDeviceOnly`, never iCloud-synced.
 
 ## Why this reduces audit scope
 
@@ -48,8 +106,9 @@ smaller, cheaper, more defensible audit.
 | Rust core | `signalapp/libsignal` | source of truth; pin an exact release tag |
 
 - **License:** libsignal is AGPL-3.0 — compatible with VEIL (AGPL-3.0-only).
-- **Pin an exact version** in all three places and record it in
-  `docs/reproducible-builds.md`. Confirm the exact Maven/SPM coordinates and
+- **Pinned: `0.86.5`** (latest on Maven Central at the time of writing;
+  recorded in `docs/reproducible-builds.md`). Use the same tag for the Swift
+  package. Confirm the exact Maven/SPM coordinates and
   symbol names against that release's README — the API is stable in shape but
   version-sensitive in detail, so treat the symbol names in the skeletons below
   as the well-known API, to be verified against your pinned tag.

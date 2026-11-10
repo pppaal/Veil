@@ -176,6 +176,39 @@ describe('ConversationsService', () => {
       expect(result).toHaveLength(1);
       expect(result[0]?.members.map((m) => m.handle).sort()).toEqual(['alice', 'bob']);
     });
+
+    it('exposes Sender Keys metadata for groups only', async () => {
+      const { service, prisma } = makeService();
+      const alice = seedUser(prisma, 'alice');
+      const bob = seedUser(prisma, 'bob');
+      seedDirect(prisma, alice.userId, bob.userId);
+      const groupId = randomUUID();
+      prisma.conversations.push({
+        id: groupId,
+        type: 'group',
+        createdAt: new Date(),
+        currentEpoch: 3,
+        groupUseSenderKeys: true,
+      });
+      for (const userId of [alice.userId, bob.userId]) {
+        prisma.conversationMembers.push({
+          id: randomUUID(),
+          conversationId: groupId,
+          userId,
+          joinedAt: new Date(),
+        });
+      }
+
+      const result = await service.listForUser(alice.userId);
+
+      const direct = result.find((c) => c.type === 'direct');
+      const group = result.find((c) => c.type === 'group');
+      expect(direct).toBeDefined();
+      expect(direct).not.toHaveProperty('useSenderKeys');
+      expect(direct).not.toHaveProperty('currentEpoch');
+      expect(group?.useSenderKeys).toBe(true);
+      expect(group?.currentEpoch).toBe(3);
+    });
   });
 
   describe('listMessagesForUser', () => {

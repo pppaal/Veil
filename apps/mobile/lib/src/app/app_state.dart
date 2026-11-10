@@ -8,6 +8,7 @@ import 'package:local_auth/local_auth.dart';
 import '../core/config/veil_config.dart';
 import '../core/crypto/crypto_adapter_registry.dart';
 import '../core/crypto/crypto_engine.dart';
+import '../core/crypto/group_sender_keys.dart';
 import '../core/crypto/lib_crypto_adapter.dart';
 import '../core/network/pinned_http_client.dart';
 import '../core/network/veil_api_client.dart';
@@ -24,6 +25,7 @@ import '../core/storage/conversation_cache_service.dart';
 import '../core/storage/database_provider.dart';
 import '../core/storage/secure_storage_service.dart';
 import '../features/attachments/data/attachment_temp_file_store.dart';
+import '../features/conversations/data/group_sender_key_coordinator.dart';
 import '../features/conversations/data/veil_messenger_controller.dart';
 import 'app_session_state.dart';
 
@@ -670,15 +672,41 @@ final messengerControllerProvider =
   // callback to secure storage, and build a restorer that rehydrates
   // snapshots into memory on first authenticated applySession.
   Future<void> Function()? sessionRestorer;
+  GroupSenderKeyCoordinator? groupCrypto;
   if (cryptoAdapter is LibCryptoAdapter) {
     cryptoAdapter.setSessionPersistence(
       persister: (conversationId, snapshot) =>
           secureStorage.writeSessionSnapshot(conversationId, snapshot),
     );
+
+    // Group Sender Keys ride on the same identity material as the 1:1
+    // ratchet (X25519 prekey for sealing, Ed25519 identity for authorship),
+    // so they are only wired when the lib adapter is active.
+    final groupEngine = GroupSenderKeyEngine(
+      persister: (groupId, snapshot) =>
+          secureStorage.writeGroupSenderKeySnapshot(groupId, snapshot),
+    );
+    groupCrypto = GroupSenderKeyCoordinator(
+      engine: groupEngine,
+      sealer: GroupSenderKeySealer(
+        resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519,
+      ),
+      apiClient: ref.read(apiClientProvider),
+      keyBundleCodec: cryptoAdapter.keyBundles,
+      identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
+      localX25519PrivateParser: LibIdentityKeys.localX25519Private,
+      localEd25519SeedParser: LibIdentityKeys.localEd25519Seed,
+    );
+
     sessionRestorer = () async {
       final snapshots = await secureStorage.readAllSessionSnapshots();
-      if (snapshots.isEmpty) return;
-      await cryptoAdapter.restoreSessionsFromSnapshots(snapshots);
+      if (snapshots.isNotEmpty) {
+        await cryptoAdapter.restoreSessionsFromSnapshots(snapshots);
+      }
+      final groupSnapshots = await secureStorage.readAllGroupSenderKeySnapshots();
+      if (groupSnapshots.isNotEmpty) {
+        await groupEngine.restoreFromSnapshots(groupSnapshots);
+      }
     };
   }
 
@@ -702,6 +730,7 @@ final messengerControllerProvider =
     },
     identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
     sessionSnapshotRestorer: sessionRestorer,
+    groupCrypto: groupCrypto,
   );
 
   final pushCoordinator = ref.read(pushTokenCoordinatorProvider);

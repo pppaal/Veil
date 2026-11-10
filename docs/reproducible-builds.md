@@ -30,6 +30,8 @@ Reproducibility requires every input to be fixed:
 | --- | --- | --- |
 | Flutter SDK | **3.44.4** (stable) | `.github/workflows/ci.yml` (`flutter-version`) |
 | Dart SDK | bundled with Flutter 3.44.4 | transitively pinned |
+| libsignal (Android AAR) | **0.86.5** `org.signal:libsignal-android` | `apps/mobile/android/app/build.gradle.kts` |
+| libsignal (iOS SPM `LibSignalClient`) | **0.86.5** (same tag) | added in Xcode; see `docs/libsignal-migration-implementation.md` §2 |
 | Android Gradle Plugin | `8.11.1` | `android/settings.gradle.kts` |
 | Kotlin | `2.2.20` | `android/settings.gradle.kts` |
 | pnpm | `10.28.0` | `.github/workflows/ci.yml` |

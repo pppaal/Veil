@@ -14,6 +14,7 @@ import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
 import '../../attachments/data/attachment_temp_file_store.dart';
 import 'conversation_models.dart';
+import 'group_sender_key_coordinator.dart';
 
 class VeilMessengerController extends ChangeNotifier {
   static const _maxAutomaticRetryAttempts = 5;
@@ -35,6 +36,7 @@ class VeilMessengerController extends ChangeNotifier {
     Future<void> Function(Object error)? onSecurityException,
     Future<String?> Function()? identityPrivateRefLoader,
     Future<void> Function()? sessionSnapshotRestorer,
+    GroupSenderKeyCoordinator? groupCrypto,
   })  : _apiClient = apiClient,
         _cryptoEngine = cryptoEngine,
         _keyBundleCodec = keyBundleCodec,
@@ -46,7 +48,10 @@ class VeilMessengerController extends ChangeNotifier {
         _notificationService = notificationService,
         _onSecurityException = onSecurityException,
         _identityPrivateRefLoader = identityPrivateRefLoader,
-        _sessionSnapshotRestorer = sessionSnapshotRestorer {
+        _sessionSnapshotRestorer = sessionSnapshotRestorer,
+        _groupCrypto = groupCrypto {
+    _groupCrypto?.conversationLookup = _conversationById;
+    _groupCrypto?.onKeysChanged = _onGroupKeysChanged;
     _expirationTicker = Timer.periodic(
       const Duration(seconds: 1),
       (_) => unawaited(_reconcileExpiringState()),
@@ -69,6 +74,7 @@ class VeilMessengerController extends ChangeNotifier {
   final Future<void> Function(Object error)? _onSecurityException;
   final Future<String?> Function()? _identityPrivateRefLoader;
   final Future<void> Function()? _sessionSnapshotRestorer;
+  final GroupSenderKeyCoordinator? _groupCrypto;
   bool _sessionsRestored = false;
   final Random _random = Random.secure();
   final Set<String> _inboundBootstrapInFlight = <String>{};
@@ -191,6 +197,7 @@ class VeilMessengerController extends ChangeNotifier {
       _transferStatus = null;
       _transferExpiresAt = null;
       _sessionsRestored = false;
+      _groupCrypto?.clearInMemory();
       notifyListeners();
       return;
     }
@@ -283,6 +290,10 @@ class VeilMessengerController extends ChangeNotifier {
     String? description,
     List<String> memberHandles = const [],
     bool isPublic = false,
+    // New groups opt into Sender Keys (per-sender chains + authorship) when
+    // this client can run them; the legacy shared-key path stays for groups
+    // created by older clients.
+    bool? useSenderKeys,
   }) async {
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
@@ -294,6 +305,7 @@ class VeilMessengerController extends ChangeNotifier {
         if (description != null && description.isNotEmpty) 'description': description,
         if (memberHandles.isNotEmpty) 'memberHandles': memberHandles,
         'isPublic': isPublic,
+        'useSenderKeys': useSenderKeys ?? (_groupCrypto != null),
       });
       await _refreshConversationsCore();
     });
@@ -375,20 +387,12 @@ class VeilMessengerController extends ChangeNotifier {
 
       final conversation =
           _conversations.firstWhere((item) => item.id == conversationId);
-      final bundle = conversation.type == ConversationType.group
-          ? conversation.recipientBundle
-          : await _fetchPeerBundle(conversation.peerHandle);
-      final recipientUserId = conversation.type == ConversationType.group
-          ? ''
-          : bundle.userId;
       final clientMessageId = _nextClientMessageId();
-      final envelope = await _cryptoEngine.encryptMessage(
-        conversationId: conversationId,
+      final envelope = await _encryptForConversation(
+        conversation: conversation,
         senderDeviceId: _session.deviceId!,
-        recipientUserId: recipientUserId,
         body: body,
         messageKind: messageKind,
-        recipientBundle: bundle,
         expiresAt:
             disappearAfter == null ? null : DateTime.now().add(disappearAfter),
         attachment: attachment,
@@ -403,6 +407,74 @@ class VeilMessengerController extends ChangeNotifier {
     });
   }
 
+  bool _usesSenderKeys(ConversationPreview conversation) =>
+      conversation.type == ConversationType.group &&
+      conversation.useSenderKeys &&
+      _groupCrypto != null;
+
+  ConversationPreview? _conversationById(String conversationId) {
+    for (final convo in _conversations) {
+      if (convo.id == conversationId) return convo;
+    }
+    return null;
+  }
+
+  // A member's chain key arrived (or the group re-keyed): drop cached
+  // decrypts so "awaiting sender key" placeholders get another pass.
+  void _onGroupKeysChanged(String conversationId) {
+    _decryptedMessageCache.clear();
+    notifyListeners();
+  }
+
+  // Single routing point for outbound encryption. Groups that opted into
+  // Sender Keys go through the group engine (one ciphertext for everyone,
+  // stamped with the membership epoch); everything else keeps the 1:1 path.
+  Future<CryptoEnvelope> _encryptForConversation({
+    required ConversationPreview conversation,
+    required String senderDeviceId,
+    required String body,
+    required MessageKind messageKind,
+    DateTime? expiresAt,
+    AttachmentReference? attachment,
+    KeyBundle? bundleOverride,
+    String? recipientUserIdOverride,
+  }) async {
+    final groupCrypto = _groupCrypto;
+    if (groupCrypto != null && _usesSenderKeys(conversation)) {
+      await groupCrypto.prepareSend(
+        conversation: conversation,
+        accessToken: _session.accessToken!,
+        localUserId: _session.userId ?? '',
+        localDeviceId: senderDeviceId,
+      );
+      return groupCrypto.encryptMessage(
+        conversation: conversation,
+        senderDeviceId: senderDeviceId,
+        body: body,
+        messageKind: messageKind,
+        expiresAt: expiresAt,
+        attachment: attachment,
+      );
+    }
+
+    final bundle = bundleOverride ??
+        (conversation.type == ConversationType.group
+            ? conversation.recipientBundle
+            : await _fetchPeerBundle(conversation.peerHandle));
+    final recipientUserId = recipientUserIdOverride ??
+        (conversation.type == ConversationType.group ? '' : bundle.userId);
+    return _cryptoEngine.encryptMessage(
+      conversationId: conversation.id,
+      senderDeviceId: senderDeviceId,
+      recipientUserId: recipientUserId,
+      body: body,
+      messageKind: messageKind,
+      recipientBundle: bundle,
+      expiresAt: expiresAt,
+      attachment: attachment,
+    );
+  }
+
   Future<void> sendAttachmentPlaceholder(
     String conversationId, {
     String filename = 'dossier.enc',
@@ -415,16 +487,12 @@ class VeilMessengerController extends ChangeNotifier {
       final conversation = _conversations.firstWhere((item) => item.id == conversationId);
       final clientMessageId = _nextClientMessageId();
       final tempBlob = await _stageAttachmentBlob(filename: filename);
-      final recipientUserId = conversation.type == ConversationType.group
-          ? ''
-          : conversation.recipientBundle.userId;
-      final envelope = await _cryptoEngine.encryptMessage(
-        conversationId: conversationId,
+      final envelope = await _encryptForConversation(
+        conversation: conversation,
         senderDeviceId: _session.deviceId!,
-        recipientUserId: recipientUserId,
         body: 'Encrypted attachment',
         messageKind: MessageKind.file,
-        recipientBundle: conversation.recipientBundle,
+        bundleOverride: conversation.recipientBundle,
       );
 
       await _enqueuePendingMessage(
@@ -620,6 +688,14 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) async {
+    final groupCrypto = _groupCrypto;
+    if (groupCrypto != null && GroupSenderKeyCoordinator.isGroupEnvelope(envelope)) {
+      return groupCrypto.decryptMessage(
+        envelope,
+        accessToken: _session.accessToken ?? '',
+        localUserId: _session.userId ?? '',
+      );
+    }
     await _ensureInboundSession(envelope);
     return _cryptoEngine.decryptMessage(envelope);
   }
@@ -634,6 +710,8 @@ class VeilMessengerController extends ChangeNotifier {
     if (loader == null) return;
     final codec = _envelopeCodec;
     if (codec is! InboundEnvelopeInspector) return;
+    // Group frames carry no 1:1 ratchet header; never let one seed a session.
+    if (GroupSenderKeyCoordinator.isGroupEnvelope(envelope)) return;
     final conversationId = envelope.conversationId;
     if (_sessionBootstrapper.hasSessionFor(conversationId)) return;
     if (_inboundBootstrapInFlight.contains(conversationId)) return;
@@ -689,8 +767,7 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     final future = () async {
-      await _ensureInboundSession(message.envelope);
-      final decrypted = await _cryptoEngine.decryptMessage(message.envelope);
+      final decrypted = await decryptEnvelope(message.envelope);
       final searchableBody = _searchableMessageBody(decrypted);
       _rememberSearchableBody(cacheKey, searchableBody);
       _setMessageSearchableBody(
@@ -944,10 +1021,12 @@ class VeilMessengerController extends ChangeNotifier {
             _attachmentTransfersByClientMessageId.remove(marked.clientMessageId);
           }
 
+          final groupEpoch = GroupSenderKeyCoordinator.epochOf(marked.envelope);
           final response = await _apiClient.sendMessage(_session.accessToken!, {
             'conversationId': marked.conversationId,
             'clientMessageId': marked.clientMessageId,
             'envelope': _envelopeToJson(marked.envelope),
+            if (groupEpoch != null) 'groupEpoch': groupEpoch,
           });
           final serverMessage =
               _messageFromApi(response['message'] as Map<String, dynamic>);
@@ -1183,10 +1262,50 @@ class VeilMessengerController extends ChangeNotifier {
               disappearingTimerSeconds: data['disappearingTimerSeconds'] as int?,
             );
             break;
+          case 'group.key.distribution':
+            final groupCrypto = _groupCrypto;
+            if (groupCrypto == null) break;
+            unawaited(groupCrypto.handleKeyDistributionEvent(
+              payload as Map<String, dynamic>,
+              localUserId: _session.userId ?? '',
+            ));
+            break;
+          case 'group.epoch.bumped':
+            final data = payload as Map<String, dynamic>;
+            unawaited(_handleGroupEpochBumped(data));
+            break;
           default:
             break;
         }
       },
+    );
+  }
+
+  // Membership changed: remember the new epoch on the preview, refresh the
+  // member list, then let the group engine re-key and redistribute.
+  Future<void> _handleGroupEpochBumped(Map<String, dynamic> data) async {
+    final conversationId = data['conversationId'] as String? ?? '';
+    final epoch = (data['epoch'] as num?)?.toInt();
+    if (conversationId.isEmpty || epoch == null) return;
+    _conversations = _conversations
+        .map((c) => c.id == conversationId ? c.copyWith(groupEpoch: epoch) : c)
+        .toList(growable: false);
+    notifyListeners();
+    try {
+      await _refreshConversationsCore();
+    } catch (_) {
+      // Membership refresh is best-effort; the epoch is already recorded.
+    }
+    final groupCrypto = _groupCrypto;
+    if (groupCrypto == null || !_session.isAuthenticated) return;
+    await groupCrypto.handleEpochBumped(
+      conversationId: conversationId,
+      epoch: epoch,
+      reason: data['reason'] as String? ?? '',
+      userId: data['userId'] as String? ?? '',
+      accessToken: _session.accessToken!,
+      localUserId: _session.userId ?? '',
+      localDeviceId: _session.deviceId ?? '',
     );
   }
 
@@ -1682,15 +1801,15 @@ class VeilMessengerController extends ChangeNotifier {
     );
     final attachment = cipher.reference;
 
-    final updatedEnvelope = await _cryptoEngine.encryptMessage(
-      conversationId: pending.conversationId,
+    final updatedEnvelope = await _encryptForConversation(
+      conversation: conversation,
       senderDeviceId: pending.senderDeviceId,
-      recipientUserId: recipientUserId,
       body: 'Encrypted attachment',
       messageKind: MessageKind.file,
-      recipientBundle: bundle,
       expiresAt: pending.envelope.expiresAt,
       attachment: attachment,
+      bundleOverride: bundle,
+      recipientUserIdOverride: recipientUserId,
     );
 
     await tempStore.deleteTempFile(draft.tempFilePath);
@@ -1781,7 +1900,12 @@ class VeilMessengerController extends ChangeNotifier {
           error.code == 'attachment_upload_invalid' ||
           error.code == 'attachment_upload_canceled' ||
           error.code == 'conversation_membership_required' ||
-          error.code == 'direct_peer_mismatch') {
+          error.code == 'direct_peer_mismatch' ||
+          // A frame encrypted under an old membership epoch can never be
+          // accepted; the user re-sends and the new epoch is used.
+          error.code == 'group_epoch_stale' ||
+          error.code == 'group_epoch_required' ||
+          error.code == 'key_distribution_invalid') {
         return false;
       }
 
@@ -2119,6 +2243,11 @@ class VeilMessengerController extends ChangeNotifier {
       type: type,
       members: members,
       disappearingTimerSeconds: conversation['disappearingTimerSeconds'] as int?,
+      useSenderKeys: type == ConversationType.group &&
+          (conversation['useSenderKeys'] as bool? ?? false),
+      groupEpoch: type == ConversationType.group
+          ? (conversation['currentEpoch'] as num?)?.toInt()
+          : null,
     );
   }
 

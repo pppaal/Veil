@@ -87,6 +87,9 @@ class SecureStorageService {
   // we don't depend on backend enumeration, which FlutterSecureStorage can't
   // do portably.
   static const _sessionSnapshotsKey = 'veil.crypto.session_snapshots';
+  // Group Sender Keys per-group chain state, same single-blob layout:
+  // {groupId: <snapshot json>}. Wiped together with session snapshots.
+  static const _groupSenderKeysKey = 'veil.crypto.group_sender_keys';
   // Safety-number verification attestations — records that a conversation's
   // peer identity key was human-verified at a point in time. Single-blob
   // layout for the same portability reason as session snapshots.
@@ -323,6 +326,46 @@ class SecureStorageService {
     await _storage.delete(key: _sessionSnapshotsKey);
   }
 
+  Future<Map<String, Map<String, dynamic>>> readAllGroupSenderKeySnapshots() async {
+    final raw = await _storage.read(key: _groupSenderKeysKey);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final result = <String, Map<String, dynamic>>{};
+      decoded.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          result[key] = value;
+        }
+      });
+      return result;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// `snapshot == null` deletes the group's entry (member left / wiped).
+  Future<void> writeGroupSenderKeySnapshot(
+    String groupId,
+    Map<String, dynamic>? snapshot,
+  ) async {
+    final all = await readAllGroupSenderKeySnapshots();
+    final next = Map<String, Map<String, dynamic>>.from(all);
+    if (snapshot == null) {
+      next.remove(groupId);
+    } else {
+      next[groupId] = snapshot;
+    }
+    if (next.isEmpty) {
+      await _storage.delete(key: _groupSenderKeysKey);
+      return;
+    }
+    await _storage.write(key: _groupSenderKeysKey, value: json.encode(next));
+  }
+
+  Future<void> clearGroupSenderKeySnapshots() async {
+    await _storage.delete(key: _groupSenderKeysKey);
+  }
+
   Future<Map<String, SafetyVerificationRecord>>
       readAllSafetyVerifications() async {
     final raw = await _storage.read(key: _safetyVerificationsKey);
@@ -508,6 +551,7 @@ class SecureStorageService {
     await clearCacheKey();
     await clearPinThrottleState();
     await clearSessionSnapshots();
+    await clearGroupSenderKeySnapshots();
     await clearAllSafetyVerifications();
     if (!preservePin) {
       await clearPin();

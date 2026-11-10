@@ -2,10 +2,47 @@
 
 ## Status
 
-Design draft. **Crypto not implemented** — external crypto review required
-before the Sender-Key key-agreement and authorship paths merge. Current group
-chats still use a single per-conversation symmetric key shared across all
-members; this document covers the upgrade.
+**Phase AB.3 (mobile) implemented — pre-audit.** The client crypto lives in
+`apps/mobile/lib/src/core/crypto/group_sender_keys.dart` (engine + sealer,
+pure Dart, 13 unit tests covering the test matrix below) and is wired into
+the app through
+`apps/mobile/lib/src/features/conversations/data/group_sender_key_coordinator.dart`
+(distribution, offline pickup, epoch bumps; 5 controller-level tests with
+three real members on a fake relay). New groups created from the mobile app
+set `useSenderKeys: true`; groups created by older clients stay on the
+shared-key path. External crypto review is still required before any of this
+is called "secure" — see "What the implementation decided" for the places a
+reviewer should look first.
+
+### What the implementation decided (deviations from the draft below)
+
+1. **Distribution channel is identity-sealed, not 1:1-ratchet-wrapped.**
+   VEIL's ratchet sessions are keyed per *conversation*, so two group members
+   need not share one. Each distribution blob is instead sealed to the
+   recipient's signed X25519 prekey (ephemeral X25519 → HKDF-SHA256 →
+   AES-256-GCM, bundle signature verified against the recipient's Ed25519
+   identity exactly like 1:1 bootstrap) and **signed by the sender's Ed25519
+   identity key**, which the recipient fetches from the directory — never
+   from the blob. Blob AD binds `groupId || epoch || senderDeviceId ||
+   recipientUserId`. Not forward-secret on its own; mitigated by the chain
+   key dying at the next epoch and the relay's 30-minute TTL. Reviewer
+   question #7.
+2. **Frame layout** (`veil-group-v1`, see "Wire shape"): the epoch and a
+   64-byte Ed25519 signature travel *in the frame*, so a receiver can route
+   and authenticate without trusting server-supplied metadata. Signature
+   covers `AD || nonce || ciphertext`. Signing key is a **per-epoch Ed25519
+   key generated with the chain** and distributed alongside it (question 5
+   → "separate, rotated with the chain").
+3. **Own frames are self-decryptable.** The sender registers its own chain as
+   a peer so history fetched back from the server decrypts after a restart.
+4. **Stale-epoch sends are not retried.** The outbox holds ciphertext only, so
+   a frame rejected with `group_epoch_stale` is marked failed and the user
+   re-sends under the new epoch (the next send re-keys automatically).
+5. **Cache schema 8** stores the envelope version per message so group frames
+   survive a cold start without being misrouted to the 1:1 ratchet.
+6. Pickup is attempted once per `(group, epoch)` per undecryptable frame to
+   keep a flood of unknown frames from hammering the relay; a realtime
+   `group.key.distribution` or explicit sync resets the attempt.
 
 **Phase AB.1 (server-side epoch bookkeeping) has shipped.** The server now
 maintains `conversations.current_epoch`, records a per-member
@@ -75,14 +112,19 @@ Signal's "Sender Keys" pattern fixes all four. We adopt it.
 Sender Keys produces a single ciphertext per send. Wire envelope adds:
 
 ```
-groupSenderKey.envelope.version   = "veil-group-v1"
-groupSenderKey.envelope.payload   = "g1." + b64u(payload)
+envelope.version    = "veil-group-v1"
+envelope.ciphertext = b64u(frame)
+envelope.nonce      = b64u(12 random bytes)
 
-payload (binary):
-+--------+------------------+----------+----------------+
-| 0x01   | senderDeviceId:16| ctr:u32  | AEAD ct + tag  |
-+--------+------------------+----------+----------------+
+frame (binary, as implemented):
++------+--------+--------------------+-----------+---------+--------+----------------+
+| 0x01 | len:u8 | senderDeviceId:utf8| epoch:u64 | ctr:u32 | sig:64 | AEAD ct + tag  |
++------+--------+--------------------+-----------+---------+--------+----------------+
 ```
+
+(The draft below assumed a 16-byte UUID sender id; device ids are
+length-prefixed UTF-8 in the implementation so non-UUID ids in tests and
+future id schemes stay valid.)
 
 `senderDeviceId` is the truncated UUID of the sender's device (16 bytes
 of the 16-byte UUID — full id, no truncation needed). `ctr` is a
@@ -251,7 +293,8 @@ Phase AB.2 — opt-in flag ✅ SHIPPED
     the blobs it relays stay opaque so no crypto-review dependency
 
 Phase AB.3 — clients implement
-  - mobile first (already has Ed25519 + ratchet primitives)
+  - mobile ✅ IMPLEMENTED (pre-audit): engine, sealer, coordinator, cache
+    schema 8, realtime handlers, 18 tests
   - web demo second (after envelope v3 lands — Phase W)
 
 Phase AB.4 — required flip
@@ -288,6 +331,11 @@ Phase AB.4 — required flip
    ratcheting the signing key add meaningful PCS?
 6. Ed25519 vs HMAC for authorship — does the public-verify property
    matter to us, or is HMAC simpler?
+7. Distribution sealing is identity-bound (ephemeral X25519 to the signed
+   prekey + sender Ed25519 identity signature) rather than ratchet-wrapped.
+   Is the loss of forward secrecy on the *distribution* acceptable given
+   the per-epoch chain lifetime and 30-minute relay TTL, or must the sealer
+   be moved onto a per-device 1:1 session?
 
 ## Cost estimate
 

@@ -534,6 +534,8 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       type: 'direct' | 'group' | 'channel';
       createdAt: Date;
       disappearingTimerSeconds: number | null;
+      groupUseSenderKeys?: boolean;
+      currentEpoch?: number;
       members: Array<{
         userId: string;
         user: { handle: string; displayName: string | null };
@@ -547,6 +549,14 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       type: conversation.type,
       createdAt: conversation.createdAt.toISOString(),
       disappearingTimerSeconds: conversation.disappearingTimerSeconds,
+      // Sender Keys metadata is only meaningful for groups; direct chats
+      // and channels never carry it so legacy clients see no new fields.
+      ...(conversation.type === 'group'
+        ? {
+            useSenderKeys: conversation.groupUseSenderKeys ?? false,
+            currentEpoch: conversation.currentEpoch ?? 0,
+          }
+        : {}),
       members: conversation.members.map((member) => ({
         userId: member.userId,
         handle: member.user.handle,

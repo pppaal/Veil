@@ -125,6 +125,45 @@ typedef SessionPersister =
 
 CryptoAdapter createDefaultCryptoAdapter() => LibCryptoAdapter();
 
+/// Public facade over this adapter's identity-key helpers so sibling crypto
+/// components (group Sender Keys distribution) reuse the exact same bundle
+/// verification and private-ref parsing instead of re-implementing them.
+/// Exposes no new capability: everything here is already reachable through
+/// `bootstrapSession` / `decryptAttachment`.
+class LibIdentityKeys {
+  const LibIdentityKeys._();
+
+  /// Verifies `signedPrekeyBundle` against `identityPublicKey` (Ed25519) and
+  /// returns the authenticated X25519 public key. Throws on any mismatch.
+  static Future<SimplePublicKey> resolveRemoteX25519(
+    String signedPrekeyBundle,
+    String identityPublicKey,
+  ) =>
+      _LibSessionBootstrapper._resolveRemoteX25519Key(
+        signedPrekeyBundle,
+        identityPublicKey,
+      );
+
+  /// 32-byte X25519 private key from the opaque identity private ref, or
+  /// null if the ref is not a lib-adapter bundle.
+  static List<int>? localX25519Private(String identityPrivateRef) =>
+      _LibSessionBootstrapper._parseLocalX25519Private(identityPrivateRef);
+
+  /// 32-byte Ed25519 seed from the opaque identity private ref, or null.
+  static List<int>? localEd25519Seed(String identityPrivateRef) {
+    try {
+      final decoded = utf8.decode(_b64Decode(identityPrivateRef));
+      final map = json.decode(decoded) as Map<String, dynamic>;
+      final edB64 = map['ed25519'] as String?;
+      if (edB64 == null) return null;
+      final bytes = _b64Decode(edB64);
+      return bytes.length == 32 ? bytes : null;
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 class LibCryptoAdapter implements CryptoAdapter {
   LibCryptoAdapter()
       : _identityProvider = _LibDeviceIdentityProvider(),

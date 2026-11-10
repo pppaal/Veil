@@ -413,7 +413,8 @@ class DriftConversationCacheService implements ConversationCacheService {
                   previewNonce == null
               ? null
               : CryptoEnvelope(
-                  version: _envelopeCodec.defaultEnvelopeVersion,
+                  version: row.previewEnvelopeVersion ??
+                      _envelopeCodec.defaultEnvelopeVersion,
                   conversationId: row.id,
                   senderDeviceId: previewSenderDeviceId,
                   recipientUserId: peerUserId ?? '',
@@ -487,7 +488,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           senderDeviceId: senderDeviceId,
           sentAt: row.receivedAt,
           envelope: CryptoEnvelope(
-            version: _envelopeCodec.defaultEnvelopeVersion,
+            version: row.envelopeVersion ?? _envelopeCodec.defaultEnvelopeVersion,
             conversationId: row.conversationId,
             senderDeviceId: senderDeviceId,
             recipientUserId: '',
@@ -545,6 +546,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           previewMessageType: Value(await _encrypt(preview?.messageKind.name)),
           previewAttachmentJson:
               Value(await _encrypt(_encodeAttachment(preview?.attachment))),
+          previewEnvelopeVersion: Value(preview?.version),
           previewExpiresAt: Value(preview?.expiresAt),
           sessionLocator:
               Value(await _encrypt(conversation.sessionState?.sessionLocator)),
@@ -602,6 +604,7 @@ class DriftConversationCacheService implements ConversationCacheService {
               await _requireEncryptedValue(message.envelope.messageKind.name),
           attachmentJson: Value(
               await _encrypt(_encodeAttachment(message.envelope.attachment))),
+          envelopeVersion: Value(message.envelope.version),
           searchBody: Value(await _encrypt(message.searchableBody)),
           conversationOrder: Value(message.conversationOrder),
           receivedAt: message.sentAt,
@@ -700,7 +703,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           senderDeviceId: senderDeviceId,
           recipientUserId: recipientUserId,
           envelope: CryptoEnvelope(
-            version: _envelopeCodec.defaultEnvelopeVersion,
+            version: row.envelopeVersion ?? _envelopeCodec.defaultEnvelopeVersion,
             conversationId: row.conversationId,
             senderDeviceId: senderDeviceId,
             recipientUserId: recipientUserId,
@@ -741,6 +744,7 @@ class DriftConversationCacheService implements ConversationCacheService {
                 await _requireEncryptedValue(pending.envelope.messageKind.name),
             attachmentJson:
                 Value(await _encrypt(_encodePendingAttachmentPayload(pending))),
+            envelopeVersion: Value(pending.envelope.version),
             createdAt: pending.createdAt,
             expiresAt: Value(pending.envelope.expiresAt),
             retryCount: Value(pending.retryCount),

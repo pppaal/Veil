@@ -16,6 +16,9 @@ class CachedConversations extends Table {
   TextColumn get previewNonce => text().nullable()();
   TextColumn get previewMessageType => text().nullable()();
   TextColumn get previewAttachmentJson => text().nullable()();
+  // Envelope `version` of the preview message (e.g. veil-group-v1). Null for
+  // rows written before schema 8; readers fall back to the adapter default.
+  TextColumn get previewEnvelopeVersion => text().nullable()();
   DateTimeColumn get previewExpiresAt => dateTime().nullable()();
   TextColumn get sessionLocator => text().nullable()();
   TextColumn get sessionEnvelopeVersion => text().nullable()();
@@ -45,6 +48,7 @@ class CachedMessages extends Table {
   TextColumn get nonce => text()();
   TextColumn get messageType => text()();
   TextColumn get attachmentJson => text().nullable()();
+  TextColumn get envelopeVersion => text().nullable()();
   TextColumn get searchBody => text().nullable()();
   IntColumn get conversationOrder => integer().nullable()();
   DateTimeColumn get receivedAt => dateTime()();
@@ -66,6 +70,7 @@ class PendingMessages extends Table {
   TextColumn get nonce => text()();
   TextColumn get messageType => text()();
   TextColumn get attachmentJson => text().nullable()();
+  TextColumn get envelopeVersion => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get expiresAt => dateTime().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
@@ -83,7 +88,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -139,6 +144,20 @@ class AppDatabase extends _$AppDatabase {
             );
             await customStatement(
               'ALTER TABLE cached_conversations ADD COLUMN session_remote_identity_fingerprint TEXT',
+            );
+          }
+          if (from < 8) {
+            // Group Sender Keys: cached rows must remember which envelope
+            // format a ciphertext uses so a restart routes group frames to
+            // the group engine instead of the 1:1 ratchet.
+            await customStatement(
+              'ALTER TABLE cached_conversations ADD COLUMN preview_envelope_version TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE cached_messages ADD COLUMN envelope_version TEXT',
+            );
+            await customStatement(
+              'ALTER TABLE pending_messages ADD COLUMN envelope_version TEXT',
             );
           }
           await _createIndexes();

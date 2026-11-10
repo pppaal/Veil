@@ -79,3 +79,10 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Signal's audited protocol implementation (Rust core + JNI, prebuilt AAR
+    // from Maven Central). Pinned exactly; bump together with the iOS
+    // LibSignalClient package and docs/reproducible-builds.md.
+    implementation("org.signal:libsignal-android:0.86.5")
+}

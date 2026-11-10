@@ -1,3 +1,4 @@
+import { MAX_SIGNED_PREKEY_BUNDLE_LENGTH } from '@veil/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
@@ -38,7 +39,9 @@ export class RegisterDto implements RegisterRequest {
 
   @ApiProperty()
   @IsString()
-  @MaxLength(2048)
+  // libsignal bundles carry a Kyber-1024 prekey (1568 raw bytes) alongside the
+  // signed prekey, so they exceed the 2 KiB that fit the X25519-only bundle.
+  @MaxLength(MAX_SIGNED_PREKEY_BUNDLE_LENGTH)
   @Matches(/^[A-Za-z0-9_-]+={0,2}$/)
   signedPrekeyBundle!: string;
 

@@ -251,6 +251,8 @@ class ConversationPreview {
     this.members = const [],
     this.unreadCount = 0,
     this.disappearingTimerSeconds,
+    this.useSenderKeys = false,
+    this.groupEpoch,
   });
 
   final String id;
@@ -273,6 +275,13 @@ class ConversationPreview {
   // Default TTL (seconds) applied to newly-sent messages in this
   // conversation. null = disappearing messages disabled.
   final int? disappearingTimerSeconds;
+  // Group Sender Keys: true when the server requires `veil-group-v1`
+  // envelopes stamped with `groupEpoch` for this group. Always false for
+  // direct chats and channels.
+  final bool useSenderKeys;
+  // Current membership generation (conversations.current_epoch). Null when
+  // unknown (e.g. hydrated from cache before the first refresh).
+  final int? groupEpoch;
 
   ConversationPreview copyWith({
     String? id,
@@ -289,6 +298,8 @@ class ConversationPreview {
     List<GroupMember>? members,
     int? unreadCount,
     Object? disappearingTimerSeconds = _unset,
+    bool? useSenderKeys,
+    Object? groupEpoch = _unset,
   }) {
     return ConversationPreview(
       id: id ?? this.id,
@@ -313,6 +324,8 @@ class ConversationPreview {
       disappearingTimerSeconds: identical(disappearingTimerSeconds, _unset)
           ? this.disappearingTimerSeconds
           : disappearingTimerSeconds as int?,
+      useSenderKeys: useSenderKeys ?? this.useSenderKeys,
+      groupEpoch: identical(groupEpoch, _unset) ? this.groupEpoch : groupEpoch as int?,
     );
   }
 }

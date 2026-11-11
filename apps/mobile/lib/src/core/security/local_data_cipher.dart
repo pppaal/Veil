@@ -54,15 +54,17 @@ class LocalDataCipher {
       throw const FormatException('Unencrypted payload is not accepted');
     }
 
-    final parts = value.split(':');
-    if (parts.length != 5) {
+    // encryptString joins the prefix (which already ends in ':') with ':',
+    // so every value ever written reads "enc:v1::nonce:ciphertext:mac".
+    final parts = value.substring(_encodingPrefix.length).split(':');
+    if (parts.length != 4 || parts.first.isNotEmpty) {
       throw const FormatException('Invalid encrypted payload format');
     }
 
     final secretBox = SecretBox(
-      _decode(parts[3]),
-      nonce: _decode(parts[2]),
-      mac: Mac(_decode(parts[4])),
+      _decode(parts[2]),
+      nonce: _decode(parts[1]),
+      mac: Mac(_decode(parts[3])),
     );
     final cleartext = await _algorithm.decrypt(
       secretBox,

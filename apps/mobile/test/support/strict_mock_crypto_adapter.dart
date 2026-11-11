@@ -13,10 +13,18 @@ const strictOwnEnvelopePlaceholder = '[Decryption failed]';
 /// what it sealed itself, and sessions exist only after a bootstrap. The
 /// plain mock is idempotent and decrypts anything, which hides exactly the
 /// bugs a single-use ratchet exposes.
+///
+/// With [opensSessionOnDecrypt] the first peer frame a device opens also
+/// establishes its session, the way protocol v2 and libsignal run the
+/// responder half of the handshake inside decrypt.
 class StrictMockCryptoAdapter implements CryptoAdapter {
-  StrictMockCryptoAdapter() : _inner = MockCryptoAdapter() {
-    messaging = _StrictMessaging(_inner.messaging);
-    sessions = _StrictSessions(_inner.sessions);
+  StrictMockCryptoAdapter({bool opensSessionOnDecrypt = false}) : _inner = MockCryptoAdapter() {
+    final strictSessions = _StrictSessions(_inner.sessions);
+    sessions = strictSessions;
+    messaging = _StrictMessaging(
+      _inner.messaging,
+      onOpened: opensSessionOnDecrypt ? strictSessions._established.add : null,
+    );
   }
 
   final MockCryptoAdapter _inner;
@@ -44,9 +52,10 @@ class StrictMockCryptoAdapter implements CryptoAdapter {
 }
 
 class _StrictMessaging implements MessageCryptoEngine {
-  _StrictMessaging(this._inner);
+  _StrictMessaging(this._inner, {this.onOpened});
 
   final MessageCryptoEngine _inner;
+  final void Function(String conversationId)? onOpened;
   final Set<String> _sealedHere = {};
   final Set<String> _opened = {};
 
@@ -89,6 +98,7 @@ class _StrictMessaging implements MessageCryptoEngine {
         messageKind: envelope.messageKind,
       );
     }
+    onOpened?.call(envelope.conversationId);
     return _inner.decryptMessage(envelope);
   }
 

@@ -15,6 +15,7 @@ import '../../attachments/data/attachment_temp_file_store.dart';
 import 'conversation_models.dart';
 import 'group_sender_key_coordinator.dart';
 import 'messenger/conversation_merge.dart';
+import 'messenger/decrypt_outcome.dart';
 import 'messenger/message_content_service.dart';
 import 'messenger/message_merge.dart';
 import 'messenger/peer_bundle_cache.dart';
@@ -776,7 +777,33 @@ class VeilMessengerController extends ChangeNotifier {
     }
     _notePeerDevice(envelope);
     await _ensureInboundSession(envelope);
-    return _cryptoEngine.decryptMessage(envelope);
+    final decrypted = await _cryptoEngine.decryptMessage(envelope);
+    _noteOpenedSession(envelope, decrypted);
+    return decrypted;
+  }
+
+  // Engines that run the responder half of the handshake inside decrypt
+  // never pass through _ensureInboundSession. Once a peer frame has opened,
+  // record the session it established, so replies, identity pinning and
+  // device-move detection have something to compare against.
+  void _noteOpenedSession(CryptoEnvelope envelope, DecryptedMessage decrypted) {
+    final conversationId = envelope.conversationId;
+    final conversation = _conversationById(conversationId);
+    final localDeviceId = _session.deviceId;
+    if (localDeviceId == null ||
+        envelope.senderDeviceId == localDeviceId ||
+        conversation?.sessionState != null ||
+        (conversation != null && conversation.type != ConversationType.direct) ||
+        _unlistedInboundSessions.containsKey(conversationId) ||
+        classifyDecryptOutcome(decrypted.body) != MessageContentStatus.ok ||
+        !_sessionBootstrapper.hasSessionFor(conversationId)) {
+      return;
+    }
+    _recordInboundSession(
+      conversationId,
+      observedInboundSession(envelope, localDeviceId: localDeviceId),
+    );
+    unawaited(_contents.retryPending(conversationId, messagesFor(conversationId)));
   }
 
   // A frame from a device the 1:1 session is not bound to means the peer has

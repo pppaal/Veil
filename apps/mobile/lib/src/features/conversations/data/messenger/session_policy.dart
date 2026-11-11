@@ -88,6 +88,27 @@ bool comesFromNewPeerDevice(
       sender != session.remoteDeviceId;
 }
 
+/// What this device knows about a session its engine opened by itself while
+/// decrypting a peer's first frame (protocol v2 and libsignal run the
+/// responder half of the handshake inside decrypt): the frame's
+/// authenticated sender device, and nothing about the engine's internals.
+/// The identity key is pinned later, as for any inbound session.
+ConversationSessionState observedInboundSession(
+  CryptoEnvelope envelope, {
+  required String localDeviceId,
+}) {
+  return ConversationSessionState(
+    sessionLocator: '',
+    sessionEnvelopeVersion: envelope.version,
+    requiresLocalPersistence: false,
+    sessionSchemaVersion: 0,
+    localDeviceId: localDeviceId,
+    remoteDeviceId: envelope.senderDeviceId,
+    remoteIdentityFingerprint: '',
+    bootstrappedAt: DateTime.now(),
+  );
+}
+
 ConversationSessionState sessionStateFromMaterial(
   SessionBootstrapMaterial material, {
   required String remoteIdentityPublicKey,

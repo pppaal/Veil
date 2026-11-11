@@ -105,6 +105,63 @@ void main() {
     expect(merged.recipientBundle, same(otherPeer));
   });
 
+  group('a 1:1 with a session stays with the peer it was opened to', () {
+    const otherPeer = KeyBundle(
+      userId: 'user-lyra',
+      deviceId: '',
+      handle: 'lyra',
+      identityPublicKey: '',
+      signedPrekeyBundle: '',
+    );
+
+    test('a server preview naming another user updates only the last message and timer', () {
+      final local = _preview(bundle: _fullBundle, session: _session(), timer: 30);
+      final server = ConversationPreview(
+        id: 'conv-1',
+        peerHandle: 'lyra',
+        peerDisplayName: 'Lyra',
+        recipientBundle: otherPeer,
+        lastEnvelope: null,
+        updatedAt: DateTime.utc(2026, 4, 2),
+        sessionState: null,
+        disappearingTimerSeconds: 300,
+      );
+
+      final merged = mergeConversationPreviews([local], [server]).single;
+
+      expect(merged.peerHandle, 'selene');
+      expect(merged.peerDisplayName, 'Selene');
+      expect(merged.recipientBundle, same(_fullBundle));
+      expect(merged.sessionState, same(local.sessionState));
+      expect(merged.updatedAt, DateTime.utc(2026, 4, 2));
+      expect(merged.disappearingTimerSeconds, 300);
+    });
+
+    test('a server preview turning it into a group is not taken', () {
+      final local = _preview(bundle: _fullBundle, session: _session());
+      final server = _preview().copyWith(
+        type: ConversationType.group,
+        members: const [GroupMember(userId: 'user-lyra', handle: 'lyra')],
+      );
+
+      final merged = mergeConversationPreviews([local], [server]).single;
+
+      expect(merged.type, ConversationType.direct);
+      expect(merged.members, isEmpty);
+      expect(merged.recipientBundle, same(_fullBundle));
+    });
+
+    test('a new handle for the same user still comes from the server', () {
+      final local = _preview(bundle: _fullBundle, session: _session());
+      final server = _preview().copyWith(peerHandle: 'selene-renamed');
+
+      final merged = mergeConversationPreviews([local], [server]).single;
+
+      expect(merged.peerHandle, 'selene-renamed');
+      expect(merged.recipientBundle, same(_fullBundle));
+    });
+  });
+
   test('new conversations pass through and vanished ones are dropped', () {
     final merged = mergeConversationPreviews(
       [_preview(id: 'conv-gone', bundle: _fullBundle, session: _session())],

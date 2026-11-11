@@ -1502,6 +1502,12 @@ abstract class AppLocalizations {
   /// **'This contact started using a new device.'**
   String get chatNoticeIdentityNewDevice;
 
+  /// No description provided for @chatNoticeSenderKeysKept.
+  ///
+  /// In en, this message translates to:
+  /// **'The server listed this group without its group encryption keys. This device keeps using them.'**
+  String get chatNoticeSenderKeysKept;
+
   /// No description provided for @chatIdentityChangedTitle.
   ///
   /// In en, this message translates to:
@@ -1511,7 +1517,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatIdentityChangedBody.
   ///
   /// In en, this message translates to:
-  /// **'Sending is paused until you review the new safety number.'**
+  /// **'Nothing is sent to the new key until you review it.'**
   String get chatIdentityChangedBody;
 
   /// No description provided for @chatIdentityChangedReview.
@@ -2383,6 +2389,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Accept the new key'**
   String get safetyNumbersAcceptNewKey;
+
+  /// No description provided for @safetyNumbersKeepCurrentKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep the current key'**
+  String get safetyNumbersKeepCurrentKey;
 
   /// No description provided for @safetyNumbersScanAction.
   ///

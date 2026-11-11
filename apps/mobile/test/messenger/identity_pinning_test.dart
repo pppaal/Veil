@@ -204,6 +204,9 @@ void main() {
     await selene.sendText(conversationId: conv, body: 'react to me');
     await waitFor(() => atlas.messagesFor(conv).isNotEmpty);
     expect(await trust.admit(conv, 'user-selene', 'dev-selene', _key('server-chosen key')), isFalse);
+    // The send needs the directory, which serves the refused key: a change
+    // holds back only a send that would need it.
+    serveSelene(identityKey: _key('server-chosen key'));
 
     final target = atlas.messagesFor(conv).firstWhere((message) => !message.isLocalNotice);
     await atlas.toggleReaction(target, '🎉');

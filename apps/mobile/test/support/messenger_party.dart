@@ -205,7 +205,6 @@ class MessengerParty {
         rootDirectoryFactory: () => attachmentDirectory,
       ),
       notificationService: notifications,
-      identityPrivateRefLoader: () async => device.identity.identityPrivateKeyRef,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),
       ),

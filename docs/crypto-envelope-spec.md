@@ -14,9 +14,10 @@ The adapter speaks two protocols:
   every header, AEAD-bound routing fields and attachments carried inside the
   ratchet. Normative section below.
 - **Legacy protocol v1** (`veil-envelope-v1`): spoken only with peers that still
-  publish v1 bundles. Its handshake authenticates only the responder, so
-  everything decrypted on it is reported as `legacyUnauthenticated`. Kept
-  byte-compatible; documented after the v2 section.
+  publish v1 bundles, and only as the initiator. Its handshake authenticates
+  only the responder, so everything decrypted on it is reported as
+  `legacyUnauthenticated`. Kept byte-compatible; documented after the v2
+  section.
 
 The reference implementation lives under
 [apps/mobile/lib/src/core/crypto/](../apps/mobile/lib/src/core/crypto/)
@@ -316,6 +317,16 @@ chose (libsignal's `promoteState`). There are two exceptions:
    frame was then sent before the peer saw the pending handshake, or the peer
    is holding on to a handshake that wins the same comparison.
 
+Exception 2 does not apply when the current state is our own initiation that
+no frame has answered yet, and the archived state is the peer's own initiation
+from the same `IKed`, which we never sent on and which had already received a
+frame before this one. A peer that took our handshake would not keep sending
+on its own, so it did not take ours, typically because it cannot open it (the
+one-time or signed prekey it names is gone): holding on to ours would leave
+everything we send unreadable for good. The first competing frame still loses
+the tie-break as above, so true glare settles as before, and frames we sent
+before the peer's second frame stay unreadable to it.
+
 Both peers rank any two handshakes the same way, so the outcome does not depend
 on arrival order. Once messages alternate (each side sends only after it has
 received), both sides send on one state within two round trips, stop repeating
@@ -343,7 +354,7 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | `ok`                    | authenticated v2 message                                   |
 | `failed`                | malformed, unauthenticated, or prekeys unavailable; `failureReason` says which |
 | `replayed`              | `(pub, N)` already consumed or its chain left behind       |
-| `sessionMissing`        | Normal frame with no matching session                      |
+| `sessionMissing`        | Normal or legacy v1 frame with no matching session         |
 | `awaitingKey`           | group frame whose sender key has not arrived               |
 | `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
@@ -379,13 +390,25 @@ every device a group chain key is sealed to or accepted from.
 | pin matches | proceed |
 | new device, contact never verified | pinned in the same step as the decision, proceed, the conversation gets an `identity.new_device` notice |
 | new device, contact verified | refused until the user approves after re-verifying |
-| different key for a pinned device | refused until the user approves; if the pin was verified, approval requires re-verification |
+| device pinned unverified, another device of the contact verified since | refused until the user approves after re-verifying: verifying a contact never vouches for a device that was not compared |
+| different key for a pinned device | refused until the user approves; if the contact has any verified device, approval requires re-verification |
 | device id already pinned under another user | refused; there is nothing to approve (group chains are keyed by device id) |
 
-A refusal is never resolved automatically. In a 1:1 conversation it blocks
-sending (no bootstrap, no encryption) and inbound handshakes from that
-identity yield `identityRejected`, which is retried once the user approves.
-The conversation gets an `identity.changed` notice once per presented key.
+A refusal is never accepted automatically. In a 1:1 conversation nothing is
+ever sealed to the refused identity: a send that needs the directory goes
+ahead only once the pins accept what it serves, and a send on the existing
+session only while the pins still accept the identity that session encrypts
+to, so a refused frame, which a relay can forge at will, never stops a
+conversation by itself. Inbound handshakes from that identity yield
+`identityRejected`, which is retried once the user approves. The user either
+approves the change or keeps the current identity; a kept identity refuses the
+declined key from then on, in every conversation, without asking again until
+the app restarts (pending and declined changes are kept in memory only). A
+directory answer that serves the pinned key again withdraws a change about
+that device. The conversation gets an `identity.changed` notice once per
+presented key. A new device of an unverified contact is announced in the
+conversation where it first appeared and in every 1:1 with its owner, since
+its pin lets it pass silently everywhere from then on.
 In a Sender Keys group the refused device is not sealed to and its
 distributions are not installed; the rest of the group proceeds. A chain key
 is sealed once to each trusted device, and the sender records delivery per
@@ -395,7 +418,10 @@ minutes), while a device that holds the chain is never sent it again. Notices ar
 rows the client inserts itself under the id prefix `notice:`; relayed rows
 carrying that prefix are dropped, and only local rows are rendered as notices.
 
-What a 1:1 conversation encrypts to is always what it shows. A handshake
+What a 1:1 conversation encrypts to is always what it shows. Once it has a
+session, a server conversation list never changes whom it is with: a listing
+that names another user, or turns it into a group, updates only its last
+message and timer. A handshake
 the pins admit becomes the engine's sending state, so when it comes from
 another device or proves another identity than the one the conversation
 records, the conversation records that device and key in its place, and
@@ -431,7 +457,8 @@ Safety numbers (v2) are computed from the pinned `IKed` and the two user ids,
 never from the directory. In a 1:1 conversation the screen shows the device
 the conversation's session is bound to, the one every reply is encrypted to,
 and marking it verified verifies that device; for a group member it shows the
-device the directory calls active. The screen warns when the directory serves
+device the directory calls active, and the member list marks a member verified
+only when every device pinned for them is. The screen warns when the directory serves
 another key for that device, or another device. A scanned QR payload that does
 not match is a hard failure: nothing is verified or approved. Safety numbers
 never leave the device.
@@ -441,7 +468,17 @@ conversation, that conversation accepts only v2; `veil-envelope-v1` and
 `veil-envelope-v1-dev` frames are refused before decryption with `failed` /
 `downgrade_rejected`. The pin is kept in the keystore apart from session
 state. A Sender Keys group never routes anything but `veil-group-v1` frames to
-the group engine, and never opens a 1:1 session.
+the group engine, and never opens a 1:1 session. Sender Keys mode is pinned the
+same way, the first time a group is listed with it or a `veil-group-v1` frame
+authenticates in it: a later listing that reports it without Sender Keys (an
+honest relay never turns them off) is overruled and the group gets a
+`group.sender_keys_kept` notice once, its sends never reach the pairwise
+engine, and every pairwise frame in it is `failed` / `downgrade_rejected`.
+A `veil-envelope-v1` frame never opens a session: a client that publishes v2
+bundles cannot be the responder of an honest v1 handshake, and the v1
+responder derives its root only from its own identity key and an ephemeral the
+sender chose, so whoever relayed such a frame could read the reply. With no
+legacy state to open it on, it is `sessionMissing`.
 
 Reactions travel end to end: a message of inner kind `reaction` whose body is
 compact JSON `{"v":1,"target":<message id>,"emoji":<1-8 code points>,"op":"add"|"remove"}`.
@@ -625,6 +662,12 @@ padding.
 7. Persist the session under key `conversationId`.
 
 ### Inbound (responder)
+
+Clients that publish v2 bundles never perform this bootstrap (see Version
+pinning above): a v1 frame in a conversation without a legacy state is
+`sessionMissing`. Legacy states exist only when restored from pre-v2 snapshots
+or bootstrapped outbound to a v1 bundle that verifies. The steps are kept for
+byte compatibility.
 
 1. Extract `peerRatchetPub` from the first 32 bytes of the incoming frame's
    decoded ciphertext (`InboundEnvelopeInspector`; it returns null for v2

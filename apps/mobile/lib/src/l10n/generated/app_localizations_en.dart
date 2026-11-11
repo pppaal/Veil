@@ -784,11 +784,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'This contact started using a new device.';
 
   @override
+  String get chatNoticeSenderKeysKept =>
+      'The server listed this group without its group encryption keys. This device keeps using them.';
+
+  @override
   String get chatIdentityChangedTitle => 'Safety number changed';
 
   @override
   String get chatIdentityChangedBody =>
-      'Sending is paused until you review the new safety number.';
+      'Nothing is sent to the new key until you review it.';
 
   @override
   String get chatIdentityChangedReview => 'Review';
@@ -1294,6 +1298,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersAcceptNewKey => 'Accept the new key';
+
+  @override
+  String get safetyNumbersKeepCurrentKey => 'Keep the current key';
 
   @override
   String get safetyNumbersScanAction => 'Compare a scanned code';

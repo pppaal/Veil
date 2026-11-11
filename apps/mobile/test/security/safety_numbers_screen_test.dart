@@ -78,7 +78,7 @@ class _Fixture {
     await tester.runAsync(() => controller.applySession(mockPartySession('atlas')));
   }
 
-  Future<void> pumpScreen(WidgetTester tester, {required Finder until}) async {
+  Future<void> pumpScreen(WidgetTester tester, {required Finder until, String conversationId = conv}) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         messengerControllerProvider.overrideWith((ref) => controller),
@@ -91,7 +91,7 @@ class _Fixture {
         theme: VeilTheme.dark(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: const SafetyNumbersScreen(conversationId: conv),
+        home: SafetyNumbersScreen(conversationId: conversationId),
       ),
     ));
     await settleUntil(tester, () => until.evaluate().isNotEmpty);
@@ -240,6 +240,45 @@ void main() {
     expect(kept.identityKey, fixture.pinnedKey);
     expect(kept.isVerified, isTrue);
     expect(fixture.controller.pendingIdentityChangeFor(conv)!.presentedKey, relayKey);
+  });
+
+  testWidgets('a group member counts as verified only when every device of theirs is', (tester) async {
+    final fixture = _Fixture();
+    await fixture.setUp(tester);
+    final resolver = fixture.trust.resolver;
+    await tester.runAsync(() async {
+      fixture.relay.addGroup('grp', ['atlas', 'selene']);
+      await fixture.controller.refreshConversations();
+      // Selene's compared device is verified; another of hers, admitted
+      // before, never was, and may hold the group's chain keys.
+      await resolver.markVerified('user-selene', 'dev-selene', fixture.pinnedKey);
+      final otherKey = (await LibCryptoAdapter().identity.generateDeviceIdentity('dev-other')).identityPublicKey;
+      await resolver.approve('user-selene', 'dev-other', otherKey);
+    });
+
+    await fixture.pumpScreen(tester, until: find.text('selene'), conversationId: 'grp');
+    expect(find.text('Unverified'), findsOneWidget);
+    expect(find.text('Verified'), findsNothing);
+  });
+
+  testWidgets('an identity change can be declined, keeping the pinned key', (tester) async {
+    final fixture = _Fixture();
+    await fixture.setUp(tester);
+    await tester.runAsync(() => fixture.trust.admit(conv, 'user-selene', 'dev-selene', fixture.servedKey));
+
+    final keep = find.text('Keep the current key');
+    await fixture.pumpScreen(tester, until: keep);
+    await tester.tap(keep);
+    await tester.pump();
+    await fixture.settleUntil(tester, () => fixture.controller.pendingIdentityChangeFor(conv) == null);
+
+    expect(fixture.controller.pendingIdentityChangeFor(conv), isNull);
+    final kept = (await tester.runAsync(() => fixture.trust.resolver.pinFor('user-selene', 'dev-selene')))!;
+    expect(kept.identityKey, fixture.pinnedKey);
+    // The declined key is refused from then on without asking again.
+    expect(await tester.runAsync(() => fixture.trust.admit(conv, 'user-selene', 'dev-selene', fixture.servedKey)),
+        isFalse);
+    expect(fixture.controller.pendingIdentityChangeFor(conv), isNull);
   });
 
   testWidgets('an unverified contact key change is accepted unverified', (tester) async {

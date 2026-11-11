@@ -34,6 +34,8 @@ final class PinMatch extends IdentityVerdict {
 /// The user is known but this device is not. Nothing is pinned until the
 /// user approves the device, unless the caller asked for a new device of an
 /// unverified user to be admitted (see TrustedIdentityResolver.evaluate).
+/// Also the verdict for a device pinned unverified while another device of
+/// the user is verified: it was never compared, so it counts as new.
 final class NewDeviceForKnownUser extends IdentityVerdict {
   const NewDeviceForKnownUser({required this.knownUserVerified, this.admitted});
 
@@ -60,7 +62,8 @@ final class DeviceOfAnotherUser extends IdentityVerdict {
   bool get isTrusted => false;
 }
 
-/// The device presented a different key than its unverified pin.
+/// The device presented a different key than its pin, and the user has
+/// verified none of their devices.
 final class KeyChanged extends IdentityVerdict {
   const KeyChanged({required this.pinned, required this.presentedKey});
 
@@ -71,7 +74,9 @@ final class KeyChanged extends IdentityVerdict {
   bool get isTrusted => false;
 }
 
-/// The device presented a different key than a pin the user had verified.
+/// The device presented a different key than its pin, and the user had
+/// verified that pin or another device of the same user: accepting it takes
+/// a re-verification, or the new key would be held again right after.
 final class KeyChangedVerified extends IdentityVerdict {
   const KeyChangedVerified({required this.pinned, required this.presentedKey});
 

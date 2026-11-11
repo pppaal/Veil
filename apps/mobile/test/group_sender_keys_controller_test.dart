@@ -184,7 +184,6 @@ class _Member {
       sessionBootstrapper: adapter.sessions,
       realtimeService: realtime,
       cacheService: null,
-      identityPrivateRefLoader: () async => device.identity.identityPrivateKeyRef,
       groupCrypto: coordinator,
     );
   }

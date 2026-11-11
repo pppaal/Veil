@@ -3,6 +3,7 @@ import 'dart:convert';
 import '../../../../core/storage/secure_storage_service.dart';
 
 const String _authenticatedVersion = 'veil-envelope-v2';
+const String _senderKeysVersion = 'veil-group-v1';
 const Set<String> _legacyVersions = {'veil-envelope-v1', 'veil-envelope-v1-dev'};
 
 /// Which envelope versions each 1:1 conversation still accepts.
@@ -10,8 +11,11 @@ const Set<String> _legacyVersions = {'veil-envelope-v1', 'veil-envelope-v1-dev'}
 /// The version is outer metadata the relay can rewrite. A conversation
 /// starts open; once a protocol v2 frame has authenticated in it, only v2 is
 /// accepted from then on, so a relay cannot walk it back to the legacy
-/// protocol, whose handshake authenticates nobody. The pins live in the
-/// keystore, apart from session state that a failed restore could lose.
+/// protocol, whose handshake authenticates nobody. A Sender Keys group is
+/// pinned the same way, to group frames only, so that a relay that reports
+/// it as a pairwise group can neither route its sends nor its frames through
+/// the 1:1 engine. The pins live in the keystore, apart from session state
+/// that a failed restore could lose.
 class EnvelopeVersionPolicy {
   EnvelopeVersionPolicy({ScopedSecureStore? store}) : _store = store;
 
@@ -35,9 +39,22 @@ class EnvelopeVersionPolicy {
   /// Records that a frame of [version] authenticated in [conversationId].
   Future<void> noteAuthenticated(String conversationId, String version) async {
     if (version != _authenticatedVersion) return;
+    await _pin(conversationId, _authenticatedVersion);
+  }
+
+  /// Records that [conversationId] is a Sender Keys group. It stays one: an
+  /// honest relay never turns Sender Keys off again (the API refuses to).
+  Future<void> pinSenderKeys(String conversationId) => _pin(conversationId, _senderKeysVersion);
+
+  /// Whether [conversationId] was ever seen as a Sender Keys group.
+  Future<bool> isSenderKeysPinned(String conversationId) async =>
+      (await _load())[conversationId]?.contains(_senderKeysVersion) ?? false;
+
+  // A conversation is pinned once, to a single version, and never re-pinned.
+  Future<void> _pin(String conversationId, String version) async {
     final allowed = await _load();
-    if (allowed[conversationId]?.length == 1) return;
-    allowed[conversationId] = const [_authenticatedVersion];
+    if (allowed[conversationId] != null) return;
+    allowed[conversationId] = [version];
     // Writing over an unreadable document would leave only this pin, and
     // reopen every other conversation after a restart. It already pins them
     // all, so it is kept as it is.

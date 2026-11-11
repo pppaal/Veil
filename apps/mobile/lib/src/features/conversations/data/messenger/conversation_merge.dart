@@ -9,6 +9,12 @@ import '../conversation_models.dart';
 /// ratchet; the local session and bundle are kept instead.
 /// Everything else (membership, last message, timers, epoch) follows the
 /// server, and conversations missing from the server list are dropped.
+///
+/// Except who a 1:1 conversation is with, once it has a session: the engine
+/// keeps encrypting to the peer that session was opened with, so a server
+/// preview that names another user, or turns the conversation into a group,
+/// would show one contact while every message goes to another. Such a
+/// preview only updates the last message and the timer.
 List<ConversationPreview> mergeConversationPreviews(
   List<ConversationPreview> local,
   List<ConversationPreview> server,
@@ -23,6 +29,13 @@ ConversationPreview _mergePreview(ConversationPreview? local, ConversationPrevie
   if (local == null) {
     return incoming;
   }
+  if (_rebindsSessionPeer(local, incoming)) {
+    return local.copyWith(
+      lastEnvelope: incoming.lastEnvelope,
+      updatedAt: incoming.updatedAt,
+      disappearingTimerSeconds: incoming.disappearingTimerSeconds,
+    );
+  }
   final keepBundle = _isEmptyBundle(incoming.recipientBundle) &&
       local.recipientBundle.userId == incoming.recipientBundle.userId;
   return incoming.copyWith(
@@ -30,6 +43,11 @@ ConversationPreview _mergePreview(ConversationPreview? local, ConversationPrevie
     recipientBundle: keepBundle ? local.recipientBundle : incoming.recipientBundle,
   );
 }
+
+bool _rebindsSessionPeer(ConversationPreview local, ConversationPreview incoming) =>
+    local.type == ConversationType.direct &&
+    local.sessionState != null &&
+    (incoming.type != ConversationType.direct || incoming.recipientBundle.userId != local.recipientBundle.userId);
 
 bool _isEmptyBundle(KeyBundle bundle) =>
     bundle.deviceId.isEmpty &&

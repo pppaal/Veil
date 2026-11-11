@@ -46,7 +46,8 @@ class RelayConversation {
   final String type;
   final List<String> memberHandles;
   final DateTime createdAt;
-  final bool useSenderKeys;
+  // Settable so a test can play a relay that lies about it.
+  bool useSenderKeys;
   int epoch = 0;
   final List<Map<String, dynamic>> messages = [];
 }

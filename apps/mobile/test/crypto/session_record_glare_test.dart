@@ -3,7 +3,9 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/bytes.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/random_source.dart';
 import 'package:veil_mobile/src/core/crypto/ratchet/session_record.dart';
+import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 
 import 'support/crypto_harness.dart';
 
@@ -174,6 +176,35 @@ void main() {
       expect(await body(initiator, second), 'second');
 
       await expectConvergesAndHeals(initiator, responder, conversationId: conversationId);
+    }
+  });
+
+  test('a handshake the responder cannot open does not wedge the conversation', () async {
+    for (final initiatorIsLow in [true, false]) {
+      final conversationId = 'conv-dead-handshake-$initiatorIsLow';
+      final (low, high) = await lowAndHigh();
+      final (initiator, responder) = initiatorIsLow ? (low, high) : (high, low);
+      // The initiator was handed a one-time prekey the responder no longer
+      // holds, so every frame repeating that handshake fails to open.
+      final orphan = await generateX25519KeyPair(SecureRandomSource());
+      await bootstrap(
+        initiator,
+        responder,
+        conversationId: conversationId,
+        oneTimePrekey: OneTimePrekey(keyId: 7, publicKey: b64uEncode(orphan.publicKey)),
+      );
+      final unreadable = await receive(responder, await send(initiator, responder, 'lost', conversationId: conversationId));
+      expect(unreadable.failureReason, 'opk_unavailable');
+
+      // The responder opens its own handshake and writes twice; from its
+      // second frame on, the initiator answers on that handshake.
+      await bootstrap(responder, initiator, conversationId: conversationId);
+      expect(await body(initiator, await send(responder, initiator, 'r1', conversationId: conversationId)), 'r1');
+      expect(await body(initiator, await send(responder, initiator, 'r2', conversationId: conversationId)), 'r2');
+      expect(await body(responder, await send(initiator, responder, 'm2', conversationId: conversationId)), 'm2',
+          reason: 'initiator is the ${initiatorIsLow ? 'lower' : 'higher'} identity');
+
+      await expectConvergesAndHeals(responder, initiator, conversationId: conversationId);
     }
   });
 

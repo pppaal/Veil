@@ -748,10 +748,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatNoticeIdentityNewDevice => '이 연락처가 새 기기를 사용하기 시작했습니다.';
 
   @override
+  String get chatNoticeSenderKeysKept =>
+      '서버가 이 그룹을 그룹 암호화 키 없이 표시했습니다. 이 기기는 계속 그 키를 사용합니다.';
+
+  @override
   String get chatIdentityChangedTitle => '안전 번호가 바뀌었습니다';
 
   @override
-  String get chatIdentityChangedBody => '새 안전 번호를 확인할 때까지 전송이 중지됩니다.';
+  String get chatIdentityChangedBody => '확인하기 전에는 새 키로 아무것도 전송되지 않습니다.';
 
   @override
   String get chatIdentityChangedReview => '확인하기';
@@ -1244,6 +1248,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get safetyNumbersAcceptNewKey => '새 키 수락';
+
+  @override
+  String get safetyNumbersKeepCurrentKey => '현재 키 유지';
 
   @override
   String get safetyNumbersScanAction => '스캔한 코드 비교';

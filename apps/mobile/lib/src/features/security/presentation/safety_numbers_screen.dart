@@ -87,9 +87,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     final session = ref.read(appSessionProvider);
     // You can't verify your own identity number against yourself.
     final members = conversation.members.where((m) => m.userId != session.userId).toList(growable: false);
+    // Verified only when every device of theirs is: any pinned device of a
+    // member may hold this group's chain keys, not just the one compared.
     final verified = <String>{
       for (final member in members)
-        if ((await resolver.pinsForUser(member.userId)).any((pin) => pin.isVerified)) member.userId,
+        if (await resolver.pinsForUser(member.userId) case final pins
+            when pins.isNotEmpty && pins.every((pin) => pin.isVerified))
+          member.userId,
     };
     return _GroupListData(groupName: conversation.groupMeta?.name, members: members, verifiedUserIds: verified);
   }
@@ -200,6 +204,24 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       await ref
           .read(messengerControllerProvider)
           .approveIdentityChange(widget.conversationId, reverified: reverified, reviewed: change);
+    } on StateError {
+      if (!mounted) return;
+      VeilToast.show(
+        context,
+        message: AppLocalizations.of(context).safetyNumbersChangeReplaced,
+        tone: VeilBannerTone.warn,
+      );
+    }
+    if (!mounted) return;
+    await _reload();
+  }
+
+  // Keeps the pinned identity in place of exactly [change]; a newer change
+  // that replaced it meanwhile stays pending and is shown instead.
+  Future<void> _declineChange(PendingIdentityChange change) async {
+    VeilHaptics.medium();
+    try {
+      await ref.read(messengerControllerProvider).declineIdentityChange(widget.conversationId, reviewed: change);
     } on StateError {
       if (!mounted) return;
       VeilToast.show(
@@ -607,6 +629,14 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           label: l10n.safetyNumbersAcceptNewKey,
           onPressed: _scanMismatch ? null : () => _acceptChange(change, reverified: false),
         ),
+      const SizedBox(height: VeilSpace.sm),
+      // Accepting is never the only way out of a change the relay may have
+      // forged: the user can keep what was pinned.
+      VeilButton(
+        label: l10n.safetyNumbersKeepCurrentKey,
+        tone: VeilButtonTone.secondary,
+        onPressed: () => _declineChange(change),
+      ),
     ];
   }
 

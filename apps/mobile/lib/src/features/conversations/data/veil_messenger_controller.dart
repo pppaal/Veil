@@ -49,7 +49,6 @@ class VeilMessengerController extends ChangeNotifier {
     AttachmentTempFileStore? attachmentTempFileStore,
     LocalNotificationService? notificationService,
     Future<void> Function(Object error)? onSecurityException,
-    Future<String?> Function()? identityPrivateRefLoader,
     Future<void> Function()? sessionSnapshotRestorer,
     GroupSenderKeyCoordinator? groupCrypto,
     bool Function()? readReceiptsEnabled,
@@ -69,7 +68,6 @@ class VeilMessengerController extends ChangeNotifier {
         _attachmentTempFileStore = attachmentTempFileStore,
         _notificationService = notificationService,
         _onSecurityException = onSecurityException,
-        _identityPrivateRefLoader = identityPrivateRefLoader,
         _sessionSnapshotRestorer = sessionSnapshotRestorer,
         _groupCrypto = groupCrypto,
         _keys = keysApi ?? KeysApi(apiClient, keyBundleCodec),
@@ -98,7 +96,6 @@ class VeilMessengerController extends ChangeNotifier {
   final AttachmentTempFileStore? _attachmentTempFileStore;
   final LocalNotificationService? _notificationService;
   final Future<void> Function(Object error)? _onSecurityException;
-  final Future<String?> Function()? _identityPrivateRefLoader;
   final Future<void> Function()? _sessionSnapshotRestorer;
   final GroupSenderKeyCoordinator? _groupCrypto;
   final KeysApi _keys;
@@ -130,7 +127,6 @@ class VeilMessengerController extends ChangeNotifier {
   bool _sessionsRestored = false;
   bool _disposed = false;
   final Random _random = Random.secure();
-  final Set<String> _inboundBootstrapInFlight = <String>{};
 
   Timer? _expirationTicker;
   Timer? _retryTicker;
@@ -556,6 +552,20 @@ class VeilMessengerController extends ChangeNotifier {
     await retryPendingMessages(conversationId);
   }
 
+  /// Keeps the identity the pins hold instead of the change pending in
+  /// [conversationId], [reviewed] being the change the user was shown; its
+  /// key is refused from then on without asking again (see
+  /// IdentityTrust.decline). Messages it held back go out on the
+  /// conversation's current session.
+  Future<void> declineIdentityChange(String conversationId, {required PendingIdentityChange reviewed}) async {
+    for (final settled in _trust.decline(conversationId, reviewed: reviewed)) {
+      // The directory may still serve the declined key; asking it again
+      // would only refuse every send.
+      _directoryRecheck.remove(settled);
+      await retryPendingMessages(settled);
+    }
+  }
+
   /// Decides whether an inbound handshake may open a session (adapters that
   /// authenticate the initiator call it, see
   /// LibCryptoAdapter.setRemoteIdentityVerifier): the same pin policy as an
@@ -578,16 +588,41 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   Future<void> _onTrustEvent(IdentityTrustEvent event) async {
-    final notice = localNoticeFor(event, conversationMessages: messagesFor(event.conversationId), now: DateTime.now());
-    if (notice != null && !messagesFor(event.conversationId).any((message) => message.id == notice.message.id)) {
-      await _contents.storeLocalNotice(notice.message, notice.code);
+    // A device is pinned once for every conversation, and a pinned device
+    // passes silently from then on. So a new device is announced in each
+    // chat with its owner, not only where it first showed up: admitted
+    // through a group, it could otherwise take over the 1:1 with that
+    // contact without a word there.
+    final announced = switch (event) {
+      NewDeviceAdmitted(:final userId, :final deviceId) => [
+          event,
+          for (final other in _conversations)
+            if (other.id != event.conversationId &&
+                other.type == ConversationType.direct &&
+                other.recipientBundle.userId == userId)
+              NewDeviceAdmitted(other.id, userId: userId, deviceId: deviceId),
+        ],
+      _ => [event],
+    };
+    for (final each in announced) {
+      await _storeNotice(
+        each.conversationId,
+        localNoticeFor(each, conversationMessages: messagesFor(each.conversationId), now: DateTime.now()),
+      );
       // The trust layer outlives this controller and may have announced
       // the change just before it was disposed.
       if (_disposed) return;
-      _mergeServerMessages(event.conversationId, [notice.message]);
-      await _persistConversationState(event.conversationId);
     }
-    if (!_disposed) notifyListeners();
+    notifyListeners();
+  }
+
+  // Inserts [notice] into its conversation unless it is already there.
+  Future<void> _storeNotice(String conversationId, LocalNotice? notice) async {
+    if (notice == null || messagesFor(conversationId).any((message) => message.id == notice.message.id)) return;
+    await _contents.storeLocalNotice(notice.message, notice.code);
+    if (_disposed) return;
+    _mergeServerMessages(conversationId, [notice.message]);
+    await _persistConversationState(conversationId);
   }
 
   // Stores the plaintext before encrypting so the sender can always show
@@ -650,6 +685,11 @@ class VeilMessengerController extends ChangeNotifier {
       );
     }
 
+    // A group once seen with Sender Keys never falls back to the pairwise
+    // engine, whatever its preview says now.
+    if (await _envelopeVersions.isSenderKeysPinned(conversation.id)) {
+      throw StateError('This group uses Sender Keys, which this device cannot send with.');
+    }
     final isGroup = conversation.type == ConversationType.group;
     Future<CryptoEnvelope> sealFor(KeyBundle bundle) => _cryptoEngine.encryptMessage(
           conversationId: conversation.id,
@@ -887,11 +927,13 @@ class VeilMessengerController extends ChangeNotifier {
   Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) async {
     final groupCrypto = _groupCrypto;
     if (groupCrypto != null && GroupSenderKeyCoordinator.isGroupEnvelope(envelope)) {
-      return groupCrypto.decryptMessage(
+      final opened = await groupCrypto.decryptMessage(
         envelope,
         accessToken: _session.accessToken ?? '',
         localUserId: _session.userId ?? '',
       );
+      if (opened.isOk) await _envelopeVersions.pinSenderKeys(envelope.conversationId);
+      return opened;
     }
     if (await _refusesPairwise(envelope)) {
       return DecryptedMessage(
@@ -902,7 +944,12 @@ class VeilMessengerController extends ChangeNotifier {
       );
     }
     _notePeerDevice(envelope);
-    await _ensureInboundSession(envelope);
+    // A legacy v1 frame never opens a session here. This device publishes
+    // only a v2 bundle, so no honest peer can start a v1 session with it,
+    // and the v1 responder handshake authenticates nobody: its root comes
+    // from our identity key and an ephemeral the sender chose, so a frame
+    // with no session to open on can only come from whoever chose that
+    // ephemeral, the relay included. It ends as sessionMissing.
     final decrypted = await _cryptoEngine.decryptMessage(envelope);
     if (decrypted.isOk) {
       await _envelopeVersions.noteAuthenticated(envelope.conversationId, envelope.version);
@@ -911,21 +958,22 @@ class VeilMessengerController extends ChangeNotifier {
     return decrypted;
   }
 
-  // The envelope version is outer metadata: a Sender Keys group never takes
-  // the pairwise path, and a conversation where protocol v2 authenticated
-  // never goes back to an older version.
+  // The envelope version is outer metadata: a Sender Keys group (one the
+  // relay lists as such, or ever did) never takes the pairwise path, and a
+  // conversation where protocol v2 authenticated never goes back to an
+  // older version.
   Future<bool> _refusesPairwise(CryptoEnvelope envelope) async {
     return (conversationById(envelope.conversationId)?.useSenderKeys ?? false) ||
         await _envelopeVersions.rejects(envelope.conversationId, envelope.version);
   }
 
-  // Engines that run the responder half of the handshake inside decrypt
-  // never pass through _ensureInboundSession. Once a peer frame has opened,
-  // record the session it established, so replies, identity pinning and
-  // device-move detection have something to compare against. A handshake
-  // that moved an established conversation to another device or identity is
-  // recorded as well (see sessionNames), and the next send confirms that
-  // device with the directory before encrypting to it again.
+  // Engines run the responder half of the handshake inside decrypt. Once a
+  // peer frame has opened, record the session it established, so replies,
+  // identity pinning and device-move detection have something to compare
+  // against. A handshake that moved an established conversation to another
+  // device or identity is recorded as well (see sessionNames), and the next
+  // send confirms that device with the directory before encrypting to it
+  // again.
   void _noteOpenedSession(CryptoEnvelope envelope, DecryptedMessage decrypted) {
     final conversationId = envelope.conversationId;
     // Taken whatever happens next, so a key proved by a handshake that was
@@ -969,60 +1017,6 @@ class VeilMessengerController extends ChangeNotifier {
     }
   }
 
-  // Lazily bootstraps a session when an inbound envelope arrives for a
-  // conversation we haven't ECDH'd on yet. Uses the sender's ephemeral pub
-  // (carried in the envelope wire bytes) + our own stored x25519 identity
-  // private key, so no round-trip is needed. No-ops if the adapter doesn't
-  // support wire inspection (mock) or the caller didn't wire an identity loader.
-  Future<void> _ensureInboundSession(CryptoEnvelope envelope) async {
-    final loader = _identityPrivateRefLoader;
-    if (loader == null) return;
-    final codec = _envelopeCodec;
-    if (codec is! InboundEnvelopeInspector) return;
-    // Group frames carry no 1:1 ratchet header; never let one seed a session.
-    if (GroupSenderKeyCoordinator.isGroupEnvelope(envelope)) return;
-    final conversationId = envelope.conversationId;
-    if (conversationById(conversationId)?.useSenderKeys ?? false) return;
-    if (_sessionBootstrapper.hasSessionFor(conversationId)) return;
-    if (_inboundBootstrapInFlight.contains(conversationId)) return;
-    final deviceId = _session.deviceId;
-    final userId = _session.userId;
-    if (deviceId == null || userId == null) return;
-
-    _inboundBootstrapInFlight.add(conversationId);
-    try {
-      final ephemeralPub =
-          (codec as InboundEnvelopeInspector).extractSenderEphemeralPublicKey(envelope);
-      if (ephemeralPub == null) return;
-      final identityRef = await loader();
-      if (identityRef == null || identityRef.isEmpty) return;
-
-      final material = await _sessionBootstrapper.bootstrapSessionFromInbound(
-        InboundSessionBootstrapRequest(
-          conversationId: conversationId,
-          localDeviceId: deviceId,
-          localUserId: userId,
-          localIdentityPrivateRef: identityRef,
-          remoteUserId: conversationById(conversationId)?.recipientBundle.userId ?? '',
-          // The frame's sender device is bound into its AEAD data, and both
-          // sides derive chain roles from the exact device ids.
-          remoteDeviceId: envelope.senderDeviceId,
-          remoteEphemeralPublicKey: ephemeralPub,
-        ),
-      );
-      _recordInboundSession(
-        conversationId,
-        sessionStateFromMaterial(material, remoteIdentityPublicKey: ''),
-      );
-      unawaited(_contents.retryPending(conversationId, messagesFor(conversationId)));
-    } catch (_) {
-      // Bootstrap failures fall through to the placeholder-body path — the UI
-      // surfaces "session not established" rather than crashing.
-    } finally {
-      _inboundBootstrapInFlight.remove(conversationId);
-    }
-  }
-
   // Records an inbound session on its conversation, so a reply reuses it
   // instead of bootstrapping a second one the sender would never know about.
   // Only 1:1 conversations carry a pairwise session, and one held back until
@@ -1052,8 +1046,8 @@ class VeilMessengerController extends ChangeNotifier {
               ),
       ),
     );
-    // Only a legacy handshake proves nobody; its peer's key is pinned from
-    // the directory instead.
+    // A session whose handshake this device did not see proved nobody to
+    // it; its peer's key is pinned from the directory instead.
     if (provenKey.isEmpty) _learnPeerIdentity(conversation).ignore();
   }
 
@@ -1120,15 +1114,44 @@ class VeilMessengerController extends ChangeNotifier {
     final response = await _apiClient.getConversations(_session.accessToken!);
     final items = (response['items'] as List<dynamic>? ?? const [])
         .cast<Map<String, dynamic>>();
-    _conversations = mergeConversationPreviews(
+    final (listed, keptSenderKeys) = await _keepSenderKeys(mergeConversationPreviews(
       _conversations,
       items.map(_conversationFromApi).toList(),
-    )..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    ));
+    _conversations = listed..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final unlisted = Map.of(_unlistedInboundSessions);
     _unlistedInboundSessions.clear();
     unlisted.forEach(_recordInboundSession);
     await _cacheService?.storeConversations(_conversations);
+    for (final conversationId in keptSenderKeys) {
+      await _storeNotice(
+        conversationId,
+        senderKeysKeptNotice(conversationId, conversationMessages: messagesFor(conversationId), now: DateTime.now()),
+      );
+    }
     await _reconcileExpiringState();
+  }
+
+  // Sender Keys mode is pinned the first time a group is listed with it,
+  // and a pinned group stays a Sender Keys group whatever a later list
+  // says: listed without it, its sends and frames would go through the
+  // pairwise engine. Returns the previews and the ids of the groups whose
+  // listing tried to turn Sender Keys off.
+  Future<(List<ConversationPreview>, List<String>)> _keepSenderKeys(List<ConversationPreview> previews) async {
+    final kept = <ConversationPreview>[];
+    final overruled = <String>[];
+    for (final preview in previews) {
+      if (preview.type == ConversationType.group && preview.useSenderKeys) {
+        await _envelopeVersions.pinSenderKeys(preview.id);
+        kept.add(preview);
+      } else if (await _envelopeVersions.isSenderKeysPinned(preview.id)) {
+        kept.add(preview.copyWith(type: ConversationType.group, useSenderKeys: true));
+        overruled.add(preview.id);
+      } else {
+        kept.add(preview);
+      }
+    }
+    return (kept, overruled);
   }
 
   Future<void> _syncConversation(
@@ -1380,7 +1403,8 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     await cache.purgeExpiredMessages();
-    _conversations = await cache.readConversations();
+    final (cached, _) = await _keepSenderKeys(await cache.readConversations());
+    _conversations = cached;
     _messagesByConversation.clear();
     _pagingStateByConversation.clear();
     _pendingByClientMessageId.clear();
@@ -2306,12 +2330,21 @@ class VeilMessengerController extends ChangeNotifier {
   // never touch the directory. A pending recheck asks it fresh and is only
   // cleared once that answer has been applied. A session the engine reports
   // [sessionMoved] reaches nobody this conversation chose, so it is replaced.
+  //
+  // A pending identity change holds back only what would need it. Every
+  // directory answer passes the pins before anything is sealed to it, and a
+  // steady-state send goes ahead while the pins still accept the identity
+  // its session encrypts to: otherwise a single refused frame, which the
+  // relay can forge at will, would stop the conversation.
   Future<KeyBundle> _bundleForSend(ConversationPreview conversation, {bool sessionMoved = false}) async {
-    final pending = _trust.pendingFor(conversation.id);
-    if (pending != null) throw IdentityChangedException(pending);
     final recheck = sessionMoved || _directoryRecheck.contains(conversation.id);
     if (!recheck && _sessionBootstrapper.hasSessionFor(conversation.id)) {
-      return conversation.recipientBundle;
+      final bundle = conversation.recipientBundle;
+      final pending = _trust.pendingFor(conversation.id);
+      if (pending != null && !await _trust.trusts(bundle.userId, bundle.deviceId, bundle.identityPublicKey)) {
+        throw IdentityChangedException(pending);
+      }
+      return bundle;
     }
     final handle = conversation.peerHandle;
     final served = (recheck ? null : _peerBundles.fresh(handle)) ?? await _fetchPeerBundle(handle, KeyClaim.active);
@@ -2320,10 +2353,11 @@ class VeilMessengerController extends ChangeNotifier {
     return bundle;
   }
 
-  // Best effort, once per legacy inbound session, which proves no identity:
-  // gives the responder its peer's identity key for safety numbers and later
-  // checks. Never bootstraps, so it cannot replace the session the peer just
-  // opened, and claims no prekey it would not use.
+  // Best effort, once per inbound session whose handshake identity this
+  // device did not see (one the engine already held when the conversation
+  // first recorded it): gives the responder its peer's identity key for
+  // safety numbers and later checks. Never bootstraps, so it cannot replace
+  // the session the peer just opened, and claims no prekey it would not use.
   Future<void> _learnPeerIdentity(ConversationPreview conversation) async {
     final handle = conversation.peerHandle;
     final served = _peerBundles.fresh(handle) ?? await _fetchPeerBundle(handle, KeyClaim.none);

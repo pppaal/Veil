@@ -810,7 +810,6 @@ final messengerControllerProvider =
           .read(appSessionProvider.notifier)
           .handleSecurityException(error);
     },
-    identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
     sessionSnapshotRestorer: sessionRestorer,
     groupCrypto: groupCrypto,
     readReceiptsEnabled: () => privacy.sendReadReceipts,

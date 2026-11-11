@@ -40,17 +40,8 @@ class TrustedIdentityResolver {
     _requireAddress(userId, deviceId);
     final key = _canonicalKey(identityKey);
     return _locked((pins) async {
-      // Group chains are keyed by device id alone, so the same id under a
-      // second user would let that user take over the first one's chain.
-      final elsewhere = pins.where((p) => p.deviceId == deviceId && p.userId != userId).firstOrNull;
-      if (elsewhere != null) return DeviceOfAnotherUser(elsewhere);
-      final pin = _pinIn(pins, userId, deviceId);
-      if (pin != null) {
-        if (pin.identityKey == key) return PinMatch(pin);
-        return pin.isVerified
-            ? KeyChangedVerified(pinned: pin, presentedKey: key)
-            : KeyChanged(pinned: pin, presentedKey: key);
-      }
+      final decided = _decided(pins, userId, deviceId, key);
+      if (decided != null) return decided;
       final knownDevices = pins.where((p) => p.userId == userId);
       if (knownDevices.isNotEmpty) {
         final verified = knownDevices.any((p) => p.isVerified);
@@ -130,6 +121,14 @@ class TrustedIdentityResolver {
     });
   }
 
+  /// Whether [identityKey] may be used for the device as the pins stand
+  /// ([evaluate] would find a [PinMatch]), without pinning anything.
+  Future<bool> isTrusted(String userId, String deviceId, String identityKey) async {
+    _requireAddress(userId, deviceId);
+    final key = _canonicalKey(identityKey);
+    return _locked((pins) async => _decided(pins, userId, deviceId, key) is PinMatch);
+  }
+
   Future<TrustedIdentity?> pinFor(String userId, String deviceId) =>
       _locked((pins) async => _pinIn(pins, userId, deviceId));
 
@@ -144,6 +143,26 @@ class TrustedIdentityResolver {
     if (userId.isEmpty || deviceId.isEmpty) {
       throw ArgumentError('userId and deviceId must be non-empty');
     }
+  }
+
+  // The verdict for a device the pins already decide on, or null when the
+  // device is not pinned at all (a first use or a new device).
+  static IdentityVerdict? _decided(List<TrustedIdentity> pins, String userId, String deviceId, String key) {
+    // Group chains are keyed by device id alone, so the same id under a
+    // second user would let that user take over the first one's chain.
+    final elsewhere = pins.where((p) => p.deviceId == deviceId && p.userId != userId).firstOrNull;
+    if (elsewhere != null) return DeviceOfAnotherUser(elsewhere);
+    final pin = _pinIn(pins, userId, deviceId);
+    if (pin == null) return null;
+    final verified = pins.any((p) => p.userId == userId && p.isVerified);
+    if (pin.identityKey == key) {
+      // A device pinned before the user verified another of this contact's
+      // devices was never compared: verifying the contact must not leave it
+      // trusted, so it is held like a device first seen after that.
+      if (verified && !pin.isVerified) return const NewDeviceForKnownUser(knownUserVerified: true);
+      return PinMatch(pin);
+    }
+    return verified ? KeyChangedVerified(pinned: pin, presentedKey: key) : KeyChanged(pinned: pin, presentedKey: key);
   }
 
   static TrustedIdentity? _pinIn(List<TrustedIdentity> pins, String userId, String deviceId) =>

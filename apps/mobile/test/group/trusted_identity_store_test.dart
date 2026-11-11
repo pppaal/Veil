@@ -152,6 +152,26 @@ void main() {
     expect(await resolver.pinsForUser('alice'), hasLength(1));
   });
 
+  test('verifying a contact holds every device of theirs pinned before and never compared', () async {
+    await resolver.evaluate('alice', 'dev-a', _key(1));
+    await resolver.evaluate('alice', 'dev-b', _key(2), admitNewDeviceOfUnverifiedUser: true);
+    expect(await resolver.evaluate('alice', 'dev-b', _key(2)), isA<PinMatch>());
+
+    await resolver.markVerified('alice', 'dev-a', _key(1));
+
+    final held = await resolver.evaluate('alice', 'dev-b', _key(2), admitNewDeviceOfUnverifiedUser: true);
+    expect((held as NewDeviceForKnownUser).knownUserVerified, isTrue);
+    expect(held.isTrusted, isFalse);
+    // A new key for it takes a re-verification, like any key of a verified
+    // contact; the verified device itself still matches.
+    expect(await resolver.evaluate('alice', 'dev-b', _key(3)), isA<KeyChangedVerified>());
+    expect(await resolver.evaluate('alice', 'dev-a', _key(1)), isA<PinMatch>());
+
+    // Once the user verified it too, it is trusted again.
+    await resolver.markVerified('alice', 'dev-b', _key(2));
+    expect(await resolver.evaluate('alice', 'dev-b', _key(2)), isA<PinMatch>());
+  });
+
   test('a new device is admitted only when asked, and only for an unverified user', () async {
     await resolver.evaluate('alice', 'dev-a', _key(1));
     expect(await resolver.evaluate('alice', 'dev-b', _key(2)), isA<NewDeviceForKnownUser>());

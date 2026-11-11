@@ -3,6 +3,7 @@ import 'dart:async';
 import '../../../../core/identity/identity_verdict.dart';
 import '../../../../core/identity/trusted_identity.dart';
 import '../../../../core/identity/trusted_identity_resolver.dart';
+import '../../../../core/util/base64url.dart';
 
 /// A contact identity this device will not use until the user accepts it:
 /// a different key for a pinned device, or a new device of a contact whose
@@ -71,7 +72,7 @@ final class NewDeviceAdmitted extends IdentityTrustEvent {
   final String deviceId;
 }
 
-/// A pending change was accepted or no longer applies.
+/// A pending change was accepted, declined, or no longer applies.
 final class IdentityChangeResolved extends IdentityTrustEvent {
   const IdentityChangeResolved(super.conversationId);
 }
@@ -81,8 +82,9 @@ final class IdentityChangeResolved extends IdentityTrustEvent {
 ///
 /// First use and a matching pin pass. A new device of an unverified contact
 /// is admitted and announced. Anything else is refused until the user
-/// accepts it with [approve]; a key change is never accepted automatically,
-/// and for a verified contact not even by a plain approval.
+/// accepts it with [approve] or keeps the current identity with [decline];
+/// a key change is never accepted automatically, and for a verified contact
+/// not even by a plain approval.
 class IdentityTrust {
   /// [prepare] fills the pin table with what earlier builds knew (see
   /// migrateLegacyTrust); it starts at once.
@@ -95,6 +97,9 @@ class IdentityTrust {
   final Future<void> Function()? _prepare;
   Future<void>? _preparing;
   final Map<String, PendingIdentityChange> _pending = {};
+  // Identities the user declined, as userId/deviceId/key: refused from then
+  // on without asking again.
+  final Set<String> _declined = {};
   final StreamController<IdentityTrustEvent> _events = StreamController<IdentityTrustEvent>.broadcast(sync: true);
 
   /// Completes once the pin table is prepared. Every decision waits for it
@@ -135,12 +140,24 @@ class IdentityTrust {
 
   /// Like [admit], but throws instead of returning false, for callers that
   /// must not proceed: [IdentityChangedException] for a change the user can
-  /// review, [StateError] for a device the directory misattributes.
+  /// review, [StateError] for one the user declined or a device the
+  /// directory misattributes.
   Future<void> require(String conversationId, String userId, String deviceId, String identityKey) async {
     if (await admit(conversationId, userId, deviceId, identityKey)) return;
     final change = _pending[conversationId];
-    if (change == null) throw StateError('The key directory lists this device under another user.');
-    throw IdentityChangedException(change);
+    if (change != null) throw IdentityChangedException(change);
+    if (_declined.contains(_declinedId(userId, deviceId, identityKey))) {
+      throw StateError('The key server lists a safety number you chose not to accept for this contact.');
+    }
+    throw StateError('The key directory lists this device under another user.');
+  }
+
+  /// Whether [identityKey] passes the pins for the device as they stand, the
+  /// way [admit] would let it through, without pinning or holding anything.
+  Future<bool> trusts(String userId, String deviceId, String identityKey) async {
+    await ready;
+    if (userId.isEmpty || deviceId.isEmpty || identityKey.isEmpty) return false;
+    return resolver.isTrusted(userId, deviceId, identityKey);
   }
 
   /// Accepts the conversation's pending change.
@@ -185,8 +202,39 @@ class IdentityTrust {
     return accepted;
   }
 
-  /// Forgets pending changes (sign-out); pins stay with the device.
-  void clearPending() => _pending.clear();
+  /// Keeps what the pins hold instead of the conversation's pending change,
+  /// [reviewed] being the change the user was shown. Its key is refused from
+  /// then on, in every conversation, without asking again (until sign-out or
+  /// a restart: declines are kept in memory, like pending changes); pending
+  /// changes elsewhere that present it are dropped too. Returns the
+  /// conversations whose pending change it dropped.
+  ///
+  /// Throws [StateError], changing nothing, without a pending change or when
+  /// the pending change is no longer [reviewed].
+  List<String> decline(String conversationId, {required PendingIdentityChange reviewed}) {
+    final change = _pending[conversationId];
+    if (change == null) throw StateError('No identity change is pending for this conversation.');
+    if (!change.presents(reviewed.userId, reviewed.deviceId, reviewed.presentedKey)) {
+      throw StateError('The identity change was replaced by a newer one. Review it before declining.');
+    }
+    _declined.add(_declinedId(change.userId, change.deviceId, change.presentedKey));
+    final settled = [
+      for (final entry in _pending.entries)
+        if (entry.value.presents(change.userId, change.deviceId, change.presentedKey)) entry.key,
+    ];
+    for (final id in settled) {
+      _pending.remove(id);
+      _events.add(IdentityChangeResolved(id));
+    }
+    return settled;
+  }
+
+  /// Forgets pending and declined changes (sign-out); pins stay with the
+  /// device.
+  void clearPending() {
+    _pending.clear();
+    _declined.clear();
+  }
 
   Future<void> dispose() => _events.close();
 
@@ -209,6 +257,7 @@ class IdentityTrust {
     required TrustedIdentity? previous,
     required bool verified,
   }) {
+    if (_declined.contains(_declinedId(userId, deviceId, identityKey))) return;
     if (_pending[conversationId]?.presents(userId, deviceId, identityKey) ?? false) return;
     final change = PendingIdentityChange(
       conversationId: conversationId,
@@ -220,6 +269,19 @@ class IdentityTrust {
     );
     _pending[conversationId] = change;
     _events.add(IdentityChangePending(change));
+  }
+
+  // Keys arrive in more than one base64url spelling; the resolver's verdicts
+  // carry the canonical one, which is what declines are recorded under.
+  static String _declinedId(String userId, String deviceId, String identityKey) =>
+      '$userId/$deviceId/${_canonical(identityKey)}';
+
+  static String _canonical(String identityKey) {
+    try {
+      return base64UrlNoPadEncode(base64UrlNoPadDecode(identityKey));
+    } on FormatException {
+      return identityKey;
+    }
   }
 
   // A directory that serves the pinned key again withdrew its change.

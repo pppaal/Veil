@@ -14,7 +14,7 @@ import { BundleError } from '../crypto/bundle.js';
 import { LEGACY_ENVELOPE_VERSION } from '../crypto/frame.js';
 import { isLegacyIdentity } from '../crypto/identity.js';
 import { isLegacyV1DevEnvelope } from '../crypto/legacy-v1dev.js';
-import { DecryptStatus } from '../crypto/session-cipher.js';
+import { DecryptStatus, RecipientNotAdmittedError } from '../crypto/session-cipher.js';
 import { contentFromLegacy, contentFromPayload, payloadFromContent } from '../domain/content.js';
 
 export class PeerKeyChangedError extends Error {
@@ -97,13 +97,21 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     return peer;
   }
 
+  // The session may be bound to an identity the pins no longer admit (the
+  // user verified another of the peer's devices since): then the cipher
+  // seals nothing, and the change it recorded freezes the conversation.
   async function encrypt(conversationId, peer, content) {
-    return cipher.encrypt({
-      conversationId,
-      senderDeviceId: getSelf().deviceId,
-      recipientUserId: peer.userId,
-      payload: payloadFromContent(content),
-    });
+    try {
+      return await cipher.encrypt({
+        conversationId,
+        senderDeviceId: getSelf().deviceId,
+        recipientUserId: peer.userId,
+        payload: payloadFromContent(content),
+      });
+    } catch (error) {
+      if (error instanceof RecipientNotAdmittedError) throw new PeerKeyChangedError(peer.userId);
+      throw error;
+    }
   }
 
   // Keeps freshly decrypted content, unless it has already expired: then
@@ -208,6 +216,14 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     async retire(raw) {
       await contentStore.retire(raw.conversationId, raw.id);
       if (isOwn(raw) && raw.clientMessageId) await contentStore.delete(raw.conversationId, clientKey(raw.clientMessageId));
+    },
+
+    // The peer key a safety number in this conversation is about
+    // (src/crypto/pins.js safetyKey): the identity its session sends to,
+    // unless a change waits for review. Null outside a direct conversation.
+    async safetyKey(conversationId) {
+      const peer = getPeer(conversationId);
+      return peer ? trust.safetyKey(peer.userId, await cipher.sessionIdentity(conversationId)) : null;
     },
 
     // Retires every stored message whose expiry has passed, shown or not.

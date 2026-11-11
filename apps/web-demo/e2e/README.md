@@ -16,6 +16,8 @@ runs in polling mode. Playwright starts it; nothing else is needed.
   the held messages one at a time in random order.
 - A reload restores both histories from the encrypted local store with no
   ratchet work at all, while the relay serves corrupted ciphertext.
+- Both devices' safety-number dialogs, each computed from the identity its
+  session runs on, show the same number.
 - A relay that swaps Bob's identity and opens a session to Alice as Bob's
   device is refused: Alice sees the key-change banner and cannot send.
 - A message deleted by its sender, and one past the relay's conversation

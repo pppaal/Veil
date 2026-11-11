@@ -167,6 +167,22 @@ test.describe('protocol v2 in the browser', () => {
     }
   });
 
+  // Each side's dialog is computed from the identity its session runs on;
+  // with nobody in the middle the two numbers are the same.
+  test('both devices show the same safety number', async () => {
+    const numbers: string[] = [];
+    for (const device of [alice, bob]) {
+      await device.page.locator('.panel .icon-btn', { hasText: '🛡' }).click();
+      const shown = device.page.locator('#safety-dialog #safety-number');
+      await expect(shown).toBeVisible();
+      numbers.push((await shown.innerText()).trim());
+      await device.page.keyboard.press('Escape');
+      await expect(device.page.locator('#safety-dialog')).toHaveCount(0);
+    }
+    expect(numbers[0].replace(/\s/g, '')).toMatch(/^\d{60}$/);
+    expect(numbers[0]).toBe(numbers[1]);
+  });
+
   test('relay identity swap shows banner and disables send', async () => {
     await relay('/__test/tamper', { enabled: false });
     // The relay takes over Bob's directory entry with an identity it holds

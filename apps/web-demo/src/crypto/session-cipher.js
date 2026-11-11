@@ -45,13 +45,24 @@ class SessionMissingError extends Error {
   }
 }
 
+// The identity the conversation sends to is not admitted any more; nothing
+// was encrypted, and the verifier has recorded the change for review.
+export class RecipientNotAdmittedError extends Error {
+  constructor(conversationId) {
+    super(`conversation ${conversationId} sends to an identity that needs review`);
+    this.name = 'RecipientNotAdmittedError';
+    this.conversationId = conversationId;
+  }
+}
+
 const failure = (status, reason) => ({ status, payload: null, reason });
 
 // keyring: src/crypto/prekeys.js createLocalKeyring.
-// verifyIdentity({ conversationId, senderDeviceId, identityKey }) -> boolean
-// decides whether an authenticated PreKey frame may install its state; it
-// owns pinning. Without one, a conversation stays bound to the identity of
-// its most recent state.
+// verifyIdentity({ conversationId, remoteDeviceId, identityKey }) -> boolean
+// decides whether the peer identity a frame is sealed to or opened from may
+// be used, and whether an authenticated PreKey frame may install its state;
+// it owns pinning. Without one, a conversation stays bound to the identity
+// of its most recent state.
 export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock, verifyIdentity = null }) {
   // Runs task({ record, commit }) on the conversation's stored record, under
   // its lock. commit(next) writes the next record, compare-and-swap on the
@@ -152,6 +163,16 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
     }
   }
 
+  // Asked for every frame sealed or opened, not only when its state was
+  // installed: the user may since have verified the contact on another
+  // device, and an identity they had accepted before then no longer passes.
+  // libsignal consults its identity store before every encrypt and decrypt
+  // for the same reason.
+  function admitted(conversationId, state) {
+    return !verifyIdentity
+      || verifyIdentity({ conversationId, remoteDeviceId: state.remoteDeviceId, identityKey: state.remoteIdentityKey });
+  }
+
   // Tries each candidate on its own copy and commits the first that
   // authenticates. `beforeCommit` runs before the state is written, so
   // whatever it persists (the decrypted content) is on disk before the
@@ -161,32 +182,31 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
     for (const live of candidates) {
       const scratch = live.copy();
       const opened = await openOn(scratch, envelope, frame, nonce);
-      if (opened.payload) {
-        try {
-          await beforeCommit?.(opened.payload);
-          await commit(record.receiving(live, scratch, clock()));
-        } catch {
-          scratch.destroy();
-          return failure(DecryptStatus.FAILED, 'persist_failed');
-        }
-        return { status: DecryptStatus.OK, payload: opened.payload, reason: null };
+      if (!opened.payload) {
+        scratch.destroy();
+        replayed ||= opened.replayed === true;
+        continue;
       }
-      scratch.destroy();
-      replayed ||= opened.replayed === true;
+      if (!(await admitted(envelope.conversationId, live))) {
+        scratch.destroy();
+        return failure(DecryptStatus.IDENTITY_REJECTED, 'identity_rejected');
+      }
+      try {
+        await beforeCommit?.(opened.payload);
+        await commit(record.receiving(live, scratch, clock()));
+      } catch {
+        scratch.destroy();
+        return failure(DecryptStatus.FAILED, 'persist_failed');
+      }
+      return { status: DecryptStatus.OK, payload: opened.payload, reason: null };
     }
     return replayed ? failure(DecryptStatus.REPLAYED, 'replayed') : failure(DecryptStatus.FAILED, 'decrypt_failed');
   }
 
-  async function identityAccepted(envelope, header, record) {
-    if (verifyIdentity) {
-      return verifyIdentity({
-        conversationId: envelope.conversationId,
-        senderDeviceId: envelope.senderDeviceId,
-        identityKey: header.identityEd25519,
-      });
-    }
+  async function inboundAccepted(conversationId, record, state) {
+    if (verifyIdentity) return admitted(conversationId, state);
     const bound = record?.current;
-    return !bound || constantTimeEqual(bound.remoteIdentityKey, header.identityEd25519);
+    return !bound || constantTimeEqual(bound.remoteIdentityKey, state.remoteIdentityKey);
   }
 
   // X3DH responder: opens a session a peer started with a PreKey frame. The
@@ -240,7 +260,7 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
       });
       const opened = await openOn(state, envelope, frame, nonce);
       if (!opened.payload) return failure(DecryptStatus.FAILED, opened.reason);
-      if (!(await identityAccepted(envelope, header, record))) {
+      if (!(await inboundAccepted(envelope.conversationId, record, state))) {
         return failure(DecryptStatus.IDENTITY_REJECTED, 'identity_rejected');
       }
       try {
@@ -267,6 +287,15 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
       const { record } = await repo.load(conversationId);
       for (const state of record?.states ?? []) state.destroy();
       return record !== null;
+    },
+
+    // The identity this conversation sends to: { remoteDeviceId,
+    // remoteIdentityKey } of its current state, or null without a session.
+    // A safety number is about this key, whichever keys are pinned.
+    sessionIdentity(conversationId) {
+      return withRecord(conversationId, async ({ record }) => (record
+        ? { remoteDeviceId: record.current.remoteDeviceId, remoteIdentityKey: record.current.remoteIdentityKey.slice() }
+        : null));
     },
 
     // Starts a session from a directory entry. The bundle is authenticated
@@ -305,6 +334,7 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
       return withRecord(conversationId, async ({ record, commit }) => {
         if (!record) throw new SessionMissingError(conversationId);
         const live = record.current;
+        if (!(await admitted(conversationId, live))) throw new RecipientNotAdmittedError(conversationId);
         const scratch = live.copy();
         let frame;
         let nonce;

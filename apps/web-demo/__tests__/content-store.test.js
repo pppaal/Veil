@@ -247,4 +247,16 @@ describe('expiry and deletion', () => {
     expect(await store.get('c-1', 'm-1')).toEqual({ retired: true });
     expect(await stores.records.get('c-1/m-1')).toEqual({ key: 'c-1/m-1', conversationId: 'c-1', id: 'm-1', retired: true });
   });
+
+  it('a retire that lands while a put is sealing is not overwritten', async () => {
+    const stores = contentStores();
+    const store = openContentStore(stores);
+    // A decryption keeps its content while an ingest of the tombstone
+    // retires the same message: the put has read the row and is still sealing.
+    const putting = store.put('c-1', 'm-1', { content: textContent('deleted meanwhile'), nonce: 'n-1' });
+    const retiring = store.retire('c-1', 'm-1');
+    await Promise.all([putting, retiring]);
+    expect(await store.get('c-1', 'm-1')).toEqual({ retired: true });
+    expect(await stores.records.get('c-1/m-1')).toEqual({ key: 'c-1/m-1', conversationId: 'c-1', id: 'm-1', retired: true });
+  });
 });

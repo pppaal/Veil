@@ -37,9 +37,9 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
   endpoint.device = await createDevice({
     userId,
     deviceId,
-    verifyIdentity: ({ conversationId, senderDeviceId, identityKey }) => {
+    verifyIdentity: ({ conversationId, remoteDeviceId, identityKey }) => {
       const peer = endpoint.peers.get(conversationId);
-      return peer ? endpoint.trust.admit(peer.userId, senderDeviceId, identityKey) : false;
+      return peer ? endpoint.trust.admit(peer.userId, remoteDeviceId, identityKey) : false;
     },
   });
 

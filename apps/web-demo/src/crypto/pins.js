@@ -5,19 +5,22 @@
 //
 // The first key seen for a user is pinned. After that, a different key for a
 // pinned device, or a device the user has never used with us, is an identity
-// change: it never replaces a pin by itself. Both the directory path (before
-// a session is started) and the inbound path (an authenticated PreKey frame)
-// go through admit(), so a change freezes the conversation whichever way the
-// server tries it, until the user decides. A contact whose safety number was
-// verified must verify the new one; a plain accept is refused.
+// change: it never replaces a pin by itself. The directory path (before a
+// session is started), the inbound path (an authenticated PreKey frame) and
+// every frame a session seals or opens go through admit()
+// (src/crypto/session-cipher.js), so a change freezes the conversation
+// whichever way the server tries it, until the user decides.
 //
 // Accepting a new device adds its pin and keeps the user's earlier ones:
 // people use several devices, and one they move away from may come back.
-// So the relay can later route sessions to an earlier accepted device of
-// the same user without a fresh warning. Only keys the user accepted once
-// can come back this way; anything else still stops at admit().
+// While a contact is unverified, the relay can therefore route sessions to
+// an earlier accepted device without a fresh warning. Verifying a safety
+// number ends that: from then on only devices whose own key the user
+// verified pass, so a key accepted blindly before (a relay's, on first
+// contact) cannot take the conversation back from the one they compared.
+// For a verified contact a plain accept is refused; each device is verified.
 
-import { encodeBase64Url } from '../core/base64url.js';
+import { decodeBase64Url, encodeBase64Url } from '../core/base64url.js';
 import { createLocks } from './locks.js';
 
 export const PinVerdict = Object.freeze({
@@ -25,6 +28,9 @@ export const PinVerdict = Object.freeze({
   MATCH: 'match',
   NEW_DEVICE: 'new-device',
   CHANGED: 'changed',
+  // the pinned key of a device the user never verified, of a contact whose
+  // safety number they did verify on another device
+  UNVERIFIED_DEVICE: 'unverified-device',
 });
 
 export class ReverificationRequiredError extends Error {
@@ -60,7 +66,8 @@ export function createPinStore(kv, { now = () => Date.now(), locks = createLocks
       const verified = pins.some((pin) => pin.verifiedAt !== null);
       const pin = pins.find((candidate) => candidate.deviceId === deviceId) ?? null;
       if (pin) {
-        const verdict = pin.identityKey === encodeBase64Url(identityKey) ? PinVerdict.MATCH : PinVerdict.CHANGED;
+        if (pin.identityKey !== encodeBase64Url(identityKey)) return { verdict: PinVerdict.CHANGED, verified, pin };
+        const verdict = verified && pin.verifiedAt === null ? PinVerdict.UNVERIFIED_DEVICE : PinVerdict.MATCH;
         return { verdict, verified, pin };
       }
       if (pins.length > 0) return { verdict: PinVerdict.NEW_DEVICE, verified, pin: null };
@@ -91,6 +98,8 @@ export function createPinStore(kv, { now = () => Date.now(), locks = createLocks
 // inbound handshake reports them again.
 export function createIdentityTrust({ pins, onChange = () => {} }) {
   const pending = new Map(); // userId -> { deviceId, identityKey, verdict, verified }
+  const presents = (change, deviceId, identityKey) =>
+    change?.deviceId === deviceId && encodeBase64Url(change.identityKey) === encodeBase64Url(identityKey);
 
   return {
     // True when this key may be used for the user; otherwise records the
@@ -105,11 +114,14 @@ export function createIdentityTrust({ pins, onChange = () => {} }) {
 
     pendingChange: (userId) => pending.get(userId) ?? null,
 
-    // Accepts the pending key of an unverified contact; a verified contact
-    // throws ReverificationRequiredError.
-    async accept(userId) {
+    // Accepts `reviewed`, the pending change the user was shown, for an
+    // unverified contact; a verified contact throws
+    // ReverificationRequiredError. False, accepting nothing, when that
+    // change is no longer the pending one: a later refusal replaced it, or
+    // it was resolved meanwhile.
+    async accept(userId, reviewed) {
       const change = pending.get(userId);
-      if (!change) return false;
+      if (!reviewed || !presents(change, reviewed.deviceId, reviewed.identityKey)) return false;
       await pins.accept(userId, change.deviceId, change.identityKey);
       pending.delete(userId);
       onChange(userId);
@@ -118,11 +130,41 @@ export function createIdentityTrust({ pins, onChange = () => {} }) {
 
     async markVerified(userId, deviceId, identityKey) {
       await pins.markVerified(userId, deviceId, identityKey);
-      const change = pending.get(userId);
-      if (change?.deviceId === deviceId && encodeBase64Url(change.identityKey) === encodeBase64Url(identityKey)) {
-        pending.delete(userId);
-      }
+      if (presents(pending.get(userId), deviceId, identityKey)) pending.delete(userId);
       onChange(userId);
+    },
+
+    // The key a safety number with this user is about: a key waiting for
+    // review first, then the identity the conversation's session runs on
+    // (session: { remoteDeviceId, remoteIdentityKey } or null), and only
+    // while there is no session, the most recently pinned key. Never the
+    // newest pin over the session's identity: what the user compares, and
+    // verifies, must be the key their messages go to.
+    // -> { deviceId, identityKey, pendingVerdict (null unless pending), verified } or null
+    async safetyKey(userId, session) {
+      const change = pending.get(userId);
+      if (change) {
+        const { deviceId, identityKey, verdict } = change;
+        return { deviceId, identityKey: identityKey.slice(), pendingVerdict: verdict, verified: false };
+      }
+      const userPins = await pins.pinsFor(userId);
+      if (session) {
+        const pin = userPins.find((candidate) => candidate.deviceId === session.remoteDeviceId);
+        return {
+          deviceId: session.remoteDeviceId,
+          identityKey: session.remoteIdentityKey,
+          pendingVerdict: null,
+          verified: pin?.identityKey === encodeBase64Url(session.remoteIdentityKey) && pin.verifiedAt !== null,
+        };
+      }
+      const [latest] = userPins.sort((a, b) => b.firstSeenAt - a.firstSeenAt);
+      if (!latest) return null;
+      return {
+        deviceId: latest.deviceId,
+        identityKey: decodeBase64Url(latest.identityKey),
+        pendingVerdict: null,
+        verified: latest.verifiedAt !== null,
+      };
     },
 
     reset() {

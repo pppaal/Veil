@@ -24,7 +24,7 @@ import { generateIdentity, isLegacyIdentity, publishedKeys, signChallenge } from
 import { createKeySource, sha256 } from './src/crypto/keys.js';
 import { createLegacyV1DevReader } from './src/crypto/legacy-v1dev.js';
 import { createLocks } from './src/crypto/locks.js';
-import { createIdentityTrust, createPinStore, ReverificationRequiredError } from './src/crypto/pins.js';
+import { createIdentityTrust, createPinStore, PinVerdict, ReverificationRequiredError } from './src/crypto/pins.js';
 import { claimedOneTimePrekey, createLocalKeyring, maintainPrekeys, PREKEY_LOCK } from './src/crypto/prekeys.js';
 import { formatSafetyNumber, matchesPeerCode, safetyNumber, verificationCode } from './src/crypto/safety-number.js';
 import { createSessionCipher } from './src/crypto/session-cipher.js';
@@ -249,9 +249,8 @@ const kv = (store, options) => createIdbKv({ ...idb, put: identityDb.put, delete
 const oneTimePrekeyKv = kv('one-time-prekeys');
 const PREKEY_MAINTENANCE_MS = 6 * 60 * 60 * 1000;
 
-const pinStore = createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks });
 const trust = createIdentityTrust({
-  pins: pinStore,
+  pins: createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks }),
   onChange: () => {
     renderSidebar();
     renderActivePanel();
@@ -271,11 +270,12 @@ const cipher = createSessionCipher({
   locks,
   keyring: createLocalKeyring({ loadIdentity: () => sessionStore.reload(), opkKv: oneTimePrekeyKv, clock: Date.now }),
   clock: Date.now,
-  // An authenticated handshake installs a session only for the identity
-  // pinned for that peer and device.
-  verifyIdentity: ({ conversationId, senderDeviceId, identityKey }) => {
+  // A session is installed by an authenticated handshake, and a frame is
+  // sealed or opened, only for an identity the pins admit for that peer
+  // and device.
+  verifyIdentity:({ conversationId, remoteDeviceId, identityKey }) => {
     const peer = peerOf(conversationId);
-    return peer ? trust.admit(peer.userId, senderDeviceId, identityKey) : false;
+    return peer ? trust.admit(peer.userId, remoteDeviceId, identityKey) : false;
   },
 });
 
@@ -1003,23 +1003,28 @@ function renderActivePanel() {
   panels.replaceChildren(...slots.map(renderOnePanel).filter(Boolean));
 }
 
-// Shown while a peer's identity key differs from the pinned one. Sending
-// stays frozen until the user accepts the new key; a contact they had
-// verified has to be verified again, by comparing the new safety number.
-function renderKeyChangeBanner(peer) {
-  const verified = trust.pendingChange(peer.userId)?.verified;
+// Shown while a peer presents an identity key the pins do not admit.
+// Sending stays frozen until the user accepts the new key; a contact they
+// had verified has to be verified again, by comparing the new safety number,
+// and so does a device of theirs that was never verified.
+function renderKeyChangeBanner(convId, peer) {
+  const change = trust.pendingChange(peer.userId);
+  let text = change?.verified ? 'keyChange.bannerVerified' : 'keyChange.banner';
+  if (change?.verdict === PinVerdict.UNVERIFIED_DEVICE) text = 'keyChange.bannerUnverifiedDevice';
   return el('div', { class: 'key-change-banner', role: 'alert' }, [
-    el('div', { class: 'key-change-text' }, [
-      t(verified ? 'keyChange.bannerVerified' : 'keyChange.banner', { handle: peer.handle }),
-    ]),
+    el('div', { class: 'key-change-text' }, [t(text, { handle: peer.handle })]),
     el('button', {
       class: 'btn btn-secondary btn-compact',
-      onclick: () => (verified ? openSafetyNumberDialog(peer) : acceptPeerKeyChange(peer)),
-    }, [t(verified ? 'safety.compare' : 'keyChange.review')]),
+      onclick: () => (change?.verified ? openSafetyNumberDialog(convId, peer) : acceptPeerKeyChange(convId, peer)),
+    }, [t(change?.verified ? 'safety.compare' : 'keyChange.review')]),
   ]);
 }
 
-async function acceptPeerKeyChange(peer) {
+// Accepts the change pending when the banner was clicked, never one that
+// replaced it while the confirmation was open.
+async function acceptPeerKeyChange(convId, peer) {
+  const reviewed = trust.pendingChange(peer.userId);
+  if (!reviewed) return;
   const ok = await uiConfirm({
     title: t('keyChange.confirmTitle', { handle: peer.handle }),
     body: t('keyChange.confirmBody', { handle: peer.handle }),
@@ -1028,10 +1033,13 @@ async function acceptPeerKeyChange(peer) {
   });
   if (!ok) return;
   try {
-    await trust.accept(peer.userId);
+    if (!(await trust.accept(peer.userId, reviewed))) {
+      if (trust.pendingChange(peer.userId)) toast(t('keyChange.superseded', { handle: peer.handle }), 'error');
+      return;
+    }
   } catch (e) {
     if (e instanceof ReverificationRequiredError) {
-      await openSafetyNumberDialog(peer);
+      await openSafetyNumberDialog(convId, peer);
       return;
     }
     toast('키 수락 실패: ' + e.message, 'error');
@@ -1054,38 +1062,27 @@ async function reopenLockedMessages(userId) {
   renderActivePanel();
 }
 
-// The key a safety number with this peer is about: a new key while one
-// waits for review, otherwise the most recently pinned one.
-async function safetyKeyOf(peer) {
-  const pending = trust.pendingChange(peer.userId);
-  if (pending) return { deviceId: pending.deviceId, identityKey: pending.identityKey, pending: true, verified: false };
-  const [latest] = (await pinStore.pinsFor(peer.userId)).sort((a, b) => b.firstSeenAt - a.firstSeenAt);
-  if (!latest) return null;
-  return {
-    deviceId: latest.deviceId,
-    identityKey: decodeBase64Url(latest.identityKey),
-    pending: false,
-    verified: latest.verifiedAt !== null,
-  };
-}
-
-// Safety numbers v2 (src/crypto/safety-number.js), computed from the pinned
-// keys and never sent anywhere. The user compares the number in person or
-// over a call, or pastes the verification code the peer's screen shows.
-async function openSafetyNumberDialog(peer) {
+// Safety numbers v2 (src/crypto/safety-number.js), computed from the key
+// the conversation uses (src/features/secure-messaging.js safetyKey) and
+// never sent anywhere. The user compares the number in person or over a
+// call, or pastes the verification code the peer's screen shows; what they
+// mark verified is exactly the key the dialog showed.
+async function openSafetyNumberDialog(convId, peer) {
   // A safety number binds our user id, which a transferred device learns
   // only at its first sign-in.
   if (!state.me.userId) {
     toast(t('safety.notSignedIn'), 'error');
     return;
   }
-  const remoteKey = await safetyKeyOf(peer);
+  const remoteKey = await secure.safetyKey(convId);
   if (!remoteKey) {
     toast(t('safety.noKey', { handle: peer.handle }), 'error');
     return;
   }
   const local = { identityKey: state.me.ik.publicKey, userId: state.me.userId };
   const remote = { identityKey: remoteKey.identityKey, userId: peer.userId };
+  let pendingNote = remoteKey.pendingVerdict ? 'safety.pendingKey' : null;
+  if (remoteKey.pendingVerdict === PinVerdict.UNVERIFIED_DEVICE) pendingNote = 'safety.unverifiedDevice';
   const number = formatSafetyNumber(await safetyNumber(crypto.subtle, local, remote));
   const codeInput = el('input', {
     id: 'safety-their-code',
@@ -1101,13 +1098,18 @@ async function openSafetyNumberDialog(peer) {
     back.remove();
   };
   const markVerified = async () => {
-    await trust.markVerified(peer.userId, remoteKey.deviceId, remoteKey.identityKey);
+    try {
+      await trust.markVerified(peer.userId, remoteKey.deviceId, remoteKey.identityKey);
+    } catch (e) {
+      result.textContent = t('safety.verifyFailed', { error: e.message });
+      return;
+    }
     toast(t('safety.verified', { handle: peer.handle }), 'good');
     close();
     await reopenLockedMessages(peer.userId);
   };
-  const compare = () => {
-    if (matchesPeerCode(local, remote, codeInput.value.trim())) markVerified();
+  const compare = async () => {
+    if (matchesPeerCode(local, remote, codeInput.value.trim())) await markVerified();
     else result.textContent = t('safety.mismatch');
   };
   back = el('div', { class: 'dialog-backdrop hidden', id: 'safety-dialog', role: 'presentation' }, [
@@ -1119,7 +1121,7 @@ async function openSafetyNumberDialog(peer) {
       style: 'width:420px;max-width:92vw',
     }, [
       el('div', { class: 'dialog-title', id: 'safety-title' }, [t('safety.title', { handle: peer.handle })]),
-      remoteKey.pending ? el('div', { class: 'key-change-text', role: 'alert' }, [t('safety.pendingKey')]) : null,
+      pendingNote ? el('div', { class: 'key-change-text', role: 'alert' }, [t(pendingNote, { handle: peer.handle })]) : null,
       remoteKey.verified ? el('div', { class: 'dialog-sub' }, [t('safety.alreadyVerified')]) : null,
       el('div', { class: 'safety-number', id: 'safety-number' }, [number]),
       el('div', { class: 'dialog-sub' }, [t('safety.explain', { handle: peer.handle })]),
@@ -1144,6 +1146,9 @@ async function openSafetyNumberDialog(peer) {
       trapFocus('safety-dialog', e);
     }
   });
+  // One safety dialog at a time: a second click while the first was being
+  // prepared opens nothing.
+  if ($('safety-dialog')) return;
   document.body.appendChild(back);
   openDialog('safety-dialog', 'safety-their-code');
 }
@@ -1187,9 +1192,12 @@ function renderOnePanel(convId) {
   const now = Date.now();
   const reactionsOf = reactionsByTarget(allMsgs.filter((m) => !isGone(m, now)));
   const msgs = allMsgs.filter((m) => isShown(m, now));
-  const keyChanged = Boolean(peer && peer.userId !== state.me.userId && trust.pendingChange(peer.userId));
+  // Sessions, pins and safety numbers exist only in direct conversations:
+  // the web demo cannot encrypt to a group, so it does not offer to send.
+  const directPeer = peerOf(conv.id);
+  const keyChanged = Boolean(directPeer && trust.pendingChange(directPeer.userId));
   const legacyIdentity = isLegacyIdentity(state.me);
-  const frozen = keyChanged || legacyIdentity;
+  const frozen = keyChanged || legacyIdentity || !directPeer;
 
   // Build a deviceId->handle lookup. We only know our own deviceId here; others
   // collapse to the conversation peer for DMs.
@@ -1325,6 +1333,7 @@ function renderOnePanel(convId) {
   });
 
   let placeholder = '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
+  if (!directPeer) placeholder = t('group.composerFrozen');
   if (keyChanged) placeholder = t('keyChange.composerFrozen');
   if (legacyIdentity) placeholder = t('legacy.composerFrozen');
   const textarea = el('textarea', {
@@ -1442,14 +1451,14 @@ function renderOnePanel(convId) {
         },
         ['🔍'],
       ),
-      peer && !legacyIdentity
+      directPeer && !legacyIdentity
         ? el(
           'button',
           {
             class: 'icon-btn',
             'aria-label': t('safety.open'),
             title: t('safety.open'),
-            onclick: () => openSafetyNumberDialog(peer),
+            onclick: () => openSafetyNumberDialog(convId, directPeer),
             style: 'padding: 4px 8px; opacity: 0.7;',
           },
           ['🛡'],
@@ -1467,7 +1476,7 @@ function renderOnePanel(convId) {
         ['🗑'],
       ),
     ]),
-    keyChanged ? renderKeyChangeBanner(peer) : null,
+    keyChanged ? renderKeyChangeBanner(convId, directPeer) : null,
     searchBar,
     msgsNode,
     el('div', { class: 'panel-input-wrap' }, [

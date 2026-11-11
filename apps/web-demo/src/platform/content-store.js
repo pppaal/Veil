@@ -12,7 +12,9 @@
 // A message that was deleted or has expired is retired: its sealed content
 // is overwritten by a marker that only says so. Its message key is spent,
 // so a relay that serves it again gets it hidden rather than shown as a
-// failure, and nothing written later brings the content back. expiresAt
+// failure, and nothing written later brings the content back: writes to a
+// row run one at a time, so a put that was sealing while the row was
+// retired finds the marker and stops. expiresAt
 // (ms, contract C4) stays in the clear, so that expired records can be
 // found and retired without opening any; it says no more than the relay's
 // own expiry for the message.
@@ -30,8 +32,11 @@ const aad = (id) => concatBytes([AAD_LABEL, utf8(id)]);
 
 // records: kv with keyPath 'key', indexed by conversationId and by expiresAt
 // (dueBy); keys: kv with keyPath 'conversationId' (src/platform/kv.js).
-// locks serializes key creation across tabs (src/crypto/locks.js).
+// locks serializes key creation and each row's read-then-write across tabs
+// (src/crypto/locks.js).
 export function createContentStore({ subtle, random, records, keys, locks }) {
+  const withRow = (conversationId, id, task) => locks.run(`veil-content:${rowKey(conversationId, id)}`, task);
+
   async function existingKey(conversationId) {
     return (await keys.get(conversationId))?.key ?? null;
   }
@@ -48,21 +53,23 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
 
   // A record's expiry only ever comes earlier: rewriting it (an edit, a
   // move) keeps the one it had.
-  async function put(conversationId, id, value, { expiresAt = null } = {}) {
-    const existing = await records.get(rowKey(conversationId, id));
-    if (existing?.retired) return;
-    const key = await keyFor(conversationId);
-    const nonce = random(GCM_NONCE_BYTES);
-    const plain = utf8(JSON.stringify(value));
-    const sealed = new Uint8Array(await subtle.encrypt(gcmParams(nonce, aad(id)), key, plain));
-    plain.fill(0);
-    await records.put({
-      key: rowKey(conversationId, id),
-      conversationId,
-      id,
-      expiresAt: earlierExpiry(existing?.expiresAt, expiresAt),
-      nonce,
-      sealed,
+  function put(conversationId, id, value, { expiresAt = null } = {}) {
+    return withRow(conversationId, id, async () => {
+      const existing = await records.get(rowKey(conversationId, id));
+      if (existing?.retired) return;
+      const key = await keyFor(conversationId);
+      const nonce = random(GCM_NONCE_BYTES);
+      const plain = utf8(JSON.stringify(value));
+      const sealed = new Uint8Array(await subtle.encrypt(gcmParams(nonce, aad(id)), key, plain));
+      plain.fill(0);
+      await records.put({
+        key: rowKey(conversationId, id),
+        conversationId,
+        id,
+        expiresAt: earlierExpiry(existing?.expiresAt, expiresAt),
+        nonce,
+        sealed,
+      });
     });
   }
 
@@ -86,10 +93,12 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
     return row ? unseal(conversationId, id, row) : null;
   }
 
-  async function retire(conversationId, id) {
-    const key = rowKey(conversationId, id);
-    if ((await records.get(key))?.retired) return;
-    await records.put({ key, conversationId, id, retired: true });
+  function retire(conversationId, id) {
+    return withRow(conversationId, id, async () => {
+      const key = rowKey(conversationId, id);
+      if ((await records.get(key))?.retired) return;
+      await records.put({ key, conversationId, id, retired: true });
+    });
   }
 
   return {

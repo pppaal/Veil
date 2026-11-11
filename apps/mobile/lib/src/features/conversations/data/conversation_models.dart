@@ -216,6 +216,7 @@ class ConversationSessionState {
     required this.remoteIdentityFingerprint,
     required this.bootstrappedAt,
     this.auditHint,
+    this.remoteIdentityPublicKey = '',
   });
 
   final String sessionLocator;
@@ -227,6 +228,10 @@ class ConversationSessionState {
   final String remoteIdentityFingerprint;
   final DateTime bootstrappedAt;
   final String? auditHint;
+  // Identity key the session was bootstrapped against. Empty for sessions
+  // created before it was recorded and for inbound sessions, where the
+  // sender's identity key is not known yet.
+  final String remoteIdentityPublicKey;
 
   bool matchesBundle(KeyBundle bundle) => remoteDeviceId == bundle.deviceId;
 
@@ -253,6 +258,7 @@ class ConversationPreview {
     this.disappearingTimerSeconds,
     this.useSenderKeys = false,
     this.groupEpoch,
+    this.identityMismatchPending = false,
   });
 
   final String id;
@@ -282,6 +288,10 @@ class ConversationPreview {
   // Current membership generation (conversations.current_epoch). Null when
   // unknown (e.g. hydrated from cache before the first refresh).
   final int? groupEpoch;
+  // The directory served a different identity key for the device this
+  // conversation's session is bound to. The session is kept as-is; the flag
+  // is what the safety-number flow reacts to.
+  final bool identityMismatchPending;
 
   ConversationPreview copyWith({
     String? id,
@@ -300,6 +310,7 @@ class ConversationPreview {
     Object? disappearingTimerSeconds = _unset,
     bool? useSenderKeys,
     Object? groupEpoch = _unset,
+    bool? identityMismatchPending,
   }) {
     return ConversationPreview(
       id: id ?? this.id,
@@ -326,6 +337,7 @@ class ConversationPreview {
           : disappearingTimerSeconds as int?,
       useSenderKeys: useSenderKeys ?? this.useSenderKeys,
       groupEpoch: identical(groupEpoch, _unset) ? this.groupEpoch : groupEpoch as int?,
+      identityMismatchPending: identityMismatchPending ?? this.identityMismatchPending,
     );
   }
 }

@@ -34,7 +34,8 @@ class ChatRoomScreen extends ConsumerStatefulWidget {
   ConsumerState<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
-class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
+class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
+    with WidgetsBindingObserver {
   final _messageController = TextEditingController();
   final _searchController = TextEditingController();
   final _composerFocusNode = FocusNode();
@@ -51,10 +52,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   double _sendScale = 1.0;
   Set<String> _matchingMessageIds = <String>{};
   String? _highlightedMessageId;
+  // Controller this screen marked its conversation active on, so it can
+  // hand the flag back when it stops being visible.
+  VeilMessengerController? _activeOn;
+  bool _appInForeground = true;
 
   @override
   void initState() {
     super.initState();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    _appInForeground = lifecycle == null || lifecycle == AppLifecycleState.resumed;
+    WidgetsBinding.instance.addObserver(this);
     _searchController.addListener(_handleSearchChanged);
     _messageController.addListener(_handleComposerChanged);
     scheduleMicrotask(() => _loadConversationState());
@@ -83,10 +91,49 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
     }
   }
 
+  // Also runs when this route stops or starts being the current one, which
+  // is what decides whether incoming messages count as seen.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncActiveConversation();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appInForeground = state == AppLifecycleState.resumed;
+    _syncActiveConversation();
+  }
+
+  // Auto read receipts and notification suppression apply only while the
+  // user can actually see this conversation.
+  void _syncActiveConversation() {
+    if (!mounted) {
+      return;
+    }
+    final routeIsCurrent = ModalRoute.of(context)?.isCurrent ?? true;
+    if (!_appInForeground || !routeIsCurrent) {
+      _releaseActiveConversation(widget.conversationId);
+      return;
+    }
+    final controller = ref.read(messengerControllerProvider);
+    controller.setActiveConversation(widget.conversationId);
+    _activeOn = controller;
+  }
+
+  void _releaseActiveConversation(String conversationId) {
+    final controller = _activeOn;
+    if (controller != null && controller.activeConversationId == conversationId) {
+      controller.setActiveConversation(null);
+    }
+    _activeOn = null;
+  }
+
   @override
   void didUpdateWidget(covariant ChatRoomScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
+      _releaseActiveConversation(oldWidget.conversationId);
       _matchingMessageIds = <String>{};
       _highlightedMessageId = null;
       _messageKeys.clear();
@@ -101,6 +148,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _releaseActiveConversation(widget.conversationId);
     _searchDebounce?.cancel();
     _highlightClearTimer?.cancel();
     _expirationTicker?.cancel();
@@ -530,51 +579,58 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }) {
     final l10n = AppLocalizations.of(context);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
-
-    if (message.envelope.messageKind == MessageKind.system) {
-      final systemNotice = _SystemNoticeBubble(
-        message: message,
-        decryptFuture: controller.decryptMessage(message),
-      );
-      final keyedNotice = RepaintBoundary(
-        child: KeyedSubtree(
-          key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
-          child: systemNotice,
+    final decryptFuture = controller.decryptMessage(message);
+    final entry = RepaintBoundary(
+      child: KeyedSubtree(
+        key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
+        child: FutureBuilder<DecryptedMessage>(
+          future: decryptFuture,
+          // Only the authenticated inner kind may render as system chrome;
+          // the envelope's messageKind is set by whoever relayed it.
+          builder: (context, snapshot) => snapshot.data?.messageKind == MessageKind.system
+              ? _SystemNoticeBubble(message: message, decryptFuture: decryptFuture)
+              : _AnimatedBubbleEntry(
+                  fromRight: message.isMine,
+                  child: _buildBubbleWithReactions(controller, message, decryptFuture),
+                ),
         ),
-      );
-      if (!showLoadOlder) {
-        return Padding(
-          padding: EdgeInsets.only(
-              bottom: index == filteredMessages.length - 1 ? 0 : 12),
-          child: keyedNotice,
-        );
-      }
-      return Padding(
-        padding: EdgeInsets.only(
-            bottom: index == filteredMessages.length - 1 ? 0 : 12),
-        child: Column(
-          children: [
-            VeilButton(
-              onPressed: isLoadingHistory
-                  ? null
-                  : () => ref
-                      .read(messengerControllerProvider)
-                      .loadOlderConversationMessages(widget.conversationId),
-              tone: VeilButtonTone.secondary,
-              label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
-            ),
-            const SizedBox(height: VeilSpace.sm),
-            keyedNotice,
-          ],
-        ),
-      );
+      ),
+    );
+    final padding = EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : 12);
+    if (!showLoadOlder) {
+      return Padding(padding: padding, child: entry);
     }
 
+    return Padding(
+      padding: padding,
+      child: Column(
+        children: [
+          VeilButton(
+            onPressed: isLoadingHistory
+                ? null
+                : () => ref
+                    .read(messengerControllerProvider)
+                    .loadOlderConversationMessages(widget.conversationId),
+            tone: VeilButtonTone.secondary,
+            label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          entry,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBubbleWithReactions(
+    VeilMessengerController controller,
+    ChatMessage message,
+    Future<DecryptedMessage> decryptFuture,
+  ) {
     final bubble = _MessageBubble(
       message: message,
       highlighted: message.id == _highlightedMessageId,
       sentAtFormat: _sentAtFormat,
-      decryptFuture: controller.decryptMessage(message),
+      decryptFuture: decryptFuture,
       onResolveAttachment: _showAttachmentTicket,
       onReplyGesture: () => _handleReplyGesture(message),
       onCancelAttachment: message.clientMessageId == null
@@ -582,13 +638,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
           : () => ref
               .read(messengerControllerProvider)
               .cancelPendingAttachment(message.clientMessageId!),
-      attachmentResolving: message.envelope.attachment != null &&
-          controller.isResolvingAttachment(
-              message.envelope.attachment!.attachmentId),
-      attachmentDownloadError: message.envelope.attachment == null
-          ? null
-          : controller.attachmentDownloadError(
-              message.envelope.attachment!.attachmentId),
+      isResolvingAttachment: controller.isResolvingAttachment,
+      attachmentDownloadError: controller.attachmentDownloadError,
       transferSnapshot: message.clientMessageId == null
           ? null
           : controller.attachmentTransferForMessage(message.clientMessageId!),
@@ -603,56 +654,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
       onLongPress: () => _showReactionPicker(message),
       child: bubble,
     );
-    final bubbleWithReactions = message.reactions.isEmpty
-        ? reactive
-        : Column(
-            crossAxisAlignment: message.isMine
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              reactive,
-              const SizedBox(height: VeilSpace.xs),
-              _ReactionChipsRow(
-                message: message,
-                myUserId: ref.watch(appSessionProvider).userId,
-                onChipTap: (emoji) => controller.toggleReaction(message, emoji),
-              ),
-            ],
-          );
-    final keyedBubble = RepaintBoundary(
-      child: KeyedSubtree(
-        key: _messageKeys.putIfAbsent(message.id, () => GlobalKey()),
-        child: _AnimatedBubbleEntry(
-          fromRight: message.isMine,
-          child: bubbleWithReactions,
-        ),
-      ),
-    );
-
-    if (!showLoadOlder) {
-      return Padding(
-        padding: EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : 12),
-        child: keyedBubble,
-      );
+    if (message.reactions.isEmpty) {
+      return reactive;
     }
-
-    return Padding(
-      padding: EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : 12),
-      child: Column(
-        children: [
-          VeilButton(
-            onPressed: isLoadingHistory
-                ? null
-                : () => ref
-                    .read(messengerControllerProvider)
-                    .loadOlderConversationMessages(widget.conversationId),
-            tone: VeilButtonTone.secondary,
-            label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          keyedBubble,
-        ],
-      ),
+    return Column(
+      crossAxisAlignment:
+          message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        reactive,
+        const SizedBox(height: VeilSpace.xs),
+        _ReactionChipsRow(
+          message: message,
+          myUserId: ref.watch(appSessionProvider).userId,
+          onChipTap: (emoji) => controller.toggleReaction(message, emoji),
+        ),
+      ],
     );
   }
 
@@ -673,7 +689,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   Future<void> _loadConversationState() async {
     final controller = ref.read(messengerControllerProvider);
-    controller.setActiveConversation(widget.conversationId);
+    _syncActiveConversation();
     await controller.loadConversationMessages(widget.conversationId);
     await _markLatestRemoteMessageRead(controller);
     if (_searchController.text.trim().isNotEmpty) {
@@ -684,6 +700,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
 
   Future<void> _markLatestRemoteMessageRead(
       VeilMessengerController controller) async {
+    if (controller.activeConversationId != widget.conversationId) {
+      return;
+    }
     for (final message
         in controller.messagesFor(widget.conversationId).reversed) {
       if (!message.isMine) {
@@ -838,11 +857,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen> {
   }
 
   Future<void> _showReactionPicker(ChatMessage message) async {
-    if (message.envelope.messageKind == MessageKind.system) {
+    final controller = ref.read(messengerControllerProvider);
+    final decrypted = await controller.decryptMessage(message);
+    if (!mounted || decrypted.messageKind == MessageKind.system) {
       return;
     }
     VeilHaptics.selection();
-    final controller = ref.read(messengerControllerProvider);
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1235,7 +1255,7 @@ class _MessageBubble extends StatelessWidget {
     required this.decryptFuture,
     required this.onResolveAttachment,
     required this.onCancelAttachment,
-    required this.attachmentResolving,
+    required this.isResolvingAttachment,
     required this.attachmentDownloadError,
     required this.transferSnapshot,
     required this.onReplyGesture,
@@ -1248,8 +1268,8 @@ class _MessageBubble extends StatelessWidget {
   final Future<DecryptedMessage> decryptFuture;
   final Future<void> Function(String attachmentId) onResolveAttachment;
   final VoidCallback? onCancelAttachment;
-  final bool attachmentResolving;
-  final String? attachmentDownloadError;
+  final bool Function(String attachmentId) isResolvingAttachment;
+  final String? Function(String attachmentId) attachmentDownloadError;
   final AttachmentTransferSnapshot? transferSnapshot;
   final VoidCallback onReplyGesture;
   final VoidCallback? onRetryMessage;
@@ -1307,6 +1327,13 @@ class _MessageBubble extends StatelessWidget {
                   builder: (context, snapshot) {
                   final decrypted = snapshot.data;
                   final body = decrypted?.body ?? l10n.chatDecryptingEnvelope;
+                  // Attachment metadata comes only from the authenticated
+                  // payload; the envelope carries a bare pointer.
+                  final attachmentId = decrypted?.attachment?.attachmentId;
+                  final attachmentResolving =
+                      attachmentId != null && isResolvingAttachment(attachmentId);
+                  final downloadError =
+                      attachmentId == null ? null : attachmentDownloadError(attachmentId);
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1368,11 +1395,11 @@ class _MessageBubble extends StatelessWidget {
                                   ),
                                 ],
                               ),
-                              if (attachmentDownloadError != null) ...[
+                              if (downloadError != null) ...[
                                 const SizedBox(height: 10),
                                 VeilInlineBanner(
                                   title: l10n.chatAttachmentTicketFailed,
-                                  message: attachmentDownloadError!,
+                                  message: downloadError,
                                   tone: VeilBannerTone.warn,
                                 ),
                               ],

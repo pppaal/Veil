@@ -110,6 +110,11 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       return 'Expired locally';
     }
 
+    final previewBody = controller.lastMessagePreviewFor(item.id);
+    if (previewBody != null) {
+      return previewBody;
+    }
+
     switch (envelope.messageKind) {
       case MessageKind.image:
         return 'Encrypted image';

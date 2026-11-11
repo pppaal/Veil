@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:drift/drift.dart';
 
@@ -125,6 +126,7 @@ class AttachmentUploadDraft {
     this.uploadExpiresAt,
     this.bytesUploaded = 0,
     this.lastUpdatedAt,
+    this.sealedReference,
   });
 
   final String filename;
@@ -139,6 +141,9 @@ class AttachmentUploadDraft {
   final DateTime? uploadExpiresAt;
   final int bytesUploaded;
   final DateTime? lastUpdatedAt;
+  // Set once the staged file has been replaced by its ciphertext; carries
+  // the wrapped content key the recipient needs.
+  final AttachmentReference? sealedReference;
 
   bool get hasUploadTicket =>
       attachmentId != null &&
@@ -162,6 +167,7 @@ class AttachmentUploadDraft {
     Object? uploadExpiresAt = _unset,
     int? bytesUploaded,
     Object? lastUpdatedAt = _unset,
+    AttachmentReference? sealedReference,
   }) {
     return AttachmentUploadDraft(
       filename: filename ?? this.filename,
@@ -187,6 +193,7 @@ class AttachmentUploadDraft {
       lastUpdatedAt: identical(lastUpdatedAt, _unset)
           ? this.lastUpdatedAt
           : lastUpdatedAt as DateTime?,
+      sealedReference: sealedReference ?? this.sealedReference,
     );
   }
 
@@ -204,6 +211,17 @@ class AttachmentUploadDraft {
       'uploadExpiresAt': uploadExpiresAt?.toIso8601String(),
       'bytesUploaded': bytesUploaded,
       'lastUpdatedAt': lastUpdatedAt?.toIso8601String(),
+      if (sealedReference case final reference?)
+        'sealedReference': {
+          'attachmentId': reference.attachmentId,
+          'storageKey': reference.storageKey,
+          'contentType': reference.contentType,
+          'sizeBytes': reference.sizeBytes,
+          'sha256': reference.sha256,
+          'encryptedKey': reference.encryptedKey,
+          'nonce': reference.nonce,
+          'algorithmHint': reference.algorithmHint,
+        },
     };
   }
 
@@ -227,6 +245,19 @@ class AttachmentUploadDraft {
       lastUpdatedAt: json['lastUpdatedAt'] == null
           ? null
           : DateTime.parse(json['lastUpdatedAt'] as String),
+      sealedReference: switch (json['sealedReference']) {
+        final Map<String, dynamic> reference => AttachmentReference(
+            attachmentId: reference['attachmentId'] as String,
+            storageKey: reference['storageKey'] as String,
+            contentType: reference['contentType'] as String,
+            sizeBytes: reference['sizeBytes'] as int,
+            sha256: reference['sha256'] as String,
+            encryptedKey: reference['encryptedKey'] as String,
+            nonce: reference['nonce'] as String,
+            algorithmHint: reference['algorithmHint'] as String?,
+          ),
+        _ => null,
+      },
     );
   }
 
@@ -297,6 +328,102 @@ class PendingMessageRecord {
   static const _unset = Object();
 }
 
+/// Result of the single decrypt a message ever gets. Ratchet message keys
+/// are single-use, so the stored status decides whether a row may ever be
+/// decrypted again.
+enum MessageContentStatus {
+  ok('ok'),
+  failed('failed'),
+  replayed('replayed'),
+  awaitingKey('awaiting_key'),
+  sessionMissing('session_missing');
+
+  const MessageContentStatus(this.storageName);
+
+  final String storageName;
+
+  /// Final rows are never decrypted again. The others are retried only when
+  /// key material for their conversation changes.
+  bool get isFinal => this == ok || this == failed || this == replayed;
+
+  static MessageContentStatus fromStorageName(String name) => values.firstWhere(
+        (status) => status.storageName == name,
+        orElse: () => failed,
+      );
+}
+
+/// Content key of an outbound message before the relay assigns its id.
+String localMessageContentKey(String clientMessageId) => 'local:$clientMessageId';
+
+class MessageContentRecord {
+  const MessageContentRecord({
+    required this.messageKey,
+    required this.conversationId,
+    required this.body,
+    required this.kind,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.clientMessageId,
+    this.serverMessageId,
+    this.attachment,
+    this.innerExpiresAt,
+  });
+
+  final String messageKey;
+  final String conversationId;
+  final String? clientMessageId;
+  final String? serverMessageId;
+  final String body;
+  final MessageKind kind;
+  final AttachmentReference? attachment;
+  // Expiry from the authenticated inner payload; the outer, server-supplied
+  // expiresAt lives on the cached message.
+  final DateTime? innerExpiresAt;
+  final MessageContentStatus status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  DecryptedMessage toDecryptedMessage() => DecryptedMessage(
+        body: body,
+        messageKind: kind,
+        expiresAt: innerExpiresAt,
+        attachment: attachment,
+      );
+}
+
+/// Text a message can be found by. Built only from decrypted content, so
+/// searching never needs a crypto call.
+String searchableContentText(MessageContentRecord record) => [
+      record.body,
+      if (record.attachment != null) record.attachment!.contentType,
+    ].join(' ');
+
+/// Durable store for decrypted message content. Implemented by the Drift
+/// cache; kept separate from [ConversationCacheService] so the many cache
+/// fakes in tests are unaffected, and callers check for it with `is`.
+abstract class MessageContentStore {
+  Future<void> put(MessageContentRecord record);
+
+  Future<MessageContentRecord?> get(String messageKey);
+
+  Future<Map<String, MessageContentRecord>> getMany(Iterable<String> messageKeys);
+
+  /// Moves an outbound message's content from its local key to the id the
+  /// relay acked it under.
+  Future<void> rekeyLocalToServer({
+    required String clientMessageId,
+    required String serverMessageId,
+  });
+
+  Future<void> deleteConversation(String conversationId);
+
+  /// Deletes rows whose inner expiry has passed, plus [messageKeys]: content
+  /// the caller has retired, i.e. messages it expired at min(inner, outer)
+  /// or outbound text that was never queued.
+  Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys});
+}
+
 abstract class ConversationCacheService {
   Future<List<ConversationPreview>> readConversations();
 
@@ -342,7 +469,7 @@ abstract class ConversationCacheService {
   Future<void> clearAll();
 }
 
-class DriftConversationCacheService implements ConversationCacheService {
+class DriftConversationCacheService implements ConversationCacheService, MessageContentStore {
   DriftConversationCacheService(
     this._db, {
     required CryptoEnvelopeCodec envelopeCodec,
@@ -394,6 +521,8 @@ class DriftConversationCacheService implements ConversationCacheService {
       final sessionAuditHint = await _decrypt(row.sessionAuditHint);
       final sessionBootstrappedAt =
           await _decrypt(row.sessionBootstrappedAt);
+      final sessionRemoteIdentityPublicKey =
+          await _decrypt(row.sessionRemoteIdentityPublicKey);
 
       conversations.add(
         ConversationPreview(
@@ -445,7 +574,9 @@ class DriftConversationCacheService implements ConversationCacheService {
                   remoteIdentityFingerprint: sessionRemoteIdentityFingerprint,
                   bootstrappedAt: DateTime.parse(sessionBootstrappedAt),
                   auditHint: sessionAuditHint,
+                  remoteIdentityPublicKey: sessionRemoteIdentityPublicKey ?? '',
                 ),
+          identityMismatchPending: row.identityMismatchPending,
         ),
       );
     }
@@ -568,6 +699,9 @@ class DriftConversationCacheService implements ConversationCacheService {
           sessionBootstrappedAt: Value(await _encrypt(
             conversation.sessionState?.bootstrappedAt.toIso8601String(),
           )),
+          sessionRemoteIdentityPublicKey: Value(await _encrypt(
+              conversation.sessionState?.remoteIdentityPublicKey)),
+          identityMismatchPending: Value(conversation.identityMismatchPending),
           paginationCursor: Value(existing?.paginationCursor),
           hasMoreHistory: Value(existing?.hasMoreHistory ?? true),
           lastSyncedAt: Value(existing?.lastSyncedAt),
@@ -764,24 +898,14 @@ class DriftConversationCacheService implements ConversationCacheService {
         .go();
   }
 
+  // Search reads decrypted content rows directly, so there is no separate
+  // plaintext index to maintain.
   @override
   Future<void> indexMessageBody({
     required String conversationId,
     required String messageId,
     required String searchableBody,
-  }) async {
-    await (_db.update(_db.cachedMessages)
-          ..where(
-            (table) =>
-                table.conversationId.equals(conversationId) &
-                table.id.equals(messageId),
-          ))
-        .write(
-      CachedMessagesCompanion(
-        searchBody: Value(await _encrypt(searchableBody)),
-      ),
-    );
-  }
+  }) async {}
 
   @override
   Future<List<String>> searchCachedMessageIds({
@@ -793,19 +917,23 @@ class DriftConversationCacheService implements ConversationCacheService {
       return const [];
     }
 
-    final rows = await (_db.select(_db.cachedMessages)
-          ..where((table) => table.conversationId.equals(conversationId)))
+    final rows = await (_db.select(_db.messageContents)
+          ..where((table) =>
+              table.conversationId.equals(conversationId) &
+              table.status.equals(MessageContentStatus.ok.storageName)))
         .get();
     final matches = <String>[];
     for (final row in rows) {
-      final searchBody = await _decrypt(row.searchBody);
-      if (searchBody == null ||
-          !normalizeArchiveSearchBody(searchBody)
+      final record = await _decodeContent(row);
+      if (record == null ||
+          !normalizeArchiveSearchBody(searchableContentText(record))
               .toLowerCase()
               .contains(normalizedQuery)) {
         continue;
       }
-      matches.add(row.id);
+      matches.add(record.messageKey == localMessageContentKey(record.clientMessageId ?? '')
+          ? 'local-${record.clientMessageId}'
+          : record.messageKey);
     }
     return matches;
   }
@@ -862,19 +990,22 @@ class DriftConversationCacheService implements ConversationCacheService {
           ]))
         .get();
 
+    final contents = await getMany(rows.map((row) => row.id));
     final results = <MessageSearchResult>[];
     final ranked = <({int score, MessageSearchResult result})>[];
     for (final row in rows) {
       final conversation = conversationsById[row.conversationId];
-      if (conversation == null) {
+      final content = contents[row.id];
+      if (conversation == null ||
+          content == null ||
+          content.status != MessageContentStatus.ok) {
         continue;
       }
       final senderDeviceId = await _decrypt(row.senderDeviceId);
-      final searchBody = await _decrypt(row.searchBody);
-      final messageType = await _decrypt(row.messageType);
-      if (senderDeviceId == null || searchBody == null || messageType == null) {
+      if (senderDeviceId == null) {
         continue;
       }
+      final searchBody = searchableContentText(content);
       if (query.beforeSentAt != null &&
           row.receivedAt.isAtSameMomentAs(query.beforeSentAt!) &&
           query.beforeMessageId != null &&
@@ -885,7 +1016,7 @@ class DriftConversationCacheService implements ConversationCacheService {
       if (rankingScore >= (1 << 20)) {
         continue;
       }
-      if (!_messageTypeMatchesFilter(messageType, query.typeFilter)) {
+      if (!_messageTypeMatchesFilter(content.kind.name, query.typeFilter)) {
         continue;
       }
 
@@ -913,7 +1044,7 @@ class DriftConversationCacheService implements ConversationCacheService {
           peerHandle: conversation.peerHandle,
           peerDisplayName: conversation.peerDisplayName,
           sentAt: row.receivedAt,
-          messageKind: MessageKind.values.byName(messageType),
+          messageKind: content.kind,
           isMine: isMine,
           bodySnippet: buildArchiveQuerySnippet(searchBody, normalizedQuery),
           conversationOrder: row.conversationOrder,
@@ -952,22 +1083,172 @@ class DriftConversationCacheService implements ConversationCacheService {
   @override
   Future<void> purgeExpiredMessages() async {
     final now = DateTime.now();
-    await (_db.delete(_db.cachedMessages)
-          ..where((table) => table.expiresAt.isSmallerThanValue(now)))
-        .go();
-    await (_db.delete(_db.pendingMessages)
-          ..where((table) => table.expiresAt.isSmallerThanValue(now)))
-        .go();
+    await _db.transaction(() async {
+      // Content goes with its message, including messages that expire while
+      // they are not loaded in memory.
+      final expiredMessageIds = _db.selectOnly(_db.cachedMessages)
+        ..addColumns([_db.cachedMessages.id])
+        ..where(_db.cachedMessages.expiresAt.isSmallerThanValue(now));
+      await (_db.delete(_db.messageContents)
+            ..where((table) =>
+                table.innerExpiresAt.isSmallerThanValue(now) |
+                table.messageKey.isInQuery(expiredMessageIds)))
+          .go();
+      await (_db.delete(_db.cachedMessages)
+            ..where((table) => table.expiresAt.isSmallerThanValue(now)))
+          .go();
+      await (_db.delete(_db.pendingMessages)
+            ..where((table) => table.expiresAt.isSmallerThanValue(now)))
+          .go();
+    });
   }
 
   @override
   Future<void> clearAll() async {
     await _db.transaction(() async {
+      await _db.delete(_db.messageContents).go();
       await _db.delete(_db.pendingMessages).go();
       await _db.delete(_db.cachedMessages).go();
       await _db.delete(_db.cachedConversations).go();
     });
     await _db.customStatement('VACUUM');
+    await _truncateWriteAheadLog();
+  }
+
+  @override
+  Future<void> put(MessageContentRecord record) async {
+    await _db.into(_db.messageContents).insert(
+          MessageContentsCompanion.insert(
+            messageKey: record.messageKey,
+            conversationId: record.conversationId,
+            clientMessageId: Value(record.clientMessageId),
+            serverMessageId: Value(record.serverMessageId),
+            body: await _requireEncryptedValue(record.body),
+            attachmentJson:
+                Value(await _encrypt(_encodeAttachment(record.attachment))),
+            kind: await _requireEncryptedValue(record.kind.name),
+            innerExpiresAt: Value(record.innerExpiresAt),
+            status: record.status.storageName,
+            createdAt: record.createdAt,
+            updatedAt: record.updatedAt,
+          ),
+          mode: InsertMode.insertOrReplace,
+        );
+  }
+
+  @override
+  Future<MessageContentRecord?> get(String messageKey) async {
+    final row = await (_db.select(_db.messageContents)
+          ..where((table) => table.messageKey.equals(messageKey)))
+        .getSingleOrNull();
+    return row == null ? null : _decodeContent(row);
+  }
+
+  @override
+  Future<Map<String, MessageContentRecord>> getMany(
+    Iterable<String> messageKeys,
+  ) async {
+    final records = <String, MessageContentRecord>{};
+    for (final chunk in _chunked(messageKeys)) {
+      final rows = await (_db.select(_db.messageContents)
+            ..where((table) => table.messageKey.isIn(chunk)))
+          .get();
+      for (final row in rows) {
+        final record = await _decodeContent(row);
+        if (record != null) {
+          records[record.messageKey] = record;
+        }
+      }
+    }
+    return records;
+  }
+
+  @override
+  Future<void> rekeyLocalToServer({
+    required String clientMessageId,
+    required String serverMessageId,
+  }) async {
+    final localKey = localMessageContentKey(clientMessageId);
+    await _db.transaction(() async {
+      final local = await (_db.select(_db.messageContents)
+            ..where((table) => table.messageKey.equals(localKey)))
+          .getSingleOrNull();
+      if (local == null) {
+        return;
+      }
+      // The sender's own plaintext wins over anything recorded under the
+      // server id, such as a failed attempt to open our own echoed envelope.
+      await (_db.delete(_db.messageContents)
+            ..where((table) => table.messageKey.equals(serverMessageId)))
+          .go();
+      await (_db.update(_db.messageContents)
+            ..where((table) => table.messageKey.equals(localKey)))
+          .write(
+        MessageContentsCompanion(
+          messageKey: Value(serverMessageId),
+          serverMessageId: Value(serverMessageId),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+    });
+  }
+
+  @override
+  Future<void> deleteConversation(String conversationId) async {
+    await (_db.delete(_db.messageContents)
+          ..where((table) => table.conversationId.equals(conversationId)))
+        .go();
+    await _truncateWriteAheadLog();
+  }
+
+  // secure_delete scrubs freed pages in the database file, but copies of
+  // them can still sit in the write-ahead log until it is checkpointed.
+  Future<void> _truncateWriteAheadLog() =>
+      _db.customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+
+  @override
+  Future<void> deleteExpired(
+    DateTime now, {
+    Iterable<String> messageKeys = const [],
+  }) async {
+    await (_db.delete(_db.messageContents)
+          ..where((table) => table.innerExpiresAt.isSmallerOrEqualValue(now)))
+        .go();
+    for (final chunk in _chunked(messageKeys)) {
+      await (_db.delete(_db.messageContents)
+            ..where((table) => table.messageKey.isIn(chunk)))
+          .go();
+    }
+  }
+
+  Future<MessageContentRecord?> _decodeContent(MessageContent row) async {
+    final body = await _decrypt(row.body);
+    final kind = await _decrypt(row.kind);
+    if (body == null || kind == null) {
+      return null;
+    }
+    return MessageContentRecord(
+      messageKey: row.messageKey,
+      conversationId: row.conversationId,
+      clientMessageId: row.clientMessageId,
+      serverMessageId: row.serverMessageId,
+      body: body,
+      kind: MessageKind.values.byName(kind),
+      attachment: _decodeAttachment(await _decrypt(row.attachmentJson)),
+      innerExpiresAt: row.innerExpiresAt,
+      status: MessageContentStatus.fromStorageName(row.status),
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+  }
+
+  // Keeps IN (...) lists well below SQLite's bound-parameter limit on long
+  // histories.
+  static Iterable<List<String>> _chunked(Iterable<String> keys) sync* {
+    final unique = keys.toSet().toList(growable: false);
+    for (var start = 0; start < unique.length; start += 500) {
+      yield unique.sublist(start, min(start + 500, unique.length));
+    }
   }
 
   bool _messageTypeMatchesFilter(

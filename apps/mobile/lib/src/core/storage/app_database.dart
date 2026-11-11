@@ -29,6 +29,9 @@ class CachedConversations extends Table {
   TextColumn get sessionRemoteIdentityFingerprint => text().nullable()();
   TextColumn get sessionAuditHint => text().nullable()();
   TextColumn get sessionBootstrappedAt => text().nullable()();
+  TextColumn get sessionRemoteIdentityPublicKey => text().nullable()();
+  BoolColumn get identityMismatchPending =>
+      boolean().withDefault(const Constant(false))();
   TextColumn get paginationCursor => text().nullable()();
   BoolColumn get hasMoreHistory =>
       boolean().withDefault(const Constant(true))();
@@ -83,12 +86,39 @@ class PendingMessages extends Table {
   Set<Column<Object>> get primaryKey => {clientMessageId};
 }
 
-@DriftDatabase(tables: [CachedConversations, CachedMessages, PendingMessages])
+// Decrypted content of a message, written by the one decrypt that message
+// ever gets (or, for outbound messages, before it is encrypted). Ratchet
+// message keys are single-use, so this row is the only way to show the
+// message again. body and attachment_json are field-encrypted.
+class MessageContents extends Table {
+  // Server message id, or 'local:<clientMessageId>' until the relay acks.
+  TextColumn get messageKey => text()();
+  TextColumn get conversationId => text()();
+  TextColumn get clientMessageId => text().nullable()();
+  TextColumn get serverMessageId => text().nullable()();
+  TextColumn get body => text()();
+  TextColumn get attachmentJson => text().nullable()();
+  TextColumn get kind => text()();
+  DateTimeColumn get innerExpiresAt => dateTime().nullable()();
+  TextColumn get status => text()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {messageKey};
+}
+
+@DriftDatabase(tables: [
+  CachedConversations,
+  CachedMessages,
+  PendingMessages,
+  MessageContents,
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -160,6 +190,20 @@ class AppDatabase extends _$AppDatabase {
               'ALTER TABLE pending_messages ADD COLUMN envelope_version TEXT',
             );
           }
+          if (from < 9) {
+            await migrator.createTable(messageContents);
+            await migrator.addColumn(
+              cachedConversations,
+              cachedConversations.sessionRemoteIdentityPublicKey,
+            );
+            await migrator.addColumn(
+              cachedConversations,
+              cachedConversations.identityMismatchPending,
+            );
+            // Search now reads message_contents; drop the old per-message
+            // copies of decrypted text instead of leaving them unread.
+            await customStatement('UPDATE cached_messages SET search_body = NULL');
+          }
           await _createIndexes();
         },
         beforeOpen: (details) async {
@@ -196,6 +240,10 @@ class AppDatabase extends _$AppDatabase {
     await customStatement(
       'CREATE INDEX IF NOT EXISTS pending_messages_conversation_idx '
       'ON pending_messages (conversation_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS message_contents_conversation_status_idx '
+      'ON message_contents (conversation_id, status)',
     );
   }
 }

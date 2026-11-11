@@ -601,8 +601,12 @@ export class FakePrismaService {
     };
 
     this.attachment.create = async ({ data }: any) => {
+      // Clients may propose the id; a duplicate hits the primary key.
+      if (data.id !== undefined && this.attachments.some((item) => item.id === data.id)) {
+        throw uniqueViolation('id');
+      }
       const record: AttachmentRecord = {
-        id: makeId('attachment'),
+        id: data.id ?? makeId('attachment'),
         uploaderDeviceId: data.uploaderDeviceId,
         storageKey: data.storageKey,
         contentType: data.contentType,

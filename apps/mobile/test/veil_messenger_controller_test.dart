@@ -507,8 +507,88 @@ void main() {
     expect(controller.pendingCountFor('conv-1'), 0);
     expect(controller.messagesFor('conv-1').single.deliveryState,
         MessageDeliveryState.sent);
-    expect(api.completedUploads, contains('attachment-2'));
+    // The retry re-tickets the id the file was sealed under: marked failed
+    // after the first attempt, uploaded after the second.
+    final sealedId = api.ticketedAttachmentIds.first;
+    expect(api.ticketedAttachmentIds, [sealedId, sealedId]);
+    expect(api.completedUploads, [sealedId, sealedId]);
     expect(tempStore.deletedPaths, isNotEmpty);
+  });
+
+  test('a draft an older build sealed under an empty attachment id fails for good',
+      () async {
+    final api = _FakeVeilApiClient();
+    final cache = _MemoryConversationCache(
+      pendingMessages: [
+        PendingMessageRecord(
+          clientMessageId: 'client-legacy-file',
+          conversationId: 'conv-1',
+          senderDeviceId: 'device-local',
+          recipientUserId: 'user-selene',
+          envelope: api.makeEnvelope(
+            conversationId: 'conv-1',
+            senderDeviceId: 'device-local',
+            recipientUserId: 'user-selene',
+            ciphertext: 'opaque-placeholder',
+            nonce: 'nonce-placeholder',
+          ),
+          createdAt: DateTime.utc(2026, 3, 30, 12),
+          state: MessageDeliveryState.uploading,
+          attachmentUploadDraft: AttachmentUploadDraft(
+            filename: 'brief.pdf',
+            contentType: 'application/pdf',
+            sizeBytes: 2064,
+            sha256: 'cipher-hash',
+            tempFilePath: '${Directory.systemTemp.path}/veil-test-legacy-sealed.blob',
+            sealedReference: const AttachmentReference(
+              attachmentId: '',
+              storageKey: '',
+              contentType: 'application/pdf',
+              sizeBytes: 2048,
+              sha256: 'cipher-hash',
+              encryptedKey: 'content-key',
+              nonce: 'content-nonce',
+              algorithmHint: 'aes256gcm-v2',
+            ),
+          ),
+        ),
+      ],
+    );
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: cache,
+      attachmentTempFileStore: _FakeAttachmentTempFileStore(),
+    );
+    addTearDown(controller.dispose);
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+    await controller.retryPendingMessages('conv-1');
+    await waitFor(() async =>
+        (await cache.readPendingMessages()).single.state == MessageDeliveryState.failed);
+
+    final pending = (await cache.readPendingMessages()).single;
+    expect(pending.nextRetryAt, isNull);
+    expect(pending.errorMessage, contains('older version of VEIL'));
+    // Its blob would never open for the recipient, so it is never uploaded.
+    expect(api.ticketedAttachmentIds, isEmpty);
+    expect(api.sentPayloads, isEmpty);
   });
 
   test(
@@ -1205,6 +1285,7 @@ class _FakeVeilApiClient extends VeilApiClient {
         super(baseUrl: 'http://localhost:3000/v1');
 
   final List<Map<String, dynamic>> sentPayloads = [];
+  final List<String> ticketedAttachmentIds = [];
   final List<String> completedUploads = [];
   final List<_PagedQuery> messageFetches = [];
   int conversationFetchCount = 0;
@@ -1385,7 +1466,9 @@ class _FakeVeilApiClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    final ticketId = 'attachment-${completedUploads.length + 1}';
+    // The app proposes the id its blob is sealed under; the relay keeps it.
+    final ticketId = body['attachmentId'] as String;
+    ticketedAttachmentIds.add(ticketId);
     return {
       'attachmentId': ticketId,
       'upload': {

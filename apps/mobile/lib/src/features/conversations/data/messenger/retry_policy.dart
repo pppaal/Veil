@@ -11,6 +11,8 @@ const _permanentRelayErrorCodes = {
   'attachment_not_found',
   'attachment_upload_invalid',
   'attachment_upload_canceled',
+  // The id is sealed into the blob, so the relay refusing it is final.
+  'attachment_id_conflict',
   'conversation_membership_required',
   'direct_peer_mismatch',
   // A frame encrypted under an old membership epoch can never be accepted;

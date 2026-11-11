@@ -173,6 +173,155 @@ describe('AttachmentsService', () => {
       expect(stale.uploadStatus).toBe('failed');
       expect(storage.uploaded.has(staleKey)).toBe(false);
     });
+
+    describe('with a client-proposed attachment id', () => {
+      const baseRequest = {
+        contentType: 'application/octet-stream',
+        sizeBytes: 1024,
+        sha256: 'a'.repeat(64),
+      };
+      const ticketRequest = (
+        attachmentId: string,
+        overrides: { sha256?: string; sizeBytes?: number } = {},
+      ) => ({ ...baseRequest, attachmentId, ...overrides });
+
+      it('records the attachment under the proposed id', async () => {
+        const { service, prisma } = makeService();
+        const { deviceId } = seedDeviceAndUser(prisma);
+        const attachmentId = randomUUID();
+
+        const ticket = await service.createUploadTicket(deviceId, ticketRequest(attachmentId));
+
+        expect(ticket.attachmentId).toBe(attachmentId);
+        expect(ticket.upload.attachmentId).toBe(attachmentId);
+        expect(ticket.upload.headers['x-amz-meta-attachment-id']).toBe(attachmentId);
+        expect(prisma.attachments).toEqual([
+          expect.objectContaining({
+            id: attachmentId,
+            uploaderDeviceId: deviceId,
+            uploadStatus: 'pending',
+          }),
+        ]);
+      });
+
+      it.each(['pending', 'failed'] as const)(
+        're-issues a fresh ticket for its own %s row with the same ciphertext',
+        async (status) => {
+          const { service, prisma, storage } = makeService();
+          const { deviceId } = seedDeviceAndUser(prisma);
+          const attachmentId = randomUUID();
+          const first = await service.createUploadTicket(deviceId, ticketRequest(attachmentId));
+          const row = prisma.attachments[0];
+          // Ticketed ten minutes ago: older than a ticket lives, younger than
+          // the expired-pending sweep cutoff.
+          row.uploadStatus = status;
+          row.createdAt = new Date(Date.now() - 10 * 60 * 1000);
+          storage.recordUploaded(first.upload.storageKey, {
+            sizeBytes: 512,
+            contentType: 'application/octet-stream',
+            metadata: {},
+          });
+          const before = Date.now();
+
+          const second = await service.createUploadTicket(
+            deviceId,
+            ticketRequest(attachmentId, { sha256: 'A'.repeat(64) }),
+          );
+
+          expect(second.attachmentId).toBe(attachmentId);
+          expect(second.upload.storageKey).not.toBe(first.upload.storageKey);
+          expect(second.upload.storageKey).toMatch(/^attachments\/[0-9a-f-]{36}\/[0-9a-f-]{36}$/);
+          expect(prisma.attachments).toHaveLength(1);
+          expect(row.storageKey).toBe(second.upload.storageKey);
+          expect(row.uploadStatus).toBe('pending');
+          expect(row.createdAt.getTime()).toBeGreaterThanOrEqual(before);
+          expect(storage.uploaded.has(first.upload.storageKey)).toBe(false);
+        },
+      );
+
+      it('rejects an id held by another device without revealing the holder', async () => {
+        const { service, prisma } = makeService();
+        const owner = seedDeviceAndUser(prisma);
+        const other = seedDeviceAndUser(prisma);
+        const attachmentId = randomUUID();
+        const ticket = await service.createUploadTicket(
+          owner.deviceId,
+          ticketRequest(attachmentId),
+        );
+
+        await expect(
+          service.createUploadTicket(other.deviceId, ticketRequest(attachmentId)),
+        ).rejects.toMatchObject({
+          status: 409,
+          response: {
+            code: 'attachment_id_conflict',
+            message: 'The proposed attachment id is not available',
+          },
+        });
+        expect(prisma.attachments).toHaveLength(1);
+        expect(prisma.attachments[0]).toMatchObject({
+          uploaderDeviceId: owner.deviceId,
+          storageKey: ticket.upload.storageKey,
+        });
+      });
+
+      it('rejects re-ticketing an attachment whose blob is already uploaded', async () => {
+        const { service, prisma } = makeService();
+        const { deviceId } = seedDeviceAndUser(prisma);
+        const attachmentId = randomUUID();
+        await service.createUploadTicket(deviceId, ticketRequest(attachmentId));
+        prisma.attachments[0].uploadStatus = 'uploaded';
+
+        await expect(
+          service.createUploadTicket(deviceId, ticketRequest(attachmentId)),
+        ).rejects.toMatchObject({ status: 409, response: { code: 'attachment_id_conflict' } });
+        expect(prisma.attachments[0].uploadStatus).toBe('uploaded');
+      });
+
+      it('rejects re-ticketing the id for different ciphertext', async () => {
+        const { service, prisma } = makeService();
+        const { deviceId } = seedDeviceAndUser(prisma);
+        const attachmentId = randomUUID();
+        await service.createUploadTicket(deviceId, ticketRequest(attachmentId));
+
+        await expect(
+          service.createUploadTicket(
+            deviceId,
+            ticketRequest(attachmentId, { sha256: 'b'.repeat(64) }),
+          ),
+        ).rejects.toMatchObject({ status: 409, response: { code: 'attachment_id_conflict' } });
+        await expect(
+          service.createUploadTicket(deviceId, ticketRequest(attachmentId, { sizeBytes: 2048 })),
+        ).rejects.toMatchObject({ status: 409, response: { code: 'attachment_id_conflict' } });
+        expect(prisma.attachments[0].sha256).toBe('a'.repeat(64));
+      });
+
+      it('answers a lost create race with a conflict', async () => {
+        const { service, prisma } = makeService();
+        const owner = seedDeviceAndUser(prisma);
+        const other = seedDeviceAndUser(prisma);
+        const attachmentId = randomUUID();
+        await service.createUploadTicket(owner.deviceId, ticketRequest(attachmentId));
+        // The row lands between this request's lookup and its insert.
+        jest.spyOn(prisma.attachment, 'findUnique').mockResolvedValueOnce(null);
+
+        await expect(
+          service.createUploadTicket(other.deviceId, ticketRequest(attachmentId)),
+        ).rejects.toMatchObject({ status: 409, response: { code: 'attachment_id_conflict' } });
+        expect(prisma.attachments).toHaveLength(1);
+      });
+
+      it('leaves ticketing without a proposed id as it was: a fresh id per request', async () => {
+        const { service, prisma } = makeService();
+        const { deviceId } = seedDeviceAndUser(prisma);
+
+        const first = await service.createUploadTicket(deviceId, baseRequest);
+        const second = await service.createUploadTicket(deviceId, baseRequest);
+
+        expect(first.attachmentId).not.toBe(second.attachmentId);
+        expect(prisma.attachments).toHaveLength(2);
+      });
+    });
   });
 
   describe('completeUpload', () => {

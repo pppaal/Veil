@@ -11,6 +11,7 @@ import '../../../core/network/veil_api_client.dart';
 import '../../../core/notifications/local_notification_service.dart';
 import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
+import '../../../core/util/uuid_v4.dart';
 import '../../attachments/data/attachment_temp_file_store.dart';
 import 'conversation_models.dart';
 import 'group_sender_key_coordinator.dart';
@@ -1152,13 +1153,18 @@ class VeilMessengerController extends ChangeNotifier {
           _attachmentTransfersByClientMessageId.remove(marked.clientMessageId);
         } catch (error) {
           await _handleSecurityException(error);
-          final isTransient = shouldRetryAutomatically(error, marked.retryCount);
+          // _preparePendingAttachment stores each step it completes (the
+          // sealed draft, its ticket). Building on the copy taken before it
+          // ran would drop the sealed reference, and the retry would try to
+          // re-seal a staging file that was deleted once sealed.
+          final latest = _pendingByClientMessageId[marked.clientMessageId] ?? marked;
+          final isTransient = shouldRetryAutomatically(error, latest.retryCount);
           final nextRetryAt = isTransient
-              ? now.add(retryDelayForAttempt(marked.retryCount))
+              ? now.add(retryDelayForAttempt(latest.retryCount))
               : null;
-          final failed = marked.copyWith(
+          final failed = latest.copyWith(
             state: isTransient
-                ? (marked.attachmentUploadDraft == null
+                ? (latest.attachmentUploadDraft == null
                     ? MessageDeliveryState.pending
                     : MessageDeliveryState.uploading)
                 : MessageDeliveryState.failed,
@@ -1722,6 +1728,14 @@ class VeilMessengerController extends ChangeNotifier {
       _pendingByClientMessageId[pending.clientMessageId] = pending;
       await _cacheService?.upsertPendingMessage(pending);
       await tempStore.deleteTempFile(plaintextPath);
+    } else if (draft.sealedReference!.attachmentId.isEmpty) {
+      // Sealed by an older build under an empty id, which no recipient can
+      // open, and the plaintext was deleted once sealed, so it cannot be
+      // re-sealed either. Failing it for good lets the user attach it again.
+      throw VeilApiException(
+        'This attachment was prepared by an older version of VEIL. Attach the file again.',
+        code: 'attachment_upload_invalid',
+      );
     }
 
     draft = await _ensureUploadTicket(pending, draft);
@@ -1799,10 +1813,7 @@ class VeilMessengerController extends ChangeNotifier {
       canCancel: false,
     );
 
-    final attachment = draft.sealedReference!.copyWith(
-      attachmentId: draft.attachmentId,
-      storageKey: draft.storageKey,
-    );
+    final attachment = draft.sealedReference!;
     await _contents.storeOutbound(
       conversationId: conversation.id,
       clientMessageId: pending.clientMessageId,
@@ -1829,13 +1840,13 @@ class VeilMessengerController extends ChangeNotifier {
   }
 
   // Encrypts the staged file and swaps it for the ciphertext, which is the
-  // only thing ever uploaded. The reference carrying the wrapped content key
-  // stays on the draft, so a retry after a restart uploads the same bytes.
-  // The upload ticket must name the ciphertext's hash, so the server-assigned
-  // attachment id and storage key are filled in once the ticket exists. That
-  // holds only for adapters that leave the id out of the blob: protocol v2
-  // binds it into the blob's AAD and needs it known before sealing (a
-  // client-proposed id, or the hash taken at completion instead).
+  // only thing ever uploaded. Protocol v2 binds the attachment id into the
+  // blob's AAD, so the id must exist before sealing, while the upload ticket
+  // must name the ciphertext's hash: the client proposes a random id here and
+  // tickets it later. The reference stays on the draft exactly as sealed, so
+  // a retry after a restart re-tickets the same id for the same bytes. Its
+  // storage key stays empty: that is a relay detail, and recipients download
+  // by attachment id.
   Future<(AttachmentUploadDraft, String)> _sealAttachment(
     AttachmentUploadDraft draft,
     ConversationPreview conversation,
@@ -1848,9 +1859,9 @@ class VeilMessengerController extends ChangeNotifier {
     );
     final recipientBundle = conversation.type == ConversationType.group
         ? conversation.recipientBundle
-        : await _resolvePeerBundle(conversation.peerHandle);
+        : await _bundleForSend(conversation);
     final cipher = await _cryptoEngine.encryptAttachment(
-      attachmentId: '',
+      attachmentId: randomUuidV4(),
       storageKey: '',
       contentType: draft.contentType,
       plaintext: await File(staged.path).readAsBytes(),
@@ -1881,14 +1892,20 @@ class VeilMessengerController extends ChangeNotifier {
       return draft;
     }
     final resetDraft = await _markAttachmentTicketFailed(draft, deleteRemoteObject: draft.hasUploadTicket);
+    final sealedId = resetDraft.sealedReference!.attachmentId;
     final upload = await _apiClient.createUploadTicket(_session.accessToken!, {
+      'attachmentId': sealedId,
       'contentType': resetDraft.contentType,
       'sizeBytes': resetDraft.sizeBytes,
       'sha256': resetDraft.sha256,
     });
+    // A ticket for any other id would carry a blob no recipient can open.
+    if (upload['attachmentId'] != sealedId) {
+      throw StateError('The relay ticketed a different attachment id than the one sealed.');
+    }
     final uploadPayload = upload['upload'] as Map<String, dynamic>;
     return resetDraft.copyWith(
-      attachmentId: upload['attachmentId'] as String,
+      attachmentId: sealedId,
       storageKey: uploadPayload['storageKey'] as String,
       uploadUrl: uploadPayload['uploadUrl'] as String,
       uploadHeaders: (uploadPayload['headers'] as Map<String, dynamic>? ?? const <String, dynamic>{})

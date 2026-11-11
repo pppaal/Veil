@@ -1,10 +1,27 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { AttachmentUploadStatus } from '@prisma/client';
-import { IsEnum, IsInt, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 import type { CompleteAttachmentUploadRequest, CreateUploadTicketRequest } from '@veil/contracts';
 
 export class CreateUploadTicketDto implements CreateUploadTicketRequest {
+  // Proposed by clients that bind the id into the sealed blob (protocol v2).
+  // Version 4 only: a random id carries nothing about the device or the time.
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsUUID('4')
+  attachmentId?: string;
+
   @ApiProperty()
   @IsString()
   @MaxLength(128)

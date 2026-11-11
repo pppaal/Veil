@@ -28,15 +28,26 @@ of the API; a header the edge does not overwrite is attacker-controlled.
 | --- | --- | --- |
 | API reachable directly (local dev) | `socket` (default) | Forwarding headers are ignored. |
 | Behind Caddy (`docker-compose.prod.yml`) | `x-forwarded-for` | Caddy drops `CF-Connecting-IP` and overwrites `X-Forwarded-For` with the real peer. `VEIL_TRUSTED_PROXY_HOPS` (default `1`) must equal the number of proxies in front of the API. |
-| Cloudflare Tunnel straight to the API (`docker-compose.demo.yml --profile tunnel`) | `cf-connecting-ip` | Every request arrives from `cloudflared`, so the socket address is useless. The header is used only when it is a single well-formed IP. Never expose the API port directly in this mode. |
+| Cloudflare Tunnel straight to the API (`docker-compose.demo.yml --profile tunnel`) | `cf-connecting-ip` | Every request arrives from `cloudflared`, so the socket address is useless. The header is used only when it is a single well-formed IP. Never expose the API port directly in this mode: start the stack with `VEIL_API_BIND_ADDRESS=127.0.0.1` so the host port is loopback-only (cloudflared uses the compose network). |
 
 `VEIL_TRUST_PROXY` was removed; a deployment that still sets it fails boot
 with `VEIL_TRUST_PROXY was removed; set VEIL_CLIENT_IP_SOURCE`.
+
+## Rate limiting
 
 With `VEIL_REDIS_URL` set (required in production), rate-limit counters live in
 Redis (Redis 7 or newer) and are shared by every API instance. If Redis becomes
 unreachable the limiter logs one warning per outage and fails open rather than
 taking the relay down.
+
+Known limits, accepted for now:
+
+- Authentication runs before the limiter so that authenticated traffic is
+  counted per device. A request that fails authentication on a protected route
+  is rejected before the limiter sees it, so those 401s are not rate-limited by
+  the API; bound them at the edge if they become a load problem.
+- Unauthenticated buckets use the full client address, so one IPv6 client that
+  controls a /64 can spread requests across many buckets.
 
 ## UnifiedPush
 
@@ -44,13 +55,20 @@ With `VEIL_PUSH_PROVIDER=unifiedpush`, production requires
 `VEIL_UNIFIEDPUSH_ALLOWED_HOSTS` (comma-separated distributor hosts;
 subdomains of a listed host are allowed). Device endpoints must be `https`
 without credentials and may not be private, loopback, link-local, unique-local,
-CGNAT, multicast or unspecified IP literals; registration rejects anything else
-with `validation_failed`. At delivery time every resolved address of the host
-is checked as well, redirects are never followed, and requests time out after
-10 seconds.
+CGNAT, multicast, unspecified, benchmarking, documentation or reserved IP
+literals, including IPv4-mapped, NAT64 and 6to4 forms of such IPv4 addresses;
+registration rejects anything else with `validation_failed`. At delivery time
+every resolved address of the host is checked as well, redirects are never
+followed, the response body is never read, and requests time out after 10
+seconds.
 
 ## 2. Harden device auth
 
+- Refresh tokens are stored only as SHA-256 hashes and rotate on every use;
+  presenting an already rotated token revokes its whole family, and logout
+  revokes every family of the device. Release note: the first deploy of this
+  storage format invalidates every refresh token issued before it, and clients
+  recover by signing a fresh challenge with their device key.
 - Keep challenge verification on uploaded device auth public keys only.
 - Add secure hardware or platform keystore integration where supported.
 - Add explicit device-key lifecycle review for revoke, transfer, and local wipe.

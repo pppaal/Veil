@@ -9,9 +9,11 @@ type FilteredRequest = Request & { requestId?: string; auth?: { userId: string }
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
+  // The generator must be the app-wide instance the LoggingInterceptor uses,
+  // or the two would derive actorRefs from different daily keys.
   constructor(
     private readonly logger: AppLoggerService,
-    private readonly actorRefs: ActorRefGenerator = new ActorRefGenerator(),
+    private readonly actorRefs: ActorRefGenerator,
   ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {

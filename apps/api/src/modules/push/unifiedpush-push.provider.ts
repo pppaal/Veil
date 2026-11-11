@@ -41,12 +41,16 @@ export const nodeHttpTransport: PushHttpTransport = (url, request) =>
       },
       (response) => {
         clearTimeout(deadline);
-        response.resume();
+        // Only the status matters. Closing the socket here, rather than
+        // draining the body, means a distributor that dribbles or never ends
+        // its body cannot pin a connection.
+        response.destroy();
         resolve(response.statusCode ?? 0);
       },
     );
     // An absolute deadline rather than a socket idle timeout, so a
-    // distributor dribbling bytes cannot hold the request open indefinitely.
+    // distributor dribbling header bytes cannot hold the request open
+    // indefinitely either.
     const deadline = setTimeout(() => {
       outgoing.destroy(
         Object.assign(new Error('UnifiedPush request timed out'), { code: 'ETIMEDOUT' }),

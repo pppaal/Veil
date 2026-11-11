@@ -15,6 +15,7 @@ export interface ThrottlerRedisTransaction {
 export interface ThrottlerRedisClient {
   multi(): ThrottlerRedisTransaction;
   set(key: string, value: string, mode: 'PX', milliseconds: number): Promise<unknown>;
+  del(key: string): Promise<number>;
   exists(key: string): Promise<number>;
   pttl(key: string): Promise<number>;
   quit(): Promise<unknown>;
@@ -39,7 +40,9 @@ const toSeconds = (milliseconds: number): number => Math.max(0, Math.ceil(millis
 // One MULTI per hit: INCR the window counter, start its expiry only on the
 // first hit (PEXPIRE NX, Redis >= 7), and read the remaining window back.
 // Exceeding the limit writes a separate block key so the block outlives the
-// window when blockDuration > ttl, exactly like the built-in storage.
+// window when blockDuration > ttl, and clears the counter so the first
+// request after the block opens a fresh window, exactly like the built-in
+// storage.
 export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy {
   private outageReported = false;
 
@@ -112,6 +115,9 @@ export class RedisThrottlerStorage implements ThrottlerStorage, OnModuleDestroy 
 
     if (totalHits > limit) {
       await this.redis.set(blockKey, '1', 'PX', blockDuration);
+      // Without this, a block shorter than the window would lift onto a
+      // counter that is still over the limit and re-block at once.
+      await this.redis.del(hitsKey);
       return {
         totalHits,
         timeToExpire,

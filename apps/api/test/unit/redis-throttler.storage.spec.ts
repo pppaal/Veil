@@ -41,6 +41,11 @@ class FakeRedis implements ThrottlerRedisClient {
     return 'OK';
   }
 
+  async del(key: string): Promise<number> {
+    this.assertReachable();
+    return this.entries.delete(key) ? 1 : 0;
+  }
+
   async exists(key: string): Promise<number> {
     this.assertReachable();
     return this.live(key) ? 1 : 0;
@@ -162,6 +167,23 @@ describe('RedisThrottlerStorage', () => {
     await expect(storage.increment('tracker', 10_000, 2, 30_000, 'default')).resolves.toEqual({
       totalHits: 1,
       timeToExpire: 10,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    });
+  });
+
+  it('a block shorter than the window lifts onto a fresh window', async () => {
+    const redis = new FakeRedis();
+    const storage = new RedisThrottlerStorage(redis, recordingLogger().logger);
+
+    for (let i = 0; i < 3; i += 1) {
+      await storage.increment('tracker', 60_000, 2, 5_000, 'default');
+    }
+    redis.now += 5_000;
+
+    await expect(storage.increment('tracker', 60_000, 2, 5_000, 'default')).resolves.toEqual({
+      totalHits: 1,
+      timeToExpire: 60,
       isBlocked: false,
       timeToBlockExpire: 0,
     });

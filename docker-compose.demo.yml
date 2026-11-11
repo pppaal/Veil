@@ -81,7 +81,11 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # All interfaces by default so a phone on the same Wi-Fi can reach the
+      # demo. The tunnel profile must set VEIL_API_BIND_ADDRESS=127.0.0.1: with
+      # cf-connecting-ip, anyone who reaches this port directly picks their
+      # own rate-limit bucket by sending the header.
+      - "${VEIL_API_BIND_ADDRESS:-0.0.0.0}:3000:3000"
     environment:
       VEIL_ENV: development
       VEIL_API_PORT: "3000"
@@ -132,11 +136,13 @@ services:
 
   # Optional Cloudflare Tunnel sidecar. Start with:
   #   VEIL_CLIENT_IP_SOURCE=cf-connecting-ip \
+  #   VEIL_API_BIND_ADDRESS=127.0.0.1 \
   #   CLOUDFLARE_TUNNEL_TOKEN=<token-from-zerotrust-dashboard> \
   #     docker compose -f docker-compose.demo.yml --profile tunnel up -d
   # The tunnel profile MUST use cf-connecting-ip: behind cloudflared every
   # request comes from one container address, so `socket` would put all
-  # tunnel users in a single rate-limit bucket.
+  # tunnel users in a single rate-limit bucket. cloudflared reaches the API
+  # over the compose network, so the loopback-only host port does not affect it.
   # In the Cloudflare Zero Trust dashboard set the public hostname's
   # `Service` to `http://api:3000`. See docs/cloudflare-tunnel-deploy.md.
   cloudflared:

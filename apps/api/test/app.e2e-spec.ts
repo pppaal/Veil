@@ -6,6 +6,7 @@ import request from 'supertest';
 import { AppConfigService } from '../src/common/config/app-config.service';
 import { ApiExceptionFilter } from '../src/common/filters/api-exception.filter';
 import { AppLoggerService } from '../src/common/logger/app-logger.service';
+import { ActorRefGenerator } from '../src/common/logger/request-redactor';
 import { EphemeralStoreService } from '../src/common/ephemeral-store.service';
 import { Ed25519DeviceAuthVerifier } from '../src/modules/auth/device-auth-verifier';
 import { ATTACHMENT_STORAGE_GATEWAY } from '../src/modules/attachments/attachment-storage.gateway';
@@ -75,7 +76,9 @@ describe('VEIL API (e2e)', () => {
         forbidNonWhitelisted: true,
       }),
     );
-    app.useGlobalFilters(new ApiExceptionFilter(moduleRef.get(AppLoggerService)));
+    app.useGlobalFilters(
+      new ApiExceptionFilter(moduleRef.get(AppLoggerService), moduleRef.get(ActorRefGenerator)),
+    );
     await app.init();
   });
 

@@ -29,7 +29,12 @@ interface Route {
   isPublic: boolean;
 }
 
-type ModuleEntry = Type | DynamicModule | { forwardRef: () => ModuleEntry } | undefined;
+type ModuleEntry =
+  | Type
+  | DynamicModule
+  | Promise<DynamicModule>
+  | { forwardRef: () => ModuleEntry }
+  | undefined;
 
 const isForwardRef = (entry: object): entry is { forwardRef: () => ModuleEntry } =>
   'forwardRef' in entry && typeof entry.forwardRef === 'function';
@@ -40,31 +45,51 @@ const metadataList = <T>(key: string, target: object): T[] =>
   (Reflect.getMetadata(key, target) as T[] | undefined) ?? [];
 
 // Walks the module graph from module metadata alone, without instantiating
-// anything, so the matrix covers exactly what Nest would mount.
-function collectControllers(root: Type): Type[] {
+// anything, so the matrix covers exactly what Nest would mount. Async dynamic
+// modules (ConfigModule.forRoot returns a Promise) are awaited, not skipped.
+async function collectControllers(root: Type): Promise<Type[]> {
   const visited = new Set<unknown>();
   const controllers = new Set<Type>();
-  const visit = (entry: ModuleEntry): void => {
+  const visit = async (pending: ModuleEntry): Promise<void> => {
+    const entry = await pending;
     if (!entry || visited.has(entry)) return;
     visited.add(entry);
     if (isForwardRef(entry)) {
-      visit(entry.forwardRef());
+      await visit(entry.forwardRef());
       return;
     }
     if (isDynamicModule(entry)) {
       entry.controllers?.forEach((controller) => controllers.add(controller));
-      entry.imports?.forEach((imported) => visit(imported as ModuleEntry));
-      visit(entry.module);
+      for (const imported of entry.imports ?? []) {
+        await visit(imported as ModuleEntry);
+      }
+      await visit(entry.module);
       return;
     }
     metadataList<Type>(MODULE_METADATA.CONTROLLERS, entry).forEach((controller) =>
       controllers.add(controller),
     );
-    metadataList<ModuleEntry>(MODULE_METADATA.IMPORTS, entry).forEach(visit);
+    for (const imported of metadataList<ModuleEntry>(MODULE_METADATA.IMPORTS, entry)) {
+      await visit(imported);
+    }
   };
-  visit(root);
+  await visit(root);
   return [...controllers];
 }
+
+// Nest mounts handlers inherited from base controller classes too.
+const methodNames = (prototype: object): string[] => {
+  const names = new Set<string>();
+  for (
+    let current: object | null = prototype;
+    current && current !== Object.prototype;
+    current = Object.getPrototypeOf(current) as object | null
+  ) {
+    Object.getOwnPropertyNames(current).forEach((name) => names.add(name));
+  }
+  names.delete('constructor');
+  return [...names];
+};
 
 const asPaths = (value: unknown): string[] =>
   Array.isArray(value) ? value : [typeof value === 'string' ? value : '/'];
@@ -79,7 +104,7 @@ const joinPath = (...segments: string[]): string =>
 function routesOf(controller: Type): Route[] {
   const classPublic = Reflect.getMetadata(IS_PUBLIC_KEY, controller) === true;
   const prototype = controller.prototype as Record<string, unknown>;
-  return Object.getOwnPropertyNames(prototype).flatMap((name) => {
+  return methodNames(prototype).flatMap((name) => {
     const handler = prototype[name];
     if (typeof handler !== 'function' || !Reflect.hasMetadata(METHOD_METADATA, handler)) {
       return [];
@@ -110,7 +135,7 @@ describe('route auth matrix', () => {
       VEIL_S3_BUCKET: 'veil-encrypted',
     });
     const { AppModule } = await import('../../src/app.module');
-    routes = collectControllers(AppModule).flatMap(routesOf);
+    routes = (await collectControllers(AppModule)).flatMap(routesOf);
   });
 
   it('discovers the mounted API surface', () => {

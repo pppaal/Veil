@@ -77,6 +77,9 @@ import { PrekeysModule } from './modules/prekeys/prekeys.module';
     // first so the throttler can key authenticated traffic by device instead
     // of by shared client IP; @Public routes leave req.auth unset and fall
     // back to the IP bucket. scripts/policy-check.mjs enforces this order.
+    // Accepted trade-off: a request rejected by JwtAuthGuard never reaches
+    // the throttler, so 401s on protected routes are not rate-limited here
+    // (docs/production-deployment.md, "Rate limiting").
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

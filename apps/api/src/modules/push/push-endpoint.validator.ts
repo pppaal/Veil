@@ -16,31 +16,60 @@ export interface PushTokenPolicySource {
 }
 
 // Addresses a push endpoint may never reach: private, loopback, link-local,
-// unique-local, CGNAT, multicast, unspecified and reserved space. BlockList
-// also matches IPv4-mapped IPv6 forms (::ffff:127.0.0.1) against the IPv4
-// rules, which is how mapped literals and resolver answers are caught.
-const FORBIDDEN_ADDRESSES = new BlockList();
-for (const [network, prefix] of [
+// unique-local, CGNAT, multicast, unspecified, benchmarking, documentation
+// and reserved space. BlockList also matches IPv4-mapped IPv6 forms
+// (::ffff:127.0.0.1) against the IPv4 rules, which is how mapped literals and
+// resolver answers are caught.
+const FORBIDDEN_IPV4_SUBNETS = [
   ['0.0.0.0', 8],
   ['10.0.0.0', 8],
   ['100.64.0.0', 10],
   ['127.0.0.0', 8],
   ['169.254.0.0', 16],
   ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.0.2.0', 24],
   ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
   ['224.0.0.0', 4],
   ['240.0.0.0', 4],
-] as const) {
-  FORBIDDEN_ADDRESSES.addSubnet(network, prefix, 'ipv4');
-}
-for (const [network, prefix] of [
-  ['::', 128],
-  ['::1', 128],
+] as const;
+
+const FORBIDDEN_IPV6_SUBNETS = [
+  // Unspecified, loopback and the deprecated IPv4-compatible ::a.b.c.d.
+  ['::', 96],
+  // IPv4-translated (SIIT) ::ffff:0:a.b.c.d.
+  ['::ffff:0:0:0', 96],
+  // Local-use NAT64, whose IPv4 embedding is operator-defined.
+  ['64:ff9b:1::', 48],
+  ['100::', 64],
+  ['2001:db8::', 32],
+  ['3fff::', 20],
   ['fe80::', 10],
   ['fec0::', 10],
   ['fc00::', 7],
   ['ff00::', 8],
-] as const) {
+] as const;
+
+// '10.0.0.0' -> 'a00:0', the two IPv6 groups that carry the IPv4 address.
+const asIpv6Groups = (ipv4: string): string => {
+  const [a, b, c, d] = ipv4.split('.').map(Number);
+  return `${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+};
+
+const FORBIDDEN_ADDRESSES = new BlockList();
+for (const [network, prefix] of FORBIDDEN_IPV4_SUBNETS) {
+  FORBIDDEN_ADDRESSES.addSubnet(network, prefix, 'ipv4');
+  // A NAT64 translator (RFC 6052 well-known prefix) or a 6to4 relay
+  // (RFC 3056) connects to the IPv4 address embedded in these, so they are
+  // forbidden exactly when that address is. Blocking the whole prefixes
+  // instead would break delivery from IPv6-only networks that use DNS64.
+  FORBIDDEN_ADDRESSES.addSubnet(`64:ff9b::${network}`, 96 + prefix, 'ipv6');
+  FORBIDDEN_ADDRESSES.addSubnet(`2002:${asIpv6Groups(network)}::`, 16 + prefix, 'ipv6');
+}
+for (const [network, prefix] of FORBIDDEN_IPV6_SUBNETS) {
   FORBIDDEN_ADDRESSES.addSubnet(network, prefix, 'ipv6');
 }
 

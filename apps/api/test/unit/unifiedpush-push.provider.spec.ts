@@ -96,13 +96,21 @@ describe('UnifiedPushProvider', () => {
     let server: Server;
     let hits: string[];
     let port: number;
+    let endlessBodyClosed: Promise<void>;
 
     beforeEach(async () => {
       hits = [];
+      let reportEndlessBodyClosed: () => void;
+      endlessBodyClosed = new Promise((resolve) => (reportEndlessBodyClosed = resolve));
       server = createServer((req, res) => {
         hits.push(req.url ?? '');
         if (req.url?.startsWith('/redirect')) {
           res.writeHead(307, { Location: `http://localhost:${port}/internal` });
+        } else if (req.url?.startsWith('/endless')) {
+          res.writeHead(200);
+          res.write('x');
+          res.on('close', () => reportEndlessBodyClosed());
+          return;
         } else {
           res.writeHead(200);
         }
@@ -139,6 +147,16 @@ describe('UnifiedPushProvider', () => {
 
       await provider.sendMessageHint(`http://localhost:${port}/up`, hint);
       expect(hits).toEqual(['/up']);
+    });
+
+    it('closes the connection once the status arrives instead of reading the body', async () => {
+      const provider = new UnifiedPushProvider(
+        configWith({ pushDeliveryEnabled: true, isProduction: false }),
+      );
+
+      await provider.sendMessageHint(`http://localhost:${port}/endless`, hint);
+      // The server never ends this body; only the client hanging up closes it.
+      await endlessBodyClosed;
     });
   });
 
@@ -227,6 +245,20 @@ describe('validatePushEndpointUrl', () => {
     ['https://[fd12:3456::1]/up', /private address/],
     ['https://[ff02::1]/up', /private address/],
     ['https://[::ffff:10.0.0.5]/up', /private address/],
+    ['https://[::10.0.0.5]/up', /private address/],
+    ['https://[::ffff:0:10.0.0.5]/up', /private address/],
+    ['https://[64:ff9b::10.0.0.5]/up', /private address/],
+    ['https://[64:ff9b::169.254.169.254]/up', /private address/],
+    ['https://[64:ff9b:1::a00:5]/up', /private address/],
+    ['https://[2002:a00:5::1]/up', /private address/],
+    ['https://[2002:7f00:1::]/up', /private address/],
+    ['https://[100::1]/up', /private address/],
+    ['https://[2001:db8::1]/up', /private address/],
+    ['https://192.0.0.8/up', /private address/],
+    ['https://192.0.2.1/up', /private address/],
+    ['https://198.18.0.1/up', /private address/],
+    ['https://198.51.100.7/up', /private address/],
+    ['https://203.0.113.9/up', /private address/],
   ])('rejects %s in production', (endpoint, reason) => {
     expect(() => validatePushEndpointUrl(endpoint, production)).toThrow(reason);
   });
@@ -250,10 +282,17 @@ describe('validatePushEndpointUrl', () => {
     );
   });
 
-  it.each(['ntfy.sh', '8.8.8.8', '172.32.0.1', '100.128.0.1', '2606:4700::1111'])(
-    'treats %s as reachable',
-    (host) => {
-      expect(isForbiddenAddress(host)).toBe(false);
-    },
-  );
+  it.each([
+    'ntfy.sh',
+    '8.8.8.8',
+    '172.32.0.1',
+    '100.128.0.1',
+    '198.20.0.1',
+    '2606:4700::1111',
+    // NAT64 / 6to4 forms of a public IPv4 address (DNS64 on IPv6-only hosts).
+    '64:ff9b::808:808',
+    '2002:808:808::1',
+  ])('treats %s as reachable', (host) => {
+    expect(isForbiddenAddress(host)).toBe(false);
+  });
 });

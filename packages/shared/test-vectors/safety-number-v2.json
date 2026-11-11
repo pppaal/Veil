@@ -1,0 +1,43 @@
+{
+  "schema": "veil-safety-number-v2",
+  "description": "Safety number v2 (Signal NumericFingerprint) and verification QR vectors. Hex unless noted. Regenerate/verify with scripts/safety-number-vectors.mjs.",
+  "generator": "node v22.23.4 / node:crypto",
+  "construction": {
+    "version": 2,
+    "iterations": 5200,
+    "fingerprint": "h = SHA-512(u16be(version) || identityKey(32) || utf8(userId)); repeat iterations times h = SHA-512(h || identityKey); 30 digits = h[0..30] as six 5-byte big-endian integers, each mod 100000, zero-padded to 5 digits.",
+    "safetyNumber": "The two 30-digit fingerprints joined, lexicographically smaller first.",
+    "qrPayload": "base64url-nopad(\"VEILSN\" || u8(version) || localKey(32) || u8(len) || utf8(localUserId) || remoteKey(32) || u8(len) || utf8(remoteUserId)). A scanner accepts only the role-swapped payload of its own view."
+  },
+  "vectors": {
+    "alice": {
+      "seed": "1111111111111111111111111111111111111111111111111111111111111111",
+      "identityPublicKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "userId": "00000000-0000-4000-8000-00000000000a",
+      "fingerprint": "082577859417519724042399200716"
+    },
+    "bob": {
+      "seed": "2222222222222222222222222222222222222222222222222222222222222222",
+      "identityPublicKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+      "userId": "00000000-0000-4000-8000-00000000000b",
+      "fingerprint": "219577104575101292709615301410"
+    },
+    "safetyNumber": "082577859417519724042399200716219577104575101292709615301410",
+    "formatted": "08257 78594 17519 72404 23992 00716 21957 71045 75101 29270 96153 01410",
+    "userIdBinding": {
+      "note": "alice's identity key with bob's userId",
+      "identityPublicKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+      "userId": "00000000-0000-4000-8000-00000000000b",
+      "fingerprint": "799658954432352523148298159205"
+    },
+    "versionBinding": {
+      "note": "alice's identity and userId under version 3",
+      "version": 3,
+      "fingerprint": "816321336555651585289703810592"
+    },
+    "qr": {
+      "aliceView": "VkVJTFNOAtBKsjJ0K7SrOhNovUYV5ObQIkq3GgFrr4UgozLJd4c3JDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwYaCapfR6Z1mAL_lV-NwtKhSlyZ0jvpf4ZBJ_-Tg0VaTwJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwYg",
+      "bobView": "VkVJTFNOAqCapfR6Z1mAL_lV-NwtKhSlyZ0jvpf4ZBJ_-Tg0VaTwJDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwYtBKsjJ0K7SrOhNovUYV5ObQIkq3GgFrr4UgozLJd4c3JDAwMDAwMDAwLTAwMDAtNDAwMC04MDAwLTAwMDAwMDAwMDAwYQ"
+    }
+  }
+}

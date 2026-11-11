@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../security/device_auth_signer.dart';
 import 'crypto_engine.dart';
 import 'message_padding.dart';
+import 'payload/inner_payload.dart';
 
 // ---------------------------------------------------------------------------
 // libsignal bridge adapter.
@@ -19,7 +20,7 @@ import 'message_padding.dart';
 //
 // What stays in Dart, deliberately:
 //   * JSON (de)serialization of the API envelope / key bundle shapes;
-//   * the inner message payload (`body`/`kind`/`expiresAt`/`att`) and its
+//   * the inner message payload (the shared `InnerPayload` codec) and its
 //     length padding — plaintext never leaves the device, and this keeps the
 //     native surface to "bytes in, bytes out";
 //   * AES-256-GCM of attachment *blobs* via the `cryptography` package. The
@@ -236,7 +237,9 @@ class _BridgeEnvelopeCodec implements CryptoEnvelopeCodec {
       'nonce': envelope.nonce,
       'messageType': envelope.messageKind.name,
       if (envelope.expiresAt != null) 'expiresAt': envelope.expiresAt!.toUtc().toIso8601String(),
-      if (envelope.attachment != null) 'attachment': encodeAttachmentReference(envelope.attachment),
+      // Only the id leaves the device in clear (contract C3); the reference
+      // itself travels inside the encrypted payload.
+      if (envelope.attachment != null) 'attachment': {'attachmentId': envelope.attachment!.attachmentId},
     };
   }
 
@@ -400,16 +403,11 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
         'No session for conversation $conversationId. Bootstrap a session before sending.',
       );
     }
-    final payload = json.encode({
-      'body': body,
-      'kind': messageKind.name,
-      if (expiresAt != null) 'expiresAt': expiresAt.toUtc().toIso8601String(),
-      if (attachment != null) 'att': _serializeAttachmentRef(attachment),
-    });
+    final payload = InnerPayload(body: body, kind: messageKind, expiresAt: expiresAt, attachment: attachment);
     final r = await _channel.invoke('encryptMessage', {
       'conversationId': conversationId,
       'remoteDeviceId': _sessions.remoteDeviceFor(conversationId) ?? recipientBundle.deviceId,
-      'plaintext': _b64Encode(MessagePadding.pad(utf8.encode(payload))),
+      'plaintext': _b64Encode(MessagePadding.pad(payload.encode())),
     });
     final type = (r['messageType'] as num?)?.toInt();
     final nonceTag = switch (type) {
@@ -444,10 +442,7 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
         messageType = _kCiphertextTypeWhisper;
         break;
       default:
-        return DecryptedMessage(
-          body: '[Unable to decrypt: invalid envelope]',
-          messageKind: envelope.messageKind,
-        );
+        return _failure(envelope, DecryptStatus.failed, 'invalid_envelope', '[Unable to decrypt: invalid envelope]');
     }
     try {
       final r = await _channel.invoke('decryptMessage', {
@@ -457,46 +452,40 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
         'messageType': messageType,
       });
       final padded = _b64Decode(_requireString(r, 'plaintext'));
-      final map = json.decode(utf8.decode(MessagePadding.unpad(padded))) as Map<String, dynamic>;
+      final payload = InnerPayload.decode(MessagePadding.unpad(padded), fallbackKind: envelope.messageKind);
       _sessions.noteSession(envelope.conversationId, remoteDeviceId: envelope.senderDeviceId);
-      final kind = MessageKind.values.firstWhere(
-        (k) => k.name == map['kind'],
-        orElse: () => envelope.messageKind,
-      );
-      final expiresAtStr = map['expiresAt'] as String?;
-      final att = map['att'];
       return DecryptedMessage(
-        body: map['body'] as String? ?? '',
-        messageKind: kind,
-        expiresAt: expiresAtStr == null ? null : DateTime.tryParse(expiresAtStr)?.toLocal(),
-        attachment: att is Map<String, dynamic> ? _deserializeAttachmentRef(att) : envelope.attachment,
+        body: payload.body,
+        messageKind: payload.kind,
+        expiresAt: payload.expiresAt,
+        attachment: payload.attachment,
       );
     } on CryptoBridgeException catch (e) {
       // Same user-facing placeholders as the lib adapter so the UI needs no
       // adapter-specific branching. Never a plaintext fallback.
-      switch (e.code) {
-        case 'sessionNotFound':
-          return DecryptedMessage(
-            body: '[Session not established — sync required]',
-            messageKind: envelope.messageKind,
-          );
-        case 'identityMismatch':
-          return DecryptedMessage(
-            body: '[Identity changed — verify safety number]',
-            messageKind: envelope.messageKind,
-          );
-        case 'bridgeUnavailable':
-          return DecryptedMessage(
-            body: '[Crypto bridge unavailable]',
-            messageKind: envelope.messageKind,
-          );
-        default:
-          return DecryptedMessage(body: '[Decryption failed]', messageKind: envelope.messageKind);
-      }
+      return switch (e.code) {
+        'sessionNotFound' => _failure(
+            envelope,
+            DecryptStatus.sessionMissing,
+            e.code,
+            '[Session not established — sync required]',
+          ),
+        'identityMismatch' => _failure(
+            envelope,
+            DecryptStatus.identityRejected,
+            e.code,
+            '[Identity changed — verify safety number]',
+          ),
+        'bridgeUnavailable' => _failure(envelope, DecryptStatus.failed, e.code, '[Crypto bridge unavailable]'),
+        _ => _failure(envelope, DecryptStatus.failed, e.code, '[Decryption failed]'),
+      };
     } catch (_) {
-      return DecryptedMessage(body: '[Decryption failed]', messageKind: envelope.messageKind);
+      return _failure(envelope, DecryptStatus.failed, 'malformed_payload', '[Decryption failed]');
     }
   }
+
+  static DecryptedMessage _failure(CryptoEnvelope envelope, DecryptStatus status, String reason, String body) =>
+      DecryptedMessage(body: body, messageKind: envelope.messageKind, status: status, failureReason: reason);
 
   @override
   Future<AttachmentCipher> encryptAttachment({
@@ -589,29 +578,6 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
     contentKey.fillRange(0, contentKey.length, 0);
     return plain;
   }
-
-  static Map<String, dynamic> _serializeAttachmentRef(AttachmentReference a) => {
-        'attachmentId': a.attachmentId,
-        'storageKey': a.storageKey,
-        'contentType': a.contentType,
-        'sizeBytes': a.sizeBytes,
-        'sha256': a.sha256,
-        'encryptedKey': a.encryptedKey,
-        'nonce': a.nonce,
-        if (a.algorithmHint != null) 'algorithmHint': a.algorithmHint,
-      };
-
-  static AttachmentReference _deserializeAttachmentRef(Map<String, dynamic> m) =>
-      AttachmentReference(
-        attachmentId: m['attachmentId'] as String? ?? '',
-        storageKey: m['storageKey'] as String? ?? '',
-        contentType: m['contentType'] as String? ?? 'application/octet-stream',
-        sizeBytes: (m['sizeBytes'] as num?)?.toInt() ?? 0,
-        sha256: m['sha256'] as String? ?? '',
-        encryptedKey: m['encryptedKey'] as String? ?? '',
-        nonce: m['nonce'] as String? ?? '',
-        algorithmHint: m['algorithmHint'] as String?,
-      );
 }
 
 String _requireString(Map<String, dynamic> map, String key) {

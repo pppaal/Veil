@@ -1,146 +1,82 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
-import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+import 'package:veil_mobile/src/core/crypto/bytes.dart';
 
-// Regression tests for Ed25519 signature verification on signed prekey
-// bundles. Before the fix, `_resolveRemoteX25519Key` accepted any x25519
-// public key embedded in the bundle without checking the `sig` field,
-// allowing a hostile server to swap in an attacker-controlled pub and MITM
-// every new session. These tests pin the behavior that:
-//   - a tampered x25519 pub fails bootstrap,
-//   - a bundle missing its `sig` field fails bootstrap,
+import 'crypto/support/crypto_harness.dart';
+
+// Regression tests for Ed25519 verification of published prekey bundles.
+// Accepting an unverified key would let a hostile server swap in its own
+// and MITM every new session. These pin that, for both the legacy v1 shape
+// and bundle v2:
+//   - a tampered key fails bootstrap,
+//   - a bundle missing its signature fails bootstrap,
 //   - a bundle signed by a different identity key fails bootstrap.
-//
-// Each test asserts bootstrap throws; no session must exist afterwards.
+// Each rejection asserts no session exists afterwards. (The v2 signature
+// fields are exercised field by field in test/crypto/x3dh_v2_test.dart.)
 
 const _conversationId = 'conv-sigcheck';
 
-String _b64Encode(List<int> bytes) =>
-    base64Url.encode(bytes).replaceAll('=', '');
+String _reencodeBundle(Map<String, dynamic> bundle) => b64uEncode(utf8.encode(json.encode(bundle)));
 
-Uint8List _b64Decode(String value) {
-  final padded = value.padRight(
-    value.length + ((4 - value.length % 4) % 4),
-    '=',
-  );
-  return Uint8List.fromList(base64Url.decode(padded));
-}
-
-String _reencodeBundle(Map<String, dynamic> bundle) =>
-    _b64Encode(utf8.encode(json.encode(bundle)));
-
-Map<String, dynamic> _decodeBundle(String b64) =>
-    json.decode(utf8.decode(_b64Decode(b64))) as Map<String, dynamic>;
+Map<String, dynamic> _decodeBundle(String b64) => json.decode(utf8.decode(b64uDecode(b64))) as Map<String, dynamic>;
 
 void main() {
-  test('bootstrap rejects a bundle whose x25519 field was swapped',
-      () async {
-    final alice = LibCryptoAdapter();
-    final bob = LibCryptoAdapter();
-    final bobId = await bob.identity.generateDeviceIdentity('device-bob');
+  test('bootstrap rejects a legacy bundle whose x25519 field was swapped', () async {
+    final alice = await createParty('alice');
+    final bob = await createLegacyParty('bob');
 
     // Attacker swaps the x25519 pub but cannot re-sign it without the
     // identity private key.
-    final decoded = _decodeBundle(bobId.signedPrekeyBundle);
-    final attackerPub = List<int>.generate(32, (i) => i); // any 32 bytes
-    decoded['x25519'] = _b64Encode(attackerPub);
-    final tamperedBundle = _reencodeBundle(decoded);
+    final decoded = _decodeBundle(bob.identity.signedPrekeyBundle);
+    decoded['x25519'] = b64uEncode(List<int>.generate(32, (i) => i));
 
     await expectLater(
-      alice.sessions.bootstrapSession(
-        SessionBootstrapRequest(
-          conversationId: _conversationId,
-          localDeviceId: 'device-alice',
-          localUserId: 'device-alice',
-          remoteUserId: 'device-bob',
-          remoteDeviceId: 'device-bob',
-          remoteIdentityPublicKey: bobId.identityPublicKey,
-          remoteSignedPrekeyBundle: tamperedBundle,
-        ),
-      ),
+      bootstrap(alice, bob, conversationId: _conversationId, signedPrekeyBundle: _reencodeBundle(decoded)),
       throwsA(isA<StateError>()),
     );
-
-    expect(alice.sessions.hasSessionFor(_conversationId), isFalse);
+    expect(alice.adapter.sessions.hasSessionFor(_conversationId), isFalse);
   });
 
-  test('bootstrap rejects a bundle missing the sig field', () async {
-    final alice = LibCryptoAdapter();
-    final bob = LibCryptoAdapter();
-    final bobId = await bob.identity.generateDeviceIdentity('device-bob');
+  test('bootstrap rejects a bundle missing its signature', () async {
+    final alice = await createParty('alice');
+    final legacyBob = await createLegacyParty('bob');
+    final bob = await createParty('bob');
 
-    final decoded = _decodeBundle(bobId.signedPrekeyBundle);
-    decoded.remove('sig');
-    final unsignedBundle = _reencodeBundle(decoded);
-
+    final legacy = _decodeBundle(legacyBob.identity.signedPrekeyBundle)..remove('sig');
     await expectLater(
-      alice.sessions.bootstrapSession(
-        SessionBootstrapRequest(
-          conversationId: _conversationId,
-          localDeviceId: 'device-alice',
-          localUserId: 'device-alice',
-          remoteUserId: 'device-bob',
-          remoteDeviceId: 'device-bob',
-          remoteIdentityPublicKey: bobId.identityPublicKey,
-          remoteSignedPrekeyBundle: unsignedBundle,
-        ),
-      ),
+      bootstrap(alice, legacyBob, conversationId: _conversationId, signedPrekeyBundle: _reencodeBundle(legacy)),
       throwsA(isA<StateError>()),
     );
-
-    expect(alice.sessions.hasSessionFor(_conversationId), isFalse);
+    final v2 = _decodeBundle(bob.identity.signedPrekeyBundle)..remove('spkSig');
+    await expectLater(
+      bootstrap(alice, bob, conversationId: _conversationId, signedPrekeyBundle: _reencodeBundle(v2)),
+      throwsA(isA<StateError>()),
+    );
+    expect(alice.adapter.sessions.hasSessionFor(_conversationId), isFalse);
   });
 
-  test('bootstrap rejects when identity key belongs to a different peer',
-      () async {
-    final alice = LibCryptoAdapter();
-    final bob = LibCryptoAdapter();
-    final mallory = LibCryptoAdapter();
-    final bobId = await bob.identity.generateDeviceIdentity('device-bob');
-    final malloryId =
-        await mallory.identity.generateDeviceIdentity('device-mallory');
+  test('bootstrap rejects when identity key belongs to a different peer', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    final mallory = await createParty('mallory');
 
-    // Bob's bundle was signed by Bob's identity key, not Mallory's.
-    // If Alice is told "this is Mallory's bundle" but the bundle's sig was
-    // produced by Bob, verification against Mallory's identity key must fail.
+    // Alice is told "this is Mallory's bundle", but it was signed by Bob.
     await expectLater(
-      alice.sessions.bootstrapSession(
-        SessionBootstrapRequest(
-          conversationId: _conversationId,
-          localDeviceId: 'device-alice',
-          localUserId: 'device-alice',
-          remoteUserId: 'device-mallory',
-          remoteDeviceId: 'device-mallory',
-          remoteIdentityPublicKey: malloryId.identityPublicKey,
-          remoteSignedPrekeyBundle: bobId.signedPrekeyBundle,
-        ),
-      ),
+      bootstrap(alice, mallory, conversationId: _conversationId, signedPrekeyBundle: bob.identity.signedPrekeyBundle),
       throwsA(isA<StateError>()),
     );
-
-    expect(alice.sessions.hasSessionFor(_conversationId), isFalse);
+    expect(alice.adapter.sessions.hasSessionFor(_conversationId), isFalse);
   });
 
   test('bootstrap accepts a well-formed signed bundle', () async {
-    final alice = LibCryptoAdapter();
-    final bob = LibCryptoAdapter();
-    final bobId = await bob.identity.generateDeviceIdentity('device-bob');
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    final legacyBob = await createLegacyParty('carol');
 
-    await alice.sessions.bootstrapSession(
-      SessionBootstrapRequest(
-        conversationId: _conversationId,
-        localDeviceId: 'device-alice',
-        localUserId: 'device-alice',
-        remoteUserId: 'device-bob',
-        remoteDeviceId: 'device-bob',
-        remoteIdentityPublicKey: bobId.identityPublicKey,
-        remoteSignedPrekeyBundle: bobId.signedPrekeyBundle,
-      ),
-    );
-
-    expect(alice.sessions.hasSessionFor(_conversationId), isTrue);
+    await bootstrap(alice, bob, conversationId: _conversationId);
+    expect(alice.adapter.sessions.hasSessionFor(_conversationId), isTrue);
+    await bootstrap(alice, legacyBob, conversationId: 'conv-legacy');
+    expect(alice.adapter.sessions.hasSessionFor('conv-legacy'), isTrue);
   });
 }

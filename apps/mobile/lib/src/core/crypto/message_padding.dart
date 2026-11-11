@@ -34,10 +34,27 @@ class MessagePadding {
     return ((n + stepBucket - 1) ~/ stepBucket) * stepBucket;
   }
 
+  /// Padmé (Nikitin et al., PETS 2019): rounds [length] up so that at most
+  /// O(log log length) bits of the size leak, with < 12% overhead. Used for
+  /// attachment blobs, where the doubling ladder of [bucketFor] would waste
+  /// up to 50% on large files.
+  static int padmeLength(int length) {
+    if (length < 2) return length;
+    final exponent = length.bitLength - 1;
+    final lastBits = exponent - exponent.bitLength;
+    final mask = (1 << lastBits) - 1;
+    return (length + mask) & ~mask;
+  }
+
   /// Pad [data] to a bucket. Always appends at least the `0x80` delimiter, so
   /// the output length is `bucketFor(data.length + 1)`.
-  static Uint8List pad(List<int> data) {
-    final target = bucketFor(data.length + 1);
+  static Uint8List pad(List<int> data) => padTo(data, bucketFor(data.length + 1));
+
+  /// ISO/IEC 7816-4 pad [data] to exactly [target] bytes (> data.length).
+  static Uint8List padTo(List<int> data, int target) {
+    if (target <= data.length) {
+      throw ArgumentError.value(target, 'target', 'must exceed the data length');
+    }
     final out = Uint8List(target); // zero-filled by default
     out.setRange(0, data.length, data);
     out[data.length] = 0x80;

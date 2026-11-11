@@ -46,6 +46,9 @@ void main() {
   test('sequential encrypts advance the ratchet and produce distinct ciphertexts',
       () async {
     final adapter = createConfiguredCryptoAdapter();
+    // The v2 handshake authenticates the initiator too, so it needs its own
+    // identity.
+    await adapter.identity.generateDeviceIdentity('device-local');
     final peer = await generatePeer();
     await adapter.sessions.bootstrapSession(
       SessionBootstrapRequest(
@@ -88,6 +91,9 @@ void main() {
 
   test('ratchet encrypt survives many messages without error', () async {
     final adapter = createConfiguredCryptoAdapter();
+    // The v2 handshake authenticates the initiator too, so it needs its own
+    // identity.
+    await adapter.identity.generateDeviceIdentity('device-local');
     final peer = await generatePeer();
     await adapter.sessions.bootstrapSession(
       SessionBootstrapRequest(

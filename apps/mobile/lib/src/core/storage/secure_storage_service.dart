@@ -1,8 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' as hash;
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../crypto/crypto_engine.dart';
+import '../crypto/ratchet/session_lock.dart';
 
 abstract class SecureKeyValueStore {
   Future<void> write({required String key, required String? value});
@@ -82,18 +86,37 @@ class SecureStorageService {
   // 'system'). Non-sensitive, but kept in the same store so the app does not
   // depend on an additional plain key-value plugin.
   static const _themeModeKey = 'veil.settings.theme_mode';
-  // Double Ratchet per-conversation session snapshots, stored as a single
-  // JSON blob {conversationId: <snapshot json string>}. Stored as one key so
-  // we don't depend on backend enumeration, which FlutterSecureStorage can't
-  // do portably.
-  static const _sessionSnapshotsKey = 'veil.crypto.session_snapshots';
-  // Group Sender Keys per-group chain state, same single-blob layout:
+  // Pre-v4 layout: every conversation's session snapshot in ONE blob, so
+  // concurrent writers lost each other's updates. Migrated once into the
+  // per-conversation layout below, then deleted.
+  static const _legacySessionSnapshotsKey = 'veil.crypto.session_snapshots';
+  // One entry per conversation under 'veil.crypto.session.<sha256hex(id)>'
+  // (the id is hashed so key names never carry it), plus an index listing
+  // the ids, because FlutterSecureStorage cannot enumerate keys portably.
+  static const _sessionIndexKey = 'veil.crypto.session_index';
+  static const _sessionKeyPrefix = 'veil.crypto.session.';
+  // Group Sender Keys per-group chain state, single-blob layout:
   // {groupId: <snapshot json>}. Wiped together with session snapshots.
   static const _groupSenderKeysKey = 'veil.crypto.group_sender_keys';
+  // Prekey private halves: 'veil.crypto.opk.<id>' / 'veil.crypto.spk.<id>'
+  // plus an index of ids and the next one-time prekey id.
+  static const _prekeyIndexKey = 'veil.crypto.prekey_index';
+  static const _oneTimePrekeyPrefix = 'veil.crypto.opk.';
+  static const _signedPrekeyPrefix = 'veil.crypto.spk.';
+  static const _cryptoQueueKey = 'crypto-state';
   // Safety-number verification attestations — records that a conversation's
   // peer identity key was human-verified at a point in time. Single-blob
-  // layout for the same portability reason as session snapshots.
+  // layout, since FlutterSecureStorage cannot enumerate keys portably.
   static const _safetyVerificationsKey = 'veil.security.safety_verifications';
+
+  // Every crypto-state read-modify-write goes through this one serial queue,
+  // so index updates never interleave and a slower older write cannot land
+  // after a newer one.
+  final SessionLock _cryptoQueue = SessionLock();
+  final Map<String, int> _sessionRevs = {};
+  bool _legacySessionsMigrated = false;
+
+  Future<T> _serialCrypto<T>(Future<T> Function() action) => _cryptoQueue.synchronized(_cryptoQueueKey, action);
 
   Future<void> persistDeviceSecretRefs({
     required String identityPrivateRef,
@@ -292,78 +315,148 @@ class SecureStorageService {
     await _storage.delete(key: _authPublicKey);
   }
 
-  Future<Map<String, Map<String, dynamic>>> readAllSessionSnapshots() async {
-    final raw = await _storage.read(key: _sessionSnapshotsKey);
-    if (raw == null || raw.isEmpty) return const {};
-    try {
-      final decoded = json.decode(raw) as Map<String, dynamic>;
-      final result = <String, Map<String, dynamic>>{};
-      decoded.forEach((key, value) {
-        if (value is Map<String, dynamic>) {
-          result[key] = value;
+  Future<Map<String, Map<String, dynamic>>> readAllSessionSnapshots() => _serialCrypto(() async {
+        await _migrateLegacySessionsOnce();
+        final result = <String, Map<String, dynamic>>{};
+        for (final conversationId in await _readSessionIndex()) {
+          final snapshot = _decodeJsonObject(await _storage.read(key: _sessionKey(conversationId)));
+          if (snapshot == null) continue;
+          result[conversationId] = snapshot;
+          final rev = (snapshot['rev'] as num?)?.toInt();
+          if (rev != null) _sessionRevs[conversationId] = rev;
         }
+        return result;
       });
-      return result;
-    } catch (_) {
-      return const {};
-    }
-  }
 
+  /// Writes are dropped when the stored snapshot already has a higher
+  /// `rev`, so an older ratchet state can never overwrite a newer one.
   Future<void> writeSessionSnapshot(
     String conversationId,
     Map<String, dynamic> snapshot,
-  ) async {
-    final all = await readAllSessionSnapshots();
-    final next = Map<String, Map<String, dynamic>>.from(all);
-    next[conversationId] = snapshot;
-    await _storage.write(
-      key: _sessionSnapshotsKey,
-      value: json.encode(next),
-    );
-  }
-
-  Future<void> clearSessionSnapshots() async {
-    await _storage.delete(key: _sessionSnapshotsKey);
-  }
-
-  Future<Map<String, Map<String, dynamic>>> readAllGroupSenderKeySnapshots() async {
-    final raw = await _storage.read(key: _groupSenderKeysKey);
-    if (raw == null || raw.isEmpty) return const {};
-    try {
-      final decoded = json.decode(raw) as Map<String, dynamic>;
-      final result = <String, Map<String, dynamic>>{};
-      decoded.forEach((key, value) {
-        if (value is Map<String, dynamic>) {
-          result[key] = value;
+  ) =>
+      _serialCrypto(() async {
+        await _migrateLegacySessionsOnce();
+        final incomingRev = (snapshot['rev'] as num?)?.toInt();
+        final storedRev = await _storedSessionRev(conversationId);
+        if (incomingRev != null && storedRev != null && incomingRev < storedRev) return;
+        final index = await _readSessionIndex();
+        if (!index.contains(conversationId)) {
+          await _writeSessionIndex([...index, conversationId]);
         }
+        await _storage.write(key: _sessionKey(conversationId), value: json.encode(snapshot));
+        if (incomingRev != null) _sessionRevs[conversationId] = incomingRev;
       });
-      return result;
-    } catch (_) {
-      return const {};
+
+  Future<void> clearSessionSnapshots() => _serialCrypto(() async {
+        for (final conversationId in await _readSessionIndex()) {
+          await _storage.delete(key: _sessionKey(conversationId));
+        }
+        await _storage.delete(key: _sessionIndexKey);
+        await _storage.delete(key: _legacySessionSnapshotsKey);
+        _sessionRevs.clear();
+        _legacySessionsMigrated = true;
+      });
+
+  Future<void> _migrateLegacySessionsOnce() async {
+    if (_legacySessionsMigrated) return;
+    final legacy = _decodeJsonObject(await _storage.read(key: _legacySessionSnapshotsKey));
+    if (legacy != null) {
+      final index = await _readSessionIndex();
+      for (final entry in legacy.entries) {
+        if (entry.value is! Map<String, dynamic> || index.contains(entry.key)) continue;
+        index.add(entry.key);
+        await _writeSessionIndex(index);
+        await _storage.write(key: _sessionKey(entry.key), value: json.encode(entry.value));
+      }
+      await _storage.delete(key: _legacySessionSnapshotsKey);
     }
+    _legacySessionsMigrated = true;
+  }
+
+  Future<int?> _storedSessionRev(String conversationId) async {
+    final cached = _sessionRevs[conversationId];
+    if (cached != null) return cached;
+    final stored = _decodeJsonObject(await _storage.read(key: _sessionKey(conversationId)));
+    return (stored?['rev'] as num?)?.toInt();
+  }
+
+  Future<List<String>> _readSessionIndex() async {
+    final raw = await _storage.read(key: _sessionIndexKey);
+    if (raw == null || raw.isEmpty) return <String>[];
+    try {
+      return (json.decode(raw) as List<dynamic>).cast<String>().toList();
+    } catch (_) {
+      return <String>[];
+    }
+  }
+
+  Future<void> _writeSessionIndex(List<String> index) =>
+      _storage.write(key: _sessionIndexKey, value: json.encode(index));
+
+  static String _sessionKey(String conversationId) =>
+      '$_sessionKeyPrefix${hash.sha256.convert(utf8.encode(conversationId))}';
+
+  Future<Map<String, Map<String, dynamic>>> readAllGroupSenderKeySnapshots() =>
+      _serialCrypto(_readGroupSenderKeySnapshots);
+
+  Future<Map<String, Map<String, dynamic>>> _readGroupSenderKeySnapshots() async {
+    final decoded = _decodeJsonObject(await _storage.read(key: _groupSenderKeysKey));
+    if (decoded == null) return const {};
+    final result = <String, Map<String, dynamic>>{};
+    decoded.forEach((key, value) {
+      if (value is Map<String, dynamic>) {
+        result[key] = value;
+      }
+    });
+    return result;
   }
 
   /// `snapshot == null` deletes the group's entry (member left / wiped).
   Future<void> writeGroupSenderKeySnapshot(
     String groupId,
     Map<String, dynamic>? snapshot,
-  ) async {
-    final all = await readAllGroupSenderKeySnapshots();
-    final next = Map<String, Map<String, dynamic>>.from(all);
-    if (snapshot == null) {
-      next.remove(groupId);
-    } else {
-      next[groupId] = snapshot;
-    }
-    if (next.isEmpty) {
-      await _storage.delete(key: _groupSenderKeysKey);
-      return;
-    }
-    await _storage.write(key: _groupSenderKeysKey, value: json.encode(next));
-  }
+  ) =>
+      _serialCrypto(() async {
+        final next = Map<String, Map<String, dynamic>>.from(await _readGroupSenderKeySnapshots());
+        if (snapshot == null) {
+          next.remove(groupId);
+        } else {
+          next[groupId] = snapshot;
+        }
+        if (next.isEmpty) {
+          await _storage.delete(key: _groupSenderKeysKey);
+          return;
+        }
+        await _storage.write(key: _groupSenderKeysKey, value: json.encode(next));
+      });
 
-  Future<void> clearGroupSenderKeySnapshots() async {
-    await _storage.delete(key: _groupSenderKeysKey);
+  Future<void> clearGroupSenderKeySnapshots() => _serialCrypto(() => _storage.delete(key: _groupSenderKeysKey));
+
+  Future<void> clearPrekeys() => _serialCrypto(() async {
+        final index = await _readPrekeyIndex();
+        for (final keyId in index.oneTimeIds) {
+          await _storage.delete(key: '$_oneTimePrekeyPrefix$keyId');
+        }
+        for (final keyId in index.signedIds) {
+          await _storage.delete(key: '$_signedPrekeyPrefix$keyId');
+        }
+        await _storage.delete(key: _prekeyIndexKey);
+      });
+
+  Future<_PrekeyIndex> _readPrekeyIndex() async =>
+      _PrekeyIndex.fromJson(_decodeJsonObject(await _storage.read(key: _prekeyIndexKey)));
+
+  Future<void> _writePrekeyIndex(_PrekeyIndex index) =>
+      _storage.write(key: _prekeyIndexKey, value: json.encode(index.toJson()));
+
+  static Map<String, dynamic>? _decodeJsonObject(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = json.decode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<Map<String, SafetyVerificationRecord>>
@@ -552,6 +645,7 @@ class SecureStorageService {
     await clearPinThrottleState();
     await clearSessionSnapshots();
     await clearGroupSenderKeySnapshots();
+    await clearPrekeys();
     await clearAllSafetyVerifications();
     if (!preservePin) {
       await clearPin();
@@ -624,6 +718,108 @@ class SecureStorageService {
     }
     return buffer.toString();
   }
+}
+
+/// [LocalPrekeyStore] backed by the device keystore. Shares
+/// [SecureStorageService]'s serial crypto queue so prekey index updates
+/// never race session or group writes.
+class SecureStorageLocalPrekeyStore implements LocalPrekeyStore {
+  SecureStorageLocalPrekeyStore(this._service);
+
+  final SecureStorageService _service;
+
+  SecureKeyValueStore get _storage => _service._storage;
+
+  static String _oneTimeKey(int keyId) => '${SecureStorageService._oneTimePrekeyPrefix}$keyId';
+
+  static String _signedKey(int keyId) => '${SecureStorageService._signedPrekeyPrefix}$keyId';
+
+  @override
+  Future<int> reserveOneTimePrekeyIds(int count) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        final first = index.nextOneTimeId;
+        index.nextOneTimeId += count;
+        await _service._writePrekeyIndex(index);
+        return first;
+      });
+
+  @override
+  Future<void> saveOneTimePrekey(int keyId, List<int> privateKey) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        index.oneTimeIds.add(keyId);
+        await _service._writePrekeyIndex(index);
+        await _storage.write(key: _oneTimeKey(keyId), value: SecureStorageService._encodeBytes(privateKey));
+      });
+
+  @override
+  Future<List<int>?> loadOneTimePrekey(int keyId) => _service._serialCrypto(() async {
+        final raw = await _storage.read(key: _oneTimeKey(keyId));
+        return raw == null || raw.isEmpty ? null : SecureStorageService._decodeBytes(raw);
+      });
+
+  @override
+  Future<void> deleteOneTimePrekey(int keyId) => _service._serialCrypto(() async {
+        await _storage.delete(key: _oneTimeKey(keyId));
+        final index = await _service._readPrekeyIndex();
+        if (index.oneTimeIds.remove(keyId)) await _service._writePrekeyIndex(index);
+      });
+
+  @override
+  Future<void> saveSignedPrekey(StoredSignedPrekey prekey) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        index.signedIds.add(prekey.keyId);
+        await _service._writePrekeyIndex(index);
+        await _storage.write(
+          key: _signedKey(prekey.keyId),
+          value: json.encode({
+            'priv': SecureStorageService._encodeBytes(prekey.privateKey),
+            'ts': prekey.createdAt.millisecondsSinceEpoch,
+          }),
+        );
+      });
+
+  @override
+  Future<List<StoredSignedPrekey>> loadSignedPrekeys() => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        final prekeys = <StoredSignedPrekey>[];
+        for (final keyId in index.signedIds) {
+          final entry = SecureStorageService._decodeJsonObject(await _storage.read(key: _signedKey(keyId)));
+          if (entry == null) continue;
+          prekeys.add(StoredSignedPrekey(
+            keyId: keyId,
+            privateKey: SecureStorageService._decodeBytes(entry['priv'] as String),
+            createdAt: DateTime.fromMillisecondsSinceEpoch((entry['ts'] as num).toInt(), isUtc: true),
+          ));
+        }
+        return prekeys;
+      });
+
+  @override
+  Future<void> deleteSignedPrekey(int keyId) => _service._serialCrypto(() async {
+        await _storage.delete(key: _signedKey(keyId));
+        final index = await _service._readPrekeyIndex();
+        if (index.signedIds.remove(keyId)) await _service._writePrekeyIndex(index);
+      });
+}
+
+class _PrekeyIndex {
+  _PrekeyIndex(this.nextOneTimeId, this.oneTimeIds, this.signedIds);
+
+  factory _PrekeyIndex.fromJson(Map<String, dynamic>? json) => _PrekeyIndex(
+        (json?['nextOpk'] as num?)?.toInt() ?? 1,
+        {...(json?['opk'] as List<dynamic>? ?? const []).cast<int>()},
+        {...(json?['spk'] as List<dynamic>? ?? const []).cast<int>()},
+      );
+
+  int nextOneTimeId;
+  final Set<int> oneTimeIds;
+  final Set<int> signedIds;
+
+  Map<String, dynamic> toJson() => {
+        'nextOpk': nextOneTimeId,
+        'opk': oneTimeIds.toList(),
+        'spk': signedIds.toList(),
+      };
 }
 
 class StoredSession {

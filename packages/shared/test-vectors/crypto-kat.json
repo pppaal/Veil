@@ -1,7 +1,7 @@
 {
   "schema": "veil-crypto-kat-v2",
-  "description": "Known-answer test vectors for VEIL message-crypto primitives and the lib-x25519-aes256gcm-v3 protocol derivation schedule. All hex. Reproduce every output by feeding the inputs to the target implementation. Regenerate/verify with scripts/crypto-test-vectors.mjs.",
-  "generator": "node v22.22.2 / OpenSSL via node:crypto",
+  "description": "Known-answer test vectors for VEIL message-crypto primitives, the legacy veil-envelope-v1 derivation schedule (protocol) and the veil-envelope-v2 handshake, ratchet, frame, payload and attachment formats (protocolV2). Hex unless a field says b64u. Reproduce every output by feeding the inputs to the target implementation. Regenerate/verify with scripts/crypto-test-vectors.mjs.",
+  "generator": "node v22.23.4 / OpenSSL via node:crypto",
   "rfcAnchors": [
     "RFC 7748 §6.1 (X25519)",
     "RFC 5869 §A.1 (HKDF-SHA256)"
@@ -128,6 +128,270 @@
           "decryptFails": true
         }
       }
+    },
+    "protocolV2": {
+      "algorithm": "veil-envelope-v2: X3DH (SPK + OPK, both identities authenticated) + Double Ratchet with PN; docs/crypto-envelope-spec.md §Protocol v2; reference lib_crypto_adapter.dart",
+      "constants": {
+        "envelopeVersion": "veil-envelope-v2",
+        "frameAadLabel": "veil-frame-aad-v4",
+        "x3dhInfoLabel": "veil-x3dh-v2",
+        "ikxSignatureLabel": "veil-ikx-v2",
+        "spkSignatureLabel": "veil-spk-v2",
+        "attachmentAadLabel": "veil-att-v2",
+        "attachmentAlgorithm": "aes256gcm-v2",
+        "noOneTimePrekeyId": 4294967295,
+        "innerPayloadVersion": 2
+      },
+      "bundle": {
+        "note": "Contract C1. identityPublicKey = b64u(Ed25519 public of identitySeed); ikxSig = Ed25519(IK, utf8(\"veil-ikx-v2\") || ikx); spkSig = Ed25519(IK, utf8(\"veil-spk-v2\") || u32be(spkId) || u64be(spkTs) || spk); signedPrekeyBundle = b64u(compact JSON, keys v, ikx, ikxSig, spkId, spk, spkTs, spkSig). The Dart adapter draws identitySeed, ikxPrivate, spkPrivate in that order.",
+        "identitySeed": "1111111111111111111111111111111111111111111111111111111111111111",
+        "identityPublic": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "identityPublicKey": "0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc",
+        "ikxPrivate": "5555555555555555555555555555555555555555555555555555555555555555",
+        "ikxPublic": "38ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+        "ikxSignedMessage": "7665696c2d696b782d763238ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+        "ikxSignature": "4510f0e5eb0da6ebeb2795c1b1e52d12e4ba1d2713992578d2db65bc6f3b1f76433feea2fdaca6668fe8499512e64003aaf5df2925e0feaef8bf018e9ba5e70d",
+        "spkPrivate": "6666666666666666666666666666666666666666666666666666666666666666",
+        "spkPublic": "219e4d800da968d2a5fcb009c784f4746c7138edb9ee4844b739e830b05cf424",
+        "spkId": 1,
+        "spkTs": 1767225600000,
+        "spkSignedMessage": "7665696c2d73706b2d7632000000010000019b76daa800219e4d800da968d2a5fcb009c784f4746c7138edb9ee4844b739e830b05cf424",
+        "spkSignature": "5b9d8591598ce7b6f76613cc7c6c3ae4cda9bb8ccb45dc2f8c5aa1dec0f7ad1e35e1888ea1879ba500169b348da7fa83fd197b93b928b2d4549ec6cedea0ac02",
+        "bundleJson": "{\"v\":2,\"ikx\":\"OKtmS9hvd9fma92a4HkpE6lP2LM6EmACfktGwfSITGc\",\"ikxSig\":\"RRDw5esNpuvrJ5XBseUtEuS6HScTmSV40ttlvG87H3ZDP-6i_aymZo_oSZUS5kADqvXfKSXg_q74vwGOm6XnDQ\",\"spkId\":1,\"spk\":\"IZ5NgA2paNKl_LAJx4T0dGxxOO257khEtznoMLBc9CQ\",\"spkTs\":1767225600000,\"spkSig\":\"W52FkVmM57b3ZhPMfGw65M2pu4zLRdwvjFqh3sD3rR414YiOoYebpQAWmzSNp_qD_Rl7k7kostRUnsbO3qCsAg\"}",
+        "signedPrekeyBundle": "eyJ2IjoyLCJpa3giOiJPS3RtUzlodmQ5Zm1hOTJhNEhrcEU2bFAyTE02RW1BQ2ZrdEd3ZlNJVEdjIiwiaWt4U2lnIjoiUlJEdzVlc05wdXZySjVYQnNlVXRFdVM2SFNjVG1TVjQwdHRsdkc4N0gzWkRQLTZpX2F5bVpvX29TWlVTNWtBRHF2WGZLU1hnX3E3NHZ3R09tNlhuRFEiLCJzcGtJZCI6MSwic3BrIjoiSVo1TmdBMnBhTktsX0xBSng0VDBkR3h4T08yNTdraEV0em5vTUxCYzlDUSIsInNwa1RzIjoxNzY3MjI1NjAwMDAwLCJzcGtTaWciOiJXNTJGa1ZtTTU3YjNaaFBNZkd3NjVNMnB1NHpMUmR3dmpGcWgzc0QzclI0MTRZaU9vWWVicFFBV216U05wX3FEX1JsN2s3a29zdFJVbnNiTzNxQ3NBZyJ9"
+      },
+      "oneTimePrekey": {
+        "keyId": 1,
+        "private": "7777777777777777777777777777777777777777777777777777777777777777",
+        "public": "1cf579aba45a10ba1d1ef06d91fca2aa9ed0a1150515653155405d0b18cb9a67",
+        "publicKey": "HPV5q6RaELodHvBtkfyiqp7QoRUFFWUxVUBdCxjLmmc"
+      },
+      "alice": {
+        "note": "Initiator identity; clockMs is her wall clock (within the SPK freshness window).",
+        "identitySeed": "2121212121212121212121212121212121212121212121212121212121212121",
+        "identityPublic": "884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b",
+        "ikxPrivate": "2222222222222222222222222222222222222222222222222222222222222222",
+        "ikxPublic": "0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20",
+        "ikxSignature": "4be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c106",
+        "spkPrivate": "2323232323232323232323232323232323232323232323232323232323232323",
+        "clockMs": 1767229200000
+      },
+      "x3dh": {
+        "note": "DH1 = X25519(IKx_A, SPK_B), DH2 = X25519(EK, IKx_B), DH3 = X25519(EK, SPK_B), DH4 = X25519(EK, OPK_B). sharedKey = HKDF-SHA256(ikm = 0xFF*32 || DH1 || DH2 || DH3 || DH4, salt = 0x00*32, info = utf8(\"veil-x3dh-v2\") || IKed_A || IKed_B, L = 32). associatedData = IKed_A || IKx_A || IKed_B || IKx_B. preKeyHeader = IKed_A || IKx_A || ikxSig_A || EK || u32be(spkId) || u32be(opkId).",
+        "ephemeralPrivate": "3131313131313131313131313131313131313131313131313131313131313131",
+        "ephemeralPublic": "04f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a",
+        "dh1": "992a4c82bd97993b306ddd5ff0b1a676449c98ffa495e59bf2d72e0ab0217f5c",
+        "dh2": "19966947051c1a27318a89a6ad0b60810233c62721bdc0efac4c763f31547d36",
+        "dh3": "28e334a26d175fb72dbf4f173f97814ec5d36066c3c20b10f19569b1451a716c",
+        "dh4": "9307197edb602e1a5043b0fdf290f6162e3a3ba44d6c692a447b0c5116240923",
+        "ikm": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff992a4c82bd97993b306ddd5ff0b1a676449c98ffa495e59bf2d72e0ab0217f5c19966947051c1a27318a89a6ad0b60810233c62721bdc0efac4c763f31547d3628e334a26d175fb72dbf4f173f97814ec5d36066c3c20b10f19569b1451a716c9307197edb602e1a5043b0fdf290f6162e3a3ba44d6c692a447b0c5116240923",
+        "salt": "0000000000000000000000000000000000000000000000000000000000000000",
+        "info": "7665696c2d783364682d7632884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0bd04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+        "sharedKey": "9601667a5f59f7d6e78126578ca6518bc56a8050b89c9bcabf372f8285a13a4a",
+        "associatedData": "884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873738ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+        "preKeyHeader": "884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a0000000100000001"
+      },
+      "ratchetInit": {
+        "note": "Alice: (rootKey, sendChainKey) = HKDF-SHA256(ikm = X25519(DHs0, SPK_B), salt = sharedKey, info = \"veil-dh-rk-v2\", L = 64). Bob starts with DHs = SPK_B, rootKey = sharedKey.",
+        "aliceRatchetPrivate": "3232323232323232323232323232323232323232323232323232323232323232",
+        "aliceRatchetPublic": "59d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d06418",
+        "dhOutput": "2e28dae89b544c99e775b448346742be315258587695cd5c6ac4359d2caaf14b",
+        "rootKey": "bf0ee368112193e6bb99a5c6a9fc556133004cfa9440244de56e665f7005e9a1",
+        "sendChainKey": "7123db0b91e75495cf86a2a9992daebdbdfeccf1facaa72ec57e9b50dbeecb0a"
+      },
+      "sendSteps": {
+        "bob": {
+          "note": "Bob's first send: fresh DHs1; (rootKey, chainKey) = KDF_RK(ratchetInit.rootKey, X25519(DHs1, aliceRatchet0)).",
+          "ratchetPrivate": "5151515151515151515151515151515151515151515151515151515151515151",
+          "ratchetPublic": "ad908a8a708aca07588cda7c4ed3e44d4966a80a9abb2f1e4bbac53c67414e34",
+          "dhOutput": "ccf6a0a25fc679c1730c0f6458cf932ae7f79bf9a763fd11b2c05e0582269d40",
+          "rootKey": "37489eb804a6488c562f873a82ab6eb39d9f6a376555c8bd5146a835200a1602",
+          "chainKey": "ef4792472e3b8549777d46d9354c2f9b9ba128172c51d86ad231652369a1fa09"
+        },
+        "alice": {
+          "note": "Alice's turn after B0: PN = 2; fresh DHs1; (rootKey, chainKey) = KDF_RK(bob.rootKey, X25519(DHs1, bobRatchet1)).",
+          "ratchetPrivate": "3333333333333333333333333333333333333333333333333333333333333333",
+          "ratchetPublic": "7b0d47d93427f8311160781c7c733fd89f88970aef490d8aa0ee19a4cb8a1b14",
+          "dhOutput": "31ab631ff4259d1cba6938ed9a96f498307636932a326a8f5653f047c5c52848",
+          "rootKey": "34ac23dc2057ced144f1c3b529bee2ae9dd6d7c2c8c7cc3e1dc634737d0a8d89",
+          "chainKey": "ec61b8c3f889e3fe7184abf3ab0f6ca2bd0bc6ece19eeb88d443531f4fb6d6c6"
+        }
+      },
+      "frames": {
+        "note": "frame = 0x02 || type (0x01 PreKey, 0x02 Normal) || [preKeyHeader] || ratchetPub || u32be(PN) || u32be(N) || ciphertext || tag. AAD = utf8(\"veil-frame-aad-v4\") || lp(version) || lp(conversationId) || lp(senderDeviceId) || lp(messageKind) || header || associatedData, lp(s) = u16be(len) || utf8(s). Plaintext = innerPayloadJson ISO/IEC 7816-4 padded to bucketFor(len + 1). Bob receives A0, A2, then A1: A2 carries PN = 2, so Bob stashes the key for (aliceRatchet0, N = 1) before his DH step and A1 still decrypts.",
+        "conversationId": "veil-kat-conversation-v2",
+        "aliceDeviceId": "device-a-0001",
+        "bobDeviceId": "device-b-0002",
+        "deliveryOrderToBob": [
+          "A0",
+          "A2",
+          "A1"
+        ],
+        "messages": [
+          {
+            "label": "A0",
+            "senderDeviceId": "device-a-0001",
+            "messageKind": "text",
+            "frameType": "prekey",
+            "ratchetPublic": "59d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d06418",
+            "previousCounter": 0,
+            "counter": 0,
+            "chainKey": "7123db0b91e75495cf86a2a9992daebdbdfeccf1facaa72ec57e9b50dbeecb0a",
+            "messageKey": "7105ac2c1af77fdf9cc6b5cc1ded1a21b4fc2957f88107a2353f765084731d61",
+            "nonce": "414141414141414141414141",
+            "innerPayloadJson": "{\"pv\":2,\"b\":\"hello bob, this is alice (v2 KAT)\",\"k\":\"text\",\"x\":1767232800000,\"att\":null}",
+            "paddedPlaintext": "7b227076223a322c2262223a2268656c6c6f20626f622c207468697320697320616c69636520287632204b415429222c226b223a2274657874222c2278223a313736373233323830303030302c22617474223a6e756c6c7d800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "header": "0201884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a000000010000000159d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d064180000000000000000",
+            "aad": "7665696c2d6672616d652d6161642d763400107665696c2d656e76656c6f70652d763200187665696c2d6b61742d636f6e766572736174696f6e2d7632000d6465766963652d612d303030310004746578740201884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a000000010000000159d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d064180000000000000000884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873738ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+            "ciphertext": "02560aa602db50fbade8651243e14c08e7976c91618de7dd8363f6ed878c7ffcc03b148a70279f8eab10fbbd95939d9f1c7d02260397d5e46e03c766f394ccb95d6b6d74e0579cbfc1872feb1309d40687d79bacadfdb0e507e488b14fa8e3bec4ec4cf12625d3e07a927fe8ad671d0cbc617ddafbde74446629b11a18cb919b24c718f9fee669fc4ba1d865c1c3962aa68f7de34cc9da7899eb3839ea8e6a1176c86f0fbe31b2b38a55b6b67b6fca634969bfb0f658fdb4edb3453872e631ac9c08e52cad3f3605034ec8f6039095014b8cc45dc31e76d0705647f7697bc3f1ad8c8170b13fb8afc0c9e08c088cb13d8b38cdca747513347a9ea66574e18596",
+            "tag": "9494d53c2fb93cf079012e1b0c2707eb",
+            "frame": "0201884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a000000010000000159d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d06418000000000000000002560aa602db50fbade8651243e14c08e7976c91618de7dd8363f6ed878c7ffcc03b148a70279f8eab10fbbd95939d9f1c7d02260397d5e46e03c766f394ccb95d6b6d74e0579cbfc1872feb1309d40687d79bacadfdb0e507e488b14fa8e3bec4ec4cf12625d3e07a927fe8ad671d0cbc617ddafbde74446629b11a18cb919b24c718f9fee669fc4ba1d865c1c3962aa68f7de34cc9da7899eb3839ea8e6a1176c86f0fbe31b2b38a55b6b67b6fca634969bfb0f658fdb4edb3453872e631ac9c08e52cad3f3605034ec8f6039095014b8cc45dc31e76d0705647f7697bc3f1ad8c8170b13fb8afc0c9e08c088cb13d8b38cdca747513347a9ea66574e185969494d53c2fb93cf079012e1b0c2707eb",
+            "envelopeCiphertext": "AgGIS4hX9OqhYTxhUE2zTUvq80ZReg4x3jzd1Nm0IB2dCw-qaE7SiGe5f0pqLe5d-M6XTna3AY4_IqHEzyZ4Vw8gS-P0gpgjpaA0-3_nU9II7a27v9fS9qUN3WpS2g0Nrc2ZrLsViUbAL4u-Qc9g1NPT_gmd2sMw_o1Hog4c5YnBBgT18pFiwxqN76GObnQiJO6Ab8FxiieL6Fm6ViBAK486AAAAAQAAAAFZ2SJUc0Ue__5rNtvK79v3sYld5iCEUJp_W1i_AdBkGAAAAAAAAAAAAlYKpgLbUPut6GUSQ-FMCOeXbJFhjefdg2P27YeMf_zAOxSKcCefjqsQ-72Vk52fHH0CJgOX1eRuA8dm85TMuV1rbXTgV5y_wYcv6xMJ1AaH15usrf2w5QfkiLFPqOO-xOxM8SYl0-B6kn_orWcdDLxhfdr73nREZimxGhjLkZskxxj5_uZp_Euh2GXBw5Yqpo9940zJ2niZ6zg56o5qEXbIbw--MbKzilW2tntvymNJab-w9lj9tO2zRThy5jGsnAjlLK0_NgUDTsj2A5CVAUuMxF3DHnbQcFZH92l7w_GtjIFwsT-4r8DJ4IwIjLE9izjNynR1EzR6nqZldOGFlpSU1TwvuTzweQEuGwwnB-s",
+            "envelopeNonce": "QUFBQUFBQUFBQUFB"
+          },
+          {
+            "label": "A1",
+            "senderDeviceId": "device-a-0001",
+            "messageKind": "text",
+            "frameType": "prekey",
+            "ratchetPublic": "59d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d06418",
+            "previousCounter": 0,
+            "counter": 1,
+            "chainKey": "961e88d74e43b886d8835a09de7ad783da69dfafdbe3ba8b5985f776b87a895f",
+            "messageKey": "ae6d62b76d1cad4e199e53bba92566dc3b694db87028d8ea223203aa34d70446",
+            "nonce": "424242424242424242424242",
+            "innerPayloadJson": "{\"pv\":2,\"b\":\"A1 straggler 안녕\",\"k\":\"text\",\"x\":null,\"att\":null}",
+            "paddedPlaintext": "7b227076223a322c2262223a224131207374726167676c657220ec9588eb8595222c226b223a2274657874222c2278223a6e756c6c2c22617474223a6e756c6c7d8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "header": "0201884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a000000010000000159d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d064180000000000000001",
+            "aad": "7665696c2d6672616d652d6161642d763400107665696c2d656e76656c6f70652d763200187665696c2d6b61742d636f6e766572736174696f6e2d7632000d6465766963652d612d303030310004746578740201884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a000000010000000159d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d064180000000000000001884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873738ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+            "ciphertext": "e5e0ee1f20cee711bdfcd3b2ab1de4472619e28779843e8204619aa5faadb2a7b7fc3be28b85358a2d3ef71a4fa7bd636eca01837cfd7f3783d9daa5809188675ea8d689fa9aa6dea50410bd40c812e42f8600e13eb347e3df83c6c1b4248ec5fc785f41b35ba3fefdec7cfd28cde6c7477963ef0611fff7710c8f8f03b24db367dce82ed64a74752a06bc79498f86292426ae0bbb1da74439d4a395867484dfbeb9cd678af490d1f3e350e98ea75a3f92b4b572ab88d12f251e7a9ac775fcd039b472298acd305b828118446fa225f659e6f1b3e88e0eb91b4884deb3e62dcb3784f3c8d7124476cf8d29a55adfbc9142bebd9878e959b19a96c3949aaf32ee",
+            "tag": "481639ffe33f4760516165126a23c041",
+            "frame": "0201884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f204be3f4829823a5a034fb7fe753d208edadbbbfd7d2f6a50ddd6a52da0d0dadcd99acbb158946c02f8bbe41cf60d4d3d3fe099ddac330fe8d47a20e1ce589c10604f5f29162c31a8defa18e6e742224ee806fc1718a278be859ba5620402b8f3a000000010000000159d9225473451efffe6b36dbcaefdbf7b1895de62084509a7f5b58bf01d064180000000000000001e5e0ee1f20cee711bdfcd3b2ab1de4472619e28779843e8204619aa5faadb2a7b7fc3be28b85358a2d3ef71a4fa7bd636eca01837cfd7f3783d9daa5809188675ea8d689fa9aa6dea50410bd40c812e42f8600e13eb347e3df83c6c1b4248ec5fc785f41b35ba3fefdec7cfd28cde6c7477963ef0611fff7710c8f8f03b24db367dce82ed64a74752a06bc79498f86292426ae0bbb1da74439d4a395867484dfbeb9cd678af490d1f3e350e98ea75a3f92b4b572ab88d12f251e7a9ac775fcd039b472298acd305b828118446fa225f659e6f1b3e88e0eb91b4884deb3e62dcb3784f3c8d7124476cf8d29a55adfbc9142bebd9878e959b19a96c3949aaf32ee481639ffe33f4760516165126a23c041",
+            "envelopeCiphertext": "AgGIS4hX9OqhYTxhUE2zTUvq80ZReg4x3jzd1Nm0IB2dCw-qaE7SiGe5f0pqLe5d-M6XTna3AY4_IqHEzyZ4Vw8gS-P0gpgjpaA0-3_nU9II7a27v9fS9qUN3WpS2g0Nrc2ZrLsViUbAL4u-Qc9g1NPT_gmd2sMw_o1Hog4c5YnBBgT18pFiwxqN76GObnQiJO6Ab8FxiieL6Fm6ViBAK486AAAAAQAAAAFZ2SJUc0Ue__5rNtvK79v3sYld5iCEUJp_W1i_AdBkGAAAAAAAAAAB5eDuHyDO5xG9_NOyqx3kRyYZ4od5hD6CBGGapfqtsqe3_Dvii4U1ii0-9xpPp71jbsoBg3z9fzeD2dqlgJGIZ16o1on6mqbepQQQvUDIEuQvhgDhPrNH49-DxsG0JI7F_HhfQbNbo_797Hz9KM3mx0d5Y-8GEf_3cQyPjwOyTbNn3Ogu1kp0dSoGvHlJj4YpJCauC7sdp0Q51KOVhnSE3765zWeK9JDR8-NQ6Y6nWj-StLVyq4jRLyUeeprHdfzQObRyKYrNMFuCgRhEb6Il9lnm8bPojg65G0iE3rPmLcs3hPPI1xJEds-NKaVa37yRQr69mHjpWbGalsOUmq8y7kgWOf_jP0dgUWFlEmojwEE",
+            "envelopeNonce": "QkJCQkJCQkJCQkJC"
+          },
+          {
+            "label": "B0",
+            "senderDeviceId": "device-b-0002",
+            "messageKind": "text",
+            "frameType": "normal",
+            "ratchetPublic": "ad908a8a708aca07588cda7c4ed3e44d4966a80a9abb2f1e4bbac53c67414e34",
+            "previousCounter": 0,
+            "counter": 0,
+            "chainKey": "ef4792472e3b8549777d46d9354c2f9b9ba128172c51d86ad231652369a1fa09",
+            "messageKey": "cd2eb00233c5286f8a5ce6368101f68fe224d40a6f7a53b5e19bfba447872fac",
+            "nonce": "525252525252525252525252",
+            "innerPayloadJson": "{\"pv\":2,\"b\":\"hi alice, bob here\",\"k\":\"text\",\"x\":null,\"att\":null}",
+            "paddedPlaintext": "7b227076223a322c2262223a22686920616c6963652c20626f622068657265222c226b223a2274657874222c2278223a6e756c6c2c22617474223a6e756c6c7d800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "header": "0202ad908a8a708aca07588cda7c4ed3e44d4966a80a9abb2f1e4bbac53c67414e340000000000000000",
+            "aad": "7665696c2d6672616d652d6161642d763400107665696c2d656e76656c6f70652d763200187665696c2d6b61742d636f6e766572736174696f6e2d7632000d6465766963652d622d303030320004746578740202ad908a8a708aca07588cda7c4ed3e44d4966a80a9abb2f1e4bbac53c67414e340000000000000000884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873738ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+            "ciphertext": "a3cbd5baf1104035106745ee8de64f9ce0079e95c8977c158c80db7f764e1f7b34cd448fd1806dd401e31eb04a25c04db7755e5838178f1fbf49173fab1f3168a67f294a6d51f8bf2d4e2dc68cf303cb30bf58ac3d95b09ad2dcd11d240af0204efa1f0f8ec9bccbc182d95146fc454ccaa2fdf64d99c4e011af8c4d4564e5799e7c76c19b7993bfc6cdc61b44c715ab96d3d46783ea56a0cc976ddebbec92c9e2459a943b4e8baf37b61ae54a9b2af9cf8de51bc362edc4718029602b5b84973de5aa0f7b15b91a9d65597d902d91373bd6b41c3861ca60cc42b09469406b4c5b39b13eb2b5f783af07f145f989966d82fd622712c5a4b6577a15a8ea7d110e",
+            "tag": "83fb6076109574a36e3a7a5256c7a176",
+            "frame": "0202ad908a8a708aca07588cda7c4ed3e44d4966a80a9abb2f1e4bbac53c67414e340000000000000000a3cbd5baf1104035106745ee8de64f9ce0079e95c8977c158c80db7f764e1f7b34cd448fd1806dd401e31eb04a25c04db7755e5838178f1fbf49173fab1f3168a67f294a6d51f8bf2d4e2dc68cf303cb30bf58ac3d95b09ad2dcd11d240af0204efa1f0f8ec9bccbc182d95146fc454ccaa2fdf64d99c4e011af8c4d4564e5799e7c76c19b7993bfc6cdc61b44c715ab96d3d46783ea56a0cc976ddebbec92c9e2459a943b4e8baf37b61ae54a9b2af9cf8de51bc362edc4718029602b5b84973de5aa0f7b15b91a9d65597d902d91373bd6b41c3861ca60cc42b09469406b4c5b39b13eb2b5f783af07f145f989966d82fd622712c5a4b6577a15a8ea7d110e83fb6076109574a36e3a7a5256c7a176",
+            "envelopeCiphertext": "AgKtkIqKcIrKB1iM2nxO0-RNSWaoCpq7Lx5LusU8Z0FONAAAAAAAAAAAo8vVuvEQQDUQZ0XujeZPnOAHnpXIl3wVjIDbf3ZOH3s0zUSP0YBt1AHjHrBKJcBNt3VeWDgXjx-_SRc_qx8xaKZ_KUptUfi_LU4txozzA8swv1isPZWwmtLc0R0kCvAgTvofD47JvMvBgtlRRvxFTMqi_fZNmcTgEa-MTUVk5XmefHbBm3mTv8bNxhtExxWrltPUZ4PqVqDMl23eu-ySyeJFmpQ7TouvN7Ya5UqbKvnPjeUbw2LtxHGAKWArW4SXPeWqD3sVuRqdZVl9kC2RNzvWtBw4YcpgzEKwlGlAa0xbObE-srX3g68H8UX5iZZtgv1iJxLFpLZXehWo6n0RDoP7YHYQlXSjbjp6UlbHoXY",
+            "envelopeNonce": "UlJSUlJSUlJSUlJS"
+          },
+          {
+            "label": "A2",
+            "senderDeviceId": "device-a-0001",
+            "messageKind": "file",
+            "frameType": "normal",
+            "ratchetPublic": "7b0d47d93427f8311160781c7c733fd89f88970aef490d8aa0ee19a4cb8a1b14",
+            "previousCounter": 2,
+            "counter": 0,
+            "chainKey": "ec61b8c3f889e3fe7184abf3ab0f6ca2bd0bc6ece19eeb88d443531f4fb6d6c6",
+            "messageKey": "86585f95b4ad1e7c72b8e08f92bf701201dd8df0ae6959eeb07cc9f8b88fb9c3",
+            "nonce": "434343434343434343434343",
+            "innerPayloadJson": "{\"pv\":2,\"b\":\"Encrypted attachment\",\"k\":\"file\",\"x\":null,\"att\":{\"id\":\"att-kat-0001\",\"ck\":\"YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE\",\"n\":\"YmJiYmJiYmJiYmJi\",\"d\":\"12hBsbCeapNpJa3cwViBP_3e_VmYC8vOtOuVYTT76hs\",\"ct\":\"application/pdf\",\"sz\":100,\"alg\":\"aes256gcm-v2\"}}",
+            "paddedPlaintext": "7b227076223a322c2262223a22456e63727970746564206174746163686d656e74222c226b223a2266696c65222c2278223a6e756c6c2c22617474223a7b226964223a226174742d6b61742d30303031222c22636b223a2259574668595746685957466859574668595746685957466859574668595746685957466859574668595745222c226e223a22596d4a69596d4a69596d4a69596d4a69222c2264223a22313268427362436561704e704a61336377566942505f33655f566d594338764f744f755659545437366873222c226374223a226170706c69636174696f6e2f706466222c22737a223a3130302c22616c67223a2261657332353667636d2d7632227d7d800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+            "header": "02027b0d47d93427f8311160781c7c733fd89f88970aef490d8aa0ee19a4cb8a1b140000000200000000",
+            "aad": "7665696c2d6672616d652d6161642d763400107665696c2d656e76656c6f70652d763200187665696c2d6b61742d636f6e766572736174696f6e2d7632000d6465766963652d612d30303031000466696c6502027b0d47d93427f8311160781c7c733fd89f88970aef490d8aa0ee19a4cb8a1b140000000200000000884b8857f4eaa1613c61504db34d4beaf346517a0e31de3cddd4d9b4201d9d0b0faa684ed28867b97f4a6a2dee5df8ce974e76b7018e3f22a1c4cf2678570f20d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c977873738ab664bd86f77d7e66bdd9ae0792913a94fd8b33a1260027e4b46c1f4884c67",
+            "ciphertext": "a344ec743e43cc08e46249a730052d44ba25df5ed6ae3b6cd63d9425ae2d4fb97b4e38dc19ffcdce7d3a99525b8420e968f38d228ea2bd7f57de5bf1b685d46665133b2c20ff567a691fdf94208112387da2af96bc818e1613d3871f5042317fd88b1b641a4fc649c0aff19a6dab17100a62ead7a87dbb7dcb86194dc69a17c7d917f333d0a657b1bd74b3cb3e3fd38351a399bdcfd443ee5616d8014ab388bee036850e920efa78c25932311edce3c1f65033a93d7dbf84820befa5212ad47310c71716d9d0e660ae0ac5e8851078ab4693bf044d8654906ef6acd7f8b4d1e923d4492ad265c498eed613b5913da90a1741d49d4cdb46072e9870db5ffffc80ebcad84d5d03d48fdcbff2d41e6604e3bbfe5827c2d8fd45ccd16c7bb143843473475ffcd39bd685e0f2df1b203d84f6f6f5b556376ad560634d4da7ec78561e54c7f4e7a8dbea86f5241bb2e66c37e7e8e65535c2d3e3a02d1aa4450819f1b40f88ae22566ae1c98b9ac1a92fec25cf11f83d5b9b0cf0ee8489490dce36a99b04eb11d95902c29063e6326ecb13c7dce7790ad45869f4f72f3b4d6bd4f46bd0e1f233eb0ff9e34c266ea4d6d84915c312a2ec839f49df3c500a665d47075337a76541ec9d76ee8dda83c511acd3d3b27e9864c92242572d1a06a7f64e138a6d8204daa0062734288966abaa751ccf42863dcd65d2fae88576b2bd9f8a720b54",
+            "tag": "835163d2023cf5e707f35ea65ef1d72c",
+            "frame": "02027b0d47d93427f8311160781c7c733fd89f88970aef490d8aa0ee19a4cb8a1b140000000200000000a344ec743e43cc08e46249a730052d44ba25df5ed6ae3b6cd63d9425ae2d4fb97b4e38dc19ffcdce7d3a99525b8420e968f38d228ea2bd7f57de5bf1b685d46665133b2c20ff567a691fdf94208112387da2af96bc818e1613d3871f5042317fd88b1b641a4fc649c0aff19a6dab17100a62ead7a87dbb7dcb86194dc69a17c7d917f333d0a657b1bd74b3cb3e3fd38351a399bdcfd443ee5616d8014ab388bee036850e920efa78c25932311edce3c1f65033a93d7dbf84820befa5212ad47310c71716d9d0e660ae0ac5e8851078ab4693bf044d8654906ef6acd7f8b4d1e923d4492ad265c498eed613b5913da90a1741d49d4cdb46072e9870db5ffffc80ebcad84d5d03d48fdcbff2d41e6604e3bbfe5827c2d8fd45ccd16c7bb143843473475ffcd39bd685e0f2df1b203d84f6f6f5b556376ad560634d4da7ec78561e54c7f4e7a8dbea86f5241bb2e66c37e7e8e65535c2d3e3a02d1aa4450819f1b40f88ae22566ae1c98b9ac1a92fec25cf11f83d5b9b0cf0ee8489490dce36a99b04eb11d95902c29063e6326ecb13c7dce7790ad45869f4f72f3b4d6bd4f46bd0e1f233eb0ff9e34c266ea4d6d84915c312a2ec839f49df3c500a665d47075337a76541ec9d76ee8dda83c511acd3d3b27e9864c92242572d1a06a7f64e138a6d8204daa0062734288966abaa751ccf42863dcd65d2fae88576b2bd9f8a720b54835163d2023cf5e707f35ea65ef1d72c",
+            "envelopeCiphertext": "AgJ7DUfZNCf4MRFgeBx8cz_Yn4iXCu9JDYqg7hmky4obFAAAAAIAAAAAo0TsdD5DzAjkYkmnMAUtRLol317Wrjts1j2UJa4tT7l7TjjcGf_Nzn06mVJbhCDpaPONIo6ivX9X3lvxtoXUZmUTOywg_1Z6aR_flCCBEjh9oq-WvIGOFhPThx9QQjF_2IsbZBpPxknAr_GabasXEApi6teofbt9y4YZTcaaF8fZF_Mz0KZXsb10s8s-P9ODUaOZvc_UQ-5WFtgBSrOIvuA2hQ6SDvp4wlkyMR7c48H2UDOpPX2_hIIL76UhKtRzEMcXFtnQ5mCuCsXohRB4q0aTvwRNhlSQbvas1_i00ekj1Ekq0mXEmO7WE7WRPakKF0HUnUzbRgcumHDbX__8gOvK2E1dA9SP3L_y1B5mBOO7_lgnwtj9RczRbHuxQ4Q0c0df_NOb1oXg8t8bID2E9vb1tVY3atVgY01Np-x4Vh5Ux_TnqNvqhvUkG7LmbDfn6OZVNcLT46AtGqRFCBnxtA-IriJWauHJi5rBqS_sJc8R-D1bmwzw7oSJSQ3ONqmbBOsR2VkCwpBj5jJuyxPH3Od5CtRYafT3LztNa9T0a9Dh8jPrD_njTCZupNbYSRXDEqLsg59J3zxQCmZdRwdTN6dlQeyddu6N2oPFEazT07J-mGTJIkJXLRoGp_ZOE4ptggTaoAYnNCiJZquqdRzPQoY9zWXS-uiFdrK9n4pyC1SDUWPSAjz15wfzXqZe8dcs",
+            "envelopeNonce": "Q0NDQ0NDQ0NDQ0ND"
+          }
+        ]
+      },
+      "attachment": {
+        "note": "padded = ISO/IEC 7816-4 to padmeLength(len + 1); blob = AES-256-GCM(key, nonce, padded, aad = utf8(\"veil-att-v2\") || utf8(attachmentId)) as ciphertext || tag; digest = SHA-256(blob). pointer is the inner-payload \"att\" object A2 carries.",
+        "attachmentId": "att-kat-0001",
+        "key": "6161616161616161616161616161616161616161616161616161616161616161",
+        "nonce": "626262626262626262626262",
+        "plaintextHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f60616263",
+        "paddedLength": 104,
+        "aad": "7665696c2d6174742d76326174742d6b61742d30303031",
+        "blob": "b532f265e4f71a194567ddc865228ed1ca81d8b9a5b8b5782d6e2c7fff17e4614bb7d270fb92f2c1a6db04e4650af6992032f5a45fad59b5db206e218efc6f7f97c7af6cecad778a558299015cec89199f3978cf742def7ce0b2285449ee00b22e0b50faa80cacb3a5dbef90eee190a78f0a9345e2dd6fd9",
+        "digest": "d76841b1b09e6a936925addcc158813ffddefd59980bcbceb4eb956134fbea1b",
+        "pointer": {
+          "id": "att-kat-0001",
+          "ck": "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE",
+          "n": "YmJiYmJiYmJiYmJi",
+          "d": "12hBsbCeapNpJa3cwViBP_3e_VmYC8vOtOuVYTT76hs",
+          "ct": "application/pdf",
+          "sz": 100,
+          "alg": "aes256gcm-v2"
+        }
+      },
+      "padme": [
+        {
+          "n": 1,
+          "padme": 1
+        },
+        {
+          "n": 2,
+          "padme": 2
+        },
+        {
+          "n": 3,
+          "padme": 3
+        },
+        {
+          "n": 4,
+          "padme": 4
+        },
+        {
+          "n": 5,
+          "padme": 5
+        },
+        {
+          "n": 6,
+          "padme": 6
+        },
+        {
+          "n": 7,
+          "padme": 7
+        },
+        {
+          "n": 8,
+          "padme": 8
+        },
+        {
+          "n": 9,
+          "padme": 10
+        },
+        {
+          "n": 10,
+          "padme": 10
+        },
+        {
+          "n": 100,
+          "padme": 104
+        },
+        {
+          "n": 1000,
+          "padme": 1024
+        },
+        {
+          "n": 65537,
+          "padme": 67584
+        },
+        {
+          "n": 1000000,
+          "padme": 1015808
+        }
+      ]
     }
   }
 }

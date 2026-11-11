@@ -1,9 +1,9 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/crypto/bytes.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+
+import 'crypto/support/crypto_harness.dart';
 
 // Pins the production crypto wire format against silent drift. If these tests
 // fail because the envelope version, adapter id, byte layout, or JSON shape
@@ -13,203 +13,105 @@ import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 void main() {
   group('LibCryptoAdapter constants', () {
     test('adapter id is frozen', () {
-      expect(LibCryptoAdapter().adapterId, 'lib-x25519-aes256gcm-v3');
+      expect(LibCryptoAdapter().adapterId, 'lib-x3dh-x25519-aes256gcm-v4');
     });
 
     test('envelope version is frozen', () {
-      expect(
-        LibCryptoAdapter().envelopeCodec.defaultEnvelopeVersion,
-        'veil-envelope-v1',
-      );
+      expect(LibCryptoAdapter().envelopeCodec.defaultEnvelopeVersion, 'veil-envelope-v2');
     });
 
     test('attachment algorithm hint is frozen', () {
-      expect(
-        LibCryptoAdapter().envelopeCodec.defaultAttachmentWrapAlgorithmHint,
-        'x25519-aes256gcm',
-      );
+      expect(LibCryptoAdapter().envelopeCodec.defaultAttachmentWrapAlgorithmHint, 'aes256gcm-v2');
     });
   });
 
-  group('Envelope binary frame', () {
-    Future<CryptoEnvelope> buildEnvelope({
-      required LibCryptoAdapter alice,
-      required LibCryptoAdapter bob,
-      required String conversationId,
-      required String body,
-    }) async {
-      final bobIdentity =
-          await bob.identity.generateDeviceIdentity('device-bob');
-      await alice.identity.generateDeviceIdentity('device-alice');
-      await alice.sessions.bootstrapSession(
-        SessionBootstrapRequest(
-          conversationId: conversationId,
-          localDeviceId: 'device-alice',
-          localUserId: 'user-alice',
-          remoteUserId: 'user-bob',
-          remoteDeviceId: 'device-bob',
-          remoteIdentityPublicKey: bobIdentity.identityPublicKey,
-          remoteSignedPrekeyBundle: bobIdentity.signedPrekeyBundle,
-        ),
-      );
-      return alice.messaging.encryptMessage(
-        conversationId: conversationId,
-        senderDeviceId: 'device-alice',
-        recipientUserId: 'user-bob',
-        body: body,
-        messageKind: MessageKind.text,
-        recipientBundle: KeyBundle(
-          userId: 'user-bob',
-          deviceId: 'device-bob',
-          handle: 'bob',
-          identityPublicKey: bobIdentity.identityPublicKey,
-          signedPrekeyBundle: bobIdentity.signedPrekeyBundle,
-        ),
-      );
+  group('Envelope binary frame (v2)', () {
+    const conversationId = 'conv-frame';
+
+    Future<(Party, Party)> establish() async {
+      final alice = await createParty('alice');
+      final bob = await createParty('bob');
+      await bootstrap(alice, bob, conversationId: conversationId);
+      return (alice, bob);
     }
 
     test('nonce is exactly 12 base64url-decoded bytes', () async {
-      final envelope = await buildEnvelope(
-        alice: LibCryptoAdapter(),
-        bob: LibCryptoAdapter(),
-        conversationId: 'conv-nonce',
-        body: 'hello',
-      );
-      final nonceBytes = _b64UrlDecode(envelope.nonce);
-      expect(nonceBytes.length, 12);
+      final (alice, bob) = await establish();
+      final envelope = await send(alice, bob, 'hello', conversationId: conversationId);
+      expect(b64uDecode(envelope.nonce), hasLength(12));
     });
 
-    test('ciphertext frame has minimum 52 bytes (ephPub+counter+mac)',
-        () async {
-      final envelope = await buildEnvelope(
-        alice: LibCryptoAdapter(),
-        bob: LibCryptoAdapter(),
-        conversationId: 'conv-minframe',
-        body: '',
-      );
-      final frame = _b64UrlDecode(envelope.ciphertext);
-      expect(frame.length, greaterThanOrEqualTo(52));
+    test('PreKey frame layout until the first reply, Normal frame after', () async {
+      final (alice, bob) = await establish();
+      final first = await send(alice, bob, '', conversationId: conversationId);
+      final bytes = b64uDecode(first.ciphertext);
+      expect(bytes.sublist(0, 2), [0x02, 0x01]);
+      // version + type + PreKey header + ratchetPub + PN + N + tag.
+      expect(bytes.length, greaterThanOrEqualTo(2 + 168 + 32 + 4 + 4 + 16));
+      expect(frameOf(first).header.length, 2 + 168 + 40);
+
+      expect((await receive(bob, first)).isOk, isTrue);
+      final reply = await send(bob, alice, '', conversationId: conversationId);
+      final replyBytes = b64uDecode(reply.ciphertext);
+      expect(replyBytes.sublist(0, 2), [0x02, 0x02]);
+      expect(frameOf(reply).header.length, 2 + 40);
+      expect(replyBytes.length, greaterThanOrEqualTo(2 + 32 + 4 + 4 + 16));
     });
 
-    test('counter at bytes [32..36] increments per message', () async {
-      final alice = LibCryptoAdapter();
-      final bob = LibCryptoAdapter();
-      const conversationId = 'conv-counter';
-
-      final first = await buildEnvelope(
-        alice: alice,
-        bob: bob,
-        conversationId: conversationId,
-        body: 'one',
-      );
-
-      final bobIdentity2 = KeyBundle(
-        userId: 'user-bob',
-        deviceId: 'device-bob',
-        handle: 'bob',
-        identityPublicKey: '',
-        signedPrekeyBundle: '',
-      );
-      final second = await alice.messaging.encryptMessage(
-        conversationId: conversationId,
-        senderDeviceId: 'device-alice',
-        recipientUserId: 'user-bob',
-        body: 'two',
-        messageKind: MessageKind.text,
-        recipientBundle: bobIdentity2,
-      );
-
-      expect(_readCounter(first), 0);
-      expect(_readCounter(second), 1);
-    });
-
-    test('counter is big-endian uint32', () async {
-      final envelope = await buildEnvelope(
-        alice: LibCryptoAdapter(),
-        bob: LibCryptoAdapter(),
-        conversationId: 'conv-be',
-        body: 'x',
-      );
-      final frame = _b64UrlDecode(envelope.ciphertext);
-      // First message's counter is 0 → all four counter bytes MUST be 0x00.
-      // If encoding were little-endian of a larger sentinel we'd see non-zero
-      // bytes; if the field moved, this check would drift.
-      expect(frame.sublist(32, 36), [0, 0, 0, 0]);
-    });
-
-    test('sender ratchet public key occupies the first 32 bytes', () async {
-      final alice = LibCryptoAdapter();
-      final bob = LibCryptoAdapter();
-      final envelope = await buildEnvelope(
-        alice: alice,
-        bob: bob,
-        conversationId: 'conv-ephpub',
-        body: 'y',
-      );
-
-      final extracted = (alice.envelopeCodec as InboundEnvelopeInspector)
-          .extractSenderEphemeralPublicKey(envelope);
-      expect(extracted, isNotNull);
-      expect(extracted!.length, 32);
-
-      final frame = _b64UrlDecode(envelope.ciphertext);
-      expect(frame.sublist(0, 32), extracted);
+    test('counter is the big-endian u32 closing the header and increments per message', () async {
+      final (alice, bob) = await establish();
+      final first = await send(alice, bob, 'one', conversationId: conversationId);
+      final second = await send(alice, bob, 'two', conversationId: conversationId);
+      final header = frameOf(first).header;
+      expect(header.sublist(header.length - 8), [0, 0, 0, 0, 0, 0, 0, 0], reason: 'PN 0, N 0');
+      expect(frameOf(first).counter, 0);
+      expect(frameOf(second).counter, 1);
+      final secondHeader = frameOf(second).header;
+      expect(secondHeader.sublist(secondHeader.length - 4), [0, 0, 0, 1]);
     });
   });
 
   group('Envelope JSON shape', () {
     test('omits expiresAt and attachment when absent', () async {
-      final alice = LibCryptoAdapter();
-      final bob = LibCryptoAdapter();
-      final bobIdentity =
-          await bob.identity.generateDeviceIdentity('device-bob');
-      await alice.sessions.bootstrapSession(
-        SessionBootstrapRequest(
-          conversationId: 'conv-json-shape',
-          localDeviceId: 'device-alice',
-          localUserId: 'user-alice',
-          remoteUserId: 'user-bob',
-          remoteDeviceId: 'device-bob',
-          remoteIdentityPublicKey: bobIdentity.identityPublicKey,
-          remoteSignedPrekeyBundle: bobIdentity.signedPrekeyBundle,
-        ),
-      );
-      final envelope = await alice.messaging.encryptMessage(
-        conversationId: 'conv-json-shape',
-        senderDeviceId: 'device-alice',
-        recipientUserId: 'user-bob',
-        body: 'no-optionals',
-        messageKind: MessageKind.text,
-        recipientBundle: KeyBundle(
-          userId: 'user-bob',
-          deviceId: 'device-bob',
-          handle: 'bob',
-          identityPublicKey: bobIdentity.identityPublicKey,
-          signedPrekeyBundle: bobIdentity.signedPrekeyBundle,
-        ),
-      );
+      final alice = await createParty('alice');
+      final bob = await createParty('bob');
+      await bootstrap(alice, bob, conversationId: 'conv-json-shape');
+      final envelope = await send(alice, bob, 'no-optionals', conversationId: 'conv-json-shape');
 
-      final json = alice.envelopeCodec.encodeApiEnvelope(envelope);
+      final json = alice.adapter.envelopeCodec.encodeApiEnvelope(envelope);
       expect(json.containsKey('expiresAt'), isFalse);
       expect(json.containsKey('attachment'), isFalse);
-      expect(json['version'], 'veil-envelope-v1');
+      expect(json['version'], 'veil-envelope-v2');
       expect(json['messageType'], 'text');
     });
+
+    test('decoding an envelope without a version reads it as a legacy v1 frame', () {
+      final decoded = LibCryptoAdapter().envelopeCodec.decodeApiEnvelope({
+        'conversationId': 'c',
+        'senderDeviceId': 'd',
+        'ciphertext': 'AA',
+        'nonce': 'AA',
+        'messageType': 'text',
+      });
+      expect(decoded.version, 'veil-envelope-v1');
+    });
   });
-}
 
-Uint8List _b64UrlDecode(String value) {
-  final padded = value.padRight(
-    value.length + ((4 - value.length % 4) % 4),
-    '=',
-  );
-  return Uint8List.fromList(base64Url.decode(padded));
-}
+  group('Legacy v1 frame', () {
+    test('ratchet public key occupies the first 32 bytes, counter the next 4', () async {
+      final alice = await createParty('alice');
+      final bob = await createLegacyParty('bob');
+      await bootstrap(alice, bob, conversationId: 'conv-v1');
+      final first = await send(alice, bob, 'y', conversationId: 'conv-v1');
+      final second = await send(alice, bob, 'z', conversationId: 'conv-v1');
+      expect(first.version, 'veil-envelope-v1');
 
-int _readCounter(CryptoEnvelope envelope) {
-  final frame = _b64UrlDecode(envelope.ciphertext);
-  final view = ByteData.view(
-    Uint8List.fromList(frame.sublist(32, 36)).buffer,
-  );
-  return view.getUint32(0, Endian.big);
+      final extracted = (bob.adapter.envelopeCodec as InboundEnvelopeInspector).extractSenderEphemeralPublicKey(first);
+      final frame = b64uDecode(first.ciphertext);
+      expect(extracted, frame.sublist(0, 32));
+      expect(frame.sublist(32, 36), [0, 0, 0, 0]);
+      expect(b64uDecode(second.ciphertext).sublist(32, 36), [0, 0, 0, 1]);
+      expect(frame.length, greaterThanOrEqualTo(52));
+    });
+  });
 }

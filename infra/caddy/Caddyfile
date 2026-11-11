@@ -4,6 +4,12 @@
 #
 # Caddy auto-renews TLS via Let's Encrypt. Set ACME_EMAIL in .env.prod for
 # expiry alerts.
+#
+# Client addresses: Caddy is the edge, so the API runs with
+# VEIL_CLIENT_IP_SOURCE=x-forwarded-for and VEIL_TRUSTED_PROXY_HOPS=1. Every
+# reverse_proxy therefore drops any client-supplied CF-Connecting-IP and
+# overwrites X-Forwarded-For with the address of the peer Caddy actually
+# talked to; otherwise a client could pick its own rate-limit bucket.
 
 {
 	email {$ACME_EMAIL}
@@ -35,6 +41,8 @@
 	handle_path /demo* {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
+			header_up -CF-Connecting-IP
+			header_up X-Forwarded-For {remote_host}
 		}
 	}
 
@@ -47,6 +55,8 @@
 	handle @ws {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
+			header_up -CF-Connecting-IP
+			header_up X-Forwarded-For {remote_host}
 		}
 	}
 
@@ -54,12 +64,14 @@
 	handle {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
+			header_up -CF-Connecting-IP
+			header_up X-Forwarded-For {remote_host}
 		}
 	}
 
 	# Trim outgoing access logs to a single line per request and only
-	# keep what we'd actually need to debug. Avoid header dumps so we
-	# don't accidentally log Authorization.
+	# keep what we'd actually need to debug. No client addresses, no URIs
+	# (they carry handles) and no header dumps.
 	log {
 		output file /data/access.log {
 			roll_size 50mb
@@ -69,7 +81,14 @@
 			wrap json
 			fields {
 				common_log delete
+				request>remote_ip delete
+				request>client_ip delete
 				request>headers delete
+				# Named again so narrowing the blanket header rule above can
+				# never start logging credentials or client addresses.
+				request>headers>Authorization delete
+				request>headers>X-Forwarded-For delete
+				request>headers>Cf-Connecting-Ip delete
 				resp_headers delete
 				request>uri delete
 			}
@@ -89,5 +108,7 @@
 	reverse_proxy minio:9000 {
 		header_up Host {host}
 		header_up X-Forwarded-Proto https
+		header_up -CF-Connecting-IP
+		header_up X-Forwarded-For {remote_host}
 	}
 }

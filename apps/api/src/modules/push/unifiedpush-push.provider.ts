@@ -1,6 +1,9 @@
-import { badRequest } from '../../common/errors/api-error';
-import { AppConfigService } from '../../common/config/app-config.service';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
+import type { LookupFunction } from 'node:net';
 
+import { AppConfigService } from '../../common/config/app-config.service';
+import { guardedLookup, validatePushEndpointUrl } from './push-endpoint.validator';
 import type { MessagePushHint, PushProvider } from './push.types';
 
 type UnifiedPushRequestShape = {
@@ -9,35 +12,85 @@ type UnifiedPushRequestShape = {
   body: string;
 };
 
+export interface PushHttpRequest {
+  headers: Record<string, string>;
+  body: string;
+  lookup?: LookupFunction;
+  timeoutMs: number;
+}
+
+// Resolves with the response status code. Injected so tests can observe
+// requests without a network.
+export type PushHttpTransport = (url: URL, request: PushHttpRequest) => Promise<number>;
+
+const DELIVERY_TIMEOUT_MS = 10_000;
+
+// node:http(s).request never follows redirects, so a 3xx pointing at an
+// internal host is just a failed delivery. No agent: every connection goes
+// through the vetted lookup instead of reusing a pooled socket.
+export const nodeHttpTransport: PushHttpTransport = (url, request) =>
+  new Promise((resolve, reject) => {
+    const send = url.protocol === 'http:' ? httpRequest : httpsRequest;
+    const outgoing = send(
+      url,
+      {
+        method: 'POST',
+        agent: false,
+        lookup: request.lookup,
+        headers: { ...request.headers, 'Content-Length': Buffer.byteLength(request.body) },
+      },
+      (response) => {
+        clearTimeout(deadline);
+        // Only the status matters. Closing the socket here, rather than
+        // draining the body, means a distributor that dribbles or never ends
+        // its body cannot pin a connection.
+        response.destroy();
+        resolve(response.statusCode ?? 0);
+      },
+    );
+    // An absolute deadline rather than a socket idle timeout, so a
+    // distributor dribbling header bytes cannot hold the request open
+    // indefinitely either.
+    const deadline = setTimeout(() => {
+      outgoing.destroy(
+        Object.assign(new Error('UnifiedPush request timed out'), { code: 'ETIMEDOUT' }),
+      );
+    }, request.timeoutMs);
+    outgoing.on('error', (error) => {
+      clearTimeout(deadline);
+      reject(error);
+    });
+    outgoing.end(request.body);
+  });
+
+const statusClass = (status: number): string => `${Math.floor(status / 100)}xx`;
+
 // UnifiedPush (https://unifiedpush.org) lets the app receive wakes through a
 // user-chosen distributor (ntfy, NextPush, a self-hosted server …) with NO
 // Google/Apple dependency — the enabler for an F-Droid build of VEIL.
 //
-// The device registers with its distributor, gets an HTTPS *endpoint URL*, and
-// hands that URL to the server as its push token. To wake the app the server
-// POSTs an opaque body to that URL; the distributor relays it.
-//
-// Security note — SSRF: the "push token" is therefore a URL the client fully
-// controls, and the server makes an outbound request to it. Left unguarded a
-// malicious registrant could point it at cloud metadata (169.254.169.254) or
-// internal services. Every endpoint is validated before a request is built:
-//   * https only,
-//   * if VEIL_UNIFIEDPUSH_ALLOWED_HOSTS is set, the host must be on it
-//     (the production posture — also defeats DNS rebinding),
-//   * otherwise literal private/loopback/link-local IPs are rejected.
+// The device registers with its distributor, gets an endpoint URL, and hands
+// that URL to the server as its push token. To wake the app the server POSTs
+// an opaque body to it. Because the URL is client-chosen, every delivery is
+// re-validated (validatePushEndpointUrl) and connects only to addresses the
+// guarded lookup vetted. Failures are reported by error code or status class
+// alone, so the endpoint never reaches the logs.
 export class UnifiedPushProvider implements PushProvider {
   readonly kind = 'unifiedpush' as const;
-  private readonly allowedHosts: ReadonlySet<string> | null;
 
-  constructor(private readonly config: AppConfigService) {
-    const hosts = config.unifiedPushAllowedHosts;
-    this.allowedHosts = hosts.length > 0 ? new Set(hosts.map((h) => h.toLowerCase())) : null;
-  }
+  constructor(
+    private readonly config: AppConfigService,
+    private readonly transport: PushHttpTransport = nodeHttpTransport,
+    private readonly lookup: LookupFunction = guardedLookup(),
+  ) {}
 
   buildRequest(pushToken: string, hint: MessagePushHint): UnifiedPushRequestShape {
-    const endpoint = this.validateEndpoint(pushToken);
+    const endpoint = validatePushEndpointUrl(pushToken, {
+      allowedHosts: this.config.unifiedPushAllowedHosts,
+      production: this.config.isProduction,
+    });
     return {
-      endpoint,
+      endpoint: endpoint.toString(),
       headers: {
         'Content-Type': 'application/json',
         // UnifiedPush v3 headers. Bound how long a distributor may hold an
@@ -57,73 +110,24 @@ export class UnifiedPushProvider implements PushProvider {
       return;
     }
 
-    const response = await fetch(request.endpoint, {
-      method: 'POST',
-      headers: request.headers,
-      body: request.body,
-    });
-    if (!response.ok) {
-      throw new Error(`UnifiedPush delivery failed with status ${response.status}`);
-    }
-  }
-
-  private validateEndpoint(pushToken: string): string {
-    let url: URL;
+    const url = new URL(request.endpoint);
+    let status: number;
     try {
-      url = new URL(pushToken);
-    } catch {
-      throw badRequest('validation_failed', 'UnifiedPush endpoint is not a valid URL');
-    }
-    if (url.protocol !== 'https:') {
-      throw badRequest('validation_failed', 'UnifiedPush endpoint must use https');
-    }
-
-    const host = url.hostname.toLowerCase();
-    if (this.allowedHosts) {
-      if (!this.allowedHosts.has(host)) {
-        throw badRequest('validation_failed', 'UnifiedPush endpoint host is not allowlisted');
-      }
-    } else if (isPrivateHost(host)) {
-      throw badRequest('validation_failed', 'UnifiedPush endpoint resolves to a private address');
+      status = await this.transport(url, {
+        headers: request.headers,
+        body: request.body,
+        // The validator admits a localhost endpoint only outside production;
+        // there it must resolve to loopback, which the guard would refuse.
+        lookup: url.protocol === 'http:' ? undefined : this.lookup,
+        timeoutMs: DELIVERY_TIMEOUT_MS,
+      });
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code ?? 'transport_error';
+      throw new Error(`UnifiedPush delivery failed: ${code}`);
     }
 
-    return url.toString();
+    if (status < 200 || status >= 300) {
+      throw new Error(`UnifiedPush delivery failed with status class ${statusClass(status)}`);
+    }
   }
-}
-
-// Best-effort SSRF screen for IP-literal and loopback hosts. DNS hostnames are
-// NOT resolved here — VEIL_UNIFIEDPUSH_ALLOWED_HOSTS is the real defense in
-// production (it also closes DNS rebinding). Kept dependency-free and pure so
-// it is exhaustively unit-testable.
-export function isPrivateHost(host: string): boolean {
-  if (host === 'localhost' || host.endsWith('.localhost')) {
-    return true;
-  }
-
-  // Strip IPv6 brackets / zone id if a raw new URL().hostname kept them.
-  const bare = host.replace(/^\[/, '').replace(/\]$/, '').split('%', 1)[0];
-
-  const ipv4 = bare.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (ipv4) {
-    const [a, b] = ipv4.slice(1).map((n) => Number(n));
-    if (a === 10) return true; // 10.0.0.0/8
-    if (a === 127) return true; // loopback
-    if (a === 0) return true; // 0.0.0.0/8
-    if (a === 169 && b === 254) return true; // link-local incl. cloud metadata
-    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-    if (a === 192 && b === 168) return true; // 192.168.0.0/16
-    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64.0.0/10
-    return false;
-  }
-
-  if (bare.includes(':')) {
-    const v6 = bare.toLowerCase();
-    if (v6 === '::1' || v6 === '::') return true; // loopback / unspecified
-    if (v6.startsWith('fe80')) return true; // link-local
-    if (v6.startsWith('fc') || v6.startsWith('fd')) return true; // unique-local fc00::/7
-    if (v6.startsWith('::ffff:')) return true; // IPv4-mapped — screen conservatively
-    return false;
-  }
-
-  return false;
 }

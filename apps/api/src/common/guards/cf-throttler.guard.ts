@@ -1,37 +1,66 @@
-import { Injectable } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { isIP } from 'node:net';
 
-// Throttle tracker. Priority:
-//  1. The authenticated device id — bound to a verified JWT, so it cannot be
-//     spoofed and gives per-device limits on authed routes.
-//  2. Cloudflare's `cf-connecting-ip` — but ONLY when the operator has
-//     asserted a trusted edge via VEIL_TRUST_PROXY. Behind Cloudflare Tunnel
-//     the socket address is loopback, so the real client ip arrives here.
-//  3. The socket address (`req.ip`). With `trust proxy` enabled in main.ts,
-//     Express already resolves this from X-Forwarded-For safely.
-//
-// Client-supplied forwarding headers are IGNORED unless VEIL_TRUST_PROXY is
-// set. Previously `cf-connecting-ip` was trusted first and unconditionally, so
-// any client could land in a fresh throttle bucket per request by spoofing the
-// header — defeating every limit, including the unauthenticated /auth,
-// registration, and handle-enumeration limits.
+import { Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import {
+  InjectThrottlerOptions,
+  InjectThrottlerStorage,
+  ThrottlerGuard,
+  type ThrottlerModuleOptions,
+  type ThrottlerStorage,
+} from '@nestjs/throttler';
+
+import { AppConfigService } from '../config/app-config.service';
+
+interface TrackedRequest {
+  auth?: { deviceId?: unknown };
+  headers?: Record<string, string | string[] | undefined>;
+  ip?: string;
+  socket?: { remoteAddress?: string };
+}
+
+// Throttle tracker. Runs after JwtAuthGuard (see app.module.ts), so:
+//  1. Authenticated requests are keyed by the device id bound to a verified
+//     JWT — unspoofable, and two devices behind one NAT get separate buckets.
+//  2. Everything else is keyed by client address, read only from the single
+//     source the operator configured in VEIL_CLIENT_IP_SOURCE. A forwarding
+//     header the configured edge does not overwrite is attacker-controlled, so
+//     no other header is ever consulted.
 @Injectable()
 export class CfThrottlerGuard extends ThrottlerGuard {
-  protected async getTracker(req: Record<string, any>): Promise<string> {
-    const deviceId = req?.auth?.deviceId;
+  constructor(
+    @InjectThrottlerOptions() options: ThrottlerModuleOptions,
+    @InjectThrottlerStorage() storageService: ThrottlerStorage,
+    reflector: Reflector,
+    private readonly config: AppConfigService,
+  ) {
+    super(options, storageService, reflector);
+  }
+
+  protected async getTracker(req: TrackedRequest): Promise<string> {
+    const deviceId = req.auth?.deviceId;
     if (typeof deviceId === 'string' && deviceId.length > 0) {
       return `dev:${deviceId}`;
     }
+    return `ip:${this.clientAddress(req) ?? 'unknown'}`;
+  }
 
-    if (process.env.VEIL_TRUST_PROXY === 'true') {
-      const headers = (req?.headers ?? {}) as Record<string, string | string[] | undefined>;
-      const cfHeader = headers['cf-connecting-ip'];
-      const cf = Array.isArray(cfHeader) ? cfHeader[0] : cfHeader;
-      if (typeof cf === 'string' && cf.trim().length > 0) {
-        return `cf:${cf.trim()}`;
+  private clientAddress(req: TrackedRequest): string | undefined {
+    switch (this.config.clientIpSource) {
+      case 'cf-connecting-ip': {
+        // Duplicate headers arrive comma-joined and fail isIP, so a client
+        // cannot smuggle a second value past a proxy that appends.
+        const header = req.headers?.['cf-connecting-ip'];
+        const candidate = typeof header === 'string' ? header.trim() : '';
+        return isIP(candidate) ? candidate : req.socket?.remoteAddress;
       }
+      case 'x-forwarded-for':
+        // Express resolves req.ip from X-Forwarded-For using exactly
+        // VEIL_TRUSTED_PROXY_HOPS trusted hops (main.ts sets `trust proxy`).
+        return req.ip;
+      case 'socket':
+      default:
+        return req.socket?.remoteAddress;
     }
-
-    return `ip:${req?.ip ?? 'unknown'}`;
   }
 }

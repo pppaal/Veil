@@ -6,8 +6,10 @@ import type {
   UpdatePushTokenResponse,
 } from '@veil/contracts';
 
+import { AppConfigService } from '../../common/config/app-config.service';
 import { forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
+import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 const STALE_DEVICE_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
@@ -17,6 +19,7 @@ export class DevicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly config: AppConfigService,
   ) {}
 
   async list(userId: string, currentDeviceId?: string): Promise<ListDevicesResponse> {
@@ -73,6 +76,8 @@ export class DevicesService {
     deviceId: string,
     pushToken: string,
   ): Promise<UpdatePushTokenResponse> {
+    validatePushTokenOnRegistration(pushToken, this.config);
+
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
       select: { id: true, userId: true, isActive: true, revokedAt: true },

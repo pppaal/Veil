@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import type { EnvConfig } from './env.schema';
+import type { ClientIpSource, EnvConfig } from './env.schema';
 
 @Injectable()
 export class AppConfigService {
@@ -35,8 +35,12 @@ export class AppConfigService {
     return this.configService.get('VEIL_REDIS_URL', { infer: true });
   }
 
-  get trustProxy(): boolean {
-    return this.configService.get('VEIL_TRUST_PROXY', { infer: true });
+  get clientIpSource(): ClientIpSource {
+    return this.configService.get('VEIL_CLIENT_IP_SOURCE', { infer: true });
+  }
+
+  get trustedProxyHops(): number {
+    return this.configService.get('VEIL_TRUSTED_PROXY_HOPS', { infer: true });
   }
 
   get swaggerEnabled(): boolean {
@@ -133,6 +137,10 @@ export class AppConfigService {
     return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
   }
 
+  get auditReportSha256(): string | undefined {
+    return this.configService.get('VEIL_AUDIT_REPORT_SHA256', { infer: true });
+  }
+
   get metricsAuthToken(): string | undefined {
     return this.configService.get('VEIL_METRICS_AUTH_TOKEN', { infer: true });
   }
@@ -149,12 +157,21 @@ export class AppConfigService {
     if (!this.isProduction) return;
     const errors: string[] = [];
 
-    if (!this.cryptoAuditAttested) {
+    // Strict identity check: only a parsed boolean true opens the gate, never
+    // a truthy string that slipped past the schema.
+    if (this.cryptoAuditAttested !== true) {
       errors.push(
         'VEIL_AUDITED_CRYPTO_ATTESTED is not true. Set this only after the ' +
           'audited crypto adapter has replaced the mock boundary and external ' +
           'security review has covered the new crypto path. ' +
           'See docs/audited-crypto-adapter-execution.md.',
+      );
+    }
+
+    if (!this.auditReportSha256) {
+      errors.push(
+        'VEIL_AUDIT_REPORT_SHA256 is not set. Production attestation must name ' +
+          'the SHA-256 of the signed external audit report it rests on.',
       );
     }
 
@@ -209,6 +226,15 @@ export class AppConfigService {
           'VEIL_PUSH_ENABLE_DELIVERY=true but no APNs, FCM, or UnifiedPush provider is set.',
         );
       }
+    }
+
+    // Every UnifiedPush endpoint is a client-chosen URL the server POSTs to;
+    // without an allowlist any public host is reachable from the API.
+    if (this.pushProvider === 'unifiedpush' && this.unifiedPushAllowedHosts.length === 0) {
+      errors.push(
+        'VEIL_PUSH_PROVIDER=unifiedpush requires VEIL_UNIFIEDPUSH_ALLOWED_HOSTS ' +
+          '(comma-separated distributor hosts).',
+      );
     }
 
     // The ephemeral store falls back to an in-memory Map when no Redis URL

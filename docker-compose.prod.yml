@@ -97,7 +97,10 @@ services:
       VEIL_DATABASE_URL: postgresql://${POSTGRES_USER:-veil}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-veil}
       VEIL_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       VEIL_ALLOWED_ORIGINS: ${VEIL_ALLOWED_ORIGINS:?VEIL_ALLOWED_ORIGINS required}
-      VEIL_TRUST_PROXY: "true"
+      # Caddy is the only hop in front of the API and overwrites
+      # X-Forwarded-For with the real peer (infra/caddy/Caddyfile).
+      VEIL_CLIENT_IP_SOURCE: x-forwarded-for
+      VEIL_TRUSTED_PROXY_HOPS: "1"
       VEIL_ENABLE_SWAGGER: "false"
       VEIL_S3_ENDPOINT: http://minio:9000
       VEIL_S3_PUBLIC_ENDPOINT: ${VEIL_S3_PUBLIC_ENDPOINT:?VEIL_S3_PUBLIC_ENDPOINT required}
@@ -110,11 +113,14 @@ services:
       VEIL_JWT_ISSUER: ${VEIL_JWT_ISSUER:-veil-api}
       VEIL_PUSH_PROVIDER: ${VEIL_PUSH_PROVIDER:-none}
       VEIL_PUSH_ENABLE_DELIVERY: ${VEIL_PUSH_ENABLE_DELIVERY:-false}
+      # Required by the API when VEIL_PUSH_PROVIDER=unifiedpush.
+      VEIL_UNIFIEDPUSH_ALLOWED_HOSTS: ${VEIL_UNIFIEDPUSH_ALLOWED_HOSTS:-}
       VEIL_LOG_LEVEL: ${VEIL_LOG_LEVEL:-info}
-      # Production gate. Refuses to boot if false. Set to true ONLY after
-      # the external crypto audit clears the LibCryptoAdapter and the
-      # remediation tracker is empty.
+      # Production gate. Refuses to boot unless this is true AND the audit
+      # report hash below is set. Set ONLY after the external crypto audit
+      # clears the LibCryptoAdapter and the remediation tracker is empty.
       VEIL_AUDITED_CRYPTO_ATTESTED: ${VEIL_AUDITED_CRYPTO_ATTESTED:?must be set explicitly to true after audit}
+      VEIL_AUDIT_REPORT_SHA256: ${VEIL_AUDIT_REPORT_SHA256:-}
       VEIL_METRICS_AUTH_TOKEN: ${VEIL_METRICS_AUTH_TOKEN:?VEIL_METRICS_AUTH_TOKEN required (openssl rand -hex 24)}
     deploy:
       resources:

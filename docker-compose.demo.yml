@@ -81,7 +81,11 @@ services:
       dockerfile: apps/api/Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # All interfaces by default so a phone on the same Wi-Fi can reach the
+      # demo. The tunnel profile must set VEIL_API_BIND_ADDRESS=127.0.0.1: with
+      # cf-connecting-ip, anyone who reaches this port directly picks their
+      # own rate-limit bucket by sending the header.
+      - "${VEIL_API_BIND_ADDRESS:-0.0.0.0}:3000:3000"
     environment:
       VEIL_ENV: development
       VEIL_API_PORT: "3000"
@@ -92,10 +96,12 @@ services:
       # CORS gate stops accepting wildcards. Default '*' keeps the local
       # phone-on-the-same-Wi-Fi flow working.
       VEIL_ALLOWED_ORIGINS: ${VEIL_ALLOWED_ORIGINS:-*}
-      # Trust the proxy chain so the realtime gateway and rate limiter see
-      # the real client IP behind a Cloudflare/nginx hop. Off by default for
-      # the bare local stack.
-      VEIL_TRUST_PROXY: ${VEIL_TRUST_PROXY:-false}
+      # Where the rate limiter reads the client address. `socket` for the bare
+      # local stack. The tunnel profile below reaches the API through
+      # cloudflared, so every request arrives from the same container address:
+      # run it with VEIL_CLIENT_IP_SOURCE=cf-connecting-ip
+      # (see "Client IP source" in docs/production-deployment.md).
+      VEIL_CLIENT_IP_SOURCE: ${VEIL_CLIENT_IP_SOURCE:-socket}
       VEIL_ENABLE_SWAGGER: ${VEIL_ENABLE_SWAGGER:-true}
       VEIL_S3_ENDPOINT: http://minio:9000
       # Public endpoint is what the browser/phone hits for presigned PUTs.
@@ -129,8 +135,14 @@ services:
         condition: service_completed_successfully
 
   # Optional Cloudflare Tunnel sidecar. Start with:
+  #   VEIL_CLIENT_IP_SOURCE=cf-connecting-ip \
+  #   VEIL_API_BIND_ADDRESS=127.0.0.1 \
   #   CLOUDFLARE_TUNNEL_TOKEN=<token-from-zerotrust-dashboard> \
   #     docker compose -f docker-compose.demo.yml --profile tunnel up -d
+  # The tunnel profile MUST use cf-connecting-ip: behind cloudflared every
+  # request comes from one container address, so `socket` would put all
+  # tunnel users in a single rate-limit bucket. cloudflared reaches the API
+  # over the compose network, so the loopback-only host port does not affect it.
   # In the Cloudflare Zero Trust dashboard set the public hostname's
   # `Service` to `http://api:3000`. See docs/cloudflare-tunnel-deploy.md.
   cloudflared:

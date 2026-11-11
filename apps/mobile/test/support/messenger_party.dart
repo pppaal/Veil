@@ -38,8 +38,8 @@ class RecordingNotifications implements LocalNotificationService {
 /// One device on the fake relay: its own LibCryptoAdapter (and therefore its
 /// own identity and ratchet state), an encrypted Drift cache over an
 /// in-memory SQLite database, and a real VeilMessengerController. `restart`
-/// replaces the controller and adapter while keeping the database and the
-/// persisted ratchet snapshots, like an app relaunch.
+/// replaces the controller and adapter while keeping the database, the
+/// persisted ratchet snapshots and the device identity, like an app relaunch.
 class MessengerParty {
   MessengerParty._({
     required this.relay,
@@ -55,7 +55,13 @@ class MessengerParty {
     required String deviceId,
   }) async {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-    final identity = await LibCryptoAdapter().identity.generateDeviceIdentity(deviceId);
+    // The identity comes from the adapter this device first boots with, as
+    // on a real phone. A protocol v2 adapter answers PreKey frames only with
+    // the identity and prekeys it generated or is handed by its loader, so
+    // an identity minted by a throwaway adapter leaves the device unable to
+    // accept any session.
+    final adapter = LibCryptoAdapter();
+    final identity = await adapter.identity.generateDeviceIdentity(deviceId);
     final device = relay.addParty(RelayParty(
       handle: handle,
       userId: userId,
@@ -68,7 +74,7 @@ class MessengerParty {
       database: AppDatabase(NativeDatabase.memory()),
       attachmentDirectory: Directory.systemTemp.createTempSync('veil-party-$handle-'),
     );
-    party._boot();
+    party._boot(adapter);
     return party;
   }
 
@@ -113,7 +119,7 @@ class MessengerParty {
   Future<void> restart() async {
     await lib.flushPendingSnapshotWrites();
     controller.dispose();
-    _boot();
+    _boot(LibCryptoAdapter());
     await signIn();
   }
 
@@ -136,11 +142,12 @@ class MessengerParty {
     return decrypted.map((message) => message.body).toList();
   }
 
-  void _boot() {
-    lib = LibCryptoAdapter()
+  void _boot(LibCryptoAdapter adapter) {
+    lib = adapter
       ..setSessionPersistence(
         persister: (conversationId, snapshot) async => _ratchetSnapshots[conversationId] = snapshot,
       );
+    _provideIdentity(adapter);
     crypto = CountingCryptoAdapter(lib);
     cache = DriftConversationCacheService(
       database,
@@ -175,5 +182,19 @@ class MessengerParty {
       ),
       groupCrypto: groupCrypto,
     );
+  }
+
+  // Production hands every adapter instance the persisted identity: for
+  // protocol v2 app_state wires setLocalIdentityLoader, because the
+  // responder answers PreKey frames from the signed prekey embedded in that
+  // identity, and a relaunched adapter without it could no longer accept a
+  // new session. The v1 adapter takes the identity with each bootstrap
+  // request and has no such hook, so the call stays dynamic until v1 goes.
+  void _provideIdentity(LibCryptoAdapter adapter) {
+    try {
+      (adapter as dynamic).setLocalIdentityLoader(() async => device.identity.identityPrivateKeyRef);
+    } on NoSuchMethodError {
+      // v1: the identity travels with each bootstrap request instead.
+    }
   }
 }

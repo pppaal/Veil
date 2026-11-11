@@ -380,6 +380,24 @@ void main() {
     expect(await carol.bodies('conv-bc'), ['hi, new here', 'welcome']);
   });
 
+  test('restarted device accepts a session from a new contact', () async {
+    // The relaunched adapter must still hold the identity and prekeys bob
+    // published, or carol's first frame cannot be answered.
+    await bob.restart();
+    final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-bc', 'carol', 'bob');
+    await carol.signIn();
+
+    await deliver(carol, bob, 'hello after your relaunch', conversationId: 'conv-bc');
+    await waitFor(
+      () => bob.controller.conversations.any((item) => item.id == 'conv-bc'),
+      reason: 'the new conversation was never listed',
+    );
+    await deliver(bob, carol, 'welcome back', conversationId: 'conv-bc');
+    expect(bob.crypto.counts.bootstrap, 0);
+  });
+
   test('peer device change re-bootstraps the next send to the new device', () async {
     await deliver(alice, bob, 'before the move');
     final newPhone = await MessengerParty.join(

@@ -947,26 +947,6 @@ describe('MessagesService', () => {
         response: { code: 'conversation_membership_required' },
       });
     });
-
-    it('hides pre-join group messages from message-level actions', async () => {
-      const { service, prisma } = makeService();
-      const alice = prisma.seedUser('alice');
-      const bob = prisma.seedUser('bob');
-      const conversationId = prisma.seedConversation('group', [alice.userId]);
-      const before = await service.send(alice, buildSendDto({ conversationId, sender: alice }));
-      prisma.conversationMembers.push({
-        id: randomUUID(),
-        conversationId,
-        userId: bob.userId,
-        role: 'member',
-        joinedAt: new Date(Date.now() + 1000),
-      });
-
-      await expect(service.markRead(bob, before.message.id)).rejects.toMatchObject({
-        status: 404,
-        response: { code: 'message_not_found' },
-      });
-    });
   });
 
   describe('device activity', () => {
@@ -1028,6 +1008,15 @@ describe('MessagesService', () => {
       ciphertext,
       nonce: 'nonce-v2',
       version: 'veil-envelope-v1',
+    });
+
+    it('hides pre-join group messages from message-level actions', async () => {
+      const { service, carol, preJoin } = await lateJoinerGroup();
+
+      await expect(service.markRead(carol, preJoin.message.id)).rejects.toMatchObject({
+        status: 404,
+        response: { code: 'message_not_found' },
+      });
     });
 
     it('late group joiner receives no message.edited for a pre-join message', async () => {

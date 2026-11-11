@@ -50,6 +50,28 @@ export class JwtAuthGuard implements CanActivate {
       throw unauthorized('unauthorized', 'Missing bearer token');
     }
 
+    const { payload, device } = await this.authenticate(token);
+
+    // Runs after authentication and outside its catch: a failed bookkeeping
+    // write is a server error, not a reason to send the client back through
+    // sign-in. Checked against the loaded row first, so a device already seen
+    // today costs no write at all.
+    const now = new Date();
+    if (device.lastSeenAt.getTime() !== utcDayStart(now).getTime()) {
+      await recordDeviceSeen(this.prisma, device.id, now);
+    }
+
+    request.auth = {
+      userId: payload.sub,
+      deviceId: payload.deviceId,
+      handle: payload.handle,
+      jti: payload.jti,
+      exp: payload.exp,
+    };
+    return true;
+  }
+
+  private async authenticate(token: string) {
     try {
       const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
         secret: this.config.jwtSecret,
@@ -81,21 +103,7 @@ export class JwtAuthGuard implements CanActivate {
         throw unauthorized('device_not_active', 'Device is not active');
       }
 
-      // Checked against the loaded row first, so a device already seen today
-      // costs no write at all.
-      const now = new Date();
-      if (device.lastSeenAt.getTime() !== utcDayStart(now).getTime()) {
-        await recordDeviceSeen(this.prisma, device.id, now);
-      }
-
-      request.auth = {
-        userId: payload.sub,
-        deviceId: payload.deviceId,
-        handle: payload.handle,
-        jti: payload.jti,
-        exp: payload.exp,
-      };
-      return true;
+      return { payload, device };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;

@@ -317,6 +317,11 @@ export class RetentionFakePrismaService extends FakePrismaService {
     replace: (rows) => (this.secretBlobs = rows),
   });
 
+  oneTimePrekey = table({
+    rows: () => this.oneTimePrekeys,
+    replace: (rows) => (this.oneTimePrekeys = rows),
+  });
+
   constructor() {
     super();
 
@@ -384,18 +389,6 @@ export class RetentionFakePrismaService extends FakePrismaService {
     Object.assign(this.messageReceipt, {
       findMany: receipts.findMany,
       deleteMany: receipts.deleteMany,
-    });
-
-    const prekeys = table({
-      rows: () => this.oneTimePrekeys,
-      replace: (rows) => (this.oneTimePrekeys = rows),
-    });
-    Object.assign(this.oneTimePrekey, {
-      findMany: prekeys.findMany,
-      findFirst: prekeys.findFirst,
-      count: prekeys.count,
-      updateMany: prekeys.updateMany,
-      deleteMany: prekeys.deleteMany,
     });
 
     const reports = table<AbuseReportRecord>({

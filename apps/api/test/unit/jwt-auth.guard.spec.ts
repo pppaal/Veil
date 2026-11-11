@@ -29,6 +29,7 @@ function build(
     verify?: () => Promise<unknown>;
     blacklisted?: unknown;
     device?: unknown;
+    recordSeen?: () => Promise<{ count: number }>;
   } = {},
 ) {
   const reflector = { getAllAndOverride: () => opts.isPublic ?? false } as never;
@@ -43,7 +44,7 @@ function build(
       findUnique: async () => opts.device ?? activeDevice,
       updateMany: async (args: unknown) => {
         activityWrites.push(args);
-        return { count: 1 };
+        return opts.recordSeen ? opts.recordSeen() : { count: 1 };
       },
     },
   } as never;
@@ -123,6 +124,17 @@ describe('JwtAuthGuard', () => {
     expect(seenYesterday.activityWrites).toEqual([
       { where: { id: 'd1', lastSeenAt: { not: today } }, data: { lastSeenAt: today } },
     ]);
+  });
+
+  it('reports a failed activity write as itself, not as an auth failure', async () => {
+    const outage = new Error('database unavailable');
+    const guard = build({
+      device: { ...activeDevice, lastSeenAt: new Date(0) },
+      recordSeen: async () => {
+        throw outage;
+      },
+    });
+    await expect(guard.canActivate(authed())).rejects.toBe(outage);
   });
 
   it('maps a token-verify failure to a generic unauthorized', async () => {

@@ -380,23 +380,6 @@ export class FakePrismaService {
     delete: async (_args: any) => undefined as any,
   };
 
-  oneTimePrekey = {
-    // Only the groupBy shape getKeyBundle uses: count of unconsumed prekeys
-    // per device, restricted to a deviceId in-list.
-    groupBy: async ({ where }: any) => {
-      const counts = new Map<string, number>();
-      for (const item of this.oneTimePrekeys) {
-        if (where?.deviceId?.in && !where.deviceId.in.includes(item.deviceId)) continue;
-        if (where?.consumedAt === null && item.consumedAt !== null) continue;
-        counts.set(item.deviceId, (counts.get(item.deviceId) ?? 0) + 1);
-      }
-      return [...counts.entries()].map(([deviceId, total]) => ({
-        deviceId,
-        _count: { _all: total },
-      }));
-    },
-  };
-
   deviceTransferSession = {
     create: async (_args: any) => undefined as any,
     findMany: async (_args: any) => [] as any[],

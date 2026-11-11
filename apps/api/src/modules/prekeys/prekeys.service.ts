@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import type {
   ClaimOneTimePrekeyResponse,
   OneTimePrekeyUpload,
@@ -6,17 +7,26 @@ import type {
 } from '@veil/contracts';
 
 import { forbidden, notFound } from '../../common/errors/api-error';
+import type { AuthContext } from '../../common/guards/authenticated-request';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
+import { DIRECTORY_BUDGETS, DirectoryBudget } from './directory-budget';
 
 // How many times the atomic claim retries when it loses the race for a
 // candidate prekey to a concurrent claimer before giving up and reporting the
 // pool as depleted.
 const CLAIM_MAX_ATTEMPTS = 5;
 
+export type DirectoryRequester = Pick<AuthContext, 'userId' | 'deviceId'>;
+
+type PrekeyClaimClient = Pick<Prisma.TransactionClient, 'oneTimePrekey'>;
+
 @Injectable()
 export class PrekeysService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly budget: DirectoryBudget,
+  ) {}
 
   /**
    * Store a batch of the calling device's public one-time prekeys. Duplicate
@@ -57,41 +67,98 @@ export class PrekeysService {
   }
 
   /**
-   * Atomically claim one unused prekey for the handle's active device. The
-   * claim marks the row consumed under a guard so two concurrent claimers can
-   * never receive the same prekey. Returns prekey=null when the pool is empty,
-   * letting the initiator fall back to signed-prekey-only X3DH.
+   * Legacy single-device claim for the handle's active device. It spends the
+   * same budgets as GET /v1/keys, so neither route can drain a pool faster.
    */
-  async claim(handle: string): Promise<ClaimOneTimePrekeyResponse> {
-    const deviceId = await this.resolveActiveDeviceId(handle);
+  async claim(requester: DirectoryRequester, handle: string): Promise<ClaimOneTimePrekeyResponse> {
+    const target = await this.resolveActiveDevice(handle);
+    const claimed = await this.claimWithinBudget(requester, target.userId, [target.deviceId]);
+    return { deviceId: target.deviceId, prekey: claimed.get(target.deviceId) ?? null };
+  }
 
+  /**
+   * Claims one prekey per listed device of the target, in one transaction.
+   * Devices missing from the result got nothing: the requester looked up its
+   * own account, a budget is spent, or the pool is empty. A spent budget
+   * consumes nothing, so draining degrades sessions to signed-prekey-only
+   * X3DH instead of emptying the pool.
+   */
+  async claimWithinBudget(
+    requester: DirectoryRequester,
+    targetUserId: string,
+    deviceIds: readonly string[],
+  ): Promise<Map<string, OneTimePrekeyUpload>> {
+    if (deviceIds.length === 0 || requester.userId === targetUserId) {
+      return new Map();
+    }
+
+    const withinRequesterBudget = await this.budget.tryConsume(
+      DIRECTORY_BUDGETS.prekeyClaimsPerRequester,
+      requester.deviceId,
+      targetUserId,
+    );
+    if (!withinRequesterBudget) {
+      return new Map();
+    }
+
+    const claimable: string[] = [];
+    for (const deviceId of deviceIds) {
+      if (await this.budget.tryConsume(DIRECTORY_BUDGETS.prekeyClaimsPerTargetDevice, deviceId)) {
+        claimable.push(deviceId);
+      }
+    }
+    if (claimable.length === 0) {
+      return new Map();
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = new Map<string, OneTimePrekeyUpload>();
+      for (const deviceId of claimable) {
+        const prekey = await this.claimForDevice(tx, deviceId);
+        if (prekey) {
+          claimed.set(deviceId, prekey);
+        }
+      }
+      return claimed;
+    });
+  }
+
+  /**
+   * Atomically claim the device's lowest unused prekey. The claim marks the
+   * row consumed under a guard so two concurrent claimers can never receive
+   * the same prekey.
+   */
+  private async claimForDevice(
+    client: PrekeyClaimClient,
+    deviceId: string,
+  ): Promise<OneTimePrekeyUpload | null> {
     for (let attempt = 0; attempt < CLAIM_MAX_ATTEMPTS; attempt += 1) {
-      const candidate = await this.prisma.oneTimePrekey.findFirst({
+      const candidate = await client.oneTimePrekey.findFirst({
         where: { deviceId, consumedAt: null },
         orderBy: { keyId: 'asc' },
         select: { id: true, keyId: true, publicKey: true },
       });
 
       if (!candidate) {
-        return { deviceId, prekey: null };
+        return null;
       }
 
       // The consumedAt: null guard is the race breaker: only the first claimer
       // to commit flips it, the loser's updateMany matches zero rows and retries
       // with the next candidate.
-      const claimed = await this.prisma.oneTimePrekey.updateMany({
+      const claimed = await client.oneTimePrekey.updateMany({
         where: { id: candidate.id, consumedAt: null },
         data: { consumedAt: new Date() },
       });
 
       if (claimed.count === 1) {
-        return { deviceId, prekey: { keyId: candidate.keyId, publicKey: candidate.publicKey } };
+        return { keyId: candidate.keyId, publicKey: candidate.publicKey };
       }
     }
 
     // Contended to exhaustion — treat as depleted; the initiator degrades
     // gracefully rather than failing the session.
-    return { deviceId, prekey: null };
+    return null;
   }
 
   private async assertActiveDevice(userId: string, deviceId: string): Promise<void> {
@@ -107,7 +174,7 @@ export class PrekeysService {
     }
   }
 
-  private async resolveActiveDeviceId(handle: string): Promise<string> {
+  private async resolveActiveDevice(handle: string): Promise<{ userId: string; deviceId: string }> {
     const user = await this.prisma.user.findUnique({
       where: { handle: handle.toLowerCase() },
       select: { id: true, activeDeviceId: true },
@@ -126,6 +193,6 @@ export class PrekeysService {
     if (!resolved) {
       throw notFound('active_device_not_found', 'Active device bundle not found');
     }
-    return resolved.id;
+    return { userId: user.id, deviceId: resolved.id };
   }
 }

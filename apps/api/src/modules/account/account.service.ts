@@ -1,6 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../../common/prisma.service';
+import {
+  ATTACHMENT_STORAGE_GATEWAY,
+  type AttachmentStorageGateway,
+} from '../attachments/attachment-storage.gateway';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 // Right-to-erasure cascade for a full account wipe. Order matters — several
@@ -27,6 +31,8 @@ export class AccountService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    @Inject(ATTACHMENT_STORAGE_GATEWAY)
+    private readonly storageGateway: AttachmentStorageGateway,
   ) {}
 
   async deleteAccount(userId: string): Promise<{ deleted: true }> {
@@ -65,6 +71,10 @@ export class AccountService {
       })
     ).map((m) => m.conversationId);
     const ownedConversationIds = [...ownedGroupConvIds, ...ownedChannelConvIds];
+
+    // Blobs first: once the attachment rows are gone nothing points at the
+    // ciphertext any more, and it would stay in object storage forever.
+    await this.deleteUploadedBlobs(deviceIds);
 
     // Phase 2 (no enclosing tx): each deleteMany is its own statement.
     // Each step is *idempotent* — running them twice is a no-op — so
@@ -153,6 +163,32 @@ export class AccountService {
     });
 
     return { deleted: true };
+  }
+
+  // Best effort: a blob that fails to delete must not block the erasure of
+  // everything else, so failures are counted rather than thrown.
+  private async deleteUploadedBlobs(deviceIds: string[]): Promise<void> {
+    if (deviceIds.length === 0) {
+      return;
+    }
+    const attachments = await this.prisma.attachment.findMany({
+      where: { uploaderDeviceId: { in: deviceIds } },
+      select: { storageKey: true },
+    });
+
+    let failed = 0;
+    for (const { storageKey } of attachments) {
+      try {
+        await this.storageGateway.deleteObject(storageKey);
+      } catch {
+        failed += 1;
+      }
+    }
+    if (attachments.length > 0) {
+      this.logger.log(
+        `deleteAccount: deleted ${attachments.length - failed} of ${attachments.length} attachment blobs`,
+      );
+    }
   }
 
   private async runDelete(label: string, run: () => Promise<{ count: number }>): Promise<number> {

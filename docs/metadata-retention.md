@@ -1,53 +1,78 @@
 # Server-side metadata retention
 
 VEIL's threat model promises the server keeps as little as possible. Message
-bodies are always ciphertext, and the disappearing-message sweep hard-deletes
-expired messages. But some **operational metadata** otherwise lived on the
-server forever — which the 20-agent audit flagged as finding **#5 (metadata
-retained forever)**. This is the track that bounds it.
+bodies are always ciphertext, but delivery leaves operational metadata behind:
+who called whom, who read what when, which blobs belong together. This
+document is the per-table answer to "how long does the server keep it?".
 
-## Implemented: call-record retention
+## How retention is enforced
 
-`RetentionService` (`apps/api/src/modules/retention/`) runs a sweep every 10
-minutes that hard-deletes **terminal call records** older than a configurable
-window:
+`RetentionService` (`apps/api/src/modules/retention/`) is the **only** place
+that schedules sweeps. It runs shortly after boot and then every 10 minutes.
 
-```bash
-VEIL_CALL_RECORD_RETENTION_DAYS=30   # 0 = retain forever
-```
+- **One sweeper at a time.** Every batch runs in its own `prisma.$transaction`
+  that first calls `SELECT pg_try_advisory_xact_lock(hashtext('veil-retention'))`.
+  The lock is transaction-scoped, so it is released with the transaction and
+  works behind a connection pooler. If another API instance holds it, the tick
+  is skipped (`retention.lock_held`) and that instance does the work.
+- **Bounded batches.** A batch selects at most 1000 ids; each sweep runs at most
+  20 batches per tick. Anything left over is picked up on the next tick.
+- **Counts only.** One `retention.swept` line per tick with a count per sweep
+  and the number of attachment blobs deleted. A failed sweep logs
+  `retention.sweep_failed` with the sweep name and the error class or Prisma
+  code, never the error message (it can quote query arguments) and never ids.
+- **Blob before row.** An attachment blob is deleted from object storage
+  first; the row is removed only once the blob is gone. If the storage call
+  fails the row stays, and the orphan sweep retries it on a later tick, so
+  ciphertext is never left in storage with nothing pointing at it.
+- Every sweep is marked `// @retention-sweep <Model>` in the source.
 
-- Only **finished** calls are eligible (`ended`, `missed`, `declined`). An
-  in-flight call (`ringing`, `active`) is never deleted out from under the
-  participants.
-- The sweep logs a **count only** (`retention.call_records_pruned`) — never a
-  conversation/device/user id, so we don't log the very metadata we're deleting.
-- Best-effort: a failed sweep is swallowed and retried next interval; the timer
-  never throws.
+## Retention matrix
 
-Why call records first: they are pure server-side history (who called whom,
-when, how long) with **no delivery-correctness coupling** — safe to bound
-immediately. Clients keep their own call log locally, consistent with the
-E2E "the server is just a relay" principle.
+| Table | What it holds | Kept for | Enforced by |
+| --- | --- | --- | --- |
+| `messages` | Ciphertext envelopes and routing metadata | Until `expiresAt` (disappearing timer), and **never more than 30 days** after `serverReceivedAt` (`MESSAGE_MAX_AGE_DAYS`), delivered or not. View-once rows are deleted on first read. | `RetentionService` (`expiredMessages`, `agedMessages`); `MessagesService` (view-once) |
+| `attachments` + object storage | Encrypted blob, its size and sha256 | When a sweep deletes the last visible message that references it, blob and row go in the same batch. Orphans — pending, failed, or uploaded but referenced by no message or only by delete-for-everyone tombstones (this covers view-once consumption and delete for everyone) — are deleted 24 hours after upload. All blobs of an account are deleted on account deletion. Download tickets are issued only for a live message in a conversation the requester belongs to. | `RetentionService` (message sweeps, `orphanAttachments`); `AccountService` |
+| `message_receipts` | Per-recipient delivered/read timestamps | Read receipts: 7 days after `readAt`. Unread: 30 days after `deliveredAt`. Always deleted with their message. | `RetentionService` (`receipts`) |
+| `reactions` | Reaction per message and user | Deleted with their message (cascade), so at most 30 days. | Message sweeps |
+| `stories` | Text story and caption | 24 hours. | `RetentionService` (`expiredStories`) |
+| `story_views` | Who viewed which story | Deleted with their story. | `RetentionService` (`expiredStories`) |
+| `call_records` | Who called whom, when, how long | A call still ringing after 90 seconds becomes `missed`; a call still active after 12 hours becomes `ended`. Terminal calls are deleted after `VEIL_CALL_RECORD_RETENTION_DAYS` (default 30; 0 keeps them). | `RetentionService` (`missedCalls`, `endedCalls`, `callRecords`) |
+| `abuse_reports` | Reporter, reported user, reason | 90 days. The free-text note is accepted from clients but never stored. | `RetentionService` (`abuseReports`); `SafetyService` |
+| `one_time_prekeys` | Public X3DH one-time prekeys | Unconsumed: until claimed or the device is deleted. Consumed: `VEIL_PREKEY_CONSUMED_RETENTION_DAYS` (default 30; 0 keeps them) so a keyId is never reused mid-flight. | `RetentionService` (`consumedPrekeys`) |
+| `secret_blobs` | One-time link ciphertext | Deleted on first read; unopened links are deleted at `expiresAt`. | `SecretService`; `RetentionService` (`secretBlobs`) |
+| `device_transfer_sessions` | Transfer token hash, old device, expiry | Closed after the transfer TTL (default 300 s); rows are deleted with the account. Not swept yet. | `DeviceTransferService`; `AccountService` |
+| `devices` | Public identity, prekey and auth keys, push token, last-seen times | Until revoked or the account is deleted. Coarsening `lastSeenAt`/`lastSyncAt` is a follow-up. | `AccountService` |
+| `users`, `user_profiles`, `user_contacts`, `user_blocks`, `conversation_mutes` | Account, profile and social graph | Account lifetime. | `AccountService` |
+| `conversations`, `conversation_members`, `device_conversation_states`, `group_metas`, `channel_metas`, `group_member_epochs` | Membership and sync cursors | Conversation or account lifetime. | `AccountService`, conversation deletion |
+| `recovery_blobs` | Legacy recovery backup | Scheduled for removal: the recovery module is deleted in this wave and the table is dropped in the next. | — |
 
-Covered by `apps/api/test/unit/retention.service.spec.ts`: terminal-only
-filter, cutoff math, disabled at 0, count-only logging, failure swallowed.
+### Short-lived keys in the ephemeral store (Redis)
 
-## Follow-ups (deliberately not in this slice)
+| Key | Kept for | Notes |
+| --- | --- | --- |
+| `budget:*` | 1 hour | Key-directory budgets. The key holds only a SHA-256 digest of who looked up whom. |
+| `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session; see `device-transfer-flow.md`. |
 
-Each touches delivery or UX and deserves its own careful change:
+## Directory privacy
 
-- **Absolute message-age cap** — hard-delete delivered messages past a maximum
-  age regardless of disappearing timer. Needs a delivery-window policy so a
-  device offline longer than the cap doesn't silently lose messages.
-- **Read-receipt pruning** — receipts are metadata, but dropping them changes
-  read-state UX; bound them once the product decision is made. (Receipts
-  already cascade-delete with their message.)
-- **Attachment metadata** (`sha256`/size/MIME) and **contact-graph** minimization
-  — larger redesigns tracked against audit #5.
+The key directory follows the same minimisation:
+
+- `GET /v1/keys/:handle` needs a signed-in device. One-time prekeys are claimed
+  atomically in one transaction, at most 20 per hour per (requester device,
+  target user) and 50 per hour per target device. Over budget, the lookup
+  still succeeds but returns no one-time prekey and consumes nothing.
+- The deprecated public `GET /v1/users/:handle/key-bundle` returns no display
+  name, avatar, device platform or update time, answers with
+  `Deprecation: true` and a `Link` to its successor, and allows 20 lookups per
+  hour per (client, handle).
+- `GET /v1/users/:handle` needs a signed-in device and returns only id, handle
+  and status. `GET /v1/profile/:handle` and stories need a real relationship
+  (mutual contacts, or a shared direct or group conversation for profiles) and
+  no block in either direction; strangers get the same 404 as a missing handle.
 
 ## Relationship to other tracks
 
-This is the present-day complement to the **sealed sender** spec (PR #8): sealed
-sender stops the server from learning the *sender* of a message; retention stops
-it from *keeping* the metadata it does see. Together they move VEIL toward the
-SimpleX metadata bar.
+This is the present-day complement to the **sealed sender** spec: sealed
+sender stops the server from learning the *sender* of a message; retention
+stops it from *keeping* the metadata it does see.

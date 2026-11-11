@@ -255,6 +255,12 @@ just `{"attachmentId"}` for blob lifecycle (contract C3); extra outer fields are
 accepted and discarded, and receivers never fall back to the outer pointer.
 Receivers compare the digest in constant time before decrypting, then unpad.
 
+Because the AAD binds `attachmentId`, the id must exist before the blob does:
+the sender proposes a random UUID v4 as `attachmentId` in its upload-ticket
+request, and asks again with the same id, digest and size when an upload has
+to be retried. A relay that cannot grant the id answers 409
+`attachment_id_conflict`, and that blob cannot be sent.
+
 Interop limitation: on a legacy (v1) session the same raw-key pointer travels
 inside the v1 payload. Confidentiality is unchanged (it is still inside the
 ratchet), but apps older than v2 cannot open such attachments.

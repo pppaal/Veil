@@ -35,6 +35,7 @@ export type VeilErrorCode =
   | 'attachment_not_found'
   | 'attachment_forbidden'
   | 'attachment_upload_invalid'
+  | 'attachment_id_conflict'
   | 'transfer_session_not_found'
   | 'transfer_session_inactive'
   | 'transfer_token_invalid'
@@ -98,6 +99,7 @@ export const ERROR_CATALOG: Readonly<Record<VeilErrorCode, number>> = Object.fre
   attachment_not_found: 404,
   attachment_forbidden: 403,
   attachment_upload_invalid: 400,
+  attachment_id_conflict: 409,
   transfer_session_not_found: 404,
   transfer_session_inactive: 403,
   transfer_token_invalid: 401,
@@ -476,6 +478,10 @@ export interface DeleteLocalMessageResponse {
 }
 
 export interface CreateUploadTicketRequest {
+  // Client-proposed UUID v4. Protocol v2 binds the attachment id into the
+  // blob's AAD, so the client must know it before sealing. Omitted, the
+  // relay assigns one.
+  attachmentId?: string;
   contentType: string;
   sizeBytes: number;
   sha256: string;

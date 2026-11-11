@@ -28,6 +28,13 @@ void main() {
       shouldRetryAutomatically(VeilApiException('revoked', statusCode: 403, code: 'device_not_active'), 1),
       isFalse,
     );
+    expect(
+      shouldRetryAutomatically(
+        VeilApiException('taken', statusCode: 409, code: 'attachment_id_conflict'),
+        1,
+      ),
+      isFalse,
+    );
   });
 
   test('gives up after the attempt budget and backs off up to 30 seconds', () {

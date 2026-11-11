@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, type Attachment } from '@prisma/client';
 import type {
   AttachmentDownloadTicketResponse,
   CompleteAttachmentUploadResponse,
@@ -8,7 +8,7 @@ import type {
 import { randomUUID } from 'node:crypto';
 
 import { PrismaService } from '../../common/prisma.service';
-import { badRequest, forbidden, notFound } from '../../common/errors/api-error';
+import { apiError, badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 import { MetricsService } from '../metrics/metrics.service';
 import {
@@ -20,6 +20,13 @@ import { CompleteAttachmentUploadDto, CreateUploadTicketDto } from './dto/attach
 // Every blob is ciphertext, so storage only ever sees this type; the real MIME
 // type travels inside the end-to-end encrypted attachment pointer.
 const STORED_ATTACHMENT_CONTENT_TYPE = 'application/octet-stream';
+
+// Opaque on purpose: no device id, so the object store cannot group blobs by
+// uploader.
+const newStorageKey = (): string => `attachments/${randomUUID()}/${randomUUID()}`;
+
+const attachmentIdConflict = () =>
+  apiError('attachment_id_conflict', 'The proposed attachment id is not available');
 
 @Injectable()
 export class AttachmentsService {
@@ -38,18 +45,9 @@ export class AttachmentsService {
     await this.cleanupExpiredPendingUploads(deviceId);
     this.assertUploadPolicy(dto);
 
-    const attachment = await this.prisma.attachment.create({
-      data: {
-        uploaderDeviceId: deviceId,
-        // Opaque on purpose: no device id, so the object store cannot group
-        // blobs by uploader.
-        storageKey: `attachments/${randomUUID()}/${randomUUID()}`,
-        contentType: STORED_ATTACHMENT_CONTENT_TYPE,
-        sizeBytes: dto.sizeBytes,
-        sha256: dto.sha256,
-        uploadStatus: 'pending',
-      },
-    });
+    const attachment = dto.attachmentId
+      ? await this.ticketProposedAttachment(deviceId, dto.attachmentId, dto)
+      : await this.prisma.attachment.create({ data: this.pendingAttachmentData(deviceId, dto) });
 
     const upload = await this.storageGateway.createUploadTarget(attachment.storageKey, {
       attachmentId: attachment.id,
@@ -221,6 +219,73 @@ export class AttachmentsService {
         downloadUrl: download.url,
         expiresAt: download.expiresAt,
       },
+    };
+  }
+
+  // Protocol v2 binds the attachment id into the sealed blob's AAD, so the
+  // client proposes the id before it asks for a ticket. The uploading
+  // device's own unfinished row with the same ciphertext is re-issued: its
+  // ticket expired or the upload failed, and with the plaintext gone the
+  // same blob has to go up again under the same id.
+  private async ticketProposedAttachment(
+    deviceId: string,
+    attachmentId: string,
+    dto: CreateUploadTicketDto,
+  ): Promise<Attachment> {
+    const existing = await this.prisma.attachment.findUnique({ where: { id: attachmentId } });
+    if (!existing) {
+      try {
+        return await this.prisma.attachment.create({
+          data: { id: attachmentId, ...this.pendingAttachmentData(deviceId, dto) },
+        });
+      } catch (error) {
+        if ((error as { code?: unknown } | null)?.code === 'P2002') {
+          throw attachmentIdConflict();
+        }
+        throw error;
+      }
+    }
+
+    const reissuable =
+      existing.uploaderDeviceId === deviceId &&
+      (existing.uploadStatus === 'pending' || existing.uploadStatus === 'failed') &&
+      existing.sha256.toLowerCase() === dto.sha256.toLowerCase() &&
+      existing.sizeBytes === dto.sizeBytes;
+    if (!reissuable) {
+      // One answer for every reason, so the caller learns nothing about who
+      // holds the id or what state its blob is in.
+      throw attachmentIdConflict();
+    }
+
+    const reissued = await this.prisma.attachment.update({
+      where: { id: attachmentId },
+      data: {
+        storageKey: newStorageKey(),
+        uploadStatus: 'pending',
+        // The expired-pending sweep keys on createdAt; left alone, a row
+        // first ticketed long ago would be swept on the next request.
+        createdAt: new Date(),
+      },
+    });
+    try {
+      await this.storageGateway.deleteObject(existing.storageKey);
+    } catch {
+      // Best effort: nothing addresses the old key any more.
+    }
+    return reissued;
+  }
+
+  private pendingAttachmentData(
+    deviceId: string,
+    dto: CreateUploadTicketDto,
+  ): Prisma.AttachmentUncheckedCreateInput {
+    return {
+      uploaderDeviceId: deviceId,
+      storageKey: newStorageKey(),
+      contentType: STORED_ATTACHMENT_CONTENT_TYPE,
+      sizeBytes: dto.sizeBytes,
+      sha256: dto.sha256,
+      uploadStatus: 'pending',
     };
   }
 

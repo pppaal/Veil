@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
@@ -425,22 +426,32 @@ void main() {
     expect(session.remoteIdentityPublicKey, newPhone.device.identity.identityPublicKey);
   });
 
+  // Opens alice's latest message on bob's side, then the blob the relay
+  // stored under the attachment id it names.
+  Future<(AttachmentReference, List<int>)> openLatestAttachment() async {
+    final received = await bob.controller.decryptMessage(bob.controller.messagesFor(conv).last);
+    expect(received.messageKind, MessageKind.file);
+    final reference = received.attachment!;
+    final plaintext = await bob.crypto.messaging.decryptAttachment(
+      reference: reference,
+      ciphertext: relay.uploadedBlobs[reference.attachmentId]!,
+      localIdentityPrivateRef: bob.device.identity.identityPrivateKeyRef,
+    );
+    return (reference, plaintext);
+  }
+
   test('attachment upload carries ciphertext the peer can decrypt', () async {
     await deliver(alice, bob, 'file incoming');
 
     await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
     await waitFor(() => bob.controller.messagesFor(conv).length == 2);
-    final received = await bob.controller.decryptMessage(bob.controller.messagesFor(conv).last);
+    final (reference, plaintext) = await openLatestAttachment();
 
-    expect(received.messageKind, MessageKind.file);
-    final reference = received.attachment!;
+    // The blob was sealed under the id alice proposed, and that is the id
+    // the relay ticketed.
+    expect(relay.uploadTickets, [reference.attachmentId]);
     final uploaded = relay.uploadedBlobs[reference.attachmentId]!;
-    final plaintext = await bob.crypto.messaging.decryptAttachment(
-      reference: reference,
-      ciphertext: uploaded,
-      localIdentityPrivateRef: bob.device.identity.identityPrivateKeyRef,
-    );
     expect(plaintext, hasLength(2048));
     // What went up is sealed: longer than the file by at least the AEAD tag,
     // and not the file itself. Sizes are compared this loosely because the
@@ -449,5 +460,47 @@ void main() {
     expect(uploaded.sublist(0, plaintext.length), isNot(equals(plaintext)));
     final sent = await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
     expect(sent.attachment!.attachmentId, reference.attachmentId);
+  });
+
+  test('attachment after a restart over an established session skips the key directory', () async {
+    await deliver(alice, bob, 'session up');
+    await alice.restart();
+    await settle();
+    final fetches = Map<String, int>.of(alice.api.keyBundleFetches);
+
+    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
+    await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+
+    final (_, plaintext) = await openLatestAttachment();
+    expect(plaintext, hasLength(2048));
+    // A lookup would tell the relay whom alice is about to message.
+    expect(alice.api.keyBundleFetches, fetches);
+  });
+
+  test('re-ticketing after the upload ticket expired reuses the sealed attachment id', () async {
+    await deliver(alice, bob, 'file incoming');
+    await settle();
+    // The first attempt uploads but is not acknowledged, so the draft keeps
+    // a ticket that has expired by the time the send is retried.
+    relay.uploadTicketLifetime = Duration.zero;
+    relay.failUploadCompletions = 1;
+
+    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    final clientMessageId = alice.controller.messagesFor(conv).last.clientMessageId!;
+    await waitFor(
+      () => alice.controller.attachmentTransferForMessage(clientMessageId)?.phase ==
+          AttachmentTransferPhase.failed,
+      reason: 'first upload attempt did not fail',
+    );
+    relay.uploadTicketLifetime = const Duration(minutes: 10);
+    await alice.controller.retryPendingMessages(conv);
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
+    await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+
+    final (reference, plaintext) = await openLatestAttachment();
+    expect(relay.uploadTickets, [reference.attachmentId, reference.attachmentId]);
+    expect(relay.attachments[reference.attachmentId]!.uploadStatus, 'uploaded');
+    expect(plaintext, hasLength(2048));
   });
 }

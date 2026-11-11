@@ -51,6 +51,22 @@ class RelayConversation {
   final List<Map<String, dynamic>> messages = [];
 }
 
+/// An attachment row, with the fields the API's ticket rules look at.
+class RelayAttachment {
+  RelayAttachment({
+    required this.uploaderDeviceId,
+    required this.sha256,
+    required this.sizeBytes,
+  });
+
+  final String uploaderDeviceId;
+  final String sha256;
+  final int sizeBytes;
+  String uploadStatus = 'pending';
+}
+
+final _uuidV4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+
 class FakeRelay {
   final Map<String, RelayParty> partiesByHandle = {};
   final Map<String, RelayConversation> conversations = {};
@@ -66,11 +82,20 @@ class FakeRelay {
   /// Uploaded attachment blobs, by attachment id.
   final Map<String, List<int>> uploadedBlobs = {};
 
+  /// Attachment rows by id, and the id of every upload ticket issued.
+  final Map<String, RelayAttachment> attachments = {};
+  final List<String> uploadTickets = [];
+
+  Duration uploadTicketLifetime = const Duration(minutes: 10);
+
+  /// Upload completions to answer with a transient failure, which leaves the
+  /// sender's draft holding its ticket.
+  int failUploadCompletions = 0;
+
   /// Simulates a server that drops the outer expiresAt on relay.
   bool stripOuterExpiresAt = false;
 
   int _messageCounter = 0;
-  int _attachmentCounter = 0;
   final DateTime _clockBase = DateTime.utc(2026, 4, 1, 9);
 
   /// Registers [party] as the active device of its handle. A handle that
@@ -301,19 +326,40 @@ class FakeRelayClient extends VeilApiClient {
     return {'messageId': messageId};
   }
 
+  // AttachmentsService.createUploadTicket for a proposed id, which the app
+  // always sends: a new id is taken as is; the uploader's own row that is
+  // not uploaded yet is re-issued for the same ciphertext; anything else is
+  // a conflict.
   @override
   Future<Map<String, dynamic>> createUploadTicket(
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    final attachmentId = 'attachment-${++relay._attachmentCounter}';
+    final attachmentId = body['attachmentId'];
+    if (attachmentId is! String || !_uuidV4.hasMatch(attachmentId)) {
+      throw VeilApiException('attachmentId must be a UUID v4', statusCode: 400, code: 'validation_failed');
+    }
+    final existing = relay.attachments[attachmentId];
+    if (existing != null &&
+        (existing.uploaderDeviceId != me.deviceId ||
+            existing.uploadStatus == 'uploaded' ||
+            existing.sha256.toLowerCase() != (body['sha256'] as String).toLowerCase() ||
+            existing.sizeBytes != body['sizeBytes'])) {
+      throw VeilApiException('taken', statusCode: 409, code: 'attachment_id_conflict');
+    }
+    relay.attachments[attachmentId] = RelayAttachment(
+      uploaderDeviceId: me.deviceId,
+      sha256: body['sha256'] as String,
+      sizeBytes: body['sizeBytes'] as int,
+    );
+    relay.uploadTickets.add(attachmentId);
     return {
       'attachmentId': attachmentId,
       'upload': {
         'storageKey': 'attachments/$attachmentId/blob',
         'uploadUrl': 'https://upload.invalid/$attachmentId',
         'headers': {'x-amz-meta-sha256': body['sha256']},
-        'expiresAt': DateTime.now().add(const Duration(minutes: 10)).toUtc().toIso8601String(),
+        'expiresAt': DateTime.now().add(relay.uploadTicketLifetime).toUtc().toIso8601String(),
       },
     };
   }
@@ -336,7 +382,17 @@ class FakeRelayClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    return {'attachmentId': body['attachmentId'], 'uploadStatus': body['uploadStatus']};
+    final attachmentId = body['attachmentId'] as String;
+    final status = body['uploadStatus'] as String;
+    if (status == 'uploaded' && relay.failUploadCompletions > 0) {
+      relay.failUploadCompletions -= 1;
+      throw VeilApiException('relay unavailable', statusCode: 503);
+    }
+    relay.attachments[attachmentId]!.uploadStatus = status;
+    if (status == 'failed') {
+      relay.uploadedBlobs.remove(attachmentId);
+    }
+    return {'attachmentId': attachmentId, 'uploadStatus': status};
   }
 
   @override

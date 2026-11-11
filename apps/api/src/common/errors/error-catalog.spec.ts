@@ -40,6 +40,7 @@ describe('ERROR_CATALOG', () => {
     ['sender_keys_irreversible', 400],
     ['call_not_allowed', 403],
     ['group_epoch_stale', 409],
+    ['attachment_id_conflict', 409],
   ] as const)('maps %s to %i', (code, status) => {
     expect(ERROR_CATALOG[code]).toBe(status);
   });

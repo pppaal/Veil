@@ -57,14 +57,15 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
   async function bootstrap(conversationId, peer) {
     const entry = await lookupPeer(peer);
-    if (!(await trust.admit(peer.userId, entry.deviceId, entry.identityKey))) throw new PeerKeyChangedError(peer.userId);
+    let started;
     try {
-      await cipher.bootstrap({
+      started = await cipher.bootstrap({
         conversationId,
         remoteDeviceId: entry.deviceId,
         remoteIdentityKey: entry.identityKey,
         signedPrekeyBundle: entry.signedPrekeyBundle,
         oneTimePrekey: entry.oneTimePrekey,
+        admit: () => trust.admit(peer.userId, entry.deviceId, entry.identityKey),
       });
     } catch (error) {
       if (error instanceof BundleError) {
@@ -72,6 +73,7 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
       }
       throw error;
     }
+    if (!started) throw new PeerKeyChangedError(peer.userId);
   }
 
   // Resolves to the peer once a session exists. Concurrent sends share one

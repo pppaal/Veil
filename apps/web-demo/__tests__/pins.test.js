@@ -144,6 +144,22 @@ describe('identity pins', () => {
     expect(alice.lookups).toBe(0);
   });
 
+  it('pins nothing for a key whose bundle does not verify', async () => {
+    const { alice, directory } = await conversation();
+    // A peer whose client predates protocol v2 publishes its X25519 key and
+    // no v2 bundle.
+    directory.set('bob', async () => ({
+      deviceId: 'd-bob',
+      identityKey: key(7),
+      signedPrekeyBundle: 'web-demo-no-prekey',
+      oneTimePrekey: null,
+    }));
+    await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: 'c1' }))
+      .rejects.toMatchObject({ name: 'PeerUnavailableError', reason: 'not-upgraded' });
+    expect(await createPinStore(alice.pinKv).pinsFor('u-bob')).toEqual([]);
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+  });
+
   it('retries an unreachable directory but not a resolved key', async () => {
     const { alice, bob, directory } = await conversation();
     let offline = true;

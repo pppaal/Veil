@@ -271,10 +271,21 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
 
     // Starts a session from a directory entry. The bundle is authenticated
     // against remoteIdentityKey here (BundleError when it does not verify),
-    // so no caller can start a session on an unverified one. The new state
-    // becomes current; an older one is archived, not destroyed.
-    async bootstrap({ conversationId, remoteDeviceId, remoteIdentityKey, signedPrekeyBundle, oneTimePrekey = null }) {
+    // so no caller can start a session on an unverified one; admit() then
+    // decides about the identity key itself (the trust store pins it), so
+    // only a key that certifies a valid bundle is ever pinned. Resolves to
+    // false, starting nothing, when admit() refuses. The new state becomes
+    // current; an older one is archived, not destroyed.
+    async bootstrap({
+      conversationId,
+      remoteDeviceId,
+      remoteIdentityKey,
+      signedPrekeyBundle,
+      oneTimePrekey = null,
+      admit = async () => true,
+    }) {
       const bundle = await verifyBundle(subtle, signedPrekeyBundle, remoteIdentityKey, { nowMs: clock() });
+      if (!(await admit())) return false;
       return withRecord(conversationId, async ({ record, commit }) => {
         const nowMs = clock();
         const state = await initiate({ remoteDeviceId, remoteIdentityKey, bundle, oneTimePrekey, nowMs });
@@ -284,6 +295,7 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
           state.destroy();
           throw error;
         }
+        return true;
       });
     },
 

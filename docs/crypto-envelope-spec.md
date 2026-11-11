@@ -64,7 +64,7 @@ correct and this document is stale — file a correction.
 | Skipped-key lifetime                  | 7 days                                  |
 | Max SPK age / future skew at initiate | 60 days / 1 day                         |
 | Superseded SPK grace                  | 14 days after its successor was created |
-| Archived states per conversation      | 5, at most 30 days old                  |
+| Archived states per conversation      | 5, each kept 30 days after its last use |
 
 ### Identity keys and the bundle (contract C1)
 
@@ -129,7 +129,7 @@ The responder B processes a PreKey frame whose `EK` matches no stored state:
    refusal yields `identityRejected`, stores nothing and consumes no OPK.
 7. Install the state (see "Session records and glare"), persist it, and only
    then delete the OPK private key. A failed delete does not undo the
-   session; the OPK is still treated as spent.
+   session; the OPK is still treated as spent until the app restarts.
 
 A forged initiator holding only public bundles cannot compute DH1 and its frame
 fails authentication. Both sides record `remoteIdentityFingerprint =
@@ -187,7 +187,11 @@ calls; this is the protocol's CPU amplification ceiling.
 A manual rekey (forcing a send step without a receive) is refused while the
 state still awaits the peer's first reply: until then the peer can only reach
 later chains through the ratchet key in the handshake frames, so a second step
-would strand every later frame if those were lost.
+would strand every later frame if those were lost. Known limitation: a forced
+step is only sound when the peer has not sent since our last send. If a reply
+is still in flight, the forced step builds on a root key the peer has already
+ratcheted past and the session desynchronises until it is re-bootstrapped.
+The manual rekey must be redesigned or removed before it is exposed further.
 
 ### Frame
 
@@ -258,29 +262,60 @@ ratchet), but apps older than v2 cannot open such attachments.
 ### Session records and glare
 
 A conversation holds a record: the current (sending) state plus up to 5
-archived states no older than 30 days. A local bootstrap archives the current
-state, never destroys it. A PreKey frame whose `EK` matches a stored state is
-received on that state; one with a new `EK` creates a state that becomes
-current, except in glare: when the current state was initiated locally, has not
-yet received anything, and the local `IKed` is bytewise lexicographically lower
-than the initiator's, the local state stays current and the new one is
-archived. Both peers thus keep the state initiated by the lower identity key;
-the other remains decryptable. Normal frames are tried on the current state,
-then the archived ones, each on a copy; the first that authenticates is
-committed. Every operation on a conversation is serialized.
+archived states, most recently used first. Archiving a state or committing a
+message on it counts as use, and an archived state is dropped 30 days after its
+last use, so a state the peer still sends on is never pruned. A local
+bootstrap archives the current state, never destroys it. Every operation on a
+conversation is serialized.
+
+Two terms decide which state sends:
+
+- A state's handshake is **pending** while it is our initiation and no frame
+  from the peer has decrypted on it yet, or it is the peer's initiation and we
+  have not sent on it yet.
+- A state's **initiator key** is the `IKed` of the party whose handshake
+  created it.
+
+Installing. A PreKey frame whose `EK` matches a stored state is received on
+that state. One with a new `EK` creates a state that becomes current, except in
+glare: when the current state is our own pending initiation and our `IKed` is
+bytewise lexicographically lower than the new state's initiator key, the
+current state stays and the new one is archived.
+
+Receiving. A Normal frame is tried on the current state, then on the archived
+ones, each on a copy; the first that authenticates is committed. When the state
+that receives a frame (a Normal frame, or a PreKey frame whose `EK` it owns) is
+archived, it also becomes current, because the peer sends on the state it last
+chose (libsignal's `promoteState`). There are two exceptions:
+
+1. Either state is a legacy state, or the two are bound to different remote
+   `IKed`. A legacy state would downgrade the conversation, and a state bound to
+   an identity the conversation has moved away from must not regain the
+   sending role.
+2. The current state's handshake is pending and the archived state's initiator
+   key is not lower than the current one's (the same initiator included). The
+   frame was then sent before the peer saw the pending handshake, or the peer
+   is holding on to a handshake that wins the same comparison.
+
+Both peers rank any two handshakes the same way, so the outcome does not depend
+on arrival order. Once messages alternate (each side sends only after it has
+received), both sides send on one state within two round trips, stop repeating
+`preKeyHeader`, and step the DH ratchet on every turn. Crossing messages may
+swap both sides at once, but every frame still decrypts and each state keeps
+stepping its own ratchet.
 
 Identity binding: when an identity verifier is configured (the trust store), it
 decides whether an authenticated PreKey frame may install its state, including
 an identity change in an established conversation, so it MUST pin identities
 itself. Without one, the conversation is bound to the remote `IKed` of its most
-recent v2 state (the current state if it is v2, otherwise the newest archived
-v2 state): a PreKey frame from any other identity yields `identityRejected`,
-stores nothing and consumes no OPK. Without this rule, any genuine identity a
-hostile server routes into an established conversation would become the
-sending state and read the replies. Only a local bootstrap changes the binding.
-Re-initiation by the same identity and glare are unaffected, and legacy states
-never authenticated their peer, so a record without v2 states binds nothing and
-a v2 handshake can upgrade it.
+recent v2 state (the current state if it is v2, otherwise the most recently
+used archived v2 state): a PreKey frame from any other identity yields
+`identityRejected`, stores nothing and consumes no OPK. Without this rule, any
+genuine identity a hostile server routes into an established conversation
+would become the sending state and read the replies. Only a local bootstrap
+changes the binding. Re-initiation by the same identity and glare are
+unaffected, and legacy states never authenticated their peer, so a record
+without v2 states binds nothing and a v2 handshake can upgrade it.
 
 ### Decrypt results
 
@@ -299,7 +334,7 @@ callers must not render as peer text; they branch on the status.
 
 ### Local persistence (informative)
 
-Snapshot schema 4 is `{"v":4,"rev":<int>,"current":<state>,"archived":[{"archivedAt","state"}]}`.
+Snapshot schema 4 is `{"v":4,"rev":<int>,"current":<state>,"archived":[{"lastUsedAt","state"}]}`.
 `rev` only grows (at least previous + 1 and above any rev read back from
 storage for that conversation, even from a snapshot that no longer parses;
 seeded from the clock in microseconds), every commit is persisted before the

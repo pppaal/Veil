@@ -34,7 +34,13 @@ Future<InitialSendingChain> deriveInitialSendingChain(
   RandomSource random,
 ) async {
   final pair = await generateX25519KeyPair(random);
-  final dh = await x25519SharedSecret(pair.privateKey, remoteSignedPrekey);
+  final Uint8List dh;
+  try {
+    dh = await x25519SharedSecret(pair.privateKey, remoteSignedPrekey);
+  } catch (_) {
+    zeroize(pair.privateKey);
+    rethrow;
+  }
   final (rootKey, chainKey) = await kdfRootKey(sharedKey, dh);
   zeroize(dh);
   return InitialSendingChain(pair, rootKey, chainKey);

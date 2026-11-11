@@ -11,13 +11,16 @@ import 'ratchet_state.dart';
 
 const int sessionSnapshotSchemaVersion = 4;
 const int maxArchivedStates = 5;
+// Counted from an archived state's last use, so a state the peer still sends
+// on is never dropped while it is in use.
 const Duration archivedStateRetention = Duration(days: 30);
 
 class ArchivedState {
-  ArchivedState(this.state, this.archivedAt);
+  ArchivedState(this.state, this.lastUsedAt);
 
   final RatchetState state;
-  final DateTime archivedAt;
+  // When the state was archived or last committed, whichever is later.
+  final DateTime lastUsedAt;
 }
 
 /// A record to commit plus the states it displaced. The displaced states
@@ -35,6 +38,7 @@ class SessionRecord {
 
   final int rev;
   final RatchetState current;
+  // Most recently used first, so the count cap drops the stalest state.
   final List<ArchivedState> archived;
 
   Iterable<RatchetState> get states sync* {
@@ -51,10 +55,19 @@ class SessionRecord {
     if (identical(live, current)) {
       return _pruned(replacement, archived, [live], now);
     }
-    final next = [
-      for (final entry in archived) identical(entry.state, live) ? ArchivedState(replacement, entry.archivedAt) : entry,
-    ];
-    return _pruned(current, next, [live], now);
+    return _pruned(current, [ArchivedState(replacement, now), ..._archivedExcept(live)], [live], now);
+  }
+
+  /// Commits [replacement], the copy of [live] that just authenticated a
+  /// received message. A peer sends on the state it last chose, so an
+  /// archived state that receives becomes the sending state as well
+  /// (Signal's promoteState): each side ends up sending on the state its
+  /// peer last used, which converges whatever order frames arrive in.
+  RecordUpdate receiving(RatchetState live, RatchetState replacement, {required DateTime now}) {
+    if (identical(live, current) || !_mayDisplaceCurrent(replacement)) {
+      return replacing(live, replacement, now: now);
+    }
+    return _pruned(replacement, [ArchivedState(current, now), ..._archivedExcept(live)], [live], now);
   }
 
   /// [state] becomes the sending state; the old one is archived, never
@@ -65,22 +78,47 @@ class SessionRecord {
   RecordUpdate archiving(RatchetState state, {required DateTime now}) =>
       _pruned(current, [ArchivedState(state, now), ...archived], const [], now);
 
-  /// Installs a state a peer just opened with a PreKey frame. In glare (we
-  /// initiated too and have not heard back), both peers keep the state whose
-  /// initiator has the lexicographically lower identity key, so they
-  /// converge on one sending state; the other remains decryptable.
+  /// Installs a state a peer just opened with a PreKey frame. It is the
+  /// peer's newest handshake, so it becomes the sending state unless it
+  /// competes with our own unanswered initiation and loses the glare
+  /// tie-break.
   static RecordUpdate installingInbound(SessionRecord? record, RatchetState incoming, {required DateTime now}) {
     if (record == null) return RecordUpdate(SessionRecord(rev: 0, current: incoming));
     final current = record.current;
-    final ownKey = current.localIdentityKey;
-    final peerKey = incoming.remoteIdentityKey;
-    final ourPendingInitiationWins = current.initiatedLocally &&
-        current.awaitingFirstReply &&
-        ownKey != null &&
-        peerKey != null &&
-        compareBytes(ownKey, peerKey) < 0;
-    return ourPendingInitiationWins ? record.archiving(incoming, now: now) : record.promoting(incoming, now: now);
+    return current.initiatedLocally && _handshakeHolds(current, incoming)
+        ? record.archiving(incoming, now: now)
+        : record.promoting(incoming, now: now);
   }
+
+  // Never across protocols or identities: a legacy state would downgrade the
+  // conversation, and a state bound to another identity must not win the
+  // sending role back just because it still receives.
+  bool _mayDisplaceCurrent(RatchetState candidate) {
+    final currentPeer = current.remoteIdentityKey;
+    final candidatePeer = candidate.remoteIdentityKey;
+    return current.protocol == protocolV2 &&
+        candidate.protocol == protocolV2 &&
+        currentPeer != null &&
+        candidatePeer != null &&
+        compareBytes(currentPeer, candidatePeer) == 0 &&
+        !_handshakeHolds(current, candidate);
+  }
+
+  /// Glare tie-break. While [current]'s handshake is pending (our initiation
+  /// the peer has not answered, or the peer's that we have not answered),
+  /// the peer may not have seen it yet, so its traffic on [competitor] does
+  /// not show which state it settled on. [current] therefore holds unless
+  /// [competitor] was initiated by the party with the bytewise lower
+  /// identity key: the comparison the peer applies to the same two
+  /// handshakes, so both settle on one.
+  static bool _handshakeHolds(RatchetState current, RatchetState competitor) {
+    if (!current.handshakePending) return false;
+    final held = current.initiatorIdentityKey;
+    final challenger = competitor.initiatorIdentityKey;
+    return held != null && challenger != null && compareBytes(challenger, held) >= 0;
+  }
+
+  Iterable<ArchivedState> _archivedExcept(RatchetState state) => archived.where((e) => !identical(e.state, state));
 
   RecordUpdate _pruned(
     RatchetState nextCurrent,
@@ -92,7 +130,7 @@ class SessionRecord {
     final kept = <ArchivedState>[];
     final dropped = <RatchetState>[...superseded];
     for (final entry in nextArchived) {
-      if (kept.length < maxArchivedStates && !entry.archivedAt.isBefore(cutoff)) {
+      if (kept.length < maxArchivedStates && !entry.lastUsedAt.isBefore(cutoff)) {
         kept.add(entry);
       } else {
         dropped.add(entry.state);
@@ -107,7 +145,7 @@ class SessionRecord {
         'current': current.toJson(),
         'archived': [
           for (final entry in archived)
-            {'archivedAt': entry.archivedAt.toUtc().toIso8601String(), 'state': entry.state.toJson()},
+            {'lastUsedAt': entry.lastUsedAt.toUtc().toIso8601String(), 'state': entry.state.toJson()},
         ],
       };
 
@@ -128,7 +166,7 @@ class SessionRecord {
           for (final raw in json['archived'] as List<dynamic>? ?? const [])
             ArchivedState(
               RatchetState.fromJson((raw as Map<String, dynamic>)['state'] as Map<String, dynamic>, now: now),
-              DateTime.parse(raw['archivedAt'] as String).toUtc(),
+              DateTime.parse(raw['lastUsedAt'] as String).toUtc(),
             ),
         ],
       );

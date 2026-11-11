@@ -83,12 +83,12 @@ Future<HandshakeKeys> deriveInitiatorKeys({
   required List<int> remoteSignedPrekey,
   List<int>? remoteOneTimePrekey,
 }) async {
-  final dhs = [
-    await x25519SharedSecret(identityX25519Private, remoteSignedPrekey),
-    await x25519SharedSecret(ephemeralPrivate, remoteIdentityX25519),
-    await x25519SharedSecret(ephemeralPrivate, remoteSignedPrekey),
-    if (remoteOneTimePrekey != null) await x25519SharedSecret(ephemeralPrivate, remoteOneTimePrekey),
-  ];
+  final dhs = await _agreeAll([
+    (identityX25519Private, remoteSignedPrekey),
+    (ephemeralPrivate, remoteIdentityX25519),
+    (ephemeralPrivate, remoteSignedPrekey),
+    if (remoteOneTimePrekey != null) (ephemeralPrivate, remoteOneTimePrekey),
+  ]);
   return _finish(
     dhs,
     initiatorEd25519: identityEd25519,
@@ -106,12 +106,12 @@ Future<HandshakeKeys> deriveResponderKeys({
   required List<int> signedPrekeyPrivate,
   List<int>? oneTimePrekeyPrivate,
 }) async {
-  final dhs = [
-    await x25519SharedSecret(signedPrekeyPrivate, header.identityX25519),
-    await x25519SharedSecret(identityX25519Private, header.baseKey),
-    await x25519SharedSecret(signedPrekeyPrivate, header.baseKey),
-    if (oneTimePrekeyPrivate != null) await x25519SharedSecret(oneTimePrekeyPrivate, header.baseKey),
-  ];
+  final dhs = await _agreeAll([
+    (signedPrekeyPrivate, header.identityX25519),
+    (identityX25519Private, header.baseKey),
+    (signedPrekeyPrivate, header.baseKey),
+    if (oneTimePrekeyPrivate != null) (oneTimePrekeyPrivate, header.baseKey),
+  ]);
   return _finish(
     dhs,
     initiatorEd25519: header.identityEd25519,
@@ -119,6 +119,21 @@ Future<HandshakeKeys> deriveResponderKeys({
     responderEd25519: identityEd25519,
     responderX25519: identityX25519,
   );
+}
+
+/// X25519 over each (private, public) pair in order. A low-order key aborts
+/// with [FormatException], after wiping the secrets already computed.
+Future<List<Uint8List>> _agreeAll(List<(List<int>, List<int>)> pairs) async {
+  final secrets = <Uint8List>[];
+  try {
+    for (final (privateKey, publicKey) in pairs) {
+      secrets.add(await x25519SharedSecret(privateKey, publicKey));
+    }
+    return secrets;
+  } catch (_) {
+    secrets.forEach(zeroize);
+    rethrow;
+  }
 }
 
 // SK = HKDF-SHA256(0xFF*32 || DH1 || DH2 || DH3 [|| DH4], salt 0x00*32,

@@ -232,8 +232,9 @@ class SessionCipher {
   }
 
   /// Tries each candidate on its own copy and commits the first that
-  /// authenticates. The archived states make re-bootstrap and glare
-  /// lossless; the copies make a failed attempt side-effect free.
+  /// authenticates, promoting it to the sending state when the record says
+  /// so. The archived states make re-bootstrap and glare lossless; the
+  /// copies make a failed attempt side-effect free.
   Future<DecryptedMessage> _decryptOnStates(
     CryptoEnvelope envelope,
     SessionRecord record,
@@ -248,7 +249,7 @@ class SessionCipher {
       final payload = opened.payload;
       if (payload != null) {
         try {
-          await _commitReplacing(envelope.conversationId, record, live, scratch);
+          await _commit(envelope.conversationId, record.receiving(live, scratch, now: _clock()), scratch);
         } catch (_) {
           return _failure(envelope, DecryptStatus.failed, 'persist_failed');
         }
@@ -299,6 +300,10 @@ class SessionCipher {
     } on PrekeyUnavailable catch (e) {
       return _failure(envelope, DecryptStatus.failed, e.reason);
     }
+    // Owned by the store once committed; destroyed on every other way out,
+    // including a verifier that throws.
+    RatchetState? state;
+    var committed = false;
     try {
       final ikxValid = await verifyIkxSignature(
         header.identityEd25519,
@@ -306,16 +311,21 @@ class SessionCipher {
         header.identityX25519Signature,
       );
       if (!ikxValid) return _failure(envelope, DecryptStatus.failed, 'bad_ikx_signature');
-      final keys = await deriveResponderKeys(
-        header: header,
-        identityEd25519: prekeys.identity.ed25519Public,
-        identityX25519Private: prekeys.identity.identity.x25519Private,
-        identityX25519: prekeys.identity.x25519Public,
-        signedPrekeyPrivate: prekeys.signedPrekey.privateKey,
-        oneTimePrekeyPrivate: prekeys.oneTimePrekeyPrivate,
-      );
+      final HandshakeKeys keys;
+      try {
+        keys = await deriveResponderKeys(
+          header: header,
+          identityEd25519: prekeys.identity.ed25519Public,
+          identityX25519Private: prekeys.identity.identity.x25519Private,
+          identityX25519: prekeys.identity.x25519Public,
+          signedPrekeyPrivate: prekeys.signedPrekey.privateKey,
+          oneTimePrekeyPrivate: prekeys.oneTimePrekeyPrivate,
+        );
+      } on FormatException {
+        return _failure(envelope, DecryptStatus.failed, 'low_order_key');
+      }
       final now = _clock();
-      final state = RatchetState(
+      state = RatchetState(
         protocol: protocolV2,
         sessionLocator: 'session://${envelope.conversationId}',
         // A PreKey frame does not name the recipient device.
@@ -334,27 +344,22 @@ class SessionCipher {
       );
       final opened = await _openV2(state, envelope, frame, nonce);
       final payload = opened.payload;
-      if (payload == null) {
-        state.destroy();
-        return _failure(envelope, DecryptStatus.failed, opened.reason);
-      }
+      if (payload == null) return _failure(envelope, DecryptStatus.failed, opened.reason);
       // Decided only once the handshake authenticated, so neither a pinning
       // verifier nor identityRejected ever concerns a claim nobody proved.
       if (!await _identityAccepted(envelope, header, record)) {
-        state.destroy();
         return _failure(envelope, DecryptStatus.identityRejected, 'identity_rejected');
       }
       try {
         await store.commit(envelope.conversationId, SessionRecord.installingInbound(record, state, now: now));
       } catch (_) {
-        state.destroy();
         return _failure(envelope, DecryptStatus.failed, 'persist_failed');
       }
+      committed = true;
       if (header.usesOneTimePrekey) await _consumeOneTimePrekey(header.oneTimePrekeyId);
       return _success(payload, DecryptStatus.ok);
-    } on FormatException {
-      return _failure(envelope, DecryptStatus.failed, 'low_order_key');
     } finally {
+      if (!committed) state?.destroy();
       keyring.releaseOneTimePrekey(header);
       prekeys.destroy();
     }
@@ -413,19 +418,27 @@ class SessionCipher {
     final oneTime = request.remoteOneTimePrekey;
     final oneTimePublic = oneTime == null ? null : _validOneTimePrekey(oneTime);
     final ephemeral = await generateX25519KeyPair(_random);
-    final keys = await deriveInitiatorKeys(
-      identityEd25519: local.ed25519Public,
-      identityX25519Private: local.identity.x25519Private,
-      identityX25519: local.x25519Public,
-      ephemeralPrivate: ephemeral.privateKey,
-      remoteIdentityEd25519: remoteIdentity,
-      remoteIdentityX25519: bundle.ikx,
-      remoteSignedPrekey: bundle.spk,
-      remoteOneTimePrekey: oneTimePublic,
-    );
-    zeroize(ephemeral.privateKey);
-    final chain = await deriveInitialSendingChain(keys.sharedKey, bundle.spk, _random);
-    zeroize(keys.sharedKey);
+    final HandshakeKeys keys;
+    try {
+      keys = await deriveInitiatorKeys(
+        identityEd25519: local.ed25519Public,
+        identityX25519Private: local.identity.x25519Private,
+        identityX25519: local.x25519Public,
+        ephemeralPrivate: ephemeral.privateKey,
+        remoteIdentityEd25519: remoteIdentity,
+        remoteIdentityX25519: bundle.ikx,
+        remoteSignedPrekey: bundle.spk,
+        remoteOneTimePrekey: oneTimePublic,
+      );
+    } finally {
+      zeroize(ephemeral.privateKey);
+    }
+    final InitialSendingChain chain;
+    try {
+      chain = await deriveInitialSendingChain(keys.sharedKey, bundle.spk, _random);
+    } finally {
+      zeroize(keys.sharedKey);
+    }
     final header = PreKeyHeader(
       identityEd25519: local.ed25519Public,
       identityX25519: local.x25519Public,
@@ -467,10 +480,12 @@ class SessionCipher {
     }
   }
 
-  Future<void> _commitReplacing(
-      String conversationId, SessionRecord record, RatchetState live, RatchetState scratch) async {
+  Future<void> _commitReplacing(String conversationId, SessionRecord record, RatchetState live, RatchetState scratch) =>
+      _commit(conversationId, record.replacing(live, scratch, now: _clock()), scratch);
+
+  Future<void> _commit(String conversationId, RecordUpdate update, RatchetState scratch) async {
     try {
-      await store.commit(conversationId, record.replacing(live, scratch, now: _clock()));
+      await store.commit(conversationId, update);
     } catch (_) {
       scratch.destroy();
       rethrow;

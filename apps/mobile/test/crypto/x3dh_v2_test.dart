@@ -114,6 +114,18 @@ class _UndeletableOneTimePrekeys extends InMemoryLocalPrekeyStore {
   Future<void> deleteOneTimePrekey(int keyId) => Future.error(StateError('storage unavailable'));
 }
 
+/// Storage whose first one-time prekey read fails, as a locked keystore might.
+class _FlakyOneTimePrekeyReads extends InMemoryLocalPrekeyStore {
+  var _failNextRead = true;
+
+  @override
+  Future<List<int>?> loadOneTimePrekey(int keyId) {
+    if (!_failNextRead) return super.loadOneTimePrekey(keyId);
+    _failNextRead = false;
+    return Future.error(StateError('storage unavailable'));
+  }
+}
+
 void main() {
   test('forged initiator holding only the public bundle cannot open a session (scenarioUnauthInbound)', () async {
     final alice = await createParty('alice');
@@ -261,6 +273,21 @@ void main() {
     final reused = await receive(bob, await send(carol, bob, 'reuse', conversationId: 'conv-carol'));
     expect(reused.status, DecryptStatus.failed);
     expect(reused.failureReason, 'opk_unavailable');
+  });
+
+  test('a failed OPK read releases its claim so a retry succeeds', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    bob.adapter.setLocalPrekeyStore(_FlakyOneTimePrekeyReads());
+    final prekey = (await bob.adapter.generateOneTimePrekeys(count: 1)).single;
+    await bootstrap(alice, bob, conversationId: 'conv-alice', oneTimePrekey: prekey);
+    final first = await send(alice, bob, 'first', conversationId: 'conv-alice');
+
+    await expectLater(receive(bob, first), throwsA(isA<StateError>()));
+    expect(bob.adapter.sessions.hasSessionFor('conv-alice'), isFalse);
+    final retried = await receive(bob, first);
+    expect(retried.status, DecryptStatus.ok, reason: retried.failureReason);
+    expect(retried.body, 'first');
   });
 
   test('two initiators get distinct OPKs and both decrypt', () async {

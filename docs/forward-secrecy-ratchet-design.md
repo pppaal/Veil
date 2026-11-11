@@ -94,20 +94,28 @@ The root, chain and message KDFs are the v1 ones (`veil-dh-rk-v2`,
 ## Session records and glare
 
 A conversation holds a record: the current state plus up to five archived
-states (30 days). Re-bootstrapping archives instead of destroying, so messages
-already in flight on the old state still decrypt. Normal frames try the current
-state, then the archived ones.
+states, each kept for 30 days after its last use. Re-bootstrapping archives
+instead of destroying, so messages already in flight on the old state still
+decrypt. Normal frames try the current state, then the archived ones.
 
-Glare (both peers initiate before either hears back): each side installs the
-other's state from its PreKey frame; the state initiated by the lexicographically
-lower identity key becomes the sending state on both sides, and the other stays
-decryptable. A locally initiated state that already received something is
-replaced by a peer's new PreKey frame from the same identity (the peer
-evidently reset).
+An archived state that receives becomes the sending state again (libsignal's
+`promoteState`): the peer sends on the state it last chose, so following it
+makes both sides converge whatever order the server delivers frames in. Glare
+(both peers initiate before either hears back) adds one tie-break, applied the
+same way by both peers: while a handshake is still pending on our side (our
+initiation unanswered, or the peer's not yet replied to), it keeps the sending
+role against a competing handshake unless the competitor was initiated by the
+lexicographically lower identity key. Promotion never crosses identities or
+protocols, so a legacy state cannot downgrade the conversation and a state
+bound to a replaced identity cannot win the sending role back. The normative
+rules are in [crypto-envelope-spec.md](crypto-envelope-spec.md) ("Session
+records and glare").
 
 A manual rekey is refused while a locally initiated state still awaits its
 first reply: the peer can only reach later chains through the handshake
-frames' ratchet key.
+frames' ratchet key. It is also unsound when the peer has a reply in flight
+(the forced step builds on a root key the peer has already ratcheted past),
+so it must be redesigned or removed before it is exposed further.
 
 ## Attachments
 
@@ -135,9 +143,14 @@ See [crypto-session-state-migration.md](crypto-session-state-migration.md).
   shuffles with delays across turn flips, replay classification.
 - `test/crypto/ratchet_concurrency_test.dart` — audit S3, fuzzed interleaving,
   encrypt waits for the persister.
-- `test/crypto/session_record_glare_test.dart` — glare convergence, lossless
-  re-bootstrap, identity binding of an established conversation, v1-to-v2
-  upgrade.
+- `test/crypto/session_record_glare_test.dart` — glare convergence in order,
+  with the PreKey frame delayed past the reply, over an unanswered responder
+  state and under 20 seeded random delivery orders (each followed by DH
+  healing and a 31-day retention jump), archive retention by last use,
+  lossless re-bootstrap, identity binding of an established conversation,
+  v1-to-v2 upgrade.
+- `test/crypto/inner_payload_test.dart` — wrongly typed payload fields are
+  malformed, never a crash.
 - `test/crypto/session_snapshot_v4_test.dart`,
   `test/crypto/secure_storage_session_snapshot_test.dart` — snapshot schema,
   v2/v3 restore, rev ordering, slow concurrent storage, legacy blob migration.

@@ -75,11 +75,29 @@ class InnerPayload {
     final isV2 = decoded['pv'] == innerPayloadVersion;
     final kindName = decoded[isV2 ? 'k' : 'kind'];
     return InnerPayload(
-      body: decoded[isV2 ? 'b' : 'body'] as String? ?? '',
+      body: _text(decoded, isV2 ? 'b' : 'body'),
       kind: MessageKind.values.firstWhere((k) => k.name == kindName, orElse: () => fallbackKind),
       expiresAt: isV2 ? _fromMillis(decoded['x']) : _fromIso(decoded['expiresAt']),
       attachment: _decodeAttachment(decoded['att']),
     );
+  }
+
+  // The peer authenticated these bytes but may still be hostile or buggy: a
+  // field of the wrong type is a malformed payload, never a crash.
+  static String _text(Map<String, dynamic> map, String key, [String fallback = '']) {
+    final value = map[key];
+    if (value == null) return fallback;
+    if (value is String) return value;
+    throw FormatException('inner payload field "$key" is not a string');
+  }
+
+  static String? _optionalText(Map<String, dynamic> map, String key) => map[key] == null ? null : _text(map, key);
+
+  static int _size(Map<String, dynamic> map, String key) {
+    final value = map[key];
+    if (value == null) return 0;
+    if (value is num) return value.toInt();
+    throw FormatException('inner payload field "$key" is not a number');
   }
 
   static DateTime? _fromMillis(Object? value) => value is int ? DateTime.fromMillisecondsSinceEpoch(value) : null;
@@ -88,8 +106,8 @@ class InnerPayload {
 
   static AttachmentReference? _decodeAttachment(Object? raw) {
     if (raw is! Map<String, dynamic>) return null;
-    String text(String key, [String fallback = '']) => raw[key] as String? ?? fallback;
-    int size(String key) => (raw[key] as num?)?.toInt() ?? 0;
+    String text(String key, [String fallback = '']) => _text(raw, key, fallback);
+    int size(String key) => _size(raw, key);
     if (raw.containsKey('ck')) {
       return AttachmentReference(
         attachmentId: text('id'),
@@ -99,7 +117,7 @@ class InnerPayload {
         sha256: text('d'),
         encryptedKey: text('ck'),
         nonce: text('n'),
-        algorithmHint: raw['alg'] as String?,
+        algorithmHint: _optionalText(raw, 'alg'),
       );
     }
     if (raw.containsKey('attachmentId')) {
@@ -111,7 +129,7 @@ class InnerPayload {
         sha256: text('sha256'),
         encryptedKey: text('encryptedKey'),
         nonce: text('nonce'),
-        algorithmHint: raw['algorithmHint'] as String?,
+        algorithmHint: _optionalText(raw, 'algorithmHint'),
       );
     }
     return AttachmentReference(
@@ -122,7 +140,7 @@ class InnerPayload {
       sha256: text('h'),
       encryptedKey: text('ek'),
       nonce: text('n'),
-      algorithmHint: raw['ah'] as String?,
+      algorithmHint: _optionalText(raw, 'ah'),
     );
   }
 }

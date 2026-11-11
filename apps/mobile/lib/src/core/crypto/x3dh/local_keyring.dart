@@ -222,12 +222,16 @@ class LocalKeyring {
     if (_spentOneTimePrekeys.contains(keyId) || !_oneTimePrekeysInUse.add(keyId)) {
       throw PrekeyUnavailable('opk_unavailable');
     }
-    final oneTime = await store.loadOneTimePrekey(keyId);
-    if (oneTime == null) {
+    // The caller only releases claims it was handed, so a failed lookup
+    // must release its own or the prekey stays blocked until restart.
+    try {
+      final oneTime = await store.loadOneTimePrekey(keyId);
+      if (oneTime == null) throw PrekeyUnavailable('opk_unavailable');
+      return Uint8List.fromList(oneTime);
+    } catch (_) {
       _oneTimePrekeysInUse.remove(keyId);
-      throw PrekeyUnavailable('opk_unavailable');
+      rethrow;
     }
-    return Uint8List.fromList(oneTime);
   }
 
   void releaseOneTimePrekey(PreKeyHeader header) => _oneTimePrekeysInUse.remove(header.oneTimePrekeyId);

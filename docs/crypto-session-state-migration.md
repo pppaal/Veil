@@ -57,13 +57,15 @@ performs:
   "v": 4,
   "rev": 1762851234567890,
   "current": { "protocol": 2, "rootKey": "...", "...": "..." },
-  "archived": [{ "archivedAt": "2026-11-11T09:00:00.000Z", "state": { "...": "..." } }]
+  "archived": [{ "lastUsedAt": "2026-11-11T09:00:00.000Z", "state": { "...": "..." } }]
 }
 ```
 
 - One record per conversation: the sending state plus up to five archived
-  states (30 days) that still receive in-flight messages after a
-  re-bootstrap, a peer reset or glare.
+  states that still receive in-flight messages after a re-bootstrap, a peer
+  reset or glare. Archived states are ordered most recently used first, and
+  each is dropped 30 days after `lastUsedAt` (when it was archived or last
+  committed a message), so a state still in use is never pruned.
 - `rev` only grows. The adapter persists every commit and waits for the write
   before the operation returns; storage refuses, with an error, a write whose
   `rev` is lower than the one it holds, so an older state can never overwrite

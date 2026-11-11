@@ -91,6 +91,14 @@ class RatchetState {
 
   bool get awaitingFirstReply => pendingPreKeyHeader != null;
 
+  /// A v2 handshake not yet acknowledged from our side: we initiated it and
+  /// have not heard back, or the peer did and we have not replied.
+  bool get handshakePending =>
+      protocol == protocolV2 && (initiatedLocally ? awaitingFirstReply : sendChainKey == null);
+
+  /// Identity key of the party whose handshake created this state (v2 only).
+  Uint8List? get initiatorIdentityKey => initiatedLocally ? localIdentityKey : remoteIdentityKey;
+
   static String skippedKeyId(List<int> ratchetPublic, int counter) => '${b64uEncode(ratchetPublic)}|$counter';
 
   RatchetState copy() {

@@ -5,12 +5,14 @@ import type {
   DeviceTransferClaimResponse,
   DeviceTransferCompleteResponse,
   DeviceTransferInitResponse,
-  DeviceTransferSessionStatusResponse,
 } from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { Public } from '../../common/guards/public.decorator';
-import { DeviceTransferService } from './device-transfer.service';
+import {
+  DeviceTransferService,
+  type TransferSessionStatusResponse,
+} from './device-transfer.service';
 import {
   DeviceTransferApproveDto,
   DeviceTransferClaimDto,
@@ -60,7 +62,7 @@ export class DeviceTransferController {
   getStatus(
     @Param('sessionId') sessionId: string,
     @Req() request: AuthenticatedRequest,
-  ): Promise<DeviceTransferSessionStatusResponse> {
+  ): Promise<TransferSessionStatusResponse> {
     return this.deviceTransferService.getSessionStatus({
       sessionId,
       auth: request.auth,

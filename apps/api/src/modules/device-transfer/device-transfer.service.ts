@@ -12,7 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 import { AppConfigService } from '../../common/config/app-config.service';
-import { forbidden, notFound, unauthorized } from '../../common/errors/api-error';
+import { conflict, forbidden, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from '../auth/device-auth-verifier';
@@ -40,14 +40,32 @@ interface PendingTransferClaim {
 const buildClaimChallenge = (sessionId: string, transferToken: string): string =>
   `transfer-claim:${sessionId}:${transferToken}`;
 
-const claimFingerprint = (authPublicKey: string): string =>
-  authPublicKey.length <= 12
-    ? authPublicKey
-    : `${authPublicKey.substring(0, 6)}...${authPublicKey.substring(authPublicKey.length - 4)}`;
+// 'invalidated' is not yet part of the shared DeviceTransferStatus contract.
+export type TransferSessionStatus = DeviceTransferStatus | 'invalidated';
+export type TransferSessionStatusResponse = Omit<DeviceTransferSessionStatusResponse, 'status'> & {
+  status: TransferSessionStatus;
+};
+
+// Full SHA-256 over both keys the new device will be trusted with, in 16
+// groups of 4 so the two screens can be compared group by group. A truncated
+// fingerprint is cheap to collide. The auth key has already been verified as
+// a 32-byte Ed25519 key, so the concatenation is unambiguous.
+const claimFingerprint = (authPublicKey: string, publicIdentityKey: string): string =>
+  createHash('sha256')
+    .update(Buffer.from(authPublicKey, 'base64url'))
+    .update(Buffer.from(publicIdentityKey, 'base64url'))
+    .digest('hex')
+    .replace(/(.{4})(?!$)/g, '$1 ');
 
 const claimKey = (sessionId: string): string => `transfer:claim:${sessionId}`;
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+
+// A session killed by a competing claim keeps this in place of its token
+// hash: the token can never match again, and the state stays durable (unlike
+// an ephemeral marker) so the old device is never told 'completed' — which
+// would make it log itself out — for a transfer that did not happen.
+const INVALIDATED_TOKEN_HASH = 'invalidated';
 
 @Injectable()
 export class DeviceTransferService {
@@ -217,15 +235,25 @@ export class DeviceTransferService {
       publicIdentityKey: dto.publicIdentityKey,
       signedPrekeyBundle: dto.signedPrekeyBundle,
       authPublicKey: dto.authPublicKey,
-      claimantFingerprint: claimFingerprint(dto.authPublicKey),
+      claimantFingerprint: claimFingerprint(dto.authPublicKey, dto.publicIdentityKey),
       claimProofVerifiedAt: new Date().toISOString(),
     };
 
-    await this.ephemeralStore.setJson<PendingTransferClaim>(
+    // First claim wins. Anyone who saw the QR code holds a valid token, so a
+    // second valid claim means the code leaked: kill the whole session rather
+    // than let a later claim replace the one the user is about to approve.
+    const isFirstClaim = await this.ephemeralStore.setJsonIfAbsent<PendingTransferClaim>(
       claimKey(dto.sessionId),
       pendingClaim,
       this.config.transferTokenTtlSeconds,
     );
+    if (!isFirstClaim) {
+      await this.invalidateSession(dto.sessionId);
+      throw conflict(
+        'transfer_claim_invalid',
+        'Transfer session was claimed twice and has been invalidated; start a new transfer',
+      );
+    }
 
     this.countTransfer('claim');
 
@@ -243,7 +271,7 @@ export class DeviceTransferService {
   async getSessionStatus(args: {
     sessionId: string;
     auth: { userId: string; deviceId: string };
-  }): Promise<DeviceTransferSessionStatusResponse> {
+  }): Promise<TransferSessionStatusResponse> {
     const session = await this.prisma.deviceTransferSession.findUnique({
       where: { id: args.sessionId },
     });
@@ -256,12 +284,17 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
-    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(
-      claimKey(args.sessionId),
-    );
+    // A claim racing the invalidation can be rewritten after it, so an
+    // invalidated session never shows one.
+    const invalidated = session.tokenHash === INVALIDATED_TOKEN_HASH;
+    const pendingClaim = invalidated
+      ? null
+      : await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(args.sessionId));
 
-    let status: DeviceTransferStatus;
-    if (session.completedAt) {
+    let status: TransferSessionStatus;
+    if (invalidated) {
+      status = 'invalidated';
+    } else if (session.completedAt) {
       status = 'completed';
     } else if (session.expiresAt.getTime() <= Date.now()) {
       status = 'expired';
@@ -277,7 +310,7 @@ export class DeviceTransferService {
       sessionId: session.id,
       status,
       expiresAt: session.expiresAt.toISOString(),
-      completedAt: session.completedAt ? session.completedAt.toISOString() : null,
+      completedAt: session.completedAt && !invalidated ? session.completedAt.toISOString() : null,
       pendingClaim: pendingClaim
         ? {
             claimId: pendingClaim.claimId,
@@ -446,6 +479,15 @@ export class DeviceTransferService {
       displayName: session.user.displayName,
       completedAt: completedAt.toISOString(),
     };
+  }
+
+  private async invalidateSession(sessionId: string): Promise<void> {
+    // Only an open session: a completed transfer must keep reporting completed.
+    await this.prisma.deviceTransferSession.updateMany({
+      where: { id: sessionId, completedAt: null },
+      data: { tokenHash: INVALIDATED_TOKEN_HASH, completedAt: new Date() },
+    });
+    await this.ephemeralStore.delete(claimKey(sessionId));
   }
 
   private async invalidateExistingSessions(userId: string, oldDeviceId: string): Promise<void> {

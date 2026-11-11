@@ -11,6 +11,7 @@ import { EphemeralStoreService } from '../../src/common/ephemeral-store.service'
 import { CfThrottlerGuard } from '../../src/common/guards/cf-throttler.guard';
 import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 import { Public } from '../../src/common/guards/public.decorator';
+import { utcDayStart } from '../../src/common/device-activity';
 import { PrismaService } from '../../src/common/prisma.service';
 import { FakeEphemeralStoreService } from '../support/fake-services';
 
@@ -154,11 +155,13 @@ describe('CfThrottlerGuard with the app.module guard chain', () => {
       return tracker;
     });
 
+    // Already seen today, so the guard has no activity to record.
     const activeDevice = (id: string) => ({
       id,
       userId: `user-${id}`,
       isActive: true,
       revokedAt: null,
+      lastSeenAt: utcDayStart(new Date()),
       user: { status: 'active' },
     });
     const moduleRef = await Test.createTestingModule({

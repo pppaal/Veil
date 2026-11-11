@@ -21,9 +21,7 @@ function make(
   const prisma = {
     deviceTransferSession: {
       findUnique: async () =>
-        opts.session
-          ? { oldDevice, user: { handle: 'a', displayName: null }, ...opts.session }
-          : null,
+        opts.session ? { oldDevice, user: { handle: 'a' }, ...opts.session } : null,
       update: async () => ({}),
     },
     device: { findUnique: async () => oldDevice },

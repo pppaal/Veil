@@ -1,26 +1,38 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Equals, IsIn, IsOptional, IsString, Length } from 'class-validator';
+import {
+  STORY_MAX_AUDIENCE,
+  STORY_MAX_CIPHERTEXT_LENGTH,
+  type CreateStoryRequest,
+} from '@veil/contracts';
+import { SUPPORTED_ENVELOPE_VERSIONS } from '@veil/shared';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  IsString,
+  IsUUID,
+  Length,
+} from 'class-validator';
 
-export const TEXT_STORY_CONTENT_URL = 'text://inline';
-
-export class CreateStoryDto {
-  // Media stories are disabled until they ship as encrypted attachments; a
-  // free media URL would let any author plant a tracking pixel that logs the
-  // IP of every viewer.
-  @ApiProperty({ enum: ['text'] })
-  @IsIn(['text'])
-  contentType!: 'text';
-
-  @ApiProperty({ required: false, default: TEXT_STORY_CONTENT_URL })
-  @IsOptional()
-  @Equals(TEXT_STORY_CONTENT_URL)
-  contentUrl?: string;
-
-  // Matches the stories.caption VarChar(300) column, so an over-long caption
-  // is a 400 here instead of a database error.
-  @ApiProperty({ required: false, maxLength: 300 })
-  @IsOptional()
+// The server stores a story as one opaque envelope plus the audience it is
+// addressed to; its content and media type exist only inside the ciphertext.
+export class CreateStoryDto implements CreateStoryRequest {
+  @ApiProperty({ maxLength: STORY_MAX_CIPHERTEXT_LENGTH })
   @IsString()
-  @Length(0, 300)
-  caption?: string;
+  @Length(1, STORY_MAX_CIPHERTEXT_LENGTH)
+  ciphertext!: string;
+
+  @ApiProperty({ enum: SUPPORTED_ENVELOPE_VERSIONS })
+  @IsIn(SUPPORTED_ENVELOPE_VERSIONS)
+  envelopeVersion!: string;
+
+  @ApiProperty({ type: [String], minItems: 1, maxItems: STORY_MAX_AUDIENCE })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(STORY_MAX_AUDIENCE)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  audienceUserIds!: string[];
 }

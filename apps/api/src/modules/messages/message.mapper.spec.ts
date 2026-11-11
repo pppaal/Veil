@@ -92,7 +92,6 @@ function row(overrides: Partial<MessageSummaryRow> = {}): MessageSummaryRow {
     viewOnce: false,
     senderDevice: { userId: 'sender' },
     receipts: [],
-    reactions: [],
     ...overrides,
   };
 }

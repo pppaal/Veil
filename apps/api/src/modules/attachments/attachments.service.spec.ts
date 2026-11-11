@@ -18,8 +18,6 @@ function seedDeviceAndUser(prisma: RetentionFakePrismaService): {
   prisma.users.push({
     id: userId,
     handle: 'tester',
-    displayName: 'Tester',
-    avatarPath: null,
     status: 'active',
     activeDeviceId: deviceId,
     createdAt: new Date(),

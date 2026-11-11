@@ -2,20 +2,18 @@ import { Body, Controller, Delete, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type {
-  AddReactionResponse,
   DeleteLocalMessageResponse,
   DeleteMessageResponse,
   EditMessageResponse,
   MarkMessageReadResponse,
-  RemoveReactionResponse,
   SendMessageResponse,
 } from '@veil/contracts';
 
+import { apiError } from '../../common/errors/api-error';
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { UuidParam } from '../../common/pipes/uuid-param.decorator';
 import { MessagesService } from './messages.service';
 import { EditMessageDto, SendMessageDto } from './dto/send-message.dto';
-import { ReactionDto } from './dto/reaction.dto';
 
 @ApiTags('messages')
 @ApiBearerAuth()
@@ -24,8 +22,8 @@ export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
   // Caps sustained message abuse while leaving normal bursts alone. At 120/min
-  // you can still paste a long conversation or send rapid reactions without
-  // hitting the ceiling.
+  // you can still paste a long conversation or send rapid reactions (which are
+  // messages too) without hitting the ceiling.
   @Throttle({ default: { ttl: 60_000, limit: 120 } })
   @Post()
   send(
@@ -51,21 +49,17 @@ export class MessagesController {
     return this.messagesService.deleteLocal(request.auth, id);
   }
 
+  // Reactions are end-to-end encrypted messages (messageType 'reaction') sent
+  // through POST /messages; a plaintext emoji never reaches the server. The
+  // old routes stay only to tell outdated clients why they stopped working.
   @Post(':id/reactions')
-  addReaction(
-    @Req() request: AuthenticatedRequest,
-    @UuidParam('id') id: string,
-    @Body() dto: ReactionDto,
-  ): Promise<AddReactionResponse> {
-    return this.messagesService.addReaction(request.auth, id, dto.emoji);
+  addReaction(): never {
+    throw apiError('reactions_e2e_only', 'Send reactions as encrypted messages');
   }
 
   @Delete(':id/reactions')
-  removeReaction(
-    @Req() request: AuthenticatedRequest,
-    @UuidParam('id') id: string,
-  ): Promise<RemoveReactionResponse> {
-    return this.messagesService.removeReaction(request.auth, id);
+  removeReaction(): never {
+    throw apiError('reactions_e2e_only', 'Send reactions as encrypted messages');
   }
 
   // Edit replaces the ciphertext in place. Only the original sending device

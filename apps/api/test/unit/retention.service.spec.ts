@@ -1,16 +1,25 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  MESSAGE_MAX_AGE_DAYS,
-  RetentionService,
-} from '../../src/modules/retention/retention.service';
+import { RetentionService } from '../../src/modules/retention/retention.service';
 import { RetentionFakePrismaService } from '../support/fake-prisma-retention';
 import { FakeAttachmentStorageGateway } from '../support/fake-services';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ago = (ms: number) => new Date(Date.now() - ms);
 
-function setup(config = { callRecordRetentionDays: 30, prekeyConsumedRetentionDays: 7 }) {
+type RetentionConfig = {
+  callRecordRetentionDays: number;
+  prekeyConsumedRetentionDays: number;
+  messageMaxAgeDays: number;
+};
+
+function setup(overrides: Partial<RetentionConfig> = {}) {
+  const config: RetentionConfig = {
+    callRecordRetentionDays: 30,
+    prekeyConsumedRetentionDays: 7,
+    messageMaxAgeDays: 30,
+    ...overrides,
+  };
   const prisma = new RetentionFakePrismaService();
   const storage = new FakeAttachmentStorageGateway();
   const logs: Array<{ level: string; event: string; meta: Record<string, unknown> }> = [];
@@ -234,9 +243,27 @@ describe('RetentionService message sweeps', () => {
 
     await service.sweep();
 
-    expect(MESSAGE_MAX_AGE_DAYS).toBe(30);
     expect(prisma.messages.map((message) => message.id)).toEqual([recent.id]);
     expect(sweptCounts()).toMatchObject({ agedMessages: 2 });
+  });
+
+  it('VEIL_MESSAGE_MAX_AGE_DAYS sets the age cap, and 0 disables it', async () => {
+    const shortCap = setup({ messageMaxAgeDays: 7 });
+    await shortCap.addMessage({ serverReceivedAt: ago(8 * DAY_MS) });
+    const kept = await shortCap.addMessage({ serverReceivedAt: ago(6 * DAY_MS) });
+
+    await shortCap.service.sweep();
+
+    expect(shortCap.prisma.messages.map((message) => message.id)).toEqual([kept.id]);
+
+    // Without the cap only the disappearing timer removes messages.
+    const uncapped = setup({ messageMaxAgeDays: 0 });
+    const ancient = await uncapped.addMessage({ serverReceivedAt: ago(400 * DAY_MS) });
+    await uncapped.addMessage({ expiresAt: ago(1000) });
+
+    await uncapped.service.sweep();
+
+    expect(uncapped.prisma.messages.map((message) => message.id)).toEqual([ancient.id]);
   });
 });
 
@@ -267,10 +294,7 @@ describe('RetentionService metadata sweeps', () => {
   });
 
   it('prunes terminal calls past the retention window, including stale ones it just closed', async () => {
-    const { prisma, service, addCall } = setup({
-      callRecordRetentionDays: 30,
-      prekeyConsumedRetentionDays: 7,
-    });
+    const { prisma, service, addCall } = setup({ callRecordRetentionDays: 30 });
     addCall('ended', ago(31 * DAY_MS));
     addCall('ringing', ago(31 * DAY_MS));
     const recent = addCall('declined', ago(DAY_MS));
@@ -281,10 +305,7 @@ describe('RetentionService metadata sweeps', () => {
   });
 
   it('keeps terminal calls when call retention is disabled', async () => {
-    const { prisma, service, addCall } = setup({
-      callRecordRetentionDays: 0,
-      prekeyConsumedRetentionDays: 7,
-    });
+    const { prisma, service, addCall } = setup({ callRecordRetentionDays: 0 });
     addCall('ended', ago(400 * DAY_MS));
 
     await service.sweep();
@@ -321,7 +342,6 @@ describe('RetentionService metadata sweeps', () => {
       conversationId: null,
       messageId: null,
       reason: 'spam',
-      note: null,
       createdAt,
     });
     const old = report(ago(91 * DAY_MS));
@@ -333,21 +353,23 @@ describe('RetentionService metadata sweeps', () => {
     expect(prisma.abuseReports.map((row) => row.id)).toEqual([recent.id]);
   });
 
-  it('expired story and views deleted', async () => {
+  it('expired story, its audience and views deleted', async () => {
     const { prisma, service } = setup();
     const story = (expiresAt: Date) => ({
       id: randomUUID(),
       userId: 'user-1',
-      contentType: 'text' as const,
-      contentUrl: 'text://inline',
-      caption: null,
+      ciphertext: 'sealed-story',
+      envelopeVersion: 'veil-envelope-v2',
       expiresAt,
-      viewCount: 0,
       createdAt: new Date(expiresAt.getTime() - DAY_MS),
     });
     const expired = story(ago(1000));
     const live = story(new Date(Date.now() + 60_000));
     prisma.stories.push(expired, live);
+    prisma.storyAudiences.push(
+      { storyId: expired.id, userId: 'user-2' },
+      { storyId: live.id, userId: 'user-2' },
+    );
     prisma.storyViews.push(
       { id: randomUUID(), storyId: expired.id, viewerUserId: 'user-2', viewedAt: new Date() },
       { id: randomUUID(), storyId: live.id, viewerUserId: 'user-2', viewedAt: new Date() },
@@ -356,7 +378,21 @@ describe('RetentionService metadata sweeps', () => {
     await service.sweep();
 
     expect(prisma.stories.map((row) => row.id)).toEqual([live.id]);
+    expect(prisma.storyAudiences.map((row) => row.storyId)).toEqual([live.id]);
     expect(prisma.storyViews.map((row) => row.storyId)).toEqual([live.id]);
+  });
+
+  it('frees retired handles once their quarantine has ended', async () => {
+    const { prisma, service, sweptCounts } = setup();
+    prisma.retiredHandles.push(
+      { handleHmac: 'a'.repeat(64), retiredUntil: ago(1000) },
+      { handleHmac: 'b'.repeat(64), retiredUntil: new Date(Date.now() + 89 * DAY_MS) },
+    );
+
+    await service.sweep();
+
+    expect(prisma.retiredHandles.map((row) => row.handleHmac)).toEqual(['b'.repeat(64)]);
+    expect(sweptCounts()).toMatchObject({ retiredHandles: 1 });
   });
 
   it('prunes consumed prekeys past their window and never unconsumed ones', async () => {
@@ -579,7 +615,6 @@ describe('RetentionService logging', () => {
       conversationId: null,
       messageId: null,
       reason: 'spam',
-      note: null,
       createdAt: ago(100 * DAY_MS),
     });
 

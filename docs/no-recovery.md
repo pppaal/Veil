@@ -24,8 +24,11 @@ The rule is enforced in CI, not just stated here:
 
 - `scripts/policy-check.mjs` fails on any API route path containing
   `recovery` or `backup`, on any `modules/recovery` or `modules/backup`
-  directory under `apps/api/src`, and on any password-reset flow. It runs a
-  built-in self-test first, so a broken rule cannot pass silently.
+  directory under `apps/api/src`, on any password-reset flow, on any
+  recovery or backup model or table in `apps/api/prisma/schema.prisma`, on
+  any recovery or backup type in `packages/contracts/src`, and on an
+  `apps/mobile/lib/src/core/backup` directory. It runs a built-in self-test
+  first, so a broken rule cannot pass silently.
 - `apps/api/test/unit/route-auth-matrix.spec.ts` walks every mounted route
   and fails if one offers recovery or backup.
 

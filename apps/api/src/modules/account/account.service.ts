@@ -5,6 +5,7 @@ import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
 } from '../attachments/attachment-storage.gateway';
+import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 // Right-to-erasure cascade for a full account wipe. Order matters — several
@@ -23,7 +24,8 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 // initial transaction, run the bulky deletes outside any transaction (so
 // Postgres can release locks between batches and so a partial failure can be
 // resumed), and only put the small final user/device cleanup back inside a
-// transaction.
+// transaction. That final transaction also quarantines the handle, so it is
+// never free for someone else to register in between.
 @Injectable()
 export class AccountService {
   private readonly logger = new Logger(AccountService.name);
@@ -33,20 +35,23 @@ export class AccountService {
     private readonly realtimeGateway: RealtimeGateway,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly storageGateway: AttachmentStorageGateway,
+    private readonly retiredHandles: RetiredHandlesService,
   ) {}
 
   async deleteAccount(userId: string): Promise<{ deleted: true }> {
     // Phase 1 (small tx): immediately revoke auth so any in-flight tokens
     // can't be reused and no new sessions can come in mid-cascade.
-    await this.prisma.$transaction(async (tx) => {
-      await tx.user.update({
+    const { handle } = await this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.user.update({
         where: { id: userId },
         data: { status: 'revoked', activeDeviceId: null },
+        select: { handle: true },
       });
       await tx.device.updateMany({
         where: { userId },
         data: { isActive: false },
       });
+      return revoked;
     });
 
     // Cut any live realtime channels now — the handshake check refuses new
@@ -106,7 +111,6 @@ export class AccountService {
     await tryStep('messageReceipts', () =>
       this.prisma.messageReceipt.deleteMany({ where: { userId } }),
     );
-    await tryStep('reactions', () => this.prisma.reaction.deleteMany({ where: { userId } }));
     await tryStep('storyViews', () =>
       this.prisma.storyView.deleteMany({ where: { viewerUserId: userId } }),
     );
@@ -142,7 +146,8 @@ export class AccountService {
     }
 
     // Phase 3 (small tx): finish the metadata + the user/device rows
-    // themselves. By now everything restricting them is gone.
+    // themselves. By now everything restricting them is gone. The handle is
+    // quarantined in the same transaction that frees it.
     await this.prisma.$transaction(async (tx) => {
       if (deviceIds.length > 0) {
         await tx.deviceTransferSession.deleteMany({
@@ -153,12 +158,12 @@ export class AccountService {
       } else {
         await tx.deviceTransferSession.deleteMany({ where: { userId } });
       }
-      await tx.userProfile.deleteMany({ where: { userId } });
       await tx.user.update({
         where: { id: userId },
         data: { activeDeviceId: null },
       });
       await tx.device.deleteMany({ where: { userId } });
+      await this.retiredHandles.retire(tx, handle);
       await tx.user.delete({ where: { id: userId } });
     });
 

@@ -32,8 +32,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -128,8 +126,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -194,8 +190,6 @@ describe('DeviceTransferService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),
@@ -260,8 +254,6 @@ describe('DeviceTransferService first-claim-wins', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-old',
       createdAt: new Date(),

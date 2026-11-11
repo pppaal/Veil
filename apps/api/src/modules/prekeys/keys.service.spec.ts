@@ -236,16 +236,12 @@ describe('KeysService.getKeys', () => {
       if (device.id === lowId) device.trustedAt = new Date('2026-01-01');
       if (device.id === highId) device.trustedAt = new Date('2026-03-01');
     }
-    // The retention fake adds findFirst at runtime; the base type lacks it.
-    const prekeyTable = prisma.oneTimePrekey as unknown as {
-      findFirst: (args: { where: { deviceId: string } }) => Promise<unknown>;
-    };
-    const findFirst = jest.spyOn(prekeyTable, 'findFirst');
+    const findFirst = jest.spyOn(prisma.oneTimePrekey, 'findFirst');
 
     const result = await keys.getKeys(alice, 'bob', 'all');
 
     expect(result.devices.map((d) => d.deviceId)).toEqual([highId, lowId]);
-    expect(findFirst.mock.calls.map(([args]) => args.where.deviceId)).toEqual([lowId, highId]);
+    expect(findFirst.mock.calls.map(([args]) => args?.where.deviceId)).toEqual([lowId, highId]);
   });
 
   it('claim=none returns keys and consumes nothing', async () => {

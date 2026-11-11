@@ -135,7 +135,7 @@ export class CallsService {
             members: {
               where: { userId: { not: auth.userId } },
               take: 1,
-              select: { user: { select: { handle: true, displayName: true } } },
+              select: { user: { select: { handle: true } } },
             },
           },
         },
@@ -146,8 +146,7 @@ export class CallsService {
     return calls.map((call) => {
       const { type, groupMeta, channelMeta, members } = call.conversation;
       const peer = type === 'direct' ? members[0]?.user : undefined;
-      const counterparty =
-        groupMeta?.name ?? channelMeta?.name ?? peer?.displayName ?? peer?.handle ?? 'Unknown';
+      const counterparty = groupMeta?.name ?? channelMeta?.name ?? peer?.handle ?? 'Unknown';
       const counterpartyHandle = peer?.handle ?? null;
 
       return {

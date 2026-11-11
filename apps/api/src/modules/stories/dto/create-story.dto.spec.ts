@@ -1,51 +1,63 @@
-import 'reflect-metadata';
-import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 import { CreateStoryDto } from './create-story.dto';
 
-const errorsFor = async (body: Record<string, unknown>, property: string) =>
-  (await validate(plainToInstance(CreateStoryDto, { contentType: 'text', ...body }))).filter(
-    (error) => error.property === property,
+const validateBody = (body: Record<string, unknown>) =>
+  new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }).transform(
+    body,
+    { type: 'body', metatype: CreateStoryDto },
   );
 
-describe('CreateStoryDto.contentUrl', () => {
-  it('accepts the text:// sentinel or no value at all', async () => {
-    expect(await errorsFor({ contentUrl: 'text://inline' }, 'contentUrl')).toHaveLength(0);
-    expect(await errorsFor({}, 'contentUrl')).toHaveLength(0);
-  });
-
-  it('rejects free URLs, which would let a story carry a tracking pixel', async () => {
-    for (const contentUrl of [
-      'https://cdn.veil.app/stories/abc.jpg',
-      'http://tracker.example/pixel.gif',
-      'text://elsewhere',
-    ]) {
-      expect((await errorsFor({ contentUrl }, 'contentUrl')).length).toBeGreaterThan(0);
-    }
-  });
-
-  it('rejects dangerous schemes at the persistence boundary', async () => {
-    for (const contentUrl of [
-      'javascript:alert(1)',
-      'data:text/html;base64,AAAA',
-      'file:///etc/passwd',
-    ]) {
-      expect((await errorsFor({ contentUrl }, 'contentUrl')).length).toBeGreaterThan(0);
-    }
-  });
+const validStory = (overrides: Record<string, unknown> = {}) => ({
+  ciphertext: 'sealed-story',
+  envelopeVersion: 'veil-envelope-v2',
+  audienceUserIds: [randomUUID()],
+  ...overrides,
 });
 
-describe('CreateStoryDto.contentType and caption', () => {
-  it('accepts only text stories', async () => {
-    expect(await errorsFor({}, 'contentType')).toHaveLength(0);
-    for (const contentType of ['image', 'video', 'audio']) {
-      expect((await errorsFor({ contentType }, 'contentType')).length).toBeGreaterThan(0);
+describe('CreateStoryDto', () => {
+  it('accepts a sealed envelope addressed to an explicit audience', async () => {
+    await expect(validateBody(validStory())).resolves.toBeInstanceOf(CreateStoryDto);
+  });
+
+  it('bounds the ciphertext to 65536 characters', async () => {
+    await expect(
+      validateBody(validStory({ ciphertext: 'a'.repeat(65536) })),
+    ).resolves.toBeDefined();
+    for (const ciphertext of ['', 'a'.repeat(65537)]) {
+      await expect(validateBody(validStory({ ciphertext }))).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
     }
   });
 
-  it('bounds the caption to the 300-character column', async () => {
-    expect(await errorsFor({ caption: 'a'.repeat(300) }, 'caption')).toHaveLength(0);
-    expect((await errorsFor({ caption: 'a'.repeat(301) }, 'caption')).length).toBeGreaterThan(0);
+  it('requires 1 to 500 unique audience user ids', async () => {
+    const id = randomUUID();
+    const tooMany = Array.from({ length: 501 }, () => randomUUID());
+    for (const audienceUserIds of [[], [id, id], tooMany, ['not-a-uuid']]) {
+      await expect(validateBody(validStory({ audienceUserIds }))).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    }
+    await expect(
+      validateBody(validStory({ audienceUserIds: tooMany.slice(0, 500) })),
+    ).resolves.toBeDefined();
+  });
+
+  it('accepts only known envelope versions', async () => {
+    await expect(validateBody(validStory({ envelopeVersion: 'rot13-v1' }))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('rejects the plaintext fields stories used to carry', async () => {
+    for (const plaintext of [
+      { contentType: 'text' },
+      { caption: 'hello' },
+      { contentUrl: 'text://inline' },
+    ]) {
+      await expect(validateBody(validStory(plaintext))).rejects.toBeInstanceOf(BadRequestException);
+    }
   });
 });

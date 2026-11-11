@@ -13,6 +13,9 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const API_SRC = 'apps/api/src';
+const PRISMA_SCHEMA = 'apps/api/prisma/schema.prisma';
+const CONTRACTS_SRC = 'packages/contracts/src';
+const MOBILE_BACKUP_DIR = 'apps/mobile/lib/src/core/backup';
 const APP_MODULE = 'apps/api/src/app.module.ts';
 const ENV_SCHEMA = 'apps/api/src/common/config/env.schema.ts';
 const LOGGING_INTERCEPTOR = 'apps/api/src/common/interceptors/logging.interceptor.ts';
@@ -24,6 +27,9 @@ const CADDYFILE = 'infra/caddy/Caddyfile';
 const RULES = {
   noRecoveryRoutes: 'no-recovery-routes',
   noRecoveryModules: 'no-recovery-modules',
+  noRecoveryModels: 'no-recovery-models',
+  noRecoveryContracts: 'no-recovery-contracts',
+  noMobileBackup: 'no-mobile-backup',
   noPasswordReset: 'no-password-reset',
   strictEnvBooleans: 'strict-env-booleans',
   noRawUrlLogging: 'no-raw-url-logging',
@@ -194,6 +200,28 @@ export function runPolicyChecks(rootDir) {
     }
   }
 
+  // Nor may the schema keep a place to store one, the contracts describe
+  // one, or the mobile app grow the code that would seal one.
+  assertNoMatch(
+    PRISMA_SCHEMA,
+    /^\s*model\s+\w*(?:Recovery|Backup)\w*\s*\{|@@map\(\s*"[^"]*(?:recovery|backup)[^"]*"\s*\)/im,
+    `[${RULES.noRecoveryModels}] The schema must not hold recovery or backup models`,
+  );
+
+  // Any declared name counts, type or value and in any case, so a runtime
+  // constant such as RECOVERY_FORMAT cannot stand in for a removed type.
+  assertNoMatch(
+    CONTRACTS_SRC,
+    /\b(?:interface|type|class|enum|const|let|var|function)\s+\w*(?:recovery|backup)\w*/i,
+    `[${RULES.noRecoveryContracts}] Contracts must not describe recovery or backup payloads`,
+  );
+
+  if (existsSync(join(rootDir, MOBILE_BACKUP_DIR))) {
+    failures.push(
+      `[${RULES.noMobileBackup}] Mobile must not contain a backup module: ${MOBILE_BACKUP_DIR}`,
+    );
+  }
+
   assertNoMatch(
     API_SRC,
     /password\s*reset/i,
@@ -253,7 +281,7 @@ export function runPolicyChecks(rootDir) {
 
 // A tree that satisfies every rule. Each seeded violation below changes one
 // file of it.
-const CLEAN_FIXTURE = {
+export const CLEAN_FIXTURE = {
   'apps/api/src/modules/push/push.service.ts':
     'export const PUSH_PROVIDER = Symbol("PUSH_PROVIDER");\n',
   'apps/api/src/modules/realtime/realtime.gateway.ts':
@@ -274,6 +302,8 @@ const CLEAN_FIXTURE = {
     "const proof = 'transfer-complete:';\n",
   'apps/api/src/modules/attachments/attachments.service.ts': 'await storage.headObject(key);\n',
   'apps/mobile/lib/main.dart': 'void main() {}\n',
+  [PRISMA_SCHEMA]: 'model User {\n  id String @id\n\n  @@map("users")\n}\n',
+  [`${CONTRACTS_SRC}/index.ts`]: 'export interface RegisterRequest {\n  handle: string;\n}\n',
   'apps/mobile/pubspec.yaml': 'name: veil\n',
   [LOGGING_INTERCEPTOR]: "logger.info('request.completed', { route: routeTemplate(request) });\n",
   [EXCEPTION_FILTER]: "logger.warn('request.rejected', { route: routeTemplate(request) });\n",
@@ -318,6 +348,35 @@ const SEEDED_VIOLATIONS = [
   {
     rule: RULES.noRecoveryModules,
     files: { 'apps/api/src/modules/backup/index.ts': 'export {};\n' },
+  },
+  {
+    rule: RULES.noRecoveryModels,
+    files: {
+      [PRISMA_SCHEMA]: `${CLEAN_FIXTURE[PRISMA_SCHEMA]}model RecoveryBlob {\n  userId String @id\n}\n`,
+    },
+  },
+  {
+    rule: RULES.noRecoveryModels,
+    files: {
+      [PRISMA_SCHEMA]: `${CLEAN_FIXTURE[PRISMA_SCHEMA]}model Vault {\n  id String @id\n\n  @@map("key_backups")\n}\n`,
+    },
+  },
+  {
+    rule: RULES.noRecoveryContracts,
+    files: {
+      [`${CONTRACTS_SRC}/index.ts`]:
+        'export interface UpsertRecoveryBackupRequest {\n  ciphertext: string;\n}\n',
+    },
+  },
+  {
+    rule: RULES.noRecoveryContracts,
+    files: {
+      [`${CONTRACTS_SRC}/vault.ts`]: "export const RECOVERY_FORMAT = 'sealed-v1';\n",
+    },
+  },
+  {
+    rule: RULES.noMobileBackup,
+    files: { [`${MOBILE_BACKUP_DIR}/backup_envelope.dart`]: 'class BackupEnvelope {}\n' },
   },
   {
     rule: RULES.noPasswordReset,
@@ -370,7 +429,7 @@ const SEEDED_VIOLATIONS = [
   },
 ];
 
-const writeTree = (rootDir, files) => {
+export const writeTree = (rootDir, files) => {
   for (const [path, contents] of Object.entries(files)) {
     const absolute = join(rootDir, path);
     mkdirSync(dirname(absolute), { recursive: true });

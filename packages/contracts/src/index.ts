@@ -3,7 +3,6 @@ import type {
   AttachmentUploadTicket,
   CryptoEnvelope,
   EncryptedAttachmentReference as SharedEncryptedAttachmentReference,
-  PublicKeyBundle,
 } from '@veil/shared';
 import type {
   AttachmentUploadStatus,
@@ -73,7 +72,10 @@ export type VeilErrorCode =
   | 'key_distribution_invalid'
   | 'channel_not_found'
   | 'resource_conflict'
-  | 'resource_not_found';
+  | 'resource_not_found'
+  | 'reactions_e2e_only'
+  | 'profile_e2e_pending'
+  | 'story_audience_invalid';
 
 // The single HTTP status of every error code. Clients branch on `code`; the
 // status is derived from this table so one code can never surface with two
@@ -138,10 +140,16 @@ export const ERROR_CATALOG: Readonly<Record<VeilErrorCode, number>> = Object.fre
   channel_not_found: 404,
   resource_conflict: 409,
   resource_not_found: 404,
+  // Reactions are end-to-end encrypted messages now (messageType 'reaction').
+  reactions_e2e_only: 410,
+  // Profile text returns once it can be stored end-to-end encrypted.
+  profile_e2e_pending: 410,
+  story_audience_invalid: 400,
 });
 
 export interface RegisterRequest {
   handle: string;
+  /** @deprecated Accepted for older clients and ignored; the server stores no display names. */
   displayName?: string;
   deviceName: string;
   platform: DevicePlatform;
@@ -202,16 +210,57 @@ export interface AuthLogoutRequest {
 export interface UserProfileResponse {
   id: string;
   handle: string;
-  displayName?: string | null;
-  avatarPath?: string | null;
   status: UserStatus;
-  activeDeviceId?: string | null;
 }
 
-export interface KeyBundleResponse {
-  user: UserProfileResponse;
-  bundle: PublicKeyBundle;
-  deviceBundles: PublicKeyBundle[];
+// GET /profile. Profile text (display name, bio, status, avatar) is not
+// stored until it can be stored end-to-end encrypted.
+export interface ProfileResponse {
+  userId: string;
+  handle: string;
+}
+
+/**
+ * Which devices of the target get a one-time prekey claimed by
+ * GET /keys/:handle:
+ * - active: only the user's active device (the default);
+ * - all: every trusted device, for per-device sessions;
+ * - none: identity and signed prekeys only, nothing consumed.
+ */
+export const KEY_CLAIM_MODES = ['active', 'all', 'none'] as const;
+export type KeyClaimMode = (typeof KEY_CLAIM_MODES)[number];
+
+export interface KeysDevice {
+  deviceId: string;
+  identityPublicKey: string;
+  signedPrekeyBundle: string;
+  /** True for the device that represents the user right now (user.activeDeviceId). */
+  isActive: boolean;
+  /**
+   * Null when the mode did not select this device, the pool is empty, or a
+   * claim budget is spent; the initiator then runs signed-prekey-only X3DH.
+   */
+  oneTimePrekey: OneTimePrekeyUpload | null;
+}
+
+// GET /keys/:handle, the authenticated key directory.
+export interface KeysResponse {
+  user: {
+    id: string;
+    handle: string;
+    activeDeviceId: string;
+  };
+  /** Trusted, non-revoked devices, most recently trusted first. */
+  devices: KeysDevice[];
+}
+
+export interface RotateSignedPrekeyRequest {
+  signedPrekeyBundle: string;
+}
+
+export interface RotateSignedPrekeyResponse {
+  deviceId: string;
+  spkId: number;
 }
 
 // X3DH one-time prekeys. The server stores only the public half; the private
@@ -249,7 +298,6 @@ export interface ClaimOneTimePrekeyResponse {
 export interface ConversationMemberSummary {
   userId: string;
   handle: string;
-  displayName?: string | null;
 }
 
 export interface ConversationSummary {
@@ -284,11 +332,6 @@ export interface SetDisappearingTimerRequest {
 
 export interface SetDisappearingTimerResponse {
   conversation: ConversationSummary;
-}
-
-export interface MessageReactionSummary {
-  userId: string;
-  emoji: string;
 }
 
 // The only attachment reference the relay stores or returns. Content type,
@@ -335,7 +378,6 @@ export interface ConversationMessageSummary {
   // Always null in realtime broadcasts.
   deliveredAt?: string | null;
   readAt?: string | null;
-  reactions?: MessageReactionSummary[];
 }
 
 export interface ListMessagesResponse {
@@ -421,19 +463,16 @@ export interface MarkMessageReadResponse {
   readAt: string;
 }
 
-export interface AddReactionRequest {
+// A reaction is an ordinary end-to-end encrypted message with messageType
+// 'reaction'. Its inner payload (kind 'reaction') carries this body; the
+// relay never parses it, and POST/DELETE /messages/:id/reactions answer 410
+// reactions_e2e_only.
+export interface ReactionPayload {
+  v: 1;
+  /** Id of the message the reaction applies to, in the same conversation. */
+  target: string;
   emoji: string;
-}
-
-export interface AddReactionResponse {
-  reactionId: string;
-  messageId: string;
-  emoji: string;
-}
-
-export interface RemoveReactionResponse {
-  messageId: string;
-  acknowledged: boolean;
+  op: 'add' | 'remove';
 }
 
 export interface UpdatePushTokenRequest {
@@ -448,28 +487,6 @@ export interface UpdatePushTokenResponse {
 export interface ClearPushTokenResponse {
   deviceId: string;
   clearedAt: string;
-}
-
-// Account-recovery backup. The ciphertext is the opaque passphrase-sealed
-// client envelope — the server stores and returns it but can never decrypt it.
-export interface UpsertRecoveryBackupRequest {
-  ciphertext: string;
-  // Envelope format marker, e.g. "veilbak:v1".
-  format?: string;
-}
-
-export interface UpsertRecoveryBackupResponse {
-  updatedAt: string;
-}
-
-export interface RecoveryBackupResponse {
-  ciphertext: string;
-  format: string;
-  updatedAt: string;
-}
-
-export interface DeleteRecoveryBackupResponse {
-  deleted: boolean;
 }
 
 export interface DeleteLocalMessageResponse {
@@ -563,7 +580,6 @@ export interface DeviceTransferCompleteResponse {
   revokedDeviceId?: string | null;
   preferredDeviceId?: string | null;
   handle: string;
-  displayName?: string | null;
   completedAt: string;
 }
 
@@ -619,7 +635,6 @@ export interface RevokeDeviceResponse {
 export interface BlockedUserSummary {
   userId: string;
   handle: string;
-  displayName?: string | null;
   blockedAt: string;
 }
 
@@ -669,12 +684,60 @@ export interface FileAbuseReportRequest {
   conversationId?: string | null;
   messageId?: string | null;
   reason: AbuseReportReason;
+  /** @deprecated Accepted for older clients and never stored: no one would read it. */
   note?: string | null;
 }
 
 export interface FileAbuseReportResponse {
   reportId: string;
   filedAt: string;
+}
+
+export interface AddContactRequest {
+  handle: string;
+  /** @deprecated Accepted for older clients and ignored: names for contacts stay on the device. */
+  nickname?: string;
+}
+
+export interface ContactSummary {
+  handle: string;
+  addedAt: string;
+}
+
+// Upper bounds of a story: the ciphertext of one sealed envelope, and the
+// number of contacts it can be addressed to.
+export const STORY_MAX_CIPHERTEXT_LENGTH = 65536;
+export const STORY_MAX_AUDIENCE = 500;
+
+// POST /stories. The story is end-to-end encrypted by the client; the server
+// stores the ciphertext for the listed audience only. Every audience member
+// must be a mutual contact that neither side has blocked, otherwise
+// 400 story_audience_invalid.
+export interface CreateStoryRequest {
+  ciphertext: string;
+  envelopeVersion: string;
+  audienceUserIds: string[];
+}
+
+export interface StorySummary {
+  id: string;
+  userId: string;
+  handle: string;
+  ciphertext: string;
+  envelopeVersion: string;
+  viewedByMe: boolean;
+  /** How many audience members viewed it; only the author is told. */
+  viewCount: number | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface CreateStoryResponse {
+  id: string;
+  envelopeVersion: string;
+  audienceSize: number;
+  createdAt: string;
+  expiresAt: string;
 }
 
 // Group Sender Keys chain-key distribution. Each encryptedChainKey is an
@@ -726,6 +789,11 @@ export interface RealtimeEventMap {
   'message.new': ConversationMessageSummary;
   'message.delivered': { messageId: string; userId: string; deliveredAt: string };
   'message.read': { messageId: string; userId: string; readAt: string };
+  /**
+   * @deprecated Never emitted. Reactions arrive as 'message.new' with
+   * messageType 'reaction'; the key stays so older clients' event lists
+   * remain aligned with the contract.
+   */
   'message.reaction': {
     messageId: string;
     userId: string;
@@ -760,12 +828,13 @@ export interface RealtimeEventMap {
     fromUserId: string;
     fromDeviceId: string;
   };
+  // Sent only to the story's audience; the story itself is fetched (as
+  // ciphertext) through GET /stories.
   'story.new': {
     storyId: string;
     userId: string;
     handle: string;
-    displayName: string | null;
-    contentType: string;
+    envelopeVersion: string;
     createdAt: string;
     expiresAt: string;
   };

@@ -15,7 +15,7 @@
 - object storage receives encrypted blobs only
 - API stores metadata only
 - plaintext file contents never touch backend business logic
-- plaintext file keys are never stored server-side
+- plaintext file keys never reach the server; they travel only inside the E2E payload
 - upload/download URLs are short-lived and policy-scoped
 - failed or explicitly canceled uploads are marked failed and object cleanup is attempted
 

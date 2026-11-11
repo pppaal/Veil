@@ -17,6 +17,7 @@ import {
   historyVisibleSince,
   isActionAllowed,
 } from '../../common/conversation-access/conversation-policy';
+import { recordDeviceSynced } from '../../common/device-activity';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { apiError } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
@@ -35,7 +36,7 @@ import { CreateDirectConversationDto } from './dto/create-direct-conversation.dt
 // member who joined after it was sent.
 const conversationSummaryInclude = (now: Date) =>
   ({
-    members: { include: { user: { select: { handle: true, displayName: true } } } },
+    members: { include: { user: { select: { handle: true } } } },
     messages: {
       where: notExpiredWhere(now),
       orderBy: { conversationOrder: 'desc' },
@@ -322,7 +323,6 @@ export class ConversationsService {
       members: members.map((member) => ({
         userId: member.userId,
         handle: member.user.handle,
-        displayName: member.user.displayName,
       })),
       lastMessage,
     };
@@ -365,9 +365,6 @@ export class ConversationsService {
       },
     });
 
-    await this.prisma.device.update({
-      where: { id: args.deviceId },
-      data: { lastSyncAt: new Date() },
-    });
+    await recordDeviceSynced(this.prisma, args.deviceId);
   }
 }

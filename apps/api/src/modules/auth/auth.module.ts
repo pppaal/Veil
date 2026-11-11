@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 
+import { HandlesModule } from '../handles/handles.module';
 import { RealtimeModule } from '../realtime/realtime.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { DEVICE_AUTH_VERIFIER, Ed25519DeviceAuthVerifier } from './device-auth-verifier';
 
 @Module({
-  imports: [RealtimeModule],
+  imports: [HandlesModule, RealtimeModule],
   controllers: [AuthController],
   providers: [
     AuthService,

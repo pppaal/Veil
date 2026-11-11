@@ -54,6 +54,8 @@ export class FakeConfigService {
   allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000'];
   transferTokenTtlSeconds = 300;
   authChallengeTtlSeconds = 120;
+  messageMaxAgeDays = 30;
+  retiredHandlePepper = 'test-retired-handle-pepper-0123456789abcdef';
   s3Endpoint = 'http://localhost:9000';
   s3PublicEndpoint = 'http://localhost:9000';
   s3Region = 'us-east-1';

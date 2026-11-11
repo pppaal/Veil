@@ -7,6 +7,7 @@ import type {
 } from '@veil/contracts';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import { utcDayStart } from '../../common/device-activity';
 import { forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
 import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
@@ -94,7 +95,7 @@ export class DevicesService {
     const now = new Date();
     await this.prisma.device.update({
       where: { id: deviceId },
-      data: { pushToken, lastSeenAt: now },
+      data: { pushToken, lastSeenAt: utcDayStart(now) },
     });
 
     return {

@@ -74,7 +74,7 @@ describe('ConversationAccessService', () => {
     const { access, safety, alice, bob, directId } = fixture();
     safety.setBlocked(bob.userId, alice.userId);
 
-    for (const action of ['send', 'edit', 'react', 'typing', 'call'] as const) {
+    for (const action of ['send', 'edit', 'typing', 'call'] as const) {
       await expect(access.requireAccess(alice.userId, directId, action)).rejects.toMatchObject({
         status: 403,
         response: { code: 'peer_unreachable' },

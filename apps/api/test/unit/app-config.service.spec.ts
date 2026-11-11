@@ -1,6 +1,10 @@
 import { ConfigService } from '@nestjs/config';
 
-import { AppConfigService } from '../../src/common/config/app-config.service';
+import {
+  AppConfigService,
+  DEV_RETIRED_HANDLE_PEPPER,
+  PUBLISHED_RETENTION_CAP_DAYS,
+} from '../../src/common/config/app-config.service';
 import { envSchema, type EnvConfig } from '../../src/common/config/env.schema';
 
 // Raw environment strings, exactly as the process would see them, so every
@@ -28,6 +32,7 @@ const PROD_BASELINE: Record<string, string> = {
   VEIL_PUSH_PROVIDER: 'none',
   VEIL_PUSH_ENABLE_DELIVERY: 'false',
   VEIL_REDIS_URL: 'redis://redis:6379',
+  VEIL_RETIRED_HANDLE_PEPPER: 'a-real-production-pepper-from-openssl-rand',
 };
 
 const BOOLEAN_FLAGS = [
@@ -158,6 +163,47 @@ describe('AppConfigService.assertProductionReady', () => {
     // Compose forwards an unset variable as an empty string.
     const forwardedEmpty = configFrom({ ...PROD_BASELINE, VEIL_AUDIT_REPORT_SHA256: '' });
     expect(() => forwardedEmpty.assertProductionReady()).toThrow(/VEIL_AUDIT_REPORT_SHA256/);
+  });
+
+  it('production requires VEIL_RETIRED_HANDLE_PEPPER', () => {
+    for (const config of [
+      configFrom(without(PROD_BASELINE, 'VEIL_RETIRED_HANDLE_PEPPER')),
+      configFrom({ ...PROD_BASELINE, VEIL_RETIRED_HANDLE_PEPPER: '' }),
+      configFrom({ ...PROD_BASELINE, VEIL_RETIRED_HANDLE_PEPPER: DEV_RETIRED_HANDLE_PEPPER }),
+    ]) {
+      expect(() => config.assertProductionReady()).toThrow(/VEIL_RETIRED_HANDLE_PEPPER/);
+    }
+    expect(
+      envSchema.safeParse({ ...REQUIRED_ENV, VEIL_RETIRED_HANDLE_PEPPER: 'too-short' }).success,
+    ).toBe(false);
+  });
+
+  it('falls back to the development pepper outside production', () => {
+    expect(configFrom(REQUIRED_ENV).retiredHandlePepper).toBe(DEV_RETIRED_HANDLE_PEPPER);
+  });
+
+  it('caps message age at 30 days unless VEIL_MESSAGE_MAX_AGE_DAYS says otherwise', () => {
+    expect(configFrom(REQUIRED_ENV).messageMaxAgeDays).toBe(30);
+    expect(configFrom({ ...REQUIRED_ENV, VEIL_MESSAGE_MAX_AGE_DAYS: '0' }).messageMaxAgeDays).toBe(
+      0,
+    );
+    expect(envSchema.safeParse({ ...REQUIRED_ENV, VEIL_MESSAGE_MAX_AGE_DAYS: '-1' }).success).toBe(
+      false,
+    );
+  });
+
+  it('production keeps message and call-record retention within the published 30 days', () => {
+    for (const name of ['VEIL_MESSAGE_MAX_AGE_DAYS', 'VEIL_CALL_RECORD_RETENTION_DAYS']) {
+      for (const days of ['0', String(PUBLISHED_RETENTION_CAP_DAYS + 1)]) {
+        const config = configFrom({ ...PROD_BASELINE, [name]: days });
+        expect(() => config.assertProductionReady()).toThrow(new RegExp(`${name} is ${days}\\.`));
+      }
+      for (const days of ['1', String(PUBLISHED_RETENTION_CAP_DAYS)]) {
+        expect(() =>
+          configFrom({ ...PROD_BASELINE, [name]: days }).assertProductionReady(),
+        ).not.toThrow();
+      }
+    }
   });
 
   it('production unifiedpush requires allowlist', () => {

@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { AuthService } from './auth.service';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
+import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { FakeConfigService, FakeEphemeralStoreService } from '../../../test/support/fake-services';
@@ -35,13 +36,16 @@ function setup(
   const store = options.store ?? new FakeEphemeralStoreService();
   const jwt = new JwtService();
   const keyHelper = new DeviceAuthTestHelper();
+  const config = options.config ?? new FakeConfigService();
+  const retiredHandles = new RetiredHandlesService(prisma as never, config as never);
   const service = new AuthService(
     prisma as never,
     store as never,
     jwt,
-    (options.config ?? new FakeConfigService()) as never,
+    config as never,
     new Ed25519DeviceAuthVerifier(),
     { disconnectDevice: () => 0 } as never,
+    retiredHandles,
   );
 
   const signChallenge = (challenge: { challenge: string }, keyPair: KeyPair): string =>
@@ -66,7 +70,17 @@ function setup(
     return { keyPair, registered, verified };
   };
 
-  return { prisma, store, jwt, keyHelper, service, signChallenge, login, registerAndLogin };
+  return {
+    prisma,
+    store,
+    jwt,
+    keyHelper,
+    service,
+    retiredHandles,
+    signChallenge,
+    login,
+    registerAndLogin,
+  };
 }
 
 describe('AuthService', () => {
@@ -82,6 +96,47 @@ describe('AuthService', () => {
       expect(verified.userId).toBe(registered.userId);
       expect(verified.deviceId).toBe(registered.deviceId);
       expect(verified.accessToken).toBeTruthy();
+    });
+
+    it('register ignores displayName', async () => {
+      const { prisma, service, keyHelper } = setup();
+
+      const registered = await service.register({
+        ...registration('icarus', keyHelper.createKeyPair()),
+        displayName: 'Icarus the Bold',
+      });
+
+      expect(registered).not.toHaveProperty('displayName');
+      expect(JSON.stringify(prisma.users)).not.toContain('Icarus the Bold');
+      expect(prisma.users[0]).not.toHaveProperty('displayName');
+    });
+
+    it('quarantined handle register 409', async () => {
+      const { prisma, service, retiredHandles, keyHelper } = setup();
+      const retiredAt = new Date();
+      await retiredHandles.retire(prisma as never, 'Phoenix', retiredAt);
+
+      await expect(
+        service.register(registration('phoenix', keyHelper.createKeyPair())),
+      ).rejects.toMatchObject({ status: 409, response: { code: 'handle_taken' } });
+      expect(prisma.users).toHaveLength(0);
+      // The quarantine table keeps a digest, never the handle itself.
+      expect(JSON.stringify(prisma.retiredHandles).toLowerCase()).not.toContain('phoenix');
+
+      // Once the quarantine has lapsed the handle can be registered again.
+      prisma.retiredHandles[0]!.retiredUntil = new Date(Date.now() - 1000);
+      await expect(
+        service.register(registration('phoenix', keyHelper.createKeyPair())),
+      ).resolves.toMatchObject({ handle: 'phoenix' });
+    });
+
+    it('stores the device last-seen time as the UTC day only', async () => {
+      const { prisma, registerAndLogin } = setup();
+
+      await registerAndLogin('daybound');
+
+      const lastSeenAt = prisma.devices[0]!.lastSeenAt;
+      expect(lastSeenAt.toISOString()).toMatch(/T00:00:00\.000Z$/);
     });
 
     it('concurrent register maps P2002 to handle_taken', async () => {

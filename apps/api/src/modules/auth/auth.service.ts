@@ -10,10 +10,12 @@ import type {
 import { JwtService } from '@nestjs/jwt';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import { recordDeviceSeen, utcDayStart } from '../../common/device-activity';
 import { conflict, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
 import { RegisterDto } from './dto/register.dto';
@@ -104,6 +106,7 @@ export class AuthService {
     @Inject(DEVICE_AUTH_VERIFIER)
     private readonly deviceAuthVerifier: DeviceAuthVerifier,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly retiredHandles: RetiredHandlesService,
     // Optional so the many positional-construction unit tests don't need the
     // arg; NestJS still injects the @Global MetricsService in the real app.
     @Optional() private readonly metrics?: MetricsService,
@@ -128,16 +131,21 @@ export class AuthService {
       select: { id: true },
     });
 
-    if (existing) {
+    // Checked after the user lookup: account deletion frees the handle and
+    // quarantines it in one transaction, so one of the two checks sees it.
+    // A quarantined handle answers exactly like a taken one.
+    if (existing || (await this.retiredHandles.isQuarantined(normalizedHandle))) {
       throw conflict('handle_taken', 'Handle is already taken');
     }
 
+    // dto.displayName is accepted from older clients and dropped: the server
+    // stores no profile text.
+    const now = new Date();
     const created = await this.prisma
       .$transaction(async (tx) => {
         const user = await tx.user.create({
           data: {
             handle: normalizedHandle,
-            displayName: dto.displayName,
             status: UserStatus.active,
           },
         });
@@ -152,6 +160,7 @@ export class AuthService {
             authPublicKey: dto.authPublicKey,
             pushToken: dto.pushToken,
             isActive: true,
+            lastSeenAt: utcDayStart(now),
           },
         });
 
@@ -266,10 +275,7 @@ export class AuthService {
       familyId,
     );
 
-    await this.prisma.device.update({
-      where: { id: device.id },
-      data: { lastSeenAt: new Date() },
-    });
+    await recordDeviceSeen(this.prisma, device.id);
 
     this.countAuth('login');
 
@@ -360,10 +366,7 @@ export class AuthService {
       stored.familyId,
     );
 
-    await this.prisma.device.update({
-      where: { id: device.id },
-      data: { lastSeenAt: new Date() },
-    });
+    await recordDeviceSeen(this.prisma, device.id);
 
     this.countAuth('refresh');
 

@@ -3,10 +3,9 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:veil_mobile/src/core/crypto/group_sender_keys.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
 
 const groupId = 'group-1';
-
-String b64u(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
 /// A device's long-term identity as the directory publishes it: an Ed25519
 /// identity key and an X25519 prekey. The "signed prekey bundle" is an opaque
@@ -34,7 +33,7 @@ class TestIdentity {
       deviceId: deviceId,
       handle: handle,
       ed25519Seed: (await ed.extract()).bytes,
-      identityPublicKey: b64u((await ed.extractPublicKey()).bytes),
+      identityPublicKey: base64UrlNoPadEncode((await ed.extractPublicKey()).bytes),
       x25519Private: (await x.extract()).bytes,
       x25519Public: await x.extractPublicKey(),
     );
@@ -109,9 +108,9 @@ Future<SealedGroupSenderKey> sealLegacyV1({
       'groupId': key.groupId,
       'epoch': key.epoch,
       'senderDeviceId': key.senderDeviceId,
-      'chainKey': b64u(key.chainKey),
+      'chainKey': base64UrlNoPadEncode(key.chainKey),
       'counter': key.counter,
-      'signingPub': b64u(key.signingPublicKey),
+      'signingPub': base64UrlNoPadEncode(key.signingPublicKey),
     })),
     secretKey: wrapKey,
     nonce: nonce,
@@ -122,8 +121,8 @@ Future<SealedGroupSenderKey> sealLegacyV1({
   final signature = await Ed25519().sign([...ad, ...ephPub, ...nonce, ...ciphertext], keyPair: signer);
   return SealedGroupSenderKey(
     recipientUserId: recipient.userId,
-    encryptedChainKey: b64u([...ephPub, ...signature.bytes, ...ciphertext]),
-    nonce: b64u(nonce),
+    encryptedChainKey: base64UrlNoPadEncode([...ephPub, ...signature.bytes, ...ciphertext]),
+    nonce: base64UrlNoPadEncode(nonce),
     version: kLegacyGroupKeyDistributionVersion,
   );
 }

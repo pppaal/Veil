@@ -300,7 +300,7 @@ void main() {
         localIdentityX25519Private: recipientXPriv,
         senderIdentityPublicKey: senderIdPub,
       );
-      expect(opened.isLegacy, isFalse);
+      expect(opened.issuedAtMs, isNotNull);
       expect(groupKeyBytesEqual(opened.key.chainKey, key.chainKey), isTrue);
       expect(groupKeyBytesEqual(opened.key.signingPublicKey, key.signingPublicKey), isTrue);
       expect(opened.key.counter, key.counter);
@@ -360,6 +360,29 @@ void main() {
               senderIdentityPublicKey: senderIdPub,
             )),
         'decryptFailed',
+      );
+    });
+
+    test('a recipient bundle that does not verify is a typed refusal', () async {
+      final sealer = GroupSenderKeySealer(
+        resolveRecipientPrekey: (_, __) async => throw StateError('signature did not verify'),
+      );
+      final key = await alice.engine.ensureOwnSenderKey(
+        groupId: groupId,
+        epoch: 0,
+        localDeviceId: alice.deviceId,
+      );
+      final seed = (await (await ed25519.newKeyPair()).extract()).bytes;
+
+      expect(
+        await _code(() => sealer.seal(
+              key: key,
+              recipientUserId: 'user-bob',
+              recipientIdentityPublicKey: 'id-of-recipient',
+              recipientSignedPrekeyBundle: 'forged-bundle',
+              senderIdentityEd25519Seed: seed,
+            )),
+        'recipientBundleInvalid',
       );
     });
   });

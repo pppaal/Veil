@@ -12,13 +12,17 @@ import 'support/group_fixtures.dart';
 
 // Coordinator-level hardening against a malicious relay/directory: it must
 // not graft unauthenticated attachments onto messages, pick devices for us,
-// or seal to / accept from identities the trust check refuses.
+// or seal to / accept from identities the trust check refuses. One member the
+// directory cannot serve must not cost the other members the chain either.
 
 /// The server: a directory the test can rewrite plus the distribution relay.
 class _Server {
   final Map<String, Map<String, dynamic>> directory = <String, Map<String, dynamic>>{};
   final Map<String, List<Map<String, dynamic>>> buffered = <String, List<Map<String, dynamic>>>{};
   final List<List<String>> uploads = <List<String>>[];
+
+  /// Handle -> error the directory answers with instead of an entry.
+  final Map<String, VeilApiException> lookupFailures = <String, VeilApiException>{};
 
   void publish(TestIdentity user, {List<TestIdentity>? devices, String? activeDeviceId}) {
     final listed = devices ?? [user];
@@ -37,7 +41,11 @@ class _ServerClient extends VeilApiClient {
   final TestIdentity me;
 
   @override
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async => server.directory[handle]!;
+  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
+    final failure = server.lookupFailures[handle];
+    if (failure != null) throw failure;
+    return server.directory[handle]!;
+  }
 
   @override
   Future<Map<String, dynamic>> distributeGroupKeys(
@@ -93,6 +101,9 @@ class _Member {
       localEd25519SeedParser: (_) => identity.ed25519Seed,
       trustCheck: (userId, deviceId, key) async {
         trustChecks.add('$userId/$deviceId/$key');
+        if (unresolvable.contains(userId)) {
+          throw const FormatException('corrupt pin record');
+        }
         return !distrusted.contains(userId);
       },
     )..conversationLookup = (_) => group;
@@ -101,6 +112,9 @@ class _Member {
   final TestIdentity identity;
   late final GroupSenderKeyCoordinator coordinator;
   final Set<String> distrusted = <String>{};
+
+  /// Users whose trust check throws, like a resolver over a corrupt store.
+  final Set<String> unresolvable = <String>{};
   final List<String> trustChecks = <String>[];
 
   Future<void> prepareSend(ConversationPreview group) => coordinator.prepareSend(
@@ -126,6 +140,9 @@ class _Member {
 
   Future<void> receiveRealtime(Map<String, dynamic> distribution) =>
       coordinator.handleKeyDistributionEvent(distribution, localUserId: identity.userId);
+
+  bool holdsChainOf(TestIdentity sender) =>
+      coordinator.engine.hasSenderKeyFor(groupId: groupId, senderDeviceId: sender.deviceId);
 }
 
 CryptoEnvelope _withOuterAttachment(CryptoEnvelope e, AttachmentReference attachment) => CryptoEnvelope(
@@ -274,15 +291,99 @@ void main() {
 
     await bob.receiveRealtime(blob);
     expect(bob.trustChecks, contains('${aliceId.userId}/${aliceId.deviceId}/${aliceId.identityPublicKey}'));
-    expect(
-      bob.coordinator.engine.hasSenderKeyFor(groupId: groupId, senderDeviceId: aliceId.deviceId),
-      isFalse,
-    );
+    expect(bob.holdsChainOf(aliceId), isFalse);
     expect((await bob.read(envelope)).body, '[Awaiting sender key — sync required]');
 
     // The trust decision was the only thing in the way.
     bob.distrusted.clear();
     await bob.receiveRealtime(blob);
+    expect((await bob.read(envelope)).body, 'hello bob');
+  });
+
+  test('member whose directory lookup is 404 is skipped without blocking the others', () async {
+    // What the directory answers for a user with no trusted active device.
+    server.lookupFailures[carolId.handle] = VeilApiException(
+      'Active device bundle not found',
+      code: 'active_device_not_found',
+      statusCode: 404,
+    );
+
+    final envelope = await alice.send(group, 'carol has no device right now');
+    expect(server.uploads, [
+      [bobId.userId],
+    ]);
+    expect((await bob.read(envelope)).body, 'carol has no device right now');
+
+    // carol stays pending: each send asks again, and nothing is uploaded
+    // while the directory still has no device for her.
+    await alice.prepareSend(group);
+    expect(server.uploads, hasLength(1));
+
+    server.lookupFailures.clear();
+    final carol = _Member(carolId, server, directory, group);
+    final later = await alice.send(group, 'welcome back');
+    expect(server.uploads.last, [carolId.userId]);
+    expect((await carol.read(later)).body, 'welcome back');
+  });
+
+  test('a lookup failure that is not about the member fails the round for a retry', () async {
+    server.lookupFailures[carolId.handle] = VeilApiException('Service unavailable', statusCode: 503);
+
+    // Shipping a frame now would leave it unreadable for whoever was not
+    // reached, so the send fails instead.
+    await expectLater(alice.prepareSend(group), throwsA(isA<VeilApiException>()));
+    expect(server.uploads, isEmpty);
+
+    server.lookupFailures.clear();
+    await alice.prepareSend(group);
+    expect(server.uploads, [
+      [bobId.userId, carolId.userId],
+    ]);
+  });
+
+  test('member whose signed prekey does not verify is skipped', () async {
+    // carol's entry presents a prekey her identity key never signed.
+    server.directory[carolId.handle] = {
+      'user': {'activeDeviceId': carolId.deviceId},
+      'deviceBundles': [
+        {...carolId.directoryBundle, 'signedPrekeyBundle': bobId.signedPrekeyBundle},
+      ],
+    };
+
+    final envelope = await alice.send(group, 'hello bob');
+    expect(server.uploads, [
+      [bobId.userId],
+    ]);
+    expect((await bob.read(envelope)).body, 'hello bob');
+  });
+
+  test('a trust check that throws fails closed without aborting the round', () async {
+    alice.unresolvable.add(carolId.userId);
+    bob.unresolvable.add(aliceId.userId);
+
+    final envelope = await alice.send(group, 'hello bob');
+    expect(server.uploads, [
+      [bobId.userId],
+    ]);
+
+    final blob = server.buffered[bobId.userId]!.single;
+    await bob.receiveRealtime(blob);
+    expect(bob.holdsChainOf(aliceId), isFalse);
+
+    bob.unresolvable.clear();
+    await bob.receiveRealtime(blob);
+    expect((await bob.read(envelope)).body, 'hello bob');
+  });
+
+  test('distribution whose sender the directory cannot serve waits for a later pickup', () async {
+    final envelope = await alice.send(group, 'hello bob');
+    final blob = server.buffered[bobId.userId]!.single;
+
+    server.lookupFailures[aliceId.handle] = VeilApiException('Service unavailable', statusCode: 503);
+    await bob.receiveRealtime(blob);
+    expect(bob.holdsChainOf(aliceId), isFalse);
+
+    server.lookupFailures.clear();
     expect((await bob.read(envelope)).body, 'hello bob');
   });
 }

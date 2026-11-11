@@ -113,6 +113,16 @@ void main() {
     expect(await errorCode(() => recv(f1)), 'replayed');
   });
 
+  test('v1 distribution cannot reinstall a dropped v1 chain', () async {
+    // Same signer and generation, and nothing consumed yet: only the rule
+    // that a legacy blob never replaces a ledger entry stops the reinstall.
+    final legacy = await sealLegacyV1(key: await aliceKey(), sender: aliceId, recipient: bobId);
+    expect(await deliver(legacy), isTrue);
+
+    await bob.dropPeer(groupId: groupId, senderDeviceId: aliceId.deviceId);
+    expect(await errorCode(() => deliver(legacy)), 'distribution_stale');
+  });
+
   test('distribution issued >30 min ago cannot replace chain', () async {
     expect(await deliver(await sealToBob(await aliceKey())), isTrue);
     final rotated = await aliceKey(rotate: true);

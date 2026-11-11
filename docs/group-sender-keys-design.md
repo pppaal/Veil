@@ -49,11 +49,20 @@ reviewer should look first.
 7. **The relay and directory are not trusted to pick recipients.** The
    coordinator seals only to a member's *active* device as listed for that
    member's own userId; if that device is missing it never falls back to
-   another listed bundle. Such members, and members whose identity the trust
-   hook refuses, stay in a per-conversation pending set and are retried on
-   the next send (an epoch bump re-keys and so reaches everyone anyway). A
-   member who was pending reads from the counter at which they were finally
-   reached; earlier frames stay unreadable to them.
+   another listed bundle. Such members stay in a per-conversation pending set
+   and are retried on the next send (an epoch bump re-keys and so reaches
+   everyone anyway). A member who was pending reads from the counter at
+   which they were finally reached; earlier frames stay unreadable to them.
+   A member is skipped this way, and the rest of the round still goes out,
+   whenever the reason is about that member alone: the directory has no
+   active device for them (an entry without one, or a 404
+   `active_device_not_found`, e.g. mid account deletion or after their last
+   device was revoked), their signed prekey does not verify
+   (`recipientBundleInvalid`), or the trust hook refuses or cannot judge
+   their identity. A failure that is not about the member (offline,
+   throttling, a server error) aborts the round and fails the send, because
+   the frame would otherwise go out unreadable to everyone not yet reached;
+   all of them stay pending for the retry.
 8. **Attachments come only from the authenticated payload.** A frame's
    attachment pointer is read from the decrypted inner payload (long-key or
    the 1:1 adapter's short-key form); the outer envelope's attachment, which
@@ -97,7 +106,11 @@ retired.
   * a v1 (`veil-gkd-v1`) blob never replaces an entry (`distribution_stale`);
   * same signing key and generation: never rewind — a no-op, except that a
     chain removed by `dropPeer` is reinstalled when the blob starts above
-    `highWaterConsumed`;
+    `highWaterConsumed`. While the chain is still installed, even a blob
+    that starts further ahead is a no-op: otherwise the relay could replay a
+    later blob of the same chain to skip a receiver past frames still in
+    flight. The cost is that a receiver more than 2000 frames behind
+    (`tooFarAhead`) is only moved forward by a rotation or an epoch bump;
   * higher generation: replaces the chain only if `issuedAtMs` lies within
     [now − 30 min, now + 5 min] (the relay TTL, plus clock skew);
   * lower generation, or a different signing key at the same generation:
@@ -130,8 +143,11 @@ peers reject until the next epoch bump.
 `trustCheck(userId, deviceId, identityPublicKey) -> Future<bool>`. It is
 consulted with the directory identity before sealing our chain to a
 member's device (false: skip, keep pending) and before accepting a
-distribution signer (false: reject with `untrusted_identity`). Null allows
-every directory identity, which is today's behaviour. The intended
+distribution signer (false: reject with `untrusted_identity`). It fails
+closed: a check that throws counts as false. Null allows every directory
+identity, which is today's behaviour. On the receiving side, a distribution
+whose sender the directory cannot serve right now is not installed and stays
+on the relay for the next pickup. The intended
 implementation is the TOFU resolver in `core/identity/`
 (`TrustedIdentityResolver.evaluate(...).isTrusted`): first sighting of a user
 pins silently, while a changed key or a new device of a known user is never

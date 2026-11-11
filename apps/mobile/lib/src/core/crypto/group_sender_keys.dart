@@ -140,9 +140,10 @@ class GroupCryptoException implements Exception {
   /// One of: `malformed`, `noOwnSenderKey`, `senderKeyMissing`,
   /// `epochMismatch`, `signatureInvalid`, `replayed`, `tooFarAhead`,
   /// `decryptFailed`, `distributionInvalid`, `distribution_stale` (the
-  /// distribution does not supersede the chain we hold), or
-  /// `untrusted_identity` (the coordinator's trust check refused the
-  /// distribution's signer).
+  /// distribution does not supersede the chain we hold),
+  /// `recipientBundleInvalid` (a recipient's directory bundle did not verify,
+  /// so nothing was sealed to it), or `untrusted_identity` (the coordinator's
+  /// trust check refused the distribution's signer).
   final String code;
   final String? message;
 
@@ -188,8 +189,6 @@ class GroupKeyDistribution {
   /// Sender's clock when the blob was sealed, in ms since the Unix epoch.
   /// Null for a [kLegacyGroupKeyDistributionVersion] blob.
   final int? issuedAtMs;
-
-  bool get isLegacy => issuedAtMs == null;
 }
 
 /// Parsed, unauthenticated frame header. Only used for routing decisions
@@ -1140,7 +1139,9 @@ class GroupSenderKeySealer {
   }
 
   /// Seals [key] for one recipient as a [kGroupKeyDistributionVersion] blob,
-  /// stamped with the current time as its issue time.
+  /// stamped with the current time as its issue time. Throws
+  /// `recipientBundleInvalid` when the recipient's bundle does not verify, and
+  /// `distributionInvalid` when its prekey is a low-order point.
   Future<SealedGroupSenderKey> seal({
     required GroupSenderKey key,
     required String recipientUserId,
@@ -1152,10 +1153,18 @@ class GroupSenderKeySealer {
       throw ArgumentError.value(key.generation, 'key.generation', 'must be a u32 >= 1');
     }
     final issuedAtMs = _clock().millisecondsSinceEpoch;
-    final recipientX = await _resolveRecipientPrekey(
-      recipientSignedPrekeyBundle,
-      recipientIdentityPublicKey,
-    );
+    final SimplePublicKey recipientX;
+    try {
+      recipientX = await _resolveRecipientPrekey(
+        recipientSignedPrekeyBundle,
+        recipientIdentityPublicKey,
+      );
+    } catch (e) {
+      // Resolvers report a bundle that fails verification in their own way
+      // (the 1:1 adapter throws StateError); callers need one typed outcome
+      // to skip that recipient rather than abort everyone else's delivery.
+      throw GroupCryptoException('recipientBundleInvalid', '$e');
+    }
     final eph = await _x25519.newKeyPair();
     final ephPub = (await eph.extractPublicKey()).bytes;
     final shared = await _x25519.sharedSecretKey(keyPair: eph, remotePublicKey: recipientX);

@@ -176,19 +176,12 @@ class GroupSenderKeyCoordinator {
     final uploads = <Map<String, dynamic>>[];
     final unreached = <String>{};
     for (final member in recipients) {
-      final bundle = await _sealableBundleFor(member);
-      if (bundle == null) {
+      final sealed = await _sealTo(member, key: key, senderIdentityEd25519Seed: seed);
+      if (sealed == null) {
         unreached.add(member.userId);
-        continue;
+      } else {
+        uploads.add(sealed.toUploadJson());
       }
-      final sealed = await _sealer.seal(
-        key: key,
-        recipientUserId: member.userId,
-        recipientIdentityPublicKey: bundle.identityPublicKey,
-        recipientSignedPrekeyBundle: bundle.signedPrekeyBundle,
-        senderIdentityEd25519Seed: seed,
-      );
-      uploads.add(sealed.toUploadJson());
     }
     if (uploads.isNotEmpty) {
       await _apiClient.distributeGroupKeys(
@@ -272,7 +265,7 @@ class GroupSenderKeyCoordinator {
         payload: envelope.ciphertext,
         nonce: envelope.nonce,
       );
-      return _decodePayload(envelope, out.plaintext);
+      return _decodePayload(out.plaintext);
     } on GroupCryptoException catch (e) {
       switch (e.code) {
         case 'senderKeyMissing':
@@ -387,6 +380,10 @@ class GroupSenderKeyCoordinator {
       return installed;
     } on GroupCryptoException {
       return false;
+    } on VeilApiException {
+      // The directory could not vouch for the sender right now. Nothing is
+      // installed; the relay keeps the blob for the next pickup.
+      return false;
     }
   }
 
@@ -484,12 +481,45 @@ class GroupSenderKeyCoordinator {
 
   // ---- directory helpers --------------------------------------------------------
 
+  /// [key] sealed to [member]'s active device, or null when that member
+  /// cannot be reached this round: the directory has no active device for
+  /// them, the trust check refuses it, or its signed prekey does not verify.
+  /// Each of those is about this member alone, so it must not cost the other
+  /// members the chain. Failures that are not about the member (offline,
+  /// throttled, server error) still abort the round, so the send fails where
+  /// the user can see it instead of shipping a frame nobody can read.
+  Future<SealedGroupSenderKey?> _sealTo(
+    GroupMember member, {
+    required GroupSenderKey key,
+    required List<int> senderIdentityEd25519Seed,
+  }) async {
+    final bundle = await _sealableBundleFor(member);
+    if (bundle == null) return null;
+    try {
+      return await _sealer.seal(
+        key: key,
+        recipientUserId: member.userId,
+        recipientIdentityPublicKey: bundle.identityPublicKey,
+        recipientSignedPrekeyBundle: bundle.signedPrekeyBundle,
+        senderIdentityEd25519Seed: senderIdentityEd25519Seed,
+      );
+    } on GroupCryptoException {
+      return null;
+    }
+  }
+
   /// The member's active device bundle, provided the directory lists that
   /// device for that user and the trust check accepts its identity. There is
   /// deliberately no fallback to another listed device: the server must not
   /// get to choose which device receives our chain key.
   Future<KeyBundle?> _sealableBundleFor(GroupMember member) async {
-    final response = await _apiClient.getKeyBundle(member.handle);
+    final Map<String, dynamic> response;
+    try {
+      response = await _apiClient.getKeyBundle(member.handle);
+    } on VeilApiException catch (e) {
+      if (_isNoActiveDevice(e)) return null;
+      rethrow;
+    }
     final activeDeviceId =
         (response['user'] as Map<String, dynamic>?)?['activeDeviceId'] as String?;
     if (activeDeviceId == null) return null;
@@ -500,15 +530,29 @@ class GroupSenderKeyCoordinator {
         : null;
   }
 
+  /// How the directory reports a user with no trusted active device, e.g.
+  /// mid account deletion or after their last device was revoked. Keyed on
+  /// the error code, not the bare status: a 404 from an unrouted path is not
+  /// about the member and must still fail the round.
+  static bool _isNoActiveDevice(VeilApiException error) =>
+      error.code == 'active_device_not_found';
+
   Future<KeyBundle?> _bundleForDevice(String handle, String deviceId) async =>
       _findDevice(_decodeBundles(await _apiClient.getKeyBundle(handle)), deviceId);
 
   static KeyBundle? _findDevice(List<KeyBundle> bundles, String deviceId) =>
       bundles.where((b) => b.deviceId == deviceId).firstOrNull;
 
-  Future<bool> _isTrusted(String userId, String deviceId, String identityPublicKey) {
+  /// Fails closed: a trust check that throws refuses the identity, exactly as
+  /// if it had returned false.
+  Future<bool> _isTrusted(String userId, String deviceId, String identityPublicKey) async {
     final check = _trustCheck;
-    return check == null ? Future<bool>.value(true) : check(userId, deviceId, identityPublicKey);
+    if (check == null) return true;
+    try {
+      return await check(userId, deviceId, identityPublicKey);
+    } catch (_) {
+      return false;
+    }
   }
 
   List<KeyBundle> _decodeBundles(Map<String, dynamic> response) {
@@ -526,11 +570,13 @@ class GroupSenderKeyCoordinator {
 
   // ---- payload codec ------------------------------------------------------------
 
-  DecryptedMessage _decodePayload(CryptoEnvelope envelope, List<int> padded) {
+  DecryptedMessage _decodePayload(List<int> padded) {
     final map = json.decode(utf8.decode(MessagePadding.unpad(padded))) as Map<String, dynamic>;
+    // An unrecognised inner kind renders as text: the outer messageKind is
+    // server-controlled and must not decide, say, system chrome.
     final kind = MessageKind.values.firstWhere(
       (k) => k.name == map['kind'],
-      orElse: () => envelope.messageKind,
+      orElse: () => MessageKind.text,
     );
     final expiresAtStr = map['expiresAt'] as String?;
     final att = map['att'];

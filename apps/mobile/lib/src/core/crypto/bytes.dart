@@ -82,11 +82,17 @@ Uint8List concatBytes(Iterable<List<int>> parts) {
 /// fields unambiguous inside associated data.
 Uint8List lengthPrefixedUtf8(String value) {
   final bytes = utf8.encode(value);
-  if (bytes.length > 0xFFFF) {
+  if (bytes.length > _maxLengthPrefixed) {
     throw ArgumentError.value(value.length, 'value', 'too long for a u16 length prefix');
   }
   return concatBytes([u16be(bytes.length), bytes]);
 }
+
+/// Whether [lengthPrefixedUtf8] can encode [value], so a field taken off the
+/// wire can be rejected as data instead of surfacing as the encoder's error.
+bool fitsLengthPrefix(String value) => utf8.encode(value).length <= _maxLengthPrefixed;
+
+const int _maxLengthPrefixed = 0xFFFF;
 
 /// Overwrites a buffer we own. Dart cannot guarantee the bytes were never
 /// copied (GC moves, immutable Strings), so this only shortens how long the

@@ -1270,6 +1270,11 @@ class GroupSenderKeySealer {
     if (!legacy && !_isUint32(epoch)) {
       throw const GroupCryptoException('distributionInvalid', 'epoch out of range');
     }
+    // The server supplies these, and the AD length-prefixes them in u16:
+    // one too long must be a typed refusal, not an ArgumentError.
+    if ([groupId, senderDeviceId].any((field) => utf8.encode(field).length > 0xFFFF)) {
+      throw const GroupCryptoException('distributionInvalid', 'routing field too long');
+    }
     final Uint8List blob;
     final Uint8List nonceBytes;
     final Uint8List senderIdBytes;

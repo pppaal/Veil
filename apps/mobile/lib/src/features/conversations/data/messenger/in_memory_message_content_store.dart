@@ -9,9 +9,12 @@ class InMemoryMessageContentStore implements MessageContentStore {
 
   @override
   Future<void> put(MessageContentRecord record) async {
-    if (!_retired.contains(record.messageKey)) {
-      _records[record.messageKey] = record;
+    final key = record.messageKey;
+    final existing = _records[key];
+    if (_retired.contains(key) || (existing != null && !mayReplaceMessageContent(key, existing.status))) {
+      return;
     }
+    _records[key] = record;
   }
 
   @override

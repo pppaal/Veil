@@ -93,13 +93,15 @@ class FakeRelay {
     );
   }
 
-  RelayConversation addGroup(String id, List<String> handles) {
+  /// A Sender Keys group, or with [useSenderKeys] false a legacy group whose
+  /// frames go through the pairwise engine.
+  RelayConversation addGroup(String id, List<String> handles, {bool useSenderKeys = true}) {
     return conversations[id] = RelayConversation(
       id: id,
       type: 'group',
       memberHandles: List<String>.of(handles),
       createdAt: _clockBase,
-      useSenderKeys: true,
+      useSenderKeys: useSenderKeys,
     );
   }
 

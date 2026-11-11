@@ -13,7 +13,7 @@ class SessionDecision {
   final SessionAction action;
 
   /// The directory now serves a different identity key for the very device
-  /// the session is bound to. Never a reason to re-bootstrap on its own.
+  /// the conversation pinned. Never a reason to re-bootstrap on its own.
   final bool identityMismatch;
 }
 
@@ -23,8 +23,12 @@ SessionDecision decideSession({
   required String localDeviceId,
   required KeyBundle bundle,
 }) {
+  final identityMismatch = _pinnedKeyChanged(session, localDeviceId: localDeviceId, bundle: bundle);
+  // Nothing to reuse, e.g. a ratchet snapshot that failed to restore. The
+  // bootstrap is unavoidable, but a new key for the pinned device is still
+  // flagged rather than silently adopted.
   if (!engineHasSession) {
-    return const SessionDecision(SessionAction.bootstrap);
+    return SessionDecision(SessionAction.bootstrap, identityMismatch: identityMismatch);
   }
   // The engine holds a session the preview never recorded, e.g. one
   // established from an inbound message.
@@ -34,13 +38,19 @@ SessionDecision decideSession({
   if (!session.belongsToLocalDevice(localDeviceId) || !session.matchesBundle(bundle)) {
     return const SessionDecision(SessionAction.bootstrap);
   }
-  final recordedKey = session.remoteIdentityPublicKey;
-  return SessionDecision(
-    SessionAction.reuse,
-    identityMismatch: recordedKey.isNotEmpty &&
-        bundle.identityPublicKey.isNotEmpty &&
-        recordedKey != bundle.identityPublicKey,
-  );
+  return SessionDecision(SessionAction.reuse, identityMismatch: identityMismatch);
+}
+
+bool _pinnedKeyChanged(
+  ConversationSessionState? session, {
+  required String localDeviceId,
+  required KeyBundle bundle,
+}) {
+  if (session == null || !session.belongsToLocalDevice(localDeviceId) || !session.matchesBundle(bundle)) {
+    return false;
+  }
+  final pinnedKey = session.remoteIdentityPublicKey;
+  return pinnedKey.isNotEmpty && bundle.identityPublicKey.isNotEmpty && pinnedKey != bundle.identityPublicKey;
 }
 
 /// The conversation after a directory answer for a session it keeps.

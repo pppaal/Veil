@@ -95,6 +95,26 @@ void main() {
       expect(decision.identityMismatch, isTrue);
     });
 
+    test('a new identity key for the pinned device is flagged even when a bootstrap is unavoidable', () {
+      final decision = _decide(
+        engineHasSession: false,
+        session: _session(),
+        bundle: _bundle(identityPublicKey: 'ik-impostor'),
+      );
+      expect(decision.action, SessionAction.bootstrap);
+      expect(decision.identityMismatch, isTrue);
+    });
+
+    test('a bootstrap to a different device is not an identity mismatch', () {
+      final decision = _decide(
+        engineHasSession: false,
+        session: _session(),
+        bundle: _bundle(deviceId: 'dev-selene-2', identityPublicKey: 'ik-selene-2'),
+      );
+      expect(decision.action, SessionAction.bootstrap);
+      expect(decision.identityMismatch, isFalse);
+    });
+
     test('a session without a recorded identity key cannot be compared', () {
       final decision = _decide(
         session: _session(remoteIdentityPublicKey: ''),

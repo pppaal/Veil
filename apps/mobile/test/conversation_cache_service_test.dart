@@ -752,6 +752,45 @@ void main() {
     );
   });
 
+  test('final content under a relayed id is never replaced by a later put', () async {
+    // The one decrypt of srv-2 opened it; a later outcome, e.g. a replayed
+    // attempt racing the sender's own rekey, must not overwrite it.
+    await cache.put(_content('srv-2', 'conv-1', 'opened once'));
+    await cache.put(_content(
+      'srv-2',
+      'conv-1',
+      '[Replayed or out-of-window message]',
+      status: MessageContentStatus.replayed,
+    ));
+    expect((await cache.get('srv-2'))!.body, 'opened once');
+
+    // A row still waiting for key material takes its retry's outcome.
+    await cache.put(_content('srv-3', 'conv-1', '[waiting]', status: MessageContentStatus.awaitingKey));
+    await cache.put(_content('srv-3', 'conv-1', 'opened on retry'));
+    expect((await cache.get('srv-3'))!.body, 'opened on retry');
+
+    // The sender may restage its own outbound content.
+    final local = localMessageContentKey('client-2');
+    await cache.put(_content(local, 'conv-1', 'staged', clientMessageId: 'client-2'));
+    await cache.put(_content(local, 'conv-1', 'staged with attachment', clientMessageId: 'client-2'));
+    expect((await cache.get(local))!.body, 'staged with attachment');
+  });
+
+  test('values sealed under another cache key are skipped, not thrown', () async {
+    LocalDataCipher cipherFor(int byte) =>
+        LocalDataCipher.forTesting(base64Url.encode(List<int>.filled(32, byte)).replaceAll('=', ''));
+    final codec = createDefaultCryptoAdapter().envelopeCodec;
+    final writer = DriftConversationCacheService(database, envelopeCodec: codec, cipher: cipherFor(1));
+    await writer.storeConversations([_conversation('conv-old-key')]);
+    await writer.put(_content('srv-old-key', 'conv-old-key', 'sealed under the old key'));
+
+    final reader = DriftConversationCacheService(database, envelopeCodec: codec, cipher: cipherFor(2));
+
+    expect(await reader.readConversations(), isEmpty);
+    expect(await reader.get('srv-old-key'), isNull);
+    expect(await reader.getMany(['srv-old-key']), isEmpty);
+  });
+
   test('expired, retired and wiped content is deleted', () async {
     final now = DateTime.now();
     await cache.put(_content(

@@ -110,6 +110,71 @@ void main() {
     );
   });
 
+  test('a bootstrap forced by a lost session still flags a new key for the pinned device', () async {
+    final api = _FakeVeilApiClient();
+    // The preview pinned selene's device under an older key, but the engine
+    // lost the session (a ratchet snapshot that failed to restore).
+    final pinned = ConversationSessionState(
+      sessionLocator: 'session://conv-1',
+      sessionEnvelopeVersion: 'veil-envelope-v1',
+      requiresLocalPersistence: true,
+      sessionSchemaVersion: 1,
+      localDeviceId: 'device-local',
+      remoteDeviceId: 'device-selene-primary',
+      remoteIdentityFingerprint: 'fp-old',
+      bootstrappedAt: DateTime.utc(2026, 3, 30),
+      remoteIdentityPublicKey: 'pub-selene-before',
+    );
+    final crypto = StrictMockCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: _MemoryConversationCache(
+        conversations: [
+          ConversationPreview(
+            id: 'conv-1',
+            peerHandle: 'selene',
+            peerDisplayName: 'Selene',
+            recipientBundle: const KeyBundle(
+              userId: 'user-selene',
+              deviceId: 'device-selene-primary',
+              handle: 'selene',
+              identityPublicKey: 'pub-selene-before',
+              signedPrekeyBundle: 'prekey-before',
+            ),
+            lastEnvelope: null,
+            updatedAt: DateTime.utc(2026, 3, 30),
+            sessionState: pinned,
+          ),
+        ],
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.sendText(conversationId: 'conv-1', body: 'still there?');
+    await waitFor(() => api.sentPayloads.length == 1);
+
+    final conversation = controller.conversations.firstWhere((item) => item.id == 'conv-1');
+    expect(conversation.identityMismatchPending, isTrue);
+    expect(conversation.sessionState!.remoteIdentityPublicKey, 'pub-selene-primary');
+  });
+
   test(
       'applySession restores pending messages from cache and retryPendingMessages drains them',
       () async {

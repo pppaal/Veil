@@ -14,15 +14,22 @@ const strictOwnEnvelopePlaceholder = '[Decryption failed]';
 /// plain mock is idempotent and decrypts anything, which hides exactly the
 /// bugs a single-use ratchet exposes.
 ///
+/// A device's own envelopes are recognised by their sender device: any
+/// device this adapter has sealed as, plus [localDeviceId] when given, so
+/// an adapter standing in for a relaunched app refuses its own history
+/// before it has sealed anything.
+///
 /// With [opensSessionOnDecrypt] the first peer frame a device opens also
 /// establishes its session, the way protocol v2 and libsignal run the
 /// responder half of the handshake inside decrypt.
 class StrictMockCryptoAdapter implements CryptoAdapter {
-  StrictMockCryptoAdapter({bool opensSessionOnDecrypt = false}) : _inner = MockCryptoAdapter() {
+  StrictMockCryptoAdapter({String? localDeviceId, bool opensSessionOnDecrypt = false})
+      : _inner = MockCryptoAdapter() {
     final strictSessions = _StrictSessions(_inner.sessions);
     sessions = strictSessions;
     messaging = _StrictMessaging(
       _inner.messaging,
+      ownDeviceIds: {if (localDeviceId != null) localDeviceId},
       onOpened: opensSessionOnDecrypt ? strictSessions._established.add : null,
     );
   }
@@ -52,11 +59,12 @@ class StrictMockCryptoAdapter implements CryptoAdapter {
 }
 
 class _StrictMessaging implements MessageCryptoEngine {
-  _StrictMessaging(this._inner, {this.onOpened});
+  _StrictMessaging(this._inner, {required Set<String> ownDeviceIds, this.onOpened})
+      : _ownDeviceIds = ownDeviceIds;
 
   final MessageCryptoEngine _inner;
   final void Function(String conversationId)? onOpened;
-  final Set<String> _sealedHere = {};
+  final Set<String> _ownDeviceIds;
   final Set<String> _opened = {};
 
   @override
@@ -80,13 +88,13 @@ class _StrictMessaging implements MessageCryptoEngine {
       expiresAt: expiresAt,
       attachment: attachment,
     );
-    _sealedHere.add(envelope.ciphertext);
+    _ownDeviceIds.add(senderDeviceId);
     return envelope;
   }
 
   @override
   Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
-    if (_sealedHere.contains(envelope.ciphertext)) {
+    if (_ownDeviceIds.contains(envelope.senderDeviceId)) {
       return DecryptedMessage(
         body: strictOwnEnvelopePlaceholder,
         messageKind: envelope.messageKind,

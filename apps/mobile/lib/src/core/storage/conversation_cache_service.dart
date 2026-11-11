@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:cryptography/cryptography.dart' show SecretBoxAuthenticationError;
 import 'package:drift/drift.dart';
 
 import '../../features/conversations/data/conversation_models.dart';
@@ -352,8 +353,19 @@ enum MessageContentStatus {
       );
 }
 
+const _localMessageContentKeyPrefix = 'local:';
+
 /// Content key of an outbound message before the relay assigns its id.
-String localMessageContentKey(String clientMessageId) => 'local:$clientMessageId';
+String localMessageContentKey(String clientMessageId) => '$_localMessageContentKeyPrefix$clientMessageId';
+
+/// Whether a write may replace content stored under [messageKey] whose
+/// status is [existing]. Content under a relayed id is the outcome of its
+/// one decrypt, so a final row there changes only through
+/// rekeyLocalToServer, which brings the sender's own plaintext; a later
+/// decrypt outcome racing that rekey must not overwrite it. Outbound rows
+/// under local keys stay replaceable by their sender.
+bool mayReplaceMessageContent(String messageKey, MessageContentStatus existing) =>
+    messageKey.startsWith(_localMessageContentKeyPrefix) || !existing.isFinal;
 
 class MessageContentRecord {
   const MessageContentRecord({
@@ -403,6 +415,8 @@ String searchableContentText(MessageContentRecord record) => [
 /// cache; kept separate from [ConversationCacheService] so the many cache
 /// fakes in tests are unaffected, and callers check for it with `is`.
 abstract class MessageContentStore {
+  /// Stores [record] unless its key is retired, or holds content that
+  /// [mayReplaceMessageContent] protects.
   Future<void> put(MessageContentRecord record);
 
   Future<MessageContentRecord?> get(String messageKey);
@@ -1132,23 +1146,30 @@ class DriftConversationCacheService implements ConversationCacheService, Message
 
   @override
   Future<void> put(MessageContentRecord record) async {
+    final row = MessageContentsCompanion.insert(
+      messageKey: record.messageKey,
+      conversationId: record.conversationId,
+      clientMessageId: Value(record.clientMessageId),
+      serverMessageId: Value(record.serverMessageId),
+      body: await _requireEncryptedValue(record.body),
+      attachmentJson: Value(await _encrypt(_encodeAttachment(record.attachment))),
+      kind: await _requireEncryptedValue(record.kind.name),
+      innerExpiresAt: Value(record.innerExpiresAt?.millisecondsSinceEpoch),
+      status: record.status.storageName,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+    );
+    final protectedStatuses = [
+      for (final status in MessageContentStatus.values)
+        if (!mayReplaceMessageContent(record.messageKey, status)) status.storageName,
+    ];
     // Rows for retired keys are dropped by a trigger (see AppDatabase).
     await _db.into(_db.messageContents).insert(
-          MessageContentsCompanion.insert(
-            messageKey: record.messageKey,
-            conversationId: record.conversationId,
-            clientMessageId: Value(record.clientMessageId),
-            serverMessageId: Value(record.serverMessageId),
-            body: await _requireEncryptedValue(record.body),
-            attachmentJson:
-                Value(await _encrypt(_encodeAttachment(record.attachment))),
-            kind: await _requireEncryptedValue(record.kind.name),
-            innerExpiresAt: Value(record.innerExpiresAt?.millisecondsSinceEpoch),
-            status: record.status.storageName,
-            createdAt: record.createdAt,
-            updatedAt: record.updatedAt,
+          row,
+          onConflict: DoUpdate(
+            (_) => row,
+            where: protectedStatuses.isEmpty ? null : (old) => old.status.isNotIn(protectedStatuses),
           ),
-          mode: InsertMode.insertOrReplace,
         );
   }
 
@@ -1437,9 +1458,14 @@ class DriftConversationCacheService implements ConversationCacheService, Message
     if (cipher == null || value == null) {
       return value;
     }
+    // A value that does not open under this device's key (malformed, or
+    // sealed under a key since replaced) is treated as absent, so one bad
+    // row is skipped instead of failing the whole read.
     try {
       return await cipher.decryptString(value);
     } on FormatException {
+      return null;
+    } on SecretBoxAuthenticationError {
       return null;
     }
   }

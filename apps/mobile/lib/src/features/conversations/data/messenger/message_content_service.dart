@@ -157,7 +157,15 @@ class MessageContentService {
       clientMessageId: clientMessageId,
       serverMessageId: serverMessageId,
     );
-    return _store.get(serverMessageId);
+    final record = await _store.get(serverMessageId);
+    // Without our own content in memory (evicted, or stored by an earlier
+    // run), the server id may still be memoized with a failed attempt to
+    // open our own echo that arrived without its clientMessageId.
+    if (memoized == null && record != null) {
+      _memo.remove(serverMessageId);
+      _remember(serverMessageId, Future.value(record.toDecryptedMessage()));
+    }
+    return record;
   }
 
   /// Stored content for [messages], by message id. Never decrypts.

@@ -873,16 +873,19 @@ class VeilMessengerController extends ChangeNotifier {
 
   // Records an inbound session on its conversation, so a reply reuses it
   // instead of bootstrapping a second one the sender would never know about.
+  // Only 1:1 conversations carry a pairwise session, and one held back until
+  // its conversation was listed may turn out to belong to a group.
   void _recordInboundSession(String conversationId, ConversationSessionState state) {
     final conversation = _conversationById(conversationId);
     if (conversation == null) {
       _unlistedInboundSessions[conversationId] = state;
       return;
     }
-    _updateConversation(conversationId, (preview) => preview.copyWith(sessionState: state));
-    if (conversation.type == ConversationType.direct) {
-      _learnPeerIdentity(conversation.peerHandle).ignore();
+    if (conversation.type != ConversationType.direct) {
+      return;
     }
+    _updateConversation(conversationId, (preview) => preview.copyWith(sessionState: state));
+    _learnPeerIdentity(conversation.peerHandle).ignore();
   }
 
   /// Content of [message] for display. Reads stored content; the envelope is
@@ -1207,7 +1210,9 @@ class VeilMessengerController extends ChangeNotifier {
     _attachmentTransfersByClientMessageId.clear();
 
     for (final conversation in _conversations) {
-      final cachedMessages = await cache.readMessages(conversation.id);
+      // Content this device already retired stays gone, even when a cached
+      // copy of its message survived.
+      final cachedMessages = await _contents.withoutRetired(await cache.readMessages(conversation.id));
       // Re-applied in case the app stopped before a clamped copy was saved.
       final innerExpiries = await _contents.innerExpiriesFor(cachedMessages);
       _messagesByConversation[conversation.id] = [
@@ -1827,7 +1832,10 @@ class VeilMessengerController extends ChangeNotifier {
   // only thing ever uploaded. The reference carrying the wrapped content key
   // stays on the draft, so a retry after a restart uploads the same bytes.
   // The upload ticket must name the ciphertext's hash, so the server-assigned
-  // attachment id and storage key are filled in once the ticket exists.
+  // attachment id and storage key are filled in once the ticket exists. That
+  // holds only for adapters that leave the id out of the blob: protocol v2
+  // binds it into the blob's AAD and needs it known before sealing (a
+  // client-proposed id, or the hash taken at completion instead).
   Future<(AttachmentUploadDraft, String)> _sealAttachment(
     AttachmentUploadDraft draft,
     ConversationPreview conversation,
@@ -2204,7 +2212,11 @@ class VeilMessengerController extends ChangeNotifier {
       );
       _updateConversation(
         conversation.id,
-        (preview) => preview.copyWith(recipientBundle: served, sessionState: sessionState),
+        (preview) => preview.copyWith(
+          recipientBundle: served,
+          sessionState: sessionState,
+          identityMismatchPending: preview.identityMismatchPending || decision.identityMismatch,
+        ),
       );
     }
     return _conversationById(conversation.id)?.recipientBundle;

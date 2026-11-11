@@ -1,5 +1,6 @@
 import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import 'fake_relay.dart';
@@ -28,10 +29,11 @@ VeilMessengerController mockPartyController(
   FakeRelay relay,
   String handle, {
   CryptoAdapter? adapter,
+  ConversationCacheService? cacheService,
   bool Function()? readReceiptsEnabled,
   bool Function()? typingIndicatorsEnabled,
 }) {
-  final crypto = adapter ?? StrictMockCryptoAdapter();
+  final crypto = adapter ?? StrictMockCryptoAdapter(localDeviceId: 'dev-$handle');
   return VeilMessengerController(
     apiClient: relay.clientFor(handle),
     cryptoEngine: crypto.messaging,
@@ -39,7 +41,7 @@ VeilMessengerController mockPartyController(
     envelopeCodec: crypto.envelopeCodec,
     sessionBootstrapper: crypto.sessions,
     realtimeService: relay.realtimeFor(handle),
-    cacheService: null,
+    cacheService: cacheService,
     readReceiptsEnabled: readReceiptsEnabled,
     typingIndicatorsEnabled: typingIndicatorsEnabled,
   );

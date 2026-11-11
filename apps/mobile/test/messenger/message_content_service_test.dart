@@ -274,4 +274,27 @@ void main() {
     expect(await service.withoutRetired([message, other]), [other]);
     expect(decrypter.calls, 1);
   });
+
+  test('an ack replaces a failed read of our own echo that lost its clientMessageId', () async {
+    final decrypter = _ScriptedDecrypter([_placeholder('[Decryption failed]')]);
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final cache = DriftConversationCacheService(database, envelopeCodec: StrictMockCryptoAdapter().envelopeCodec);
+    // Stored by the run that queued the message, so this run never had it
+    // in memory.
+    await _service(decrypter.call, cache: cache).storeOutbound(
+      conversationId: _conversationId,
+      clientMessageId: 'client-1',
+      body: 'my words',
+      kind: MessageKind.text,
+    );
+    final service = _service(decrypter.call, cache: cache);
+    final echo = _message('srv-1', _envelope('own-1'), isMine: true);
+    expect((await service.read(echo)).body, '[Decryption failed]');
+
+    await service.acknowledge(clientMessageId: 'client-1', serverMessageId: 'srv-1');
+
+    expect((await service.read(echo)).body, 'my words');
+    expect(decrypter.calls, 1);
+  });
 }

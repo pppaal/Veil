@@ -21,11 +21,10 @@ void main() {
     seedMockParties(relay, conv, ['atlas', 'selene']);
   });
 
-  Future<void> relayFromSelene(String body, {String senderDeviceId = 'dev-selene'}) async {
-    final selene = StrictMockCryptoAdapter();
-    final envelope = await selene.messaging.encryptMessage(
-      conversationId: conv,
-      senderDeviceId: senderDeviceId,
+  Future<CryptoEnvelope> sealFromSelene(String body, {String conversationId = conv}) {
+    return StrictMockCryptoAdapter().messaging.encryptMessage(
+      conversationId: conversationId,
+      senderDeviceId: 'dev-selene',
       recipientUserId: 'user-atlas',
       body: body,
       messageKind: MessageKind.text,
@@ -37,10 +36,13 @@ void main() {
         signedPrekeyBundle: 'spk-atlas',
       ),
     );
+  }
+
+  Future<void> relayFromSelene(String body) async {
     relay.inject(
       senderHandle: 'selene',
       conversationId: conv,
-      envelope: selene.envelopeCodec.encodeApiEnvelope(envelope),
+      envelope: StrictMockCryptoAdapter().envelopeCodec.encodeApiEnvelope(await sealFromSelene(body)),
     );
   }
 
@@ -78,6 +80,33 @@ void main() {
     await settle();
 
     expect(atlas.conversations.single.sessionState, isNull);
+    expect(relay.clientFor('atlas').keyBundleFetches, isEmpty);
+  });
+
+  test('a session held back for an unlisted conversation is never put on a group', () async {
+    final atlas = mockPartyController(
+      relay,
+      'atlas',
+      adapter: StrictMockCryptoAdapter(opensSessionOnDecrypt: true),
+    );
+    addTearDown(atlas.dispose);
+    await atlas.applySession(mockPartySession('atlas'));
+    // Atlas first hears of the legacy group through its first frame.
+    relay.addGroup('grp-legacy', ['atlas', 'selene'], useSenderKeys: false);
+    final envelope = await sealFromSelene('hello group', conversationId: 'grp-legacy');
+
+    await relay.clientFor('selene').sendMessage('token-selene', {
+      'conversationId': 'grp-legacy',
+      'clientMessageId': 'client-group-1',
+      'envelope': StrictMockCryptoAdapter().envelopeCodec.encodeApiEnvelope(envelope),
+    });
+    await waitFor(
+      () => atlas.conversations.any((item) => item.id == 'grp-legacy'),
+      reason: 'the group was never listed',
+    );
+    await settle();
+
+    expect(atlas.conversations.firstWhere((item) => item.id == 'grp-legacy').sessionState, isNull);
     expect(relay.clientFor('atlas').keyBundleFetches, isEmpty);
   });
 }

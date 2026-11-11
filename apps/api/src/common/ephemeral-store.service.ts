@@ -83,6 +83,53 @@ export class EphemeralStoreService implements OnModuleDestroy {
     return JSON.parse(entry.value) as T;
   }
 
+  /**
+   * Atomic counter for fixed-window budgets. The window starts at the first
+   * increment and is never extended by later ones (EXPIRE NX), so a caller
+   * hammering the key cannot keep its own window open forever.
+   */
+  async incrementWithTtl(key: string, ttlSeconds: number): Promise<number> {
+    this.purgeExpiredFallbackEntries();
+    if (this.redis) {
+      const results = await this.redis.multi().incr(key).expire(key, ttlSeconds, 'NX').exec();
+      const [error, count] = results?.[0] ?? [];
+      if (error || typeof count !== 'number') {
+        throw error ?? new Error('Redis INCR returned no count');
+      }
+      return count;
+    }
+
+    const entry = this.fallback.get(key);
+    const next = entry ? Number(entry.value) + 1 : 1;
+    this.fallback.set(key, {
+      value: String(next),
+      expiresAt: entry?.expiresAt ?? Date.now() + ttlSeconds * 1000,
+    });
+    return next;
+  }
+
+  /**
+   * Writes the value only when the key is absent (SET NX EX). Returns false
+   * when another writer got there first, so concurrent callers race to a
+   * single winner instead of silently overwriting each other.
+   */
+  async setJsonIfAbsent<T>(key: string, value: T, ttlSeconds: number): Promise<boolean> {
+    this.purgeExpiredFallbackEntries();
+    const serialized = JSON.stringify(value);
+    if (this.redis) {
+      return (await this.redis.set(key, serialized, 'EX', ttlSeconds, 'NX')) === 'OK';
+    }
+
+    if (this.fallback.has(key)) {
+      return false;
+    }
+    this.fallback.set(key, {
+      value: serialized,
+      expiresAt: Date.now() + ttlSeconds * 1000,
+    });
+    return true;
+  }
+
   private purgeExpiredFallbackEntries(): void {
     if (this.redis || this.fallback.size === 0) {
       return;

@@ -19,6 +19,7 @@ import { createPeerKeyDirectory, createPinStore } from './src/crypto/pins.js';
 import { ingestMessage, isTextKind, previewLabel } from './src/domain/ingest.js';
 import { encodePayload, KIND_LABELS } from './src/domain/payload.js';
 import { fileExtension, sanitizeFilename } from './src/domain/sanitize.js';
+import { TRANSFER_POLL_MS, watchOldDeviceTransfer } from './src/features/device-transfer.js';
 import {
   buildNotification,
   NOTIFICATION_LEVELS,
@@ -161,6 +162,19 @@ const sessionStore = createSessionStore({
   subtle: crypto.subtle,
 });
 
+// Background writes on behalf of the stored identity: caches, the outbound
+// queue, pins. Work still in flight when the identity is destroyed (a
+// refresh landing after the wipe, a send failing into the queue) must not
+// recreate the deleted database with that identity's data.
+const identityDb = {
+  async put(store, value) {
+    if (sessionStore.current()) await idb.put(store, value);
+  },
+  async delete(store, key) {
+    if (sessionStore.current()) await idb.delete(store, key);
+  },
+};
+
 async function migrateLegacySession() {
   const storage = safeLocalStorage();
   let legacy = null;
@@ -187,15 +201,23 @@ const apiClient = createApiClient({
       if (state.socket && !state.socket.connected) state.socket.connect();
     },
   },
-  onSessionRejected: () => endSession({ rejected: true }),
+  onSessionRejected,
 });
 const { api, authedApi } = apiClient;
+
+// Once the user approved a device transfer, the server revoking this device
+// is how the transfer's completion arrives here (src/features/device-transfer.js),
+// and the transfer watcher then destroys the spent identity.
+async function onSessionRejected() {
+  if ((await transferOld?.sessionEnded()) === 'completed') return;
+  await endSession({ rejected: true });
+}
 
 const peerDirectory = createPeerKeyDirectory({
   fetchPeerKey,
   pins: createPinStore({
     get: (userId) => idb.get('identity-pins', userId),
-    put: (pin) => idb.put('identity-pins', pin),
+    put: (pin) => identityDb.put('identity-pins', pin),
   }),
   onKeyChange: () => {
     renderSidebar();
@@ -217,9 +239,14 @@ async function fetchPeerKey(userId, handle) {
   return bundle.identityPublicKey;
 }
 
+// The other member of a direct conversation. Without our own userId the
+// "other" member could be ourselves, and an envelope sealed to our own key
+// reaches nobody, so there is no peer until a login has named us.
 function peerOf(conversationId) {
+  const selfId = state.me?.userId;
+  if (!selfId) return null;
   const conv = state.conversations.find((c) => c.id === conversationId);
-  return conv?.members?.find((m) => m.userId !== state.me?.userId) ?? null;
+  return conv?.members?.find((m) => m.userId !== selfId) ?? null;
 }
 
 // ---------- message ingest ----------
@@ -1260,7 +1287,7 @@ async function adoptConversations(conversations) {
 }
 
 async function persistConversation(conv) {
-  try { await idb.put('conversations', serializeConversationForCache(conv)); } catch {}
+  try { await identityDb.put('conversations', serializeConversationForCache(conv)); } catch {}
 }
 
 async function persistAllConversations() {
@@ -1269,7 +1296,7 @@ async function persistAllConversations() {
 
 async function persistMessage(msg) {
   if (!msg.id || !msg.conversationId || msg.id.startsWith('__pending__')) return;
-  try { await idb.put('messages', messageCacheRecord(msg)); } catch {}
+  try { await identityDb.put('messages', messageCacheRecord(msg)); } catch {}
 }
 
 async function persistMessages(convId) {
@@ -1287,7 +1314,7 @@ async function retryFailedMessage(convId, clientMessageId) {
   // Re-add to outbound with nextRetryAt=0 so the next drain runs immediately.
   const queued = await idb.get('outbound', clientMessageId);
   if (queued) {
-    await idb.put('outbound', { ...queued, attempts: 0, nextRetryAt: 0 });
+    await identityDb.put('outbound', { ...queued, attempts: 0, nextRetryAt: 0 });
   }
   renderActivePanel();
   drainOutbound();
@@ -1301,7 +1328,7 @@ async function cancelFailedMessage(convId, clientMessageId) {
     list.splice(idx, 1);
     state.messagesByConv.set(convId, list);
   }
-  try { await idb.delete('outbound', clientMessageId); } catch {}
+  try { await identityDb.delete('outbound', clientMessageId); } catch {}
   renderActivePanel();
   toast('전송 취소됨');
 }
@@ -1358,7 +1385,7 @@ async function drainOutbound() {
       state.messagesByConv.set(item.conversationId, list);
       const conv = state.conversations.find((c) => c.id === item.conversationId);
       if (conv) conv.lastMessage = view;
-      await idb.delete('outbound', item.clientMessageId);
+      await identityDb.delete('outbound', item.clientMessageId);
       await persistMessage(view);
       if (item.conversationId === state.activeConv || item.conversationId === state.secondaryConv) {
         renderActivePanel();
@@ -1370,10 +1397,10 @@ async function drainOutbound() {
       // Bump retry with exponential backoff up to 30s.
       const attempts = (item.attempts ?? 0) + 1;
       const delay = Math.min(30_000, 1000 * 2 ** attempts);
-      await idb.put('outbound', { ...item, attempts, nextRetryAt: Date.now() + delay });
+      await identityDb.put('outbound', { ...item, attempts, nextRetryAt: Date.now() + delay });
       if (e.status && e.status >= 400 && e.status < 500 && e.status !== 429) {
         // Permanent failure — surface to the user, mark as failed locally.
-        await idb.delete('outbound', item.clientMessageId);
+        await identityDb.delete('outbound', item.clientMessageId);
         const list = state.messagesByConv.get(item.conversationId) || [];
         const idx = list.findIndex((m) => m.clientMessageId === item.clientMessageId);
         if (idx >= 0) list[idx]._status = 'failed';
@@ -1469,6 +1496,7 @@ function resetSessionState() {
   readMarked.clear();
   envelopeCrypto.reset();
   peerDirectory.reset();
+  stopTransferOld();
   disconnectSocket();
   if (state.pollTimer) clearInterval(state.pollTimer);
   state.pollTimer = null;
@@ -1495,6 +1523,7 @@ async function purgeLocalIdentity() {
     localStorage: safeLocalStorage(),
     sessionStorage: safeStorage('sessionStorage'),
     caches: globalThis.caches,
+    onBlocked: () => toast(t('storage.wipeBlocked'), 'error'),
   });
 }
 
@@ -1698,7 +1727,6 @@ async function sendMessage(textarea, convId) {
   }
   const conv = state.conversations.find((c) => c.id === target);
   if (!conv) return;
-  const peer = conv.members.find((m) => m.userId !== state.me.userId);
   const clientMessageId = 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
   // Encrypt the body with a fresh per-message AES-GCM key derived from the
@@ -1721,7 +1749,7 @@ async function sendMessage(textarea, convId) {
     version: DEV_ENVELOPE_VERSION,
     conversationId: conv.id,
     senderDeviceId: state.me.deviceId,
-    recipientUserId: peer.userId,
+    recipientUserId: sealed.recipientUserId,
     ciphertext: sealed.ciphertext,
     nonce: sealed.nonce,
     messageType: 'text',
@@ -1773,7 +1801,7 @@ async function sendMessage(textarea, convId) {
     // 4xx (other than 429) bubbles up.
     const isRetryable = e instanceof AuthError || !e.status || e.status >= 500 || e.status === 429;
     if (isRetryable) {
-      await idb.put('outbound', outboundQueueEntry({ clientMessageId, conversationId: conv.id, envelope }));
+      await identityDb.put('outbound', outboundQueueEntry({ clientMessageId, conversationId: conv.id, envelope }));
       if (e instanceof AuthError) return;
       optimistic._status = 'pending';
       renderActivePanel();
@@ -2063,73 +2091,77 @@ if (betaBanner && betaBannerClose) {
 
 // ---------- device transfer ----------
 // Two flows live here, sharing the same dialogs in index.html. The OLD
-// device polls /device-transfer/sessions/:id with its JWT, watches for a
-// claim to land, shows the new device's fingerprint, and approves. The
+// device watches its transfer session (src/features/device-transfer.js),
+// shows the new device's fingerprint once a claim lands, and approves. The
 // NEW device — which has no session yet — generates a fresh keypair, posts
 // /device-transfer/claim, then retries /device-transfer/complete every
 // 2.5s with the same auth proof until the server returns 200.
-const TRANSFER_POLL_MS = 2500;
 
-let transferOldState = null;
+let transferOld = null;
 async function startTransferOld() {
   if (!state.me) { toast('로그인 후 시도하세요', 'error'); return; }
+  // A new transfer session closes any earlier one on the server.
+  stopTransferOld();
+  let init;
   try {
-    const init = await authedApi('/device-transfer/init', {
+    init = await authedApi('/device-transfer/init', {
       method: 'POST',
       body: { oldDeviceId: state.me.deviceId },
     });
-    const blob = JSON.stringify({ sessionId: init.sessionId, transferToken: init.transferToken });
-    const code = btoa(blob).replace(/=+$/, '');
-    transferOldState = { sessionId: init.sessionId, code, polling: true, claimId: null };
-    $('transfer-old-token').value = code;
-    $('transfer-old-status').textContent = '코드 복사 후 새 기기에 붙여넣기 — 새 기기 클레임 대기 중…';
-    $('transfer-old-claim').classList.add('hidden');
-    $('transfer-old-approve').classList.add('hidden');
-    openDialog('transfer-old-dialog', 'transfer-old-token');
-    pollTransferOld();
   } catch (e) {
     toast('이전 시작 실패: ' + e.message, 'error');
+    return;
   }
-}
-async function pollTransferOld() {
-  while (transferOldState?.polling) {
-    try {
-      const s = await authedApi('/device-transfer/sessions/' + transferOldState.sessionId);
-      if (s.status === 'completed') {
-        // The handle now lives on the new device; this copy of the identity
-        // is spent, so a completed transfer is one of the two ways it goes.
-        transferOldState.polling = false;
-        closeDialog('transfer-old-dialog');
-        await destroyIdentity();
-        toast('이전 완료 — 이 기기의 키를 삭제했습니다', 'good');
-        return;
-      }
-      if (s.status === 'expired') {
-        $('transfer-old-status').textContent = '만료되었습니다 (5분 초과). 다시 시작하세요.';
-        transferOldState.polling = false; return;
-      }
-      if (s.pendingClaim && !transferOldState.claimId) {
-        transferOldState.claimId = s.pendingClaim.claimId;
-        $('transfer-old-fingerprint').textContent = s.pendingClaim.claimantFingerprint;
-        $('transfer-old-claim').classList.remove('hidden');
-        $('transfer-old-approve').classList.remove('hidden');
-        $('transfer-old-status').textContent = '지문 확인 후 승인하세요.';
-      }
-    } catch (e) {
+  const blob = JSON.stringify({ sessionId: init.sessionId, transferToken: init.transferToken });
+  $('transfer-old-token').value = btoa(blob).replace(/=+$/, '');
+  $('transfer-old-status').textContent = '코드 복사 후 새 기기에 붙여넣기 — 새 기기 클레임 대기 중…';
+  $('transfer-old-claim').classList.add('hidden');
+  $('transfer-old-approve').classList.add('hidden');
+  $('transfer-old-cancel').textContent = '취소';
+  const transfer = watchOldDeviceTransfer({
+    sessionId: init.sessionId,
+    authedApi,
+    onClaim: (claim) => {
+      $('transfer-old-fingerprint').textContent = claim.claimantFingerprint;
+      $('transfer-old-claim').classList.remove('hidden');
+      $('transfer-old-approve').classList.remove('hidden');
+      $('transfer-old-status').textContent = '지문 확인 후 승인하세요.';
+    },
+    onPollError: (e) => {
       $('transfer-old-status').textContent = '폴링 오류: ' + e.message;
-    }
-    await new Promise((r) => setTimeout(r, TRANSFER_POLL_MS));
+    },
+  });
+  transferOld = transfer;
+  openDialog('transfer-old-dialog', 'transfer-old-token');
+  const outcome = await transfer.outcome;
+  if (transferOld === transfer) transferOld = null;
+  await finishTransferOld(outcome);
+}
+async function finishTransferOld(outcome) {
+  if (outcome === 'completed') {
+    // The handle now lives on the new device; this copy of the identity is
+    // spent, so a completed transfer is one of the two ways it goes.
+    closeTransferOldDialog();
+    await destroyIdentity();
+    toast('이전 완료 — 이 기기의 키를 삭제했습니다', 'good');
+  } else if (outcome === 'expired' || outcome === 'closed') {
+    $('transfer-old-status').textContent = outcome === 'expired'
+      ? '만료되었습니다 (5분 초과). 다시 시작하세요.'
+      : '이 이전 세션은 닫혔어요. 다시 시작하세요.';
+    $('transfer-old-approve').classList.add('hidden');
   }
+  // 'session-ended' and 'cancelled': endSession or the cancel button
+  // already took care of the screen.
 }
 async function approveTransferOld() {
-  if (!transferOldState?.claimId) return;
+  const transfer = transferOld;
+  if (!transfer) return;
   $('transfer-old-approve').disabled = true;
   try {
-    await authedApi('/device-transfer/approve', {
-      method: 'POST',
-      body: { sessionId: transferOldState.sessionId, claimId: transferOldState.claimId },
-    });
+    await transfer.approve();
     $('transfer-old-status').textContent = '승인됨 — 새 기기가 완료할 때까지 대기…';
+    $('transfer-old-approve').classList.add('hidden');
+    $('transfer-old-cancel').textContent = '닫기';
   } catch (e) {
     toast('승인 실패: ' + e.message, 'error');
   } finally {
@@ -2137,9 +2169,18 @@ async function approveTransferOld() {
   }
 }
 function cancelTransferOld() {
-  if (transferOldState) transferOldState.polling = false;
-  transferOldState = null;
-  closeDialog('transfer-old-dialog');
+  // The server cannot call off an approved transfer, so after an approval
+  // the dialog only closes and the watch runs on until the transfer ends.
+  if (transferOld?.approved) closeTransferOldDialog();
+  else stopTransferOld();
+}
+function stopTransferOld() {
+  transferOld?.cancel();
+  transferOld = null;
+  closeTransferOldDialog();
+}
+function closeTransferOldDialog() {
+  if (!$('transfer-old-dialog').classList.contains('hidden')) closeDialog('transfer-old-dialog');
 }
 
 let transferNewState = null;
@@ -2214,53 +2255,67 @@ async function claimTransferNew() {
 }
 async function pollTransferNew() {
   if (!transferNewState) return;
-  const { sessionId, transferToken, claimId, keys, replacesIdentity } = transferNewState;
-  const completeSig = await signChallenge(
+  const { keys, replacesIdentity } = transferNewState;
+  const completed = await awaitTransferCompletion(transferNewState);
+  if (!completed) return;
+  try {
+    if (replacesIdentity) await purgeLocalIdentity();
+    // The keys are stored as CryptoKeys by structured clone; they are
+    // non-extractable and are never exported. /complete does not name the
+    // user; every login records it (session-store saveTokens).
+    await sessionStore.save({
+      handle: completed.handle,
+      userId: null,
+      deviceId: completed.newDeviceId,
+      ...keys,
+      accessToken: null,
+      refreshToken: null,
+    });
+  } catch (e) {
+    failTransferNew(e);
+    return;
+  }
+  transferNewState = null;
+  closeDialog('transfer-new-dialog');
+  try {
+    // /complete returns no tokens: the new device signs a normal challenge
+    // with its newly trusted key.
+    await apiClient.login(await sessionStore.getDeviceCredentials());
+  } catch (e) {
+    // The transfer went through and the identity is stored here; only the
+    // first sign-in failed, so the auth screen offers Retry.
+    toast('이전은 완료됐지만 로그인하지 못했어요: ' + e.message, 'error');
+    await showAuth({ rejected: isAuthRejection(e) });
+    return;
+  }
+  toast('이전 완료 — 새 기기로 들어왔습니다', 'good');
+  await enterApp();
+}
+// Retries /device-transfer/complete with one auth proof until the old device
+// has approved. Resolves to the completion, or to null once the attempt
+// failed or was cancelled.
+async function awaitTransferCompletion({ sessionId, transferToken, claimId, keys }) {
+  const authProof = await signChallenge(
     crypto.subtle,
     keys.edPrivKey,
     `transfer-complete:${sessionId}:${claimId}:${transferToken}`,
   );
   while (transferNewState) {
-    let res;
     try {
-      res = await api('/device-transfer/complete', {
+      return await api('/device-transfer/complete', {
         method: 'POST',
-        body: { sessionId, transferToken, claimId, authProof: completeSig },
+        body: { sessionId, transferToken, claimId, authProof },
       });
     } catch (e) {
-      if (e.code === 'transfer_approval_required' || e.status === 403) {
-        $('transfer-new-status').textContent = '이전 기기에서 승인 대기 중…';
-        await new Promise((r) => setTimeout(r, TRANSFER_POLL_MS));
-        continue;
+      if (e.code !== 'transfer_approval_required' && e.status !== 403) {
+        failTransferNew(e);
+        return null;
       }
-      failTransferNew(e);
-      return;
+      $('transfer-new-status').textContent = '이전 기기에서 승인 대기 중…';
+      await new Promise((r) => setTimeout(r, TRANSFER_POLL_MS));
     }
-    try {
-      if (replacesIdentity) await purgeLocalIdentity();
-      // The keys are stored as CryptoKeys by structured clone; they are
-      // non-extractable and are never exported.
-      await sessionStore.save({
-        handle: res.handle,
-        userId: null,
-        deviceId: res.newDeviceId,
-        ...keys,
-        accessToken: null,
-        refreshToken: null,
-      });
-      // /complete returns no tokens: the new device signs a normal
-      // challenge with its newly trusted key.
-      const verified = await apiClient.login(await sessionStore.getDeviceCredentials());
-      await sessionStore.save({ ...sessionStore.current(), userId: verified.userId });
-      transferNewState = null;
-      closeDialog('transfer-new-dialog');
-      toast('이전 완료 — 새 기기로 들어왔습니다', 'good');
-      await enterApp();
-    } catch (e) {
-      failTransferNew(e);
-    }
-    return;
   }
+  return null;
 }
 function failTransferNew(e) {
   $('transfer-new-error').textContent = e.message;
@@ -2712,7 +2767,6 @@ async function finalizeVoiceRecord() {
 
   const conv = state.conversations.find((c) => c.id === convId);
   if (!conv) return;
-  const peer = conv.members.find((m) => m.userId !== state.me.userId);
   const clientMessageId = 'voice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
 
   // Optimistic insert.
@@ -2744,7 +2798,7 @@ async function finalizeVoiceRecord() {
           version: DEV_ENVELOPE_VERSION,
           conversationId: convId,
           senderDeviceId: state.me.deviceId,
-          recipientUserId: peer.userId,
+          recipientUserId: sealed.recipientUserId,
           ciphertext: sealed.ciphertext,
           nonce: sealed.nonce,
           messageType: 'voice',
@@ -3932,7 +3986,6 @@ async function uploadEncryptedAttachment(file) {
 async function postAttachmentMessage(conv, clientMessageId, messageType, payload, attachment) {
   const sealed = await envelopeCrypto.encrypt(conv.id, payload);
   if (!sealed) throw new Error('상대 키를 못 찾았어요');
-  const peer = conv.members.find((m) => m.userId !== state.me.userId);
   const sent = await authedApi('/messages', {
     method: 'POST',
     body: {
@@ -3942,7 +3995,7 @@ async function postAttachmentMessage(conv, clientMessageId, messageType, payload
         version: DEV_ENVELOPE_VERSION,
         conversationId: conv.id,
         senderDeviceId: state.me.deviceId,
-        recipientUserId: peer.userId,
+        recipientUserId: sealed.recipientUserId,
         ciphertext: sealed.ciphertext,
         nonce: sealed.nonce,
         messageType,

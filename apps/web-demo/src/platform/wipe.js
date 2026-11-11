@@ -8,13 +8,19 @@
 import { IDB_NAME } from './idb.js';
 
 const STORAGE_PREFIX = 'veil-';
+const BLOCKED_REPORT_DELAY_MS = 1000;
 
+// onBlocked fires when a connection that does not let go of the database (a
+// tab on a build from before tabs closed it for a wipe) holds up the delete.
+// The wipe then waits for that tab to close instead of reporting a finished
+// wipe while the database and its keys are still there.
 export async function wipeEverything({
   closeDatabase,
   indexedDB,
   localStorage,
   sessionStorage,
   caches,
+  onBlocked,
   databaseName = IDB_NAME,
 }) {
   const failures = [];
@@ -26,24 +32,35 @@ export async function wipeEverything({
     }
   };
   await attempt(async () => closeDatabase?.());
-  await attempt(() => deleteDatabase(indexedDB, databaseName));
+  // Started first and awaited last, so a blocked delete does not hold up the
+  // other steps.
+  const databaseDeleted = attempt(() => deleteDatabase(indexedDB, databaseName, onBlocked));
   await attempt(() => removePrefixedKeys(localStorage));
   await attempt(() => removePrefixedKeys(sessionStorage));
   await attempt(async () => {
     if (!caches) return;
     for (const name of await caches.keys()) await caches.delete(name);
   });
+  await databaseDeleted;
   if (failures.length > 0) throw new AggregateError(failures, 'wipe incomplete');
 }
 
-function deleteDatabase(factory, name) {
+function deleteDatabase(factory, name, onBlocked) {
   return new Promise((resolve, reject) => {
+    let report = null;
+    const settle = (finish) => () => {
+      clearTimeout(report);
+      finish();
+    };
     const request = factory.deleteDatabase(name);
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-    // Another tab still has it open; the delete completes once that tab
-    // closes its connection (the app closes on versionchange).
-    request.onblocked = () => resolve();
+    request.onsuccess = settle(resolve);
+    request.onerror = settle(() => reject(request.error));
+    // The request stays queued and succeeds once the connection holding it up
+    // closes. This tab's own closing connection can hold it up for a moment
+    // while a last transaction commits, so only a block that lasts is reported.
+    request.onblocked = () => {
+      report = setTimeout(() => onBlocked?.(), BLOCKED_REPORT_DELAY_MS);
+    };
   });
 }
 

@@ -32,10 +32,14 @@ export function createSessionStore({ repo, subtle }) {
     getAccessToken: () => record?.accessToken ?? null,
     getRefreshToken: () => record?.refreshToken ?? null,
 
-    async saveTokens({ accessToken, refreshToken }) {
+    // A login also names the user this device belongs to. A transferred
+    // device's record is saved before its first login, so its userId arrives
+    // here, and a record whose first login failed is repaired by the next.
+    async saveTokens({ accessToken, refreshToken, userId }) {
       if (!record) return;
       record.accessToken = accessToken;
       record.refreshToken = refreshToken;
+      if (typeof userId === 'string' && userId) record.userId = userId;
       await repo.put(record);
     },
 

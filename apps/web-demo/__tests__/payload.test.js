@@ -125,6 +125,19 @@ describe('payload codec', () => {
     expect(decoded.media.name).toBe('invoicefdp.exe');
   });
 
+  it('reads the empty MIME type earlier builds sent and never fails a send over one', () => {
+    // file.type is '' when the browser knows no type; earlier builds sent it as is.
+    const legacyImage = JSON.stringify({
+      kind: 'image', attachmentId: ATTACHMENT_ID, mime: '', key: KEY_TEXT, nonce: NONCE_TEXT, width: 0, height: 0,
+    });
+    expect(decodePayload(legacyImage)).toMatchObject({ kind: 'image', displayText: KIND_LABELS.image });
+    for (const mime of ['x/'.repeat(100), undefined, 42]) {
+      const encoded = encodePayload({ ...SAMPLES.file, mime });
+      expect(JSON.parse(encoded).mime).toBe('');
+      expect(decodePayload(encoded).kind).toBe('file');
+    }
+  });
+
   it('refuses to encode invalid payloads', () => {
     expect(() => encodePayload({ kind: 'image', ...SAMPLES.image, attachmentId: 'nope' })).toThrow(TypeError);
     expect(() => encodePayload({ kind: 'reply', text: 'x', replyTo: null })).toThrow(TypeError);

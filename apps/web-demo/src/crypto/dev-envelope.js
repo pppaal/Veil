@@ -34,7 +34,9 @@ export function createDevEnvelopeCrypto({ crypto, directory, getSelf, getPeer })
   async function buildContext(conversationId) {
     const self = getSelf();
     const peer = getPeer(conversationId);
-    if (!self?.xPrivKey || !peer) return null;
+    // A key agreed with our own public key reaches nobody; until a login has
+    // named us we cannot tell the peer from ourselves.
+    if (!self?.xPrivKey || !self.userId || !peer || peer.userId === self.userId) return null;
     const { trustedKey } = await directory.resolve(peer.userId, peer.handle);
     const peerPublic = await subtle.importKey('raw', decodeBase64Url(trustedKey), { name: 'X25519' }, false, []);
     const shared = await subtle.deriveBits({ name: 'X25519', public: peerPublic }, self.xPrivKey, 256);
@@ -80,6 +82,8 @@ export function createDevEnvelopeCrypto({ crypto, directory, getSelf, getPeer })
       return ctx !== null;
     },
 
+    // recipientUserId is the user whose key sealed the envelope, so an
+    // envelope is always addressed to the one user who can open it.
     async encrypt(conversationId, plaintext) {
       const ctx = await context(conversationId);
       if (!ctx) return null;
@@ -92,7 +96,11 @@ export function createDevEnvelopeCrypto({ crypto, directory, getSelf, getPeer })
         key,
         new TextEncoder().encode(plaintext),
       );
-      return { ciphertext: CIPHERTEXT_PREFIX + encodeBase64Url(sealed), nonce: encodeBase64Url(nonce) };
+      return {
+        ciphertext: CIPHERTEXT_PREFIX + encodeBase64Url(sealed),
+        nonce: encodeBase64Url(nonce),
+        recipientUserId: ctx.peerUserId,
+      };
     },
 
     // Resolves to { payload } (the decrypted UTF-8 string) or

@@ -95,6 +95,18 @@ describe('ingestMessage', () => {
     expect(again.media).toBe(first.media);
   });
 
+  it('decrypts again when a known ciphertext arrives under another sender device or conversation', async () => {
+    const decrypt = decryptTable({ 'ct-text': 'from the peer' });
+    const first = await ingestMessage(serverSummary({}), { decrypt, media: {} });
+    // The real decrypt fails here because the AAD names the original sender.
+    const rebound = vi.fn(async () => ({ failure: 'failed' }));
+    for (const overrides of [{ senderDeviceId: 'd-mallory' }, { conversationId: 'c-2' }]) {
+      const moved = await ingestMessage(serverSummary(overrides), { decrypt: rebound, media: {}, previous: first });
+      expect(moved).toMatchObject({ kind: 'locked', displayText: LOCKED_LABELS.failed });
+    }
+    expect(rebound).toHaveBeenCalledTimes(2);
+  });
+
   it('retries locked messages instead of reusing them', async () => {
     const decrypt = vi.fn()
       .mockResolvedValueOnce({ failure: 'no-key' })

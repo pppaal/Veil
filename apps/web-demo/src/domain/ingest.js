@@ -25,12 +25,13 @@ const PREVIEW_MAX_CHARS = 120;
 // options.decrypt(raw) resolves to { payload } or { failure } (a key of
 // LOCKED_LABELS). options.media is handed to media handles for lazy
 // download. options.previous is the current view of the same message: when
-// the ciphertext is unchanged its content is reused instead of decrypting
-// again, which keeps blob URLs alive across refreshes.
+// the ciphertext and everything its decryption is bound to are unchanged, its
+// content is reused instead of decrypting again, which keeps blob URLs alive
+// across refreshes.
 export async function ingestMessage(raw, { decrypt, media, previous = null }) {
   const envelope = serializeMessageForCache(raw);
   if (raw.deletedAt) return view(envelope, { kind: 'deleted', displayText: DELETED_TEXT });
-  if (previous && previous.kind !== 'locked' && sameCiphertext(previous, raw)) {
+  if (previous && previous.kind !== 'locked' && sameSealedContent(previous, raw)) {
     return view(envelope, previous);
   }
   const result = await Promise.resolve()
@@ -66,6 +67,12 @@ function view(envelope, { kind, displayText, replyTo = null, media = null }) {
   return { ...envelope, kind, displayText, replyTo, media };
 }
 
-function sameCiphertext(previous, raw) {
-  return previous.ciphertext === raw.ciphertext && previous.nonce === raw.nonce;
+// The AAD binds a ciphertext to its conversation and sender device, so a
+// summary that moves a known ciphertext to another sender (or conversation)
+// must be decrypted again, where the binding is checked, not reused.
+function sameSealedContent(previous, raw) {
+  return previous.ciphertext === raw.ciphertext
+    && previous.nonce === raw.nonce
+    && previous.conversationId === raw.conversationId
+    && previous.senderDeviceId === raw.senderDeviceId;
 }

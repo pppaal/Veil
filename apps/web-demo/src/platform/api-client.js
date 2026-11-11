@@ -68,6 +68,7 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
     await tokenStore.saveTokens({
       accessToken: verified.accessToken,
       refreshToken: verified.refreshToken,
+      userId: verified.userId,
     });
     return verified;
   }

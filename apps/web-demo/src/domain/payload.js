@@ -25,8 +25,16 @@ const MESSAGE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 const KEY_BYTES = 32;
 const NONCE_BYTES = 12;
 
+const MIME_MAX_CHARS = 128;
+
 const optional = (check) => (value) => value === undefined || check(value);
 const boundedString = (max) => (value) => typeof value === 'string' && value.length > 0 && value.length <= max;
+// A MIME type is a hint only: images are typed by their bytes, files download
+// as octet-stream and voice types are allowlisted before playback. Earlier
+// builds sent '' when the browser knew no type, so empty is valid.
+const isMimeHint = (value) => typeof value === 'string' && value.length <= MIME_MAX_CHARS;
+// An unusable hint is sent as '' rather than failing the send.
+const mimeHint = (value) => (isMimeHint(value) ? value : '');
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
 const isAttachmentId = (value) => typeof value === 'string' && ATTACHMENT_ID_RE.test(value);
 const isBase64Url = (length) => (value) => {
@@ -42,7 +50,7 @@ const isBase64Url = (length) => (value) => {
 const MEDIA_SCHEMAS = {
   image: {
     attachmentId: isAttachmentId,
-    mime: boundedString(128),
+    mime: isMimeHint,
     key: isBase64Url(KEY_BYTES),
     nonce: isBase64Url(NONCE_BYTES),
     width: optional(isCount),
@@ -50,14 +58,14 @@ const MEDIA_SCHEMAS = {
   },
   file: {
     attachmentId: isAttachmentId,
-    mime: boundedString(128),
+    mime: isMimeHint,
     name: boundedString(1024),
     sizeBytes: isCount,
     key: isBase64Url(KEY_BYTES),
     nonce: isBase64Url(NONCE_BYTES),
   },
   voice: {
-    mime: boundedString(128),
+    mime: isMimeHint,
     durationMs: isCount,
     audio: isBase64Url(),
   },
@@ -82,7 +90,7 @@ export function encodePayload(payload) {
       return encodeMedia({
         kind: 'image',
         attachmentId: payload.attachmentId,
-        mime: payload.mime,
+        mime: mimeHint(payload.mime),
         key: encodeBase64Url(payload.key),
         nonce: encodeBase64Url(payload.nonce),
         width: payload.width ?? 0,
@@ -92,7 +100,7 @@ export function encodePayload(payload) {
       return encodeMedia({
         kind: 'file',
         attachmentId: payload.attachmentId,
-        mime: payload.mime,
+        mime: mimeHint(payload.mime),
         name: payload.name,
         sizeBytes: payload.sizeBytes,
         key: encodeBase64Url(payload.key),
@@ -101,7 +109,7 @@ export function encodePayload(payload) {
     case 'voice':
       return encodeMedia({
         kind: 'voice',
-        mime: payload.mime,
+        mime: mimeHint(payload.mime),
         durationMs: payload.durationMs,
         audio: encodeBase64Url(payload.audio),
       });

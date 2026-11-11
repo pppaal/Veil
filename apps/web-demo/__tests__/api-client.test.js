@@ -111,7 +111,43 @@ describe('createApiClient session lifecycle', () => {
     expect(http.count('/auth/challenge')).toBe(0);
     expect(store.getAccessToken()).toBe('access-new');
     expect(store.getRefreshToken()).toBe('refresh-new');
+    // A refresh names no user and leaves the recorded one alone.
+    expect(store.current().userId).toBe('user-1');
     expect(onSessionRejected).not.toHaveBeenCalled();
+  });
+
+  it('a record without a userId gets it from the next successful login', async () => {
+    // A transferred device's record is saved before its first login. When
+    // that login fails, the record must not stay without a userId: the app
+    // could not tell the peer from itself and would seal to its own key.
+    const identity = await generateIdentity(subtle);
+    const repo = memoryRepo({
+      handle: 'alice',
+      userId: null,
+      deviceId: 'device-2',
+      ...identity,
+      accessToken: null,
+      refreshToken: null,
+    });
+    const store = createSessionStore({ repo, subtle });
+    await store.load();
+    let challenges = 0;
+    const http = fakeFetch({
+      '/auth/challenge': () => (++challenges === 1
+        ? [503, { message: 'unavailable' }]
+        : [200, { challengeId: 'ch-2', challenge: 'sign-me' }]),
+      '/auth/verify': () => [200, { accessToken: 'access-2', refreshToken: 'refresh-2', deviceId: 'device-2', userId: 'user-1' }],
+    });
+    const client = createApiClient({ fetchImpl: http.fetchImpl, baseUrl: '/v1', tokenStore: store });
+
+    await expect(client.login(await store.getDeviceCredentials())).rejects.toMatchObject({ status: 503 });
+    expect(repo.peek().userId).toBeNull();
+
+    await client.login(await store.getDeviceCredentials());
+    expect(store.current().userId).toBe('user-1');
+    const reloaded = createSessionStore({ repo, subtle });
+    await reloaded.load();
+    expect(reloaded.current()).toMatchObject({ userId: 'user-1', accessToken: 'access-2', edPrivKey: identity.edPrivKey });
   });
 
   it('a 401 that lands after the session ended does not sign in again', async () => {

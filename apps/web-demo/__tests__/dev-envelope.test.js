@@ -41,16 +41,19 @@ async function originalDecrypt(ctx, senderDeviceId, { ciphertext, nonce }) {
   return new TextDecoder().decode(pt);
 }
 
-async function setup() {
-  const alice = { deviceId: 'd-alice', ...(await generateIdentity(subtle)) };
-  const bob = { deviceId: 'd-bob', ...(await generateIdentity(subtle)) };
-  const directory = {
+function bobDirectory(bob) {
+  return {
     resolve: async () => ({ trustedKey: bob.xPubB64u, pendingKey: null }),
     pendingChange: () => null,
   };
+}
+
+async function setup() {
+  const alice = { userId: 'u-alice', deviceId: 'd-alice', ...(await generateIdentity(subtle)) };
+  const bob = { userId: 'u-bob', deviceId: 'd-bob', ...(await generateIdentity(subtle)) };
   const aliceCrypto = createDevEnvelopeCrypto({
     crypto: webcrypto,
-    directory,
+    directory: bobDirectory(bob),
     getSelf: () => alice,
     getPeer: () => ({ userId: 'u-bob', handle: 'bob' }),
   });
@@ -64,6 +67,27 @@ describe("'veil-envelope-v1-dev' wire crypto", () => {
     expect(sealed.ciphertext.startsWith('v2.')).toBe(true);
     expect(decodeBase64Url(sealed.nonce)).toHaveLength(12);
     expect(await originalDecrypt(bobContext, 'd-alice', sealed)).toBe('hello bob');
+  });
+
+  it('addresses the envelope to the user whose key sealed it', async () => {
+    const { aliceCrypto } = await setup();
+    expect((await aliceCrypto.encrypt(CONVERSATION, 'hi')).recipientUserId).toBe('u-bob');
+  });
+
+  it('seals nothing until it knows which member is self', async () => {
+    const { alice, bob } = await setup();
+    const unnamed = { ...alice, userId: null };
+    const sealer = (self, peer) => createDevEnvelopeCrypto({
+      crypto: webcrypto,
+      directory: bobDirectory(bob),
+      getSelf: () => self,
+      getPeer: () => peer,
+    });
+    // A device whose login never recorded its userId, in a conversation
+    // whose member list starts with itself.
+    expect(await sealer(unnamed, { userId: 'u-alice', handle: 'alice' }).encrypt(CONVERSATION, 'x')).toBeNull();
+    expect(await sealer(unnamed, { userId: 'u-bob', handle: 'bob' }).encrypt(CONVERSATION, 'x')).toBeNull();
+    expect(await sealer(alice, { userId: 'u-alice', handle: 'alice' }).encrypt(CONVERSATION, 'x')).toBeNull();
   });
 
   it('decrypts what the original client sent, with and without the AAD binding', async () => {

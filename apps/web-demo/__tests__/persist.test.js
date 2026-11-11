@@ -64,6 +64,13 @@ describe('persistence serializers', () => {
     expect(JSON.stringify(record)).not.toContain('SECRET');
   });
 
+  it('keeps a deleted message as a tombstone without its sealed content', () => {
+    const record = serializeMessageForCache({ ...inMemoryMessage(), deletedAt: '2026-11-11T10:00:00.000Z' });
+    expect(record).not.toHaveProperty('ciphertext');
+    expect(record).not.toHaveProperty('nonce');
+    expect(record).toMatchObject({ id: 'm-1', conversationId: 'c-1', deletedAt: '2026-11-11T10:00:00.000Z' });
+  });
+
   it('omits allowlisted fields the source does not have', () => {
     expect(serializeMessageForCache({ id: 'm', conversationId: 'c', extra: 1 })).toEqual({ id: 'm', conversationId: 'c' });
   });

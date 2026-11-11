@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IDB_NAME } from '../src/platform/idb.js';
 import { wipeEverything } from '../src/platform/wipe.js';
@@ -88,8 +88,40 @@ describe('wipeEverything', () => {
     expect(caches.remaining.size).toBe(0);
   });
 
-  it('does not hang when another tab blocks the delete', async () => {
-    await expect(wipeEverything({ indexedDB: fakeIndexedDB('blocked'), localStorage: null, sessionStorage: null }))
-      .resolves.toBeUndefined();
+  describe('a blocked delete', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('is waited out and reported, while the other steps go ahead', async () => {
+      const indexedDB = fakeIndexedDB('blocked');
+      const onBlocked = vi.fn();
+      const localStorage = memoryStorage({ 'veil-demo-theme': 'dark' });
+      let finished = false;
+      const wipe = wipeEverything({ indexedDB, localStorage, sessionStorage: null, onBlocked })
+        .then(() => { finished = true; });
+
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(onBlocked).toHaveBeenCalledTimes(1);
+      expect(localStorage.keys()).toEqual([]);
+      // The database and the keys in it are still there: not a finished wipe.
+      expect(finished).toBe(false);
+
+      // The other tab closes and the queued delete goes through.
+      indexedDB.deleteDatabase.mock.results[0].value.onsuccess();
+      await wipe;
+      expect(finished).toBe(true);
+    });
+
+    it('is not reported when it clears at once, as when this tab finishes a last write', async () => {
+      const indexedDB = fakeIndexedDB('blocked');
+      const onBlocked = vi.fn();
+      const wipe = wipeEverything({ indexedDB, localStorage: null, sessionStorage: null, onBlocked });
+
+      await vi.advanceTimersByTimeAsync(50);
+      indexedDB.deleteDatabase.mock.results[0].value.onsuccess();
+      await wipe;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(onBlocked).not.toHaveBeenCalled();
+    });
   });
 });

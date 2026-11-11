@@ -44,7 +44,14 @@ const QUEUED_ENVELOPE_FIELDS = Object.freeze([
 const KAKAO_META_FIELDS = Object.freeze(['id', 'title', 'importedAt', 'messageCount']);
 
 export function serializeMessageForCache(message) {
-  return pick(message, CACHED_MESSAGE_FIELDS);
+  const record = pick(message, CACHED_MESSAGE_FIELDS);
+  // A deleted message is kept as a tombstone only; its sealed content has no
+  // reason to stay on disk.
+  if (record.deletedAt) {
+    delete record.ciphertext;
+    delete record.nonce;
+  }
+  return record;
 }
 
 // Row of the 'messages' store, keyed by conversation and server order.

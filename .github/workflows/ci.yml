@@ -73,6 +73,14 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Cheap static gates first, so contract or locale drift fails before
+      # the Flutter toolchain is even downloaded.
+      - name: Realtime contract matches the mobile event list
+        run: node scripts/realtime-contract-check.mjs
+
+      - name: Mobile locales match the English ARB
+        run: node scripts/arb-parity-check.mjs
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -85,6 +93,12 @@ jobs:
 
       - name: Flutter dependencies
         run: cd apps/mobile && flutter pub get
+
+      # pub get regenerates the tracked l10n output; any diff means an ARB
+      # change was committed without regenerating, which leaves the committed
+      # tree broken for anyone who analyzes it without running pub get.
+      - name: Generated l10n is up to date
+        run: git diff --exit-code apps/mobile/lib/src/l10n/generated
 
       - name: Verify mobile
         run: pnpm ci:mobile

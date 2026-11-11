@@ -881,4 +881,621 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get notificationNewMessageBody => '새로운 암호화 메시지';
+
+  @override
+  String get startDirectTitle => '핸들로 찾기';
+
+  @override
+  String get startDirectEyebrow => '다이렉트 검색';
+
+  @override
+  String get startDirectHeroTitle => '연락처 동기화 없음';
+
+  @override
+  String get startDirectHeroBody =>
+      '핸들을 직접 입력하세요. VEIL은 연락처·전화번호부·소셜 그래프를 스캔하지 않습니다.';
+
+  @override
+  String get startDirectPillManual => '수동 검색';
+
+  @override
+  String get startDirectPillNoGraph => '소셜 그래프 없음';
+
+  @override
+  String get startDirectPillDirectOnly => '다이렉트 전용';
+
+  @override
+  String get startDirectBannerTitle => '의도된 검색';
+
+  @override
+  String get startDirectBannerBody =>
+      '정확한 핸들을 알고 있을 때만 대화가 열립니다. 그래프로 인맥을 넓히는 기능은 없습니다.';
+
+  @override
+  String get startDirectMetricDiscovery => '검색';
+
+  @override
+  String get startDirectMetricDiscoveryValue => '수동';
+
+  @override
+  String get startDirectMetricGraph => '그래프';
+
+  @override
+  String get startDirectMetricGraphValue => '없음';
+
+  @override
+  String get startDirectMetricMode => '모드';
+
+  @override
+  String get startDirectMetricModeValue => '1:1 다이렉트';
+
+  @override
+  String get startDirectFieldLabel => '대상 핸들';
+
+  @override
+  String get startDirectAwaitingInput => '입력 대기 중';
+
+  @override
+  String get startDirectFieldCaption => '검색은 수동이며, 다이렉트 대화만 가능합니다.';
+
+  @override
+  String get startDirectInputLabel => '핸들';
+
+  @override
+  String get startDirectErrorTitle => '대화를 열 수 없음';
+
+  @override
+  String get startDirectOpening => '대화 여는 중';
+
+  @override
+  String get startDirectOpenButton => '다이렉트 대화 열기';
+
+  @override
+  String get startGroupTitle => '그룹 채팅 시작';
+
+  @override
+  String get startGroupEyebrow => '그룹 생성';
+
+  @override
+  String get startGroupHeroTitle => '초대로만 참여';
+
+  @override
+  String get startGroupHeroBody =>
+      '그룹은 명시적입니다. 핸들로 멤버를 추가하세요 — VEIL은 연락처 그래프로 초대를 확장하지 않습니다.';
+
+  @override
+  String get startGroupPillInviteOnly => '초대 전용';
+
+  @override
+  String get startGroupPillManualRoster => '수동 명단';
+
+  @override
+  String get startGroupPillE2E => '종단간 암호화';
+
+  @override
+  String get startGroupNameLabel => '그룹 이름';
+
+  @override
+  String get startGroupRequired => '필수';
+
+  @override
+  String get startGroupNameCaption => '멤버에게 표시됩니다. 나중에 변경할 수 있어요.';
+
+  @override
+  String get startGroupNameInput => '이름';
+
+  @override
+  String get startGroupDescriptionLabel => '설명';
+
+  @override
+  String get startGroupDescriptionCaption => '선택. 그룹의 목적이나 배경을 적어주세요.';
+
+  @override
+  String get startGroupDescriptionInput => '설명';
+
+  @override
+  String get startGroupDescriptionHint => '이 그룹은 어떤 모임인가요?';
+
+  @override
+  String get startGroupMembersLabel => '초기 멤버';
+
+  @override
+  String get startGroupNoneYet => '아직 없음';
+
+  @override
+  String startGroupMembersCount(int count) {
+    return '핸들 $count개';
+  }
+
+  @override
+  String get startGroupMembersCaption =>
+      '쉼표나 공백으로 핸들을 구분하세요. 생성 후에도 추가할 수 있어요.';
+
+  @override
+  String get startGroupMembersInput => '멤버 핸들';
+
+  @override
+  String get startGroupPublicTitle => '공개 디렉터리';
+
+  @override
+  String get startGroupPublicSubtitle => '공개 그룹은 핸들로 검색됩니다. 초대 전용 그룹은 꺼두세요.';
+
+  @override
+  String get startGroupErrorTitle => '그룹을 만들 수 없음';
+
+  @override
+  String get startGroupCreating => '그룹 만드는 중';
+
+  @override
+  String get startGroupCreateButton => '그룹 만들기';
+
+  @override
+  String get safetyNumbersTitle => '안전 번호';
+
+  @override
+  String get safetyNumbersLoadingTitle => '안전 번호 생성 중';
+
+  @override
+  String get safetyNumbersLoadingBody => '신원 키를 로컬에서 해싱하는 중입니다.';
+
+  @override
+  String get safetyNumbersMarkedVerified => '확인됨으로 표시했습니다';
+
+  @override
+  String get safetyNumbersVerificationCleared => '확인 기록을 지웠습니다';
+
+  @override
+  String get safetyNumbersRotateDialogTitle => '세션 키를 교체할까요?';
+
+  @override
+  String get safetyNumbersRotateDialogBody =>
+      '다음 메시지에서 새로운 Diffie-Hellman 래칫 단계가 강제로 수행됩니다. 이 대화에 저장된 건너뛴 메시지 키는 즉시 폐기됩니다. 이 기기나 상대방 기기가 잠시 노출되었다고 의심되면 사용하세요 — 지난 메시지는 계속 읽을 수 있지만, 탈취된 세션 상태는 더 이상 쓸모가 없어집니다.';
+
+  @override
+  String get safetyNumbersCancel => '취소';
+
+  @override
+  String get safetyNumbersRotate => '교체';
+
+  @override
+  String get safetyNumbersSessionRotated => '세션 키를 교체했습니다';
+
+  @override
+  String get safetyNumbersNoSessionYet => '아직 세션이 없습니다 — 먼저 메시지를 보내세요';
+
+  @override
+  String safetyNumbersRotationFailed(String error) {
+    return '교체 실패: $error';
+  }
+
+  @override
+  String get safetyNumbersErrorTitle => '안전 번호를 불러올 수 없음';
+
+  @override
+  String get safetyNumbersRetry => '다시 시도';
+
+  @override
+  String get safetyNumbersNoMembersTitle => '다른 멤버 없음';
+
+  @override
+  String get safetyNumbersNoMembersBody =>
+      '이 그룹에는 아직 다른 참여자가 없습니다 — 확인할 사람을 초대하세요.';
+
+  @override
+  String get safetyNumbersGroupEyebrow => '그룹 멤버 확인';
+
+  @override
+  String get safetyNumbersGroupTitleGeneric => '이 그룹의 각 멤버를 확인하세요';
+
+  @override
+  String safetyNumbersGroupTitleNamed(String groupName) {
+    return '$groupName의 각 멤버를 확인하세요';
+  }
+
+  @override
+  String get safetyNumbersGroupBody =>
+      '멤버를 탭하면 60자리 안전 번호가 표시됩니다. 신뢰할 수 있는 채널로 비교하세요 — 통화로 읽어주거나 QR을 스캔하세요. 번호가 일치하지 않으면 해당 멤버의 기기가 위협받았을 수 있습니다.';
+
+  @override
+  String get safetyNumbersGroupRotateEyebrow => '그룹 세션 키 교체';
+
+  @override
+  String get safetyNumbersGroupRotateBody =>
+      '다음 그룹 메시지에서 새로운 DH 래칫 단계를 강제하고 이 그룹에 저장된 건너뛴 키를 폐기합니다. 모든 멤버에게 영향을 줍니다 — 참여자 중 누군가의 기기가 잠시 노출되었다면 사용하세요.';
+
+  @override
+  String get safetyNumbersRotatingGroup => '교체 중…';
+
+  @override
+  String get safetyNumbersRotateGroupButton => '그룹 세션 키 교체';
+
+  @override
+  String get safetyNumbersUnverified => '미확인';
+
+  @override
+  String get safetyNumbersVerified => '확인됨';
+
+  @override
+  String get safetyNumbersDetailEyebrow => '신원 확인';
+
+  @override
+  String safetyNumbersDetailTitle(String peer) {
+    return '$peer님과 대화하고 있는지 확인하세요';
+  }
+
+  @override
+  String get safetyNumbersDetailBody =>
+      '두 사람 모두 같은 60자리 번호가 보여야 합니다. 신뢰할 수 있는 채널로 비교하세요 — 통화로 읽어주거나 QR을 스캔하세요. 번호가 일치하지 않으면 누군가 대화 중간에 끼어든 것입니다.';
+
+  @override
+  String get safetyNumbersKeyChangedTitle => '상대방 신원 키가 변경됨';
+
+  @override
+  String safetyNumbersKeyChangedMessage(String date) {
+    return '이 상대방의 신원 키가 $date에 확인한 키와 다릅니다. 재설치 후 발생할 수도 있고 — 누군가 사칭하는 것일 수도 있습니다. 신뢰하기 전에 다시 확인하세요.';
+  }
+
+  @override
+  String safetyNumbersVerifiedOn(String date) {
+    return '$date에 확인함';
+  }
+
+  @override
+  String get safetyNumbersVerifiedNote =>
+      '이 상대방이 재설치하거나 기기를 변경하면 이 확인은 무효화되며 경고가 표시됩니다.';
+
+  @override
+  String get safetyNumbersClearVerification => '확인 기록 지우기';
+
+  @override
+  String get safetyNumbersReVerify => '새 키로 다시 확인';
+
+  @override
+  String get safetyNumbersMarkVerified => '확인됨으로 표시';
+
+  @override
+  String get safetyNumbersRotateEyebrow => '세션 키 교체';
+
+  @override
+  String get safetyNumbersRotateBody =>
+      '다음 메시지에서 새로운 DH 래칫 단계를 강제하고 저장된 건너뛴 키를 폐기합니다. 이 기기나 상대방 기기가 잠시 노출되었다면 사용하세요.';
+
+  @override
+  String get safetyNumbersRotating => '교체 중…';
+
+  @override
+  String get safetyNumbersRotateButton => '세션 키 교체';
+
+  @override
+  String get safetyNumbersCardLabel => '안전 번호';
+
+  @override
+  String get safetyNumbersScanLabel => '스캔하여 비교';
+
+  @override
+  String get safetyNumbersQrNote => '이 QR에는 60자리 안전 번호만 담겨 있으며, 키는 포함되지 않습니다.';
+
+  @override
+  String get deviceTransferTitle => '기기 이전';
+
+  @override
+  String get deviceTransferHeroEyebrow => '이전';
+
+  @override
+  String get deviceTransferHeroTitle => '기존 기기가 필요합니다.';
+
+  @override
+  String get deviceTransferHeroBody =>
+      '이전은 신뢰된 기기 간 실시간 연결입니다. 기존 기기가 세션을 발급하고 정확한 새 기기 클레임을 승인합니다. VEIL은 복구 수단을 만들지 않습니다.';
+
+  @override
+  String get deviceTransferPillTrustedJoin => '신뢰된 기기 연결';
+
+  @override
+  String get deviceTransferPillNoFallback => '대체 수단 없음';
+
+  @override
+  String get deviceTransferPillNoCloud => '클라우드 복구 없음';
+
+  @override
+  String get deviceTransferChipOldDevice => '기존 기기';
+
+  @override
+  String get deviceTransferChipNewDevice => '새 기기';
+
+  @override
+  String get deviceTransferNoFallbackTitle => '대체 경로 없음';
+
+  @override
+  String get deviceTransferNoFallbackBody =>
+      '기존 기기가 없으면 이전은 실패합니다. VEIL은 복구·초기화·내보내기·관리자 복원을 제공하지 않습니다.';
+
+  @override
+  String get deviceTransferWindowExpiredTitle => '이전 가능 시간 만료';
+
+  @override
+  String get deviceTransferSessionExpiredMessage =>
+      '기존 기기의 이전 세션이 만료되었습니다. 기존 기기에서 새 세션을 발급하세요.';
+
+  @override
+  String get deviceTransferClaimExpiredMessage =>
+      '이 새 기기 클레임이 만료되었습니다. 새 클레임을 등록하고 다시 승인을 요청하세요.';
+
+  @override
+  String get deviceTransferMetricMode => '모드';
+
+  @override
+  String get deviceTransferMetricModeOld => '기존 기기';
+
+  @override
+  String get deviceTransferMetricModeNew => '새 기기';
+
+  @override
+  String get deviceTransferMetricSession => '세션';
+
+  @override
+  String get deviceTransferSessionExpired => '만료됨';
+
+  @override
+  String get deviceTransferSessionIdle => '대기';
+
+  @override
+  String get deviceTransferSessionLive => '활성';
+
+  @override
+  String get deviceTransferMetricClaim => '클레임';
+
+  @override
+  String get deviceTransferClaimMissing => '없음';
+
+  @override
+  String get deviceTransferClaimExpired => '만료됨';
+
+  @override
+  String get deviceTransferClaimIssued => '발급됨';
+
+  @override
+  String get deviceTransferPayloadCopied => '이전 페이로드를 복사했습니다.';
+
+  @override
+  String get deviceTransferReturnToConversations => '대화 목록으로 돌아가기';
+
+  @override
+  String get deviceTransferPayloadInvalid => '이전 페이로드 형식이 올바르지 않습니다.';
+
+  @override
+  String get deviceTransferPayloadImported =>
+      '이전 페이로드를 가져왔습니다. 이전 가능 시간이 끝나기 전에 이 새 기기를 등록하세요.';
+
+  @override
+  String get deviceTransferImportFirst => '먼저 올바른 이전 페이로드를 가져오세요.';
+
+  @override
+  String get deviceTransferClaimRegistered =>
+      '클레임을 등록했습니다. 이 클레임 코드를 기존 기기에 전달하고 만료 전에 승인을 요청하세요.';
+
+  @override
+  String get deviceTransferClaimFailed => '클레임에 실패했습니다.';
+
+  @override
+  String get deviceTransferRegisterBeforeComplete =>
+      '완료하기 전에 이 새 기기 클레임을 등록하세요.';
+
+  @override
+  String get deviceTransferClaimExpiredRegisterFresh =>
+      '이 새 기기 클레임이 만료되었습니다. 먼저 새 클레임을 등록하세요.';
+
+  @override
+  String get deviceTransferComplete => '이전이 완료되었습니다. 이 기기가 신뢰 그래프에 추가되었습니다.';
+
+  @override
+  String get deviceTransferFailed => '이전에 실패했습니다.';
+
+  @override
+  String get deviceTransferOldRequiredTitle => '기존 기기 세션 필요';
+
+  @override
+  String get deviceTransferOldRequiredBody =>
+      '현재 신뢰된 기기에서 로그인하여 이전을 발급하고 승인하세요.';
+
+  @override
+  String get deviceTransferStep1Title => '1. 기존 기기에서 시작';
+
+  @override
+  String get deviceTransferStep1BodyReady => '다음 기기를 위한 단기 세션과 토큰을 생성합니다.';
+
+  @override
+  String deviceTransferStep1BodyExpires(String when) {
+    return '이 이전 세션은 $when 만료됩니다.';
+  }
+
+  @override
+  String get deviceTransferStatusReady => '준비됨';
+
+  @override
+  String get deviceTransferStatusExpired => '만료됨';
+
+  @override
+  String get deviceTransferStatusIssued => '발급됨';
+
+  @override
+  String get deviceTransferIssuingToken => '토큰 발급 중';
+
+  @override
+  String get deviceTransferIssueToken => '이전 토큰 발급';
+
+  @override
+  String get deviceTransferStep2Title => '2. 기존 기기에서 승인';
+
+  @override
+  String get deviceTransferStep2BodyWaiting => '아직 이전 세션이 없습니다.';
+
+  @override
+  String get deviceTransferStep2BodyExpired =>
+      '이 이전 세션이 만료되었습니다. 지우고 새로 발급하세요.';
+
+  @override
+  String get deviceTransferStep2BodyAwaiting =>
+      '새 기기가 클레임을 등록할 때까지 기다린 후, 여기서 해당 클레임 코드를 승인하세요.';
+
+  @override
+  String get deviceTransferStatusWaiting => '대기 중';
+
+  @override
+  String get deviceTransferStatusAwaitingClaim => '클레임 대기 중';
+
+  @override
+  String get deviceTransferClaimFieldLabel => '새 기기 클레임';
+
+  @override
+  String get deviceTransferClaimFieldCaption =>
+      '신뢰하는 새 기기에 표시된 정확한 클레임 코드만 승인하세요.';
+
+  @override
+  String get deviceTransferClaimInputLabel => '새 기기 클레임 코드';
+
+  @override
+  String get deviceTransferClaimInputHint => '새 기기에 표시된 클레임 코드를 붙여넣으세요';
+
+  @override
+  String get deviceTransferApproveClaim => '이 클레임 승인';
+
+  @override
+  String get deviceTransferStep3Title => '3. 새 기기에 페이로드 전달';
+
+  @override
+  String get deviceTransferReadyToCopy => '복사 준비됨';
+
+  @override
+  String get deviceTransferIssueTokenFirst => '먼저 이전 토큰을 발급하세요.';
+
+  @override
+  String get deviceTransferPayloadExpiredNote =>
+      '이 페이로드는 더 이상 유효하지 않습니다. 지우고 새 이전 세션을 발급하세요.';
+
+  @override
+  String get deviceTransferCompleteOnNewNote =>
+      '새 기기에서 완료하세요. 명시적으로 해제하기 전까지 기존 기기는 계속 신뢰됩니다.';
+
+  @override
+  String get deviceTransferCopyPayload => '페이로드 복사';
+
+  @override
+  String get deviceTransferClear => '지우기';
+
+  @override
+  String get deviceTransferStatusTitle => '이전 상태';
+
+  @override
+  String get deviceTransferFailedTitle => '이전 실패';
+
+  @override
+  String get deviceTransferPayloadFieldLabel => '이전 페이로드';
+
+  @override
+  String get deviceTransferPayloadFieldCaption =>
+      '신뢰된 기존 기기가 발급한 단기 세션과 토큰을 가져오세요.';
+
+  @override
+  String get deviceTransferPayloadInputLabel => '이전 페이로드 붙여넣기';
+
+  @override
+  String get deviceTransferImportPayload => '페이로드 가져오기';
+
+  @override
+  String get deviceTransferNewDeviceLabel => '새 기기';
+
+  @override
+  String get deviceTransferNewDeviceCaption =>
+      '이 기기는 자신의 클레임을 증명합니다. 기존 기기는 정확히 그 클레임만 승인합니다.';
+
+  @override
+  String get deviceTransferDeviceNameLabel => '기기 이름';
+
+  @override
+  String get deviceTransferSessionIdLabel => '세션 ID';
+
+  @override
+  String get deviceTransferTokenLabel => '이전 토큰';
+
+  @override
+  String get deviceTransferClaimNotRegistered => '클레임 미등록';
+
+  @override
+  String get deviceTransferClaimExpiredPill => '클레임 만료됨';
+
+  @override
+  String get deviceTransferClaimRegisteredPill => '클레임 등록됨';
+
+  @override
+  String get deviceTransferOldApprovesExact => '기존 기기가 정확한 클레임 승인';
+
+  @override
+  String deviceTransferClaimCode(String claimId) {
+    return '클레임 코드 $claimId';
+  }
+
+  @override
+  String deviceTransferClaimFingerprint(String fingerprint) {
+    return '클레임 지문 $fingerprint';
+  }
+
+  @override
+  String get deviceTransferFingerprintUnavailable => '사용 불가';
+
+  @override
+  String deviceTransferExpires(String when) {
+    return '$when 만료';
+  }
+
+  @override
+  String get deviceTransferRegisteringClaim => '클레임 등록 중';
+
+  @override
+  String get deviceTransferRegisterNewDevice => '이 새 기기 등록';
+
+  @override
+  String get deviceTransferCompleting => '이전 완료 중';
+
+  @override
+  String get deviceTransferCompleteOnDevice => '이 기기에서 완료';
+
+  @override
+  String get deviceTransferExpiryNow => '지금';
+
+  @override
+  String deviceTransferExpiryInSeconds(int seconds) {
+    return '$seconds초 후';
+  }
+
+  @override
+  String deviceTransferExpiryInMinutes(int minutes) {
+    return '$minutes분 후';
+  }
+
+  @override
+  String deviceTransferExpiryAt(String time) {
+    return '$time';
+  }
+
+  @override
+  String get themeModeTitle => '테마';
+
+  @override
+  String get themeModeSubtitle => '이 기기에서 VEIL의 표시 방식을 선택하세요.';
+
+  @override
+  String get themeModeLight => '라이트';
+
+  @override
+  String get themeModeDark => '다크';
+
+  @override
+  String get themeModeSystem => '시스템';
+
+  @override
+  String get aiDemoBannerTitle => '스크립트 데모';
+
+  @override
+  String get aiDemoBannerBody => '데모: 답변은 이 기기에 미리 정해진 내용입니다. 어디로도 전송되지 않습니다.';
 }

@@ -507,5 +507,7 @@
   "themeModeSubtitle": "이 기기에서 VEIL의 표시 방식을 선택하세요.",
   "themeModeLight": "라이트",
   "themeModeDark": "다크",
-  "themeModeSystem": "시스템"
+  "themeModeSystem": "시스템",
+  "aiDemoBannerTitle": "스크립트 데모",
+  "aiDemoBannerBody": "데모: 답변은 이 기기에 미리 정해진 내용입니다. 어디로도 전송되지 않습니다."
 }

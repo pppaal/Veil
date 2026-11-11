@@ -1,9 +1,34 @@
+import 'dart:io';
+
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
+import '../config/veil_config.dart';
+import '../network/pinned_http_client.dart';
+import 'pinned_socket_http_client_adapter.dart';
+import 'realtime_events.dart';
+import 'realtime_socket.dart';
+
+/// Builds the pinned client the WebSocket upgrade goes through, or returns
+/// null to use the platform trust store.
+typedef PinnedHttpClientFactory = HttpClient? Function();
+
 class RealtimeService {
-  io.Socket? _socket;
+  RealtimeService({
+    PinnedHttpClientFactory? httpClientFactory,
+    RealtimeSocketFactory? socketFactory,
+  })  : _httpClientFactory = httpClientFactory ?? _configuredPinnedClient,
+        _socketFactory = socketFactory ?? SocketIoRealtimeSocket.open;
+
+  final PinnedHttpClientFactory _httpClientFactory;
+  final RealtimeSocketFactory _socketFactory;
+  RealtimeSocket? _socket;
+  HttpClient? _pinnedClient;
+
   bool get isConnected => _socket?.connected ?? false;
 
+  /// Connects and subscribes to every contract event. Payloads of typed
+  /// events are validated first: malformed ones are dropped here so handlers
+  /// never see them, valid ones reach [onEvent] unchanged.
   void connect({
     required String baseUrl,
     required String accessToken,
@@ -11,44 +36,52 @@ class RealtimeService {
     void Function(bool connected)? onConnectionChanged,
   }) {
     disconnect();
-    _socket = io.io(
-      baseUrl,
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .setPath('/v1/realtime')
-          .enableReconnection()
-          .setReconnectionAttempts(999999)
-          .setReconnectionDelay(1000)
-          .setReconnectionDelayMax(5000)
-          .setTimeout(8000)
-          .disableAutoConnect()
-          .setAuth({'token': accessToken})
-          .build(),
-    );
-
-    _socket!.onConnect((_) => onConnectionChanged?.call(true));
-    _socket!.onDisconnect((_) => onConnectionChanged?.call(false));
-    _socket!.onReconnect((_) => onConnectionChanged?.call(true));
-    _socket!.onReconnectAttempt((_) => onConnectionChanged?.call(false));
-    _socket!.onReconnectError((_) => onConnectionChanged?.call(false));
-    _socket!.onReconnectFailed((_) => onConnectionChanged?.call(false));
-    _socket!.onConnectError((_) => onConnectionChanged?.call(false));
-    _socket!.onError((_) => onConnectionChanged?.call(false));
-
-    for (final event in const [
-      'message.new',
-      'message.delivered',
-      'message.read',
-      'message.reaction',
-      'presence.update',
-      'typing.start',
-      'typing.stop',
-      'conversation.sync',
-    ]) {
-      _socket!.on(event, (payload) => onEvent(event, payload));
+    final pinnedClient = _httpClientFactory();
+    _pinnedClient = pinnedClient;
+    final options = io.OptionBuilder()
+        .setTransports(['websocket'])
+        .setPath('/v1/realtime')
+        // A fresh manager per connection, so the adapter below is the one
+        // used rather than whatever a cached manager was built with.
+        .enableForceNew()
+        .enableReconnection()
+        .setReconnectionAttempts(999999)
+        .setReconnectionDelay(1000)
+        .setReconnectionDelayMax(5000)
+        .setTimeout(8000)
+        .disableAutoConnect()
+        .setAuth({'token': accessToken});
+    if (pinnedClient != null) {
+      options.setHttpClientAdapter(PinnedSocketHttpClientAdapter(pinnedClient));
     }
 
-    _socket!.connect();
+    final socket = _socketFactory(baseUrl, options.build());
+    _socket = socket;
+    if (onConnectionChanged != null) {
+      socket.onConnectionChanged(onConnectionChanged);
+    }
+    for (final event in kRealtimeEventNames) {
+      socket.on(event, (payload) {
+        if (RealtimeEvent.tryParse(event, payload) != null) {
+          onEvent(event, payload);
+        }
+      });
+    }
+    socket.connect();
+  }
+
+  /// Swaps the bearer token on the live socket and reconnects it, keeping
+  /// the subscriptions. Use after a token refresh instead of [connect], which
+  /// tears everything down.
+  void updateAuth(String token) {
+    final socket = _socket;
+    if (socket == null) {
+      return;
+    }
+    socket
+      ..auth = {'token': token}
+      ..disconnect()
+      ..connect();
   }
 
   void emit(String event, Map<String, dynamic> payload) {
@@ -56,8 +89,13 @@ class RealtimeService {
   }
 
   void disconnect() {
-    _socket?.disconnect();
     _socket?.dispose();
     _socket = null;
+    _pinnedClient?.close(force: true);
+    _pinnedClient = null;
   }
+}
+
+HttpClient? _configuredPinnedClient() {
+  return buildPinnedDartIoHttpClient(parsePinList(VeilConfig.tlsPins));
 }

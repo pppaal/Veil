@@ -4,20 +4,96 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import '../config/veil_config.dart';
+import 'http_transport.dart';
+import 'pinned_http_client.dart';
+import 'token_refresh_gate.dart';
+import 'veil_api_exception.dart';
+
+export 'veil_api_exception.dart';
+
 class VeilApiClient {
   VeilApiClient({
     required this.baseUrl,
     http.Client? client,
     Future<String?> Function()? tokenRefresher,
-  })  : _client = client ?? http.Client(),
-        _tokenRefresher = tokenRefresher;
+    Duration requestTimeout = kDefaultRequestTimeout,
+    Duration uploadTimeout = kDefaultUploadTimeout,
+    http.Client? objectStorageClient,
+    ObjectStoragePolicy? objectStoragePolicy,
+  })  : _client = client ??
+            buildPinnedHttpClient(
+              allowedFingerprints: parsePinList(VeilConfig.tlsPins),
+            ),
+        _refreshGate =
+            tokenRefresher == null ? null : TokenRefreshGate(tokenRefresher),
+        _requestTimeout = requestTimeout,
+        _uploadTimeout = uploadTimeout,
+        _injectedObjectStorageClient = objectStorageClient,
+        _objectStoragePolicy =
+            objectStoragePolicy ?? ObjectStoragePolicy.fromEnvironment();
 
   final String baseUrl;
   final http.Client _client;
-  // Resolved by the auth controller so the API client doesn't need a hard
-  // reference to AppState. When a request comes back 401, _authedRequest
-  // calls this to mint a fresh access token and replays the original call.
-  final Future<String?> Function()? _tokenRefresher;
+  // The refresher is resolved by the auth controller so the API client
+  // doesn't need a hard reference to AppState. When a request comes back
+  // 401, _authedRequest asks the gate for a fresh access token and replays
+  // the original call once.
+  final TokenRefreshGate? _refreshGate;
+  final Duration _requestTimeout;
+  final Duration _uploadTimeout;
+  final http.Client? _injectedObjectStorageClient;
+  final ObjectStoragePolicy _objectStoragePolicy;
+
+  // Presigned upload URLs usually point at a different host than the API,
+  // so uploads get their own client and pins. Built on first upload only.
+  late final http.Client _objectStorageClient = _injectedObjectStorageClient ??
+      buildPinnedHttpClient(
+        allowedFingerprints: parsePinList(VeilConfig.objectStoragePins),
+      );
+
+  /// Authenticated JSON calls, so feature APIs can live in their own files.
+  /// A missing token fails with code 'unauthorized' instead of a null-check
+  /// crash when the session is torn down while a call is being prepared.
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    required String? accessToken,
+    Map<String, String>? query,
+  }) async {
+    return _get(path, accessToken: _requireToken(accessToken), query: query);
+  }
+
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    required String? accessToken,
+    Object? body,
+  }) async {
+    return _post(
+      path,
+      body ?? const <String, dynamic>{},
+      accessToken: _requireToken(accessToken),
+    );
+  }
+
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    required String? accessToken,
+    Object? body,
+  }) async {
+    return _put(
+      path,
+      body ?? const <String, dynamic>{},
+      accessToken: _requireToken(accessToken),
+    );
+  }
+
+  Future<Map<String, dynamic>> deleteJson(
+    String path, {
+    required String? accessToken,
+    Object? body,
+  }) async {
+    return _delete(path, body: body, accessToken: _requireToken(accessToken));
+  }
 
   Future<Map<String, dynamic>> register(Map<String, dynamic> body) async {
     return _post('/auth/register', body);
@@ -73,17 +149,14 @@ class VeilApiClient {
     {String? cursor,
     int limit = 50,}
   ) async {
-    final query = <String, String>{
-      'limit': '$limit',
-      if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
-    };
-    final uri = Uri.parse('$baseUrl/conversations/$conversationId/messages')
-        .replace(queryParameters: query);
-    final response = await _authedRequest(
-      (token) => _client.get(uri, headers: _headers(token)),
-      accessToken,
+    return _get(
+      '/conversations/$conversationId/messages',
+      accessToken: accessToken,
+      query: {
+        'limit': '$limit',
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+      },
     );
-    return _decodeMap(response);
   }
 
   Future<Map<String, dynamic>> setDisappearingTimer(
@@ -268,12 +341,7 @@ class VeilApiClient {
   }
 
   Future<List<dynamic>> getContacts(String accessToken) async {
-    final response = await _authedRequest(
-      (token) =>
-          _client.get(Uri.parse('$baseUrl/contacts'), headers: _headers(token)),
-      accessToken,
-    );
-    return _decodeList(response);
+    return _getList('/contacts', accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> addContact(
@@ -293,12 +361,7 @@ class VeilApiClient {
   // Stories endpoints
 
   Future<List<dynamic>> getStories(String accessToken) async {
-    final response = await _authedRequest(
-      (token) =>
-          _client.get(Uri.parse('$baseUrl/stories'), headers: _headers(token)),
-      accessToken,
-    );
-    return _decodeList(response);
+    return _getList('/stories', accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> createStory(
@@ -332,12 +395,7 @@ class VeilApiClient {
   }
 
   Future<List<dynamic>> getCallHistory(String accessToken) async {
-    final response = await _authedRequest(
-      (token) =>
-          _client.get(Uri.parse('$baseUrl/calls'), headers: _headers(token)),
-      accessToken,
-    );
-    return _decodeList(response);
+    return _getList('/calls', accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> createUploadTicket(
@@ -361,55 +419,63 @@ class VeilApiClient {
     void Function(int sentBytes, int totalBytes)? onProgress,
     AttachmentUploadCancellationSignal? cancellationSignal,
   }) async {
-    final dedicatedClient = http.Client();
-    var canceled = false;
-    cancellationSignal?.register(() {
-      canceled = true;
-      dedicatedClient.close();
-    });
+    final uri = _objectStoragePolicy.checkUploadUrl(uploadUrl);
+    // Built before the guard: malformed VEIL_OBJECT_STORAGE_PINS must fail
+    // here, not leave an idle timer and a half-fed body behind.
+    final client = _objectStorageClient;
     final totalBytes = await file.length();
-    final request = http.StreamedRequest('PUT', Uri.parse(uploadUrl));
-    request.headers.addAll(headers.map((key, value) => MapEntry(key, value.toString())));
+    final guard = UploadGuard(idleTimeout: _uploadTimeout);
+    cancellationSignal?.register(guard.cancel);
+    final request = http.AbortableStreamedRequest(
+      'PUT',
+      uri,
+      abortTrigger: guard.abortTrigger,
+    )
+      ..headers.addAll(
+        headers.map((key, value) => MapEntry(key, value.toString())),
+      )
+      ..contentLength = totalBytes;
     request.headers.putIfAbsent('Content-Length', () => '$totalBytes');
-    request.contentLength = totalBytes;
 
-    unawaited(() async {
-      var sentBytes = 0;
-      try {
-        await for (final chunk in file.openRead()) {
-          if (canceled) {
-            throw const _AttachmentUploadCanceled();
-          }
-          request.sink.add(chunk);
-          sentBytes += chunk.length;
-          onProgress?.call(sentBytes, totalBytes);
-        }
-      } catch (_) {
-        // The client side maps cancellation/transport errors from send().
-      } finally {
-        await request.sink.close();
-      }
-    }());
+    var sentBytes = 0;
+    // addStream (unlike add) honours backpressure, so a chunk is counted only
+    // when the connection takes it and the idle watchdog measures real
+    // network progress rather than how fast the file was read.
+    final body = file.openRead().takeWhile((_) => !guard.isStopped).map((chunk) {
+      sentBytes += chunk.length;
+      guard.reportProgress();
+      onProgress?.call(sentBytes, totalBytes);
+      return chunk;
+    });
+    unawaited(
+      request.sink
+          .addStream(body)
+          // A read failure truncates the body; send() then fails on the
+          // length mismatch and that error is the one reported.
+          .catchError((Object _) {})
+          .whenComplete(request.sink.close),
+    );
 
-    late final http.StreamedResponse streamedResponse;
+    final http.Response response;
     try {
-      streamedResponse = await dedicatedClient.send(request);
-    } catch (_) {
-      dedicatedClient.close();
-      if (canceled || (cancellationSignal?.isCanceled ?? false)) {
+      response = await guard.run(
+        client.send(request).then(http.Response.fromStream),
+      );
+    } on VeilApiException {
+      rethrow;
+    } catch (error) {
+      if (guard.isCanceled) {
         throw VeilApiException(
           'Attachment upload canceled.',
           code: 'attachment_upload_canceled',
         );
       }
-      throw VeilApiException(
-        'Attachment upload failed: network unavailable',
-        code: 'attachment_upload_failed',
-      );
+      throw transportFailure(error) ??
+          VeilApiException(
+            'Attachment upload failed: network unavailable',
+            code: 'attachment_upload_failed',
+          );
     }
-
-    final response = await http.Response.fromStream(streamedResponse);
-    dedicatedClient.close();
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw VeilApiException(
@@ -490,101 +556,131 @@ class VeilApiClient {
   Future<Map<String, dynamic>> _get(
     String path, {
     String? accessToken,
+    Map<String, String>? query,
   }) async {
-    final response = await _authedRequest(
-      (token) => _client.get(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-      ),
-      accessToken,
+    return _decodeMap(
+      await _authedRequest('GET', path, accessToken: accessToken, query: query),
     );
-    return _decodeMap(response);
   }
 
-  // Retained for parity with the API surface; not yet called.
-  // ignore: unused_element
   Future<List<dynamic>> _getList(
     String path, {
     String? accessToken,
   }) async {
-    final response = await _authedRequest(
-      (token) => _client.get(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-      ),
-      accessToken,
+    return _decodeList(
+      await _authedRequest('GET', path, accessToken: accessToken),
     );
-    final decoded = _decode(response) as List<dynamic>;
-    return decoded;
   }
 
   Future<Map<String, dynamic>> _post(
     String path,
-    Map<String, dynamic> body, {
+    Object body, {
     String? accessToken,
   }) async {
-    final response = await _authedRequest(
-      (token) => _client.post(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-        body: jsonEncode(body),
-      ),
-      accessToken,
+    return _decodeMap(
+      await _authedRequest('POST', path, accessToken: accessToken, body: body),
     );
-    return _decodeMap(response);
+  }
+
+  Future<Map<String, dynamic>> _put(
+    String path,
+    Object body, {
+    String? accessToken,
+  }) async {
+    return _decodeMap(
+      await _authedRequest('PUT', path, accessToken: accessToken, body: body),
+    );
   }
 
   Future<Map<String, dynamic>> _delete(
     String path, {
     String? accessToken,
+    Object? body,
   }) async {
-    final response = await _authedRequest(
-      (token) => _client.delete(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-      ),
-      accessToken,
+    return _decodeMap(
+      await _authedRequest('DELETE', path, accessToken: accessToken, body: body),
     );
-    return _decodeMap(response);
   }
 
   Future<Map<String, dynamic>> _patch(
     String path,
-    Map<String, dynamic> body, {
+    Object body, {
     String? accessToken,
   }) async {
-    final response = await _authedRequest(
-      (token) => _client.patch(
-        Uri.parse('$baseUrl$path'),
-        headers: _headers(token),
-        body: jsonEncode(body),
-      ),
-      accessToken,
+    return _decodeMap(
+      await _authedRequest('PATCH', path, accessToken: accessToken, body: body),
     );
-    return _decodeMap(response);
   }
 
-  // Wraps a single HTTP call with a one-shot 401 → refresh → retry. We only
-  // retry when the caller actually had a token; refresh and unauthed calls
-  // are passed straight through. The refresher is allowed to return null
-  // (session truly dead) — in that case we surface the original 401.
+  String _requireToken(String? accessToken) {
+    if (accessToken == null || accessToken.isEmpty) {
+      throw VeilApiException(
+        'Authenticated API session required.',
+        code: 'unauthorized',
+      );
+    }
+    return accessToken;
+  }
+
+  // One request with a one-shot 401 → refresh → replay. We only refresh when
+  // the caller actually had a token; refresh and unauthed calls are passed
+  // straight through. Concurrent 401s share one refresh through the gate,
+  // and when it fails each caller surfaces its original 401.
   Future<http.Response> _authedRequest(
-    Future<http.Response> Function(String? token) makeRequest,
+    String method,
+    String path, {
     String? accessToken,
-  ) async {
-    final initial = await makeRequest(accessToken);
-    final refresher = _tokenRefresher;
+    Object? body,
+    Map<String, String>? query,
+  }) async {
+    final base = Uri.parse('$baseUrl$path');
+    final uri = query == null || query.isEmpty
+        ? base
+        : base.replace(queryParameters: query);
+    final initial = await _send(method, uri, accessToken: accessToken, body: body);
+    final gate = _refreshGate;
     if (initial.statusCode != 401 ||
         accessToken == null ||
         accessToken.isEmpty ||
-        refresher == null) {
+        gate == null) {
       return initial;
     }
-    final fresh = await refresher();
-    if (fresh == null || fresh.isEmpty || fresh == accessToken) {
+    final fresh = await gate.replacementFor(accessToken);
+    if (fresh == null) {
       return initial;
     }
-    return makeRequest(fresh);
+    return _send(method, uri, accessToken: fresh, body: body);
+  }
+
+  Future<http.Response> _send(
+    String method,
+    Uri uri, {
+    String? accessToken,
+    Object? body,
+  }) async {
+    final abort = Completer<void>();
+    final request = http.AbortableRequest(method, uri, abortTrigger: abort.future)
+      ..headers.addAll(_headers(accessToken));
+    if (body != null) {
+      request.body = jsonEncode(body);
+    }
+    try {
+      return await _client
+          .send(request)
+          .then(http.Response.fromStream)
+          .timeout(_requestTimeout);
+    } catch (error) {
+      final failure = transportFailure(error);
+      if (failure == null) {
+        rethrow;
+      }
+      if (error is TimeoutException) {
+        // Release the stalled connection instead of letting it linger in
+        // the shared client's pool.
+        abort.complete();
+      }
+      throw failure;
+    }
   }
 
   List<dynamic> _decodeList(http.Response response) {
@@ -724,26 +820,4 @@ class AttachmentUploadCancellationSignal {
     }
     _listeners.clear();
   }
-}
-
-class _AttachmentUploadCanceled implements Exception {
-  const _AttachmentUploadCanceled();
-}
-
-class VeilApiException implements Exception {
-  VeilApiException(this.message, {this.code, this.statusCode});
-
-  final String message;
-  final String? code;
-  final int? statusCode;
-
-  @override
-  String toString() => message;
-}
-
-String? extractVeilApiErrorCode(Object error) {
-  if (error is VeilApiException) {
-    return error.code;
-  }
-  return null;
 }

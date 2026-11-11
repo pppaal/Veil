@@ -4,11 +4,13 @@
 
 **Phase AB.3 (mobile) implemented — pre-audit.** The client crypto lives in
 `apps/mobile/lib/src/core/crypto/group_sender_keys.dart` (engine + sealer,
-pure Dart, 13 unit tests covering the test matrix below) and is wired into
-the app through
+pure Dart, covered by `test/group_sender_keys_test.dart` for the test matrix
+below and `test/group/group_sender_keys_replay_test.dart` for distribution
+freshness) and is wired into the app through
 `apps/mobile/lib/src/features/conversations/data/group_sender_key_coordinator.dart`
-(distribution, offline pickup, epoch bumps; 5 controller-level tests with
-three real members on a fake relay). New groups created from the mobile app
+(distribution, offline pickup, epoch bumps; controller-level tests with three
+real members on a fake relay, plus `test/group/group_coordinator_hardening_test.dart`
+for a hostile relay and directory). New groups created from the mobile app
 set `useSenderKeys: true`; groups created by older clients stay on the
 shared-key path. External crypto review is still required before any of this
 is called "secure" — see "What the implementation decided" for the places a
@@ -26,7 +28,8 @@ reviewer should look first.
    from the blob. Blob AD binds `groupId || epoch || senderDeviceId ||
    recipientUserId`. Not forward-secret on its own; mitigated by the chain
    key dying at the next epoch and the relay's 30-minute TTL. Reviewer
-   question #7.
+   question #7. Since `veil-gkd-v2` the blob also carries signed freshness
+   metadata; see "Distribution freshness" below.
 2. **Frame layout** (`veil-group-v1`, see "Wire shape"): the epoch and a
    64-byte Ed25519 signature travel *in the frame*, so a receiver can route
    and authenticate without trusting server-supplied metadata. Signature
@@ -43,6 +46,35 @@ reviewer should look first.
 6. Pickup is attempted once per `(group, epoch)` per undecryptable frame to
    keep a flood of unknown frames from hammering the relay; a realtime
    `group.key.distribution` or explicit sync resets the attempt.
+7. **The relay and directory are not trusted to pick recipients.** The
+   coordinator seals only to a member's *active* device as listed for that
+   member's own userId; if that device is missing it never falls back to
+   another listed bundle. The engine records with our own chain, and
+   persists with it, which members the chain has been uploaded to; every
+   other member is handed it on the next send, after a restart too (an
+   epoch bump re-keys and so reaches everyone anyway). A member already
+   recorded is never sent the chain again: the relay would replace the copy
+   still buffered for them with one starting at a later counter, and an
+   offline member would lose the frames in between. A member reached late
+   reads from the counter at which they were reached; earlier frames stay
+   unreadable to them.
+   A member is skipped this way, and the rest of the round still goes out,
+   whenever the reason is about that member alone: the directory has no
+   active device for them (an entry without one, or a 404
+   `active_device_not_found`, e.g. mid account deletion or after their last
+   device was revoked), their signed prekey does not verify
+   (`recipientBundleInvalid`), or the trust hook refuses or cannot judge
+   their identity. A failure that is not about the member (offline,
+   throttling, a server error) aborts the round. While nobody is recorded
+   as holding the chain that fails the send, because the frame could
+   otherwise go out unreadable to everyone; once someone holds it, the send
+   goes ahead and whoever was not reached is tried again on the next send.
+8. **Attachments come only from the authenticated payload.** A frame's
+   attachment pointer is read from the decrypted inner payload (long-key or
+   the 1:1 adapter's short-key form); the outer envelope's attachment, which
+   the server controls, is never used. Nor does the outer `messageKind`
+   decide rendering: a frame with an unknown inner kind, and the placeholder
+   for a frame that does not decrypt, both render as text.
 
 **Phase AB.1 (server-side epoch bookkeeping) has shipped.** The server now
 maintains `conversations.current_epoch`, records a per-member
@@ -52,6 +84,96 @@ the remaining members. No key material is involved — this is pure scaffolding
 that the client crypto (phases AB.3+) will consume once it lands. Clients that
 don't implement Sender Keys yet ignore the event, so the change is a no-op for
 the current shared-key behaviour.
+
+## Distribution freshness (`veil-gkd-v2`)
+
+The relay sees every sealed distribution and may record it. Before v2, a
+re-delivered blob overwrote the recipient's chain: the server could rewind a
+sender's chain and replay frames already consumed, or re-deliver a
+pre-rotation blob and reinstall a chain and signing key the sender had
+retired.
+
+* **Generation.** Every chain a member creates in an epoch gets a
+  `generation`: 1 for the first, +1 for each rotation (`forceRotate`) or new
+  own key. It is persisted with the own chain.
+* **Sealed payload.** The encrypted payload gains `generation` and
+  `issuedAtMs` (the sender's clock at sealing). The sealing construction is
+  unchanged; the AD becomes
+  `"veil-gkd-v2" || lp(groupId) || u32(epoch) || lp(senderDeviceId) || lp(recipientUserId)`
+  and the sender's identity signature covers
+  `AD || u32(generation) || u64(issuedAtMs) || u32(startCounter) || ephPub || nonce || ciphertext`.
+  Because generation, issue time and start counter travel inside the
+  ciphertext, v2 decrypts first and verifies the signature before any
+  payload field is trusted; no engine state is touched until both pass.
+* **Ledger.** Per `(groupId, epoch, senderDeviceId)` the engine persists
+  `{signingPub, generation, highWaterConsumed}`, where `highWaterConsumed` is
+  the highest counter whose key has left the chain. The entry outlives the
+  chain itself (`dropPeer`) and is discarded only with the epoch.
+* **Ingest rules** (`GroupSenderKeyEngine.ingestDistribution`):
+  * no ledger entry: accept v1 or v2;
+  * a v1 (`veil-gkd-v1`) blob never replaces an entry (`distribution_stale`);
+  * same signing key and generation: never rewind — a no-op, except that a
+    chain removed by `dropPeer` is reinstalled when the blob starts above
+    `highWaterConsumed`. While the chain is still installed, even a blob
+    that starts further ahead is a no-op: otherwise the relay could replay a
+    later blob of the same chain to skip a receiver past frames still in
+    flight. The cost is that a receiver more than 2000 frames behind
+    (`tooFarAhead`) is only moved forward by a rotation or an epoch bump;
+  * higher generation: replaces the chain only if `issuedAtMs` lies within
+    [now − 30 min, now + 5 min] (the relay TTL, plus clock skew);
+  * lower generation, or a different signing key at the same generation:
+    rejected (`distribution_stale`).
+* **Epochs only move forward.** `resetForEpoch` ignores a bump to an epoch
+  already held or an older one, and `ensureOwnSenderKey` refuses an older
+  epoch (`epochMismatch`), so a server-supplied stale epoch cannot wipe the
+  current chains and re-open an old epoch's recorded distributions. The
+  cost is liveness: an epoch the server announces before it reaches it (a
+  bug, or a hostile relay) stalls sends to that group with `epochMismatch`
+  until the server's epoch catches up, where previously the next correct
+  epoch healed it.
+* **Skipped keys** carry their insertion time and expire after 7 days
+  (purged whenever the group is decrypted and on restore), capped at 200 per
+  sender chain and 1000 per group, oldest evicted first.
+* **Serialization.** Every mutating engine call on a group
+  (`ensureOwnSenderKey`/rotation, `encrypt`, `decrypt`, `ingestDistribution`,
+  `recordDelivered`, restore, reset, drop, forget) runs under a per-group
+  async lock (`core/util/keyed_async_lock.dart`) and returns only after the
+  persister has stored the new state, so concurrent decrypts cannot commit
+  from the same base and rewind each other.
+* **Snapshots** moved to schema 2. Schema-1 snapshots are dropped, never
+  migrated. Our next send re-keys at generation 1, which peers accept over
+  the legacy entry they hold for us. Peers' chains are *not* recovered from
+  the relay, which keeps blobs for only 30 minutes, and a peer does not
+  resend a chain it has already delivered: a peer that re-keyed before we
+  upgraded stays unreadable to us until it rotates or the epoch moves, its
+  frames showing as awaiting a sender key. A migration would need an extra
+  ledger rule (a legacy entry and the same signer's first v2 blob describe
+  one chain, which must not move backwards), not worth its risk for a
+  pre-release format. Schema-2 snapshots written before the delivery record
+  existed restore with nobody recorded, so that chain is handed to every
+  member once more.
+
+Known liveness costs, accepted for now: a frame of the old generation that
+arrives after its sender's rotation no longer verifies; and a member that
+loses its group state (including a snapshot that fails to parse, which
+restore drops) restarts at generation 1 with a new signing key, which peers
+reject until the next epoch bump.
+
+## Trust hook (`trustCheck`)
+
+`GroupSenderKeyCoordinator` takes an optional
+`trustCheck(userId, deviceId, identityPublicKey) -> Future<bool>`. It is
+consulted with the directory identity before sealing our chain to a
+member's device (false: skip, ask again on the next send) and before
+accepting a distribution signer (false: reject with `untrusted_identity`).
+It fails closed: a check that throws counts as false. Null allows every
+directory identity, which is today's behaviour. On the receiving side, a
+distribution whose sender the directory cannot serve right now is not
+installed and stays on the relay for the next pickup. The intended
+implementation is the TOFU resolver in `core/identity/`
+(`TrustedIdentityResolver.evaluate(...).isTrusted`): first sighting of a user
+pins silently, while a changed key or a new device of a known user is never
+accepted without the user's approval.
 
 ## Why
 
@@ -294,7 +416,8 @@ Phase AB.2 — opt-in flag ✅ SHIPPED
 
 Phase AB.3 — clients implement
   - mobile ✅ IMPLEMENTED (pre-audit): engine, sealer, coordinator, cache
-    schema 8, realtime handlers, 18 tests
+    schema 8, realtime handlers; v2 distributions with freshness and the
+    trust hook
   - web demo second (after envelope v3 lands — Phase W)
 
 Phase AB.4 — required flip
@@ -324,8 +447,8 @@ Phase AB.4 — required flip
    under our threat model?
 2. Is the AD construction sufficient — specifically, does omitting
    `recipient` allow cross-conversation replay?
-3. Skipped-key cap of 1000 per peer — sound for 25-member groups
-   under intermittent connectivity?
+3. Skipped-key caps of 200 per sender chain and 1000 per group with a
+   7-day TTL — sound for 25-member groups under intermittent connectivity?
 4. Server learns groupEpoch — is that an acceptable metadata leak?
 5. Sender signing key separate from identity key vs derived — does
    ratcheting the signing key add meaningful PCS?
@@ -336,6 +459,10 @@ Phase AB.4 — required flip
    Is the loss of forward secrecy on the *distribution* acceptable given
    the per-epoch chain lifetime and 30-minute relay TTL, or must the sealer
    be moved onto a per-device 1:1 session?
+8. Distribution freshness relies on the sender's clock (`issuedAtMs`) only
+   when a newer generation replaces a chain. Is the [now − 30 min, now + 5
+   min] window, with no freshness requirement for a first install, the right
+   trade-off against offline pickup?
 
 ## Cost estimate
 

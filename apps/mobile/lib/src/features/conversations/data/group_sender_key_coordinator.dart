@@ -4,7 +4,16 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/crypto/group_sender_keys.dart';
 import '../../../core/crypto/message_padding.dart';
 import '../../../core/network/veil_api_client.dart';
+import '../../../core/util/keyed_async_lock.dart';
 import 'conversation_models.dart';
+
+/// Decides whether a directory identity may take part in Sender Keys: whether
+/// we seal our chain key to it, and whether we accept a chain it signed.
+typedef GroupIdentityTrustCheck = Future<bool> Function(
+  String userId,
+  String deviceId,
+  String identityPublicKey,
+);
 
 /// Glue between the pure [GroupSenderKeyEngine] and the app: decides when we
 /// need a fresh chain, fans our chain key out to the other members through
@@ -24,12 +33,14 @@ class GroupSenderKeyCoordinator {
     required List<int>? Function(String identityPrivateRef) localX25519PrivateParser,
     required List<int>? Function(String identityPrivateRef) localEd25519SeedParser,
     this.onKeysChanged,
+    GroupIdentityTrustCheck? trustCheck,
   })  : _sealer = sealer,
         _apiClient = apiClient,
         _keyBundleCodec = keyBundleCodec,
         _identityPrivateRefLoader = identityPrivateRefLoader,
         _localX25519PrivateParser = localX25519PrivateParser,
-        _localEd25519SeedParser = localEd25519SeedParser;
+        _localEd25519SeedParser = localEd25519SeedParser,
+        _trustCheck = trustCheck;
 
   final GroupSenderKeyEngine engine;
   final GroupSenderKeySealer _sealer;
@@ -38,6 +49,10 @@ class GroupSenderKeyCoordinator {
   final Future<String?> Function() _identityPrivateRefLoader;
   final List<int>? Function(String) _localX25519PrivateParser;
   final List<int>? Function(String) _localEd25519SeedParser;
+
+  /// Consulted before sealing to a member's device and before accepting a
+  /// distribution signer. Null allows every directory identity.
+  final GroupIdentityTrustCheck? _trustCheck;
 
   /// Fired after a peer chain is installed or the group re-keys, so cached
   /// "awaiting sender key" placeholders can be re-decrypted.
@@ -51,6 +66,10 @@ class GroupSenderKeyCoordinator {
   // conversation:epoch, so a flood of undecryptable frames doesn't hammer
   // the relay. Cleared on epoch bump / key ingest.
   final Set<String> _pickupAttempted = <String>{};
+
+  // Serializes "do we have a chain / who still needs it / distribute" per
+  // conversation so concurrent sends and epoch events cannot interleave.
+  final KeyedAsyncLock<String> _distributionLock = KeyedAsyncLock<String>();
 
   static bool isGroupEnvelope(CryptoEnvelope envelope) =>
       envelope.version == kGroupEnvelopeVersion;
@@ -72,42 +91,69 @@ class GroupSenderKeyCoordinator {
   // ---- send -----------------------------------------------------------------
 
   /// Makes sure we own a chain for the conversation's current epoch and that
-  /// every other member has been handed it. Returns the epoch to stamp on
-  /// the send request.
+  /// every other member we can reach has been handed it. Returns the epoch to
+  /// stamp on the send request.
+  ///
+  /// The engine persists who holds the chain together with the chain. So,
+  /// restarts included, a member it has not reached (no active device in the
+  /// directory, refused by the trust check, behind a failed upload) is handed
+  /// it on the next send, and a member it has reached is not sent it again:
+  /// the relay would replace their still-buffered copy with one that starts
+  /// at a later counter, losing them the frames in between.
   Future<int> prepareSend({
     required ConversationPreview conversation,
     required String accessToken,
     required String localUserId,
     required String localDeviceId,
-  }) async {
+  }) {
     final epoch = conversation.groupEpoch ?? 0;
-    if (engine.hasOwnSenderKey(
-      groupId: conversation.id,
-      epoch: epoch,
-      localDeviceId: localDeviceId,
-    )) {
+    return _distributionLock.synchronized(conversation.id, () async {
+      final isNewChain = !engine.hasOwnSenderKey(
+        groupId: conversation.id,
+        epoch: epoch,
+        localDeviceId: localDeviceId,
+      );
+      final key = await engine.ensureOwnSenderKey(
+        groupId: conversation.id,
+        epoch: epoch,
+        localDeviceId: localDeviceId,
+      );
+      final reached = engine.deliveredTo(key);
+      final missing = _othersIn(conversation, localUserId)
+          .where((m) => !reached.contains(m.userId))
+          .toList(growable: false);
+      if (missing.isNotEmpty) {
+        try {
+          await _distribute(
+            conversationId: conversation.id,
+            key: key,
+            recipients: missing,
+            accessToken: accessToken,
+          );
+        } catch (_) {
+          // While nobody is known to hold this chain, a frame sent under it
+          // could be unreadable to everyone, so the send fails. Once someone
+          // does, failing to reach the rest must not cost them the message;
+          // the rest stay unrecorded and the next send tries again.
+          if (reached.isEmpty) rethrow;
+        }
+      }
+      if (isNewChain) onKeysChanged?.call(conversation.id);
       return epoch;
-    }
-    final key = await engine.ensureOwnSenderKey(
-      groupId: conversation.id,
-      epoch: epoch,
-      localDeviceId: localDeviceId,
-    );
-    await _distribute(
-      conversation: conversation,
-      key: key,
-      accessToken: accessToken,
-      localUserId: localUserId,
-    );
-    onKeysChanged?.call(conversation.id);
-    return epoch;
+    });
   }
 
+  static List<GroupMember> _othersIn(ConversationPreview conversation, String localUserId) =>
+      conversation.members.where((m) => m.userId != localUserId).toList(growable: false);
+
+  /// Seals [key] to every recipient we can, uploads the blobs, and only then
+  /// records who holds the chain. Anyone we could not seal to, or a failed
+  /// upload, leaves them unrecorded for the next prepareSend.
   Future<void> _distribute({
-    required ConversationPreview conversation,
+    required String conversationId,
     required GroupSenderKey key,
+    required List<GroupMember> recipients,
     required String accessToken,
-    required String localUserId,
   }) async {
     final identityRef = await _identityPrivateRefLoader();
     final seed = identityRef == null ? null : _localEd25519SeedParser(identityRef);
@@ -115,27 +161,19 @@ class GroupSenderKeyCoordinator {
       throw StateError('Local identity key unavailable — cannot sign sender-key distribution.');
     }
 
-    final uploads = <Map<String, dynamic>>[];
-    for (final member in conversation.members) {
-      if (member.userId == localUserId) continue;
-      final bundle = await _activeBundleFor(member.handle);
-      if (bundle == null) continue;
-      final sealed = await _sealer.seal(
-        key: key,
-        recipientUserId: member.userId,
-        recipientIdentityPublicKey: bundle.identityPublicKey,
-        recipientSignedPrekeyBundle: bundle.signedPrekeyBundle,
-        senderIdentityEd25519Seed: seed,
-      );
-      uploads.add(sealed.toUploadJson());
+    final sealed = <SealedGroupSenderKey>[];
+    for (final member in recipients) {
+      final blob = await _sealTo(member, key: key, senderIdentityEd25519Seed: seed);
+      if (blob != null) sealed.add(blob);
     }
-    if (uploads.isEmpty) return; // solo group — nothing to hand out yet
+    if (sealed.isEmpty) return;
     await _apiClient.distributeGroupKeys(
       accessToken,
-      conversation.id,
+      conversationId,
       epoch: key.epoch,
-      distributions: uploads,
+      distributions: [for (final blob in sealed) blob.toUploadJson()],
     );
+    await engine.recordDelivered(key, [for (final blob in sealed) blob.recipientUserId]);
   }
 
   Future<CryptoEnvelope> encryptMessage({
@@ -180,7 +218,7 @@ class GroupSenderKeyCoordinator {
   }) async {
     final header = GroupSenderKeyEngine.parseHeader(envelope.ciphertext);
     if (header == null) {
-      return _placeholder(envelope, '[Unable to decrypt: invalid envelope]');
+      return _placeholder('[Unable to decrypt: invalid envelope]');
     }
 
     // If we hold no key for this sender (or we never saw the epoch bump),
@@ -205,20 +243,20 @@ class GroupSenderKeyCoordinator {
         payload: envelope.ciphertext,
         nonce: envelope.nonce,
       );
-      return _decodePayload(envelope, out.plaintext);
+      return _decodePayload(out.plaintext);
     } on GroupCryptoException catch (e) {
       switch (e.code) {
         case 'senderKeyMissing':
-          return _placeholder(envelope, '[Awaiting sender key — sync required]');
+          return _placeholder('[Awaiting sender key — sync required]');
         case 'epochMismatch':
-          return _placeholder(envelope, '[Message from a previous group epoch]');
+          return _placeholder('[Message from a previous group epoch]');
         case 'replayed':
-          return _placeholder(envelope, '[Replayed or out-of-window message]');
+          return _placeholder('[Replayed or out-of-window message]');
         default:
-          return _placeholder(envelope, '[Decryption failed]');
+          return _placeholder('[Decryption failed]');
       }
     } catch (_) {
-      return _placeholder(envelope, '[Decryption failed]');
+      return _placeholder('[Decryption failed]');
     }
   }
 
@@ -289,6 +327,8 @@ class GroupSenderKeyCoordinator {
     if (ok) onKeysChanged?.call(conversationId);
   }
 
+  /// True when a chain was installed; rejected and no-op distributions
+  /// (re-deliveries) both leave the engine untouched.
   Future<bool> _ingestSealed({
     required String conversationId,
     required int epoch,
@@ -302,39 +342,77 @@ class GroupSenderKeyCoordinator {
     if (fromUserId.isEmpty || fromDeviceId.isEmpty || encryptedChainKey.isEmpty) {
       return false;
     }
-    final identityRef = await _identityPrivateRefLoader();
-    final xPriv = identityRef == null ? null : _localX25519PrivateParser(identityRef);
-    if (xPriv == null) return false;
-
-    // The sender's identity key MUST come from the directory, never from the
-    // blob — that is what makes the distribution signature meaningful.
-    final conversation = conversationLookup?.call(conversationId);
-    final member = conversation?.members.cast<GroupMember?>().firstWhere(
-          (m) => m?.userId == fromUserId,
-          orElse: () => null,
-        );
-    if (member == null) return false;
-    final senderBundle = await _bundleForDevice(member.handle, fromDeviceId);
-    if (senderBundle == null) return false;
-
     try {
-      final key = await _sealer.unseal(
-        groupId: conversationId,
+      final distribution = await _openDistribution(
+        conversationId: conversationId,
         epoch: epoch,
-        senderDeviceId: fromDeviceId,
-        localUserId: localUserId,
+        fromUserId: fromUserId,
+        fromDeviceId: fromDeviceId,
         encryptedChainKey: encryptedChainKey,
         nonce: nonce,
         version: version,
-        localIdentityX25519Private: xPriv,
-        senderIdentityPublicKey: senderBundle.identityPublicKey,
+        localUserId: localUserId,
       );
-      await engine.ingestSenderKey(key);
-      _pickupAttempted.remove('$conversationId:$epoch');
-      return true;
+      final installed = await engine.ingestDistribution(distribution);
+      if (installed) _pickupAttempted.remove('$conversationId:$epoch');
+      return installed;
     } on GroupCryptoException {
       return false;
+    } on VeilApiException {
+      // The directory could not vouch for the sender right now. Nothing is
+      // installed; the relay keeps the blob for the next pickup.
+      return false;
     }
+  }
+
+  /// Authenticates and unseals one distribution. Throws [GroupCryptoException]
+  /// when it must not be ingested, including `untrusted_identity` when the
+  /// trust check refuses the signer.
+  Future<GroupKeyDistribution> _openDistribution({
+    required String conversationId,
+    required int epoch,
+    required String fromUserId,
+    required String fromDeviceId,
+    required String encryptedChainKey,
+    required String nonce,
+    required String version,
+    required String localUserId,
+  }) async {
+    final identityRef = await _identityPrivateRefLoader();
+    final xPriv = identityRef == null ? null : _localX25519PrivateParser(identityRef);
+    if (xPriv == null) {
+      throw const GroupCryptoException('distributionInvalid', 'local identity unavailable');
+    }
+
+    // The sender's identity key MUST come from the directory, never from the
+    // blob — that is what makes the distribution signature meaningful.
+    final member = conversationLookup
+        ?.call(conversationId)
+        ?.members
+        .where((m) => m.userId == fromUserId)
+        .firstOrNull;
+    if (member == null) {
+      throw const GroupCryptoException('distributionInvalid', 'sender is not a member');
+    }
+    final senderBundle = await _bundleForDevice(member.handle, fromDeviceId);
+    if (senderBundle == null || senderBundle.userId != fromUserId) {
+      throw const GroupCryptoException('distributionInvalid', 'sender device not in directory');
+    }
+    if (!await _isTrusted(fromUserId, fromDeviceId, senderBundle.identityPublicKey)) {
+      throw const GroupCryptoException('untrusted_identity');
+    }
+
+    return _sealer.unseal(
+      groupId: conversationId,
+      epoch: epoch,
+      senderDeviceId: fromDeviceId,
+      localUserId: localUserId,
+      encryptedChainKey: encryptedChainKey,
+      nonce: nonce,
+      version: version,
+      localIdentityX25519Private: xPriv,
+      senderIdentityPublicKey: senderBundle.identityPublicKey,
+    );
   }
 
   /// `group.epoch.bumped` realtime event. The controller has already updated
@@ -347,62 +425,114 @@ class GroupSenderKeyCoordinator {
     required String accessToken,
     required String localUserId,
     required String localDeviceId,
-  }) async {
-    _pickupAttempted.removeWhere((m) => m.startsWith('$conversationId:'));
-    if (reason == 'leave' && userId == localUserId) {
-      await engine.forget(conversationId);
-      onKeysChanged?.call(conversationId);
-      return;
-    }
-    await engine.resetForEpoch(groupId: conversationId, epoch: epoch);
-    final conversation = conversationLookup?.call(conversationId);
-    if (conversation != null && conversation.useSenderKeys) {
-      try {
-        final key = await engine.ensureOwnSenderKey(
-          groupId: conversationId,
-          epoch: epoch,
-          localDeviceId: localDeviceId,
-        );
-        await _distribute(
-          conversation: conversation.copyWith(groupEpoch: epoch),
-          key: key,
-          accessToken: accessToken,
-          localUserId: localUserId,
-        );
-      } catch (_) {
-        // Best effort — prepareSend() re-keys and redistributes on next send.
-      }
-    }
-    onKeysChanged?.call(conversationId);
-  }
+  }) =>
+      _distributionLock.synchronized(conversationId, () async {
+        _pickupAttempted.removeWhere((m) => m.startsWith('$conversationId:'));
+        if (reason == 'leave' && userId == localUserId) {
+          await engine.forget(conversationId);
+          onKeysChanged?.call(conversationId);
+          return;
+        }
+        await engine.resetForEpoch(groupId: conversationId, epoch: epoch);
+        final conversation = conversationLookup?.call(conversationId);
+        if (conversation != null && conversation.useSenderKeys) {
+          try {
+            final key = await engine.ensureOwnSenderKey(
+              groupId: conversationId,
+              epoch: epoch,
+              localDeviceId: localDeviceId,
+            );
+            await _distribute(
+              conversationId: conversationId,
+              key: key,
+              recipients: _othersIn(conversation, localUserId),
+              accessToken: accessToken,
+            );
+          } catch (_) {
+            // Best effort: whoever was not reached stays unrecorded and the
+            // next prepareSend() hands them the chain.
+          }
+        }
+        onKeysChanged?.call(conversationId);
+      });
 
   // ---- directory helpers --------------------------------------------------------
 
-  Future<List<KeyBundle>> _fetchBundles(String handle) async =>
-      _decodeBundles(await _apiClient.getKeyBundle(handle));
+  /// [key] sealed to [member]'s active device, or null when that member
+  /// cannot be reached this round: the directory has no active device for
+  /// them, the trust check refuses it, or its signed prekey does not verify.
+  /// Each of those is about this member alone, so it must not cost the other
+  /// members the chain. Failures that are not about the member (offline,
+  /// throttled, server error) abort the round; prepareSend decides whether
+  /// that fails the send.
+  Future<SealedGroupSenderKey?> _sealTo(
+    GroupMember member, {
+    required GroupSenderKey key,
+    required List<int> senderIdentityEd25519Seed,
+  }) async {
+    final bundle = await _sealableBundleFor(member);
+    if (bundle == null) return null;
+    try {
+      return await _sealer.seal(
+        key: key,
+        recipientUserId: member.userId,
+        recipientIdentityPublicKey: bundle.identityPublicKey,
+        recipientSignedPrekeyBundle: bundle.signedPrekeyBundle,
+        senderIdentityEd25519Seed: senderIdentityEd25519Seed,
+      );
+    } on GroupCryptoException {
+      return null;
+    }
+  }
 
-  Future<KeyBundle?> _activeBundleFor(String handle) async {
-    final response = await _apiClient.getKeyBundle(handle);
+  /// The member's active device bundle, provided the directory lists that
+  /// device for that user and the trust check accepts its identity. There is
+  /// deliberately no fallback to another listed device: the server must not
+  /// get to choose which device receives our chain key.
+  Future<KeyBundle?> _sealableBundleFor(GroupMember member) async {
+    final Map<String, dynamic> response;
+    try {
+      response = await _apiClient.getKeyBundle(member.handle);
+    } on VeilApiException catch (e) {
+      if (_isNoActiveDevice(e)) return null;
+      rethrow;
+    }
     final activeDeviceId =
         (response['user'] as Map<String, dynamic>?)?['activeDeviceId'] as String?;
-    final bundles = await _decodeBundles(response);
-    if (bundles.isEmpty) return null;
-    return bundles.cast<KeyBundle?>().firstWhere(
-          (b) => b?.deviceId == activeDeviceId,
-          orElse: () => bundles.first,
-        );
+    if (activeDeviceId == null) return null;
+    final bundle = _findDevice(_decodeBundles(response), activeDeviceId);
+    if (bundle == null || bundle.userId != member.userId) return null;
+    return await _isTrusted(member.userId, bundle.deviceId, bundle.identityPublicKey)
+        ? bundle
+        : null;
   }
 
-  Future<KeyBundle?> _bundleForDevice(String handle, String deviceId) async {
-    final bundles = await _fetchBundles(handle);
-    if (bundles.isEmpty) return null;
-    return bundles.cast<KeyBundle?>().firstWhere(
-          (b) => b?.deviceId == deviceId,
-          orElse: () => null,
-        );
+  /// How the directory reports a user with no trusted active device, e.g.
+  /// mid account deletion or after their last device was revoked. Keyed on
+  /// the error code, not the bare status: a 404 from an unrouted path is not
+  /// about the member and must still fail the round.
+  static bool _isNoActiveDevice(VeilApiException error) =>
+      error.code == 'active_device_not_found';
+
+  Future<KeyBundle?> _bundleForDevice(String handle, String deviceId) async =>
+      _findDevice(_decodeBundles(await _apiClient.getKeyBundle(handle)), deviceId);
+
+  static KeyBundle? _findDevice(List<KeyBundle> bundles, String deviceId) =>
+      bundles.where((b) => b.deviceId == deviceId).firstOrNull;
+
+  /// Fails closed: a trust check that throws refuses the identity, exactly as
+  /// if it had returned false.
+  Future<bool> _isTrusted(String userId, String deviceId, String identityPublicKey) async {
+    final check = _trustCheck;
+    if (check == null) return true;
+    try {
+      return await check(userId, deviceId, identityPublicKey);
+    } catch (_) {
+      return false;
+    }
   }
 
-  Future<List<KeyBundle>> _decodeBundles(Map<String, dynamic> response) async {
+  List<KeyBundle> _decodeBundles(Map<String, dynamic> response) {
     final directory = (response['deviceBundles'] as List<dynamic>?)
             ?.whereType<Map<String, dynamic>>()
             .toList(growable: false) ??
@@ -417,11 +547,13 @@ class GroupSenderKeyCoordinator {
 
   // ---- payload codec ------------------------------------------------------------
 
-  DecryptedMessage _decodePayload(CryptoEnvelope envelope, List<int> padded) {
+  DecryptedMessage _decodePayload(List<int> padded) {
     final map = json.decode(utf8.decode(MessagePadding.unpad(padded))) as Map<String, dynamic>;
+    // An unrecognised inner kind renders as text: the outer messageKind is
+    // server-controlled and must not decide, say, system chrome.
     final kind = MessageKind.values.firstWhere(
       (k) => k.name == map['kind'],
-      orElse: () => envelope.messageKind,
+      orElse: () => MessageKind.text,
     );
     final expiresAtStr = map['expiresAt'] as String?;
     final att = map['att'];
@@ -429,12 +561,17 @@ class GroupSenderKeyCoordinator {
       body: map['body'] as String? ?? '',
       messageKind: kind,
       expiresAt: expiresAtStr == null ? null : DateTime.tryParse(expiresAtStr)?.toLocal(),
-      attachment: att is Map<String, dynamic> ? _deserializeAttachmentRef(att) : envelope.attachment,
+      // Only the authenticated inner pointer counts. The outer envelope's
+      // attachment is server-controlled and could graft a file onto a
+      // genuine message.
+      attachment: att is Map<String, dynamic> ? _deserializeAttachmentRef(att) : null,
     );
   }
 
-  DecryptedMessage _placeholder(CryptoEnvelope envelope, String body) =>
-      DecryptedMessage(body: body, messageKind: envelope.messageKind);
+  /// Nothing was authenticated, so the server-controlled outer messageKind
+  /// must not decide how the placeholder renders (e.g. as system chrome).
+  DecryptedMessage _placeholder(String body) =>
+      DecryptedMessage(body: body, messageKind: MessageKind.text);
 
   static Map<String, dynamic> _serializeAttachmentRef(AttachmentReference a) => {
         'attachmentId': a.attachmentId,
@@ -447,15 +584,20 @@ class GroupSenderKeyCoordinator {
         if (a.algorithmHint != null) 'algorithmHint': a.algorithmHint,
       };
 
-  static AttachmentReference _deserializeAttachmentRef(Map<String, dynamic> m) =>
-      AttachmentReference(
-        attachmentId: m['attachmentId'] as String? ?? '',
-        storageKey: m['storageKey'] as String? ?? '',
-        contentType: m['contentType'] as String? ?? 'application/octet-stream',
-        sizeBytes: (m['sizeBytes'] as num?)?.toInt() ?? 0,
-        sha256: m['sha256'] as String? ?? '',
-        encryptedKey: m['encryptedKey'] as String? ?? '',
-        nonce: m['nonce'] as String? ?? '',
-        algorithmHint: m['algorithmHint'] as String?,
-      );
+  /// Reads both the long-key form written above and the short-key form the
+  /// 1:1 adapter writes ('id', 'sk', ...), so a pointer is never dropped just
+  /// because the other codec produced it.
+  static AttachmentReference _deserializeAttachmentRef(Map<String, dynamic> m) {
+    Object? field(String longKey, String shortKey) => m[longKey] ?? m[shortKey];
+    return AttachmentReference(
+      attachmentId: field('attachmentId', 'id') as String? ?? '',
+      storageKey: field('storageKey', 'sk') as String? ?? '',
+      contentType: field('contentType', 'ct') as String? ?? 'application/octet-stream',
+      sizeBytes: (field('sizeBytes', 'sz') as num?)?.toInt() ?? 0,
+      sha256: field('sha256', 'h') as String? ?? '',
+      encryptedKey: field('encryptedKey', 'ek') as String? ?? '',
+      nonce: field('nonce', 'n') as String? ?? '',
+      algorithmHint: field('algorithmHint', 'ah') as String?,
+    );
+  }
 }

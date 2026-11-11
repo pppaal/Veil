@@ -436,6 +436,7 @@
   "safetyNumbersReverifyAffirm": "I compared this number with {peer} and it matches",
   "@safetyNumbersReverifyAffirm": {"placeholders": {"peer": {"type": "String"}}},
   "safetyNumbersReverifyAccept": "Accept as verified",
+  "safetyNumbersChangeReplaced": "The safety number changed again while you were reviewing it. Compare the new number before accepting it.",
   "profileTitle": "Profile",
   "profileNicknameSaved": "Nickname saved on this device",
   "profileHandleLabel": "HANDLE",

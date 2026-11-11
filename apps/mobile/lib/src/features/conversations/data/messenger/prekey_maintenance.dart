@@ -4,11 +4,15 @@ import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/network/keys_api.dart';
 
 /// Keeps this device reachable through the key directory: enough one-time
-/// prekeys for initiators to claim, a signed prekey younger than a week, and
-/// superseded signed prekeys dropped once their grace period is over.
+/// prekeys for initiators to claim, a published signed prekey younger than a
+/// week, and superseded signed prekeys dropped once their grace period is
+/// over.
 ///
-/// A run publishes before it prunes and stops at the first failure, so a
-/// signed prekey the directory still serves is never deleted locally.
+/// What the directory serves is what it last accepted, which the keyring
+/// records; a run publishes until the newest signed prekey is that one, so a
+/// publish that failed is retried by the next run. Pruning keeps the
+/// published signed prekey and everything newer, so the one the directory
+/// still serves is never deleted locally.
 class PrekeyMaintenance {
   PrekeyMaintenance({
     required PrekeyManager prekeys,
@@ -57,7 +61,7 @@ class PrekeyMaintenance {
     final startedAt = _clock();
     try {
       await _refillOneTimePrekeys(accessToken);
-      await _rotateSignedPrekeyIfDue(accessToken, startedAt);
+      await _publishSignedPrekeyIfDue(accessToken, startedAt);
       await _prekeys.pruneSignedPrekeys(grace: signedPrekeyGrace);
       _lastCompletedAt = startedAt;
     } catch (_) {
@@ -73,15 +77,19 @@ class PrekeyMaintenance {
     await _keys.uploadOneTimePrekeys(fresh, accessToken: accessToken);
   }
 
-  // A v1 identity has no signed prekey of its own, so it reports none and is
-  // rotated at once; that rotation also yields the v2 identity ref, which is
-  // stored before the new bundle is published.
-  Future<void> _rotateSignedPrekeyIfDue(String accessToken, DateTime now) async {
-    final createdAt = await _prekeys.currentSignedPrekeyCreatedAt();
-    if (createdAt != null && now.difference(createdAt) <= signedPrekeyMaxAge) return;
-    final rotation = await _prekeys.rotateSignedPrekey();
-    final upgradedRef = rotation.upgradedIdentityPrivateRef;
+  // A fresh signed prekey the directory never accepted (its publish failed)
+  // is published as it is; one older than a week is replaced first. A v1
+  // identity has no signed prekey of its own, so it reports none and is
+  // rotated at once. Either way a v1 identity ref is upgraded to v2, and the
+  // new ref is stored before the bundle that needs it is published.
+  Future<void> _publishSignedPrekeyIfDue(String accessToken, DateTime now) async {
+    final current = await _prekeys.currentSignedPrekey();
+    final fresh = current != null && now.difference(current.createdAt) <= signedPrekeyMaxAge;
+    if (fresh && current.spkId == await _prekeys.publishedSignedPrekeyId()) return;
+    final next = fresh ? current : await _prekeys.rotateSignedPrekey();
+    final upgradedRef = next.upgradedIdentityPrivateRef;
     if (upgradedRef != null) await _persistIdentityRef(upgradedRef);
-    await _keys.rotateSignedPrekey(rotation.signedPrekeyBundle, accessToken: accessToken);
+    await _keys.rotateSignedPrekey(next.signedPrekeyBundle, accessToken: accessToken);
+    await _prekeys.markSignedPrekeyPublished(next.spkId);
   }
 }

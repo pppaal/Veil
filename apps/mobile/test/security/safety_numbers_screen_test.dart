@@ -158,6 +158,40 @@ void main() {
     expect(accepted.isVerified, isTrue);
   });
 
+  testWidgets('a change replaced during the comparison is not accepted', (tester) async {
+    final fixture = _Fixture();
+    await fixture.setUp(tester);
+    final resolver = fixture.trust.resolver;
+    late String relayKey;
+    await tester.runAsync(() async {
+      relayKey = (await LibCryptoAdapter().identity.generateDeviceIdentity('dev-selene')).identityPublicKey;
+      await resolver.markVerified('user-selene', 'dev-selene', fixture.pinnedKey);
+      await fixture.trust.admit(conv, 'user-selene', 'dev-selene', fixture.servedKey);
+    });
+
+    final reverify = find.text('Re-verify with new key');
+    await fixture.pumpScreen(tester, until: reverify);
+    await tester.tap(reverify);
+    await tester.pumpAndSettle();
+
+    // The user compares the number on screen; meanwhile the relay delivers a
+    // handshake from a key it controls, which replaces the pending change.
+    await tester.runAsync(() => fixture.trust.admit(conv, 'user-selene', 'dev-selene', relayKey));
+    await tester.tap(find.byType(Checkbox));
+    await tester.pump();
+    await tester.tap(find.widgetWithText(TextButton, 'Accept as verified'));
+    await fixture.settleUntil(
+      tester,
+      () => find.textContaining('The safety number changed again').evaluate().isNotEmpty,
+    );
+
+    expect(find.textContaining('The safety number changed again'), findsOneWidget);
+    final kept = (await tester.runAsync(() => resolver.pinFor('user-selene', 'dev-selene')))!;
+    expect(kept.identityKey, fixture.pinnedKey);
+    expect(kept.isVerified, isTrue);
+    expect(fixture.controller.pendingIdentityChangeFor(conv)!.presentedKey, relayKey);
+  });
+
   testWidgets('an unverified contact key change is accepted unverified', (tester) async {
     final fixture = _Fixture();
     await fixture.setUp(tester);

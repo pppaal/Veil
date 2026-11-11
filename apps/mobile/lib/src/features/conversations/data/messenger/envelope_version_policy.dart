@@ -38,6 +38,10 @@ class EnvelopeVersionPolicy {
     final allowed = await _load();
     if (allowed[conversationId]?.length == 1) return;
     allowed[conversationId] = const [_authenticatedVersion];
+    // Writing over an unreadable document would leave only this pin, and
+    // reopen every other conversation after a restart. It already pins them
+    // all, so it is kept as it is.
+    if (_unreadable) return;
     await _store?.write(_documentKey, json.encode(allowed));
   }
 

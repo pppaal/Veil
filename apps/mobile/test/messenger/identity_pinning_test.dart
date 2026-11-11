@@ -106,12 +106,30 @@ void main() {
     expect(relay.conversations[conv]!.messages, isEmpty);
 
     // The user compared the new safety number out of band.
-    await atlas.approveIdentityChange(conv, reverified: true);
+    await atlas.approveIdentityChange(conv, reverified: true, reviewed: atlas.pendingIdentityChangeFor(conv));
     final pin = (await trust.resolver.pinFor('user-selene', 'dev-selene'))!;
     expect(pin.identityKey, _key('unverified replacement'));
     expect(pin.isVerified, isTrue);
     await atlas.sendText(conversationId: conv, body: 'verified again');
     await waitFor(() => relay.conversations[conv]!.messages.length == 1);
+  });
+
+  test('an approval accepts only the change the user reviewed', () async {
+    await trust.resolver.markVerified('user-selene', 'dev-selene', seleneKey());
+    expect(await trust.admit(conv, 'user-selene', 'dev-selene', _key('key the user compared')), isFalse);
+    final reviewed = atlas.pendingIdentityChangeFor(conv)!;
+    // While the user compares, the relay presents a key of its own.
+    expect(await trust.admit(conv, 'user-selene', 'dev-selene', _key('relay key')), isFalse);
+
+    await expectLater(atlas.approveIdentityChange(conv, reverified: true, reviewed: reviewed), throwsStateError);
+    // A re-verification that names no key attests to nothing.
+    await expectLater(atlas.approveIdentityChange(conv, reverified: true), throwsStateError);
+
+    final pin = (await trust.resolver.pinFor('user-selene', 'dev-selene'))!;
+    expect(pin.identityKey, seleneKey());
+    expect(pin.isVerified, isTrue);
+    expect(atlas.pendingIdentityChangeFor(conv)!.presentedKey, _key('relay key'));
+    expect(announced.map((change) => change.presentedKey), [_key('key the user compared'), _key('relay key')]);
   });
 
   test('new device for known user produces notice', () async {
@@ -134,7 +152,7 @@ void main() {
     await settle();
 
     final change = atlas.pendingIdentityChangeFor(conv)!;
-    expect(change.isNewDevice, isTrue);
+    expect(change.previousKey, isNull, reason: 'a new device replaces no pin');
     expect(change.requiresReverification, isTrue);
     expect(crypto.counts.bootstrap, 0);
     expect(await noticeCodes(), [LocalNoticeCodes.identityChanged]);

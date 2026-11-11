@@ -1328,6 +1328,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersReverifyAccept => 'Accept as verified';
 
   @override
+  String get safetyNumbersChangeReplaced =>
+      'The safety number changed again while you were reviewing it. Compare the new number before accepting it.';
+
+  @override
   String get profileTitle => 'Profile';
 
   @override

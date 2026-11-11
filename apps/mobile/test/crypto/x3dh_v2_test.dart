@@ -322,7 +322,9 @@ void main() {
     final rotation = await bob.adapter.rotateSignedPrekey();
     expect(rotation.spkId, 2);
     expect(rotation.upgradedIdentityPrivateRef, isNull);
-    expect(await bob.adapter.currentSignedPrekeyCreatedAt(), bobNow);
+    expect((await bob.adapter.currentSignedPrekey())!.createdAt, bobNow);
+    // The directory accepted it, so from now on spkId 1 is superseded.
+    await bob.adapter.markSignedPrekeyPublished(rotation.spkId);
 
     bobNow = bobNow.add(const Duration(days: 1));
     expect(await bob.adapter.pruneSignedPrekeys(), 0);
@@ -340,6 +342,20 @@ void main() {
     await bootstrap(dave, bob, conversationId: 'conv-dave', signedPrekeyBundle: rotation.signedPrekeyBundle);
     expect(
         (await receive(bob, await send(dave, bob, 'new spk', conversationId: 'conv-dave'))).status, DecryptStatus.ok);
+  });
+
+  test('a signed prekey whose successor never reached the directory keeps answering', () async {
+    var bobNow = DateTime.utc(2026, 11, 1);
+    final bob = await createParty('bob', clock: () => bobNow);
+    final alice = await createParty('alice', clock: () => bobNow);
+    await bootstrap(alice, bob, conversationId: 'conv-alice');
+    // Rotated, but the directory never accepted it: it still serves spkId 1.
+    await bob.adapter.rotateSignedPrekey();
+
+    bobNow = bobNow.add(const Duration(days: 30));
+    expect(await bob.adapter.pruneSignedPrekeys(), 0);
+    final late = await receive(bob, await send(alice, bob, 'still on spk 1', conversationId: 'conv-alice'));
+    expect(late.status, DecryptStatus.ok);
   });
 
   test('bad ikxSig/spkSig rejected', () async {

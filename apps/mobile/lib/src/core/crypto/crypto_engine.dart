@@ -56,6 +56,7 @@ class OneTimePrekey {
   final String publicKey;
 }
 
+/// A signed prekey ready to publish: its signed bundle and what it names.
 class SignedPrekeyRotation {
   const SignedPrekeyRotation({
     required this.signedPrekeyBundle,
@@ -80,11 +81,34 @@ abstract class PrekeyManager {
 
   Future<SignedPrekeyRotation> rotateSignedPrekey();
 
-  Future<DateTime?> currentSignedPrekeyCreatedAt();
+  /// The newest signed prekey as a bundle to publish, or null when the
+  /// identity has none of its own (a v1 identity). Signing is
+  /// deterministic, so this is byte for byte the bundle that was, or would
+  /// have been, published with it. Carries the upgraded identity ref while
+  /// the stored one is still v1.
+  Future<SignedPrekeyRotation?> currentSignedPrekey();
 
-  /// Deletes superseded signed prekeys whose successor is older than
-  /// [grace]; returns how many were removed.
+  /// The signed prekey the directory last accepted from this device; null
+  /// when that is not known.
+  Future<int?> publishedSignedPrekeyId();
+
+  /// Records that the directory accepted signed prekey [spkId].
+  Future<void> markSignedPrekeyPublished(int spkId);
+
+  /// Deletes the signed prekeys older than the published one once it has
+  /// been published for longer than [grace]; returns how many were removed.
+  /// While the published one is not known, every signed prekey is kept.
   Future<int> pruneSignedPrekeys({Duration grace = const Duration(days: 14)});
+}
+
+/// When the directory accepted a signed prekey: from then on it serves that
+/// one, and older signed prekeys only have to answer handshakes still in
+/// flight.
+class SignedPrekeyPublication {
+  const SignedPrekeyPublication({required this.spkId, required this.publishedAt});
+
+  final int spkId;
+  final DateTime publishedAt;
 }
 
 /// The identity a session initiator proved in its handshake. Keys are
@@ -138,6 +162,10 @@ abstract class LocalPrekeyStore {
 
   Future<List<StoredSignedPrekey>> loadSignedPrekeys();
 
+  Future<SignedPrekeyPublication?> loadSignedPrekeyPublication();
+
+  Future<void> saveSignedPrekeyPublication(SignedPrekeyPublication publication);
+
   Future<void> deleteSignedPrekey(int keyId);
 }
 
@@ -145,6 +173,7 @@ class InMemoryLocalPrekeyStore implements LocalPrekeyStore {
   int _nextOneTimePrekeyId = 1;
   final Map<int, List<int>> _oneTime = {};
   final Map<int, StoredSignedPrekey> _signed = {};
+  SignedPrekeyPublication? _publication;
 
   @override
   Future<int> reserveOneTimePrekeyIds(int count) async {
@@ -188,6 +217,14 @@ class InMemoryLocalPrekeyStore implements LocalPrekeyStore {
   @override
   Future<void> deleteSignedPrekey(int keyId) async {
     _signed.remove(keyId);
+  }
+
+  @override
+  Future<SignedPrekeyPublication?> loadSignedPrekeyPublication() async => _publication;
+
+  @override
+  Future<void> saveSignedPrekeyPublication(SignedPrekeyPublication publication) async {
+    _publication = publication;
   }
 }
 
@@ -351,8 +388,8 @@ class DecryptedMessage {
     this.failureReason,
   });
 
-  // For non-ok results this is a placeholder, never peer-controlled text;
-  // callers must branch on [status], not on the body.
+  // Empty unless the frame opened (ok or legacyUnauthenticated): a failure
+  // carries no text, so callers branch on [status], never on the body.
   final String body;
   final MessageKind messageKind;
   // The sender-authenticated expiry from the inner payload, when present.

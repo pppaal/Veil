@@ -24,7 +24,8 @@ class MockCryptoAdapter implements CryptoAdapter, PrekeyManager {
   final DeviceAuthChallengeSigner _deviceAuthSigner;
   int _nextOneTimePrekeyId = 1;
   int _signedPrekeyId = 1;
-  DateTime? _signedPrekeyCreatedAt;
+  SignedPrekeyRotation? _signedPrekey;
+  int? _publishedSignedPrekeyId;
 
   @override
   Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100}) async {
@@ -39,17 +40,23 @@ class MockCryptoAdapter implements CryptoAdapter, PrekeyManager {
   @override
   Future<SignedPrekeyRotation> rotateSignedPrekey() async {
     _signedPrekeyId += 1;
-    final createdAt = DateTime.now().toUtc();
-    _signedPrekeyCreatedAt = createdAt;
-    return SignedPrekeyRotation(
+    return _signedPrekey = SignedPrekeyRotation(
       signedPrekeyBundle: _opaqueToken(_random, 32),
       spkId: _signedPrekeyId,
-      createdAt: createdAt,
+      createdAt: DateTime.now().toUtc(),
     );
   }
 
   @override
-  Future<DateTime?> currentSignedPrekeyCreatedAt() async => _signedPrekeyCreatedAt;
+  Future<SignedPrekeyRotation?> currentSignedPrekey() async => _signedPrekey;
+
+  @override
+  Future<int?> publishedSignedPrekeyId() async => _publishedSignedPrekeyId;
+
+  @override
+  Future<void> markSignedPrekeyPublished(int spkId) async {
+    _publishedSignedPrekeyId = spkId;
+  }
 
   @override
   Future<int> pruneSignedPrekeys({Duration grace = const Duration(days: 14)}) async => 0;

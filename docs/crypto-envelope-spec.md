@@ -63,7 +63,7 @@ correct and this document is stale — file a correction.
 | Max skipped keys per session          | 1000, oldest evicted first              |
 | Skipped-key lifetime                  | 7 days                                  |
 | Max SPK age / future skew at initiate | 60 days / 1 day                         |
-| Superseded SPK grace                  | 14 days after its successor was created |
+| Superseded SPK grace                  | 14 days after a newer SPK was published |
 | Archived states per conversation      | 5, each kept 30 days after its last use |
 
 ### Identity keys and the bundle (contract C1)
@@ -98,6 +98,13 @@ The device-local identity private ref (never transmitted) is
 A fresh identity uses spkId 1. Rotating draws a new SPK with id `max + 1`; a
 v1 ref (no `spk`) is upgraded by promoting its X25519 key to IKx.
 
+A device records which SPK the directory last accepted (registration publishes
+a fresh identity's spkId 1). Maintenance publishes until the newest SPK is that
+one: a newest SPK younger than 7 days whose publish failed is published again
+as it is (Ed25519 is deterministic, so the bundle is the same), an older one is
+rotated first. SPKs older than the published one are deleted 14 days after it
+was published; while no publication is recorded, none is deleted.
+
 ### X3DH
 
 The initiator A, holding B's verified bundle and optionally a claimed OPK:
@@ -117,8 +124,9 @@ preKeyHeader (168 bytes) = IKed_A(32) || IKx_A(32) || ikxSig_A(64) || EK(32)
 
 The responder B processes a PreKey frame whose `EK` matches no stored state:
 
-1. Load the SPK named by `spkId`: the current one, or a superseded one whose
-   successor is at most 14 days old. Otherwise fail (`spk_unavailable`).
+1. Load the SPK named by `spkId`: the published one or a newer one, or an
+   older one until 14 days after the published one was published. Otherwise
+   fail (`spk_unavailable`).
 2. If `opkId != 0xFFFFFFFF`, load that OPK. If it is gone, fail
    (`opk_unavailable`) without changing any state.
 3. Verify `ikxSig_A` against `IKed_A`; otherwise fail (`bad_ikx_signature`).
@@ -367,13 +375,18 @@ every device a group chain key is sealed to or accepted from.
 | new device, contact never verified | pinned, proceed, the conversation gets an `identity.new_device` notice |
 | new device, contact verified | refused until the user approves after re-verifying |
 | different key for a pinned device | refused until the user approves; if the pin was verified, approval requires re-verification |
+| device id already pinned under another user | refused; there is nothing to approve (group chains are keyed by device id) |
 
 A refusal is never resolved automatically. In a 1:1 conversation it blocks
 sending (no bootstrap, no encryption) and inbound handshakes from that
 identity yield `identityRejected`, which is retried once the user approves.
 The conversation gets an `identity.changed` notice once per presented key.
 In a Sender Keys group the refused device is not sealed to and its
-distributions are not installed; the rest of the group proceeds. Notices are
+distributions are not installed; the rest of the group proceeds. A chain key
+is sealed once to each trusted device, and the sender records delivery per
+device, so a device approved later, or one a member adds later, gets its own
+copy on a later send (a member's directory entry is reused for at most ten
+minutes), while a device that holds the chain is never sent it again. Notices are
 rows the client inserts itself under the id prefix `notice:`; relayed rows
 carrying that prefix are dropped, and only local rows are rendered as notices.
 
@@ -382,6 +395,10 @@ comparison: either a scanned code that matches the presented key, or an
 explicit affirmation, next to the new safety number, that it was compared out
 of band. The new key is then pinned as verified. A plain approval, offered
 only for contacts that were never verified, pins the new key unverified.
+An approval names the change the user reviewed (device and presented key). A
+later refusal in the same conversation replaces the pending change, and an
+approval of the replaced one accepts nothing; a re-verification that names no
+change is refused.
 
 Builds before the pin table recorded identity knowledge in session state and
 safety-number verifications. On upgrade that knowledge is carried into the

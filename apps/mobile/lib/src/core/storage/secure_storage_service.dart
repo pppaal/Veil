@@ -826,25 +826,50 @@ class SecureStorageLocalPrekeyStore implements LocalPrekeyStore {
         final index = await _service._readPrekeyIndex();
         if (index.signedIds.remove(keyId)) await _service._writePrekeyIndex(index);
       });
+
+  @override
+  Future<SignedPrekeyPublication?> loadSignedPrekeyPublication() =>
+      _service._serialCrypto(() async => (await _service._readPrekeyIndex()).publication);
+
+  @override
+  Future<void> saveSignedPrekeyPublication(SignedPrekeyPublication publication) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        index.publication = publication;
+        await _service._writePrekeyIndex(index);
+      });
 }
 
+// Kept with the prekeys it describes, so a new identity, which clears them,
+// also forgets which signed prekey the directory served for the old one.
 class _PrekeyIndex {
-  _PrekeyIndex(this.nextOneTimeId, this.oneTimeIds, this.signedIds);
+  _PrekeyIndex(this.nextOneTimeId, this.oneTimeIds, this.signedIds, this.publication);
 
-  factory _PrekeyIndex.fromJson(Map<String, dynamic>? json) => _PrekeyIndex(
-        (json?['nextOpk'] as num?)?.toInt() ?? 1,
-        {...(json?['opk'] as List<dynamic>? ?? const []).cast<int>()},
-        {...(json?['spk'] as List<dynamic>? ?? const []).cast<int>()},
-      );
+  factory _PrekeyIndex.fromJson(Map<String, dynamic>? json) {
+    final published = json?['published'];
+    return _PrekeyIndex(
+      (json?['nextOpk'] as num?)?.toInt() ?? 1,
+      {...(json?['opk'] as List<dynamic>? ?? const []).cast<int>()},
+      {...(json?['spk'] as List<dynamic>? ?? const []).cast<int>()},
+      published is Map<String, dynamic>
+          ? SignedPrekeyPublication(
+              spkId: (published['id'] as num).toInt(),
+              publishedAt: DateTime.fromMillisecondsSinceEpoch((published['ts'] as num).toInt(), isUtc: true),
+            )
+          : null,
+    );
+  }
 
   int nextOneTimeId;
   final Set<int> oneTimeIds;
   final Set<int> signedIds;
+  SignedPrekeyPublication? publication;
 
   Map<String, dynamic> toJson() => {
         'nextOpk': nextOneTimeId,
         'opk': oneTimeIds.toList(),
         'spk': signedIds.toList(),
+        if (publication case final published?)
+          'published': {'id': published.spkId, 'ts': published.publishedAt.millisecondsSinceEpoch},
       };
 }
 

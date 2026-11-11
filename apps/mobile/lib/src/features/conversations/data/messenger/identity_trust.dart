@@ -31,7 +31,9 @@ class PendingIdentityChange {
   /// fresh out-of-band verification, never a single tap.
   final bool requiresReverification;
 
-  bool get isNewDevice => previousKey == null;
+  /// Whether this change is about [identityKey] for the very same device.
+  bool presents(String userId, String deviceId, String identityKey) =>
+      this.userId == userId && this.deviceId == deviceId && presentedKey == identityKey;
 }
 
 /// Thrown when an operation needs an identity the user has not accepted.
@@ -119,35 +121,62 @@ class IdentityTrust {
         _hold(conversationId, userId, deviceId, presentedKey, previous: pinned, verified: false);
       case KeyChangedVerified(:final pinned, :final presentedKey):
         _hold(conversationId, userId, deviceId, presentedKey, previous: pinned, verified: true);
+      case DeviceOfAnotherUser():
+        // Refused outright: there is nothing the user could approve.
+        return false;
     }
     return false;
   }
 
-  /// Like [admit], but throws [IdentityChangedException] instead of
-  /// returning false, for callers that must not proceed.
+  /// Like [admit], but throws instead of returning false, for callers that
+  /// must not proceed: [IdentityChangedException] for a change the user can
+  /// review, [StateError] for a device the directory misattributes.
   Future<void> require(String conversationId, String userId, String deviceId, String identityKey) async {
-    if (!await admit(conversationId, userId, deviceId, identityKey)) {
-      throw IdentityChangedException(_pending[conversationId]!);
-    }
+    if (await admit(conversationId, userId, deviceId, identityKey)) return;
+    final change = _pending[conversationId];
+    if (change == null) throw StateError('The key directory lists this device under another user.');
+    throw IdentityChangedException(change);
   }
 
-  /// Accepts the conversation's pending change. A contact the user had
-  /// verified needs [reverified]: the caller attests that the user just
-  /// compared the new safety number out of band, and the new key is pinned
-  /// as verified. Throws [StateError] without a pending change, or when the
-  /// change needs a re-verification that was not given.
-  Future<TrustedIdentity> approve(String conversationId, {bool reverified = false}) async {
+  /// Accepts the conversation's pending change.
+  ///
+  /// [reviewed] is the change the user was shown. A newer refusal replaces
+  /// the pending change at any time, so an approval that names what was
+  /// reviewed fails instead of accepting an identity nobody looked at.
+  ///
+  /// A contact the user had verified needs [reverified]: the caller attests
+  /// that the user just compared the safety number of [reviewed] out of
+  /// band, which is why it must be given too, and the key is pinned as
+  /// verified.
+  ///
+  /// Throws [StateError], changing nothing, without a pending change, when
+  /// the pending change is no longer [reviewed], or when it needs a
+  /// re-verification that was not given.
+  Future<TrustedIdentity> approve(
+    String conversationId, {
+    bool reverified = false,
+    PendingIdentityChange? reviewed,
+  }) async {
     final change = _pending[conversationId];
     if (change == null) throw StateError('No identity change is pending for this conversation.');
+    if (reviewed != null && !change.presents(reviewed.userId, reviewed.deviceId, reviewed.presentedKey)) {
+      throw StateError('The identity change was replaced by a newer one. Review it before accepting.');
+    }
     if (change.requiresReverification && !reverified) {
       throw StateError('This contact was verified. Compare the new safety number before accepting it.');
+    }
+    if (reverified && reviewed == null) {
+      throw StateError('A re-verification must name the identity whose safety number was compared.');
     }
     await resolver.approve(change.userId, change.deviceId, change.presentedKey);
     final accepted = reverified
         ? await resolver.markVerified(change.userId, change.deviceId, change.presentedKey)
         : (await resolver.pinFor(change.userId, change.deviceId))!;
-    _pending.remove(conversationId);
-    _events.add(IdentityChangeResolved(conversationId));
+    // A change held while the pins were written is still pending.
+    if (identical(_pending[conversationId], change)) {
+      _pending.remove(conversationId);
+      _events.add(IdentityChangeResolved(conversationId));
+    }
     return accepted;
   }
 
@@ -164,13 +193,7 @@ class IdentityTrust {
     required TrustedIdentity? previous,
     required bool verified,
   }) {
-    final existing = _pending[conversationId];
-    if (existing != null &&
-        existing.userId == userId &&
-        existing.deviceId == deviceId &&
-        existing.presentedKey == identityKey) {
-      return;
-    }
+    if (_pending[conversationId]?.presents(userId, deviceId, identityKey) ?? false) return;
     final change = PendingIdentityChange(
       conversationId: conversationId,
       userId: userId,

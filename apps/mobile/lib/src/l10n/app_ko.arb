@@ -436,6 +436,7 @@
   "safetyNumbersReverifyAffirm": "{peer}님과 이 번호를 비교했고 일치합니다",
   "@safetyNumbersReverifyAffirm": {"placeholders": {"peer": {"type": "String"}}},
   "safetyNumbersReverifyAccept": "확인됨으로 수락",
+  "safetyNumbersChangeReplaced": "검토하는 동안 안전 번호가 다시 바뀌었습니다. 수락하기 전에 새 번호를 비교하세요.",
   "profileTitle": "프로필",
   "profileNicknameSaved": "닉네임을 이 기기에 저장했습니다",
   "profileHandleLabel": "핸들",

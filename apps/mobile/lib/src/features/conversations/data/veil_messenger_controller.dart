@@ -536,10 +536,16 @@ class VeilMessengerController extends ChangeNotifier {
       _trust.events.expand((event) => [if (event is IdentityChangePending) event.change]);
 
   /// Accepts the identity change pending in [conversationId], then reopens
-  /// what it held back. A contact the user had verified needs [reverified],
-  /// set only once the user compared the new safety number out of band.
-  Future<void> approveIdentityChange(String conversationId, {bool reverified = false}) async {
-    await _trust.approve(conversationId, reverified: reverified);
+  /// what it held back. Fails when the pending change is no longer
+  /// [reviewed], the one the user was shown. A contact the user had verified
+  /// needs [reverified], set only once the user compared the safety number
+  /// of [reviewed] out of band (see IdentityTrust.approve).
+  Future<void> approveIdentityChange(
+    String conversationId, {
+    bool reverified = false,
+    PendingIdentityChange? reviewed,
+  }) async {
+    await _trust.approve(conversationId, reverified: reverified, reviewed: reviewed);
     _directoryRecheck.add(conversationId);
     unawaited(_contents.retryPending(conversationId, messagesFor(conversationId)));
     await retryPendingMessages(conversationId);

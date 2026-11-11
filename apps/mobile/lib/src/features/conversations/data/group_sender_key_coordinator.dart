@@ -23,6 +23,10 @@ typedef GroupIdentityTrustCheck = Future<bool> Function(
 /// addressed to us, and turns group frames into the same [CryptoEnvelope] /
 /// [DecryptedMessage] shapes the rest of the messenger already understands.
 ///
+/// Delivery is tracked per device, never per member: a member's device that
+/// is approved, added or transferred to after the member got our chain
+/// still needs a copy of its own.
+///
 /// Everything here is best-effort *plumbing*; every cryptographic decision
 /// lives in `group_sender_keys.dart`.
 class GroupSenderKeyCoordinator {
@@ -37,6 +41,7 @@ class GroupSenderKeyCoordinator {
     required ConversationPreview? Function(String conversationId) conversationLookup,
     void Function(String conversationId)? onKeysChanged,
     GroupIdentityTrustCheck? trustCheck,
+    DateTime Function()? clock,
   })  : _sealer = sealer,
         _apiClient = apiClient,
         _keys = keys,
@@ -45,7 +50,13 @@ class GroupSenderKeyCoordinator {
         _localEd25519SeedParser = localEd25519SeedParser,
         _conversationLookup = conversationLookup,
         _onKeysChanged = onKeysChanged,
-        _trustCheck = trustCheck;
+        _trustCheck = trustCheck,
+        _clock = clock ?? DateTime.now;
+
+  /// How long a member's directory entry is reused for sending. It bounds
+  /// how late a device the member adds is handed our chain, without asking
+  /// the directory about every member on every send.
+  static const Duration memberDevicesTtl = Duration(minutes: 10);
 
   final GroupSenderKeyEngine engine;
   final GroupSenderKeySealer _sealer;
@@ -65,6 +76,10 @@ class GroupSenderKeyCoordinator {
   /// Consulted before sealing to a member's device and before accepting a
   /// distribution signer. Null allows every directory identity.
   final GroupIdentityTrustCheck? _trustCheck;
+  final DateTime Function() _clock;
+
+  // Members' directory entries by user id, with when they were fetched.
+  final Map<String, (KeyDirectoryEntry, DateTime)> _memberDevices = {};
 
   // Distributions we have already fetched-and-failed for, keyed by
   // conversation:epoch, so a flood of undecryptable frames doesn't hammer
@@ -90,20 +105,22 @@ class GroupSenderKeyCoordinator {
   void clearInMemory() {
     engine.clearInMemory();
     _pickupAttempted.clear();
+    _memberDevices.clear();
   }
 
   // ---- send -----------------------------------------------------------------
 
   /// Makes sure we own a chain for the conversation's current epoch and that
-  /// every other member we can reach has been handed it. Returns the epoch to
-  /// stamp on the send request.
+  /// every trusted device of the other members we can reach has been handed
+  /// it. Returns the epoch to stamp on the send request.
   ///
-  /// The engine persists who holds the chain together with the chain. So,
-  /// restarts included, a member it has not reached (no trusted device in
-  /// the directory, refused by the trust check, behind a failed upload) is
-  /// handed it on the next send, and a member it has reached is not sent it
-  /// again: the relay would replace their still-buffered copy with one that
-  /// starts at a later counter, losing them the frames in between.
+  /// The engine persists which devices hold the chain together with the
+  /// chain. So, restarts included, a device it has not reached (its member
+  /// has no trusted device in the directory, the trust check refused it until
+  /// the user approves it, its upload failed, its member added it since) is
+  /// handed it on a later send, and a device it has reached is not sent it
+  /// again: the relay would replace its still-buffered copy with one that
+  /// starts at a later counter, losing it the frames in between.
   Future<int> prepareSend({
     required ConversationPreview conversation,
     required String accessToken,
@@ -122,25 +139,20 @@ class GroupSenderKeyCoordinator {
         epoch: epoch,
         localDeviceId: localDeviceId,
       );
-      final reached = engine.deliveredTo(key);
-      final missing = _othersIn(conversation, localUserId)
-          .where((m) => !reached.contains(m.userId))
-          .toList(growable: false);
-      if (missing.isNotEmpty) {
-        try {
-          await _distribute(
-            conversationId: conversation.id,
-            key: key,
-            recipients: missing,
-            accessToken: accessToken,
-          );
-        } catch (_) {
-          // While nobody is known to hold this chain, a frame sent under it
-          // could be unreadable to everyone, so the send fails. Once someone
-          // does, failing to reach the rest must not cost them the message;
-          // the rest stay unrecorded and the next send tries again.
-          if (reached.isEmpty) rethrow;
-        }
+      final reachedBefore = engine.deliveredTo(key);
+      try {
+        await _distribute(
+          conversationId: conversation.id,
+          key: key,
+          recipients: _othersIn(conversation, localUserId),
+          accessToken: accessToken,
+        );
+      } catch (_) {
+        // While no device is known to hold this chain, a frame sent under it
+        // could be unreadable to everyone, so the send fails. Once one does,
+        // failing to reach the rest must not cost it the message; the rest
+        // stay unrecorded and the next send tries again.
+        if (reachedBefore.isEmpty) rethrow;
       }
       if (isNewChain) _onKeysChanged?.call(conversation.id);
       return epoch;
@@ -150,35 +162,46 @@ class GroupSenderKeyCoordinator {
   static List<GroupMember> _othersIn(ConversationPreview conversation, String localUserId) =>
       conversation.members.where((m) => m.userId != localUserId).toList(growable: false);
 
-  /// Seals [key] to every trusted device of every recipient, uploads the
-  /// blobs, and only then records which members hold the chain. A member
-  /// none of whose devices could be sealed to, or a failed upload, stays
-  /// unrecorded for the next prepareSend.
+  /// Seals [key] to every trusted device of the recipients that does not
+  /// hold it yet, each blob addressed to its device, uploads the blobs, and
+  /// only then records those devices as holding the chain. A device that
+  /// could not be sealed to, or a failed upload, stays unrecorded for the
+  /// next prepareSend.
   Future<void> _distribute({
     required String conversationId,
     required GroupSenderKey key,
     required List<GroupMember> recipients,
     required String accessToken,
   }) async {
+    final reached = engine.deliveredTo(key);
+    final targets = <(GroupMember, KeyBundle)>[];
+    for (final member in recipients) {
+      targets.addAll(await _devicesToReach(conversationId, member, reached: reached, accessToken: accessToken));
+    }
+    if (targets.isEmpty) return;
+
     final identityRef = await _identityPrivateRefLoader();
     final seed = identityRef == null ? null : _localEd25519SeedParser(identityRef);
     if (seed == null) {
       throw StateError('Local identity key unavailable — cannot sign sender-key distribution.');
     }
-
     final sealed = <SealedGroupSenderKey>[];
-    final reached = <String>[];
-    for (final member in recipients) {
-      final blobs = await _sealToDevices(
-        conversationId,
-        member,
-        key: key,
-        senderIdentityEd25519Seed: seed,
-        accessToken: accessToken,
-      );
-      if (blobs.isEmpty) continue;
-      sealed.addAll(blobs);
-      reached.add(member.userId);
+    final sealedTo = <String>[];
+    for (final (member, bundle) in targets) {
+      try {
+        sealed.add(await _sealer.seal(
+          key: key,
+          recipientUserId: member.userId,
+          recipientDeviceId: bundle.deviceId,
+          recipientIdentityPublicKey: bundle.identityPublicKey,
+          recipientSignedPrekeyBundle: bundle.signedPrekeyBundle,
+          senderIdentityEd25519Seed: seed,
+        ));
+        sealedTo.add(_deviceAddress(member.userId, bundle.deviceId));
+      } on GroupCryptoException {
+        // A signed prekey that does not verify is about that device alone.
+        continue;
+      }
     }
     if (sealed.isEmpty) return;
     await _apiClient.distributeGroupKeys(
@@ -187,8 +210,12 @@ class GroupSenderKeyCoordinator {
       epoch: key.epoch,
       distributions: [for (final blob in sealed) blob.toUploadJson()],
     );
-    await engine.recordDelivered(key, reached);
+    await engine.recordDelivered(key, sealedTo);
   }
+
+  /// How the delivery ledger names one device of one member.
+  static String _deviceAddress(String userId, String deviceId) =>
+      '${Uri.encodeComponent(userId)}/${Uri.encodeComponent(deviceId)}';
 
   Future<CryptoEnvelope> encryptMessage({
     required ConversationPreview conversation,
@@ -229,6 +256,12 @@ class GroupSenderKeyCoordinator {
     final header = GroupSenderKeyEngine.parseHeader(envelope.ciphertext);
     if (header == null) {
       return _failure(DecryptStatus.failed, 'invalid_envelope');
+    }
+    // The messenger attributes a message (and a reaction) to the relay's
+    // outer sender, but only the header's device is authenticated: its
+    // chain is what the frame must verify against.
+    if (header.senderDeviceId != envelope.senderDeviceId) {
+      return _failure(DecryptStatus.failed, 'sender_mismatch');
     }
 
     // If we hold no key for this sender (or we never saw the epoch bump),
@@ -489,43 +522,45 @@ class GroupSenderKeyCoordinator {
 
   // ---- directory helpers --------------------------------------------------------
 
-  /// [key] sealed once to each of [member]'s trusted devices that the trust
-  /// check accepts, each blob addressed to its device. Empty when the member
-  /// cannot be reached this round: no trusted device in the directory, every
-  /// device refused, or no signed prekey that verifies. Each of those is
-  /// about this member alone, so it must not cost the other members the
-  /// chain. Failures that are not about the member (offline, throttled,
-  /// server error) abort the round; prepareSend decides whether that fails
-  /// the send.
-  Future<List<SealedGroupSenderKey>> _sealToDevices(
+  /// [member]'s devices in the directory that [reached] does not list and
+  /// the trust check accepts. Empty when the member has no trusted device in
+  /// the directory, or every device is refused or already reached: each is
+  /// about this member alone and must not cost the others the chain.
+  /// Failures that are not about the member (offline, throttled, server
+  /// error) abort the round; prepareSend decides whether that fails the send.
+  Future<List<(GroupMember, KeyBundle)>> _devicesToReach(
     String conversationId,
     GroupMember member, {
-    required GroupSenderKey key,
-    required List<int> senderIdentityEd25519Seed,
+    required Set<String> reached,
     required String accessToken,
   }) async {
-    final entry = await _directoryEntryOf(member, accessToken);
+    final entry = await _sendingEntryOf(member, accessToken);
     if (entry == null) return const [];
-    final sealed = <SealedGroupSenderKey>[];
+    final devices = <(GroupMember, KeyBundle)>[];
     for (final device in entry.devices) {
       final bundle = device.bundle;
-      if (!await _isTrusted(conversationId, member.userId, bundle.deviceId, bundle.identityPublicKey)) {
-        continue;
-      }
-      try {
-        sealed.add(await _sealer.seal(
-          key: key,
-          recipientUserId: member.userId,
-          recipientDeviceId: bundle.deviceId,
-          recipientIdentityPublicKey: bundle.identityPublicKey,
-          recipientSignedPrekeyBundle: bundle.signedPrekeyBundle,
-          senderIdentityEd25519Seed: senderIdentityEd25519Seed,
-        ));
-      } on GroupCryptoException {
-        continue;
+      if (reached.contains(_deviceAddress(member.userId, bundle.deviceId))) continue;
+      if (await _isTrusted(conversationId, member.userId, bundle.deviceId, bundle.identityPublicKey)) {
+        devices.add((member, bundle));
       }
     }
-    return sealed;
+    return devices;
+  }
+
+  /// The member's directory entry for sealing, reused for
+  /// [memberDevicesTtl]. A member the directory has no trusted device for is
+  /// not remembered, so the next send asks again.
+  Future<KeyDirectoryEntry?> _sendingEntryOf(GroupMember member, String accessToken) async {
+    final now = _clock();
+    final cached = _memberDevices[member.userId];
+    if (cached != null && now.difference(cached.$2) < memberDevicesTtl) return cached.$1;
+    final entry = await _directoryEntryOf(member, accessToken);
+    if (entry == null) {
+      _memberDevices.remove(member.userId);
+    } else {
+      _memberDevices[member.userId] = (entry, now);
+    }
+    return entry;
   }
 
   /// The member's directory entry, provided the directory answers for that

@@ -19,8 +19,8 @@ import 'support/group_fixtures.dart';
 // not graft unauthenticated attachments onto messages, or seal to / accept
 // from identities the pins refuse, such as a device the server slips into a
 // verified member's entry. One member the directory cannot serve must not
-// cost the other members the chain either, and who our chain has reached
-// must survive a restart.
+// cost the other members the chain either, and which devices our chain has
+// reached must survive a restart.
 
 /// The server: a directory the test can rewrite plus the distribution relay.
 class _Server {
@@ -135,6 +135,7 @@ class _Member {
     this._group, {
     Map<String, Map<String, dynamic>>? store,
     IdentityKeyValueBackend? pinStore,
+    DateTime Function()? clock,
   })  : stored = store ?? <String, Map<String, dynamic>>{},
         pinStore = pinStore ?? InMemoryIdentityKeyValueBackend() {
     final client = _ServerClient(_server, identity);
@@ -155,6 +156,7 @@ class _Member {
         }
         return !distrusted.contains(userId) && await trust.admit(conversationId, userId, deviceId, key);
       },
+      clock: clock,
     );
   }
 
@@ -224,11 +226,16 @@ class _Member {
 }
 
 /// [e] with outer, server-controlled fields rewritten by the relay.
-CryptoEnvelope _withOuter(CryptoEnvelope e, {AttachmentReference? attachment, MessageKind? messageKind}) =>
+CryptoEnvelope _withOuter(
+  CryptoEnvelope e, {
+  AttachmentReference? attachment,
+  MessageKind? messageKind,
+  String? senderDeviceId,
+}) =>
     CryptoEnvelope(
       version: e.version,
       conversationId: e.conversationId,
-      senderDeviceId: e.senderDeviceId,
+      senderDeviceId: senderDeviceId ?? e.senderDeviceId,
       recipientUserId: e.recipientUserId,
       ciphertext: e.ciphertext,
       nonce: e.nonce,
@@ -311,6 +318,18 @@ void main() {
     expect(out.attachment, isNull);
   });
 
+  test('a frame the relay attributes to another device is refused', () async {
+    final envelope = await alice.send(group, 'from alice');
+
+    for (final claimed in [carolId.deviceId, bobId.deviceId]) {
+      final out = await bob.read(_withOuter(envelope, senderDeviceId: claimed));
+      expect(out.status, DecryptStatus.failed);
+      expect(out.failureReason, 'sender_mismatch');
+      expect(out.body, isEmpty);
+    }
+    expect((await bob.read(envelope)).body, 'from alice');
+  });
+
   test('group frames carry the 1:1 inner payload and still read older pointer forms', () async {
     final current = await bob.read(await alice.send(group, 'photo', attachment: _attachment));
     expect(current.body, 'photo');
@@ -380,6 +399,52 @@ void main() {
     expect(server.uploads, hasLength(1));
   });
 
+  test('a held device the user approves is handed the chain on the next send', () async {
+    await alice.trust.admit(groupId, bobId.userId, bobId.deviceId, bobId.identityPublicKey);
+    await alice.trust.resolver.markVerified(bobId.userId, bobId.deviceId, bobId.identityPublicKey);
+    final tablet = await TestIdentity.generate(userId: bobId.userId, deviceId: 'dev-bob-tablet', handle: 'bob');
+    directory.add(tablet);
+    server.publish(bobId, devices: [bobId, tablet]);
+
+    final first = await alice.send(group, 'before the tablet was approved');
+    expect(server.uploadedDevices, [
+      [bobId.deviceId, carolId.deviceId],
+    ]);
+
+    // bob vouches for his tablet and alice compares its safety number.
+    final held = alice.trust.pendingFor(groupId)!;
+    expect(held.deviceId, tablet.deviceId);
+    await alice.trust.approve(groupId, reverified: true, reviewed: held);
+
+    final second = await alice.send(group, 'after the approval');
+    expect(server.uploadedDevices.last, [tablet.deviceId]);
+    expect((await _Member(tablet, server, directory, group).read(second)).body, 'after the approval');
+    // Nothing replaced the copy bob's phone has not picked up yet.
+    expect((await bob.read(first)).body, 'before the tablet was approved');
+    expect((await bob.read(second)).body, 'after the approval');
+  });
+
+  test('a device a member adds later is handed the chain once the directory is asked again', () async {
+    var now = DateTime.utc(2026, 11, 1, 9);
+    final sender = _Member(aliceId, server, directory, group, clock: () => now);
+    final first = await sender.send(group, 'one phone');
+    final tablet = await TestIdentity.generate(userId: bobId.userId, deviceId: 'dev-bob-tablet', handle: 'bob');
+    directory.add(tablet);
+    server.publish(bobId, devices: [bobId, tablet]);
+
+    // Members' entries are reused for a while instead of asked on every send.
+    now = now.add(GroupSenderKeyCoordinator.memberDevicesTtl - const Duration(minutes: 1));
+    await sender.prepareSend(group);
+    expect(server.uploads, hasLength(1));
+
+    now = now.add(const Duration(minutes: 2));
+    final later = await sender.send(group, 'phone and tablet');
+    expect(server.uploadedDevices.last, [tablet.deviceId]);
+    expect((await _Member(tablet, server, directory, group).read(later)).body, 'phone and tablet');
+    expect((await bob.read(first)).body, 'one phone');
+    expect((await bob.read(later)).body, 'phone and tablet');
+  });
+
   test('server-injected device for verified member is not sealed to and its distribution is rejected', () async {
     // alice verified bob's device out of band.
     await alice.trust.admit(groupId, bobId.userId, bobId.deviceId, bobId.identityPublicKey);
@@ -405,6 +470,32 @@ void main() {
     final read = await alice.read(forged);
     expect(read.status, DecryptStatus.awaitingKey);
     expect(read.body, isEmpty);
+  });
+
+  test("a member cannot take over another member's device id", () async {
+    final fromBob = await bob.send(group, 'hello from bob');
+    expect((await alice.read(fromBob)).body, 'hello from bob');
+
+    // carol, with the server's help, lists a device of her own under the id
+    // of bob's device, whose chain alice holds.
+    final alias = await TestIdentity.generate(userId: carolId.userId, deviceId: bobId.deviceId, handle: 'carol');
+    directory.add(alias);
+    server.publish(carolId, devices: [carolId, alias]);
+    final impostor = _Member(alias, server, directory, group);
+    // A later generation than bob's chain, as when bob re-keys.
+    for (final forceRotate in [false, true]) {
+      await impostor.coordinator.engine
+          .ensureOwnSenderKey(groupId: groupId, epoch: 0, localDeviceId: alias.deviceId, forceRotate: forceRotate);
+    }
+    final forged = await impostor.send(group, 'impersonating bob');
+    final blob = server.buffered[aliceId.userId]!.singleWhere((b) => b['fromUserId'] == carolId.userId);
+    await alice.receiveRealtime(blob);
+
+    expect(alice.trustChecks, contains('${carolId.userId}/${bobId.deviceId}/${alias.identityPublicKey}'));
+    expect(alice.trust.pendingFor(groupId), isNull, reason: 'there is nothing to approve');
+    expect((await alice.read(forged)).status, isNot(DecryptStatus.ok));
+    final later = await bob.send(group, 'still bob');
+    expect((await alice.read(later)).body, 'still bob');
   });
 
   test('trustCheck false prevents sealing and rejects distribution signer', () async {

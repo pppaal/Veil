@@ -162,5 +162,12 @@ void main() {
 
     expect(await policy.rejects('any', 'veil-envelope-v1'), isTrue);
     expect(await policy.rejects('any', 'veil-envelope-v2'), isFalse);
+
+    // A pin recorded meanwhile does not replace it, so after a restart the
+    // other conversations are still kept off the legacy versions.
+    await policy.noteAuthenticated('conv-b', 'veil-envelope-v2');
+    final restarted = EnvelopeVersionPolicy(store: keystore.scoped(SecureScope.conversationPolicy));
+    expect(await restarted.rejects('any', 'veil-envelope-v1'), isTrue);
+    expect(await restarted.rejects('conv-b', 'veil-envelope-v1'), isTrue);
   });
 }

@@ -31,6 +31,10 @@ class TrustedIdentityResolver {
     _requireAddress(userId, deviceId);
     final key = _canonicalKey(identityKey);
     return _locked((pins) async {
+      // Group chains are keyed by device id alone, so the same id under a
+      // second user would let that user take over the first one's chain.
+      final elsewhere = pins.where((p) => p.deviceId == deviceId && p.userId != userId).firstOrNull;
+      if (elsewhere != null) return DeviceOfAnotherUser(elsewhere);
       final pin = _pinIn(pins, userId, deviceId);
       if (pin != null) {
         if (pin.identityKey == key) return PinMatch(pin);

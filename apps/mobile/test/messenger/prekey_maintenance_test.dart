@@ -23,6 +23,9 @@ class _Directory extends VeilApiClient {
   final List<List<Map<String, dynamic>>> uploads = [];
   final List<String> signedPrekeyBundles = [];
 
+  /// How many signed prekey publishes still fail, as when offline.
+  int failingSignedPrekeyPuts = 0;
+
   @override
   Future<Map<String, dynamic>> getJson(String path, {required String? accessToken, Map<String, String>? query}) async {
     expect(path, '/prekeys/count');
@@ -42,6 +45,10 @@ class _Directory extends VeilApiClient {
   @override
   Future<Map<String, dynamic>> putJson(String path, {required String? accessToken, Object? body}) async {
     expect(path, '/keys/signed-prekey');
+    if (failingSignedPrekeyPuts > 0) {
+      failingSignedPrekeyPuts -= 1;
+      throw VeilApiException('Service unavailable', statusCode: 503);
+    }
     signedPrekeyBundles.add((body as Map<String, dynamic>)['signedPrekeyBundle'] as String);
     return {'deviceId': 'dev-me', 'spkId': signedPrekeyBundles.length};
   }
@@ -75,6 +82,7 @@ void main() {
   final start = DateTime.utc(2026, 11, 1, 9);
   late DateTime now;
   late _Directory directory;
+  late InMemoryLocalPrekeyStore prekeyStore;
   late LibCryptoAdapter adapter;
   late String identityRef;
   late List<String> persistedRefs;
@@ -83,7 +91,8 @@ void main() {
   Future<void> setUpDevice({String? withRef}) async {
     now = start;
     directory = _Directory();
-    adapter = LibCryptoAdapter(clock: () => now)..setLocalPrekeyStore(InMemoryLocalPrekeyStore());
+    prekeyStore = InMemoryLocalPrekeyStore();
+    adapter = LibCryptoAdapter(clock: () => now)..setLocalPrekeyStore(prekeyStore);
     identityRef = withRef ?? (await adapter.identity.generateDeviceIdentity('dev-me')).identityPrivateKeyRef;
     adapter.setLocalIdentityLoader(() async => identityRef);
     persistedRefs = [];
@@ -129,19 +138,14 @@ void main() {
     expect(verified.spkId, 2);
     expect(DateTime.fromMillisecondsSinceEpoch(verified.spkTimestampMs, isUtc: true), now);
     expect(persistedRefs, isEmpty, reason: 'a v2 identity keeps its ref');
-    expect(await adapter.currentSignedPrekeyCreatedAt(), now);
+    expect((await adapter.currentSignedPrekey())!.createdAt, now);
   });
 
   test('v1 bundle republished as v2 and upgraded ref persisted', () async {
-    // A v1 identity ref, as builds before protocol v2 stored it: identity
-    // keys only, no signed prekey of its own.
-    final v1Ref = b64uEncode(utf8.encode(json.encode({
-      'ed25519': b64uEncode(List<int>.generate(32, (i) => i + 1)),
-      'x25519': b64uEncode(List<int>.generate(32, (i) => 64 + i)),
-    })));
+    final v1Ref = _v1IdentityRef();
     await setUpDevice(withRef: v1Ref);
     directory.available = 100;
-    expect(await adapter.currentSignedPrekeyCreatedAt(), isNull);
+    expect(await adapter.currentSignedPrekey(), isNull);
 
     await maintenance.run(accessToken: 'token', force: true);
 
@@ -152,6 +156,62 @@ void main() {
     final published = json.decode(utf8.decode(b64uDecode(directory.signedPrekeyBundles.single))) as Map<String, dynamic>;
     expect(published['v'], 2);
     expect(await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now), isA<PrekeyBundleV2>());
+  });
+
+  test('a signed prekey publish that failed is retried by the next run', () async {
+    final v1Ref = _v1IdentityRef();
+    await setUpDevice(withRef: v1Ref);
+    directory.available = 100;
+    directory.failingSignedPrekeyPuts = 1;
+
+    await maintenance.run(accessToken: 'token');
+    expect(directory.signedPrekeyBundles, isEmpty);
+    // The keyring already holds the v2 signed prekey and the upgraded ref.
+    expect(LocalIdentity.tryParse(identityRef)!.version, 2);
+
+    now = now.add(PrekeyMaintenance.resumeInterval);
+    await maintenance.run(accessToken: 'token');
+
+    final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(v1Ref);
+    final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now);
+    expect(published, isA<PrekeyBundleV2>());
+    expect((published as PrekeyBundleV2).spkId, 1, reason: 'the signed prekey that failed to publish, not another');
+    expect(persistedRefs, hasLength(1));
+
+    // Published now: later runs leave it alone until it is a week old.
+    now = now.add(PrekeyMaintenance.resumeInterval);
+    await maintenance.run(accessToken: 'token');
+    expect(directory.signedPrekeyBundles, hasLength(1));
+  });
+
+  test('the signed prekey the directory serves is kept until a successor is published', () async {
+    await setUpDevice();
+    directory.available = 100;
+    directory.failingSignedPrekeyPuts = 2;
+    Future<Set<int>> storedIds() async => {for (final prekey in await prekeyStore.loadSignedPrekeys()) prekey.keyId};
+
+    // A week in, rotating to spkId 2 fails to publish; three weeks later
+    // spkId 2 is stale and spkId 3 fails too. The directory serves spkId 1
+    // throughout, so it must still answer handshakes.
+    now = start.add(const Duration(days: 8));
+    await maintenance.run(accessToken: 'token', force: true);
+    now = start.add(const Duration(days: 30));
+    await maintenance.run(accessToken: 'token', force: true);
+    expect(await adapter.pruneSignedPrekeys(), 0);
+    expect(await storedIds(), {1, 2, 3});
+
+    await maintenance.run(accessToken: 'token', force: true);
+    final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(identityRef);
+    final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now);
+    expect((published as PrekeyBundleV2).spkId, 3);
+    expect(await adapter.publishedSignedPrekeyId(), 3);
+
+    // The superseded ones retire two weeks after spkId 3 was published.
+    now = start.add(const Duration(days: 44));
+    expect(await adapter.pruneSignedPrekeys(), 0);
+    now = start.add(const Duration(days: 44, hours: 1));
+    expect(await adapter.pruneSignedPrekeys(), 2);
+    expect(await storedIds(), {3});
   });
 
   test('throttled to once per 6h', () async {
@@ -216,6 +276,13 @@ void main() {
     expect(relay.claimedOneTimePrekeys['dev-selene'], [7]);
   });
 }
+
+/// A v1 identity ref, as builds before protocol v2 stored it: identity keys
+/// only, no signed prekey of its own.
+String _v1IdentityRef() => b64uEncode(utf8.encode(json.encode({
+      'ed25519': b64uEncode(List<int>.generate(32, (i) => i + 1)),
+      'x25519': b64uEncode(List<int>.generate(32, (i) => 64 + i)),
+    })));
 
 class _Unreachable extends VeilApiClient {
   _Unreachable() : super(baseUrl: 'http://relay.invalid/v1');

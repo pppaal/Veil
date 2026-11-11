@@ -2438,6 +2438,12 @@ abstract class AppLocalizations {
   /// **'Accept as verified'**
   String get safetyNumbersReverifyAccept;
 
+  /// No description provided for @safetyNumbersChangeReplaced.
+  ///
+  /// In en, this message translates to:
+  /// **'The safety number changed again while you were reviewing it. Compare the new number before accepting it.'**
+  String get safetyNumbersChangeReplaced;
+
   /// No description provided for @profileTitle.
   ///
   /// In en, this message translates to:

@@ -44,6 +44,18 @@ final class NewDeviceForKnownUser extends IdentityVerdict {
   bool get isTrusted => false;
 }
 
+/// The device id is pinned under another user. A device belongs to one
+/// account, so the directory misattributes one of the two; nothing is pinned,
+/// and no approval can resolve it.
+final class DeviceOfAnotherUser extends IdentityVerdict {
+  const DeviceOfAnotherUser(this.pinned);
+
+  final TrustedIdentity pinned;
+
+  @override
+  bool get isTrusted => false;
+}
+
 /// The device presented a different key than its unverified pin.
 final class KeyChanged extends IdentityVerdict {
   const KeyChanged({required this.pinned, required this.presentedKey});

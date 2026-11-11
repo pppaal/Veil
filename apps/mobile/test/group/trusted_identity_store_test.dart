@@ -50,6 +50,16 @@ void main() {
     expect(await resolver.evaluate('alice', 'dev-a', _key(1)), isA<PinMatch>());
   });
 
+  test('a device id pinned under one user is refused under another', () async {
+    await resolver.evaluate('alice', 'dev-a', _key(1));
+
+    final verdict = await resolver.evaluate('mallory', 'dev-a', _key(9));
+    expect(verdict.isTrusted, isFalse);
+    expect((verdict as DeviceOfAnotherUser).pinned.userId, 'alice');
+    expect(await resolver.pinsForUser('mallory'), isEmpty);
+    expect(await resolver.evaluate('alice', 'dev-a', _key(1)), isA<PinMatch>());
+  });
+
   test('verified contact change is KeyChangedVerified', () async {
     await resolver.evaluate('alice', 'dev-a', _key(1));
     now = firstSeen.add(const Duration(hours: 1));

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:isolate';
 
 import 'package:flutter/material.dart';
@@ -44,11 +45,27 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   bool _rekeying = false;
   // A scanned code that did not match; the screen stays failed until left.
   bool _scanMismatch = false;
+  late final StreamSubscription<PendingIdentityChange> _changes;
 
   @override
   void initState() {
     super.initState();
     _loader = _load();
+    // A newer change replaces the one on screen, so its number is no longer
+    // the one to compare.
+    _changes = ref
+        .read(messengerControllerProvider)
+        .identityChanges
+        .where((change) => change.conversationId == widget.conversationId)
+        .listen((_) {
+      if (mounted) unawaited(_reload());
+    });
+  }
+
+  @override
+  void dispose() {
+    unawaited(_changes.cancel());
+    super.dispose();
   }
 
   Future<_SafetyNumbersViewData> _load() async {
@@ -164,9 +181,23 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     VeilToast.show(context, message: AppLocalizations.of(context).safetyNumbersMarkedVerified);
   }
 
-  Future<void> _acceptChange({required bool reverified}) async {
+  // Approves exactly [change], the identity the user reviewed: if a newer
+  // one replaced it meanwhile, nothing is accepted and the screen shows the
+  // newer one instead.
+  Future<void> _acceptChange(PendingIdentityChange change, {required bool reverified}) async {
     VeilHaptics.medium();
-    await ref.read(messengerControllerProvider).approveIdentityChange(widget.conversationId, reverified: reverified);
+    try {
+      await ref
+          .read(messengerControllerProvider)
+          .approveIdentityChange(widget.conversationId, reverified: reverified, reviewed: change);
+    } on StateError {
+      if (!mounted) return;
+      VeilToast.show(
+        context,
+        message: AppLocalizations.of(context).safetyNumbersChangeReplaced,
+        tone: VeilBannerTone.warn,
+      );
+    }
     if (!mounted) return;
     await _reload();
   }
@@ -179,7 +210,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       builder: (context) => _ReverifyDialog(peer: data.peer.title, number: data.pendingNumber!),
     );
     if (compared != true || !mounted) return;
-    await _acceptChange(reverified: true);
+    await _acceptChange(data.pendingChange!, reverified: true);
   }
 
   Future<void> _compareScannedCode(_DetailData data) async {
@@ -198,7 +229,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     switch (outcome) {
       case SafetyQrVerification.verified:
         if (change != null) {
-          await _acceptChange(reverified: true);
+          await _acceptChange(change, reverified: true);
         } else {
           await _markVerified(data);
         }
@@ -487,7 +518,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             label: l10n.safetyNumbersScanAction,
             icon: Icons.qr_code_scanner_rounded,
             tone: VeilButtonTone.secondary,
-            onPressed: () => _compareScannedCode(data),
+            onPressed: _scanMismatch ? null : () => _compareScannedCode(data),
           ),
         ],
         if (data.isDirect) ...[
@@ -555,7 +586,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       else
         VeilButton(
           label: l10n.safetyNumbersAcceptNewKey,
-          onPressed: _scanMismatch ? null : () => _acceptChange(reverified: false),
+          onPressed: _scanMismatch ? null : () => _acceptChange(change, reverified: false),
         ),
     ];
   }

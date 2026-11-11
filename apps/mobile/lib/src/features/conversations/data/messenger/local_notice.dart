@@ -35,14 +35,15 @@ LocalNotice? localNoticeFor(
     IdentityChangeResolved() => (null, ''),
   };
   if (code == null) return null;
-  final latest = conversationMessages.lastOrNull;
+  final latestOrder = conversationMessages.map((message) => message.conversationOrder).nonNulls.lastOrNull;
   return LocalNotice(
     ChatMessage(
       id: '$localNoticeIdPrefix$code:${event.conversationId}:$subject',
       senderDeviceId: '',
       sentAt: now,
-      // Sorts right after the newest message it was raised against.
-      conversationOrder: latest?.conversationOrder,
+      // Sorts right after the newest relayed message it was raised against,
+      // or ahead of every message in a conversation that has none yet.
+      conversationOrder: latestOrder ?? 0,
       envelope: CryptoEnvelope(
         version: '',
         conversationId: event.conversationId,

@@ -1277,6 +1277,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersReverifyAccept => '확인됨으로 수락';
 
   @override
+  String get safetyNumbersChangeReplaced =>
+      '검토하는 동안 안전 번호가 다시 바뀌었습니다. 수락하기 전에 새 번호를 비교하세요.';
+
+  @override
   String get profileTitle => '프로필';
 
   @override

@@ -18,7 +18,9 @@ class EnvelopeVersionPolicy {
   static const _documentKey = 'envelope_versions.v1';
 
   final ScopedSecureStore? _store;
-  Map<String, List<String>>? _allowed;
+  // Shared by every caller, so a pin recorded while the first read is still
+  // in flight is not replaced by a second, older copy of the document.
+  Future<Map<String, List<String>>>? _allowed;
   // Set when the stored document cannot be read: every conversation is then
   // treated as pinned, so corruption never reopens a downgrade.
   bool _unreadable = false;
@@ -47,8 +49,17 @@ class EnvelopeVersionPolicy {
   }
 
   Future<Map<String, List<String>>> _load() async {
-    final cached = _allowed;
-    if (cached != null) return cached;
+    final loading = _allowed ??= _read();
+    try {
+      return await loading;
+    } catch (_) {
+      // A keystore error is retried by the next call.
+      if (identical(_allowed, loading)) _allowed = null;
+      rethrow;
+    }
+  }
+
+  Future<Map<String, List<String>>> _read() async {
     final loaded = <String, List<String>>{};
     final raw = await _store?.read(_documentKey);
     if (raw != null) {
@@ -59,7 +70,7 @@ class EnvelopeVersionPolicy {
         loaded.addAll(decoded);
       }
     }
-    return _allowed = loaded;
+    return loaded;
   }
 
   static Map<String, List<String>>? _tryDecode(String raw) {

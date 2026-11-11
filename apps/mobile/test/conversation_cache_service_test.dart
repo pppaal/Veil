@@ -902,6 +902,55 @@ void main() {
     expect((await migratedCache.get('srv-new'))!.body, 'first row after upgrade');
   });
 
+  test('migration from 9 drops the identity mismatch flag and keeps the rows', () async {
+    // Schema 10 left the content tables as schema 9 created them.
+    final current = AppDatabase(NativeDatabase.memory());
+    final contentTables = [
+      for (final row in await current
+          .customSelect(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name IN ('message_contents', 'retired_messages')",
+          )
+          .get())
+        row.data['sql'] as String,
+    ];
+    await current.close();
+    expect(contentTables, hasLength(2));
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in [..._schemaVersion8, ...contentTables]) {
+        raw.execute(statement);
+      }
+      raw.execute('ALTER TABLE cached_conversations ADD COLUMN "session_remote_identity_public_key" TEXT NULL');
+      raw.execute(
+        'ALTER TABLE cached_conversations ADD COLUMN "identity_mismatch_pending" INTEGER NOT NULL DEFAULT 0 '
+        'CHECK ("identity_mismatch_pending" IN (0, 1))',
+      );
+      raw.execute(
+        'INSERT INTO cached_conversations (id, peer_handle, updated_at, session_remote_identity_public_key, '
+        "identity_mismatch_pending) VALUES ('conv-old', 'h', 1, 'key-old', 1)",
+      );
+      raw.execute(
+        'INSERT INTO cached_messages (id, conversation_id, sender_device_id, ciphertext, '
+        "nonce, message_type, received_at) VALUES ('msg-old', 'conv-old', 'd', 'c', 'n', 'text', 1)",
+      );
+      raw.execute('PRAGMA user_version = 9');
+    }));
+    addTearDown(legacy.close);
+
+    final conversationColumns = await legacy.customSelect('PRAGMA table_info(cached_conversations)').get();
+    expect(conversationColumns.map((row) => row.data['name']), isNot(contains('identity_mismatch_pending')));
+    final kept = await legacy
+        .customSelect("SELECT session_remote_identity_public_key FROM cached_conversations WHERE id = 'conv-old'")
+        .getSingle();
+    expect(kept.data['session_remote_identity_public_key'], 'key-old');
+
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    expect((await migratedCache.readConversations()).single.id, 'conv-old');
+    expect((await migratedCache.readMessages('conv-old')).single.id, 'msg-old');
+  });
+
   test('deleteConversation runs wal checkpoint', () async {
     final directory = Directory.systemTemp.createTempSync('veil-wal-');
     addTearDown(() => directory.deleteSync(recursive: true));

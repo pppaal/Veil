@@ -1311,6 +1311,67 @@ class AppLocalizationsEn extends AppLocalizations {
       'That code uses a safety-number version this app does not support.';
 
   @override
+  String get safetyNumbersReverifyDialogTitle =>
+      'Compare the new safety number';
+
+  @override
+  String safetyNumbersReverifyDialogBody(String peer) {
+    return 'You had verified $peer. Accept the new key as verified only after comparing this number with $peer in person or on a call you trust.';
+  }
+
+  @override
+  String safetyNumbersReverifyAffirm(String peer) {
+    return 'I compared this number with $peer and it matches';
+  }
+
+  @override
+  String get safetyNumbersReverifyAccept => 'Accept as verified';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileNicknameSaved => 'Nickname saved on this device';
+
+  @override
+  String get profileHandleLabel => 'HANDLE';
+
+  @override
+  String get profileHandleCaption => 'Your handle cannot be changed.';
+
+  @override
+  String get profileNicknameLabel => 'NICKNAME';
+
+  @override
+  String get profileNicknameCaption =>
+      'Only this device knows it. Peers see your handle.';
+
+  @override
+  String get profileNicknameHint => 'How this device greets you';
+
+  @override
+  String get profileNicknameNotSet => 'Not set';
+
+  @override
+  String get profilePrivacyEyebrow => 'PRIVACY';
+
+  @override
+  String get profilePrivacyTitle => 'Nothing about you on the relay';
+
+  @override
+  String get profilePrivacyBody =>
+      'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.';
+
+  @override
+  String get profileSaveNickname => 'Save nickname';
+
+  @override
+  String get profileEditNickname => 'Edit nickname';
+
+  @override
+  String get profileCancel => 'Cancel';
+
+  @override
   String get deviceTransferTitle => 'Device Transfer';
 
   @override

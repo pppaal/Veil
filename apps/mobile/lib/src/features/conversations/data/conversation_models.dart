@@ -348,7 +348,8 @@ class ConversationPreview {
 }
 
 /// Id prefix of rows this device inserts into a conversation by itself,
-/// such as identity notices. Relay ids are UUIDs, so no peer and no server
+/// such as identity notices. Relay ids are UUIDs, and the messenger drops
+/// any relayed row that carries this prefix anyway, so no peer and no server
 /// can produce a row that passes for one.
 const String localNoticeIdPrefix = 'notice:';
 

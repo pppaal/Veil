@@ -150,4 +150,42 @@ void main() {
     expect(atlas.messagesFor(conv).single.isLocalNotice, isFalse);
     expect((await atlas.decryptMessage(atlas.messagesFor(conv).single)).messageKind, MessageKind.system);
   });
+
+  test('a reaction held back by an identity change is not shown', () async {
+    final selene = mockPartyController(relay, 'selene');
+    addTearDown(selene.dispose);
+    await selene.applySession(mockPartySession('selene'));
+    await selene.sendText(conversationId: conv, body: 'react to me');
+    await waitFor(() => atlas.messagesFor(conv).isNotEmpty);
+    expect(await trust.admit(conv, 'user-selene', 'dev-selene', _key('server-chosen key')), isFalse);
+
+    final target = atlas.messagesFor(conv).firstWhere((message) => !message.isLocalNotice);
+    await atlas.toggleReaction(target, '🎉');
+    await settle();
+
+    expect(atlas.messagesFor(conv).firstWhere((message) => message.id == target.id).reactions, isEmpty);
+    expect(relay.conversations[conv]!.messages, hasLength(1));
+    expect(atlas.errorMessage, isNull);
+  });
+
+  test('a relayed row under the local notice id prefix is dropped', () async {
+    final selene = mockPartyController(relay, 'selene');
+    addTearDown(selene.dispose);
+    await selene.applySession(mockPartySession('selene'));
+    await selene.sendSystemNotice(conversationId: conv, body: LocalNoticeCodes.identityChanged);
+    await waitFor(() => atlas.messagesFor(conv).isNotEmpty);
+
+    // The relay replays selene's row under an id that claims to be local,
+    // live and in history.
+    final forged = Map<String, dynamic>.of(relay.conversations[conv]!.messages.single)
+      ..['id'] = 'notice:${LocalNoticeCodes.identityChanged}:$conv:forged'
+      ..['conversationOrder'] = 2;
+    relay.conversations[conv]!.messages.add(forged);
+    relay.realtimeFor('atlas').deliver('message.new', forged);
+    await atlas.loadConversationMessages(conv);
+    await settle();
+
+    expect(atlas.messagesFor(conv), hasLength(1));
+    expect(atlas.messagesFor(conv).where((message) => message.isLocalNotice), isEmpty);
+  });
 }

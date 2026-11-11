@@ -326,7 +326,9 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     await _refreshRealtimeAndSync(forceReconnect: true);
-    unawaited(_prekeys?.run(accessToken: _session.accessToken!));
+    // The session may have signed out while this synced.
+    final accessToken = _session.accessToken;
+    if (accessToken != null) unawaited(_prekeys?.run(accessToken: accessToken));
   }
 
   Future<void> refreshConversations() async {
@@ -469,12 +471,15 @@ class VeilMessengerController extends ChangeNotifier {
     return true;
   }
 
-  Future<void> _sendEnvelope({
+  /// Encrypts and queues one message; false when that failed (the failure
+  /// is surfaced as usual).
+  Future<bool> _sendEnvelope({
     required String conversationId,
     required String body,
     required MessageKind messageKind,
     Duration? disappearAfter,
   }) async {
+    var queued = false;
     await _run(() async {
       if (!_session.isAuthenticated || !VeilConfig.hasApi) {
         throw StateError('Authenticated API session required.');
@@ -497,8 +502,10 @@ class VeilMessengerController extends ChangeNotifier {
         clientMessageId: clientMessageId,
         envelope: envelope,
       );
+      queued = true;
       unawaited(_drainOutbox(conversationId: conversationId));
     });
+    return queued;
   }
 
   bool _usesSenderKeys(ConversationPreview conversation) =>
@@ -898,6 +905,9 @@ class VeilMessengerController extends ChangeNotifier {
   // device-move detection have something to compare against.
   void _noteOpenedSession(CryptoEnvelope envelope, DecryptedMessage decrypted) {
     final conversationId = envelope.conversationId;
+    // Taken whatever happens next, so a key proved by a handshake that was
+    // not kept is never attributed to a later session.
+    final provenKey = _handshakeIdentities.remove(conversationId) ?? '';
     final conversation = conversationById(conversationId);
     final localDeviceId = _session.deviceId;
     if (localDeviceId == null ||
@@ -914,7 +924,7 @@ class VeilMessengerController extends ChangeNotifier {
       observedInboundSession(
         envelope,
         localDeviceId: localDeviceId,
-        remoteIdentityPublicKey: _handshakeIdentities.remove(conversationId) ?? '',
+        remoteIdentityPublicKey: provenKey,
       ),
     );
     unawaited(_contents.retryPending(conversationId, messagesFor(conversationId)));
@@ -1114,6 +1124,7 @@ class VeilMessengerController extends ChangeNotifier {
       (response['items'] as List<dynamic>? ?? const [])
           .cast<Map<String, dynamic>>()
           .map(_messageFromApi)
+          .where((message) => !message.isLocalNotice)
           .toList()
         ..sort(compareMessages),
     );
@@ -1270,6 +1281,7 @@ class VeilMessengerController extends ChangeNotifier {
           });
           final serverMessage =
               _messageFromApi(response['message'] as Map<String, dynamic>);
+          if (serverMessage.isLocalNotice) throw const FormatException('The relay acknowledged a local notice id.');
           _pendingByClientMessageId.remove(marked.clientMessageId);
           await _cacheService?.removePendingMessage(marked.clientMessageId);
           final content = await _contents.acknowledge(
@@ -1324,7 +1336,8 @@ class VeilMessengerController extends ChangeNotifier {
               canCancel: false,
             );
           }
-          _errorMessage = failed.errorMessage;
+          // An identity change is the conversation's issue, not a global one.
+          if (error is! IdentityChangedException) _errorMessage = failed.errorMessage;
         }
       }
     } finally {
@@ -1360,10 +1373,11 @@ class VeilMessengerController extends ChangeNotifier {
           ),
       ];
       // Reactions live only in their encrypted messages; replay the ones
-      // already opened.
+      // already opened and authenticated, as live delivery applies them.
       final contents = await _contents.storedFor(_messagesByConversation[conversation.id]!);
       for (final message in _messagesByConversation[conversation.id]!) {
-        if (contents[message.id] case final content? when content.kind == MessageKind.reaction) {
+        if (contents[message.id] case final content?
+            when content.kind == MessageKind.reaction && content.status == MessageContentStatus.ok) {
           _applyReactionMessage(message, content);
         }
       }
@@ -1459,7 +1473,7 @@ class VeilMessengerController extends ChangeNotifier {
           case 'message.new':
             final data = payload as Map<String, dynamic>;
             final message = _messageFromApi(data);
-            if ((await _contents.withoutRetired(<ChatMessage>[message])).isEmpty) {
+            if (message.isLocalNotice || (await _contents.withoutRetired(<ChatMessage>[message])).isEmpty) {
               break;
             }
             final conversationId = message.envelope.conversationId;
@@ -1479,13 +1493,9 @@ class VeilMessengerController extends ChangeNotifier {
             _scheduleSyncAfterRealtimeHint(conversationId: conversationId);
             break;
           case 'message.reaction':
-            final data = payload as Map<String, dynamic>;
-            _applyReactionEvent(
-              messageId: data['messageId'] as String,
-              userId: data['userId'] as String,
-              emoji: (data['emoji'] as String?) ?? '',
-              action: (data['action'] as String?) ?? 'add',
-            );
+            // Deprecated and never emitted (contract C9). Reactions are
+            // authenticated only inside the ratchet; a relay event names
+            // whatever reactor the server likes, so it is never applied.
             break;
           case 'typing.start':
             final data = payload as Map<String, dynamic>;
@@ -1714,29 +1724,6 @@ class VeilMessengerController extends ChangeNotifier {
     );
   }
 
-  // Relay reaction events of older clients (contract C9 keeps the event).
-  // They carry no position in the conversation, so they count as newest.
-  void _applyReactionEvent({
-    required String messageId,
-    required String userId,
-    required String emoji,
-    required String action,
-  }) {
-    for (final entry in _messagesByConversation.entries) {
-      if (entry.value.any((message) => message.id == messageId)) {
-        _recordReaction(
-          entry.key,
-          target: messageId,
-          reactor: userId,
-          emoji: emoji,
-          add: action != 'remove' && emoji.isNotEmpty,
-          position: ReactionPosition(conversationOrder: null, sentAt: DateTime.now()),
-        );
-        return;
-      }
-    }
-  }
-
   /// Adds [emoji] to [message], or withdraws it if it is already this
   /// user's reaction. The reaction travels end to end as a message of kind
   /// reaction; the relay sees neither its target nor the emoji.
@@ -1751,18 +1738,22 @@ class VeilMessengerController extends ChangeNotifier {
       return;
     }
     final add = _reactions.emojiOf(conversationId, message.id, myUserId) != emoji;
+    final sentAt = DateTime.now();
+    // Shown only once queued: a send the trust layer refused, or that failed
+    // to encrypt, never reaches the peer.
+    final queued = await _sendEnvelope(
+      conversationId: conversationId,
+      body: ReactionPayload(target: message.id, emoji: emoji, add: add).encode(),
+      messageKind: MessageKind.reaction,
+    );
+    if (!queued) return;
     _recordReaction(
       conversationId,
       target: message.id,
       reactor: myUserId,
       emoji: emoji,
       add: add,
-      position: ReactionPosition(conversationOrder: null, sentAt: DateTime.now()),
-    );
-    await _sendEnvelope(
-      conversationId: conversationId,
-      body: ReactionPayload(target: message.id, emoji: emoji, add: add).encode(),
-      messageKind: MessageKind.reaction,
+      position: ReactionPosition(conversationOrder: null, sentAt: sentAt),
     );
   }
 

@@ -1261,6 +1261,65 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersScanUnsupported => '이 앱이 지원하지 않는 안전 번호 버전의 코드입니다.';
 
   @override
+  String get safetyNumbersReverifyDialogTitle => '새 안전 번호 비교';
+
+  @override
+  String safetyNumbersReverifyDialogBody(String peer) {
+    return '$peer님을 확인한 적이 있습니다. 직접 만나거나 신뢰할 수 있는 통화로 $peer님과 이 번호를 비교한 뒤에만 새 키를 확인됨으로 수락하세요.';
+  }
+
+  @override
+  String safetyNumbersReverifyAffirm(String peer) {
+    return '$peer님과 이 번호를 비교했고 일치합니다';
+  }
+
+  @override
+  String get safetyNumbersReverifyAccept => '확인됨으로 수락';
+
+  @override
+  String get profileTitle => '프로필';
+
+  @override
+  String get profileNicknameSaved => '닉네임을 이 기기에 저장했습니다';
+
+  @override
+  String get profileHandleLabel => '핸들';
+
+  @override
+  String get profileHandleCaption => '핸들은 변경할 수 없습니다.';
+
+  @override
+  String get profileNicknameLabel => '닉네임';
+
+  @override
+  String get profileNicknameCaption => '이 기기만 알고 있습니다. 상대방에게는 핸들이 보입니다.';
+
+  @override
+  String get profileNicknameHint => '이 기기에서 나를 부를 이름';
+
+  @override
+  String get profileNicknameNotSet => '설정되지 않음';
+
+  @override
+  String get profilePrivacyEyebrow => '개인정보';
+
+  @override
+  String get profilePrivacyTitle => '릴레이에는 나에 대한 정보가 없습니다';
+
+  @override
+  String get profilePrivacyBody =>
+      '릴레이는 핸들로만 메시지를 전달하며 이름, 소개, 상태를 저장하지 않습니다. 닉네임은 이 기기에만 남고 기기와 함께 지워집니다.';
+
+  @override
+  String get profileSaveNickname => '닉네임 저장';
+
+  @override
+  String get profileEditNickname => '닉네임 수정';
+
+  @override
+  String get profileCancel => '취소';
+
+  @override
   String get deviceTransferTitle => '기기 이전';
 
   @override

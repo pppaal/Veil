@@ -56,6 +56,8 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     if (conversation == null) {
       throw StateError('Conversation not found');
     }
+    // Right after an upgrade the pins are still being carried over.
+    await ref.read(identityTrustProvider).ready;
     if (conversation.type == ConversationType.group && widget.memberUserId == null) {
       return _loadGroupList(conversation);
     }
@@ -167,6 +169,17 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     await ref.read(messengerControllerProvider).approveIdentityChange(widget.conversationId, reverified: reverified);
     if (!mounted) return;
     await _reload();
+  }
+
+  // The tap that opens this is not the approval: the user must affirm, next
+  // to the new number, that they compared it out of band.
+  Future<void> _confirmReverification(_DetailData data) async {
+    final compared = await showDialog<bool>(
+      context: context,
+      builder: (context) => _ReverifyDialog(peer: data.peer.title, number: data.pendingNumber!),
+    );
+    if (compared != true || !mounted) return;
+    await _acceptChange(reverified: true);
   }
 
   Future<void> _compareScannedCode(_DetailData data) async {
@@ -438,16 +451,12 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           const SizedBox(height: VeilSpace.md),
           _SafetyNumberCard(groups: formatSafetyNumber(data.number!)),
           const SizedBox(height: VeilSpace.md),
-          _QrCard(
-            content: encodeSafetyQrPayload(
-              localUserId: data.localUserId,
-              localIdentityKey: data.localKey,
-              remoteUserId: data.peer.userId,
-              remoteIdentityKey: base64UrlNoPadDecode(pin.identityKey),
-            ),
-            palette: palette,
-          ),
-          const SizedBox(height: VeilSpace.md),
+          // During a change the peer compares against the new key, so the
+          // code to show is the one beside the new number.
+          if (change == null) ...[
+            _QrCard(content: _qrPayload(data, pin.identityKey), palette: palette),
+            const SizedBox(height: VeilSpace.md),
+          ],
           if (verified && change == null)
             VeilSurfaceCard(
               child: Column(
@@ -518,8 +527,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   // The identity this conversation is held back on, with the number the
-  // user must compare before accepting it. A verified contact is never
-  // accepted with a single tap.
+  // user must compare before accepting it. A verified contact is accepted
+  // only through a matching scanned code or an explicit affirmation that the
+  // new number was compared, never with a single tap.
   List<Widget> _pendingChangeSection(BuildContext context, _DetailData data, PendingIdentityChange change) {
     final l10n = AppLocalizations.of(context);
     final verifiedAt = data.pin?.verifiedAt;
@@ -535,11 +545,76 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       const SizedBox(height: VeilSpace.md),
       _SafetyNumberCard(groups: formatSafetyNumber(data.pendingNumber!)),
       const SizedBox(height: VeilSpace.md),
-      VeilButton(
-        label: change.requiresReverification ? l10n.safetyNumbersReVerify : l10n.safetyNumbersAcceptNewKey,
-        onPressed: _scanMismatch ? null : () => _acceptChange(reverified: change.requiresReverification),
-      ),
+      _QrCard(content: _qrPayload(data, change.presentedKey), palette: VeilPalette.dark),
+      const SizedBox(height: VeilSpace.md),
+      if (change.requiresReverification)
+        VeilButton(
+          label: l10n.safetyNumbersReVerify,
+          onPressed: _scanMismatch ? null : () => _confirmReverification(data),
+        )
+      else
+        VeilButton(
+          label: l10n.safetyNumbersAcceptNewKey,
+          onPressed: _scanMismatch ? null : () => _acceptChange(reverified: false),
+        ),
     ];
+  }
+
+  static String _qrPayload(_DetailData data, String remoteKey) => encodeSafetyQrPayload(
+        localUserId: data.localUserId,
+        localIdentityKey: data.localKey,
+        remoteUserId: data.peer.userId,
+        remoteIdentityKey: base64UrlNoPadDecode(remoteKey),
+      );
+}
+
+class _ReverifyDialog extends StatefulWidget {
+  const _ReverifyDialog({required this.peer, required this.number});
+
+  final String peer;
+  final String number;
+
+  @override
+  State<_ReverifyDialog> createState() => _ReverifyDialogState();
+}
+
+class _ReverifyDialogState extends State<_ReverifyDialog> {
+  bool _compared = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return AlertDialog(
+      title: Text(l10n.safetyNumbersReverifyDialogTitle),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(l10n.safetyNumbersReverifyDialogBody(widget.peer)),
+            const SizedBox(height: VeilSpace.md),
+            _SafetyNumberCard(groups: formatSafetyNumber(widget.number)),
+            CheckboxListTile(
+              value: _compared,
+              onChanged: (value) => setState(() => _compared = value ?? false),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(l10n.safetyNumbersReverifyAffirm(widget.peer)),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text(l10n.safetyNumbersCancel),
+        ),
+        TextButton(
+          onPressed: _compared ? () => Navigator.of(context).pop(true) : null,
+          child: Text(l10n.safetyNumbersReverifyAccept),
+        ),
+      ],
+    );
   }
 }
 

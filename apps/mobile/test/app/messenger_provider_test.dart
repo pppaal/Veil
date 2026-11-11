@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
@@ -10,6 +11,7 @@ import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/storage/app_database.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 
 import '../support/fake_relay.dart';
@@ -20,13 +22,15 @@ import '../support/messenger_party.dart';
 // rebuilt when it did, dropping whatever they held in memory.
 void main() {
   late Completer<AppDatabase> database;
+  late MemorySecureStore keystore;
   late ProviderContainer container;
 
   setUp(() {
     driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
     database = Completer<AppDatabase>();
+    keystore = MemorySecureStore();
     container = ProviderContainer(overrides: [
-      secureStorageProvider.overrideWithValue(SecureStorageService(MemorySecureStore())),
+      secureStorageProvider.overrideWithValue(SecureStorageService(keystore)),
       appDatabaseFutureProvider.overrideWith((ref) => database.future),
       apiClientProvider.overrideWithValue(VeilApiClient(baseUrl: 'http://relay.invalid/v1')),
       realtimeServiceProvider.overrideWithValue(FakeRelayRealtime()),
@@ -70,5 +74,53 @@ void main() {
     await written;
 
     expect((await handle.readConversations()).single.id, 'conv-early');
+  });
+
+  test('identity decisions wait for the legacy trust migration over the cache', () async {
+    // An upgraded install: the cache holds a session that recorded no key,
+    // and the keystore an old safety-number verification of selene.
+    final selene = base64UrlNoPadEncode(List<int>.filled(32, 4));
+    database.complete(AppDatabase(NativeDatabase.memory()));
+    await container.read(cacheHandleProvider)!.storeConversations([
+      ConversationPreview(
+        id: 'conv-selene',
+        peerHandle: 'selene',
+        peerDisplayName: null,
+        recipientBundle: KeyBundle(
+          userId: 'user-selene',
+          deviceId: 'dev-selene',
+          handle: 'selene',
+          identityPublicKey: selene,
+          signedPrekeyBundle: '',
+        ),
+        lastEnvelope: null,
+        updatedAt: DateTime.utc(2026, 4, 1),
+        sessionState: ConversationSessionState(
+          sessionLocator: 'session://conv-selene',
+          sessionEnvelopeVersion: 'veil-envelope-v2',
+          requiresLocalPersistence: true,
+          sessionSchemaVersion: 4,
+          localDeviceId: 'dev-atlas',
+          remoteDeviceId: 'dev-selene',
+          remoteIdentityFingerprint: 'fp',
+          bootstrappedAt: DateTime.utc(2026, 4, 1),
+        ),
+      ),
+    ]);
+    await keystore.write(
+      key: 'veil.security.safety_verifications',
+      value: json.encode({
+        'conv-selene': {'peerIdentityPublicKey': selene, 'verifiedAt': DateTime.utc(2026, 3, 2).toIso8601String()},
+      }),
+    );
+
+    // The first decision is a forged handshake for selene's device.
+    final trust = container.read(identityTrustProvider);
+    final forged = base64UrlNoPadEncode(List<int>.filled(32, 7));
+
+    expect(await trust.admit('conv-selene', 'user-selene', 'dev-selene', forged), isFalse);
+    final pin = (await trust.resolver.pinFor('user-selene', 'dev-selene'))!;
+    expect(pin.identityKey, selene);
+    expect(pin.isVerified, isTrue);
   });
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -35,20 +36,21 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     await ref.read(appSessionProvider.notifier).updateLocalNickname(_nicknameController.text.trim());
     if (!mounted) return;
     setState(() => _isEditing = false);
-    VeilToast.show(context, message: 'Nickname saved on this device', tone: VeilBannerTone.good);
+    VeilToast.show(context, message: AppLocalizations.of(context).profileNicknameSaved, tone: VeilBannerTone.good);
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
     final handle = session.handle ?? '';
     final nickname = session.displayName;
     final initial = (nickname?.isNotEmpty == true ? nickname! : handle).characters.firstOrNull?.toUpperCase() ?? '?';
 
     return VeilShell(
-      title: 'Profile',
+      title: l10n.profileTitle,
       child: ListView(
         children: [
           Center(
@@ -69,8 +71,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: VeilSpace.xl),
           VeilFieldBlock(
-            label: 'HANDLE',
-            caption: 'Your handle cannot be changed.',
+            label: l10n.profileHandleLabel,
+            caption: l10n.profileHandleCaption,
             child: Text(
               '@$handle',
               style: theme.textTheme.bodyLarge?.copyWith(color: palette.textMuted),
@@ -78,28 +80,27 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           ),
           const SizedBox(height: VeilSpace.sm),
           VeilFieldBlock(
-            label: 'NICKNAME',
-            caption: 'Only this device knows it. Peers see your handle.',
+            label: l10n.profileNicknameLabel,
+            caption: l10n.profileNicknameCaption,
             child: _isEditing
                 ? TextField(
                     controller: _nicknameController,
-                    decoration: const InputDecoration(hintText: 'How this device greets you'),
+                    decoration: InputDecoration(hintText: l10n.profileNicknameHint),
                   )
                 : Text(
-                    nickname?.isNotEmpty == true ? nickname! : 'Not set',
+                    nickname?.isNotEmpty == true ? nickname! : l10n.profileNicknameNotSet,
                     style: theme.textTheme.bodyLarge,
                   ),
           ),
           const SizedBox(height: VeilSpace.xl),
-          const VeilHeroPanel(
-            eyebrow: 'PRIVACY',
-            title: 'Nothing about you on the relay',
-            body: 'The relay routes by handle and stores no name, bio or status. '
-                'Your nickname stays on this device and is erased with it.',
+          VeilHeroPanel(
+            eyebrow: l10n.profilePrivacyEyebrow,
+            title: l10n.profilePrivacyTitle,
+            body: l10n.profilePrivacyBody,
           ),
           const SizedBox(height: VeilSpace.xl),
           VeilButton(
-            label: _isEditing ? 'Save nickname' : 'Edit nickname',
+            label: _isEditing ? l10n.profileSaveNickname : l10n.profileEditNickname,
             icon: _isEditing ? Icons.check_rounded : Icons.edit_outlined,
             tone: _isEditing ? VeilButtonTone.primary : VeilButtonTone.secondary,
             onPressed: () => _onEditPressed(nickname),
@@ -107,7 +108,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           if (_isEditing) ...[
             const SizedBox(height: VeilSpace.sm),
             VeilButton(
-              label: 'Cancel',
+              label: l10n.profileCancel,
               icon: Icons.close_rounded,
               tone: VeilButtonTone.secondary,
               onPressed: () => setState(() => _isEditing = false),

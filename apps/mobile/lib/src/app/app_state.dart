@@ -117,10 +117,21 @@ final keysApiProvider = Provider<KeysApi>((ref) {
 });
 
 /// Contact identity pins, kept in the keystore and wiped with the device.
+/// What earlier builds knew is migrated in before any decision is made,
+/// reading the cache directly: the messenger decrypts and looks keys up as
+/// soon as it applies a session.
 final identityTrustProvider = Provider<IdentityTrust>((ref) {
-  final trust = IdentityTrust(TrustedIdentityResolver(
-    store: TrustedIdentityStore(ref.read(secureStorageProvider).scoped(SecureScope.identity)),
-  ));
+  final storage = ref.read(secureStorageProvider);
+  final cache = ref.read(cacheHandleProvider);
+  final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(storage.scoped(SecureScope.identity)));
+  final trust = IdentityTrust(
+    resolver,
+    ready: migrateLegacyTrust(
+      storage: storage,
+      resolver: resolver,
+      readConversations: cache?.readConversations ?? () async => const [],
+    ),
+  );
   ref.onDispose(trust.dispose);
   return trust;
 });
@@ -808,19 +819,8 @@ final messengerControllerProvider =
 
   final pushCoordinator = ref.read(pushTokenCoordinatorProvider);
 
-  Future<void> apply(AppSessionState session) async {
-    await controller.applySession(session);
-    if (session.isAuthenticated) {
-      await migrateLegacyTrust(
-        storage: secureStorage,
-        resolver: trust.resolver,
-        conversations: controller.conversations,
-      );
-    }
-  }
-
   ref.listen<AppSessionState>(appSessionProvider, (previous, next) {
-    unawaited(apply(next));
+    unawaited(controller.applySession(next));
     final wasAuthed = previous?.isAuthenticated ?? false;
     if (next.isAuthenticated && next.accessToken != null) {
       unawaited(pushCoordinator.bind(next.accessToken!));
@@ -830,7 +830,7 @@ final messengerControllerProvider =
   });
 
   final initial = ref.read(appSessionProvider);
-  unawaited(apply(initial));
+  unawaited(controller.applySession(initial));
   if (initial.isAuthenticated && initial.accessToken != null) {
     unawaited(pushCoordinator.bind(initial.accessToken!));
   }

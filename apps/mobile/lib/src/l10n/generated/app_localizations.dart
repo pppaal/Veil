@@ -2414,6 +2414,114 @@ abstract class AppLocalizations {
   /// **'That code uses a safety-number version this app does not support.'**
   String get safetyNumbersScanUnsupported;
 
+  /// No description provided for @safetyNumbersReverifyDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare the new safety number'**
+  String get safetyNumbersReverifyDialogTitle;
+
+  /// No description provided for @safetyNumbersReverifyDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You had verified {peer}. Accept the new key as verified only after comparing this number with {peer} in person or on a call you trust.'**
+  String safetyNumbersReverifyDialogBody(String peer);
+
+  /// No description provided for @safetyNumbersReverifyAffirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I compared this number with {peer} and it matches'**
+  String safetyNumbersReverifyAffirm(String peer);
+
+  /// No description provided for @safetyNumbersReverifyAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept as verified'**
+  String get safetyNumbersReverifyAccept;
+
+  /// No description provided for @profileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get profileTitle;
+
+  /// No description provided for @profileNicknameSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname saved on this device'**
+  String get profileNicknameSaved;
+
+  /// No description provided for @profileHandleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'HANDLE'**
+  String get profileHandleLabel;
+
+  /// No description provided for @profileHandleCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Your handle cannot be changed.'**
+  String get profileHandleCaption;
+
+  /// No description provided for @profileNicknameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'NICKNAME'**
+  String get profileNicknameLabel;
+
+  /// No description provided for @profileNicknameCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Only this device knows it. Peers see your handle.'**
+  String get profileNicknameCaption;
+
+  /// No description provided for @profileNicknameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How this device greets you'**
+  String get profileNicknameHint;
+
+  /// No description provided for @profileNicknameNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set'**
+  String get profileNicknameNotSet;
+
+  /// No description provided for @profilePrivacyEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'PRIVACY'**
+  String get profilePrivacyEyebrow;
+
+  /// No description provided for @profilePrivacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing about you on the relay'**
+  String get profilePrivacyTitle;
+
+  /// No description provided for @profilePrivacyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.'**
+  String get profilePrivacyBody;
+
+  /// No description provided for @profileSaveNickname.
+  ///
+  /// In en, this message translates to:
+  /// **'Save nickname'**
+  String get profileSaveNickname;
+
+  /// No description provided for @profileEditNickname.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit nickname'**
+  String get profileEditNickname;
+
+  /// No description provided for @profileCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileCancel;
+
   /// No description provided for @deviceTransferTitle.
   ///
   /// In en, this message translates to:

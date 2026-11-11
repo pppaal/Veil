@@ -75,6 +75,25 @@ void main() {
       expect(atlas.messagesFor(conv).first.reactions, isEmpty);
     });
 
+    test('relay message.reaction events never change reactions', () async {
+      final target = atlas.messagesFor(conv).single;
+      await atlas.toggleReaction(target, '🎉');
+      await waitFor(() => selene.messagesFor(conv).first.reactions.isNotEmpty);
+
+      // A hostile relay withdraws atlas's authenticated reaction, swaps in
+      // another, and puts words in selene's own mouth.
+      final realtime = relay.realtimeFor('selene');
+      realtime.deliver('message.reaction', {'messageId': target.id, 'userId': 'user-atlas', 'emoji': '🎉', 'action': 'remove'});
+      realtime.deliver('message.reaction', {'messageId': target.id, 'userId': 'user-atlas', 'emoji': '💀', 'action': 'add'});
+      realtime.deliver('message.reaction', {'messageId': target.id, 'userId': 'user-selene', 'emoji': '👎', 'action': 'add'});
+      await settle();
+
+      final reactions = selene.messagesFor(conv).first.reactions;
+      expect(reactions, hasLength(1));
+      expect(reactions.single.userId, 'user-atlas');
+      expect(reactions.single.emoji, '🎉');
+    });
+
     test('an oversized emoji is not sent', () async {
       await atlas.toggleReaction(atlas.messagesFor(conv).single, '👍👍👍👍👍👍👍👍👍');
       await settle();

@@ -144,6 +144,18 @@ void main() {
     expect(engine.opened, isEmpty);
   });
 
+  test('a pin recorded while another read is in flight is kept', () async {
+    final policy = EnvelopeVersionPolicy(store: keystore.scoped(SecureScope.conversationPolicy));
+
+    // Both start reading the empty document; the pin lands between the two.
+    await Future.wait([
+      policy.noteAuthenticated('conv-b', 'veil-envelope-v2'),
+      policy.rejects('conv-a', 'veil-envelope-v1'),
+    ]);
+
+    expect(await policy.rejects('conv-b', 'veil-envelope-v1'), isTrue);
+  });
+
   test('an unreadable pin document keeps every conversation off the legacy versions', () async {
     await keystore.scoped(SecureScope.conversationPolicy).write('envelope_versions.v1', '{not json');
     final policy = EnvelopeVersionPolicy(store: keystore.scoped(SecureScope.conversationPolicy));

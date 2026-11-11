@@ -82,9 +82,17 @@ final class IdentityChangeResolved extends IdentityTrustEvent {
 /// accepts it with [approve]; a key change is never accepted automatically,
 /// and for a verified contact not even by a plain approval.
 class IdentityTrust {
-  IdentityTrust(this.resolver);
+  /// Every decision waits for [ready], which completes once the pin table
+  /// holds what earlier builds knew (see migrateLegacyTrust). If it fails,
+  /// decisions fail with it: deciding without that knowledge would pin
+  /// whatever key arrives first.
+  IdentityTrust(this.resolver, {Future<void>? ready}) : ready = ready ?? Future<void>.value() {
+    // Its error reaches every decision that awaits it; it is not unhandled.
+    this.ready.ignore();
+  }
 
   final TrustedIdentityResolver resolver;
+  final Future<void> ready;
   final Map<String, PendingIdentityChange> _pending = {};
   final StreamController<IdentityTrustEvent> _events = StreamController<IdentityTrustEvent>.broadcast(sync: true);
 
@@ -95,6 +103,7 @@ class IdentityTrust {
   /// Whether [conversationId] may use [identityKey] for the device. Refusals
   /// are recorded as the conversation's pending change.
   Future<bool> admit(String conversationId, String userId, String deviceId, String identityKey) async {
+    await ready;
     final verdict = await resolver.evaluate(userId, deviceId, identityKey);
     switch (verdict) {
       case FirstUse() || PinMatch():

@@ -374,8 +374,21 @@ identity yield `identityRejected`, which is retried once the user approves.
 The conversation gets an `identity.changed` notice once per presented key.
 In a Sender Keys group the refused device is not sealed to and its
 distributions are not installed; the rest of the group proceeds. Notices are
-rows the client inserts itself under the id prefix `notice:`, which no relay
-id can carry, and only such rows are rendered as notices.
+rows the client inserts itself under the id prefix `notice:`; relayed rows
+carrying that prefix are dropped, and only local rows are rendered as notices.
+
+Approving a change for a contact the user had verified takes a fresh
+comparison: either a scanned code that matches the presented key, or an
+explicit affirmation, next to the new safety number, that it was compared out
+of band. The new key is then pinned as verified. A plain approval, offered
+only for contacts that were never verified, pins the new key unverified.
+
+Builds before the pin table recorded identity knowledge in session state and
+safety-number verifications. On upgrade that knowledge is carried into the
+pin table before the first trust decision is made; until then every decision
+waits, so neither an inbound handshake nor a directory answer can be pinned on
+first use in its place. A verification is pinned as verified for the device
+its session talks to unless the session recorded a different key.
 
 Safety numbers (v2) are computed from the pinned `IKed` and the two user ids,
 never from the directory; when the directory serves a different key for the
@@ -394,7 +407,8 @@ Reactions travel end to end: a message of inner kind `reaction` whose body is
 compact JSON `{"v":1,"target":<message id>,"emoji":<1-8 code points>,"op":"add"|"remove"}`.
 A reaction applies only to a target in the same conversation, the latest
 reaction of each reactor wins by conversation order, and reaction messages
-never render on their own.
+never render on their own. The relay is not a reactor: the deprecated
+`message.reaction` realtime event is accepted and ignored.
 
 ### Local persistence (informative)
 

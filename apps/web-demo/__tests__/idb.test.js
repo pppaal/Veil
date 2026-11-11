@@ -151,6 +151,87 @@ describe('clearAllExcept', () => {
   });
 });
 
+// IDBFactory double for one store whose readwrite transactions apply their
+// writes when they commit, after the requests made in them have settled,
+// and none of them when aborted.
+function rowIndexedDb(initial) {
+  const rows = new Map(Object.entries(initial));
+  const transactions = [];
+  const db = {
+    close: vi.fn(),
+    transaction(storeName, mode) {
+      const writes = [];
+      let pending = 0;
+      let aborted = false;
+      const transaction = {
+        storeName,
+        mode,
+        abort() {
+          aborted = true;
+          transaction.error = new DOMException('aborted', 'AbortError');
+        },
+        objectStore: () => ({
+          get(key) {
+            const request = {};
+            pending += 1;
+            queueMicrotask(() => {
+              request.result = rows.get(key);
+              request.onsuccess();
+              pending -= 1;
+              if (pending === 0) settle();
+            });
+            return request;
+          },
+          put(row) {
+            writes.push(row);
+          },
+        }),
+      };
+      const settle = () => {
+        if (aborted) return transaction.onabort();
+        for (const row of writes) rows.set(row.id, row);
+        transaction.oncomplete();
+      };
+      transactions.push(transaction);
+      return transaction;
+    },
+  };
+  const factory = {
+    open: vi.fn(() => {
+      const request = {};
+      queueMicrotask(() => {
+        request.result = db;
+        request.onsuccess();
+      });
+      return request;
+    }),
+  };
+  return { factory, rows, transactions };
+}
+
+describe('modify', () => {
+  it('reads, transforms and writes a row in one readwrite transaction', async () => {
+    const { factory, rows, transactions } = rowIndexedDb({ me: { id: 'me', value: { a: 1, b: 1 } } });
+    const idb = createIdb(factory);
+
+    const written = await idb.modify('session', 'me', (row) => ({ ...row, value: { ...row.value, b: 2 } }));
+
+    expect(written).toEqual({ id: 'me', value: { a: 1, b: 2 } });
+    expect(rows.get('me')).toEqual(written);
+    expect(transactions.map(({ storeName, mode }) => [storeName, mode])).toEqual([['session', 'readwrite']]);
+  });
+
+  it('writes nothing when the transform returns null or throws', async () => {
+    const { factory, rows } = rowIndexedDb({});
+    const idb = createIdb(factory);
+
+    expect(await idb.modify('session', 'me', (row) => (row === null ? null : { id: 'me' }))).toBeNull();
+    const failure = new Error('cannot merge');
+    await expect(idb.modify('session', 'me', () => { throw failure; })).rejects.toBe(failure);
+    expect(rows.size).toBe(0);
+  });
+});
+
 // A version 2 database as the pre-hardening app.js left it, behind an
 // IDBFactory double that runs the upgrade (stores, cursors, update) and opens
 // once the upgrade's cursor walks have finished.
@@ -297,7 +378,7 @@ describe('upgrade from version 2', () => {
       nextRetryAt: 5,
     }]);
     const [conversation] = await idb.all('conversations');
-    expect(conversation.members).toEqual([{ userId: 'u-1', handle: 'alice', displayName: 'Alice' }]);
+    expect(conversation.members).toEqual([{ userId: 'u-1', handle: 'alice' }]);
     expect(conversation).not.toHaveProperty('_unread');
     expect(await idb.all('kakao-archive-meta'))
       .toEqual([{ id: 'kakao-1', title: 'Family', importedAt: '2026-10-01', messageCount: 1 }]);

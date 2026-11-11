@@ -3,7 +3,15 @@
 //   conversations      conversation summaries (persist.serializeConversationForCache)
 //   messages           envelopes only (persist.messageCacheRecord), index byConv
 //   outbound           encrypted sends awaiting retry (persist.outboundQueueEntry)
-//   identity-pins      { userId, peerKey, firstSeenAt }
+//   crypto-sessions    sealed ratchet records (src/crypto/session-repo.js)
+//   one-time-prekeys   one-time prekey private keys (src/crypto/prekeys.js)
+//   message-contents   decrypted contents, sealed per conversation, indexes
+//                      byConversation and byExpiry (src/platform/content-store.js)
+//   content-keys       the per-conversation keys those are sealed under
+//   identity-pins-v2   pinned Ed25519 identity keys per (user, device), index
+//                      byUser (src/crypto/pins.js)
+//   identity-pins      X25519 keys pinned before protocol v2, kept only to
+//                      read that era's history (src/crypto/legacy-v1dev.js)
 //   kakao-archives     imported KakaoTalk archives with their messages
 //   kakao-archive-meta archive rows for the sidebar, without the messages
 
@@ -17,8 +25,9 @@ import {
 export const IDB_NAME = 'veil-demo';
 // v3 adds the pin and archive-meta stores and scrubs what v2 let reach disk:
 // draft text, plaintext copies in the outbound queue, and decrypted fields
-// (attachment keys included) spread into cached messages.
-export const IDB_VERSION = 3;
+// (attachment keys included) spread into cached messages. v4 adds the
+// protocol-v2 stores.
+export const IDB_VERSION = 4;
 
 // onBlocked: a tab on an older build holds the database open, and this
 // upgrade waits until that tab closes. onDeletedElsewhere: another tab wiped
@@ -72,7 +81,36 @@ export function createIdb(factory, { onBlocked, onDeletedElsewhere } = {}) {
 
   return {
     get: async (store, key) => (await run(store, 'readonly', (s) => s.get(key))) ?? null,
+    allByIndex: async (store, index, value) =>
+      (await run(store, 'readonly', (s) => s.index(index).getAll(value))) ?? [],
+    allByIndexUpTo: async (store, index, upper) =>
+      (await run(store, 'readonly', (s) => s.index(index).getAll(IDBKeyRange.upperBound(upper)))) ?? [],
     put: async (store, value) => { await run(store, 'readwrite', (s) => s.put(value)); },
+    // Reads, transforms and writes one row in a single transaction, so a
+    // writer in another tab lands wholly before or after it and neither
+    // reverts the other's fields. transform(row | null) returns the row to
+    // write, or null to leave the store as it is; resolves to that result.
+    async modify(storeName, key, transform) {
+      const db = await connect();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        let next = null;
+        let failure = null;
+        const read = store.get(key);
+        read.onsuccess = () => {
+          try {
+            next = transform(read.result ?? null);
+            if (next !== null) store.put(next);
+          } catch (error) {
+            failure = error;
+            transaction.abort();
+          }
+        };
+        transaction.oncomplete = () => resolve(next);
+        transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('transaction aborted'));
+      });
+    },
     delete: async (store, key) => { await run(store, 'readwrite', (s) => s.delete(key)); },
     all: async (store) => (await run(store, 'readonly', (s) => s.getAll())) ?? [],
     // Empties every store but the kept ones, in one transaction. A completed
@@ -111,6 +149,13 @@ function upgrade(db, transaction, oldVersion) {
   ensureStore(db, 'kakao-archives', 'id');
   ensureStore(db, 'kakao-archive-meta', 'id');
   ensureStore(db, 'identity-pins', 'userId');
+  ensureStore(db, 'crypto-sessions', 'conversationId');
+  ensureStore(db, 'one-time-prekeys', 'keyId');
+  ensureStore(db, 'content-keys', 'conversationId');
+  ensureStore(db, 'message-contents', 'key', {
+    indexes: [['byConversation', 'conversationId'], ['byExpiry', 'expiresAt']],
+  });
+  ensureStore(db, 'identity-pins-v2', 'id', { indexes: [['byUser', 'userId']] });
   if (oldVersion > 0 && oldVersion < 3) scrubVersion2(db, transaction);
 }
 
@@ -123,8 +168,10 @@ function scrubVersion2(db, transaction) {
   forEachRecord(transaction.objectStore('kakao-archives'), (archive) => meta.put(kakaoArchiveMeta(archive)));
 }
 
-function ensureStore(db, name, keyPath) {
-  if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath });
+function ensureStore(db, name, keyPath, { indexes = [] } = {}) {
+  if (db.objectStoreNames.contains(name)) return;
+  const store = db.createObjectStore(name, { keyPath });
+  for (const [indexName, indexKeyPath] of indexes) store.createIndex(indexName, indexKeyPath, { unique: false });
 }
 
 function rewriteEach(store, transform) {

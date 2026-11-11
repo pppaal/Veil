@@ -837,6 +837,54 @@ a { color: var(--accent); text-decoration: none; }
 }
 .key-change-text { flex: 1; min-width: 0; }
 
+/* Out of the grid: fixed above the composer while the identity is legacy. */
+.legacy-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: var(--bg-elev-2);
+  border-radius: var(--r);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.msg-legacy-badge {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.safety-number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+  margin: 12px 0 8px;
+  word-spacing: 0.4em;
+}
+.safety-code {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px;
+  resize: none;
+  margin-bottom: 8px;
+}
+
 .msg-file-chip-ext { font-weight: 600; text-transform: uppercase; margin-right: 6px; }
 
 .reply-banner {

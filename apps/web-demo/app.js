@@ -1,8 +1,11 @@
 // VEIL web demo client.
 // Vanilla-JS chat shell that talks to the NestJS API at /v1 and the realtime
-// gateway at /v1/realtime. Messages are end-to-end encrypted with X25519 ECDH
-// + HKDF-SHA256 + AES-256-GCM ('veil-envelope-v1-dev', src/crypto/dev-envelope.js).
-// The server only ever sees ciphertext.
+// gateway at /v1/realtime. Messages are end-to-end encrypted with protocol v2
+// ('veil-envelope-v2', docs/crypto-envelope-spec.md): X3DH with signed and
+// one-time prekeys, then a Double Ratchet, byte-compatible with the mobile
+// client (src/crypto/). Each ciphertext is decrypted once into an encrypted
+// local store, which is all rendering reads. The server only ever sees
+// ciphertext.
 
 import { initI18n, t, setLang, activeLang } from './i18n/i18n.js';
 import {
@@ -12,12 +15,25 @@ import {
   formatBytes as fmtBytes,
 } from './lib/format.js';
 import { parseKakaoExport } from './lib/kakao-import.js';
-import { decodeBase64Url, encodeBase64Url } from './src/core/base64url.js';
-import { generateIdentity, signChallenge } from './src/crypto/identity.js';
-import { createDevEnvelopeCrypto, DEV_ENVELOPE_VERSION, PeerKeyChangedError } from './src/crypto/dev-envelope.js';
-import { createPeerKeyDirectory, createPinStore } from './src/crypto/pins.js';
-import { ingestMessage, isTextKind, previewLabel } from './src/domain/ingest.js';
-import { encodePayload, KIND_LABELS } from './src/domain/payload.js';
+import { decodeBase64Url } from './src/core/base64url.js';
+import { isPast } from './src/core/expiry.js';
+import { encryptAttachment } from './src/crypto/attachment-v2.js';
+import { concatBytes } from './src/crypto/bytes.js';
+import { ENVELOPE_VERSION_V2 } from './src/crypto/frame.js';
+import { generateIdentity, isLegacyIdentity, publishedKeys, signChallenge } from './src/crypto/identity.js';
+import { createKeySource, sha256 } from './src/crypto/keys.js';
+import { createLegacyV1DevReader } from './src/crypto/legacy-v1dev.js';
+import { createLocks } from './src/crypto/locks.js';
+import { createIdentityTrust, createPinStore, PinVerdict, ReverificationRequiredError } from './src/crypto/pins.js';
+import { claimedOneTimePrekey, createLocalKeyring, maintainPrekeys, PREKEY_LOCK } from './src/crypto/prekeys.js';
+import { formatSafetyNumber, matchesPeerCode, safetyNumber, verificationCode } from './src/crypto/safety-number.js';
+import { createSessionCipher } from './src/crypto/session-cipher.js';
+import { createSessionRepo } from './src/crypto/session-repo.js';
+import { mediaContent, textContent } from './src/domain/content.js';
+import { ingestMessage, isGone, isShown, isTextKind, previewLabel } from './src/domain/ingest.js';
+import { createAttachmentFetcher } from './src/domain/media.js';
+import { KIND_LABELS } from './src/domain/payload.js';
+import { reactionsByTarget } from './src/domain/reactions.js';
 import { fileExtension, sanitizeFilename } from './src/domain/sanitize.js';
 import { storeTransferredIdentity, TRANSFER_POLL_MS, watchOldDeviceTransfer } from './src/features/device-transfer.js';
 import {
@@ -26,16 +42,24 @@ import {
   readNotificationLevel,
   writeNotificationLevel,
 } from './src/features/notifications.js';
+import {
+  createSecureMessaging,
+  LegacyIdentityError,
+  PeerKeyChangedError,
+  PeerUnavailableError,
+} from './src/features/secure-messaging.js';
+import { createSender } from './src/features/sender.js';
 import { AuthError, createApiClient, isAuthRejection } from './src/platform/api-client.js';
+import { createContentStore } from './src/platform/content-store.js';
 import { createIdb } from './src/platform/idb.js';
+import { createIdbKv } from './src/platform/kv.js';
 import {
   kakaoArchiveMeta,
   messageCacheRecord,
-  outboundQueueEntry,
   serializeConversationForCache,
   serializeMessageForCache,
 } from './src/platform/persist.js';
-import { createSessionStore } from './src/platform/session-store.js';
+import { createIdbSessionRepo, createSessionStore } from './src/platform/session-store.js';
 import { wipeEverything, wipeInPlace } from './src/platform/wipe.js';
 import { createDialogs } from './src/ui/dialogs.js';
 import { toFragment } from './src/ui/markdown-dom.js';
@@ -109,11 +133,9 @@ const avatarFor = (handle, size = 'md') => {
     [initial],
   );
 };
-// "@handle" with the display name under it, for member and contact rows.
-const handleLines = (handle, displayName, handleStyle) => [
-  el('div', handleStyle ? { style: handleStyle } : {}, ['@' + (handle || '?')]),
-  displayName ? el('div', { style: 'font-size:11px;opacity:0.6' }, [displayName]) : null,
-];
+// "@handle" for member and contact rows. Handles only: profile text is not
+// something the server keeps.
+const handleLine = (handle, handleStyle) => el('div', handleStyle ? { style: handleStyle } : {}, ['@' + (handle || '?')]);
 
 // ---------- toast ----------
 const toast = (msg, kind = '') => {
@@ -128,7 +150,7 @@ const toast = (msg, kind = '') => {
 
 // ---------- state ----------
 const state = {
-  me: null,                    // session record: { handle, userId, deviceId, edPrivKey, xPrivKey, edPubB64u, xPubB64u, accessToken, refreshToken }
+  me: null,                    // session record: { handle, userId, deviceId, identity keys (src/crypto/identity.js), accessToken, refreshToken }
   conversations: [],           // ConversationSummary[] (lastMessage ingested)
   conversationsLoaded: false,  // false until first /conversations response lands
   messagesByConv: new Map(),   // convId -> message views (src/domain/ingest.js) + receipts
@@ -163,13 +185,7 @@ identityChannel?.addEventListener('message', (ev) => {
 });
 
 const sessionStore = createSessionStore({
-  repo: {
-    async get() {
-      const row = await idb.get('session', 'me');
-      return row?.value ?? migrateLegacySession();
-    },
-    put: (value) => idb.put('session', { id: 'me', value }),
-  },
+  repo: createIdbSessionRepo(idb, { readLegacy: migrateLegacySession }),
   subtle: crypto.subtle,
 });
 
@@ -224,66 +240,140 @@ async function onSessionRejected() {
   await endSession({ rejected: true });
 }
 
-const peerDirectory = createPeerKeyDirectory({
-  fetchPeerKey,
-  pins: createPinStore({
-    get: (userId) => idb.get('identity-pins', userId),
-    put: (pin) => identityDb.put('identity-pins', pin),
-  }),
-  onKeyChange: () => {
+// Protocol v2 (src/crypto/): every crypto store is IndexedDB, written only
+// while an identity is stored, and every private key in them is a
+// non-extractable CryptoKey.
+const locks = createLocks(navigator.locks);
+const keySource = createKeySource(crypto);
+const kv = (store, options) => createIdbKv({ ...idb, put: identityDb.put, delete: identityDb.delete }, store, options);
+const oneTimePrekeyKv = kv('one-time-prekeys');
+const PREKEY_MAINTENANCE_MS = 6 * 60 * 60 * 1000;
+
+const trust = createIdentityTrust({
+  pins: createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks }),
+  onChange: () => {
     renderSidebar();
     renderActivePanel();
   },
 });
 
-const envelopeCrypto = createDevEnvelopeCrypto({
-  crypto,
-  directory: peerDirectory,
-  getSelf: () => state.me,
-  getPeer: peerOf,
+const cipher = createSessionCipher({
+  subtle: crypto.subtle,
+  keys: keySource,
+  repo: createSessionRepo({
+    subtle: crypto.subtle,
+    random: keySource.randomBytes,
+    getKek: async () => sessionStore.current().sessionKek,
+    kv: kv('crypto-sessions'),
+    clock: Date.now,
+  }),
+  locks,
+  keyring: createLocalKeyring({ loadIdentity: () => sessionStore.reload(), opkKv: oneTimePrekeyKv, clock: Date.now }),
+  clock: Date.now,
+  // A session is installed by an authenticated handshake, and a frame is
+  // sealed or opened, only for an identity the pins admit for that peer
+  // and device.
+  verifyIdentity:({ conversationId, remoteDeviceId, identityKey }) => {
+    const peer = peerOf(conversationId);
+    return peer ? trust.admit(peer.userId, remoteDeviceId, identityKey) : false;
+  },
 });
 
-async function fetchPeerKey(userId, handle) {
-  const { bundle } = await authedApi(`/users/${encodeURIComponent(handle)}/key-bundle`);
-  if (bundle?.userId !== userId) throw new Error('key bundle belongs to another user');
-  if (decodeBase64Url(bundle.identityPublicKey).length !== 32) throw new Error('malformed peer key');
-  return bundle.identityPublicKey;
+const contentStore = createContentStore({
+  subtle: crypto.subtle,
+  random: keySource.randomBytes,
+  records: kv('message-contents', { index: 'byConversation', expiryIndex: 'byExpiry' }),
+  keys: kv('content-keys'),
+  locks,
+});
+
+const secure = createSecureMessaging({
+  cipher,
+  trust,
+  lookupPeer,
+  contentStore,
+  // History an identity from before protocol v2 wrote, read with the peer
+  // key that era pinned.
+  legacyReader: createLegacyV1DevReader({
+    subtle: crypto.subtle,
+    getSelf: () => state.me,
+    peerKey: async (conversationId) => {
+      const peer = peerOf(conversationId);
+      return peer ? (await idb.get('identity-pins', peer.userId))?.peerKey ?? null : null;
+    },
+  }),
+  getSelf: () => state.me,
+  getPeer: peerOf,
+  clock: Date.now,
+});
+
+const sender = createSender({ secure, authedApi, queue: { put: (entry) => identityDb.put('outbound', entry) } });
+
+// The peer's active device from the authenticated directory, with a
+// one-time prekey claimed for the handshake.
+async function lookupPeer(peer) {
+  const { user, devices } = await authedApi(`/keys/${encodeURIComponent(peer.handle)}?claim=active`);
+  if (user?.id !== peer.userId) throw new Error('key directory answered for another user');
+  const device = devices?.find((candidate) => candidate.deviceId === user.activeDeviceId);
+  if (!device) throw new Error('peer has no active device');
+  return {
+    deviceId: device.deviceId,
+    identityKey: decodeBase64Url(device.identityPublicKey),
+    signedPrekeyBundle: device.signedPrekeyBundle,
+    oneTimePrekey: claimedOneTimePrekey(device.oneTimePrekey),
+  };
+}
+
+// Keeps the directory able to start sessions with us (src/crypto/prekeys.js),
+// one tab at a time, on the identity as stored now.
+let prekeyTimer = null;
+function startPrekeyMaintenance() {
+  const run = () => locks.run(PREKEY_LOCK, async () => {
+    if (isLegacyIdentity(await sessionStore.reload())) return;
+    await maintainPrekeys({
+      subtle: crypto.subtle,
+      keys: keySource,
+      authedApi,
+      identity: { current: () => sessionStore.current(), update: (fields) => sessionStore.update(fields) },
+      opkKv: oneTimePrekeyKv,
+      clock: Date.now,
+    });
+  }).catch((error) => console.warn('prekey maintenance failed', error));
+  run();
+  prekeyTimer = setInterval(run, PREKEY_MAINTENANCE_MS);
 }
 
 // The other member of a direct conversation. Without our own userId the
 // "other" member could be ourselves, and an envelope sealed to our own key
-// reaches nobody, so there is no peer until a login has named us.
+// reaches nobody, so there is no peer until a login has named us. A group
+// has no single peer: sealing to, or pinning, any one member would be wrong.
 function peerOf(conversationId) {
   const selfId = state.me?.userId;
   if (!selfId) return null;
   const conv = state.conversations.find((c) => c.id === conversationId);
-  return conv?.members?.find((m) => m.userId !== selfId) ?? null;
+  if (conv?.type !== 'direct') return null;
+  return conv.members?.find((m) => m.userId !== selfId) ?? null;
 }
 
 // ---------- message ingest ----------
-const mediaDeps = { subtle: crypto.subtle, fetchAttachment };
+const mediaDeps = {
+  subtle: crypto.subtle,
+  fetchAttachment: createAttachmentFetcher({ authedApi, fetchImpl: (url) => fetch(url) }),
+};
 
-async function fetchAttachment(attachmentId) {
-  const { ticket } = await authedApi(`/attachments/${attachmentId}/download-ticket`);
-  const res = await fetch(ticket.downloadUrl);
-  if (!res.ok) throw new Error('download failed: ' + res.status);
-  return res.arrayBuffer();
-}
-
-// Receipts and reactions change after delivery and are never cached, so they
-// ride on the in-memory message next to its view.
-const RECEIPT_FIELDS = ['clientMessageId', 'deliveredAt', 'readAt', 'reactions', 'editCount'];
+// Receipts change after delivery and are never cached, so they ride on the
+// in-memory message next to its view.
+const RECEIPT_FIELDS = ['clientMessageId', 'deliveredAt', 'readAt', 'editCount'];
 // Blob URLs and load failures belong to a media handle; a reused view keeps them.
 const MEDIA_STATE_FIELDS = ['_imageUrl', '_voiceUrl', '_mediaFailed'];
 
 // Every path that turns a server envelope into a displayed message comes
-// through here. `payload` is passed only for our own sends, whose decrypted
-// payload we already hold.
-async function ingest(raw, { previous = null, payload } = {}) {
-  const decrypt = payload === undefined
-    ? (envelope) => envelopeCrypto.decrypt(envelope)
-    : async () => ({ payload });
-  const view = await ingestMessage(raw, { decrypt, media: mediaDeps, previous });
+// through here, and content comes from the decrypt-once store
+// (src/features/secure-messaging.js). `content` is passed only for our own
+// sends, whose content we already hold.
+async function ingest(raw, { previous = null, content } = {}) {
+  const open = content === undefined ? (envelope) => secure.open(envelope) : async () => ({ content });
+  const view = await ingestMessage(raw, { open, retire: (envelope) => secure.retire(envelope), media: mediaDeps, previous });
   if (previous && view.media !== null && view.media === previous.media) {
     for (const field of MEDIA_STATE_FIELDS) if (previous[field] !== undefined) view[field] = previous[field];
   }
@@ -352,6 +442,14 @@ function toastSendFailure(label, error) {
     toast(t('keyChange.sendBlocked'), 'error');
     return;
   }
+  if (error instanceof PeerUnavailableError) {
+    toast(t(error.reason === 'not-upgraded' ? 'peer.notUpgraded' : 'peer.unavailable'), 'error');
+    return;
+  }
+  if (error instanceof LegacyIdentityError) {
+    toast(t('legacy.composerFrozen'), 'error');
+    return;
+  }
   toast(`${label}: ${error?.message || 'unknown'}`, 'error');
 }
 
@@ -410,9 +508,6 @@ function connectSocket() {
   s.on('message.read', ({ messageId, readAt }) =>
     patchMessage(messageId, { readAt }),
   );
-  s.on('message.reaction', ({ messageId, userId, emoji, action }) => {
-    onReactionEvent(messageId, userId, emoji, action);
-  });
   s.on('message.edited', (msg) => onMessageEdited(msg));
   s.on('message.deleted', ({ messageId, deletedAt }) => markDeleted(messageId, deletedAt));
   s.on('presence.update', ({ userId, status }) => {
@@ -471,6 +566,10 @@ async function onMessageNew(raw) {
   const list = state.messagesByConv.get(convId) || [];
   // If we already have this message id, ignore.
   if (list.some((m) => m.id === raw.id)) return;
+  // The first message of a conversation can arrive before the conversation
+  // list names its members, and a session-starting frame is only accepted
+  // for the identity pinned for the member who sent it.
+  if (!state.conversations.some((c) => c.id === convId)) await loadConversations();
   // Server echo of our own send replaces the optimistic entry and reuses
   // its already-decoded content.
   const pendingIndex = raw.clientMessageId
@@ -489,8 +588,9 @@ async function onMessageNew(raw) {
   state.messagesByConv.set(convId, list);
   bumpConversation(convId, view);
   // Phase AF: surface unread count in tab title + OS notification when
-  // the tab is hidden. We only count peer messages, not our own echo.
-  if (view.senderDeviceId !== state.me?.deviceId) {
+  // the tab is hidden. We only count peer messages, not our own echo, and
+  // a reaction or an expired message is not one to be told about.
+  if (view.senderDeviceId !== state.me?.deviceId && isShown(view)) {
     bumpUnread();
     maybeShowNotification(view);
   }
@@ -522,9 +622,9 @@ async function markDeleted(messageId, deletedAt) {
 
 // Re-ingests a changed envelope (edit, tombstone) and swaps the result in
 // wherever the old view is shown.
-async function reingestInPlace(messageId, raw, { payload, editCount } = {}) {
+async function reingestInPlace(messageId, raw, { content, editCount } = {}) {
   const previous = locateMessage(messageId)?.message ?? null;
-  const view = await ingest(raw, { previous, payload });
+  const view = await ingest(raw, { previous, content });
   if (editCount !== undefined) view.editCount = editCount;
   const current = locateMessage(messageId);
   if (!current) return;
@@ -587,6 +687,9 @@ async function showAuth({ rejected = false } = {}) {
 function showApp() {
   $('auth-screen').classList.add('hidden');
   $('app').classList.remove('hidden');
+  // An identity from before protocol v2 can read what it has but can never
+  // send again (src/crypto/identity.js): offer to replace it.
+  $('legacy-banner').classList.toggle('hidden', !isLegacyIdentity(state.me));
   renderMe();
   renderSidebar();
   renderActivePanel();
@@ -601,6 +704,17 @@ function renderMe() {
       el('div', { style: 'font-size:11px;color:var(--fg-faint)' }, ['기기 ' + state.me.deviceId.slice(0, 8)]),
     ]),
   );
+}
+
+// The message a conversation row previews: its latest one a panel shows.
+// The relay's last message may be gone (expired, or deleted from this
+// device's history) or a reaction, which is no bubble of its own; then the
+// loaded history stands in, and a reaction's label only when nothing does.
+function previewMessageOf(conv, now) {
+  const last = conv.lastMessage;
+  if (last && isShown(last, now)) return last;
+  const loaded = (state.messagesByConv.get(conv.id) || []).findLast((m) => isShown(m, now));
+  return loaded ?? (last && !isGone(last, now) ? last : null);
 }
 
 function renderSidebar() {
@@ -626,15 +740,16 @@ function renderSidebar() {
     return;
   }
 
+  const now = Date.now();
   list.replaceChildren(
     ...filtered.map((c) => {
       const peer = (c.members || []).find((m) => m.handle !== state.me.handle) ?? c.members?.[0];
       const isActive = state.activeConv === c.id || state.secondaryConv === c.id;
-      const last = c.lastMessage;
-      const preview = last ? previewLabel(last) : '아직 메시지 없음';
-      const time = last ? formatRelTime(last.serverReceivedAt) : '';
+      const last = previewMessageOf(c, now);
+      const preview = last ? previewLabel(last, now) : '아직 메시지 없음';
+      const time = last?.serverReceivedAt ? formatRelTime(last.serverReceivedAt) : '';
       const peerOnline = peer && state.online.has(peer.userId);
-      const keyChanged = peer && peerDirectory.pendingChange(peer.userId);
+      const keyChanged = peer && trust.pendingChange(peer.userId);
       const av = avatarFor(peer?.handle ?? '?', 'md');
       av.appendChild(el('span', { class: 'presence-dot' }));
       if (peerOnline) av.classList.add('online');
@@ -888,18 +1003,28 @@ function renderActivePanel() {
   panels.replaceChildren(...slots.map(renderOnePanel).filter(Boolean));
 }
 
-// Shown while a peer's identity key differs from the pinned one. Sending
-// stays frozen until the user explicitly accepts the new key.
-function renderKeyChangeBanner(peer) {
+// Shown while a peer presents an identity key the pins do not admit.
+// Sending stays frozen until the user accepts the new key; a contact they
+// had verified has to be verified again, by comparing the new safety number,
+// and so does a device of theirs that was never verified.
+function renderKeyChangeBanner(convId, peer) {
+  const change = trust.pendingChange(peer.userId);
+  let text = change?.verified ? 'keyChange.bannerVerified' : 'keyChange.banner';
+  if (change?.verdict === PinVerdict.UNVERIFIED_DEVICE) text = 'keyChange.bannerUnverifiedDevice';
   return el('div', { class: 'key-change-banner', role: 'alert' }, [
-    el('div', { class: 'key-change-text' }, [t('keyChange.banner', { handle: peer.handle })]),
-    el('button', { class: 'btn btn-secondary btn-compact', onclick: () => acceptPeerKeyChange(peer) }, [
-      t('keyChange.review'),
-    ]),
+    el('div', { class: 'key-change-text' }, [t(text, { handle: peer.handle })]),
+    el('button', {
+      class: 'btn btn-secondary btn-compact',
+      onclick: () => (change?.verified ? openSafetyNumberDialog(convId, peer) : acceptPeerKeyChange(convId, peer)),
+    }, [t(change?.verified ? 'safety.compare' : 'keyChange.review')]),
   ]);
 }
 
-async function acceptPeerKeyChange(peer) {
+// Accepts the change pending when the banner was clicked, never one that
+// replaced it while the confirmation was open.
+async function acceptPeerKeyChange(convId, peer) {
+  const reviewed = trust.pendingChange(peer.userId);
+  if (!reviewed) return;
   const ok = await uiConfirm({
     title: t('keyChange.confirmTitle', { handle: peer.handle }),
     body: t('keyChange.confirmBody', { handle: peer.handle }),
@@ -908,14 +1033,25 @@ async function acceptPeerKeyChange(peer) {
   });
   if (!ok) return;
   try {
-    await peerDirectory.accept(peer.userId);
+    if (!(await trust.accept(peer.userId, reviewed))) {
+      if (trust.pendingChange(peer.userId)) toast(t('keyChange.superseded', { handle: peer.handle }), 'error');
+      return;
+    }
   } catch (e) {
+    if (e instanceof ReverificationRequiredError) {
+      await openSafetyNumberDialog(convId, peer);
+      return;
+    }
     toast('키 수락 실패: ' + e.message, 'error');
     return;
   }
-  envelopeCrypto.forgetPeer(peer.userId);
-  // Messages that arrived under the new key can be read now.
-  const affected = state.conversations.filter((c) => peerOf(c.id)?.userId === peer.userId);
+  await reopenLockedMessages(peer.userId);
+}
+
+// Handshakes refused while a key change was pending are retried once it is
+// accepted; nothing about them was stored.
+async function reopenLockedMessages(userId) {
+  const affected = state.conversations.filter((c) => peerOf(c.id)?.userId === userId);
   for (const conv of affected) {
     const list = state.messagesByConv.get(conv.id) || [];
     const next = await Promise.all(list.map((m) => (m.kind === 'locked' ? ingest(m, { previous: m }) : m)));
@@ -926,12 +1062,142 @@ async function acceptPeerKeyChange(peer) {
   renderActivePanel();
 }
 
+// Safety numbers v2 (src/crypto/safety-number.js), computed from the key
+// the conversation uses (src/features/secure-messaging.js safetyKey) and
+// never sent anywhere. The user compares the number in person or over a
+// call, or pastes the verification code the peer's screen shows; what they
+// mark verified is exactly the key the dialog showed.
+async function openSafetyNumberDialog(convId, peer) {
+  // A safety number binds our user id, which a transferred device learns
+  // only at its first sign-in.
+  if (!state.me.userId) {
+    toast(t('safety.notSignedIn'), 'error');
+    return;
+  }
+  const remoteKey = await secure.safetyKey(convId);
+  if (!remoteKey) {
+    toast(t('safety.noKey', { handle: peer.handle }), 'error');
+    return;
+  }
+  const local = { identityKey: state.me.ik.publicKey, userId: state.me.userId };
+  const remote = { identityKey: remoteKey.identityKey, userId: peer.userId };
+  let pendingNote = remoteKey.pendingVerdict ? 'safety.pendingKey' : null;
+  if (remoteKey.pendingVerdict === PinVerdict.UNVERIFIED_DEVICE) pendingNote = 'safety.unverifiedDevice';
+  const number = formatSafetyNumber(await safetyNumber(crypto.subtle, local, remote));
+  const codeInput = el('input', {
+    id: 'safety-their-code',
+    type: 'text',
+    placeholder: t('safety.pastePlaceholder'),
+    autocomplete: 'off',
+    spellcheck: 'false',
+  });
+  const result = el('div', { class: 'dialog-error', role: 'status', 'aria-live': 'polite' });
+  let back = null;
+  const close = () => {
+    closeDialog('safety-dialog');
+    back.remove();
+  };
+  const markVerified = async () => {
+    try {
+      await trust.markVerified(peer.userId, remoteKey.deviceId, remoteKey.identityKey);
+    } catch (e) {
+      result.textContent = t('safety.verifyFailed', { error: e.message });
+      return;
+    }
+    toast(t('safety.verified', { handle: peer.handle }), 'good');
+    close();
+    await reopenLockedMessages(peer.userId);
+  };
+  const compare = async () => {
+    if (matchesPeerCode(local, remote, codeInput.value.trim())) await markVerified();
+    else result.textContent = t('safety.mismatch');
+  };
+  back = el('div', { class: 'dialog-backdrop hidden', id: 'safety-dialog', role: 'presentation' }, [
+    el('div', {
+      class: 'dialog',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': 'safety-title',
+      style: 'width:420px;max-width:92vw',
+    }, [
+      el('div', { class: 'dialog-title', id: 'safety-title' }, [t('safety.title', { handle: peer.handle })]),
+      pendingNote ? el('div', { class: 'key-change-text', role: 'alert' }, [t(pendingNote, { handle: peer.handle })]) : null,
+      remoteKey.verified ? el('div', { class: 'dialog-sub' }, [t('safety.alreadyVerified')]) : null,
+      el('div', { class: 'safety-number', id: 'safety-number' }, [number]),
+      el('div', { class: 'dialog-sub' }, [t('safety.explain', { handle: peer.handle })]),
+      el('div', { class: 'field-label' }, [t('safety.yourCode')]),
+      el('textarea', { readonly: 'readonly', rows: '3', class: 'safety-code' }, [verificationCode(local, remote)]),
+      el('div', { class: 'field-label' }, [t('safety.theirCode')]),
+      codeInput,
+      result,
+      el('div', { class: 'dialog-actions' }, [
+        el('button', { class: 'btn btn-ghost', onclick: close }, [t('common.cancel')]),
+        el('button', { class: 'btn btn-secondary', onclick: compare }, [t('safety.compareCode')]),
+        el('button', { class: 'btn btn-primary', onclick: markVerified }, [t('safety.markVerified')]),
+      ]),
+    ]),
+  ]);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  back.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    } else {
+      trapFocus('safety-dialog', e);
+    }
+  });
+  // One safety dialog at a time: a second click while the first was being
+  // prepared opens nothing.
+  if ($('safety-dialog')) return;
+  document.body.appendChild(back);
+  openDialog('safety-dialog', 'safety-their-code');
+}
+
+// Deletes this device's copy of a conversation's history: its content key is
+// destroyed (src/platform/content-store.js), which no copy of the stored
+// records survives, and the cached envelopes go with it.
+async function deleteLocalHistory(convId) {
+  const ok = await uiConfirm({
+    title: t('history.delete'),
+    body: t('history.deleteBody'),
+    okLabel: t('history.deleteConfirm'),
+    destructive: true,
+  });
+  if (!ok) return;
+  const conv = state.conversations.find((c) => c.id === convId);
+  const known = [...(state.messagesByConv.get(convId) || []), conv?.lastMessage]
+    .filter((m) => m?.id && !m.id.startsWith('__pending__'));
+  const throughOrder = Math.max(0, ...known.map((m) => m.conversationOrder ?? 0));
+  try {
+    await secure.forgetConversation(convId, throughOrder);
+    for (const message of known) await identityDb.delete('messages', messageCacheRecord(message)._key);
+  } catch (e) {
+    toast(t('history.deleteFailed', { error: e.message }), 'error');
+    return;
+  }
+  setConversationMessages(convId, []);
+  if (conv) conv.lastMessage = null;
+  renderSidebar();
+  renderActivePanel();
+}
+
 function renderOnePanel(convId) {
   const conv = state.conversations.find((c) => c.id === convId);
   if (!conv) return null;
   const peer = (conv.members || []).find((m) => m.handle !== state.me.handle) ?? conv.members?.[0];
-  const msgs = state.messagesByConv.get(conv.id) || [];
-  const keyChanged = Boolean(peer && peer.userId !== state.me.userId && peerDirectory.pendingChange(peer.userId));
+  const allMsgs = state.messagesByConv.get(conv.id) || [];
+  // Reactions are control messages: they change what their targets show
+  // and are never bubbles of their own. Expired messages and history this
+  // device deleted are not shown.
+  const now = Date.now();
+  const reactionsOf = reactionsByTarget(allMsgs.filter((m) => !isGone(m, now)));
+  const msgs = allMsgs.filter((m) => isShown(m, now));
+  // Sessions, pins and safety numbers exist only in direct conversations:
+  // the web demo cannot encrypt to a group, so it does not offer to send.
+  const directPeer = peerOf(conv.id);
+  const keyChanged = Boolean(directPeer && trust.pendingChange(directPeer.userId));
+  const legacyIdentity = isLegacyIdentity(state.me);
+  const frozen = keyChanged || legacyIdentity || !directPeer;
 
   // Build a deviceId->handle lookup. We only know our own deviceId here; others
   // collapse to the conversation peer for DMs.
@@ -986,14 +1252,17 @@ function renderOnePanel(convId) {
         const editedBadge = m.editedAt
           ? el('span', { class: 'msg-edited', style: 'opacity:0.55;font-size:11px;margin-left:6px' }, ['(수정됨)'])
           : null;
+        // Read from a retired format: say so on the bubble itself.
+        const legacyBadge = m.legacy
+          ? el('span', { class: 'msg-legacy-badge', title: t('legacy.badge') }, [t('legacy.badge')])
+          : null;
         const bubble = el('div', { class: cls.join(' ') }, [
           replyHead,
           el('span', { class: 'msg-text' }, [renderMessageBody(m)]),
           editedBadge,
+          legacyBadge,
         ]);
-        const reactionsRow = (m.reactions && m.reactions.length > 0)
-          ? renderReactionsRow(m, convId)
-          : null;
+        const reactionsRow = renderReactionsRow(m, reactionsOf.get(m.id));
         const wrap = el('div', { class: 'msg-row ' + (group.isMe ? 'me' : 'them') }, [
           group.isMe ? replyBtn : null,
           el('div', { class: 'msg-bubble-stack' }, [bubble, reactionsRow]),
@@ -1063,13 +1332,17 @@ function renderOnePanel(convId) {
     scrollPosByConv.set(convId, msgsNode.scrollTop);
   });
 
+  let placeholder = '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
+  if (!directPeer) placeholder = t('group.composerFrozen');
+  if (keyChanged) placeholder = t('keyChange.composerFrozen');
+  if (legacyIdentity) placeholder = t('legacy.composerFrozen');
   const textarea = el('textarea', {
-    placeholder: keyChanged ? t('keyChange.composerFrozen') : '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)',
+    placeholder,
     rows: '1',
     'aria-label': '메시지 입력',
     maxlength: String(MESSAGE_MAX_CHARS),
   });
-  textarea.disabled = keyChanged;
+  textarea.disabled = frozen;
   // Restore the in-memory draft for this conversation, if any.
   const cachedDraft = draftCache.get(convId);
   if (cachedDraft) textarea.value = cachedDraft.slice(0, MESSAGE_MAX_CHARS);
@@ -1092,7 +1365,7 @@ function renderOnePanel(convId) {
     },
     [el('span', { 'aria-hidden': 'true' }, ['🎤'])],
   );
-  voiceBtn.disabled = keyChanged;
+  voiceBtn.disabled = frozen;
   // Auto-grow + emit typing + keep the draft on every input.
   const autoGrow = () => {
     // maxlength is enforced by the browser, but a paste larger than the cap
@@ -1103,7 +1376,7 @@ function renderOnePanel(convId) {
     }
     textarea.style.height = 'auto';
     textarea.style.height = Math.min(textarea.scrollHeight, 140) + 'px';
-    sendBtn.disabled = keyChanged || textarea.value.trim().length === 0;
+    sendBtn.disabled = frozen || textarea.value.trim().length === 0;
     if (textarea.value.trim().length > 0) emitTypingStart(convId);
     else emitTypingStop(convId);
     saveDraft(convId, textarea.value);
@@ -1178,8 +1451,32 @@ function renderOnePanel(convId) {
         },
         ['🔍'],
       ),
+      directPeer && !legacyIdentity
+        ? el(
+          'button',
+          {
+            class: 'icon-btn',
+            'aria-label': t('safety.open'),
+            title: t('safety.open'),
+            onclick: () => openSafetyNumberDialog(convId, directPeer),
+            style: 'padding: 4px 8px; opacity: 0.7;',
+          },
+          ['🛡'],
+        )
+        : null,
+      el(
+        'button',
+        {
+          class: 'icon-btn',
+          'aria-label': t('history.delete'),
+          title: t('history.delete'),
+          onclick: () => deleteLocalHistory(convId),
+          style: 'padding: 4px 8px; opacity: 0.7;',
+        },
+        ['🗑'],
+      ),
     ]),
-    keyChanged ? renderKeyChangeBanner(peer) : null,
+    keyChanged ? renderKeyChangeBanner(convId, directPeer) : null,
     searchBar,
     msgsNode,
     el('div', { class: 'panel-input-wrap' }, [
@@ -1275,6 +1572,7 @@ async function hydrateFromCache() {
       list.sort((a, b) => a.conversationOrder - b.conversationOrder);
       const views = await Promise.all(list.map((row) => ingest(row, { previous: findMessage(convId, row.id) })));
       setConversationMessages(convId, views);
+      for (const view of views) if (view.kind === 'expired') persistMessage(view);
     }));
   } catch (e) {
     console.warn('hydrate from cache failed', e);
@@ -1307,7 +1605,12 @@ async function persistAllConversations() {
 
 async function persistMessage(msg) {
   if (!msg.id || !msg.conversationId || msg.id.startsWith('__pending__')) return;
-  try { await identityDb.put('messages', messageCacheRecord(msg)); } catch {}
+  const record = messageCacheRecord(msg);
+  // An expired message leaves the device altogether, its envelope included.
+  try {
+    if (msg.kind === 'expired') await identityDb.delete('messages', record._key);
+    else await identityDb.put('messages', record);
+  } catch {}
 }
 
 async function persistMessages(convId) {
@@ -1376,6 +1679,12 @@ async function drainOutbound() {
   const items = await idb.all('outbound');
   if (items.length === 0) return;
   for (const item of items) {
+    // Envelopes an earlier build queued in a retired format are dropped,
+    // never sent.
+    if (item.envelope?.version !== ENVELOPE_VERSION_V2) {
+      await identityDb.delete('outbound', item.clientMessageId);
+      continue;
+    }
     if (item.nextRetryAt && item.nextRetryAt > Date.now()) continue;
     try {
       const sent = await authedApi('/messages', {
@@ -1386,10 +1695,11 @@ async function drainOutbound() {
           envelope: item.envelope,
         },
       });
+      await secure.acknowledge(sent.message);
       const list = state.messagesByConv.get(item.conversationId) || [];
       const idx = list.findIndex((m) => m.clientMessageId === item.clientMessageId);
       // The queue holds no plaintext: the optimistic view (if this tab still
-      // has it) is reused, otherwise the echo is decrypted like any message.
+      // has it) is reused, otherwise our content comes from the store.
       const view = await ingest(sent.message, { previous: idx >= 0 ? list[idx] : null });
       if (idx >= 0) list[idx] = view;
       else list.push(view);
@@ -1438,20 +1748,18 @@ function saveDraft(convId, text) {
 //   destroyIdentity() confirmed wipe of everything this browser stored
 //   resetSessionState() in-memory teardown shared by both
 
-async function registerIdentity(displayName, handle) {
+// A handle and keys, nothing else: no profile text goes to the server.
+async function registerIdentity(handle) {
   const keys = await generateIdentity(crypto.subtle);
   const reg = await api('/auth/register', {
     method: 'POST',
     body: {
       handle,
-      displayName: displayName || handle,
       deviceName: 'web-' + (navigator.platform || 'browser'),
       platform: 'android',
-      // X25519 raw public key — peers fetch this through /users/:handle/key-bundle
-      // and use it to derive the per-conversation AES key via ECDH.
-      publicIdentityKey: keys.xPubB64u,
-      signedPrekeyBundle: 'web-demo-no-prekey',
-      authPublicKey: keys.edPubB64u,
+      // The Ed25519 identity key and its signed prekey bundle (contract C1),
+      // which peers fetch from /v1/keys to start a session.
+      ...(await publishedKeys(crypto.subtle, keys)),
     },
   });
   // Saved before the first login: if that fails the registered keys are
@@ -1472,7 +1780,7 @@ async function registerIdentity(displayName, handle) {
 async function restoreSession() {
   const stored = await sessionStore.load();
   if (!stored) return false;
-  if (!stored.edPrivKey || !stored.xPrivKey) {
+  if (!stored.edPrivKey || !(stored.ik || stored.xPrivKey)) {
     throw new Error('이 브라우저의 세션은 새 암호화 형식과 호환되지 않아요. 다시 등록해주세요.');
   }
   await apiClient.login(await sessionStore.getDeviceCredentials());
@@ -1488,6 +1796,7 @@ async function enterApp() {
   loadConversations();
   startPolling();
   connectSocket();
+  startPrekeyMaintenance();
 }
 
 function resetSessionState() {
@@ -1505,8 +1814,9 @@ function resetSessionState() {
   searchStateByConv.clear();
   scrollPosByConv.clear();
   readMarked.clear();
-  envelopeCrypto.reset();
-  peerDirectory.reset();
+  trust.reset();
+  clearInterval(prekeyTimer);
+  prekeyTimer = null;
   stopTransferOld();
   disconnectSocket();
   if (state.pollTimer) clearInterval(state.pollTimer);
@@ -1630,9 +1940,6 @@ async function openConversation(convId) {
   renderSidebar();
   renderTabs();
   renderActivePanel();
-  // Pre-resolve the peer key so the first send doesn't wait on the
-  // directory (and a key change shows its banner right away).
-  envelopeCrypto.ensureSendable(convId).catch(() => {});
   await refreshMessages(convId);
 }
 
@@ -1755,91 +2062,97 @@ async function sendMessage(textarea, convId) {
   }
   const conv = state.conversations.find((c) => c.id === target);
   if (!conv) return;
-  const clientMessageId = 'web-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  const replyToId = state.replyDraftByConv.get(target)?.id ?? null;
+  await sendContent(conv, textContent(text, replyToId), {
+    onSealed: () => {
+      // Reply consumed: clear the banner and the composer.
+      if (replyToId) state.replyDraftByConv.delete(target);
+      textarea.value = '';
+      textarea.style.height = 'auto';
+      textarea.dispatchEvent(new Event('input'));
+      emitTypingStop(target);
+      playSendTone();
+    },
+  });
+}
 
-  // Encrypt the body with a fresh per-message AES-GCM key derived from the
-  // per-peer ECDH secret. The server only ever sees `ciphertext` and `nonce`.
-  const replyDraft = state.replyDraftByConv.get(target);
-  const replyToId = replyDraft?.id ?? null;
-  const payload = encodePayload(replyToId ? { kind: 'reply', text, replyTo: replyToId } : { kind: 'text', text });
-  let sealed;
-  try {
-    sealed = await envelopeCrypto.encrypt(target, payload);
-  } catch (e) {
-    toastSendFailure('전송 실패', e);
-    return;
-  }
-  if (!sealed) {
-    toast('상대 키를 찾지 못했어요. 잠시 후 다시 시도해주세요.', 'error');
-    return;
-  }
-  const envelope = {
-    version: DEV_ENVELOPE_VERSION,
-    conversationId: conv.id,
-    senderDeviceId: state.me.deviceId,
-    recipientUserId: sealed.recipientUserId,
-    ciphertext: sealed.ciphertext,
-    nonce: sealed.nonce,
-    messageType: 'text',
+const newClientMessageId = (prefix = 'web') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+// Local-only state of a bubble shown before its content was sealed (an
+// upload's preview, a recording), carried over to the sent message.
+const LOCAL_MEDIA_FIELDS = ['_imageUrl', '_voiceUrl', '_localFile'];
+
+function replaceOwnMessage(convId, clientMessageId, view) {
+  const list = state.messagesByConv.get(convId) || [];
+  const index = list.findIndex((m) => m.clientMessageId === clientMessageId);
+  if (index >= 0) list[index] = view;
+  else list.push(view);
+  state.messagesByConv.set(convId, list);
+}
+
+// Every send: the content is sealed end to end (src/features/sender.js) and
+// shown at once as a pending bubble, then delivered; a send that cannot go
+// out now waits, sealed, in the outbound queue. `local` is a bubble already
+// shown for this send (an upload in progress). Resolves to the delivered
+// view, or null.
+async function sendContent(conv, content, {
+  clientMessageId = newClientMessageId(),
+  attachmentId = null,
+  failureLabel = '전송 실패',
+  local = null,
+  onSealed = () => {},
+} = {}) {
+  const markFailed = (message) => {
+    message._status = 'failed';
+    renderActivePanel();
   };
-
-  // Optimistic insert with pending status so the bubble appears immediately.
+  let envelope;
+  try {
+    envelope = await sender.seal(conv.id, content, { clientMessageId, attachmentId });
+  } catch (e) {
+    toastSendFailure(failureLabel, e);
+    if (local) markFailed(local);
+    return null;
+  }
+  onSealed();
   const optimistic = await ingest({
     id: '__pending__' + clientMessageId,
     clientMessageId,
     conversationId: conv.id,
     senderDeviceId: state.me.deviceId,
-    ciphertext: sealed.ciphertext,
-    nonce: sealed.nonce,
-    messageType: 'text',
+    ciphertext: envelope.ciphertext,
+    nonce: envelope.nonce,
+    messageType: envelope.messageType,
     serverReceivedAt: null,
-  }, { payload });
+  }, { content });
+  for (const field of LOCAL_MEDIA_FIELDS) if (local?.[field] !== undefined) optimistic[field] = local[field];
   optimistic._status = 'pending';
-  optimistic._localAt = new Date().toISOString();
-  // Reply consumed — clear the banner.
-  if (replyToId) state.replyDraftByConv.delete(target);
-  const list = state.messagesByConv.get(conv.id) || [];
-  list.push(optimistic);
-  state.messagesByConv.set(conv.id, list);
-  textarea.value = '';
-  textarea.style.height = 'auto';
-  textarea.dispatchEvent(new Event('input'));
-  emitTypingStop(target);
-  playSendTone();
+  optimistic._localAt = local?._localAt ?? new Date().toISOString();
+  replaceOwnMessage(conv.id, clientMessageId, optimistic);
   renderActivePanel();
 
+  let delivered;
   try {
-    const sent = await authedApi('/messages', {
-      method: 'POST',
-      body: { conversationId: conv.id, clientMessageId, envelope },
-    });
-    const view = await ingest(sent.message, { previous: optimistic });
-    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
-    if (idx >= 0) list[idx] = view;
-    else list.push(view);
-    conv.lastMessage = view;
-    sortConversations();
-    persistMessage(view);
-    persistConversation(conv);
-    renderActivePanel();
-    renderSidebar();
+    delivered = await sender.deliver({ conversationId: conv.id, clientMessageId, envelope });
   } catch (e) {
-    // Network, 5xx or an ended session — queue the encrypted envelope (never
-    // the plaintext) so it goes out after reconnect or restore. Permanent
-    // 4xx (other than 429) bubbles up.
-    const isRetryable = e instanceof AuthError || !e.status || e.status >= 500 || e.status === 429;
-    if (isRetryable) {
-      await identityDb.put('outbound', outboundQueueEntry({ clientMessageId, conversationId: conv.id, envelope }));
-      if (e instanceof AuthError) return;
-      optimistic._status = 'pending';
-      renderActivePanel();
-      toast('연결 안 됨 — 큐잉 후 자동 재시도합니다');
-    } else {
-      optimistic._status = 'failed';
-      renderActivePanel();
-      toast('전송 실패: ' + e.message, 'error');
-    }
+    markFailed(optimistic);
+    toast(`${failureLabel}: ${e.message}`, 'error');
+    return null;
   }
+  if (delivered.queued) {
+    if (!delivered.sessionEnded) toast('연결 안 됨 — 큐잉 후 자동 재시도합니다');
+    return null;
+  }
+  const view = await ingest(delivered.message, { previous: optimistic });
+  for (const field of LOCAL_MEDIA_FIELDS) if (optimistic[field] !== undefined) view[field] ??= optimistic[field];
+  replaceOwnMessage(conv.id, clientMessageId, view);
+  conv.lastMessage = view;
+  sortConversations();
+  persistMessage(view);
+  persistConversation(conv);
+  renderActivePanel();
+  renderSidebar();
+  return view;
 }
 
 // Phase AK: revoke any blob: URLs we created for voice/image so the
@@ -1864,12 +2177,45 @@ function revokeAllBlobUrls() {
   }
 }
 
+// Contract C4 on this device: once a message's expiry passes it leaves
+// every list and what was kept of it is retired, through the same ingest
+// path as everything else. Stored contents of messages that are not loaded
+// expire with them.
+async function expireDueMessages() {
+  const now = Date.now();
+  const due = (message) => isPast(message?.expiresAtMs, now);
+  const expire = (message) => ingest(serializeMessageForCache(message), { previous: message });
+  let changed = false;
+  for (const [convId, list] of state.messagesByConv) {
+    const dueMessages = list.filter(due);
+    if (dueMessages.length === 0) continue;
+    const expired = new Map((await Promise.all(dueMessages.map(expire))).map((view) => [view.id, view]));
+    // Swapped into the list as it is now: a message may have arrived meanwhile.
+    setConversationMessages(convId, (state.messagesByConv.get(convId) || []).map((m) => expired.get(m.id) ?? m));
+    for (const view of expired.values()) persistMessage(view);
+    changed = true;
+  }
+  for (const conv of state.conversations) {
+    if (!due(conv.lastMessage)) continue;
+    const view = await expire(conv.lastMessage);
+    if (conv.lastMessage?.id === view.id) conv.lastMessage = view;
+    changed = true;
+  }
+  await secure.retireExpired();
+  if (changed) {
+    renderSidebar();
+    renderActivePanel();
+  }
+}
+
 function startPolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
   // Polling acts as a safety-net that runs while the WS handshake is pending
-  // and stays at a relaxed cadence after WS connects.
+  // and stays at a relaxed cadence after WS connects. Expiry runs on every
+  // tick, hidden tab or not.
   state.pollTimer = setInterval(async () => {
     if (!state.me) return;
+    await expireDueMessages().catch((error) => console.warn('expiry sweep failed', error));
     if (document.hidden) return;
     await loadConversations();
     if (state.socket?.connected) return; // WS handles per-message updates
@@ -1891,7 +2237,6 @@ async function bootIfSession() {
 
 $('register-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const name = $('reg-name').value.trim();
   const handle = $('reg-handle').value.trim().toLowerCase();
   if (!handle) return toast('핸들을 입력하세요', 'error');
   if (!/^[a-z0-9_]{1,32}$/.test(handle)) return toast('소문자, 숫자, _ 만 사용 (최대 32자)', 'error');
@@ -1899,7 +2244,7 @@ $('register-form').addEventListener('submit', async (e) => {
   if ((await hasStoredIdentity()) && !(await confirmAndDestroyIdentity())) return;
   $('reg-btn').disabled = true;
   try {
-    await registerIdentity(name, handle);
+    await registerIdentity(handle);
     await enterApp();
     toast('환영합니다 @' + handle, 'good');
   } catch (e) {
@@ -1924,6 +2269,7 @@ $('restore-btn').addEventListener('click', async () => {
 
 $('restore-delete-btn').addEventListener('click', confirmAndDestroyIdentity);
 $('wipe-btn').addEventListener('click', confirmAndDestroyIdentity);
+$('legacy-new-identity').addEventListener('click', confirmAndDestroyIdentity);
 
 $('search-input').addEventListener('input', renderSidebar);
 
@@ -2216,6 +2562,16 @@ function openTransferNew() {
   transferNewState = null;
   openDialog('transfer-new-dialog', 'transfer-new-token');
 }
+// What the old device shows for this claim: SHA-256 over the auth key and
+// the identity key the new device will be trusted with, in groups of four
+// hex digits, computed the way the server computes claimantFingerprint.
+async function transferFingerprint({ authPublicKey, publicIdentityKey }) {
+  const digest = await sha256(crypto.subtle, concatBytes([decodeBase64Url(authPublicKey), decodeBase64Url(publicIdentityKey)]));
+  return hexOf(digest).replace(/(.{4})(?!$)/g, '$1 ');
+}
+
+const hexOf = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
 async function claimTransferNew() {
   const code = $('transfer-new-token').value.trim();
   const name = $('transfer-new-name').value.trim() || 'VEIL';
@@ -2246,10 +2602,8 @@ async function claimTransferNew() {
   $('transfer-new-status').textContent = '새 키 생성 중…';
   try {
     const keys = await generateIdentity(crypto.subtle);
-    const fingerprint = keys.edPubB64u.length <= 12
-      ? keys.edPubB64u
-      : keys.edPubB64u.slice(0, 6) + '...' + keys.edPubB64u.slice(-4);
-    $('transfer-new-fingerprint-text').textContent = fingerprint;
+    const published = await publishedKeys(crypto.subtle, keys);
+    $('transfer-new-fingerprint-text').textContent = await transferFingerprint(published);
     $('transfer-new-fingerprint').classList.remove('hidden');
     $('transfer-new-status').textContent = '서버에 클레임 중…';
     const claimSig = await signChallenge(crypto.subtle, keys.edPrivKey, `transfer-claim:${parsed.sessionId}:${parsed.transferToken}`);
@@ -2260,9 +2614,7 @@ async function claimTransferNew() {
         transferToken: parsed.transferToken,
         newDeviceName: name,
         platform: 'android',
-        publicIdentityKey: keys.xPubB64u,
-        signedPrekeyBundle: 'web-demo-no-prekey',
-        authPublicKey: keys.edPubB64u,
+        ...published,
         authProof: claimSig,
       },
     });
@@ -2373,9 +2725,9 @@ $('transfer-new-claim').addEventListener('click', () => (transferNewState?.compl
 
 // ---------- message actions: react / edit / delete ----------
 // Right-click (or long-press on touch) on a .msg-row pops a small menu.
-// Reactions go through the existing /messages/:id/reactions endpoints
-// (server already had those). Edit re-encrypts the body in place via
-// PATCH /messages/:id; Delete tombstones server-side via DELETE.
+// Reactions are end-to-end encrypted control messages (src/domain/reactions.js);
+// there is no REST reaction call. Edit seals a new frame and replaces the
+// body via PATCH /messages/:id; Delete tombstones server-side via DELETE.
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😢', '🔥', '🎉'];
 
 const msgActionStyles = document.createElement('style');
@@ -2530,40 +2882,28 @@ document.addEventListener('touchend', () => { clearTimeout(touchHoldTimer); }, {
 document.addEventListener('touchmove', () => { clearTimeout(touchHoldTimer); }, { passive: true });
 
 async function doReaction(messageId, emoji) {
+  // A message the server has not named yet cannot be a reaction's target.
+  const found = messageId.startsWith('__pending__') ? null : locateMessage(messageId);
+  if (!found) return;
+  const current = reactionsByTarget(found.list).get(messageId)
+    ?.find((reaction) => reaction.senderDeviceId === state.me.deviceId)?.emoji ?? null;
+  const clientMessageId = newClientMessageId('react');
   try {
-    const list = (() => {
-      for (const l of state.messagesByConv.values()) {
-        const m = l.find((x) => x.id === messageId);
-        if (m) return { msg: m };
-      }
-      return null;
-    })();
-    const mine = list?.msg?.reactions?.find((r) => r.userId === state.me.userId);
-    const sameAsMine = mine?.emoji === emoji;
-    if (sameAsMine) {
-      await authedApi(`/messages/${messageId}/reactions`, { method: 'DELETE' });
-    } else {
-      await authedApi(`/messages/${messageId}/reactions`, { method: 'POST', body: { emoji } });
-    }
-  } catch (e) {
-    toast('반응 실패: ' + e.message, 'error');
-  }
-}
-
-function onReactionEvent(messageId, userId, emoji, action) {
-  for (const list of state.messagesByConv.values()) {
-    const m = list.find((x) => x.id === messageId);
-    if (!m) continue;
-    m.reactions = m.reactions || [];
-    const idx = m.reactions.findIndex((r) => r.userId === userId);
-    if (action === 'remove') {
-      if (idx >= 0) m.reactions.splice(idx, 1);
-    } else {
-      if (idx >= 0) m.reactions[idx].emoji = emoji;
-      else m.reactions.push({ userId, emoji });
-    }
+    const { content, message } = await sender.react({
+      conversationId: found.convId,
+      clientMessageId,
+      target: messageId,
+      emoji,
+      current,
+    });
+    // A queued reaction shows once the outbound queue delivers it.
+    if (!message) return;
+    const view = await ingest(message, { content });
+    replaceOwnMessage(found.convId, clientMessageId, view);
+    persistMessage(view);
     renderActivePanel();
-    return;
+  } catch (e) {
+    toastSendFailure('반응 실패', e);
   }
 }
 
@@ -2580,27 +2920,23 @@ function startEdit(msg, convId) {
   doEdit(msg, convId, trimmed);
 }
 
+// An edit is a new frame on the session; the stored content is replaced only
+// once the server has taken it.
 async function doEdit(msg, convId, newText) {
-  const payload = encodePayload(msg.replyTo
-    ? { kind: 'reply', text: newText, replyTo: msg.replyTo }
-    : { kind: 'text', text: newText });
+  const content = textContent(newText, msg.replyTo);
   try {
-    const sealed = await envelopeCrypto.encrypt(convId, payload);
-    if (!sealed) { toast('재암호화 실패', 'error'); return; }
+    const envelope = await secure.sealEdit(convId, content);
     await authedApi(`/messages/${msg.id}`, {
       method: 'PATCH',
-      body: {
-        ciphertext: sealed.ciphertext,
-        nonce: sealed.nonce,
-        version: DEV_ENVELOPE_VERSION,
-      },
+      body: { ciphertext: envelope.ciphertext, nonce: envelope.nonce, version: envelope.version },
     });
+    await secure.rememberEdit(convId, msg.id, content, envelope.nonce);
     const edited = Object.assign(serializeMessageForCache(msg), {
-      ciphertext: sealed.ciphertext,
-      nonce: sealed.nonce,
+      ciphertext: envelope.ciphertext,
+      nonce: envelope.nonce,
       editedAt: new Date().toISOString(),
     });
-    await reingestInPlace(msg.id, edited, { payload, editCount: (msg.editCount || 0) + 1 });
+    await reingestInPlace(msg.id, edited, { content, editCount: (msg.editCount || 0) + 1 });
   } catch (e) {
     toastSendFailure('수정 실패', e);
   }
@@ -2629,14 +2965,15 @@ async function doDelete(messageId) {
 }
 
 // Bubble reactions row — groups by emoji, shows count, my own reactions
-// get a highlighted border. Click toggles via the same /reactions endpoint
-// the action menu uses, so the picker and the chip share state.
-function renderReactionsRow(msg, convId) {
+// get a highlighted border. Click toggles through the same E2E path the
+// action menu uses, so the picker and the chip share state.
+// reactions: [{ senderDeviceId, emoji }] (src/domain/reactions.js).
+function renderReactionsRow(msg, reactions = []) {
   const tally = new Map();
-  for (const r of msg.reactions || []) {
+  for (const r of reactions) {
     const entry = tally.get(r.emoji) || { count: 0, mine: false };
     entry.count += 1;
-    if (r.userId === state.me?.userId) entry.mine = true;
+    if (r.senderDeviceId === state.me?.deviceId) entry.mine = true;
     tally.set(r.emoji, entry);
   }
   if (tally.size === 0) return null;
@@ -2660,12 +2997,10 @@ function renderReactionsRow(msg, convId) {
 // Push-to-talk: hold the mic button to record, release to send.
 // MediaRecorder produces opus/webm at the lowest bitrate the browser
 // will give us (defaults are usually 32-48 kbps mono for opus). The
-// bytes are b64-wrapped into the existing per-conversation AES-GCM
-// envelope so the server only ever sees ciphertext, identical to the
-// text path. Server-side ciphertext cap was bumped to 128 KB to fit
-// ~30 s of voice without forcing the attachment-upload flow.
+// recording goes out as an encrypted attachment like a file, its key
+// inside the ratchet (src/crypto/attachment-v2.js), so the server only
+// ever sees ciphertext.
 const VOICE_MAX_MS = 30_000;
-const VOICE_MAX_CIPHERTEXT_LEN = 128 * 1024;
 
 const voiceStyles = document.createElement('style');
 voiceStyles.textContent = `
@@ -2775,86 +3110,18 @@ async function finalizeVoiceRecord() {
     cleanupVoiceState();
     return;
   }
-  const { convId, chunks, startedAt } = voiceState;
+  const { convId, chunks } = voiceState;
   const mime = voiceState.recorder.mimeType || 'audio/webm';
   const blob = new Blob(chunks, { type: mime });
   cleanupVoiceState();
   if (blob.size === 0) return;
-
-  // The audio rides inside the encrypted payload so the receiver can
-  // rebuild it without a separate metadata channel.
-  const payload = encodePayload({
+  await sendMedia(convId, {
     kind: 'voice',
-    mime,
-    durationMs: Math.min(VOICE_MAX_MS, Date.now() - startedAt),
-    audio: new Uint8Array(await blob.arrayBuffer()),
+    blob,
+    contentType: mime,
+    failureLabel: '음성 전송 실패',
+    local: { _voiceUrl: URL.createObjectURL(blob) },
   });
-  let sealed;
-  try {
-    sealed = await envelopeCrypto.encrypt(convId, payload);
-  } catch (e) {
-    toastSendFailure('음성 전송 실패', e);
-    return;
-  }
-  if (!sealed) { toast('상대 키 누락 — 전송 실패', 'error'); return; }
-  if (sealed.ciphertext.length > VOICE_MAX_CIPHERTEXT_LEN) {
-    toast('녹음이 너무 깁니다. 더 짧게 시도하세요.', 'error');
-    return;
-  }
-
-  const conv = state.conversations.find((c) => c.id === convId);
-  if (!conv) return;
-  const clientMessageId = 'voice-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-
-  // Optimistic insert.
-  const optimistic = await ingest({
-    id: '__pending__' + clientMessageId,
-    clientMessageId,
-    conversationId: convId,
-    senderDeviceId: state.me.deviceId,
-    ciphertext: sealed.ciphertext,
-    nonce: sealed.nonce,
-    messageType: 'voice',
-    serverReceivedAt: null,
-  }, { payload });
-  optimistic._localAt = new Date().toISOString();
-  optimistic._status = 'pending';
-  optimistic._voiceUrl = URL.createObjectURL(blob);
-  const list = state.messagesByConv.get(convId) || [];
-  list.push(optimistic);
-  state.messagesByConv.set(convId, list);
-  renderActivePanel();
-
-  try {
-    const sent = await authedApi('/messages', {
-      method: 'POST',
-      body: {
-        conversationId: convId,
-        clientMessageId,
-        envelope: {
-          version: DEV_ENVELOPE_VERSION,
-          conversationId: convId,
-          senderDeviceId: state.me.deviceId,
-          recipientUserId: sealed.recipientUserId,
-          ciphertext: sealed.ciphertext,
-          nonce: sealed.nonce,
-          messageType: 'voice',
-        },
-      },
-    });
-    const view = await ingest(sent.message, { previous: optimistic });
-    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
-    if (idx >= 0) list[idx] = view;
-    conv.lastMessage = view;
-    persistMessage(view);
-    persistConversation(conv);
-    renderActivePanel();
-    renderSidebar();
-  } catch (e) {
-    toast('음성 전송 실패: ' + e.message, 'error');
-    optimistic._status = 'failed';
-    renderActivePanel();
-  }
 }
 
 // ---------- polish: notifications + tab badge + link detection + markdown ----------
@@ -3568,16 +3835,22 @@ function closePanelSearch(convId) {
   renderActivePanel();
 }
 
+// The messages of a conversation whose shown text contains `query`.
+function searchMatches(convId, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const now = Date.now();
+  return (state.messagesByConv.get(convId) || []).filter((m) =>
+    isShown(m, now) && isTextKind(m.kind) && m.displayText.toLowerCase().includes(q));
+}
+
 // Build the search bar DOM. Returns null when search is closed for
 // this conversation.
 function renderPanelSearch(convId) {
   const st = getSearchState(convId);
   if (!st.open) return null;
-  const list = state.messagesByConv.get(convId) || [];
-  const q = st.query.trim().toLowerCase();
-  const matches = q
-    ? list.filter((m) => isTextKind(m.kind) && m.displayText.toLowerCase().includes(q))
-    : [];
+  const q = st.query.trim();
+  const matches = searchMatches(convId, q);
   const total = matches.length;
   if (st.idx >= total && total > 0) st.idx = total - 1;
   const counter = total > 0 ? `${st.idx + 1}/${total}` : (q ? '0/0' : '');
@@ -3665,10 +3938,7 @@ function highlightSearchMatches() {
     if (!q) continue;
     const panel = document.querySelector(`.panel[data-conv="${convId}"]`);
     if (!panel) continue;
-    const list = state.messagesByConv.get(convId) || [];
-    const matches = list.filter((m) =>
-      isTextKind(m.kind) && m.displayText.toLowerCase().includes(q.toLowerCase()),
-    );
+    const matches = searchMatches(convId, q);
     matches.forEach((m, i) => {
       const row = panel.querySelector(`.msg-row[data-msg-id="${m.id}"]`);
       if (!row) return;
@@ -3778,7 +4048,7 @@ function showMentionPop(textarea, ctx) {
       item.dataset.userId = m.userId;
       item.setAttribute('role', 'option');
       item.appendChild(avatarFor(m.handle, 'sm'));
-      item.appendChild(el('div', {}, handleLines(m.handle, m.displayName)));
+      item.appendChild(el('div', {}, [handleLine(m.handle)]));
       item.addEventListener('mousedown', (e) => {
         e.preventDefault();
         completeMention(textarea, ctx, m.handle);
@@ -3920,129 +4190,98 @@ async function sendImageFile(convId, file) {
     toast('이미지가 10MB 를 초과합니다', 'error');
     return;
   }
-  const conv = state.conversations.find((c) => c.id === convId);
-  if (!conv) return;
-  // Resolve the key first so a frozen conversation never uploads anything.
-  if (!(await ensureSendable(convId, '이미지 전송 실패'))) return;
-  const clientMessageId = 'img-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
-
-  // Optimistic bubble with the local file as preview while we upload.
-  const localUrl = URL.createObjectURL(file);
-  const optimistic = pendingLocalMessage({
-    clientMessageId,
-    conversationId: convId,
-    messageType: 'image',
+  // The local file is the bubble's preview while it uploads.
+  const sent = await sendMedia(convId, {
     kind: 'image',
-    displayText: KIND_LABELS.image,
+    blob: file,
+    contentType: file.type,
+    failureLabel: '이미지 전송 실패',
+    local: { _imageUrl: URL.createObjectURL(file) },
   });
-  optimistic._imageUrl = localUrl;
-  const list = state.messagesByConv.get(convId) || [];
-  list.push(optimistic);
-  state.messagesByConv.set(convId, list);
-  renderActivePanel();
-
-  try {
-    const upload = await uploadEncryptedAttachment(file);
-    const payload = encodePayload({
-      kind: 'image',
-      attachmentId: upload.attachmentId,
-      mime: file.type,
-      key: upload.key,
-      nonce: upload.nonce,
-    });
-    const view = await postAttachmentMessage(conv, clientMessageId, 'image', payload, upload.pointer);
-    view._imageUrl = localUrl;
-    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
-    if (idx >= 0) list[idx] = view;
-    conv.lastMessage = view;
-    persistMessage(view);
-    persistConversation(conv);
-    renderActivePanel();
-    renderSidebar();
-    playSendTone();
-  } catch (e) {
-    toastSendFailure('이미지 전송 실패', e);
-    optimistic._status = 'failed';
-    renderActivePanel();
-  }
+  if (sent) playSendTone();
 }
 
+// Starts (or checks) the session before anything is uploaded, so a frozen
+// conversation never uploads a blob.
 async function ensureSendable(convId, failureLabel) {
   try {
-    if (await envelopeCrypto.ensureSendable(convId)) return true;
-    toast('상대 키를 못 찾았어요', 'error');
+    await secure.prepare(convId);
+    return true;
   } catch (e) {
     toastSendFailure(failureLabel, e);
+    return false;
   }
-  return false;
 }
 
-// Encrypts a file under a fresh AES-256-GCM key and uploads only the
-// ciphertext. The key travels inside the end-to-end encrypted payload.
-async function uploadEncryptedAttachment(file) {
-  const key = crypto.getRandomValues(new Uint8Array(32));
-  const nonce = crypto.getRandomValues(new Uint8Array(12));
-  const aesKey = await crypto.subtle.importKey('raw', key, { name: 'AES-GCM' }, false, ['encrypt']);
-  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, aesKey, await file.arrayBuffer());
-  // sha256 of the ciphertext (the server validates the upload).
-  const digest = await crypto.subtle.digest('SHA-256', ciphertext);
-  const sha256 = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+const MEDIA_PENDING_TEXT = {
+  image: () => KIND_LABELS.image,
+  voice: () => KIND_LABELS.voice,
+  file: (name) => `📁 ${name}`,
+};
+
+// Image, voice note or file: shown at once as a local bubble, uploaded
+// encrypted, then sent as a message whose content carries the attachment
+// pointer. Resolves to the delivered view, or null.
+async function sendMedia(convId, { kind, blob, contentType, name = '', failureLabel, local }) {
+  const conv = state.conversations.find((c) => c.id === convId);
+  if (!conv) return null;
+  if (!(await ensureSendable(convId, failureLabel))) return null;
+  const clientMessageId = newClientMessageId(kind);
+  const pending = Object.assign(pendingLocalMessage({
+    clientMessageId,
+    conversationId: convId,
+    messageType: kind,
+    kind,
+    displayText: MEDIA_PENDING_TEXT[kind](name),
+  }), local);
+  replaceOwnMessage(convId, clientMessageId, pending);
+  renderActivePanel();
+  let pointer;
+  try {
+    pointer = await uploadEncryptedAttachment(blob, contentType);
+  } catch (e) {
+    toastSendFailure(failureLabel, e);
+    pending._status = 'failed';
+    renderActivePanel();
+    return null;
+  }
+  return sendContent(conv, mediaContent(kind, pointer, name), {
+    clientMessageId,
+    attachmentId: pointer.id,
+    failureLabel,
+    local: pending,
+  });
+}
+
+// Seals the bytes under a fresh key (src/crypto/attachment-v2.js) and uploads
+// only the blob. The id is ours, proposed with the ticket, because the blob's
+// AAD binds it; the pointer (key, digest, type, size) travels only inside the
+// end-to-end encrypted payload.
+async function uploadEncryptedAttachment(blob, contentType) {
+  const attachmentId = crypto.randomUUID();
+  const plaintext = new Uint8Array(await blob.arrayBuffer());
+  const sealed = await encryptAttachment(crypto.subtle, keySource.randomBytes, { attachmentId, contentType, plaintext });
   const ticket = await authedApi('/attachments/upload-ticket', {
     method: 'POST',
-    body: { contentType: 'application/octet-stream', sizeBytes: ciphertext.byteLength, sha256 },
+    body: {
+      attachmentId,
+      contentType: 'application/octet-stream',
+      sizeBytes: sealed.blob.byteLength,
+      sha256: hexOf(await sha256(crypto.subtle, sealed.blob)),
+    },
   });
+  if (ticket.attachmentId !== attachmentId) throw new Error('the relay assigned another attachment id');
   const putRes = await fetch(ticket.upload.uploadUrl, {
     method: 'PUT',
     headers: ticket.upload.headers,
-    body: ciphertext,
+    body: sealed.blob,
   });
   if (!putRes.ok) throw new Error(`upload PUT failed: ${putRes.status}`);
   await authedApi('/attachments/complete', {
     method: 'POST',
-    body: { attachmentId: ticket.attachmentId, uploadStatus: 'uploaded' },
+    body: { attachmentId, uploadStatus: 'uploaded' },
   });
-  return {
-    attachmentId: ticket.attachmentId,
-    key,
-    nonce,
-    // Outer pointer in the shape the relay validates. Receivers take the
-    // attachment id and key only from the encrypted payload.
-    pointer: {
-      attachmentId: ticket.attachmentId,
-      storageKey: ticket.upload.storageKey ?? '',
-      contentType: 'application/octet-stream',
-      sizeBytes: ciphertext.byteLength,
-      sha256,
-      encryption: {
-        encryptedKey: 'web-demo-inline-in-body',
-        nonce: encodeBase64Url(nonce),
-        algorithmHint: 'dev-wrap',
-      },
-    },
-  };
-}
-
-async function postAttachmentMessage(conv, clientMessageId, messageType, payload, attachment) {
-  const sealed = await envelopeCrypto.encrypt(conv.id, payload);
-  if (!sealed) throw new Error('상대 키를 못 찾았어요');
-  const sent = await authedApi('/messages', {
-    method: 'POST',
-    body: {
-      conversationId: conv.id,
-      clientMessageId,
-      envelope: {
-        version: DEV_ENVELOPE_VERSION,
-        conversationId: conv.id,
-        senderDeviceId: state.me.deviceId,
-        recipientUserId: sealed.recipientUserId,
-        ciphertext: sealed.ciphertext,
-        nonce: sealed.nonce,
-        messageType,
-        attachment,
-      },
-    },
-  });
-  return ingest(sent.message, { payload });
+  return sealed.pointer;
 }
 
 // Add the 📷 button to the panel input, plus drag-and-drop on the
@@ -4364,7 +4603,7 @@ function renderBlockedSection() {
       const unblock = el('button', { class: 'unblock' }, ['해제']);
       const blockedRow = el('div', { class: 'blocked-row' }, [
         avatarFor(u.handle ?? '?', 'sm'),
-        el('div', { class: 'grow' }, handleLines(u.handle, u.displayName, 'font-size:13px')),
+        el('div', { class: 'grow' }, [handleLine(u.handle, 'font-size:13px')]),
         unblock,
       ]);
       unblock.addEventListener('click', async () => {
@@ -4516,50 +4755,16 @@ async function pickAndSendFile(convId) {
 }
 
 async function sendGenericFile(convId, file) {
-  const conv = state.conversations.find((c) => c.id === convId);
-  if (!conv) return;
-  if (!(await ensureSendable(convId, '파일 전송 실패'))) return;
-  const clientMessageId = 'file-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
   const name = sanitizeFilename(file.name);
-
-  const optimistic = pendingLocalMessage({
-    clientMessageId,
-    conversationId: convId,
-    messageType: 'file',
+  const sent = await sendMedia(convId, {
     kind: 'file',
-    displayText: `📁 ${name}`,
+    blob: file,
+    contentType: file.type || 'application/octet-stream',
+    name,
+    failureLabel: '파일 전송 실패',
+    local: { _localFile: { name, sizeBytes: file.size } },
   });
-  optimistic._localFile = { name, sizeBytes: file.size };
-  const list = state.messagesByConv.get(convId) || [];
-  list.push(optimistic);
-  state.messagesByConv.set(convId, list);
-  renderActivePanel();
-
-  try {
-    const upload = await uploadEncryptedAttachment(file);
-    const payload = encodePayload({
-      kind: 'file',
-      attachmentId: upload.attachmentId,
-      mime: file.type || 'application/octet-stream',
-      name,
-      sizeBytes: file.size,
-      key: upload.key,
-      nonce: upload.nonce,
-    });
-    const view = await postAttachmentMessage(conv, clientMessageId, 'file', payload, upload.pointer);
-    const idx = list.findIndex((m) => m.clientMessageId === clientMessageId);
-    if (idx >= 0) list[idx] = view;
-    conv.lastMessage = view;
-    persistMessage(view);
-    persistConversation(conv);
-    renderActivePanel();
-    renderSidebar();
-    playSendTone();
-  } catch (e) {
-    toastSendFailure('파일 전송 실패', e);
-    optimistic._status = 'failed';
-    renderActivePanel();
-  }
+  if (sent) playSendTone();
 }
 
 // Downloads go out as application/octet-stream under the sanitized name, so
@@ -4611,7 +4816,7 @@ function openForwardDialog(msg) {
     const peer = c.members?.find((m) => m.userId !== state.me?.userId);
     const item = el('div', { class: 'forward-list-item', dataset: { convId: c.id } }, [
       avatarFor(peer?.handle ?? '?', 'sm'),
-      el('div', { style: 'flex:1' }, handleLines(peer?.handle, peer?.displayName)),
+      el('div', { style: 'flex:1' }, [handleLine(peer?.handle)]),
     ]);
     item.addEventListener('click', () => {
       list.querySelectorAll('.forward-list-item').forEach((x) => x.classList.remove('selected'));

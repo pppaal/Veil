@@ -23,7 +23,7 @@ Key behaviors a reviewer should expect:
 - **End-to-end encryption.** Every message is encrypted on-device using a Double
   Ratchet over X25519 (key exchange), AES-256-GCM (symmetric encryption),
   Ed25519 (device signatures), and HKDF-SHA256 (key derivation). The server only
-  ever relays ciphertext and never has access to plaintext.
+  ever relays message ciphertext and never has access to message plaintext.
 - **No recovery path — by design.** Because identity and message history are
   bound to the device and the keys never leave it, **there is no way to recover
   an account or restore conversations if the device is lost.** There is no

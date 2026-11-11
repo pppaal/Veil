@@ -3,7 +3,8 @@
 //
 // The gate fails when
 // - a claim has no evidence, or its evidence does not exist (a test file
-//   without the named test, a gate script that CI does not run);
+//   without the named test or with skipped or focused tests, a gate script
+//   that CI does not run);
 // - a sentence in a public source (README, privacy policies, the site, store
 //   listings, the security roadmap) matches a claim pattern but is not quoted
 //   by any claim for that file, so new marketing copy cannot make a claim
@@ -40,6 +41,13 @@ export const CLAIM_PATTERNS = [
   /forward secrecy/i,
   /sealed[- ]sender/i,
   /key transparency/i,
+  // What the server can read. Merely naming plaintext makes no claim
+  // ("ciphertext length tracks plaintext length"); denying it does. A
+  // disclosure of what stays readable is ledgered too, so it cannot quietly
+  // disappear while the denial stays.
+  /\b(?:no|never|not)\b.*\bplaintext\b/i,
+  /\bplaintext\b.*\b(?:never|not)\b/i,
+  /readable form/i,
   /종단간/,
   /저장되지 않/,
   /복구/,
@@ -47,6 +55,8 @@ export const CLAIM_PATTERNS = [
   /양자/,
   /전방향/,
   /하드웨어/,
+  /평문/,
+  /읽을 수 있는 형태/,
 ];
 
 const TEXT_EXTENSIONS = /\.(md|txt|html)$/;
@@ -175,17 +185,32 @@ const decodeEntities = (text) =>
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, '&');
 
-const htmlToText = (html) =>
-  decodeEntities(
-    html
-      .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(
-        /<\/?(p|li|ul|ol|h[1-6]|div|section|header|footer|br|tr|td|th|table)\b[^>]*>/gi,
-        '\n\n',
-      )
-      .replace(/<[^>]+>/g, ''),
+// Attribute text a reader or a search engine sees: image alternatives,
+// tooltips, accessible labels and <meta> descriptions.
+const TEXT_ATTRIBUTE = /(?<![\w-])(?:alt|title|aria-label|content)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+
+/**
+ * Element text with block elements as paragraph breaks, followed by the text
+ * attributes, each as a paragraph of its own so that it neither splits nor
+ * joins the sentence of the element that carries it.
+ */
+const htmlToText = (html) => {
+  const markup = html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+  const attributes = (markup.match(/<[a-z][^>]*>/gi) ?? []).flatMap((tag) =>
+    [...tag.matchAll(TEXT_ATTRIBUTE)].map(
+      ([, doubleQuoted, singleQuoted]) => doubleQuoted ?? singleQuoted,
+    ),
   );
+  const body = markup
+    .replace(
+      /<\/?(p|li|ul|ol|h[1-6]|div|section|header|footer|br|tr|td|th|table)\b[^>]*>/gi,
+      '\n\n',
+    )
+    .replace(/<[^>]+>/g, '');
+  return decodeEntities([body, ...attributes].join('\n\n'));
+};
 
 export const normalizeSentence = (text) =>
   text
@@ -291,6 +316,12 @@ const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const declaresTest = (source, name) =>
   new RegExp(`\\b(?:it|test)\\(\\s*(['"\`])${escapeRegExp(name)}\\1`).test(source);
 
+// A test that does not run backs nothing. A skipped or focused block can stop
+// the named test from running without touching its line, so any such marker
+// in the file disqualifies the whole file as evidence.
+const SKIPS_TESTS =
+  /\b(?:describe|context|suite|it|test)\.(?:skip|only|todo)\b|\bx(?:describe|it|test)\(|\bf(?:describe|it)\(/;
+
 function evidenceProblems(rootDir, evidence, ciScripts) {
   if (evidence.test !== undefined) {
     if (typeof evidence.name !== 'string' || evidence.name === '') {
@@ -298,9 +329,13 @@ function evidenceProblems(rootDir, evidence, ciScripts) {
     }
     const file = join(rootDir, evidence.test);
     if (!existsSync(file)) return [`test file ${evidence.test} does not exist`];
-    return declaresTest(readFileSync(file, 'utf8'), evidence.name)
-      ? []
-      : [`${evidence.test} has no test named "${evidence.name}"`];
+    const source = readFileSync(file, 'utf8');
+    if (!declaresTest(source, evidence.name)) {
+      return [`${evidence.test} has no test named "${evidence.name}"`];
+    }
+    return SKIPS_TESTS.test(source)
+      ? [`${evidence.test} skips or focuses tests, so "${evidence.name}" may not run`]
+      : [];
   }
   if (evidence.gate !== undefined) {
     if (!existsSync(join(rootDir, evidence.gate))) return [`gate ${evidence.gate} does not exist`];

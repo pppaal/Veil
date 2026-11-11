@@ -35,12 +35,18 @@ claims:
         quote: "End-to-end encryption."
       - file: store/appstore/app-review-notes.md
         quote: "Messages, media, and attachments are end-to-end encrypted."
+      - file: store/appstore/app-review-notes.md
+        quote: "The server only ever relays message ciphertext and never has access to message plaintext."
       - file: store/appstore/metadata-en.txt
         quote: "Every message is end-to-end encrypted on-device."
+      - file: store/appstore/metadata-en.txt
+        quote: "Servers never see your messages in plaintext."
       - file: store/appstore/metadata-ko.txt
         quote: "종단간 암호화 프라이버시 메신저"
       - file: store/appstore/metadata-ko.txt
         quote: "모든 메시지는 기기에서 종단간 암호화됩니다."
+      - file: store/appstore/metadata-ko.txt
+        quote: "서버는 메시지 평문을 볼 수 없습니다."
       - file: store/appstore/metadata-ko.txt
         quote: "메신저,암호화,프라이버시,E2EE,보안,채팅,익명,PIN,개인정보"
       - file: store/appstore/screenshot-spec.md
@@ -51,10 +57,16 @@ claims:
         quote: "An end-to-end encrypted messenger with no phone number and no account."
       - file: store/play/full-en.txt
         quote: "Every message is end-to-end encrypted on-device."
+      - file: store/play/full-en.txt
+        quote: "Servers never see your messages in plaintext."
       - file: store/play/full-ko.txt
         quote: "종단간 암호화로 서버조차 내 대화를 볼 수 없는 암호화 채팅 앱입니다."
       - file: store/play/full-ko.txt
         quote: "모든 메시지는 기기에서 종단간 암호화됩니다."
+      - file: store/play/full-ko.txt
+        quote: "서버는 메시지 평문을 절대 볼 수 없습니다."
+      - file: store/play/full-ko.txt
+        quote: "서버는 메시지 평문을 볼 수 없습니다."
       - file: store/play/screenshot-captions-ko.md
         quote: "보조: 모든 대화는 기기에서 종단간 암호화됩니다"
       - file: store/play/screenshot-captions-ko.md
@@ -77,16 +89,44 @@ claims:
         quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext messages on the server."
       - file: README.md
         quote: "This keeps the privacy invariants — no plaintext messages on the server, no recovery path, no admin override — from being silently stripped out of a hosted fork."
+      - file: README.md
+        quote: "The server stores no plaintext message content: messages, reactions and stories are ciphertext, and display names, profile text and contact names are not stored."
+      - file: README.md
+        quote: "Group and channel names and descriptions and device labels are still stored in readable form until their encryption ships."
+      - file: README.md
+        quote: "They are the only entries on the allowlist of scripts/schema-privacy-check.mjs, which fails CI when any other field named like user-written text (body, caption, bio, name, note and the like) is not ciphertext"
+      - file: docs/privacy-policy-en.md
+        quote: "Group and channel names and descriptions, and the label of each of your devices."
+      - file: docs/privacy-policy-en.md
+        quote: "Unlike message content, these are stored in readable form."
       - file: docs/privacy-policy-en.md
         quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
       - file: docs/privacy-policy-ko.md
+        quote: "그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)"
+      - file: docs/privacy-policy-ko.md
         quote: "표시 이름, 프로필 문구, 반응, 스토리 내용, 이용자가 연락처에 붙인 이름은 서버에 읽을 수 있는 형태로 저장되지 않습니다."
+      - file: docs/security-hardening-roadmap.md
+        quote: "No plaintext message content on the server | ✅ CI-enforced | schema-privacy-check.mjs, server-data-inventory.md; group and channel names and descriptions and device labels are still readable and are the gate's only allowlisted fields"
+      - file: docs/security-hardening-roadmap.md
+        quote: "VEIL is already genuinely strong — the ratchet, no-recovery, a server that stores no plaintext message content, integrity detection and manual key verification are all real and measured above."
+      - file: docs/security-hardening-roadmap.md
+        quote: "The server does still store group and channel names and descriptions and device labels in readable form until their encryption ships."
+      - file: site/index.html
+        quote: "그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)"
       - file: site/index.html
         quote: "표시 이름, 프로필 문구, 반응, 스토리 내용, 이용자가 연락처에 붙인 이름은 서버에 읽을 수 있는 형태로 저장되지 않습니다."
+      - file: site/index.html
+        quote: "Group and channel names and descriptions, and the label of each of your devices."
+      - file: site/index.html
+        quote: "Unlike message content, these are stored in readable form."
       - file: site/index.html
         quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
     evidence:
       - gate: scripts/schema-privacy-check.mjs
+      - test: scripts/__tests__/schema-privacy-check.test.mjs
+        name: "plaintext-named String without ciphertext fails"
+      - test: scripts/__tests__/schema-privacy-check.test.mjs
+        name: "the allowlist holds only group and channel names and descriptions and device labels"
       - test: apps/api/test/unit/plaintext-free-api.spec.ts
         name: "no response contains displayName, nickname, emoji or avatarPath"
       - test: apps/api/src/modules/auth/auth.service.spec.ts
@@ -117,6 +157,8 @@ claims:
         name: "31-day-old message deleted regardless of expiresAt"
       - test: apps/api/test/unit/retention.service.spec.ts
         name: "VEIL_MESSAGE_MAX_AGE_DAYS sets the age cap, and 0 disables it"
+      - test: apps/api/test/unit/app-config.service.spec.ts
+        name: "production keeps message and call-record retention within the published 30 days"
   - id: no-backup-no-recovery
     text: "There is no backup, no account recovery, no password reset and no admin override; losing every device loses the account."
     sources:
@@ -222,6 +264,21 @@ claims:
         name: "quarantined handle register 409"
       - test: apps/api/src/modules/account/account.service.spec.ts
         name: "quarantines the handle for 90 days in the transaction that deletes the user"
+  - id: wake-only-push
+    text: "Push notifications only wake the app: they carry no message content, no envelope fields and no conversation metadata, and reactions send none at all."
+    sources:
+      - file: README.md
+        quote: "Push payloads carry no plaintext or envelope fields"
+    evidence:
+      - gate: scripts/policy-check.mjs
+      - test: apps/api/test/unit/push.service.spec.ts
+        name: "builds opaque wake-only APNs requests with no conversation metadata"
+      - test: apps/api/test/unit/push.service.spec.ts
+        name: "builds opaque wake-only FCM requests with no conversation metadata"
+      - test: apps/api/test/unit/unifiedpush-push.provider.spec.ts
+        name: "builds an opaque, wake-only request to the device endpoint"
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "reaction envelope accepted and no push sent"
   - id: crypto-primitives
     text: "The message crypto is built on X25519, Ed25519, HKDF-SHA256 and AES-256-GCM, pinned in CI by known-answer vectors."
     sources:

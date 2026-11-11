@@ -54,13 +54,17 @@ Two more gates keep the rest of this README honest:
 
 ## Product non-negotiables
 
-These are enforced by `scripts/policy-check.mjs` and
-`scripts/schema-privacy-check.mjs`. A PR that violates any of them will fail
-CI:
+CI guards these with `scripts/policy-check.mjs`,
+`scripts/schema-privacy-check.mjs` and the API tests; a PR that trips one of
+those checks fails the build:
 
-- The server stores no plaintext user content: messages, reactions and
+- The server stores no plaintext message content: messages, reactions and
   stories are ciphertext, and display names, profile text and contact names
-  are not stored at all
+  are not stored. Group and channel names and descriptions and device labels
+  are still stored in readable form until their encryption ships. They are
+  the only entries on the allowlist of `scripts/schema-privacy-check.mjs`,
+  which fails CI when any other field named like user-written text (body,
+  caption, bio, name, note and the like) is not ciphertext
 - No cloud backup exists
 - No account recovery, password reset, or admin override
 - Identity is device-bound; transfer requires the old device alive

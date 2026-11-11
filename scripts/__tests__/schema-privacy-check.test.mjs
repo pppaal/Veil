@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import {
   INVENTORY_PATH,
+  PLAINTEXT_ALLOWLIST,
   RETENTION_SERVICE_PATH,
   SCHEMA_PATH,
   checkSchemaPrivacy,
@@ -122,4 +123,17 @@ test('the repository schema passes and its inventory is current', () => {
   });
   assert.deepEqual(failures, []);
   assert.equal(renderInventory(models), repoFile(INVENTORY_PATH));
+});
+
+// README, the privacy policies and docs/claims.yaml name these fields as the
+// only user-written text the server stores readable; growing the list must
+// change this test and that copy together.
+test('the allowlist holds only group and channel names and descriptions and device labels', () => {
+  assert.deepEqual(Object.keys(PLAINTEXT_ALLOWLIST).sort(), [
+    'ChannelMeta.description',
+    'ChannelMeta.name',
+    'Device.deviceName',
+    'GroupMeta.description',
+    'GroupMeta.name',
+  ]);
 });

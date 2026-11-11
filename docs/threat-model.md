@@ -10,11 +10,14 @@
 
 ## Defensive product choices
 
-- the server stores no plaintext user content: messages, reactions and
+- the server stores no plaintext message content: messages, reactions and
   stories are ciphertext, and display names, profile text, contact names and
-  report notes are not stored at all. Every stored field is annotated and CI
-  regenerates the list of what a seized server reveals
-  (`server-data-inventory.md`, `scripts/schema-privacy-check.mjs`)
+  report notes are not stored at all. Group and channel names and
+  descriptions and device labels are still stored in readable form (see the
+  residual risks below); they are the only fields the schema privacy gate
+  allowlists. Every stored field is annotated and CI regenerates the list of
+  what a seized server reveals (`server-data-inventory.md`,
+  `scripts/schema-privacy-check.mjs`)
 - no password reset, no account recovery and no backup exist, sealed or not:
   losing every device loses the account (`no-recovery.md`). CI rejects
   recovery routes, modules, schema models and contract types
@@ -60,7 +63,7 @@
 - the session opener bootstraps from the responder's static identity key, so the first message of a session lacks forward secrecy until the first ratchet step. The server-side X3DH one-time-prekey pool now exists (per-device upload/count + atomic single-use claim; `libsignal-migration-design.md` phase L.4), but the client is not yet wired to publish/consume prekeys, so this gap is closed on the server and pending on the client
 - group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — server-side epoch bookkeeping and the opt-in flag have shipped (phases AB.1/AB.2), but the Sender-Key client crypto itself is still design-only (`group-sender-keys-design.md`)
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is under revision because the current design does not hide the sender (`sealed-sender-design.md`)
-- group and channel names and descriptions are still stored in plaintext until encrypted group metadata ships (allowlisted in `scripts/schema-privacy-check.mjs`)
+- group and channel names and descriptions are still stored in plaintext until encrypted group metadata ships, and device labels until encrypted profiles ship (allowlisted in `scripts/schema-privacy-check.mjs`)
 - the attachment presigned MinIO/S3 flow (server-side ticketing, strict 64-hex sha256 integrity validation, size caps, rate limits) is implemented; residual risk is that the object-storage deployment configuration (bucket policy, credential rotation) is environment-specific and the flow has not been externally pentested
 - mobile local database encryption-at-rest is prepared conceptually but not finalized
 - transport/session hardening still needs production infrastructure work

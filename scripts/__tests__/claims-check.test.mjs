@@ -84,6 +84,19 @@ test('a claim without evidence fails', () => {
   );
 });
 
+test('a test in a skipped or focused block is not evidence', () => {
+  for (const marker of ['describe.skip', 'describe.only', 'xdescribe']) {
+    const failures = checkClaims(
+      tree({
+        'tests/crypto.test.mjs': `${marker}('crypto', () => {\n  test('encrypts on the device', () => {});\n});\n`,
+      }),
+    );
+    assert.deepEqual(failures, [
+      'e2e: tests/crypto.test.mjs skips or focuses tests, so "encrypts on the device" may not run',
+    ]);
+  }
+});
+
 test('a gate CI never runs is not evidence', () => {
   const failures = checkClaims(tree({ 'package.json': JSON.stringify({ scripts: {} }) }));
   assert.deepEqual(failures, [
@@ -96,6 +109,37 @@ test('unledgered claim sentence fails', () => {
     tree({ 'README.md': `${README}\nYour data is never stored anywhere. Except here.\n` }),
   );
   assert.deepEqual(failures, ['README.md: unledgered claim "Your data is never stored anywhere."']);
+});
+
+test('denying plaintext or disclosing readable data is a claim, mentioning plaintext is not', () => {
+  const copy = [
+    'Ciphertext length tracks plaintext length.',
+    'The server never sees plaintext.',
+    'Plaintext does not leave the device.',
+    'Group names are stored in readable form.',
+    '서버는 평문을 볼 수 없습니다.',
+  ].join('\n\n');
+  const failures = checkClaims(tree({ 'README.md': `${README}\n${copy}\n` }));
+  assert.deepEqual(failures, [
+    'README.md: unledgered claim "The server never sees plaintext."',
+    'README.md: unledgered claim "Plaintext does not leave the device."',
+    'README.md: unledgered claim "Group names are stored in readable form."',
+    'README.md: unledgered claim "서버는 평문을 볼 수 없습니다."',
+  ]);
+});
+
+test('claims in HTML text attributes are scanned without splitting the element text', () => {
+  const html = [
+    '<meta name="description" content="Messages are never stored.">',
+    '<p>Read <abbr title="end-to-end encryption">E2E</abbr> notes.</p>',
+    '<img alt=\'Zero-knowledge vault\' src="x.png">',
+  ].join('\n');
+  assert.deepEqual(sentencesOf(html, 'site/index.html'), [
+    'Read E2E notes.',
+    'Messages are never stored.',
+    'end-to-end encryption',
+    'Zero-knowledge vault',
+  ]);
 });
 
 test('a line that opens with an inline code span does not hide later claims', () => {

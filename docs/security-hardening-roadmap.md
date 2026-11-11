@@ -11,7 +11,7 @@ overstating what's already there.
 | --- | --- | --- |
 | E2E (X25519 + AES-256-GCM + Ed25519, Double Ratchet) | ✅ strong | `lib_crypto_adapter.dart`, `crypto-envelope-spec.md` |
 | No backup / no recovery / device-bound identity | ✅ strong | enforced by `policy-check.mjs` (routes, modules, schema models, contracts, mobile backup code) |
-| No plaintext user content on the server | ✅ CI-enforced | `schema-privacy-check.mjs`, [`server-data-inventory.md`](server-data-inventory.md) |
+| No plaintext message content on the server | ✅ CI-enforced | `schema-privacy-check.mjs`, [`server-data-inventory.md`](server-data-inventory.md); group and channel names and descriptions and device labels are still readable and are the gate's only allowlisted fields |
 | Public claims backed by tests | ✅ CI-enforced | `claims-check.mjs`, [`claims.yaml`](claims.yaml) |
 | TLS pinning | ✅ present | `buildPinnedHttpClient`, 5 files |
 | Hardware-isolated keys (Secure Enclave / StrongBox) | ❌ absent | keys sit in OS secure storage (Keychain / Keystore-encrypted preferences), not in a hardware key store |
@@ -95,9 +95,11 @@ external audit; build/padding work (A, B) can proceed in parallel now.
 ## 4. Honest framing
 
 VEIL is already genuinely strong — the ratchet, no-recovery, a server that
-stores no plaintext user content, integrity detection and manual key
-verification are all real and measured above. The gaps are the *next tier* (verifiable builds, traffic-shape and
-server-key-substitution resistance), i.e. moving from "we encrypt your
-content and minimize data" to "you don't have to trust our build, our
-server's key honesty, or our traffic not leaking shape." Don't claim these
-until they ship.
+stores no plaintext message content, integrity detection and manual key
+verification are all real and measured above. The server does still store
+group and channel names and descriptions and device labels in readable form
+until their encryption ships. The gaps are the *next
+tier* (verifiable builds, traffic-shape and server-key-substitution
+resistance), i.e. moving from "we encrypt your content and minimize data" to
+"you don't have to trust our build, our server's key honesty, or our traffic
+not leaking shape." Don't claim these until they ship.

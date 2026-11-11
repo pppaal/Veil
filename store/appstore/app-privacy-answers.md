@@ -22,7 +22,7 @@ Yes — only the minimum operational data described below. No data is used for t
 
 ### User Content
 - **Other User Content** (encrypted message payloads): collected and transited
-  - Linked to user: No (server-side ciphertext has no plaintext identifier)
+  - Linked to user: No (the server cannot decrypt the content)
   - Used for: App Functionality
   - Tracking: No
 - Messages, media, photos, and audio are encrypted end-to-end. Apple's classification still requires declaring the transport of user content; we declare it as unlinked because the server cannot decrypt it.

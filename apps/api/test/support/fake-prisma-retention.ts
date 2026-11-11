@@ -20,7 +20,6 @@ type StoryRecord = {
   ciphertext: string;
   envelopeVersion: string;
   expiresAt: Date;
-  viewCount: number;
   createdAt: Date;
 };
 
@@ -271,7 +270,6 @@ export class RetentionFakePrismaService extends FakePrismaService {
         ciphertext: data.ciphertext,
         envelopeVersion: data.envelopeVersion,
         expiresAt: data.expiresAt,
-        viewCount: 0,
         createdAt: new Date(),
       };
     },

@@ -950,24 +950,33 @@ describe('MessagesService', () => {
   });
 
   describe('device activity', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
     it('lastSyncAt truncated to day and not rewritten within the day', async () => {
+      jest.useFakeTimers({ now: new Date('2026-11-11T09:30:15.123Z') });
       const { prisma, alice, sendFromAlice } = directFixture();
       const updateMany = jest.spyOn(prisma.device, 'updateMany');
+      const lastSyncAt = () =>
+        prisma.devices.find((candidate) => candidate.id === alice.deviceId)!.lastSyncAt;
 
       await sendFromAlice();
-      const device = prisma.devices.find((candidate) => candidate.id === alice.deviceId)!;
-      const firstSync = device.lastSyncAt!;
-      expect(firstSync.toISOString()).toMatch(/T00:00:00\.000Z$/);
-      expect(firstSync.getTime()).toBeLessThanOrEqual(Date.now());
-      expect(Date.now() - firstSync.getTime()).toBeLessThan(24 * 60 * 60 * 1000);
+      const firstSync = lastSyncAt();
+      expect(firstSync).toEqual(new Date('2026-11-11T00:00:00.000Z'));
 
+      jest.setSystemTime(new Date('2026-11-11T23:59:59.999Z'));
       await sendFromAlice();
+      expect(lastSyncAt()).toBe(firstSync);
 
-      expect(device.lastSyncAt).toBe(firstSync);
+      jest.setSystemTime(new Date('2026-11-12T00:00:00.001Z'));
+      await sendFromAlice();
+      expect(lastSyncAt()).toEqual(new Date('2026-11-12T00:00:00.000Z'));
+
       const writes = await Promise.all(
         updateMany.mock.results.map((result) => result.value as Promise<{ count: number }>),
       );
-      expect(writes.map((write) => write.count)).toEqual([1, 0]);
+      expect(writes.map((write) => write.count)).toEqual([1, 0, 1]);
     });
   });
 

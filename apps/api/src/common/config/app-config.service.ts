@@ -8,6 +8,12 @@ import type { ClientIpSource, EnvConfig } from './env.schema';
 // reversible by hashing candidate handles.
 export const DEV_RETIRED_HANDLE_PEPPER = 'veil-dev-retired-handle-pepper-not-for-production';
 
+// The privacy policy, the store listings and docs/claims.yaml promise that
+// message ciphertext and call records are gone within 30 days. Operators may
+// shorten these windows, but production refuses to boot with a setting that
+// would break the published promise (0 means "keep forever").
+export const PUBLISHED_RETENTION_CAP_DAYS = 30;
+
 @Injectable()
 export class AppConfigService {
   constructor(private readonly configService: ConfigService<EnvConfig, true>) {}
@@ -218,6 +224,18 @@ export class AppConfigService {
         'VEIL_RETIRED_HANDLE_PEPPER is not set. Generate one with ' +
           '`openssl rand -base64 32`; it keys the quarantine of deleted handles.',
       );
+    }
+
+    for (const [name, days] of [
+      ['VEIL_MESSAGE_MAX_AGE_DAYS', this.messageMaxAgeDays],
+      ['VEIL_CALL_RECORD_RETENTION_DAYS', this.callRecordRetentionDays],
+    ] as const) {
+      if (days < 1 || days > PUBLISHED_RETENTION_CAP_DAYS) {
+        errors.push(
+          `${name} is ${days}. Production must delete within 1 to ` +
+            `${PUBLISHED_RETENTION_CAP_DAYS} days, as the privacy policy promises.`,
+        );
+      }
     }
 
     // The S3 public endpoint is what the browser hits for presigned PUTs;

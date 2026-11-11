@@ -25,12 +25,14 @@ DROP TABLE IF EXISTS "recovery_blobs";
 
 -- 5. Stories become ciphertext for an explicit audience. Existing plaintext
 --    stories cannot be converted and live at most 24 hours anyway, so they
---    are deleted (their views cascade).
+--    are deleted (their views cascade). view_count was never written: the
+--    author's view count is counted from story_views.
 DELETE FROM "stories";
 ALTER TABLE "stories"
     DROP COLUMN IF EXISTS "content_type",
     DROP COLUMN IF EXISTS "content_url",
     DROP COLUMN IF EXISTS "caption",
+    DROP COLUMN IF EXISTS "view_count",
     ADD COLUMN "ciphertext" TEXT NOT NULL,
     ADD COLUMN "envelope_version" VARCHAR(32) NOT NULL;
 DROP TYPE IF EXISTS "StoryContentType";

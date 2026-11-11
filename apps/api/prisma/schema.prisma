@@ -610,8 +610,6 @@ model Story {
   envelopeVersion String          @map("envelope_version") @db.VarChar(32)
   /// @privacy(class=operational, retention=24h, visibleTo=members)
   expiresAt       DateTime        @map("expires_at")
-  /// @privacy(class=operational, retention=24h, visibleTo=server)
-  viewCount       Int             @default(0) @map("view_count")
   /// @privacy(class=operational, retention=24h, visibleTo=members)
   createdAt       DateTime        @default(now()) @map("created_at")
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)

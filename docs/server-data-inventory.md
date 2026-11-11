@@ -23,7 +23,7 @@ fields and are covered there too.
 | --- | --- | --- |
 | `ciphertext` | encrypted on the client; the server cannot read it | 4 |
 | `routing` | identifiers the server needs to route, authorize and link rows | 65 |
-| `operational` | timestamps, flags, counters and states the service runs on | 72 |
+| `operational` | timestamps, flags, counters and states the service runs on | 71 |
 | `public` | meant to be seen by other users: handles, public keys, channel names | 10 |
 | `secret-hash` | a hash or keyed hash of a secret; the secret itself is not stored | 2 |
 
@@ -277,7 +277,6 @@ such field fails CI.
 | `ciphertext` | `ciphertext` | ciphertext | 24 hours | members |
 | `envelopeVersion` | `envelope_version` | operational | 24 hours | members |
 | `expiresAt` | `expires_at` | operational | 24 hours | members |
-| `viewCount` | `view_count` | operational | 24 hours | server |
 | `createdAt` | `created_at` | operational | 24 hours | members |
 
 ### `story_audiences` (StoryAudience)

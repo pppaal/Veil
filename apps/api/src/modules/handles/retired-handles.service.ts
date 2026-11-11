@@ -8,7 +8,7 @@ import { PrismaService } from '../../common/prisma.service';
 
 // Long enough for contacts to notice that an account is gone before anyone
 // else can take its handle.
-export const HANDLE_QUARANTINE_DAYS = 90;
+const HANDLE_QUARANTINE_DAYS = 90;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**

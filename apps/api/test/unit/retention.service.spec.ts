@@ -361,7 +361,6 @@ describe('RetentionService metadata sweeps', () => {
       ciphertext: 'sealed-story',
       envelopeVersion: 'veil-envelope-v2',
       expiresAt,
-      viewCount: 0,
       createdAt: new Date(expiresAt.getTime() - DAY_MS),
     });
     const expired = story(ago(1000));

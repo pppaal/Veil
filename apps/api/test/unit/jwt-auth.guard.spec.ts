@@ -14,12 +14,17 @@ function ctx(request: Req, type: 'http' | 'ws' = 'http') {
   } as never;
 }
 
+// The guard reads the clock itself; a fixed one keeps "seen today" true for
+// the whole run, even one that crosses midnight UTC.
+const NOW = new Date('2026-11-11T12:34:56.789Z');
+const TODAY = utcDayStart(NOW);
+
 const activeDevice = {
   id: 'd1',
   userId: 'u1',
   isActive: true,
   revokedAt: null,
-  lastSeenAt: utcDayStart(new Date()),
+  lastSeenAt: TODAY,
   user: { status: 'active' },
 };
 
@@ -57,6 +62,14 @@ function build(
 const authed = () => ctx({ headers: { authorization: 'Bearer t' } });
 
 describe('JwtAuthGuard', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: NOW });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('lets non-http contexts (ws/rpc) through untouched', async () => {
     expect(await build().canActivate(ctx({ headers: {} }, 'ws'))).toBe(true);
   });
@@ -112,17 +125,16 @@ describe('JwtAuthGuard', () => {
   });
 
   it('records the day a device was last seen, at most once a day', async () => {
-    const today = utcDayStart(new Date());
     const seenToday = build();
     await seenToday.canActivate(authed());
     expect(seenToday.activityWrites).toEqual([]);
 
     const seenYesterday = build({
-      device: { ...activeDevice, lastSeenAt: new Date(today.getTime() - 3_600_000) },
+      device: { ...activeDevice, lastSeenAt: new Date(TODAY.getTime() - 86_400_000) },
     });
     await seenYesterday.canActivate(authed());
     expect(seenYesterday.activityWrites).toEqual([
-      { where: { id: 'd1', lastSeenAt: { not: today } }, data: { lastSeenAt: today } },
+      { where: { id: 'd1', lastSeenAt: { not: TODAY } }, data: { lastSeenAt: TODAY } },
     ]);
   });
 

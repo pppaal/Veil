@@ -208,9 +208,11 @@ export function runPolicyChecks(rootDir) {
     `[${RULES.noRecoveryModels}] The schema must not hold recovery or backup models`,
   );
 
+  // Any declared name counts, type or value and in any case, so a runtime
+  // constant such as RECOVERY_FORMAT cannot stand in for a removed type.
   assertNoMatch(
     CONTRACTS_SRC,
-    /\b(?:interface|type|class|enum)\s+\w*(?:Recovery|Backup)\w*/,
+    /\b(?:interface|type|class|enum|const|let|var|function)\s+\w*(?:recovery|backup)\w*/i,
     `[${RULES.noRecoveryContracts}] Contracts must not describe recovery or backup payloads`,
   );
 
@@ -364,6 +366,12 @@ const SEEDED_VIOLATIONS = [
     files: {
       [`${CONTRACTS_SRC}/index.ts`]:
         'export interface UpsertRecoveryBackupRequest {\n  ciphertext: string;\n}\n',
+    },
+  },
+  {
+    rule: RULES.noRecoveryContracts,
+    files: {
+      [`${CONTRACTS_SRC}/vault.ts`]: "export const RECOVERY_FORMAT = 'sealed-v1';\n",
     },
   },
   {

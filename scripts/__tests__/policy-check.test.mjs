@@ -45,6 +45,17 @@ test('recovery contract types fail', () => {
   assert.match(failures.join('\n'), /\[no-recovery-contracts\]/);
 });
 
+test('recovery contract values and lowercase names fail too', () => {
+  for (const source of [
+    "export const RECOVERY_FORMAT = 'sealed-v1';\n",
+    'export type keyBackupState = string;\n',
+    'export function sealRecovery() {}\n',
+  ]) {
+    const failures = failuresFor({ 'packages/contracts/src/index.ts': source });
+    assert.match(failures.join('\n'), /\[no-recovery-contracts\]/, source);
+  }
+});
+
 test('a mobile backup module fails', () => {
   const failures = failuresFor({
     'apps/mobile/lib/src/core/backup/backup_envelope.dart': 'class BackupEnvelope {}\n',

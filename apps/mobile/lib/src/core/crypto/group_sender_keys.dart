@@ -359,7 +359,8 @@ class _OwnChain {
     required this.signingSeed,
     required this.signingPublicKey,
     required this.generation,
-  });
+    Set<String>? deliveredTo,
+  }) : deliveredTo = deliveredTo ?? <String>{};
 
   final String deviceId;
   List<int> chainKey;
@@ -368,6 +369,10 @@ class _OwnChain {
   final List<int> signingPublicKey;
   final int generation;
 
+  /// User ids this chain has been handed to. Kept with the chain so it is
+  /// persisted with it and starts empty for every new chain.
+  final Set<String> deliveredTo;
+
   Map<String, dynamic> toJson() => {
         'deviceId': deviceId,
         'chainKey': base64UrlNoPadEncode(chainKey),
@@ -375,6 +380,7 @@ class _OwnChain {
         'signingSeed': base64UrlNoPadEncode(signingSeed),
         'signingPub': base64UrlNoPadEncode(signingPublicKey),
         'generation': generation,
+        'deliveredTo': deliveredTo.toList(growable: false),
       };
 
   static _OwnChain fromJson(Map<String, dynamic> json) => _OwnChain(
@@ -384,6 +390,9 @@ class _OwnChain {
         signingSeed: base64UrlNoPadDecode(json['signingSeed'] as String),
         signingPublicKey: base64UrlNoPadDecode(json['signingPub'] as String),
         generation: json['generation'] as int,
+        // Absent from snapshots written before delivery was recorded; the
+        // chain is then handed to every member once more.
+        deliveredTo: {for (final userId in json['deliveredTo'] as List? ?? const []) userId as String},
       );
 
   void wipe() {
@@ -624,6 +633,35 @@ class GroupSenderKeyEngine {
     final state = _groups[groupId];
     if (state?.own == null) return null;
     return _exportOwn(state!);
+  }
+
+  /// User ids [recordDelivered] has recorded as holding [key]; empty when
+  /// [key] is no longer our chain (rotated, re-keyed or forgotten since).
+  Set<String> deliveredTo(GroupSenderKey key) {
+    final own = _ownChainMatching(key);
+    return own == null ? const <String>{} : Set<String>.unmodifiable(own.deliveredTo);
+  }
+
+  /// Records that [key], our current chain, has been handed to [userIds].
+  /// Persisted with the chain, so a restart neither forgets who still needs
+  /// it nor sends it again to someone who has it. Ignored when [key] is no
+  /// longer our chain.
+  Future<void> recordDelivered(GroupSenderKey key, Iterable<String> userIds) =>
+      _lock.synchronized(key.groupId, () async {
+        final own = _ownChainMatching(key);
+        if (own == null) return;
+        own.deliveredTo.addAll(userIds);
+        await _persist(key.groupId);
+      });
+
+  /// Our chain, if [key] describes it. Every chain gets a fresh signing key,
+  /// so the signing key names the chain even across a lost-state restart at
+  /// the same generation.
+  _OwnChain? _ownChainMatching(GroupSenderKey key) {
+    final state = _groups[key.groupId];
+    final own = state?.own;
+    if (state == null || own == null || state.epoch != key.epoch) return null;
+    return constantTimeBytesEqual(own.signingPublicKey, key.signingPublicKey) ? own : null;
   }
 
   /// Installs a peer's chain from a distribution whose blob has been unsealed

@@ -67,12 +67,6 @@ class GroupSenderKeyCoordinator {
   // the relay. Cleared on epoch bump / key ingest.
   final Set<String> _pickupAttempted = <String>{};
 
-  // Members our current chain has not reached yet, per conversation: their
-  // active device was missing from the directory, the trust check refused
-  // it, or the upload failed. Retried on the next prepareSend; an epoch bump
-  // replaces the chain and so starts over with every member.
-  final Map<String, ({int epoch, Set<String> userIds})> _pending = {};
-
   // Serializes "do we have a chain / who still needs it / distribute" per
   // conversation so concurrent sends and epoch events cannot interleave.
   final KeyedAsyncLock<String> _distributionLock = KeyedAsyncLock<String>();
@@ -92,7 +86,6 @@ class GroupSenderKeyCoordinator {
   void clearInMemory() {
     engine.clearInMemory();
     _pickupAttempted.clear();
-    _pending.clear();
   }
 
   // ---- send -----------------------------------------------------------------
@@ -100,6 +93,13 @@ class GroupSenderKeyCoordinator {
   /// Makes sure we own a chain for the conversation's current epoch and that
   /// every other member we can reach has been handed it. Returns the epoch to
   /// stamp on the send request.
+  ///
+  /// The engine persists who holds the chain together with the chain. So,
+  /// restarts included, a member it has not reached (no active device in the
+  /// directory, refused by the trust check, behind a failed upload) is handed
+  /// it on the next send, and a member it has reached is not sent it again:
+  /// the relay would replace their still-buffered copy with one that starts
+  /// at a later counter, losing them the frames in between.
   Future<int> prepareSend({
     required ConversationPreview conversation,
     required String accessToken,
@@ -108,40 +108,37 @@ class GroupSenderKeyCoordinator {
   }) {
     final epoch = conversation.groupEpoch ?? 0;
     return _distributionLock.synchronized(conversation.id, () async {
-      final others = _othersIn(conversation, localUserId);
-      if (engine.hasOwnSenderKey(
+      final isNewChain = !engine.hasOwnSenderKey(
         groupId: conversation.id,
         epoch: epoch,
         localDeviceId: localDeviceId,
-      )) {
-        final pending = _pending[conversation.id];
-        final retry = pending == null || pending.epoch != epoch
-            ? const <GroupMember>[]
-            : others.where((m) => pending.userIds.contains(m.userId)).toList(growable: false);
-        if (retry.isEmpty) {
-          _pending.remove(conversation.id);
-        } else {
-          await _distribute(
-            conversationId: conversation.id,
-            key: engine.exportOwnSenderKey(conversation.id)!,
-            recipients: retry,
-            accessToken: accessToken,
-          );
-        }
-        return epoch;
-      }
+      );
       final key = await engine.ensureOwnSenderKey(
         groupId: conversation.id,
         epoch: epoch,
         localDeviceId: localDeviceId,
       );
-      await _distribute(
-        conversationId: conversation.id,
-        key: key,
-        recipients: others,
-        accessToken: accessToken,
-      );
-      onKeysChanged?.call(conversation.id);
+      final reached = engine.deliveredTo(key);
+      final missing = _othersIn(conversation, localUserId)
+          .where((m) => !reached.contains(m.userId))
+          .toList(growable: false);
+      if (missing.isNotEmpty) {
+        try {
+          await _distribute(
+            conversationId: conversation.id,
+            key: key,
+            recipients: missing,
+            accessToken: accessToken,
+          );
+        } catch (_) {
+          // While nobody is known to hold this chain, a frame sent under it
+          // could be unreadable to everyone, so the send fails. Once someone
+          // does, failing to reach the rest must not cost them the message;
+          // the rest stay unrecorded and the next send tries again.
+          if (reached.isEmpty) rethrow;
+        }
+      }
+      if (isNewChain) onKeysChanged?.call(conversation.id);
       return epoch;
     });
   }
@@ -149,53 +146,34 @@ class GroupSenderKeyCoordinator {
   static List<GroupMember> _othersIn(ConversationPreview conversation, String localUserId) =>
       conversation.members.where((m) => m.userId != localUserId).toList(growable: false);
 
-  /// Seals [key] to every recipient we can and uploads the blobs. Everyone
-  /// is marked pending first so a failure part-way leaves them all to retry;
-  /// after the upload only the recipients we could not seal to stay pending.
+  /// Seals [key] to every recipient we can, uploads the blobs, and only then
+  /// records who holds the chain. Anyone we could not seal to, or a failed
+  /// upload, leaves them unrecorded for the next prepareSend.
   Future<void> _distribute({
     required String conversationId,
     required GroupSenderKey key,
     required List<GroupMember> recipients,
     required String accessToken,
   }) async {
-    final previous = _pending[conversationId];
-    _pending[conversationId] = (
-      epoch: key.epoch,
-      userIds: {
-        if (previous != null && previous.epoch == key.epoch) ...previous.userIds,
-        ...recipients.map((m) => m.userId),
-      },
-    );
-
     final identityRef = await _identityPrivateRefLoader();
     final seed = identityRef == null ? null : _localEd25519SeedParser(identityRef);
     if (seed == null) {
       throw StateError('Local identity key unavailable — cannot sign sender-key distribution.');
     }
 
-    final uploads = <Map<String, dynamic>>[];
-    final unreached = <String>{};
+    final sealed = <SealedGroupSenderKey>[];
     for (final member in recipients) {
-      final sealed = await _sealTo(member, key: key, senderIdentityEd25519Seed: seed);
-      if (sealed == null) {
-        unreached.add(member.userId);
-      } else {
-        uploads.add(sealed.toUploadJson());
-      }
+      final blob = await _sealTo(member, key: key, senderIdentityEd25519Seed: seed);
+      if (blob != null) sealed.add(blob);
     }
-    if (uploads.isNotEmpty) {
-      await _apiClient.distributeGroupKeys(
-        accessToken,
-        conversationId,
-        epoch: key.epoch,
-        distributions: uploads,
-      );
-    }
-    if (unreached.isEmpty) {
-      _pending.remove(conversationId);
-    } else {
-      _pending[conversationId] = (epoch: key.epoch, userIds: unreached);
-    }
+    if (sealed.isEmpty) return;
+    await _apiClient.distributeGroupKeys(
+      accessToken,
+      conversationId,
+      epoch: key.epoch,
+      distributions: [for (final blob in sealed) blob.toUploadJson()],
+    );
+    await engine.recordDelivered(key, [for (final blob in sealed) blob.recipientUserId]);
   }
 
   Future<CryptoEnvelope> encryptMessage({
@@ -240,7 +218,7 @@ class GroupSenderKeyCoordinator {
   }) async {
     final header = GroupSenderKeyEngine.parseHeader(envelope.ciphertext);
     if (header == null) {
-      return _placeholder(envelope, '[Unable to decrypt: invalid envelope]');
+      return _placeholder('[Unable to decrypt: invalid envelope]');
     }
 
     // If we hold no key for this sender (or we never saw the epoch bump),
@@ -269,16 +247,16 @@ class GroupSenderKeyCoordinator {
     } on GroupCryptoException catch (e) {
       switch (e.code) {
         case 'senderKeyMissing':
-          return _placeholder(envelope, '[Awaiting sender key — sync required]');
+          return _placeholder('[Awaiting sender key — sync required]');
         case 'epochMismatch':
-          return _placeholder(envelope, '[Message from a previous group epoch]');
+          return _placeholder('[Message from a previous group epoch]');
         case 'replayed':
-          return _placeholder(envelope, '[Replayed or out-of-window message]');
+          return _placeholder('[Replayed or out-of-window message]');
         default:
-          return _placeholder(envelope, '[Decryption failed]');
+          return _placeholder('[Decryption failed]');
       }
     } catch (_) {
-      return _placeholder(envelope, '[Decryption failed]');
+      return _placeholder('[Decryption failed]');
     }
   }
 
@@ -450,7 +428,6 @@ class GroupSenderKeyCoordinator {
   }) =>
       _distributionLock.synchronized(conversationId, () async {
         _pickupAttempted.removeWhere((m) => m.startsWith('$conversationId:'));
-        _pending.remove(conversationId);
         if (reason == 'leave' && userId == localUserId) {
           await engine.forget(conversationId);
           onKeysChanged?.call(conversationId);
@@ -472,8 +449,8 @@ class GroupSenderKeyCoordinator {
               accessToken: accessToken,
             );
           } catch (_) {
-            // Best effort — whoever was not reached stays pending and the
-            // next prepareSend() retries them.
+            // Best effort: whoever was not reached stays unrecorded and the
+            // next prepareSend() hands them the chain.
           }
         }
         onKeysChanged?.call(conversationId);
@@ -486,8 +463,8 @@ class GroupSenderKeyCoordinator {
   /// them, the trust check refuses it, or its signed prekey does not verify.
   /// Each of those is about this member alone, so it must not cost the other
   /// members the chain. Failures that are not about the member (offline,
-  /// throttled, server error) still abort the round, so the send fails where
-  /// the user can see it instead of shipping a frame nobody can read.
+  /// throttled, server error) abort the round; prepareSend decides whether
+  /// that fails the send.
   Future<SealedGroupSenderKey?> _sealTo(
     GroupMember member, {
     required GroupSenderKey key,
@@ -591,8 +568,10 @@ class GroupSenderKeyCoordinator {
     );
   }
 
-  DecryptedMessage _placeholder(CryptoEnvelope envelope, String body) =>
-      DecryptedMessage(body: body, messageKind: envelope.messageKind);
+  /// Nothing was authenticated, so the server-controlled outer messageKind
+  /// must not decide how the placeholder renders (e.g. as system chrome).
+  DecryptedMessage _placeholder(String body) =>
+      DecryptedMessage(body: body, messageKind: MessageKind.text);
 
   static Map<String, dynamic> _serializeAttachmentRef(AttachmentReference a) => {
         'attachmentId': a.attachmentId,

@@ -49,10 +49,15 @@ reviewer should look first.
 7. **The relay and directory are not trusted to pick recipients.** The
    coordinator seals only to a member's *active* device as listed for that
    member's own userId; if that device is missing it never falls back to
-   another listed bundle. Such members stay in a per-conversation pending set
-   and are retried on the next send (an epoch bump re-keys and so reaches
-   everyone anyway). A member who was pending reads from the counter at
-   which they were finally reached; earlier frames stay unreadable to them.
+   another listed bundle. The engine records with our own chain, and
+   persists with it, which members the chain has been uploaded to; every
+   other member is handed it on the next send, after a restart too (an
+   epoch bump re-keys and so reaches everyone anyway). A member already
+   recorded is never sent the chain again: the relay would replace the copy
+   still buffered for them with one starting at a later counter, and an
+   offline member would lose the frames in between. A member reached late
+   reads from the counter at which they were reached; earlier frames stay
+   unreadable to them.
    A member is skipped this way, and the rest of the round still goes out,
    whenever the reason is about that member alone: the directory has no
    active device for them (an entry without one, or a 404
@@ -60,13 +65,16 @@ reviewer should look first.
    device was revoked), their signed prekey does not verify
    (`recipientBundleInvalid`), or the trust hook refuses or cannot judge
    their identity. A failure that is not about the member (offline,
-   throttling, a server error) aborts the round and fails the send, because
-   the frame would otherwise go out unreadable to everyone not yet reached;
-   all of them stay pending for the retry.
+   throttling, a server error) aborts the round. While nobody is recorded
+   as holding the chain that fails the send, because the frame could
+   otherwise go out unreadable to everyone; once someone holds it, the send
+   goes ahead and whoever was not reached is tried again on the next send.
 8. **Attachments come only from the authenticated payload.** A frame's
    attachment pointer is read from the decrypted inner payload (long-key or
    the 1:1 adapter's short-key form); the outer envelope's attachment, which
-   the server controls, is never used.
+   the server controls, is never used. Nor does the outer `messageKind`
+   decide rendering: a frame with an unknown inner kind, and the placeholder
+   for a frame that does not decrypt, both render as text.
 
 **Phase AB.1 (server-side epoch bookkeeping) has shipped.** The server now
 maintains `conversations.current_epoch`, records a per-member
@@ -118,36 +126,50 @@ retired.
 * **Epochs only move forward.** `resetForEpoch` ignores a bump to an epoch
   already held or an older one, and `ensureOwnSenderKey` refuses an older
   epoch (`epochMismatch`), so a server-supplied stale epoch cannot wipe the
-  current chains and re-open an old epoch's recorded distributions.
+  current chains and re-open an old epoch's recorded distributions. The
+  cost is liveness: an epoch the server announces before it reaches it (a
+  bug, or a hostile relay) stalls sends to that group with `epochMismatch`
+  until the server's epoch catches up, where previously the next correct
+  epoch healed it.
 * **Skipped keys** carry their insertion time and expire after 7 days
   (purged whenever the group is decrypted and on restore), capped at 200 per
   sender chain and 1000 per group, oldest evicted first.
 * **Serialization.** Every mutating engine call on a group
   (`ensureOwnSenderKey`/rotation, `encrypt`, `decrypt`, `ingestDistribution`,
-  restore, reset, drop, forget) runs under a per-group async lock
-  (`core/util/keyed_async_lock.dart`) and returns only after the persister
-  has stored the new state, so concurrent decrypts cannot commit from the
-  same base and rewind each other.
+  `recordDelivered`, restore, reset, drop, forget) runs under a per-group
+  async lock (`core/util/keyed_async_lock.dart`) and returns only after the
+  persister has stored the new state, so concurrent decrypts cannot commit
+  from the same base and rewind each other.
 * **Snapshots** moved to schema 2. Schema-1 snapshots are dropped, never
-  migrated: the next send re-keys, and peers' chains are picked up again
-  from the relay or the next epoch.
+  migrated. Our next send re-keys at generation 1, which peers accept over
+  the legacy entry they hold for us. Peers' chains are *not* recovered from
+  the relay, which keeps blobs for only 30 minutes, and a peer does not
+  resend a chain it has already delivered: a peer that re-keyed before we
+  upgraded stays unreadable to us until it rotates or the epoch moves, its
+  frames showing as awaiting a sender key. A migration would need an extra
+  ledger rule (a legacy entry and the same signer's first v2 blob describe
+  one chain, which must not move backwards), not worth its risk for a
+  pre-release format. Schema-2 snapshots written before the delivery record
+  existed restore with nobody recorded, so that chain is handed to every
+  member once more.
 
 Known liveness costs, accepted for now: a frame of the old generation that
 arrives after its sender's rotation no longer verifies; and a member that
-loses its group state restarts at generation 1 with a new signing key, which
-peers reject until the next epoch bump.
+loses its group state (including a snapshot that fails to parse, which
+restore drops) restarts at generation 1 with a new signing key, which peers
+reject until the next epoch bump.
 
 ## Trust hook (`trustCheck`)
 
 `GroupSenderKeyCoordinator` takes an optional
 `trustCheck(userId, deviceId, identityPublicKey) -> Future<bool>`. It is
 consulted with the directory identity before sealing our chain to a
-member's device (false: skip, keep pending) and before accepting a
-distribution signer (false: reject with `untrusted_identity`). It fails
-closed: a check that throws counts as false. Null allows every directory
-identity, which is today's behaviour. On the receiving side, a distribution
-whose sender the directory cannot serve right now is not installed and stays
-on the relay for the next pickup. The intended
+member's device (false: skip, ask again on the next send) and before
+accepting a distribution signer (false: reject with `untrusted_identity`).
+It fails closed: a check that throws counts as false. Null allows every
+directory identity, which is today's behaviour. On the receiving side, a
+distribution whose sender the directory cannot serve right now is not
+installed and stays on the relay for the next pickup. The intended
 implementation is the TOFU resolver in `core/identity/`
 (`TrustedIdentityResolver.evaluate(...).isTrusted`): first sighting of a user
 pins silently, while a changed key or a new device of a known user is never

@@ -231,6 +231,33 @@ void main() {
     expect(restored.currentEpoch(groupId), isNull);
   });
 
+  test('delivery record persists with our chain and starts empty for the next one', () async {
+    final persisted = <String, Map<String, dynamic>>{};
+    final engine = GroupSenderKeyEngine(
+      persister: (id, snap) async => persisted[id] = json.decode(json.encode(snap)) as Map<String, dynamic>,
+    );
+    final key = await engine.ensureOwnSenderKey(groupId: groupId, epoch: 0, localDeviceId: 'dev-p');
+    expect(engine.deliveredTo(key), isEmpty);
+    await engine.recordDelivered(key, ['user-bob']);
+
+    final restored = GroupSenderKeyEngine();
+    await restored.restoreFromSnapshots({groupId: persisted[groupId]!});
+    expect(restored.deliveredTo(key), {'user-bob'});
+
+    final rotated = await restored.ensureOwnSenderKey(
+      groupId: groupId,
+      epoch: 0,
+      localDeviceId: 'dev-p',
+      forceRotate: true,
+    );
+    expect(restored.deliveredTo(rotated), isEmpty);
+    expect(restored.deliveredTo(key), isEmpty);
+
+    // A late record for the retired chain must not credit the new one.
+    await restored.recordDelivered(key, ['user-carol']);
+    expect(restored.deliveredTo(rotated), isEmpty);
+  });
+
   test('ingest refuses stale epochs and own-chain overwrite', () async {
     final stale = GroupSenderKey(
       groupId: groupId,

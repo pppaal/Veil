@@ -13,7 +13,8 @@ import 'support/group_fixtures.dart';
 // Coordinator-level hardening against a malicious relay/directory: it must
 // not graft unauthenticated attachments onto messages, pick devices for us,
 // or seal to / accept from identities the trust check refuses. One member the
-// directory cannot serve must not cost the other members the chain either.
+// directory cannot serve must not cost the other members the chain either,
+// and who our chain has reached must survive a restart.
 
 /// The server: a directory the test can rewrite plus the distribution relay.
 class _Server {
@@ -23,6 +24,9 @@ class _Server {
 
   /// Handle -> error the directory answers with instead of an entry.
   final Map<String, VeilApiException> lookupFailures = <String, VeilApiException>{};
+
+  /// Error the relay answers every distribution upload with, if set.
+  VeilApiException? uploadFailure;
 
   void publish(TestIdentity user, {List<TestIdentity>? devices, String? activeDeviceId}) {
     final listed = devices ?? [user];
@@ -54,17 +58,23 @@ class _ServerClient extends VeilApiClient {
     required int epoch,
     required List<Map<String, dynamic>> distributions,
   }) async {
+    final failure = server.uploadFailure;
+    if (failure != null) throw failure;
     server.uploads.add([for (final d in distributions) d['recipientUserId'] as String]);
     for (final d in distributions) {
-      server.buffered.putIfAbsent(d['recipientUserId'] as String, () => []).add({
-        'conversationId': conversationId,
-        'epoch': epoch,
-        'fromUserId': me.userId,
-        'fromDeviceId': me.deviceId,
-        'encryptedChainKey': d['encryptedChainKey'],
-        'nonce': d['nonce'],
-        'version': d['version'],
-      });
+      // Like the real relay, a re-send to the same recipient in the same
+      // epoch replaces the blob still buffered for them.
+      server.buffered.putIfAbsent(d['recipientUserId'] as String, () => [])
+        ..removeWhere((b) => b['fromDeviceId'] == me.deviceId && b['epoch'] == epoch)
+        ..add({
+          'conversationId': conversationId,
+          'epoch': epoch,
+          'fromUserId': me.userId,
+          'fromDeviceId': me.deviceId,
+          'encryptedChainKey': d['encryptedChainKey'],
+          'nonce': d['nonce'],
+          'version': d['version'],
+        });
     }
     return {'accepted': distributions.length};
   }
@@ -90,11 +100,17 @@ class _BundleCodec implements KeyBundleCodec {
 }
 
 class _Member {
-  _Member(this.identity, _Server server, IdentityDirectory directory, ConversationPreview group) {
+  _Member(
+    this.identity,
+    this._server,
+    this._directory,
+    this._group, {
+    Map<String, Map<String, dynamic>>? store,
+  }) : stored = store ?? <String, Map<String, dynamic>>{} {
     coordinator = GroupSenderKeyCoordinator(
-      engine: GroupSenderKeyEngine(),
-      sealer: directory.sealer(),
-      apiClient: _ServerClient(server, identity),
+      engine: GroupSenderKeyEngine(persister: _persist),
+      sealer: _directory.sealer(),
+      apiClient: _ServerClient(_server, identity),
       keyBundleCodec: _BundleCodec(),
       identityPrivateRefLoader: () async => 'ref',
       localX25519PrivateParser: (_) => identity.x25519Private,
@@ -106,16 +122,41 @@ class _Member {
         }
         return !distrusted.contains(userId);
       },
-    )..conversationLookup = (_) => group;
+    )..conversationLookup = (_) => _group;
   }
 
   final TestIdentity identity;
+  final _Server _server;
+  final IdentityDirectory _directory;
+  final ConversationPreview _group;
   late final GroupSenderKeyCoordinator coordinator;
+
+  /// This device's secure store: the engine's last persisted snapshot per
+  /// group, round-tripped through JSON as the real store does.
+  final Map<String, Map<String, dynamic>> stored;
   final Set<String> distrusted = <String>{};
 
   /// Users whose trust check throws, like a resolver over a corrupt store.
   final Set<String> unresolvable = <String>{};
   final List<String> trustChecks = <String>[];
+
+  Future<void> _persist(String groupId, Map<String, dynamic>? snapshot) async {
+    if (snapshot == null) {
+      stored.remove(groupId);
+    } else {
+      stored[groupId] = json.decode(json.encode(snapshot)) as Map<String, dynamic>;
+    }
+  }
+
+  /// The same device after the app restarts: a new engine and coordinator
+  /// that know only what the secure store restores.
+  Future<_Member> restart() async {
+    final next = _Member(identity, _server, _directory, _group, store: stored);
+    await next.coordinator.restoreFromSnapshots(Map.of(stored));
+    return next;
+  }
+
+  GroupSenderKey? get ownChain => coordinator.engine.exportOwnSenderKey(groupId);
 
   Future<void> prepareSend(ConversationPreview group) => coordinator.prepareSend(
         conversation: group,
@@ -145,16 +186,27 @@ class _Member {
       coordinator.engine.hasSenderKeyFor(groupId: groupId, senderDeviceId: sender.deviceId);
 }
 
-CryptoEnvelope _withOuterAttachment(CryptoEnvelope e, AttachmentReference attachment) => CryptoEnvelope(
+/// [e] with outer, server-controlled fields rewritten by the relay.
+CryptoEnvelope _withOuter(CryptoEnvelope e, {AttachmentReference? attachment, MessageKind? messageKind}) =>
+    CryptoEnvelope(
       version: e.version,
       conversationId: e.conversationId,
       senderDeviceId: e.senderDeviceId,
       recipientUserId: e.recipientUserId,
       ciphertext: e.ciphertext,
       nonce: e.nonce,
-      messageKind: e.messageKind,
-      attachment: attachment,
+      messageKind: messageKind ?? e.messageKind,
+      attachment: attachment ?? e.attachment,
     );
+
+/// What the directory answers for a user with no trusted active device.
+final _noActiveDevice = VeilApiException(
+  'Active device bundle not found',
+  code: 'active_device_not_found',
+  statusCode: 404,
+);
+
+final _unavailable = VeilApiException('Service unavailable', statusCode: 503);
 
 const _attachment = AttachmentReference(
   attachmentId: 'att-1',
@@ -212,9 +264,9 @@ void main() {
 
   test('outer attachment ignored when inner pointer absent', () async {
     final envelope = await alice.send(group, 'just text');
-    final grafted = _withOuterAttachment(
+    final grafted = _withOuter(
       envelope,
-      _attachment.copyWith(attachmentId: 'evil', storageKey: 'server/evil.bin'),
+      attachment: _attachment.copyWith(attachmentId: 'evil', storageKey: 'server/evil.bin'),
     );
 
     final out = await bob.read(grafted);
@@ -301,12 +353,7 @@ void main() {
   });
 
   test('member whose directory lookup is 404 is skipped without blocking the others', () async {
-    // What the directory answers for a user with no trusted active device.
-    server.lookupFailures[carolId.handle] = VeilApiException(
-      'Active device bundle not found',
-      code: 'active_device_not_found',
-      statusCode: 404,
-    );
+    server.lookupFailures[carolId.handle] = _noActiveDevice;
 
     final envelope = await alice.send(group, 'carol has no device right now');
     expect(server.uploads, [
@@ -314,8 +361,8 @@ void main() {
     ]);
     expect((await bob.read(envelope)).body, 'carol has no device right now');
 
-    // carol stays pending: each send asks again, and nothing is uploaded
-    // while the directory still has no device for her.
+    // carol has not been reached: each send asks again, and nothing is
+    // uploaded while the directory still has no device for her.
     await alice.prepareSend(group);
     expect(server.uploads, hasLength(1));
 
@@ -327,7 +374,7 @@ void main() {
   });
 
   test('a lookup failure that is not about the member fails the round for a retry', () async {
-    server.lookupFailures[carolId.handle] = VeilApiException('Service unavailable', statusCode: 503);
+    server.lookupFailures[carolId.handle] = _unavailable;
 
     // Shipping a frame now would leave it unreadable for whoever was not
     // reached, so the send fails instead.
@@ -339,6 +386,27 @@ void main() {
     expect(server.uploads, [
       [bobId.userId, carolId.userId],
     ]);
+  });
+
+  test('once a member holds the chain, failing to reach the rest does not fail the send', () async {
+    server.lookupFailures[carolId.handle] = _noActiveDevice;
+    await alice.send(group, 'bob only');
+    expect(server.uploads, [
+      [bobId.userId],
+    ]);
+
+    // bob can read whatever alice sends next, so a transient failure while
+    // retrying carol must not cost him the message.
+    server.lookupFailures[carolId.handle] = _unavailable;
+    final envelope = await alice.send(group, 'still readable by bob');
+    expect(server.uploads, hasLength(1));
+    expect((await bob.read(envelope)).body, 'still readable by bob');
+
+    server.lookupFailures.clear();
+    final carol = _Member(carolId, server, directory, group);
+    final later = await alice.send(group, 'carol too');
+    expect(server.uploads.last, [carolId.userId]);
+    expect((await carol.read(later)).body, 'carol too');
   });
 
   test('member whose signed prekey does not verify is skipped', () async {
@@ -379,11 +447,71 @@ void main() {
     final envelope = await alice.send(group, 'hello bob');
     final blob = server.buffered[bobId.userId]!.single;
 
-    server.lookupFailures[aliceId.handle] = VeilApiException('Service unavailable', statusCode: 503);
+    server.lookupFailures[aliceId.handle] = _unavailable;
     await bob.receiveRealtime(blob);
     expect(bob.holdsChainOf(aliceId), isFalse);
 
     server.lookupFailures.clear();
     expect((await bob.read(envelope)).body, 'hello bob');
+  });
+
+  test('a restarted device hands its restored chain to a member it never reached', () async {
+    server.lookupFailures[carolId.handle] = _noActiveDevice;
+    await alice.send(group, 'before the restart');
+    expect(server.uploads, [
+      [bobId.userId],
+    ]);
+
+    final restarted = await alice.restart();
+    expect(groupKeyBytesEqual(restarted.ownChain!.signingPublicKey, alice.ownChain!.signingPublicKey), isTrue);
+
+    server.lookupFailures.clear();
+    final carol = _Member(carolId, server, directory, group);
+    final after = await restarted.send(group, 'after the restart');
+    expect(server.uploads.last, [carolId.userId]);
+    expect((await carol.read(after)).body, 'after the restart');
+
+    await restarted.prepareSend(group);
+    expect(server.uploads, hasLength(2));
+  });
+
+  test('a restart does not resend the chain to members who already hold it', () async {
+    final first = await alice.send(group, 'sent before the restart');
+    final restarted = await alice.restart();
+    final second = await restarted.send(group, 'sent after the restart');
+    expect(server.uploads, hasLength(1));
+
+    // bob was offline throughout. A resend would have replaced the blob
+    // buffered for him with one starting after the first frame.
+    expect((await bob.read(first)).body, 'sent before the restart');
+    expect((await bob.read(second)).body, 'sent after the restart');
+  });
+
+  test('a restarted device hands its chain to everyone after a distribution that threw', () async {
+    server.uploadFailure = _unavailable;
+    await expectLater(alice.prepareSend(group), throwsA(isA<VeilApiException>()));
+    expect(server.uploads, isEmpty);
+    expect(alice.stored, contains(groupId), reason: 'the chain was persisted before the upload');
+
+    server.uploadFailure = null;
+    final restarted = await alice.restart();
+    expect(groupKeyBytesEqual(restarted.ownChain!.signingPublicKey, alice.ownChain!.signingPublicKey), isTrue);
+
+    final envelope = await restarted.send(group, 'readable by everyone');
+    expect(server.uploads, [
+      [bobId.userId, carolId.userId],
+    ]);
+    final carol = _Member(carolId, server, directory, group);
+    expect((await bob.read(envelope)).body, 'readable by everyone');
+    expect((await carol.read(envelope)).body, 'readable by everyone');
+  });
+
+  test('placeholder for an unreadable frame ignores the outer kind', () async {
+    bob.distrusted.add(aliceId.userId);
+    final envelope = await alice.send(group, 'hello');
+
+    final out = await bob.read(_withOuter(envelope, messageKind: MessageKind.system));
+    expect(out.body, '[Awaiting sender key — sync required]');
+    expect(out.messageKind, MessageKind.text);
   });
 }

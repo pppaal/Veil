@@ -8,6 +8,7 @@ import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
 } from '../attachments/attachment-storage.gateway';
+import { AttachmentReleaser, UNREFERENCED_ATTACHMENT } from './attachment-releaser';
 
 // The privacy policy promises ciphertext is purged after at most 30 days,
 // delivered or not, whatever the disappearing timer says.
@@ -18,12 +19,14 @@ const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const BOOT_SWEEP_DELAY_MS = 7_000;
 
 // Bounded batches keep each transaction short and the primary responsive;
-// whatever is left over is picked up on the next tick.
+// whatever is left over is picked up on the next tick. The cap is per sweep,
+// so a backlog in one table never starves the sweeps after it.
 const BATCH_SIZE = 1000;
 const MAX_BATCHES_PER_SWEEP = 20;
-// Attachment batches call object storage inside the transaction, which can
-// outlast Prisma's 5 s default sized for request paths.
-const BATCH_TRANSACTION_TIMEOUT_MS = 60_000;
+// Batches do database work only (object storage is called after commit), but
+// deleting 1000 messages cascades to their receipts and reactions, which can
+// outlast Prisma's 5 s default sized for request paths on a busy primary.
+const BATCH_TRANSACTION_TIMEOUT_MS = 30_000;
 
 const RINGING_TIMEOUT_MS = 90 * 1000;
 const ACTIVE_CALL_MAX_MS = 12 * 60 * 60 * 1000;
@@ -36,18 +39,18 @@ const ORPHAN_ATTACHMENT_GRACE_MS = DAY_MS;
 // closed by the stale-call sweeps.
 const TERMINAL_CALL_STATUSES: CallStatus[] = ['ended', 'missed', 'declined'];
 
-// An attachment nothing visible points at any more: no message, or only
-// delete-for-everyone tombstones that no longer show it.
-const UNREFERENCED_ATTACHMENT: Prisma.AttachmentWhereInput = {
-  messages: { none: { deletedAt: null } },
-};
-
 type Tx = Prisma.TransactionClient;
 
 interface BatchOutcome {
+  /** Rows the batch deleted or updated in its transaction. */
   affected: number;
-  blobsDeleted?: number;
   full: boolean;
+  /**
+   * Object-storage work for what the batch selected. It runs only once the
+   * transaction has committed, so storage latency never holds the retention
+   * lock or row locks, and returns how many more rows it removed for the sweep.
+   */
+  afterCommit?: () => Promise<number>;
 }
 
 interface Sweep {
@@ -64,12 +67,15 @@ const daysBefore = (now: Date, days: number): Date => new Date(now.getTime() - d
  * The single owner of every server-side retention sweep. Each batch runs in
  * its own transaction behind a transaction-scoped advisory lock, so only one
  * API instance sweeps at a time and the lock is released with the
- * transaction even behind a connection pooler. Logs carry counts only, never
- * ids, so the sweep does not record the metadata it deletes.
+ * transaction even behind a connection pooler. Transactions do database work
+ * only: object storage is called after a batch commits, so a slow or failing
+ * bucket can delay blob cleanup but never the row deletes. Logs carry counts
+ * only, never ids, so the sweep does not record the metadata it deletes.
  */
 @Injectable()
 export class RetentionService implements OnModuleInit, OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
+  private sweeping = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -96,12 +102,26 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
 
   /** One tick. Never throws: a failed sweep is logged and retried next tick. */
   async sweep(): Promise<void> {
-    const counts: Record<string, number> = { attachmentBlobs: 0 };
-    for (const sweep of this.sweeps(new Date())) {
+    // A slow tick (a backlog, or slow storage) must not overlap the next one
+    // in this process, which would select and delete the same rows again.
+    if (this.sweeping) {
+      return;
+    }
+    this.sweeping = true;
+    try {
+      await this.sweepOnce();
+    } finally {
+      this.sweeping = false;
+    }
+  }
+
+  private async sweepOnce(): Promise<void> {
+    const releaser = new AttachmentReleaser(this.prisma, this.storageGateway);
+    const counts: Record<string, number> = {};
+    for (const sweep of this.sweeps(new Date(), releaser)) {
       try {
         const result = await this.runSweep(sweep);
         counts[sweep.name] = result.affected;
-        counts.attachmentBlobs += result.blobsDeleted;
         if (result.lockHeld) {
           // Another instance is sweeping; it will finish the work.
           this.logger.info('retention.lock_held');
@@ -111,34 +131,37 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn('retention.sweep_failed', { sweep: sweep.name, error: errorKind(error) });
       }
     }
+    counts.attachmentBlobs = releaser.deletedBlobs;
 
+    if (releaser.storageUnavailable) {
+      this.logger.warn('retention.storage_unavailable', {
+        error: errorKind(releaser.storageError),
+      });
+    }
     if (Object.values(counts).some((count) => count > 0)) {
       this.logger.info('retention.swept', counts);
     }
   }
 
-  private async runSweep(
-    sweep: Sweep,
-  ): Promise<{ affected: number; blobsDeleted: number; lockHeld: boolean }> {
+  private async runSweep(sweep: Sweep): Promise<{ affected: number; lockHeld: boolean }> {
     let affected = 0;
-    let blobsDeleted = 0;
     for (let batch = 0; batch < MAX_BATCHES_PER_SWEEP; batch += 1) {
       const outcome = await this.prisma.$transaction(
         async (tx) => ((await this.tryRetentionLock(tx)) ? sweep.batch(tx) : null),
         { timeout: BATCH_TRANSACTION_TIMEOUT_MS },
       );
       if (!outcome) {
-        return { affected, blobsDeleted, lockHeld: true };
+        return { affected, lockHeld: true };
       }
-      affected += outcome.affected;
-      blobsDeleted += outcome.blobsDeleted ?? 0;
-      // Stop on a short batch, or when a full batch changed nothing (rows whose
-      // blob delete keeps failing) so the sweep does not spin on them.
-      if (!outcome.full || outcome.affected === 0) {
+      const batchAffected = outcome.affected + ((await outcome.afterCommit?.()) ?? 0);
+      affected += batchAffected;
+      // Stop on a short batch, or when a full batch changed nothing (orphans
+      // whose blob delete keeps failing) so the sweep does not spin on them.
+      if (!outcome.full || batchAffected === 0) {
         break;
       }
     }
-    return { affected, blobsDeleted, lockHeld: false };
+    return { affected, lockHeld: false };
   }
 
   private async tryRetentionLock(tx: Tx): Promise<boolean> {
@@ -148,16 +171,16 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     return row?.acquired === true;
   }
 
-  private sweeps(now: Date): Sweep[] {
+  private sweeps(now: Date, releaser: AttachmentReleaser): Sweep[] {
     const sweeps: Sweep[] = [
       {
         name: 'expiredMessages',
-        batch: (tx) => this.deleteMessages(tx, { expiresAt: { lte: now } }),
+        batch: (tx) => this.deleteMessages(tx, releaser, { expiresAt: { lte: now } }),
       },
       {
         name: 'agedMessages',
         batch: (tx) =>
-          this.deleteMessages(tx, {
+          this.deleteMessages(tx, releaser, {
             serverReceivedAt: { lt: daysBefore(now, MESSAGE_MAX_AGE_DAYS) },
           }),
       },
@@ -190,7 +213,10 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     sweeps.push(
       { name: 'receipts', batch: (tx) => this.deleteStaleReceipts(tx, now) },
       { name: 'abuseReports', batch: (tx) => this.deleteOldAbuseReports(tx, now) },
-      { name: 'orphanAttachments', batch: (tx) => this.deleteOrphanAttachments(tx, now) },
+      {
+        name: 'orphanAttachments',
+        batch: (tx) => this.selectOrphanAttachments(tx, releaser, now),
+      },
     );
 
     if (this.config.prekeyConsumedRetentionDays > 0) {
@@ -206,9 +232,14 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   }
 
   // @retention-sweep Message
-  // Expired and over-age messages. Their attachments go in the same batch once
-  // nothing visible references them, so blobs never outlive their messages.
-  private async deleteMessages(tx: Tx, where: Prisma.MessageWhereInput): Promise<BatchOutcome> {
+  // Expired and over-age messages. Attachments nothing visible references any
+  // more are released as soon as the batch commits, so blobs do not outlive
+  // their messages, and storage trouble never holds back the message deletes.
+  private async deleteMessages(
+    tx: Tx,
+    releaser: AttachmentReleaser,
+    where: Prisma.MessageWhereInput,
+  ): Promise<BatchOutcome> {
     const messages = await tx.message.findMany({
       where,
       select: { id: true, attachmentId: true },
@@ -227,18 +258,23 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
           .filter((attachmentId): attachmentId is string => attachmentId !== null),
       ),
     ];
-    const blobsDeleted =
+    const unreferenced =
       attachmentIds.length === 0
-        ? 0
-        : await this.deleteAttachments(
-            tx,
-            await tx.attachment.findMany({
-              where: { id: { in: attachmentIds }, ...UNREFERENCED_ATTACHMENT },
-              select: { id: true, storageKey: true },
-            }),
-          );
+        ? []
+        : await tx.attachment.findMany({
+            where: { id: { in: attachmentIds }, ...UNREFERENCED_ATTACHMENT },
+            select: { id: true, storageKey: true },
+          });
 
-    return { affected: messages.length, blobsDeleted, full: messages.length === BATCH_SIZE };
+    return {
+      affected: messages.length,
+      full: messages.length === BATCH_SIZE,
+      // This sweep counts messages; the releaser tallies the blobs.
+      afterCommit: async () => {
+        await releaser.release(unreferenced);
+        return 0;
+      },
+    };
   }
 
   // @retention-sweep Story
@@ -348,7 +384,12 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
   // @retention-sweep Attachment
   // Abandoned uploads (pending or failed) and blobs no visible message
   // references, after a grace period that covers a slow upload-then-send.
-  private async deleteOrphanAttachments(tx: Tx, now: Date): Promise<BatchOutcome> {
+  // The batch only selects them; blob and row are deleted after it commits.
+  private async selectOrphanAttachments(
+    tx: Tx,
+    releaser: AttachmentReleaser,
+    now: Date,
+  ): Promise<BatchOutcome> {
     const orphans = await tx.attachment.findMany({
       where: {
         createdAt: { lt: new Date(now.getTime() - ORPHAN_ATTACHMENT_GRACE_MS) },
@@ -361,8 +402,11 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
       return EMPTY_BATCH;
     }
 
-    const deleted = await this.deleteAttachments(tx, orphans);
-    return { affected: deleted, blobsDeleted: deleted, full: orphans.length === BATCH_SIZE };
+    return {
+      affected: 0,
+      full: orphans.length === BATCH_SIZE,
+      afterCommit: () => releaser.release(orphans),
+    };
   }
 
   // @retention-sweep OneTimePrekey
@@ -400,34 +444,6 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
       where: { id: { in: blobs.map((blob) => blob.id) } },
     });
     return { affected: count, full: blobs.length === BATCH_SIZE };
-  }
-
-  /**
-   * Deletes each blob, then the rows whose blob is gone. A row whose blob
-   * delete failed is kept, so the orphan sweep retries it instead of leaving
-   * ciphertext in storage with nothing pointing at it.
-   */
-  private async deleteAttachments(
-    tx: Tx,
-    attachments: Array<{ id: string; storageKey: string }>,
-  ): Promise<number> {
-    const released: string[] = [];
-    for (const attachment of attachments) {
-      try {
-        await this.storageGateway.deleteObject(attachment.storageKey);
-        released.push(attachment.id);
-      } catch {
-        // Retried by the orphan sweep on a later tick.
-      }
-    }
-    if (released.length === 0) {
-      return 0;
-    }
-
-    const { count } = await tx.attachment.deleteMany({
-      where: { id: { in: released }, ...UNREFERENCED_ATTACHMENT },
-    });
-    return count;
   }
 }
 

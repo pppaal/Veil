@@ -16,15 +16,26 @@ that schedules sweeps. It runs shortly after boot and then every 10 minutes.
   works behind a connection pooler. If another API instance holds it, the tick
   is skipped (`retention.lock_held`) and that instance does the work.
 - **Bounded batches.** A batch selects at most 1000 ids; each sweep runs at most
-  20 batches per tick. Anything left over is picked up on the next tick.
+  20 batches per tick. The cap is per sweep, so a backlog in one table (say,
+  expired messages after downtime) cannot starve the sweeps after it. Anything
+  left over is picked up on the next tick, and a tick that is still running
+  when the next one is due is not started twice.
 - **Counts only.** One `retention.swept` line per tick with a count per sweep
   and the number of attachment blobs deleted. A failed sweep logs
   `retention.sweep_failed` with the sweep name and the error class or Prisma
   code, never the error message (it can quote query arguments) and never ids.
+- **No storage calls inside a transaction.** A batch only touches the
+  database: it deletes its messages (or selects its orphans) and commits. The
+  blobs it released are deleted afterwards, so a slow or unreachable bucket
+  can delay blob cleanup but never the message deletes, and never holds the
+  lock or row locks. Each storage attempt times out after 10 seconds.
 - **Blob before row.** An attachment blob is deleted from object storage
-  first; the row is removed only once the blob is gone. If the storage call
-  fails the row stays, and the orphan sweep retries it on a later tick, so
-  ciphertext is never left in storage with nothing pointing at it.
+  first; the row is removed only once the blob is gone, and only if nothing
+  started referencing it meanwhile. If the storage call fails the row stays,
+  and the orphan sweep retries it on a later tick, so ciphertext is never left
+  in storage with nothing pointing at it. When a whole group of deletes fails,
+  storage is treated as unavailable for the rest of the tick
+  (`retention.storage_unavailable`, with the error class only).
 - Every sweep is marked `// @retention-sweep <Model>` in the source.
 
 ## Retention matrix
@@ -32,7 +43,7 @@ that schedules sweeps. It runs shortly after boot and then every 10 minutes.
 | Table | What it holds | Kept for | Enforced by |
 | --- | --- | --- | --- |
 | `messages` | Ciphertext envelopes and routing metadata | Until `expiresAt` (disappearing timer), and **never more than 30 days** after `serverReceivedAt` (`MESSAGE_MAX_AGE_DAYS`), delivered or not. View-once rows are deleted on first read. | `RetentionService` (`expiredMessages`, `agedMessages`); `MessagesService` (view-once) |
-| `attachments` + object storage | Encrypted blob, its size and sha256 | When a sweep deletes the last visible message that references it, blob and row go in the same batch. Orphans — pending, failed, or uploaded but referenced by no message or only by delete-for-everyone tombstones (this covers view-once consumption and delete for everyone) — are deleted 24 hours after upload. All blobs of an account are deleted on account deletion. Download tickets are issued only for a live message in a conversation the requester belongs to. | `RetentionService` (message sweeps, `orphanAttachments`); `AccountService` |
+| `attachments` + object storage | Encrypted blob, its size and sha256 | When a sweep deletes the last visible message that references it, blob and row are deleted as soon as that batch commits. Orphans — pending, failed, or uploaded but referenced by no message or only by delete-for-everyone tombstones (this covers view-once consumption and delete for everyone) — are deleted 24 hours after upload. All blobs of an account are deleted on account deletion. Download tickets are issued only for a live message in a conversation the requester belongs to. | `RetentionService` (message sweeps, `orphanAttachments`); `AccountService` |
 | `message_receipts` | Per-recipient delivered/read timestamps | Read receipts: 7 days after `readAt`. Unread: 30 days after `deliveredAt`. Always deleted with their message. | `RetentionService` (`receipts`) |
 | `reactions` | Reaction per message and user | Deleted with their message (cascade), so at most 30 days. | Message sweeps |
 | `stories` | Text story and caption | 24 hours. | `RetentionService` (`expiredStories`) |

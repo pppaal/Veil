@@ -242,6 +242,8 @@ export class RetentionFakePrismaService extends FakePrismaService {
   /** What pg_try_advisory_xact_lock answers for the retention sweep. */
   retentionLockAvailable = true;
   readonly rawQueries: string[] = [];
+  /** $transaction callbacks still running, so tests can see what runs inside one. */
+  openTransactions = 0;
 
   story = table<StoryRecord>({
     rows: () => this.stories,
@@ -389,6 +391,15 @@ export class RetentionFakePrismaService extends FakePrismaService {
       replace: (rows) => (this.devices = rows),
     });
     Object.assign(this.device, { updateMany: devices.updateMany });
+  }
+
+  async $transaction<T>(callback: (tx: this) => Promise<T>, options?: unknown): Promise<T> {
+    this.openTransactions += 1;
+    try {
+      return await super.$transaction(callback, options);
+    } finally {
+      this.openTransactions -= 1;
+    }
   }
 
   async $queryRaw<T>(query: TemplateStringsArray, ..._values: unknown[]): Promise<T> {

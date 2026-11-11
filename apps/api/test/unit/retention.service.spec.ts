@@ -446,6 +446,125 @@ describe('RetentionService attachment sweep', () => {
   });
 });
 
+describe('RetentionService and object storage', () => {
+  // Parks every blob delete until release() is called, like a slow bucket.
+  function holdBlobDeletes(storage: FakeAttachmentStorageGateway) {
+    const deleteObject = storage.deleteObject.bind(storage);
+    const pending: Array<() => Promise<void>> = [];
+    let markStarted: () => void;
+    const started = new Promise<void>((resolve) => (markStarted = resolve));
+    storage.deleteObject = (storageKey: string) =>
+      new Promise<void>((resolve, reject) => {
+        pending.push(() => deleteObject(storageKey).then(resolve, reject));
+        markStarted();
+      });
+    return { started, release: () => Promise.all(pending.map((finish) => finish())) };
+  }
+
+  it('calls object storage only after the batch transaction has committed', async () => {
+    const { prisma, storage, service, addMessage, addAttachment } = setup();
+    const expiring = await addAttachment();
+    await addMessage({ expiresAt: ago(1000), attachmentId: expiring.id });
+    await addAttachment({ createdAt: ago(2 * DAY_MS) });
+    const openTransactionsDuringDelete: number[] = [];
+    const deleteObject = storage.deleteObject.bind(storage);
+    storage.deleteObject = async (storageKey: string) => {
+      openTransactionsDuringDelete.push(prisma.openTransactions);
+      await deleteObject(storageKey);
+    };
+
+    await service.sweep();
+
+    expect(openTransactionsDuringDelete).toEqual([0, 0]);
+    expect(prisma.attachments).toHaveLength(0);
+  });
+
+  it('expired messages are deleted while their blob deletes are still in flight', async () => {
+    const { prisma, storage, service, addMessage, addAttachment } = setup();
+    const attachment = await addAttachment();
+    await addMessage({ expiresAt: ago(1000), attachmentId: attachment.id });
+    const slowStorage = holdBlobDeletes(storage);
+
+    const sweeping = service.sweep();
+    await slowStorage.started;
+
+    expect(prisma.messages).toHaveLength(0);
+    expect(prisma.openTransactions).toBe(0);
+    expect(prisma.attachments).toHaveLength(1);
+
+    await slowStorage.release();
+    await sweeping;
+    expect(prisma.attachments).toHaveLength(0);
+    expect(storage.uploaded.has(attachment.storageKey)).toBe(false);
+  });
+
+  it('expired messages are deleted even when every blob delete fails', async () => {
+    const { prisma, storage, service, logs, addMessage, addAttachment, sweptCounts } = setup();
+    for (let index = 0; index < 1500; index += 1) {
+      const attachment = await addAttachment();
+      await addMessage({ expiresAt: ago(1000), attachmentId: attachment.id });
+    }
+    const failingDelete = jest.fn(async (_storageKey: string) => {
+      throw new Error('getaddrinfo ENOTFOUND minio for attachments/secret-key');
+    });
+    storage.deleteObject = failingDelete;
+
+    await service.sweep();
+
+    expect(prisma.messages).toHaveLength(0);
+    expect(prisma.attachments).toHaveLength(1500);
+    // One group of failures marks storage unavailable for the rest of the
+    // tick, so an outage costs one round of timeouts, not one per blob.
+    expect(failingDelete).toHaveBeenCalledTimes(10);
+    expect(sweptCounts()).toMatchObject({ expiredMessages: 1500, attachmentBlobs: 0 });
+    expect(logs).toContainEqual({
+      level: 'warn',
+      event: 'retention.storage_unavailable',
+      meta: { error: 'Error' },
+    });
+    expect(JSON.stringify(logs)).not.toContain('secret-key');
+  });
+
+  it('the orphan sweep retries the blobs once storage is back', async () => {
+    const { prisma, storage, service, addMessage, addAttachment } = setup();
+    for (let index = 0; index < 1200; index += 1) {
+      const attachment = await addAttachment();
+      await addMessage({ expiresAt: ago(1000), attachmentId: attachment.id });
+    }
+    const workingDelete = storage.deleteObject.bind(storage);
+    storage.deleteObject = async () => {
+      throw new Error('storage unavailable');
+    };
+    await service.sweep();
+    expect(prisma.attachments).toHaveLength(1200);
+
+    storage.deleteObject = workingDelete;
+    for (const attachment of prisma.attachments) {
+      attachment.createdAt = ago(25 * 60 * 60 * 1000);
+    }
+    await service.sweep();
+
+    expect(prisma.attachments).toHaveLength(0);
+    expect(storage.uploaded.size).toBe(0);
+  });
+
+  it('a tick does not start while the previous one is still running', async () => {
+    const { prisma, storage, service, addMessage, addAttachment } = setup();
+    const attachment = await addAttachment();
+    await addMessage({ expiresAt: ago(1000), attachmentId: attachment.id });
+    const slowStorage = holdBlobDeletes(storage);
+
+    const first = service.sweep();
+    await slowStorage.started;
+    const queriesBefore = prisma.rawQueries.length;
+    await service.sweep();
+
+    expect(prisma.rawQueries).toHaveLength(queriesBefore);
+    await slowStorage.release();
+    await first;
+  });
+});
+
 describe('RetentionService logging', () => {
   it('logs contain counts only', async () => {
     const { prisma, service, logs, addMessage, addAttachment, addCall } = setup();

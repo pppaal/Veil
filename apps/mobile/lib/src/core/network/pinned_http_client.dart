@@ -14,10 +14,15 @@ import 'package:http/io_client.dart';
 // SHA-256 fingerprints shipped in the app binary (typically provided via
 // `--dart-define VEIL_TLS_PINS=...`).
 //
-// A pin is a base64 SHA-256 fingerprint with an optional kind prefix:
-//   spki:<b64>  hash of the DER subjectPublicKeyInfo. Preferred: it survives
-//               certificate renewal as long as the server keeps its key pair,
-//               which matters with ~60-day ACME leaf rotation.
+// Pins are matched against the server's leaf certificate, the one whose key
+// signed the TLS handshake. dart:io exposes no other certificate of the chain
+// reliably, so intermediate and root pins are not supported. A pin is a base64
+// SHA-256 fingerprint with an optional kind prefix:
+//   spki:<b64>  hash of the leaf's DER subjectPublicKeyInfo. Preferred: it
+//               survives certificate renewal as long as the server keeps its
+//               key pair, which matters with ~60-day ACME leaf rotation (ACME
+//               clients generate a new key on renewal unless told to reuse it,
+//               e.g. certbot --reuse-key).
 //               openssl x509 -pubkey -noout | openssl pkey -pubin -outform der
 //                 | openssl dgst -sha256 -binary | base64
 //   leaf:<b64>  hash of the full leaf certificate DER. An unprefixed pin is a
@@ -33,11 +38,17 @@ const _leafPrefix = 'leaf:';
 class PinnedCertificateException implements Exception {
   const PinnedCertificateException(this.host, this.fingerprint);
   final String host;
-  final String fingerprint;
+
+  /// Leaf fingerprint the server presented, or null when the connection
+  /// offered no certificate at all (plaintext).
+  final String? fingerprint;
+
   @override
-  String toString() =>
-      'TLS certificate pin mismatch for $host (observed fingerprint '
-      '$fingerprint is not in the trusted pin set).';
+  String toString() => fingerprint == null
+      ? 'TLS certificate pinning refused a connection to $host that '
+          'presented no certificate.'
+      : 'TLS certificate pin mismatch for $host (observed leaf fingerprint '
+          '$fingerprint is not in the trusted pin set).';
 }
 
 String computeLeafFingerprint(X509Certificate cert) {
@@ -86,25 +97,18 @@ Set<String> parsePinList(String raw) {
       .toSet();
 }
 
-/// Decides whether a peer certificate matches the configured pins, and
-/// remembers each rejection so the HTTP layer can report a pin mismatch
-/// instead of a generic handshake failure.
+/// Decides whether a leaf certificate matches the configured pins.
 class CertificatePinVerifier {
   factory CertificatePinVerifier(Iterable<String> pins) {
     final spki = <String>{};
     final leaf = <String>{};
     for (final pin in pins) {
       if (pin.startsWith(_spkiPrefix)) {
-        spki.add(pin.substring(_spkiPrefix.length));
+        spki.add(_checkedFingerprint(pin, pin.substring(_spkiPrefix.length)));
       } else if (pin.startsWith(_leafPrefix)) {
-        leaf.add(pin.substring(_leafPrefix.length));
-      } else if (pin.contains(':')) {
-        // Base64 never contains ':', so this is a typo'd or foreign prefix
-        // (e.g. 'sha256/'). Failing loudly beats shipping a pin that can
-        // never match.
-        throw FormatException('Unsupported TLS pin prefix', pin);
+        leaf.add(_checkedFingerprint(pin, pin.substring(_leafPrefix.length)));
       } else {
-        leaf.add(pin);
+        leaf.add(_checkedFingerprint(pin, pin));
       }
     }
     return CertificatePinVerifier._(spki, leaf);
@@ -114,7 +118,6 @@ class CertificatePinVerifier {
 
   final Set<String> _spki;
   final Set<String> _leaf;
-  final Map<String, String> _rejectedFingerprintByOrigin = <String, String>{};
 
   bool get hasPins => _spki.isNotEmpty || _leaf.isNotEmpty;
 
@@ -132,24 +135,30 @@ class CertificatePinVerifier {
     }
   }
 
-  /// Shaped as [HttpClient.badCertificateCallback].
-  bool verify(X509Certificate cert, String host, int port) {
-    if (matches(cert)) {
-      return true;
+  /// Returns [value] when it is a canonical base64 SHA-256 digest. Anything
+  /// else (a foreign prefix such as 'sha256/', a hex digest, a truncated
+  /// paste) can never match, so failing loudly beats shipping a build that
+  /// locks every client out.
+  static String _checkedFingerprint(String pin, String value) {
+    try {
+      final digest = base64Decode(value);
+      // Re-encoding also rejects the URL-safe alphabet and unpadded forms,
+      // which can never equal a computed fingerprint.
+      if (digest.length == 32 && base64Encode(digest) == value) {
+        return value;
+      }
+    } on FormatException {
+      // Reported below with the whole pin.
     }
-    _rejectedFingerprintByOrigin['$host:$port'] = computeLeafFingerprint(cert);
-    return false;
-  }
-
-  /// Returns (and forgets) the leaf fingerprint rejected for [url]'s origin.
-  String? takeRejection(Uri url) {
-    return _rejectedFingerprintByOrigin.remove('${url.host}:${url.port}');
+    throw FormatException('TLS pin is not a base64 SHA-256 fingerprint', pin);
   }
 }
 
-/// Returns a dart:io [HttpClient] that only completes TLS handshakes whose
+/// Returns a dart:io [HttpClient] that only talks to servers whose leaf
 /// certificate matches one of [pins], or null when [pins] is empty so the
 /// caller keeps the platform trust store (dev builds have no stable cert).
+/// A mismatch fails the request with [PinnedCertificateException] before any
+/// request byte, bearer token included, is written to the connection.
 HttpClient? buildPinnedDartIoHttpClient(
   Set<String> pins, {
   Duration connectionTimeout = _defaultConnectionTimeout,
@@ -158,7 +167,13 @@ HttpClient? buildPinnedDartIoHttpClient(
   if (!verifier.hasPins) {
     return null;
   }
-  return _pinnedHttpClient(verifier, connectionTimeout);
+  return HttpClient()
+    ..connectionTimeout = connectionTimeout
+    // The pin check lives in the connection factory. Through a proxy,
+    // HttpClient would secure the CONNECT tunnel itself, past that check.
+    // dart:io ignores the Android and iOS proxy settings anyway.
+    ..findProxy = _directConnection
+    ..connectionFactory = _PinnedTlsConnector(verifier).connect;
 }
 
 /// Returns an HTTP client pinned to [allowedFingerprints]; without pins it
@@ -167,53 +182,80 @@ http.Client buildPinnedHttpClient({
   required Set<String> allowedFingerprints,
   Duration connectionTimeout = _defaultConnectionTimeout,
 }) {
-  final verifier = CertificatePinVerifier(allowedFingerprints);
-  if (!verifier.hasPins) {
-    return IOClient(HttpClient()..connectionTimeout = connectionTimeout);
-  }
-  return PinnedHttpClient(
-    IOClient(_pinnedHttpClient(verifier, connectionTimeout)),
-    verifier,
+  return IOClient(
+    buildPinnedDartIoHttpClient(
+          allowedFingerprints,
+          connectionTimeout: connectionTimeout,
+        ) ??
+        (HttpClient()..connectionTimeout = connectionTimeout),
   );
 }
 
-HttpClient _pinnedHttpClient(
-  CertificatePinVerifier verifier,
-  Duration connectionTimeout,
-) {
-  // `withTrustedRoots: false` strips the platform root store so that EVERY
-  // connection has to pass our badCertificateCallback — which is the only
-  // place we get the peer certificate. Without this, platform-trusted certs
-  // bypass the callback entirely, defeating the pin.
-  return HttpClient(context: SecurityContext(withTrustedRoots: false))
-    ..connectionTimeout = connectionTimeout
-    ..badCertificateCallback = verifier.verify;
-}
+String _directConnection(Uri _) => 'DIRECT';
 
-/// Surfaces pin rejections as [PinnedCertificateException]. dart:io reports
-/// a rejected certificate as a plain [HandshakeException], which callers
-/// could not tell apart from a flaky network.
-class PinnedHttpClient extends http.BaseClient {
-  PinnedHttpClient(this._inner, this._verifier);
+/// Opens the TLS connections of a pinned [HttpClient] and checks the leaf
+/// certificate once the handshake completes, before HttpClient receives the
+/// socket.
+///
+/// HttpClient.badCertificateCallback cannot do this: dart:io calls it with
+/// the certificate at which chain verification stopped, which for a server
+/// sending leaf + intermediate is the intermediate, never the leaf.
+class _PinnedTlsConnector {
+  _PinnedTlsConnector(this._verifier);
 
-  final http.Client _inner;
   final CertificatePinVerifier _verifier;
 
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    try {
-      return await _inner.send(request);
-    } on HandshakeException {
-      final fingerprint = _verifier.takeRejection(request.url);
-      if (fingerprint != null) {
-        throw PinnedCertificateException(request.url.host, fingerprint);
-      }
-      rethrow;
+  // No trusted roots: the pin is the whole trust decision, so a pinned
+  // self-signed relay works and no platform CA can vouch for an unpinned key.
+  final SecurityContext _context = SecurityContext(withTrustedRoots: false);
+
+  Future<ConnectionTask<Socket>> connect(
+    Uri url,
+    String? proxyHost,
+    int? proxyPort,
+  ) async {
+    if (!url.isScheme('https')) {
+      // A plaintext connection cannot prove it holds a pinned key, and it
+      // would carry the bearer token in the clear.
+      throw PinnedCertificateException(url.host, null);
     }
+    final task = await SecureSocket.startConnect(
+      url.host,
+      url.port,
+      context: _context,
+      // Without roots every chain fails verification; the leaf is checked
+      // once the handshake is done instead.
+      onBadCertificate: _deferToLeafCheck,
+    );
+    var canceled = false;
+    final socket = task.socket.then((socket) {
+      if (canceled) {
+        // HttpClient gave up (connection timeout or forced close) while the
+        // handshake was in flight, which cancel() cannot interrupt.
+        socket.destroy();
+        throw const SocketException('Connection attempt cancelled');
+      }
+      return _checkLeaf(socket, url.host);
+    });
+    return ConnectionTask.fromSocket(socket, () {
+      canceled = true;
+      task.cancel();
+    });
   }
 
-  @override
-  void close() => _inner.close();
+  SecureSocket _checkLeaf(SecureSocket socket, String host) {
+    final leaf = socket.peerCertificate;
+    if (leaf != null && _verifier.matches(leaf)) {
+      return socket;
+    }
+    socket.destroy();
+    throw PinnedCertificateException(
+      host,
+      leaf == null ? null : computeLeafFingerprint(leaf),
+    );
+  }
+
+  static bool _deferToLeafCheck(X509Certificate _) => true;
 }
 
 const _derInteger = 0x02;

@@ -3,12 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
-import 'package:http/testing.dart';
 import 'package:veil_mobile/src/core/network/pinned_http_client.dart';
 
-// Fixture certificates live in test/transport/fixtures/ (self-signed, keys
+// pin_fixture_*.pem live in test/transport/fixtures/ (self-signed, keys
 // discarded). The expected fingerprints were computed with OpenSSL 3.0 when
 // the fixtures were generated, independently of the Dart code under test:
 //   SPKI: openssl x509 -in F -pubkey -noout | openssl pkey -pubin -outform der
@@ -86,6 +83,29 @@ void main() {
         () => CertificatePinVerifier({'sha256:$_ecSpkiPin'}),
         throwsFormatException,
       );
+      // OkHttp's pin syntax: '/' is base64, so only the length gives it away.
+      expect(
+        () => CertificatePinVerifier({'sha256/$_ecSpkiPin'}),
+        throwsFormatException,
+      );
+    });
+
+    test('pins that are not a canonical base64 SHA-256 are rejected', () {
+      final digest = base64Decode(_ecSpkiPin);
+      final hex = digest.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      for (final malformed in [
+        'spki:$hex',
+        'spki:${base64Url.encode(digest)}',
+        'leaf:${_ecLeafPin.replaceAll('=', '')}',
+        _ecLeafPin.substring(0, 40),
+        'spki:${base64Encode(digest.sublist(0, 20))}',
+      ]) {
+        expect(
+          () => CertificatePinVerifier({malformed}),
+          throwsFormatException,
+          reason: malformed,
+        );
+      }
     });
 
     test('malformed certificate DER is a FormatException, never a match', () {
@@ -98,6 +118,9 @@ void main() {
     });
   });
 
+  // Which certificate the pins are checked against, and that a mismatch stops
+  // the request before it is sent, needs a real TLS server with a real chain:
+  // see test/transport/pinned_tls_handshake_test.dart.
   group('client factories', () {
     test('no pins -> null client', () {
       expect(buildPinnedDartIoHttpClient(const {}), isNull);
@@ -110,57 +133,11 @@ void main() {
       client!.close(force: true);
     });
 
-    test('HTTP client trusts the platform store without pins, pins otherwise', () {
-      final systemTrust = buildPinnedHttpClient(allowedFingerprints: const {});
-      final pinned = buildPinnedHttpClient(allowedFingerprints: {'spki:$_ecSpkiPin'});
-      expect(systemTrust, isA<IOClient>());
-      expect(pinned, isA<PinnedHttpClient>());
-      systemTrust.close();
-      pinned.close();
-    });
-  });
-
-  group('PinnedHttpClient', () {
-    test('reports a rejected certificate as a pin mismatch', () async {
-      final verifier = CertificatePinVerifier({'spki:$_ecSpkiPin'});
-      expect(verifier.verify(rsaCert, 'api.veil.test', 443), isFalse);
-      final client = PinnedHttpClient(
-        MockClient((_) => throw const HandshakeException('CERTIFICATE_VERIFY_FAILED')),
-        verifier,
+    test('a malformed pin fails when the client is built, not on first use', () {
+      expect(
+        () => buildPinnedHttpClient(allowedFingerprints: {'sha256/$_ecSpkiPin'}),
+        throwsFormatException,
       );
-
-      await expectLater(
-        client.get(Uri.parse('https://api.veil.test/v1/profile')),
-        throwsA(
-          isA<PinnedCertificateException>()
-              .having((e) => e.host, 'host', 'api.veil.test')
-              .having((e) => e.fingerprint, 'fingerprint', _rsaLeafPin),
-        ),
-      );
-    });
-
-    test('other handshake failures are passed through unchanged', () async {
-      final client = PinnedHttpClient(
-        MockClient((_) => throw const HandshakeException('WRONG_VERSION_NUMBER')),
-        CertificatePinVerifier({'spki:$_ecSpkiPin'}),
-      );
-
-      await expectLater(
-        client.get(Uri.parse('https://api.veil.test/v1/profile')),
-        throwsA(isA<HandshakeException>()),
-      );
-    });
-
-    test('a matching certificate is accepted and not recorded', () async {
-      final verifier = CertificatePinVerifier({'spki:$_ecSpkiPin'});
-      expect(verifier.verify(ecCert, 'api.veil.test', 443), isTrue);
-      expect(verifier.takeRejection(Uri.parse('https://api.veil.test/')), isNull);
-      final client = PinnedHttpClient(
-        MockClient((_) async => http.Response('ok', 200)),
-        verifier,
-      );
-
-      expect((await client.get(Uri.parse('https://api.veil.test/'))).body, 'ok');
     });
   });
 }

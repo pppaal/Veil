@@ -99,10 +99,25 @@ class MessageContents extends Table {
   TextColumn get body => text()();
   TextColumn get attachmentJson => text().nullable()();
   TextColumn get kind => text()();
-  DateTimeColumn get innerExpiresAt => dateTime().nullable()();
+  // Epoch milliseconds: DateTime columns keep whole seconds, which would let
+  // a stored timer end up to a second away from the sealed one.
+  IntColumn get innerExpiresAt => integer().nullable()();
   TextColumn get status => text()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {messageKey};
+}
+
+// Messages this device has already expired. Their content is gone and their
+// message keys are spent, so a copy the relay serves again (outer expiry
+// stripped, or a retention sweep running late) must be dropped, not decrypted
+// a second time. Holds ids only and forgets them once the relay can no longer
+// hold the ciphertext.
+class RetiredMessages extends Table {
+  TextColumn get messageKey => text()();
+  DateTimeColumn get retiredAt => dateTime()();
 
   @override
   Set<Column<Object>> get primaryKey => {messageKey};
@@ -113,6 +128,7 @@ class MessageContents extends Table {
   CachedMessages,
   PendingMessages,
   MessageContents,
+  RetiredMessages,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
@@ -125,6 +141,7 @@ class AppDatabase extends _$AppDatabase {
         onCreate: (migrator) async {
           await migrator.createAll();
           await _createIndexes();
+          await _createRetirementGuard();
         },
         onUpgrade: (migrator, from, to) async {
           if (from < 2) {
@@ -192,6 +209,7 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 9) {
             await migrator.createTable(messageContents);
+            await migrator.createTable(retiredMessages);
             await migrator.addColumn(
               cachedConversations,
               cachedConversations.sessionRemoteIdentityPublicKey,
@@ -203,6 +221,7 @@ class AppDatabase extends _$AppDatabase {
             // Search now reads message_contents; drop the old per-message
             // copies of decrypted text instead of leaving them unread.
             await customStatement('UPDATE cached_messages SET search_body = NULL');
+            await _createRetirementGuard();
           }
           await _createIndexes();
         },
@@ -210,6 +229,15 @@ class AppDatabase extends _$AppDatabase {
           await customStatement('PRAGMA foreign_keys = ON');
           await customStatement('PRAGMA secure_delete = ON');
         },
+      );
+
+  // A decrypt still in flight when its message expired must not write the
+  // plaintext back, whichever code path does the insert.
+  Future<void> _createRetirementGuard() => customStatement(
+        'CREATE TRIGGER IF NOT EXISTS message_contents_skip_retired '
+        'BEFORE INSERT ON message_contents '
+        'WHEN EXISTS (SELECT 1 FROM retired_messages WHERE message_key = NEW.message_key) '
+        'BEGIN SELECT RAISE(IGNORE); END',
       );
 
   Future<void> _createIndexes() async {

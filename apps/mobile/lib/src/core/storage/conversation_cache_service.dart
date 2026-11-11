@@ -409,6 +409,10 @@ abstract class MessageContentStore {
 
   Future<Map<String, MessageContentRecord>> getMany(Iterable<String> messageKeys);
 
+  /// Inner expiries of those [messageKeys] that have one. Reads no encrypted
+  /// column, so it stays cheap over a whole conversation.
+  Future<Map<String, DateTime>> innerExpiries(Iterable<String> messageKeys);
+
   /// Moves an outbound message's content from its local key to the id the
   /// relay acked it under.
   Future<void> rekeyLocalToServer({
@@ -420,9 +424,17 @@ abstract class MessageContentStore {
 
   /// Deletes rows whose inner expiry has passed, plus [messageKeys]: content
   /// the caller has retired, i.e. messages it expired at min(inner, outer)
-  /// or outbound text that was never queued.
+  /// or outbound text that was never queued. Every deleted key is remembered
+  /// as retired, and content for a retired key is never stored again.
   Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys});
+
+  /// Those [messageKeys] this device has already retired.
+  Future<Set<String>> retiredAmong(Iterable<String> messageKeys);
 }
+
+/// How long retired message ids are remembered: longer than the relay may
+/// hold any ciphertext (30 days), so it can never serve one back afterwards.
+const retiredMessageRetention = Duration(days: 31);
 
 abstract class ConversationCacheService {
   Future<List<ConversationPreview>> readConversations();
@@ -1086,19 +1098,21 @@ class DriftConversationCacheService implements ConversationCacheService, Message
     await _db.transaction(() async {
       // Content goes with its message, including messages that expire while
       // they are not loaded in memory.
-      final expiredMessageIds = _db.selectOnly(_db.cachedMessages)
-        ..addColumns([_db.cachedMessages.id])
-        ..where(_db.cachedMessages.expiresAt.isSmallerThanValue(now));
-      await (_db.delete(_db.messageContents)
-            ..where((table) =>
-                table.innerExpiresAt.isSmallerThanValue(now) |
-                table.messageKey.isInQuery(expiredMessageIds)))
-          .go();
+      final expiredMessageIds = await (_db.selectOnly(_db.cachedMessages)
+            ..addColumns([_db.cachedMessages.id])
+            ..where(_db.cachedMessages.expiresAt.isSmallerThanValue(now)))
+          .map((row) => row.read(_db.cachedMessages.id)!)
+          .get();
+      await _retireExpiredContent(now, alsoRetire: expiredMessageIds);
       await (_db.delete(_db.cachedMessages)
             ..where((table) => table.expiresAt.isSmallerThanValue(now)))
           .go();
       await (_db.delete(_db.pendingMessages)
             ..where((table) => table.expiresAt.isSmallerThanValue(now)))
+          .go();
+      await (_db.delete(_db.retiredMessages)
+            ..where((table) =>
+                table.retiredAt.isSmallerThanValue(now.subtract(retiredMessageRetention))))
           .go();
     });
   }
@@ -1107,6 +1121,7 @@ class DriftConversationCacheService implements ConversationCacheService, Message
   Future<void> clearAll() async {
     await _db.transaction(() async {
       await _db.delete(_db.messageContents).go();
+      await _db.delete(_db.retiredMessages).go();
       await _db.delete(_db.pendingMessages).go();
       await _db.delete(_db.cachedMessages).go();
       await _db.delete(_db.cachedConversations).go();
@@ -1117,6 +1132,7 @@ class DriftConversationCacheService implements ConversationCacheService, Message
 
   @override
   Future<void> put(MessageContentRecord record) async {
+    // Rows for retired keys are dropped by a trigger (see AppDatabase).
     await _db.into(_db.messageContents).insert(
           MessageContentsCompanion.insert(
             messageKey: record.messageKey,
@@ -1127,7 +1143,7 @@ class DriftConversationCacheService implements ConversationCacheService, Message
             attachmentJson:
                 Value(await _encrypt(_encodeAttachment(record.attachment))),
             kind: await _requireEncryptedValue(record.kind.name),
-            innerExpiresAt: Value(record.innerExpiresAt),
+            innerExpiresAt: Value(record.innerExpiresAt?.millisecondsSinceEpoch),
             status: record.status.storageName,
             createdAt: record.createdAt,
             updatedAt: record.updatedAt,
@@ -1161,6 +1177,24 @@ class DriftConversationCacheService implements ConversationCacheService, Message
       }
     }
     return records;
+  }
+
+  @override
+  Future<Map<String, DateTime>> innerExpiries(Iterable<String> messageKeys) async {
+    final expiries = <String, DateTime>{};
+    for (final chunk in _chunked(messageKeys)) {
+      final query = _db.selectOnly(_db.messageContents)
+        ..addColumns([_db.messageContents.messageKey, _db.messageContents.innerExpiresAt])
+        ..where(
+          _db.messageContents.messageKey.isIn(chunk) &
+              _db.messageContents.innerExpiresAt.isNotNull(),
+        );
+      for (final row in await query.get()) {
+        expiries[row.read(_db.messageContents.messageKey)!] =
+            DateTime.fromMillisecondsSinceEpoch(row.read(_db.messageContents.innerExpiresAt)!);
+      }
+    }
+    return expiries;
   }
 
   @override
@@ -1210,14 +1244,46 @@ class DriftConversationCacheService implements ConversationCacheService, Message
   Future<void> deleteExpired(
     DateTime now, {
     Iterable<String> messageKeys = const [],
-  }) async {
-    await (_db.delete(_db.messageContents)
-          ..where((table) => table.innerExpiresAt.isSmallerOrEqualValue(now)))
-        .go();
+  }) =>
+      _db.transaction(() => _retireExpiredContent(now, alsoRetire: messageKeys));
+
+  @override
+  Future<Set<String>> retiredAmong(Iterable<String> messageKeys) async {
+    final retired = <String>{};
     for (final chunk in _chunked(messageKeys)) {
+      final query = _db.selectOnly(_db.retiredMessages)
+        ..addColumns([_db.retiredMessages.messageKey])
+        ..where(_db.retiredMessages.messageKey.isIn(chunk));
+      retired.addAll(await query.map((row) => row.read(_db.retiredMessages.messageKey)!).get());
+    }
+    return retired;
+  }
+
+  // Deletes content whose inner expiry has passed, plus [alsoRetire], and
+  // remembers every one of those keys as retired.
+  Future<void> _retireExpiredContent(
+    DateTime now, {
+    required Iterable<String> alsoRetire,
+  }) async {
+    final innerExpired = await (_db.selectOnly(_db.messageContents)
+          ..addColumns([_db.messageContents.messageKey])
+          ..where(_db.messageContents.innerExpiresAt.isSmallerOrEqualValue(now.millisecondsSinceEpoch)))
+        .map((row) => row.read(_db.messageContents.messageKey)!)
+        .get();
+    for (final chunk in _chunked([...innerExpired, ...alsoRetire])) {
       await (_db.delete(_db.messageContents)
             ..where((table) => table.messageKey.isIn(chunk)))
           .go();
+      await _db.batch(
+        (batch) => batch.insertAll(
+          _db.retiredMessages,
+          [
+            for (final key in chunk)
+              RetiredMessagesCompanion.insert(messageKey: key, retiredAt: now),
+          ],
+          mode: InsertMode.insertOrIgnore,
+        ),
+      );
     }
   }
 
@@ -1235,7 +1301,9 @@ class DriftConversationCacheService implements ConversationCacheService, Message
       body: body,
       kind: MessageKind.values.byName(kind),
       attachment: _decodeAttachment(await _decrypt(row.attachmentJson)),
-      innerExpiresAt: row.innerExpiresAt,
+      innerExpiresAt: row.innerExpiresAt == null
+          ? null
+          : DateTime.fromMillisecondsSinceEpoch(row.innerExpiresAt!),
       status: MessageContentStatus.fromStorageName(row.status),
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

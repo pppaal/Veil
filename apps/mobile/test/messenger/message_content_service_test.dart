@@ -238,4 +238,40 @@ void main() {
 
     expect(await service.storedFor([echo]), isEmpty);
   });
+
+  test('our own content comes back with its sealed expiry when the relay copy binds to it', () async {
+    final inner = DateTime.utc(2030, 1, 1, 12);
+    final bound = <MessageContentRecord>[];
+    final service = _service(_ScriptedDecrypter([_plain('unused')]).call, stored: bound);
+    for (final clientMessageId in ['client-ack', 'client-echo']) {
+      await service.storeOutbound(
+        conversationId: _conversationId,
+        clientMessageId: clientMessageId,
+        body: 'timed',
+        kind: MessageKind.text,
+        expiresAt: inner,
+      );
+    }
+
+    final acked = await service.acknowledge(clientMessageId: 'client-ack', serverMessageId: 'srv-ack');
+    expect(acked!.innerExpiresAt, inner);
+
+    // The relay's copy arrived first: the listener applies the expiry.
+    await service.read(_message('srv-echo', _envelope('own'), clientMessageId: 'client-echo', isMine: true));
+    expect(bound.single.messageKey, 'srv-echo');
+    expect(bound.single.innerExpiresAt, inner);
+  });
+
+  test('messages this device expired are never served back or decrypted again', () async {
+    final decrypter = _ScriptedDecrypter([_plain('once')]);
+    final service = _service(decrypter.call);
+    final message = _message('srv-gone', _envelope('gone'));
+    final other = _message('srv-live', _envelope('live'));
+    await service.ingestAll([message]);
+
+    await service.deleteExpired(DateTime.now(), [message]);
+
+    expect(await service.withoutRetired([message, other]), [other]);
+    expect(decrypter.calls, 1);
+  });
 }

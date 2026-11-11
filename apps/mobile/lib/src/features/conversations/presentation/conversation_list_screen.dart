@@ -115,7 +115,8 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       return previewBody;
     }
 
-    switch (envelope.messageKind) {
+    // Labelled by the decrypted kind only; the envelope's is unauthenticated.
+    switch (controller.lastMessageKindFor(item.id) ?? MessageKind.text) {
       case MessageKind.image:
         return 'Encrypted image';
       case MessageKind.file:

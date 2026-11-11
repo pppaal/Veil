@@ -73,8 +73,14 @@ class FakeRelay {
   int _attachmentCounter = 0;
   final DateTime _clockBase = DateTime.utc(2026, 4, 1, 9);
 
+  /// Registers [party] as the active device of its handle. A handle that
+  /// already had a device moves to the new one, like a device transfer: the
+  /// directory serves the new bundle and the old device's socket and client
+  /// stop hearing from the relay.
   RelayParty addParty(RelayParty party) {
     partiesByHandle[party.handle] = party;
+    _clientsByHandle.remove(party.handle);
+    _realtimeByHandle.remove(party.handle);
     return party;
   }
 

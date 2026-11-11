@@ -229,13 +229,26 @@ class ConversationSessionState {
   final DateTime bootstrappedAt;
   final String? auditHint;
   // Identity key the session was bootstrapped against. Empty for sessions
-  // created before it was recorded and for inbound sessions, where the
-  // sender's identity key is not known yet.
+  // created before it was recorded, and for inbound sessions until the first
+  // directory answer for the same device pins it.
   final String remoteIdentityPublicKey;
 
   bool matchesBundle(KeyBundle bundle) => remoteDeviceId == bundle.deviceId;
 
   bool belongsToLocalDevice(String deviceId) => localDeviceId == deviceId;
+
+  ConversationSessionState withRemoteIdentity(String identityPublicKey) => ConversationSessionState(
+        sessionLocator: sessionLocator,
+        sessionEnvelopeVersion: sessionEnvelopeVersion,
+        requiresLocalPersistence: requiresLocalPersistence,
+        sessionSchemaVersion: sessionSchemaVersion,
+        localDeviceId: localDeviceId,
+        remoteDeviceId: remoteDeviceId,
+        remoteIdentityFingerprint: remoteIdentityFingerprint,
+        bootstrappedAt: bootstrappedAt,
+        auditHint: auditHint,
+        remoteIdentityPublicKey: identityPublicKey,
+      );
 }
 
 class ConversationPreview {
@@ -289,8 +302,8 @@ class ConversationPreview {
   // unknown (e.g. hydrated from cache before the first refresh).
   final int? groupEpoch;
   // The directory served a different identity key for the device this
-  // conversation's session is bound to. The session is kept as-is; the flag
-  // is what the safety-number flow reacts to.
+  // conversation's session is bound to. The session and the pinned bundle
+  // are kept as-is; the flag is what the safety-number flow reacts to.
   final bool identityMismatchPending;
 
   ConversationPreview copyWith({

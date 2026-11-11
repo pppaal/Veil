@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -107,6 +108,34 @@ void main() {
     expect(find.text('Screenshot taken'), findsOneWidget);
     expect(find.byIcon(Icons.camera_alt_outlined), findsOneWidget);
     expect(find.byType(VeilMessageBubbleCard), findsNothing);
+  });
+
+  testWidgets('the conversation list labels the last message by its decrypted kind', (tester) async {
+    await relayFromSelene('a photo', innerKind: MessageKind.image, outerKind: MessageKind.system);
+    tester.view.physicalSize = const Size(1400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = mockPartyController(relay, 'atlas');
+    await controller.applySession(mockPartySession('atlas'));
+    await controller.loadConversationMessages(conv);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+        child: MaterialApp(
+          theme: VeilTheme.dark(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const ConversationListScreen(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Encrypted image'), findsOneWidget);
+    expect(find.text('System envelope'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 
   testWidgets('the chat is the active conversation only while it is visible', (tester) async {

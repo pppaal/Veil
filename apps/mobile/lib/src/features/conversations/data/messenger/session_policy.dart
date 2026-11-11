@@ -43,21 +43,49 @@ SessionDecision decideSession({
   );
 }
 
-/// Whether a send has to resolve the peer's key bundle first. Steady-state
-/// sends on an established session never touch the key directory.
-bool sendNeedsPeerBundle({
-  required bool engineHasSession,
-  required bool rekeyArmed,
-  required ConversationPreview conversation,
-}) {
-  if (!engineHasSession || rekeyArmed) {
-    return true;
+/// The conversation after a directory answer for a session it keeps.
+///
+/// A session that has not recorded its peer's identity key yet (opened by
+/// the peer's first frame, or created before keys were recorded) adopts the
+/// key served for the same device: trust on first use, from the same
+/// directory the initiator trusted. A different key for the bound device is
+/// only flagged and the pinned bundle stays, because that is who the live
+/// session actually encrypts to, and so what safety numbers must show.
+ConversationPreview keepSession(
+  ConversationPreview conversation,
+  KeyBundle served,
+  SessionDecision decision,
+) {
+  assert(decision.action == SessionAction.reuse);
+  if (decision.identityMismatch) {
+    return conversation.copyWith(identityMismatchPending: true);
   }
   final session = conversation.sessionState;
-  final knownDeviceId = conversation.recipientBundle.deviceId;
-  return session != null &&
-      knownDeviceId.isNotEmpty &&
-      session.remoteDeviceId != knownDeviceId;
+  final pinsIdentity = session != null &&
+      session.remoteIdentityPublicKey.isEmpty &&
+      session.matchesBundle(served);
+  return conversation.copyWith(
+    recipientBundle: served,
+    sessionState: pinsIdentity ? session.withRemoteIdentity(served.identityPublicKey) : session,
+  );
+}
+
+/// Whether an inbound 1:1 frame was sent by a device other than the one the
+/// conversation's session is bound to. Server previews carry no device ids,
+/// so this is how a device learns that its peer moved to a new one; without
+/// it every later send keeps sealing to a device that is gone.
+bool comesFromNewPeerDevice(
+  ConversationPreview conversation,
+  CryptoEnvelope envelope, {
+  required String localDeviceId,
+}) {
+  final session = conversation.sessionState;
+  final sender = envelope.senderDeviceId;
+  return conversation.type == ConversationType.direct &&
+      session != null &&
+      sender.isNotEmpty &&
+      sender != localDeviceId &&
+      sender != session.remoteDeviceId;
 }
 
 ConversationSessionState sessionStateFromMaterial(

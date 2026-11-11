@@ -93,8 +93,14 @@ class VeilMessengerController extends ChangeNotifier {
     onContentStored: _onContentStored,
   );
   final PeerBundleCache _peerBundles = PeerBundleCache();
-  final Set<String> _rekeyArmed = <String>{};
-  final Map<String, String> _previewBodies = {};
+  // Conversations whose next send must ask the directory first: a rekey was
+  // armed, or a frame arrived from a peer device the session is not bound to.
+  final Set<String> _directoryRecheck = <String>{};
+  // Inbound sessions opened before their conversation was listed (the peer
+  // created it and wrote straight away), recorded once the list has it.
+  final Map<String, ConversationSessionState> _unlistedInboundSessions = {};
+  // Opened content of each conversation's latest message, for the list.
+  final Map<String, MessageContentRecord> _lastContents = {};
   bool _sessionsRestored = false;
   bool _disposed = false;
   final Random _random = Random.secure();
@@ -153,7 +159,14 @@ class VeilMessengerController extends ChangeNotifier {
 
   /// Decrypted body of the conversation's latest message when that message
   /// is text that opened successfully; null otherwise.
-  String? lastMessagePreviewFor(String conversationId) => _previewBodies[conversationId];
+  String? lastMessagePreviewFor(String conversationId) {
+    final content = _lastContents[conversationId];
+    return content?.kind == MessageKind.text ? content!.body : null;
+  }
+
+  /// Decrypted kind of the conversation's latest message, or null until it
+  /// has opened. Never the envelope's unauthenticated kind.
+  MessageKind? lastMessageKindFor(String conversationId) => _lastContents[conversationId]?.kind;
   String? get transferPayload =>
       _transferSessionId == null || _transferToken == null
           ? null
@@ -263,8 +276,9 @@ class VeilMessengerController extends ChangeNotifier {
   void _forgetIdentityCaches() {
     _contents.reset();
     _peerBundles.clear();
-    _rekeyArmed.clear();
-    _previewBodies.clear();
+    _directoryRecheck.clear();
+    _unlistedInboundSessions.clear();
+    _lastContents.clear();
   }
 
   Future<void> handleAppResumed() async {
@@ -407,7 +421,7 @@ class VeilMessengerController extends ChangeNotifier {
     }
     // The rotation itself happens inside the existing session; the next send
     // also re-checks the peer's directory entry.
-    _rekeyArmed.add(conversationId);
+    _directoryRecheck.add(conversationId);
     await sendSystemNotice(
       conversationId: conversationId,
       body: 'session.rekey',
@@ -760,8 +774,21 @@ class VeilMessengerController extends ChangeNotifier {
         localUserId: _session.userId ?? '',
       );
     }
+    _notePeerDevice(envelope);
     await _ensureInboundSession(envelope);
     return _cryptoEngine.decryptMessage(envelope);
+  }
+
+  // A frame from a device the 1:1 session is not bound to means the peer has
+  // most likely moved, so the next send asks the directory and follows.
+  void _notePeerDevice(CryptoEnvelope envelope) {
+    final conversation = _conversationById(envelope.conversationId);
+    final localDeviceId = _session.deviceId;
+    if (conversation != null &&
+        localDeviceId != null &&
+        comesFromNewPeerDevice(conversation, envelope, localDeviceId: localDeviceId)) {
+      _directoryRecheck.add(conversation.id);
+    }
   }
 
   // Lazily bootstraps a session when an inbound envelope arrives for a
@@ -804,27 +831,30 @@ class VeilMessengerController extends ChangeNotifier {
           remoteEphemeralPublicKey: ephemeralPub,
         ),
       );
-      // Record it so a reply reuses this session instead of bootstrapping
-      // a second one the sender would never know about.
-      _updateConversation(
+      _recordInboundSession(
         conversationId,
-        (preview) => preview.copyWith(
-          sessionState: sessionStateFromMaterial(material, remoteIdentityPublicKey: ''),
-        ),
+        sessionStateFromMaterial(material, remoteIdentityPublicKey: ''),
       );
       unawaited(_contents.retryPending(conversationId, messagesFor(conversationId)));
-      final peer = _conversationById(conversationId);
-      if (peer != null && peer.type == ConversationType.direct) {
-        // One directory lookup per session setup gives the responder the
-        // peer's identity key for safety numbers. Best effort: the session
-        // itself does not depend on it.
-        _resolvePeerBundle(peer.peerHandle).ignore();
-      }
     } catch (_) {
       // Bootstrap failures fall through to the placeholder-body path — the UI
       // surfaces "session not established" rather than crashing.
     } finally {
       _inboundBootstrapInFlight.remove(conversationId);
+    }
+  }
+
+  // Records an inbound session on its conversation, so a reply reuses it
+  // instead of bootstrapping a second one the sender would never know about.
+  void _recordInboundSession(String conversationId, ConversationSessionState state) {
+    final conversation = _conversationById(conversationId);
+    if (conversation == null) {
+      _unlistedInboundSessions[conversationId] = state;
+      return;
+    }
+    _updateConversation(conversationId, (preview) => preview.copyWith(sessionState: state));
+    if (conversation.type == ConversationType.direct) {
+      _learnPeerIdentity(conversation.peerHandle).ignore();
     }
   }
 
@@ -895,6 +925,9 @@ class VeilMessengerController extends ChangeNotifier {
       _conversations,
       items.map(_conversationFromApi).toList(),
     )..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    final unlisted = Map.of(_unlistedInboundSessions);
+    _unlistedInboundSessions.clear();
+    unlisted.forEach(_recordInboundSession);
     await _cacheService?.storeConversations(_conversations);
     await _reconcileExpiringState();
   }
@@ -915,11 +948,13 @@ class VeilMessengerController extends ChangeNotifier {
       cursor: loadMore ? pagingState.nextCursor : null,
       limit: 50,
     );
-    final items = (response['items'] as List<dynamic>? ?? const [])
-        .cast<Map<String, dynamic>>()
-        .map(_messageFromApi)
-        .toList()
-      ..sort(compareMessages);
+    final items = await _contents.withoutRetired(
+      (response['items'] as List<dynamic>? ?? const [])
+          .cast<Map<String, dynamic>>()
+          .map(_messageFromApi)
+          .toList()
+        ..sort(compareMessages),
+    );
 
     _mergeServerMessages(conversationId, items);
     unawaited(_contents.ingestAll(items));
@@ -1075,11 +1110,14 @@ class VeilMessengerController extends ChangeNotifier {
               _messageFromApi(response['message'] as Map<String, dynamic>);
           _pendingByClientMessageId.remove(marked.clientMessageId);
           await _cacheService?.removePendingMessage(marked.clientMessageId);
-          await _contents.acknowledge(
+          final content = await _contents.acknowledge(
             clientMessageId: marked.clientMessageId,
             serverMessageId: serverMessage.id,
           );
-          _mergeServerMessages(marked.conversationId, <ChatMessage>[serverMessage]);
+          _mergeServerMessages(
+            marked.conversationId,
+            <ChatMessage>[withInnerExpiry(serverMessage, content?.innerExpiresAt)],
+          );
           await _persistConversationState(marked.conversationId);
           _attachmentTransfersByClientMessageId.remove(marked.clientMessageId);
         } catch (error) {
@@ -1143,13 +1181,15 @@ class VeilMessengerController extends ChangeNotifier {
 
     for (final conversation in _conversations) {
       final cachedMessages = await cache.readMessages(conversation.id);
-      _messagesByConversation[conversation.id] = cachedMessages
-          .map(
-            (message) => message.copyWith(
-              isMine: message.senderDeviceId == _session.deviceId,
-            ),
-          )
-          .toList();
+      // Re-applied in case the app stopped before a clamped copy was saved.
+      final innerExpiries = await _contents.innerExpiriesFor(cachedMessages);
+      _messagesByConversation[conversation.id] = [
+        for (final message in cachedMessages)
+          withInnerExpiry(
+            message.copyWith(isMine: message.senderDeviceId == _session.deviceId),
+            innerExpiries[message.id],
+          ),
+      ];
       _pagingStateByConversation[conversation.id] = await cache.readPagingState(conversation.id);
     }
 
@@ -1195,7 +1235,7 @@ class VeilMessengerController extends ChangeNotifier {
 
     await _attachmentTempFileStore?.cleanupOrphanedFiles(keepPaths: keepTempPaths);
     for (final conversationId in _messagesByConversation.keys) {
-      unawaited(_refreshPreviewBody(conversationId));
+      unawaited(_refreshLastContent(conversationId));
     }
     await _reconcileExpiringState();
     notifyListeners();
@@ -1242,6 +1282,9 @@ class VeilMessengerController extends ChangeNotifier {
           case 'message.new':
             final data = payload as Map<String, dynamic>;
             final message = _messageFromApi(data);
+            if ((await _contents.withoutRetired(<ChatMessage>[message])).isEmpty) {
+              break;
+            }
             final conversationId = message.envelope.conversationId;
             _mergeServerMessages(conversationId, <ChatMessage>[message]);
             unawaited(_contents.ingestAll(<ChatMessage>[message]));
@@ -1892,12 +1935,14 @@ class VeilMessengerController extends ChangeNotifier {
 
   Future<void> _persistConversationState(String conversationId) async {
     final cache = _cacheService;
-    if (cache == null) {
+    // The cache refuses messages without their conversation; those of one the
+    // list has not caught up with yet are saved by the sync that lists it.
+    if (cache == null || _conversationById(conversationId) == null) {
       return;
     }
 
-    await cache.storeMessages(conversationId, _messagesByConversation[conversationId] ?? const []);
     await cache.storeConversations(_conversations);
+    await cache.storeMessages(conversationId, _messagesByConversation[conversationId] ?? const []);
   }
 
   Future<void> _reconcileExpiringState() async {
@@ -1949,7 +1994,9 @@ class VeilMessengerController extends ChangeNotifier {
     final cache = _cacheService;
     if (cache != null) {
       await cache.purgeExpiredMessages();
-      for (final conversationId in changedMessageConversations) {
+      for (final conversationId in changedMessageConversations.where(
+        (id) => _conversationById(id) != null,
+      )) {
         await cache.storeMessages(
           conversationId,
           _messagesByConversation[conversationId] ?? const [],
@@ -1987,72 +2034,82 @@ class VeilMessengerController extends ChangeNotifier {
       updatedAt: latestMessage?.sentAt ?? current.updatedAt,
     );
     _conversations.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    unawaited(_refreshPreviewBody(conversationId));
+    unawaited(_refreshLastContent(conversationId));
   }
 
-  Future<void> _refreshPreviewBody(String conversationId) async {
+  Future<void> _refreshLastContent(String conversationId) async {
     final latest = _messagesByConversation[conversationId]?.lastOrNull;
     final content = latest == null ? null : (await _contents.storedFor([latest]))[latest.id];
     if (_messagesByConversation[conversationId]?.lastOrNull?.id != latest?.id) {
       return;
     }
-    final body = content?.status == MessageContentStatus.ok && content?.kind == MessageKind.text
-        ? content!.body
-        : null;
-    if (_previewBodies[conversationId] == body) {
+    final opened = content?.status == MessageContentStatus.ok ? content : null;
+    final previous = _lastContents[conversationId];
+    if (previous?.kind == opened?.kind && previous?.body == opened?.body) {
       return;
     }
-    body == null ? _previewBodies.remove(conversationId) : _previewBodies[conversationId] = body;
+    opened == null ? _lastContents.remove(conversationId) : _lastContents[conversationId] = opened;
     notifyListeners();
   }
 
-  // Runs for every newly stored content row. Local expiry is the earlier of
-  // the server's outer expiresAt and the authenticated inner one, so a
-  // server that strips or extends the timer cannot keep the message around.
+  // Runs whenever content becomes bound to a relayed message (the ack path
+  // applies the same clamp itself). Local expiry is the earlier of the
+  // server's outer expiresAt and the authenticated inner one, so a server
+  // that strips or extends the timer cannot keep the message around.
   void _onContentStored(ChatMessage message, MessageContentRecord record) {
     final conversationId = record.conversationId;
     final messages = _messagesByConversation[conversationId];
     final index = messages?.indexWhere((item) => item.id == message.id) ?? -1;
     if (messages != null && index != -1) {
       final current = messages[index];
-      final expiresAt = earlierOf(current.expiresAt, record.innerExpiresAt);
-      if (expiresAt != current.expiresAt) {
+      final clamped = withInnerExpiry(current, record.innerExpiresAt);
+      if (!identical(clamped, current)) {
         _messagesByConversation[conversationId] = List<ChatMessage>.of(messages)
-          ..[index] = current.copyWith(expiresAt: expiresAt);
+          ..[index] = clamped;
         unawaited(_persistConversationState(conversationId));
       }
       if (index == messages.length - 1) {
-        unawaited(_refreshPreviewBody(conversationId));
+        unawaited(_refreshLastContent(conversationId));
       }
     }
     notifyListeners();
   }
 
   // Public entry point for callers that need a single peer's KeyBundle —
-  // currently the group Safety Numbers screen. Always asks the directory.
-  Future<KeyBundle> fetchPeerKeyBundle(String handle) => _resolvePeerBundle(handle, fresh: true);
-
-  // Steady-state sends on an established session use the stored bundle and
-  // never touch the directory.
-  Future<KeyBundle> _bundleForSend(ConversationPreview conversation) async {
-    final needsBundle = sendNeedsPeerBundle(
-      engineHasSession: _sessionBootstrapper.hasSessionFor(conversation.id),
-      rekeyArmed: _rekeyArmed.contains(conversation.id),
-      conversation: conversation,
-    );
-    if (!needsBundle) {
-      return conversation.recipientBundle;
-    }
-    return _resolvePeerBundle(
-      conversation.peerHandle,
-      fresh: _rekeyArmed.remove(conversation.id),
-    );
+  // currently the group Safety Numbers screen. Always asks the directory and
+  // returns what it served, even when that differs from the pinned key.
+  Future<KeyBundle> fetchPeerKeyBundle(String handle) async {
+    final served = await _fetchPeerBundle(handle);
+    await _applyDirectoryAnswer(handle, served);
+    return served;
   }
 
-  Future<KeyBundle> _resolvePeerBundle(String handle, {bool fresh = false}) async {
-    final bundle = (fresh ? null : _peerBundles.fresh(handle)) ?? await _fetchPeerBundle(handle);
-    await _ensureConversationSession(handle, bundle);
+  // Steady-state sends on an established session use the stored bundle and
+  // never touch the directory. A pending recheck asks it fresh and is only
+  // cleared once that answer has been applied.
+  Future<KeyBundle> _bundleForSend(ConversationPreview conversation) async {
+    final recheck = _directoryRecheck.contains(conversation.id);
+    if (!recheck && _sessionBootstrapper.hasSessionFor(conversation.id)) {
+      return conversation.recipientBundle;
+    }
+    final bundle = await _resolvePeerBundle(conversation.peerHandle, fresh: recheck);
+    _directoryRecheck.remove(conversation.id);
     return bundle;
+  }
+
+  // The bundle 1:1 encryption to [handle] may use, once the conversation's
+  // session fits the directory's answer.
+  Future<KeyBundle> _resolvePeerBundle(String handle, {bool fresh = false}) async {
+    final served = (fresh ? null : _peerBundles.fresh(handle)) ?? await _fetchPeerBundle(handle);
+    return await _applyDirectoryAnswer(handle, served) ?? served;
+  }
+
+  // Best effort, once per inbound session: gives the responder its peer's
+  // identity key for safety numbers and later mismatch checks. Never
+  // bootstraps, so it cannot replace the session the peer just opened.
+  Future<void> _learnPeerIdentity(String handle) async {
+    final served = _peerBundles.fresh(handle) ?? await _fetchPeerBundle(handle);
+    await _applyDirectoryAnswer(handle, served, mayBootstrap: false);
   }
 
   Future<KeyBundle> _fetchPeerBundle(String handle) async {
@@ -2078,53 +2135,52 @@ class VeilMessengerController extends ChangeNotifier {
     return selected;
   }
 
-  Future<void> _ensureConversationSession(String handle, KeyBundle bundle) async {
-    if (!_session.isAuthenticated) {
-      return;
-    }
-    ConversationPreview? conversation;
-    for (final item in _conversations) {
-      if (item.type == ConversationType.direct && item.peerHandle == handle) {
-        conversation = item;
-        break;
-      }
-    }
-    if (conversation == null) {
-      return;
+  // Fits the direct conversation with [handle] to a directory answer: a
+  // bootstrap only when no usable session exists, otherwise the session is
+  // kept (see keepSession). Returns the bundle the conversation now holds,
+  // or null when there is no such conversation.
+  Future<KeyBundle?> _applyDirectoryAnswer(
+    String handle,
+    KeyBundle served, {
+    bool mayBootstrap = true,
+  }) async {
+    final conversation = _conversations
+        .where((item) => item.type == ConversationType.direct && item.peerHandle == handle)
+        .firstOrNull;
+    if (conversation == null || !_session.isAuthenticated) {
+      return null;
     }
 
     final decision = decideSession(
       engineHasSession: _sessionBootstrapper.hasSessionFor(conversation.id),
       session: conversation.sessionState,
       localDeviceId: _session.deviceId!,
-      bundle: bundle,
+      bundle: served,
     );
-    var sessionState = conversation.sessionState;
-    if (decision.action == SessionAction.bootstrap) {
+    if (decision.action == SessionAction.reuse) {
+      _updateConversation(conversation.id, (preview) => keepSession(preview, served, decision));
+    } else if (mayBootstrap) {
       final material = await _sessionBootstrapper.bootstrapSession(
         SessionBootstrapRequest(
           conversationId: conversation.id,
           localDeviceId: _session.deviceId!,
           localUserId: _session.userId!,
-          remoteUserId: bundle.userId,
-          remoteDeviceId: bundle.deviceId,
-          remoteIdentityPublicKey: bundle.identityPublicKey,
-          remoteSignedPrekeyBundle: bundle.signedPrekeyBundle,
+          remoteUserId: served.userId,
+          remoteDeviceId: served.deviceId,
+          remoteIdentityPublicKey: served.identityPublicKey,
+          remoteSignedPrekeyBundle: served.signedPrekeyBundle,
         ),
       );
-      sessionState = sessionStateFromMaterial(
+      final sessionState = sessionStateFromMaterial(
         material,
-        remoteIdentityPublicKey: bundle.identityPublicKey,
+        remoteIdentityPublicKey: served.identityPublicKey,
+      );
+      _updateConversation(
+        conversation.id,
+        (preview) => preview.copyWith(recipientBundle: served, sessionState: sessionState),
       );
     }
-    _updateConversation(
-      conversation.id,
-      (preview) => preview.copyWith(
-        recipientBundle: bundle,
-        sessionState: sessionState,
-        identityMismatchPending: preview.identityMismatchPending || decision.identityMismatch,
-      ),
-    );
+    return _conversationById(conversation.id)?.recipientBundle;
   }
 
   void _updateConversation(

@@ -76,6 +76,13 @@ DateTime? laterOf(DateTime? left, DateTime? right) {
   return left.isAfter(right) ? left : right;
 }
 
+/// [message] expiring at min(outer, inner) (contract C4): the relay may
+/// strip or extend the outer expiresAt, but never the one sealed inside.
+ChatMessage withInnerExpiry(ChatMessage message, DateTime? innerExpiresAt) {
+  final expiresAt = earlierOf(message.expiresAt, innerExpiresAt);
+  return expiresAt == message.expiresAt ? message : message.copyWith(expiresAt: expiresAt);
+}
+
 /// The earlier of two optional expiries; null means "never".
 DateTime? earlierOf(DateTime? left, DateTime? right) {
   if (left == null) {

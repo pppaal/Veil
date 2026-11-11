@@ -104,47 +104,70 @@ void main() {
     });
   });
 
-  group('sendNeedsPeerBundle', () {
-    test('steady-state sends never touch the directory', () {
+  group('keepSession', () {
+    test('pins the served identity key on a session that has none yet', () {
+      final conversation = _conversation(session: _session(remoteIdentityPublicKey: ''));
+      final served = _bundle(deviceId: 'dev-selene', identityPublicKey: 'ik-selene');
+
+      final kept = keepSession(conversation, served, _decide(session: conversation.sessionState, bundle: served));
+
+      expect(kept.sessionState!.remoteIdentityPublicKey, 'ik-selene');
+      expect(kept.sessionState!.sessionLocator, 'session://conv-1');
+      expect(kept.recipientBundle, same(served));
+      expect(kept.identityMismatchPending, isFalse);
+    });
+
+    test('a different key for the bound device flags and keeps the pinned bundle', () {
+      final conversation = _conversation(session: _session(), deviceId: 'dev-selene');
+      final served = _bundle(identityPublicKey: 'ik-impostor');
+
+      final kept = keepSession(conversation, served, _decide(session: conversation.sessionState, bundle: served));
+
+      expect(kept.identityMismatchPending, isTrue);
+      expect(kept.recipientBundle, same(conversation.recipientBundle));
+      expect(kept.sessionState!.remoteIdentityPublicKey, 'ik-selene');
+    });
+
+    test('an engine session the preview never recorded takes the served bundle', () {
+      final conversation = _conversation();
+      final served = _bundle(deviceId: 'dev-selene');
+
+      final kept = keepSession(conversation, served, _decide(bundle: served));
+
+      expect(kept.sessionState, isNull);
+      expect(kept.recipientBundle, same(served));
+    });
+  });
+
+  group('comesFromNewPeerDevice', () {
+    CryptoEnvelope frameFrom(String senderDeviceId) => CryptoEnvelope(
+          version: 'veil-envelope-v1',
+          conversationId: 'conv-1',
+          senderDeviceId: senderDeviceId,
+          recipientUserId: 'user-local',
+          ciphertext: 'c',
+          nonce: 'n',
+          messageKind: MessageKind.text,
+        );
+
+    test('a frame from another peer device signals a move', () {
       expect(
-        sendNeedsPeerBundle(
-          engineHasSession: true,
-          rekeyArmed: false,
-          conversation: _conversation(session: _session(), deviceId: 'dev-selene'),
-        ),
-        isFalse,
-      );
-      expect(
-        sendNeedsPeerBundle(
-          engineHasSession: true,
-          rekeyArmed: false,
-          conversation: _conversation(),
-        ),
-        isFalse,
+        comesFromNewPeerDevice(_conversation(session: _session()), frameFrom('dev-selene-2'), localDeviceId: 'dev-local'),
+        isTrue,
       );
     });
 
-    test('no session, an armed rekey or a changed device need the bundle', () {
-      expect(
-        sendNeedsPeerBundle(engineHasSession: false, rekeyArmed: false, conversation: _conversation()),
-        isTrue,
-      );
-      expect(
-        sendNeedsPeerBundle(
-          engineHasSession: true,
-          rekeyArmed: true,
-          conversation: _conversation(session: _session()),
-        ),
-        isTrue,
-      );
-      expect(
-        sendNeedsPeerBundle(
-          engineHasSession: true,
-          rekeyArmed: false,
-          conversation: _conversation(session: _session(), deviceId: 'dev-selene-2'),
-        ),
-        isTrue,
-      );
+    test('frames from the bound device, from this device or without a session do not', () {
+      final conversation = _conversation(session: _session());
+      expect(comesFromNewPeerDevice(conversation, frameFrom('dev-selene'), localDeviceId: 'dev-local'), isFalse);
+      expect(comesFromNewPeerDevice(conversation, frameFrom('dev-local'), localDeviceId: 'dev-local'), isFalse);
+      expect(comesFromNewPeerDevice(conversation, frameFrom(''), localDeviceId: 'dev-local'), isFalse);
+      expect(comesFromNewPeerDevice(_conversation(), frameFrom('dev-selene-2'), localDeviceId: 'dev-local'), isFalse);
+    });
+
+    test('group frames never do', () {
+      final group = _conversation(session: _session()).copyWith(type: ConversationType.group);
+      expect(comesFromNewPeerDevice(group, frameFrom('dev-selene-2'), localDeviceId: 'dev-local'), isFalse);
     });
   });
 

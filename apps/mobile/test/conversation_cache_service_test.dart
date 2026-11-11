@@ -692,7 +692,7 @@ void main() {
       nonce: 'content-nonce.wrap-nonce',
       algorithmHint: 'x25519-aes256gcm',
     );
-    final expiry = DateTime.utc(2026, 5, 1, 12);
+    final expiry = DateTime.utc(2026, 5, 1, 12, 0, 0, 250);
     await cache.put(_content(
       'srv-9',
       'conv-9',
@@ -785,12 +785,39 @@ void main() {
     await cache.purgeExpiredMessages();
     await cache.deleteExpired(now, messageKeys: ['srv-retired']);
 
-    expect(
-      (await cache.getMany(['srv-inner', 'srv-outer', 'srv-retired', 'srv-kept'])).keys,
-      ['srv-kept'],
-    );
+    const keys = ['srv-inner', 'srv-outer', 'srv-retired', 'srv-kept'];
+    expect((await cache.getMany(keys)).keys, ['srv-kept']);
+    expect(await cache.retiredAmong(keys), {'srv-inner', 'srv-outer', 'srv-retired'});
     await cache.clearAll();
     expect(await cache.get('srv-kept'), isNull);
+    expect(await cache.retiredAmong(keys), isEmpty);
+  });
+
+  test('a retired key never takes content again and is forgotten after the retention window', () async {
+    final now = DateTime.now();
+    await cache.deleteExpired(now, messageKeys: ['srv-late']);
+
+    // A decrypt that was still running when its message expired.
+    await cache.put(_content('srv-late', 'conv-1', 'must not come back'));
+    expect(await cache.get('srv-late'), isNull);
+
+    await database.customStatement(
+      'UPDATE retired_messages SET retired_at = ?',
+      [now.subtract(retiredMessageRetention + const Duration(minutes: 1)).millisecondsSinceEpoch ~/ 1000],
+    );
+    await cache.purgeExpiredMessages();
+    expect(await cache.retiredAmong(['srv-late']), isEmpty);
+  });
+
+  test('inner expiries are read without decrypting content', () async {
+    final expiry = DateTime.utc(2026, 5, 1, 12, 0, 0, 250);
+    await cache.put(_content('srv-timed', 'conv-1', 'timed', innerExpiresAt: expiry));
+    await cache.put(_content('srv-forever', 'conv-1', 'untimed'));
+
+    final expiries = await cache.innerExpiries(['srv-timed', 'srv-forever', 'srv-missing']);
+
+    expect(expiries.keys, ['srv-timed']);
+    expect(expiries['srv-timed']!.isAtSameMomentAs(expiry), isTrue);
   });
 
   test('migration 8 to 9 creates table', () async {
@@ -813,7 +840,11 @@ void main() {
     final tables = await legacy
         .customSelect("SELECT name FROM sqlite_master WHERE type = 'table'")
         .get();
-    expect(tables.map((row) => row.data['name']), contains('message_contents'));
+    expect(tables.map((row) => row.data['name']), containsAll(['message_contents', 'retired_messages']));
+    final triggers = await legacy
+        .customSelect("SELECT name FROM sqlite_master WHERE type = 'trigger'")
+        .get();
+    expect(triggers.map((row) => row.data['name']), contains('message_contents_skip_retired'));
     final conversationColumns =
         await legacy.customSelect('PRAGMA table_info(cached_conversations)').get();
     expect(

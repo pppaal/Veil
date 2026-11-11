@@ -86,8 +86,10 @@ class MessengerParty {
   late VeilMessengerController controller;
   int _tokenGeneration = 0;
 
-  FakeRelayClient get api => relay.clientFor(device.handle);
-  FakeRelayRealtime get realtime => relay.realtimeFor(device.handle);
+  // Bound when the party boots, so a later device move for the same handle
+  // leaves this device talking to its own (now silent) socket and client.
+  late final FakeRelayClient api = relay.clientFor(device.handle);
+  late final FakeRelayRealtime realtime = relay.realtimeFor(device.handle);
 
   AppSessionState session({String? token}) => AppSessionState(
         accessToken: token ?? 'token-${device.handle}-$_tokenGeneration',

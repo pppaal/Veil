@@ -4,13 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/decrypt_outcome.dart';
 
-// Every place that turns a failed decrypt into a placeholder body.
-const _placeholderSources = [
-  'lib/src/core/crypto/lib_crypto_adapter.dart',
-  'lib/src/core/crypto/libsignal_bridge_adapter.dart',
-  'lib/src/core/crypto/mock_crypto_engine.dart',
-  'lib/src/features/conversations/data/group_sender_key_coordinator.dart',
-];
+// Every place that can turn a failed decrypt into a placeholder body: the
+// whole crypto tree, wherever an adapter keeps its session code, plus the
+// group coordinator.
+Iterable<File> _placeholderSources() => [
+      ...Directory('lib/src/core/crypto')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart')),
+      File('lib/src/features/conversations/data/group_sender_key_coordinator.dart'),
+    ];
 
 void main() {
   test('maps every placeholder the adapters emit to its status', () {
@@ -48,8 +51,8 @@ void main() {
   test('every bracketed placeholder literal in the decrypt paths is classified', () {
     final literal = RegExp(r"'(\[[^'\]]+\])'");
     final found = <String>{
-      for (final path in _placeholderSources)
-        ...literal.allMatches(File(path).readAsStringSync()).map((match) => match.group(1)!),
+      for (final file in _placeholderSources())
+        ...literal.allMatches(file.readAsStringSync()).map((match) => match.group(1)!),
     };
 
     expect(found, isNotEmpty);

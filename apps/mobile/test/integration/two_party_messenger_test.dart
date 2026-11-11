@@ -160,6 +160,10 @@ void main() {
 
   test('oldest of 700 messages readable after cache eviction', () async {
     await deliver(alice, bob, 'm0');
+    // Lets m0's sync hints run first; otherwise alice would also pull the
+    // injected frames, which never went through her outbox, and spend the
+    // run failing to open her own envelopes.
+    await settle();
     final bobBundle = KeyBundle(
       userId: bob.device.userId,
       deviceId: bob.device.deviceId,
@@ -207,17 +211,40 @@ void main() {
       body: 'self-destruct',
       disappearAfter: const Duration(seconds: 1),
     );
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0);
     await waitFor(() async => (await bob.bodies(conv)).contains('self-destruct'));
-    final message = bob.controller.messagesFor(conv).single;
+    final received = bob.controller.messagesFor(conv).single;
+    final sent = alice.controller.messagesFor(conv).single;
     expect(relay.conversations[conv]!.messages.single['expiresAt'], isNull);
-    expect(bob.controller.messagesFor(conv).single.expiresAt, isNotNull);
-    expect(await bob.cache.get(message.id), isNotNull);
+    expect(sent.id, received.id);
+    // Both copies carry the authenticated expiry, the sender's from the
+    // content it stored before sealing.
+    expect(received.expiresAt, isNotNull);
+    expect(sent.expiresAt, isNotNull);
+    expect(await bob.cache.get(received.id), isNotNull);
+    expect(await alice.cache.get(sent.id), isNotNull);
 
     await waitFor(
       () async =>
-          bob.controller.messagesFor(conv).isEmpty && await bob.cache.get(message.id) == null,
+          bob.controller.messagesFor(conv).isEmpty &&
+          await bob.cache.get(received.id) == null &&
+          alice.controller.messagesFor(conv).isEmpty &&
+          await alice.cache.get(sent.id) == null,
       reason: 'message outlived its authenticated expiry',
     );
+    expect(alice.crypto.counts.decrypt, 0);
+
+    // The relay still serves the frame, without an expiry. After a restart
+    // neither side brings it back or spends a decrypt on it.
+    final fetches = alice.api.messageFetches + bob.api.messageFetches;
+    await alice.restart();
+    await bob.restart();
+    await waitFor(() => alice.api.messageFetches + bob.api.messageFetches >= fetches + 2);
+    // A copy that came back would be merged within moments of the fetch.
+    await settle(const Duration(milliseconds: 100));
+    expect(alice.controller.messagesFor(conv), isEmpty);
+    expect(bob.controller.messagesFor(conv), isEmpty);
+    expect(alice.crypto.counts.decrypt + bob.crypto.counts.decrypt, 0);
   });
 
   test('search returns hits without calling decrypt', () async {
@@ -288,6 +315,9 @@ void main() {
     final preview = alice.controller.conversations.firstWhere((item) => item.id == conv);
     expect(preview.identityMismatchPending, isTrue);
     expect(preview.sessionState!.remoteIdentityPublicKey, bob.device.identity.identityPublicKey);
+    // The live session still encrypts to bob's real key, so that is the key
+    // the conversation keeps showing for safety numbers.
+    expect(preview.recipientBundle.identityPublicKey, bob.device.identity.identityPublicKey);
     expect(alice.crypto.counts.bootstrap, 1);
     await waitFor(() async => (await alice.cache.readConversations())
         .firstWhere((item) => item.id == conv)
@@ -296,6 +326,85 @@ void main() {
     await deliver(alice, bob, 'after swap');
     expect(await bob.bodies(conv), ['before swap', 'after swap']);
     expect(alice.crypto.counts.bootstrap, 1);
+  });
+
+  test('responder flags an identity key change for the initiator device', () async {
+    await deliver(alice, bob, 'hello bob');
+    await waitFor(
+      () => bob.controller.conversations
+          .firstWhere((item) => item.id == conv)
+          .sessionState!
+          .remoteIdentityPublicKey
+          .isNotEmpty,
+      reason: 'the responder never pinned the initiator identity key',
+    );
+    final impostor = await LibCryptoAdapter().identity.generateDeviceIdentity(alice.device.deviceId);
+    relay.bundleOverrides['alice'] = {
+      ...alice.device.bundleJson,
+      'identityPublicKey': impostor.identityPublicKey,
+      'signedPrekeyBundle': impostor.signedPrekeyBundle,
+    };
+
+    await bob.controller.fetchPeerKeyBundle('alice');
+
+    final preview = bob.controller.conversations.firstWhere((item) => item.id == conv);
+    expect(preview.identityMismatchPending, isTrue);
+    expect(preview.sessionState!.remoteIdentityPublicKey, alice.device.identity.identityPublicKey);
+    expect(preview.recipientBundle.identityPublicKey, alice.device.identity.identityPublicKey);
+    expect(bob.crypto.counts.bootstrap, 0);
+    await deliver(bob, alice, 'still you?');
+    expect(await alice.bodies(conv), ['hello bob', 'still you?']);
+  });
+
+  test('a frame for a conversation not listed yet still records the responder session', () async {
+    // Carol creates a conversation with bob and writes at once; bob's first
+    // word of it is her frame.
+    final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-bc', 'carol', 'bob');
+    await carol.signIn();
+    await deliver(carol, bob, 'hi, new here', conversationId: 'conv-bc');
+    await waitFor(
+      () =>
+          bob.controller.conversations
+              .where((item) => item.id == 'conv-bc')
+              .firstOrNull
+              ?.sessionState
+              ?.remoteIdentityPublicKey ==
+          carol.device.identity.identityPublicKey,
+      reason: 'the inbound session was never recorded on the conversation',
+    );
+
+    await deliver(bob, carol, 'welcome', conversationId: 'conv-bc');
+    expect(bob.crypto.counts.bootstrap, 0);
+    expect(await carol.bodies('conv-bc'), ['hi, new here', 'welcome']);
+  });
+
+  test('peer device change re-bootstraps the next send to the new device', () async {
+    await deliver(alice, bob, 'before the move');
+    final newPhone = await MessengerParty.join(
+      relay,
+      handle: 'bob',
+      userId: 'user-bob',
+      deviceId: 'dev-bob-2',
+    );
+    addTearDown(newPhone.dispose);
+    await newPhone.signIn();
+
+    // The first frame from a device alice's session is not bound to is the
+    // only sign she gets that bob moved.
+    await newPhone.controller.sendText(conversationId: conv, body: 'new phone');
+    await waitFor(() => newPhone.controller.pendingCountFor(conv) == 0);
+    await waitFor(() => alice.controller.messagesFor(conv).length == 2);
+    await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
+    await alice.controller.sendText(conversationId: conv, body: 'after the move');
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0);
+
+    expect(alice.api.keyBundleFetches, {'bob': 2});
+    expect(alice.crypto.counts.bootstrap, 2);
+    final session = alice.controller.conversations.firstWhere((item) => item.id == conv).sessionState!;
+    expect(session.remoteDeviceId, 'dev-bob-2');
+    expect(session.remoteIdentityPublicKey, newPhone.device.identity.identityPublicKey);
   });
 
   test('attachment upload carries ciphertext the peer can decrypt', () async {
@@ -309,13 +418,17 @@ void main() {
     expect(received.messageKind, MessageKind.file);
     final reference = received.attachment!;
     final uploaded = relay.uploadedBlobs[reference.attachmentId]!;
-    expect(reference.sizeBytes, uploaded.length);
     final plaintext = await bob.crypto.messaging.decryptAttachment(
       reference: reference,
       ciphertext: uploaded,
       localIdentityPrivateRef: bob.device.identity.identityPrivateKeyRef,
     );
     expect(plaintext, hasLength(2048));
+    // What went up is sealed: longer than the file by at least the AEAD tag,
+    // and not the file itself. Sizes are compared this loosely because the
+    // reference's sizeBytes means ciphertext length in v1, plaintext in v2.
+    expect(uploaded.length, greaterThan(plaintext.length));
+    expect(uploaded.sublist(0, plaintext.length), isNot(equals(plaintext)));
     final sent = await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
     expect(sent.attachment!.attachmentId, reference.attachmentId);
   });

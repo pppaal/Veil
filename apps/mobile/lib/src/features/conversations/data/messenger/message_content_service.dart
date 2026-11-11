@@ -9,6 +9,9 @@ import 'in_memory_message_content_store.dart';
 
 typedef EnvelopeDecrypter = Future<DecryptedMessage> Function(CryptoEnvelope envelope);
 
+/// Called when content becomes bound to a relayed message: after its one
+/// decrypt, or when our own content is found under its local key once the
+/// relay's copy arrived.
 typedef ContentStoredListener = void Function(
   ChatMessage message,
   MessageContentRecord record,
@@ -140,8 +143,9 @@ class MessageContentService {
     await _store.deleteExpired(DateTime.now(), messageKeys: [key]);
   }
 
-  /// Moves an outbound message's content to the id the relay acked it under.
-  Future<void> acknowledge({
+  /// Moves an outbound message's content to the id the relay acked it under
+  /// and returns it, so the caller can apply its authenticated expiry.
+  Future<MessageContentRecord?> acknowledge({
     required String clientMessageId,
     required String serverMessageId,
   }) async {
@@ -153,6 +157,7 @@ class MessageContentService {
       clientMessageId: clientMessageId,
       serverMessageId: serverMessageId,
     );
+    return _store.get(serverMessageId);
   }
 
   /// Stored content for [messages], by message id. Never decrypts.
@@ -162,6 +167,27 @@ class MessageContentService {
     return {
       for (final message in list)
         if (byKey[_keyOf(message)] case final record?) message.id: record,
+    };
+  }
+
+  /// [messages] minus those this device already expired. A relay that strips
+  /// the outer expiry, or sweeps late, serves them again; their content is
+  /// gone and their keys are spent, so they must not come back.
+  Future<List<ChatMessage>> withoutRetired(List<ChatMessage> messages) async {
+    final retired = await _store.retiredAmong(messages.map(_keyOf));
+    return [
+      for (final message in messages)
+        if (!retired.contains(_keyOf(message))) message,
+    ];
+  }
+
+  /// Authenticated inner expiries of [messages] that have one, by message id.
+  Future<Map<String, DateTime>> innerExpiriesFor(Iterable<ChatMessage> messages) async {
+    final list = messages.toList(growable: false);
+    final byKey = await _store.innerExpiries(list.map(_keyOf));
+    return {
+      for (final message in list)
+        if (byKey[_keyOf(message)] case final expiresAt?) message.id: expiresAt,
     };
   }
 
@@ -200,7 +226,11 @@ class MessageContentService {
     // Our own message, acked, but its content still sits under the local
     // key because the echo raced the ack.
     await _store.rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: key);
-    return _store.get(key);
+    final rekeyed = await _store.get(key);
+    if (rekeyed != null) {
+      _onContentStored(message, rekeyed);
+    }
+    return rekeyed;
   }
 
   Future<MessageContentRecord> _enqueueIngest(

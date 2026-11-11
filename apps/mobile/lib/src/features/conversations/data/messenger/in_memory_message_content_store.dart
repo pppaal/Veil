@@ -5,10 +5,13 @@ import '../../../../core/storage/conversation_cache_service.dart';
 /// it only lives as long as the process.
 class InMemoryMessageContentStore implements MessageContentStore {
   final Map<String, MessageContentRecord> _records = {};
+  final Set<String> _retired = {};
 
   @override
   Future<void> put(MessageContentRecord record) async {
-    _records[record.messageKey] = record;
+    if (!_retired.contains(record.messageKey)) {
+      _records[record.messageKey] = record;
+    }
   }
 
   @override
@@ -19,6 +22,14 @@ class InMemoryMessageContentStore implements MessageContentStore {
     return {
       for (final key in messageKeys)
         if (_records[key] case final record?) key: record,
+    };
+  }
+
+  @override
+  Future<Map<String, DateTime>> innerExpiries(Iterable<String> messageKeys) async {
+    return {
+      for (final key in messageKeys)
+        if (_records[key]?.innerExpiresAt case final expiresAt?) key: expiresAt,
     };
   }
 
@@ -56,12 +67,22 @@ class InMemoryMessageContentStore implements MessageContentStore {
     DateTime now, {
     Iterable<String> messageKeys = const [],
   }) async {
-    _records.removeWhere((_, record) {
-      final expiresAt = record.innerExpiresAt;
-      return expiresAt != null && !expiresAt.isAfter(now);
-    });
-    messageKeys.forEach(_records.remove);
+    final innerExpired = [
+      for (final record in _records.values)
+        if (record.innerExpiresAt case final expiresAt? when !expiresAt.isAfter(now)) record.messageKey,
+    ];
+    for (final key in [...innerExpired, ...messageKeys]) {
+      _records.remove(key);
+      _retired.add(key);
+    }
   }
 
-  void clear() => _records.clear();
+  @override
+  Future<Set<String>> retiredAmong(Iterable<String> messageKeys) async =>
+      messageKeys.where(_retired.contains).toSet();
+
+  void clear() {
+    _records.clear();
+    _retired.clear();
+  }
 }

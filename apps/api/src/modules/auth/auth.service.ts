@@ -1,9 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { UserStatus } from '@prisma/client';
+import { Prisma, UserStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type {
   AuthChallengeResponse,
-  AuthLogoutRequest,
   AuthRefreshResponse,
   AuthVerifyResponse,
   RegisterResponse,
@@ -16,6 +15,7 @@ import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { MetricsService } from '../metrics/metrics.service';
+import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
 import { RegisterDto } from './dto/register.dto';
 import { ChallengeDto, VerifyDto } from './dto/challenge.dto';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from './device-auth-verifier';
@@ -28,7 +28,24 @@ interface StoredChallenge {
 interface StoredRefreshToken {
   userId: string;
   deviceId: string;
+  familyId: string;
   issuedAt: number;
+}
+
+interface RefreshFamily {
+  deviceId: string;
+  tokenHash: string;
+}
+
+interface RotatedRefreshToken {
+  familyId: string;
+}
+
+interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  refreshExpiresAt: string;
 }
 
 // Short access tokens limit the blast radius of token theft. Clients refresh
@@ -36,12 +53,45 @@ interface StoredRefreshToken {
 const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
+// Logins can legitimately overlap (a retry after a timeout, a second window),
+// and a single per-device slot let anyone who knows a public deviceId cancel
+// the owner's pending login just by requesting a new challenge. A small
+// window removes that lockout while still bounding outstanding challenges.
+const MAX_OUTSTANDING_CHALLENGES = 3;
+// A device normally holds one refresh family; older ones are abandoned
+// sessions and are revoked when the window overflows.
+const MAX_REFRESH_FAMILIES_PER_DEVICE = 5;
+
 const challengeKey = (challengeId: string): string => `auth:challenge:${challengeId}`;
-const activeChallengeKey = (deviceId: string): string => `auth:challenge:device:${deviceId}`;
+const challengeIndexKey = (deviceId: string): string => `auth:challenge-index:${deviceId}`;
 const refreshTokenKey = (tokenHash: string): string => `auth:refresh:${tokenHash}`;
+const rotatedTokenKey = (tokenHash: string): string => `auth:rotated:${tokenHash}`;
+const refreshFamilyKey = (familyId: string): string => `auth:refresh-family:${familyId}`;
+const deviceFamiliesKey = (deviceId: string): string => `auth:refresh-families:${deviceId}`;
 const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 
+// Only the SHA-256 of a refresh token is ever stored, so a store dump yields
+// no usable tokens.
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+
+const appendKeepingNewest = (
+  ids: readonly string[],
+  id: string,
+  limit: number,
+): { kept: string[]; evicted: string[] } => {
+  const all = [...ids, id];
+  return { kept: all.slice(-limit), evicted: all.slice(0, -limit) };
+};
+
+const isHandleConflict = (error: unknown): boolean => {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
+  }
+  const target = error.meta?.target;
+  return Array.isArray(target)
+    ? target.includes('handle')
+    : typeof target === 'string' && target.includes('handle');
+};
 
 @Injectable()
 export class AuthService {
@@ -58,7 +108,7 @@ export class AuthService {
     @Optional() private readonly metrics?: MetricsService,
   ) {}
 
-  private countAuth(kind: 'register' | 'login' | 'refresh' | 'logout'): void {
+  private countAuth(kind: 'register' | 'login' | 'refresh' | 'refresh_reuse' | 'logout'): void {
     try {
       this.metrics?.authEventsTotal.inc({ kind });
     } catch {
@@ -67,6 +117,10 @@ export class AuthService {
   }
 
   async register(dto: RegisterDto): Promise<RegisterResponse> {
+    if (dto.pushToken) {
+      validatePushTokenOnRegistration(dto.pushToken, this.config);
+    }
+
     const normalizedHandle = dto.handle.toLowerCase();
     const existing = await this.prisma.user.findUnique({
       where: { handle: normalizedHandle },
@@ -77,35 +131,42 @@ export class AuthService {
       throw conflict('handle_taken', 'Handle is already taken');
     }
 
-    const created = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          handle: normalizedHandle,
-          displayName: dto.displayName,
-          status: UserStatus.active,
-        },
-      });
+    const created = await this.prisma
+      .$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            handle: normalizedHandle,
+            displayName: dto.displayName,
+            status: UserStatus.active,
+          },
+        });
 
-      const device = await tx.device.create({
-        data: {
-          userId: user.id,
-          deviceName: dto.deviceName,
-          platform: dto.platform,
-          publicIdentityKey: dto.publicIdentityKey,
-          signedPrekeyBundle: dto.signedPrekeyBundle,
-          authPublicKey: dto.authPublicKey,
-          pushToken: dto.pushToken,
-          isActive: true,
-        },
-      });
+        const device = await tx.device.create({
+          data: {
+            userId: user.id,
+            deviceName: dto.deviceName,
+            platform: dto.platform,
+            publicIdentityKey: dto.publicIdentityKey,
+            signedPrekeyBundle: dto.signedPrekeyBundle,
+            authPublicKey: dto.authPublicKey,
+            pushToken: dto.pushToken,
+            isActive: true,
+          },
+        });
 
-      await tx.user.update({
-        where: { id: user.id },
-        data: { activeDeviceId: device.id },
-      });
+        await tx.user.update({
+          where: { id: user.id },
+          data: { activeDeviceId: device.id },
+        });
 
-      return { user, device };
-    });
+        return { user, device };
+      })
+      .catch((error: unknown) => {
+        // Two registrations of one handle can both pass the lookup above; the
+        // unique index decides, and the loser gets the same answer the lookup
+        // would have given.
+        throw isHandleConflict(error) ? conflict('handle_taken', 'Handle is already taken') : error;
+      });
 
     this.countAuth('register');
 
@@ -143,25 +204,15 @@ export class AuthService {
 
     const challengeId = randomUUID();
     const challenge = randomUUID();
-    const expiresAt = new Date(Date.now() + this.config.authChallengeTtlSeconds * 1000);
-
-    const previousChallengeId = await this.ephemeralStore.getJson<string>(
-      activeChallengeKey(dto.deviceId),
-    );
-    if (previousChallengeId) {
-      await this.ephemeralStore.delete(challengeKey(previousChallengeId));
-    }
+    const ttlSeconds = this.config.authChallengeTtlSeconds;
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
 
     await this.ephemeralStore.setJson<StoredChallenge>(
       challengeKey(challengeId),
       { challenge, deviceId: dto.deviceId },
-      this.config.authChallengeTtlSeconds,
+      ttlSeconds,
     );
-    await this.ephemeralStore.setJson<string>(
-      activeChallengeKey(dto.deviceId),
-      challengeId,
-      this.config.authChallengeTtlSeconds,
-    );
+    await this.trackOutstandingChallenge(dto.deviceId, challengeId, ttlSeconds);
 
     return {
       challengeId,
@@ -171,19 +222,15 @@ export class AuthService {
   }
 
   async verify(dto: VerifyDto): Promise<AuthVerifyResponse> {
-    const stored = await this.ephemeralStore.getJson<StoredChallenge>(
+    // Consumed on first presentation, success or failure, so a challenge can
+    // never be retried with another signature.
+    const stored = await this.ephemeralStore.takeJson<StoredChallenge>(
       challengeKey(dto.challengeId),
     );
-    const activeChallengeId = await this.ephemeralStore.getJson<string>(
-      activeChallengeKey(dto.deviceId),
-    );
 
-    if (!stored || stored.deviceId !== dto.deviceId || activeChallengeId !== dto.challengeId) {
+    if (!stored || stored.deviceId !== dto.deviceId) {
       throw unauthorized('challenge_invalid', 'Challenge expired or invalid');
     }
-
-    await this.ephemeralStore.delete(challengeKey(dto.challengeId));
-    await this.ephemeralStore.delete(activeChallengeKey(dto.deviceId));
 
     const device = await this.prisma.device.findUnique({
       where: { id: dto.deviceId },
@@ -209,7 +256,13 @@ export class AuthService {
       throw unauthorized('invalid_device_signature', 'Invalid device signature');
     }
 
-    const tokens = await this.issueTokenPair(device.userId, device.id, device.user.handle);
+    const familyId = await this.startRefreshFamily(device.id);
+    const tokens = await this.issueTokenPair(
+      device.userId,
+      device.id,
+      device.user.handle,
+      familyId,
+    );
 
     await this.prisma.device.update({
       where: { id: device.id },
@@ -234,15 +287,39 @@ export class AuthService {
     }
 
     const tokenHash = hashToken(refreshToken);
-    // Atomic get-and-delete defeats the replay race where two concurrent
-    // refresh calls would both pass the existence check before either delete
-    // landed. Only one caller can win takeJson; the loser sees null and gets
-    // a fresh refresh_token_invalid as expected.
+    // Atomic get-and-delete: of two concurrent refreshes with one token only
+    // one can win; the loser lands on the rotation marker below.
     const stored = await this.ephemeralStore.takeJson<StoredRefreshToken>(
       refreshTokenKey(tokenHash),
     );
 
     if (!stored) {
+      // A rotated token coming back means two parties hold the family: the
+      // client and whoever copied a token. The server cannot tell which is
+      // which, so the whole family dies and the device must prove possession
+      // of its auth key again.
+      const rotated = await this.ephemeralStore.getJson<RotatedRefreshToken>(
+        rotatedTokenKey(tokenHash),
+      );
+      if (rotated) {
+        await this.revokeRefreshFamily(rotated.familyId);
+        this.countAuth('refresh_reuse');
+      }
+      throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
+    }
+
+    await this.ephemeralStore.setJson<RotatedRefreshToken>(
+      rotatedTokenKey(tokenHash),
+      { familyId: stored.familyId },
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+
+    // A token is only as alive as its family: logout or reuse detection may
+    // have revoked the family after this token was issued.
+    const family = await this.ephemeralStore.getJson<RefreshFamily>(
+      refreshFamilyKey(stored.familyId),
+    );
+    if (family?.tokenHash !== tokenHash) {
       throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
     }
 
@@ -261,7 +338,12 @@ export class AuthService {
       throw unauthorized('device_not_active', 'Device is not active');
     }
 
-    const tokens = await this.issueTokenPair(device.userId, device.id, device.user.handle);
+    const tokens = await this.issueTokenPair(
+      device.userId,
+      device.id,
+      device.user.handle,
+      stored.familyId,
+    );
 
     await this.prisma.device.update({
       where: { id: device.id },
@@ -278,18 +360,18 @@ export class AuthService {
     };
   }
 
-  async logout(
-    authContext: { userId: string; deviceId: string; jti?: string; exp?: number },
-    dto: AuthLogoutRequest,
-  ): Promise<{ ok: true }> {
-    if (dto.refreshToken) {
-      const tokenHash = hashToken(dto.refreshToken);
-      const stored = await this.ephemeralStore.getJson<StoredRefreshToken>(
-        refreshTokenKey(tokenHash),
-      );
-      if (stored && stored.deviceId === authContext.deviceId) {
-        await this.ephemeralStore.delete(refreshTokenKey(tokenHash));
-      }
+  // Logout ends every session of the device, whether or not the client still
+  // has, or sends, its refresh token.
+  async logout(authContext: {
+    userId: string;
+    deviceId: string;
+    jti?: string;
+    exp?: number;
+  }): Promise<{ ok: true }> {
+    const familyIds =
+      (await this.ephemeralStore.takeJson<string[]>(deviceFamiliesKey(authContext.deviceId))) ?? [];
+    for (const familyId of familyIds) {
+      await this.revokeRefreshFamily(familyId);
     }
 
     if (authContext.jti && authContext.exp) {
@@ -311,16 +393,55 @@ export class AuthService {
     return { ok: true };
   }
 
+  // The per-device index is read-modify-write, so concurrent requests can
+  // drop an id from it; such a challenge just lives out its short TTL.
+  private async trackOutstandingChallenge(
+    deviceId: string,
+    challengeId: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const outstanding =
+      (await this.ephemeralStore.getJson<string[]>(challengeIndexKey(deviceId))) ?? [];
+    const { kept, evicted } = appendKeepingNewest(
+      outstanding,
+      challengeId,
+      MAX_OUTSTANDING_CHALLENGES,
+    );
+    for (const evictedId of evicted) {
+      await this.ephemeralStore.delete(challengeKey(evictedId));
+    }
+    await this.ephemeralStore.setJson(challengeIndexKey(deviceId), kept, ttlSeconds);
+  }
+
+  private async startRefreshFamily(deviceId: string): Promise<string> {
+    const familyId = randomUUID();
+    const families =
+      (await this.ephemeralStore.getJson<string[]>(deviceFamiliesKey(deviceId))) ?? [];
+    const { kept, evicted } = appendKeepingNewest(
+      families,
+      familyId,
+      MAX_REFRESH_FAMILIES_PER_DEVICE,
+    );
+    for (const evictedId of evicted) {
+      await this.revokeRefreshFamily(evictedId);
+    }
+    await this.ephemeralStore.setJson(deviceFamiliesKey(deviceId), kept, REFRESH_TOKEN_TTL_SECONDS);
+    return familyId;
+  }
+
+  private async revokeRefreshFamily(familyId: string): Promise<void> {
+    const family = await this.ephemeralStore.takeJson<RefreshFamily>(refreshFamilyKey(familyId));
+    if (family) {
+      await this.ephemeralStore.delete(refreshTokenKey(family.tokenHash));
+    }
+  }
+
   private async issueTokenPair(
     userId: string,
     deviceId: string,
     handle: string,
-  ): Promise<{
-    accessToken: string;
-    refreshToken: string;
-    expiresAt: string;
-    refreshExpiresAt: string;
-  }> {
+    familyId: string,
+  ): Promise<TokenPair> {
     const jti = randomUUID();
     const accessToken = await this.jwtService.signAsync(
       {
@@ -338,9 +459,15 @@ export class AuthService {
     );
 
     const refreshToken = randomBytes(48).toString('base64url');
+    const tokenHash = hashToken(refreshToken);
     await this.ephemeralStore.setJson<StoredRefreshToken>(
-      refreshTokenKey(hashToken(refreshToken)),
-      { userId, deviceId, issuedAt: Date.now() },
+      refreshTokenKey(tokenHash),
+      { userId, deviceId, familyId, issuedAt: Date.now() },
+      REFRESH_TOKEN_TTL_SECONDS,
+    );
+    await this.ephemeralStore.setJson<RefreshFamily>(
+      refreshFamilyKey(familyId),
+      { deviceId, tokenHash },
       REFRESH_TOKEN_TTL_SECONDS,
     );
 

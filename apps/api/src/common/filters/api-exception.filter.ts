@@ -2,42 +2,42 @@ import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from
 import type { Request, Response } from 'express';
 
 import { AppLoggerService } from '../logger/app-logger.service';
+import { ActorRefGenerator, routeTemplate } from '../logger/request-redactor';
+import { httpStatusOf, mapPrismaError } from './exception-status';
+
+type FilteredRequest = Request & { requestId?: string; auth?: { userId: string } };
 
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
-  constructor(private readonly logger: AppLoggerService) {}
+  constructor(
+    private readonly logger: AppLoggerService,
+    private readonly actorRefs: ActorRefGenerator = new ActorRefGenerator(),
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const context = host.switchToHttp();
     const response = context.getResponse<Response>();
-    const request = context.getRequest<
-      Request & { requestId?: string; auth?: { userId: string } }
-    >();
+    const request = context.getRequest<FilteredRequest>();
 
-    const status =
-      exception instanceof HttpException ? exception.getStatus() : HttpStatus.INTERNAL_SERVER_ERROR;
-
+    const status = httpStatusOf(exception);
     const body = this.toErrorBody(exception, status);
+    const route = routeTemplate(request);
+    const logMeta = {
+      method: request.method,
+      route,
+      requestId: request.requestId ?? null,
+      statusCode: status,
+      code: body.code,
+    };
 
     if (status >= 500) {
       this.logger.error('request.failed', {
-        method: request.method,
-        url: request.url,
-        requestId: request.requestId ?? null,
-        actorUserId: request.auth?.userId ?? null,
-        statusCode: status,
-        code: body.code,
-        error: exception instanceof Error ? exception : undefined,
+        ...logMeta,
+        actorRef: request.auth ? this.actorRefs.actorRef(request.auth.userId) : null,
+        error: this.describeError(exception),
       });
     } else {
-      this.logger.warn('request.rejected', {
-        method: request.method,
-        url: request.url,
-        requestId: request.requestId ?? null,
-        actorUserId: request.auth?.userId ?? null,
-        statusCode: status,
-        code: body.code,
-      });
+      this.logger.warn('request.rejected', logMeta);
     }
 
     if (request.requestId) {
@@ -50,8 +50,20 @@ export class ApiExceptionFilter implements ExceptionFilter {
       ...body,
       requestId: request.requestId ?? null,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: route,
     });
+  }
+
+  // Prisma messages can embed query arguments (handles, ids), so only the
+  // error class and code are logged for every Prisma client error.
+  private describeError(exception: unknown): unknown {
+    if (!(exception instanceof Error)) {
+      return undefined;
+    }
+    if (exception.name.startsWith('PrismaClient')) {
+      return { name: exception.name, code: (exception as { code?: unknown }).code ?? null };
+    }
+    return exception;
   }
 
   private toErrorBody(exception: unknown, status: number): { code: string; message: string } {
@@ -78,6 +90,11 @@ export class ApiExceptionFilter implements ExceptionFilter {
           message,
         };
       }
+    }
+
+    const prismaError = mapPrismaError(exception);
+    if (prismaError) {
+      return { code: prismaError.code, message: prismaError.message };
     }
 
     return {

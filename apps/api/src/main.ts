@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ValidationPipe } from '@nestjs/common';
+import type { NextFunction, Request, Response } from 'express';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
@@ -11,6 +12,37 @@ import { AppModule } from './app.module';
 import { AppConfigService } from './common/config/app-config.service';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { AppLoggerService } from './common/logger/app-logger.service';
+import { ActorRefGenerator } from './common/logger/request-redactor';
+
+// The non-production /demo web client is reachable through a public tunnel,
+// and browsers ignore frame-ancestors in a <meta> CSP, so these must be real
+// response headers: without them the demo's approve/wipe buttons can be
+// clickjacked from any origin.
+const DEMO_SECURITY_HEADERS: Readonly<Record<string, string>> = {
+  'Content-Security-Policy': [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' blob: data:",
+    'media-src blob:',
+    "connect-src 'self' ws: wss: http: https:",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'none'",
+  ].join('; '),
+  'X-Frame-Options': 'DENY',
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Permissions-Policy': 'microphone=(self)',
+};
+
+const applyDemoSecurityHeaders = (_req: Request, res: Response, next: NextFunction): void => {
+  for (const [name, value] of Object.entries(DEMO_SECURITY_HEADERS)) {
+    res.setHeader(name, value);
+  }
+  next();
+};
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -58,8 +90,11 @@ async function bootstrap(): Promise<void> {
     origin: corsOrigin,
     credentials: false,
   });
-  if (config.trustProxy) {
-    app.set('trust proxy', 1);
+  // Only the X-Forwarded-For source needs Express to walk the proxy chain,
+  // and then by exactly the configured number of hops; trusting it otherwise
+  // would let any client pick its own req.ip.
+  if (config.clientIpSource === 'x-forwarded-for') {
+    app.set('trust proxy', config.trustedProxyHops);
   }
   app.enableShutdownHooks();
 
@@ -71,6 +106,7 @@ async function bootstrap(): Promise<void> {
     ];
     const webDemoRoot = candidates.find((path) => existsSync(path));
     if (webDemoRoot) {
+      app.use('/demo', applyDemoSecurityHeaders);
       app.useStaticAssets(webDemoRoot, { prefix: '/demo' });
     }
   }
@@ -83,7 +119,9 @@ async function bootstrap(): Promise<void> {
       forbidNonWhitelisted: true,
     }),
   );
-  app.useGlobalFilters(new ApiExceptionFilter(app.get(AppLoggerService)));
+  app.useGlobalFilters(
+    new ApiExceptionFilter(app.get(AppLoggerService), app.get(ActorRefGenerator)),
+  );
 
   if (config.swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()

@@ -2,15 +2,52 @@
 
 VEIL is not production-ready yet. This checklist is the minimum path to get there without violating the product philosophy.
 
-The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true`, and the production crypto adapter (`LibCryptoAdapter`, `lib-x25519-aes256gcm-v3`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
+The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true` and `VEIL_AUDIT_REPORT_SHA256` must name the signed audit report, and the production crypto adapter (`LibCryptoAdapter`, `lib-x25519-aes256gcm-v3`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
 
 ## 1. Complete external crypto audit and attestation
 
 - Hand off the external review packet (see `docs/external-security-review-packet.md`).
 - Track findings in `docs/external-review-remediation-tracker.md`.
-- Once findings are remediated, set `VEIL_AUDITED_CRYPTO_ATTESTED=true`.
+- Once findings are remediated, set `VEIL_AUDITED_CRYPTO_ATTESTED=true` and
+  `VEIL_AUDIT_REPORT_SHA256=<sha256sum of the signed report>` (64 lowercase hex
+  characters). Production refuses to boot unless both are set.
+- Boolean variables accept only `true`/`false`, `1`/`0` or `yes`/`no` (any case,
+  surrounding whitespace ignored). Any other value fails boot; in particular
+  `VEIL_AUDITED_CRYPTO_ATTESTED=false` is false, not "a non-empty string".
 - Keep cross-platform crypto interoperability tests green before rollout.
 - Do not add server-side decryption helpers.
+
+## Client IP source
+
+The rate limiter keys authenticated requests by device. Unauthenticated
+requests are keyed by client address, read from exactly one source chosen with
+`VEIL_CLIENT_IP_SOURCE`. Pick the one that matches what sits directly in front
+of the API; a header the edge does not overwrite is attacker-controlled.
+
+| Deployment | `VEIL_CLIENT_IP_SOURCE` | Notes |
+| --- | --- | --- |
+| API reachable directly (local dev) | `socket` (default) | Forwarding headers are ignored. |
+| Behind Caddy (`docker-compose.prod.yml`) | `x-forwarded-for` | Caddy drops `CF-Connecting-IP` and overwrites `X-Forwarded-For` with the real peer. `VEIL_TRUSTED_PROXY_HOPS` (default `1`) must equal the number of proxies in front of the API. |
+| Cloudflare Tunnel straight to the API (`docker-compose.demo.yml --profile tunnel`) | `cf-connecting-ip` | Every request arrives from `cloudflared`, so the socket address is useless. The header is used only when it is a single well-formed IP. Never expose the API port directly in this mode. |
+
+`VEIL_TRUST_PROXY` was removed; a deployment that still sets it fails boot
+with `VEIL_TRUST_PROXY was removed; set VEIL_CLIENT_IP_SOURCE`.
+
+With `VEIL_REDIS_URL` set (required in production), rate-limit counters live in
+Redis (Redis 7 or newer) and are shared by every API instance. If Redis becomes
+unreachable the limiter logs one warning per outage and fails open rather than
+taking the relay down.
+
+## UnifiedPush
+
+With `VEIL_PUSH_PROVIDER=unifiedpush`, production requires
+`VEIL_UNIFIEDPUSH_ALLOWED_HOSTS` (comma-separated distributor hosts;
+subdomains of a listed host are allowed). Device endpoints must be `https`
+without credentials and may not be private, loopback, link-local, unique-local,
+CGNAT, multicast or unspecified IP literals; registration rejects anything else
+with `validation_failed`. At delivery time every resolved address of the host
+is checked as well, redirects are never followed, and requests time out after
+10 seconds.
 
 ## 2. Harden device auth
 
@@ -55,4 +92,4 @@ The current API intentionally blocks `VEIL_ENV=production` at startup because `V
 - Conduct a formal threat model review against the implemented system.
 - Run application and infrastructure penetration tests.
 - Verify there is no plaintext in logs, analytics, push payloads, or storage.
-- Verify there is no hidden recovery path, server-side decryption, or admin message viewer.
+- Verify there is no hidden recovery path, server-side decryption, or admin message viewer. The server-side recovery backup module was removed, and `pnpm policy:check` plus the route-auth matrix test fail on any recovery or backup route.

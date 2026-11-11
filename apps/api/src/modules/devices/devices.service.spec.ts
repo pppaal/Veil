@@ -4,10 +4,28 @@ import { DevicesService } from './devices.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeRealtimeGateway } from '../../../test/support/fake-services';
 
+const pushConfig = (
+  overrides: Partial<{
+    pushProvider: string;
+    unifiedPushAllowedHosts: string[];
+    isProduction: boolean;
+  }> = {},
+) =>
+  ({
+    pushProvider: 'none',
+    unifiedPushAllowedHosts: [],
+    isProduction: false,
+    ...overrides,
+  }) as never;
+
 describe('DevicesService', () => {
   it('lists the device graph ordered by active and recent usage', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.users.push({
       id: 'user-1',
@@ -75,7 +93,11 @@ describe('DevicesService', () => {
 
   it('keeps a device trusted when recent sync activity is newer than last seen', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.users.push({
       id: 'user-1',
@@ -136,7 +158,7 @@ describe('DevicesService', () => {
   it('revokes the current preferred device and promotes another trusted device when available', async () => {
     const prisma = new FakePrismaService();
     const realtime = new FakeRealtimeGateway();
-    const service = new DevicesService(prisma as never, realtime as never);
+    const service = new DevicesService(prisma as never, realtime as never, pushConfig());
 
     prisma.users.push({
       id: 'user-1',
@@ -195,7 +217,11 @@ describe('DevicesService', () => {
 
   it('rejects revoking a device owned by another user', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.devices.push({
       id: 'device-2',
@@ -222,7 +248,11 @@ describe('DevicesService', () => {
 
   it('fails when the device does not exist', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     await expect(service.revoke('user-1', { deviceId: 'missing' })).rejects.toBeInstanceOf(
       NotFoundException,
@@ -231,7 +261,11 @@ describe('DevicesService', () => {
 
   it('updates the push token on an active device', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.devices.push({
       id: 'device-1',
@@ -260,9 +294,70 @@ describe('DevicesService', () => {
     );
   });
 
+  it('updatePushToken rejects http:// and private hosts', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig({ pushProvider: 'unifiedpush', isProduction: true }),
+    );
+    prisma.devices.push({
+      id: 'device-1',
+      userId: 'user-1',
+      platform: 'android',
+      deviceName: 'Pixel',
+      publicIdentityKey: 'pub',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth',
+      pushToken: null,
+      isActive: true,
+      revokedAt: null,
+      trustedAt: new Date(),
+      joinedFromDeviceId: null,
+      createdAt: new Date(),
+      lastSeenAt: new Date(),
+      lastSyncAt: null,
+    });
+
+    for (const endpoint of [
+      'http://ntfy.example.org/up',
+      'http://localhost:8080/up',
+      'https://10.0.0.5/up',
+      'https://[::ffff:127.0.0.1]/up',
+      'https://169.254.169.254/latest/meta-data',
+      'https://user:secret@ntfy.example.org/up',
+    ]) {
+      await expect(service.updatePushToken('user-1', 'device-1', endpoint)).rejects.toMatchObject({
+        status: 400,
+        response: { code: 'validation_failed' },
+      });
+    }
+    expect(prisma.devices[0]!.pushToken).toBeNull();
+
+    await service.updatePushToken('user-1', 'device-1', 'https://ntfy.example.org/up?id=abc');
+    expect(prisma.devices[0]!.pushToken).toBe('https://ntfy.example.org/up?id=abc');
+  });
+
+  it('validates URL-shaped push tokens even when another provider is configured', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig({ pushProvider: 'fcm', isProduction: true }),
+    );
+
+    await expect(
+      service.updatePushToken('user-1', 'device-1', 'https://192.168.1.1/up'),
+    ).rejects.toMatchObject({ response: { code: 'validation_failed' } });
+  });
+
   it('refuses to update the push token on a revoked device', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.devices.push({
       id: 'device-1',
@@ -289,7 +384,11 @@ describe('DevicesService', () => {
 
   it("refuses to update a push token on another user's device", async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.devices.push({
       id: 'device-1',
@@ -316,7 +415,11 @@ describe('DevicesService', () => {
 
   it('clears the push token', async () => {
     const prisma = new FakePrismaService();
-    const service = new DevicesService(prisma as never, new FakeRealtimeGateway() as never);
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
 
     prisma.devices.push({
       id: 'device-1',

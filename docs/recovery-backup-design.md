@@ -1,5 +1,14 @@
 # Encrypted recovery backup — design
 
+> **REMOVED: contradicts [no-recovery.md](no-recovery.md).** The server-side
+> recovery backup module (`/v1/recovery/backup`) has been deleted and the
+> policy gate (`scripts/policy-check.mjs`) now rejects any recovery or backup
+> route or module in the API. A passphrase-sealed copy of identity keys is
+> still a recovery authority, which is exactly what VEIL refuses to have. The
+> unused `RecoveryBlob` table and contract types are dropped in a follow-up
+> schema change. This document is kept only as the record of the rejected
+> design; nothing below describes current behaviour.
+
 ## Status
 
 **Storage substrate shipped. Lost-device retrieval auth: design-only,

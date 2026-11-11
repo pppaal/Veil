@@ -565,10 +565,14 @@ describe('VEIL API (e2e)', () => {
       handle: 'replaytest',
       deviceId: register.body.deviceId,
     });
-    const newestChallenge = await api.post('/v1/auth/challenge').send({
-      handle: 'replaytest',
-      deviceId: register.body.deviceId,
-    });
+    // A device keeps its three newest challenges; the fourth evicts the first.
+    let newestChallenge = supersededChallenge;
+    for (let i = 0; i < 3; i += 1) {
+      newestChallenge = await api.post('/v1/auth/challenge').send({
+        handle: 'replaytest',
+        deviceId: register.body.deviceId,
+      });
+    }
 
     const supersededVerify = await api.post('/v1/auth/verify').send({
       challengeId: supersededChallenge.body.challengeId,

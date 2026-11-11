@@ -1,86 +1,22 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
-import { ConversationsService } from './conversations.service';
+import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
-import {
-  FakeAttachmentStorageGateway,
-  FakeRealtimeGateway,
-  FakeSafetyService,
-} from '../../../test/support/fake-services';
+import { FakeRealtimeGateway, FakeSafetyService } from '../../../test/support/fake-services';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
+import { ConversationsService } from './conversations.service';
 
-type Seed = {
-  prisma: FakePrismaService;
-  gateway: FakeRealtimeGateway;
-  storage: FakeAttachmentStorageGateway;
-  safety: FakeSafetyService;
-  service: ConversationsService;
-};
-
-function makeService(): Seed {
+function makeService() {
   const prisma = new FakePrismaService();
   const gateway = new FakeRealtimeGateway();
-  const storage = new FakeAttachmentStorageGateway();
   const safety = new FakeSafetyService();
   const service = new ConversationsService(
     prisma as never,
     gateway as never,
-    storage as never,
     safety as never,
+    new ConversationAccessService(prisma as never, safety as never),
   );
-  return { prisma, gateway, storage, safety, service };
-}
-
-function seedUser(prisma: FakePrismaService, handle: string): { userId: string; deviceId: string } {
-  const userId = randomUUID();
-  const deviceId = randomUUID();
-  prisma.users.push({
-    id: userId,
-    handle,
-    displayName: handle,
-    avatarPath: null,
-    status: 'active',
-    activeDeviceId: deviceId,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
-  prisma.devices.push({
-    id: deviceId,
-    userId,
-    platform: 'ios',
-    deviceName: 'Test',
-    publicIdentityKey: 'pub',
-    signedPrekeyBundle: 'prekey',
-    authPublicKey: 'auth',
-    pushToken: null,
-    isActive: true,
-    revokedAt: null,
-    trustedAt: new Date(),
-    joinedFromDeviceId: null,
-    createdAt: new Date(),
-    lastSeenAt: new Date(),
-    lastSyncAt: null,
-  });
-  return { userId, deviceId };
-}
-
-function seedDirect(prisma: FakePrismaService, a: string, b: string): string {
-  const conversationId = randomUUID();
-  prisma.conversations.push({ id: conversationId, type: 'direct', createdAt: new Date() });
-  prisma.conversationMembers.push({
-    id: randomUUID(),
-    conversationId,
-    userId: a,
-    joinedAt: new Date(),
-  });
-  prisma.conversationMembers.push({
-    id: randomUUID(),
-    conversationId,
-    userId: b,
-    joinedAt: new Date(),
-  });
-  return conversationId;
+  return { prisma, gateway, safety, service };
 }
 
 function seedMessage(
@@ -90,6 +26,7 @@ function seedMessage(
     senderDeviceId: string;
     conversationOrder: number;
     expiresAt?: Date | null;
+    serverReceivedAt?: Date;
   },
 ): string {
   const id = randomUUID();
@@ -104,7 +41,7 @@ function seedMessage(
     messageType: 'text',
     attachmentId: null,
     attachmentRef: null,
-    serverReceivedAt: new Date(),
+    serverReceivedAt: params.serverReceivedAt ?? new Date(),
     deletedAt: null,
     expiresAt: params.expiresAt ?? null,
   });
@@ -117,12 +54,38 @@ function buildDto(peerHandle: string): CreateDirectConversationDto {
   return dto;
 }
 
+const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+// A group where carol was added after the first message was sent.
+function lateJoinerGroup() {
+  const fixture = makeService();
+  const alice = fixture.prisma.seedUser('alice');
+  const carol = fixture.prisma.seedUser('carol');
+  const conversationId = fixture.prisma.seedConversation('group', [
+    { userId: alice.userId, role: 'owner', joinedAt: minutesAgo(30) },
+    { userId: carol.userId, joinedAt: minutesAgo(10) },
+  ]);
+  const beforeJoin = seedMessage(fixture.prisma, {
+    conversationId,
+    senderDeviceId: alice.deviceId,
+    conversationOrder: 1,
+    serverReceivedAt: minutesAgo(20),
+  });
+  const afterJoin = seedMessage(fixture.prisma, {
+    conversationId,
+    senderDeviceId: alice.deviceId,
+    conversationOrder: 2,
+    serverReceivedAt: minutesAgo(5),
+  });
+  return { ...fixture, alice, carol, conversationId, beforeJoin, afterJoin };
+}
+
 describe('ConversationsService', () => {
   describe('createDirect', () => {
     it('creates a new direct conversation when none exists', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
+      const alice = prisma.seedUser('alice');
+      prisma.seedUser('bob');
 
       const { conversation } = await service.createDirect(alice.userId, buildDto('bob'));
 
@@ -133,9 +96,9 @@ describe('ConversationsService', () => {
 
     it('returns the existing conversation when the pair already has one', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const existingId = seedDirect(prisma, alice.userId, bob.userId);
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const existingId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
 
       const { conversation } = await service.createDirect(alice.userId, buildDto('bob'));
 
@@ -143,33 +106,47 @@ describe('ConversationsService', () => {
       expect(prisma.conversations).toHaveLength(1);
     });
 
-    it('throws NotFoundException when peer handle is unknown', async () => {
+    it('answers an unknown handle with handle_not_found', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
+      const alice = prisma.seedUser('alice');
 
-      await expect(service.createDirect(alice.userId, buildDto('ghost'))).rejects.toBeInstanceOf(
-        NotFoundException,
-      );
+      await expect(service.createDirect(alice.userId, buildDto('ghost'))).rejects.toMatchObject({
+        status: 404,
+        response: { code: 'handle_not_found' },
+      });
     });
 
-    it('throws ForbiddenException when peer is the caller', async () => {
-      const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
+    it('answers a blocked peer exactly like an unknown handle', async () => {
+      const { service, prisma, safety } = makeService();
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      safety.setBlocked(bob.userId, alice.userId);
 
-      await expect(service.createDirect(alice.userId, buildDto('alice'))).rejects.toBeInstanceOf(
-        ForbiddenException,
-      );
+      await expect(service.createDirect(alice.userId, buildDto('bob'))).rejects.toMatchObject({
+        status: 404,
+        response: { code: 'handle_not_found' },
+      });
+    });
+
+    it('rejects a conversation with yourself', async () => {
+      const { service, prisma } = makeService();
+      const alice = prisma.seedUser('alice');
+
+      await expect(service.createDirect(alice.userId, buildDto('alice'))).rejects.toMatchObject({
+        status: 400,
+        response: { code: 'cannot_add_self' },
+      });
     });
   });
 
   describe('listForUser', () => {
     it('returns only conversations the user belongs to', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const carol = seedUser(prisma, 'carol');
-      seedDirect(prisma, alice.userId, bob.userId);
-      seedDirect(prisma, bob.userId, carol.userId);
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const carol = prisma.seedUser('carol');
+      prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      prisma.seedConversation('direct', [bob.userId, carol.userId]);
 
       const result = await service.listForUser(alice.userId);
 
@@ -179,25 +156,13 @@ describe('ConversationsService', () => {
 
     it('exposes Sender Keys metadata for groups only', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      seedDirect(prisma, alice.userId, bob.userId);
-      const groupId = randomUUID();
-      prisma.conversations.push({
-        id: groupId,
-        type: 'group',
-        createdAt: new Date(),
-        currentEpoch: 3,
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      prisma.seedConversation('group', [alice.userId, bob.userId], {
         groupUseSenderKeys: true,
+        currentEpoch: 3,
       });
-      for (const userId of [alice.userId, bob.userId]) {
-        prisma.conversationMembers.push({
-          id: randomUUID(),
-          conversationId: groupId,
-          userId,
-          joinedAt: new Date(),
-        });
-      }
 
       const result = await service.listForUser(alice.userId);
 
@@ -209,52 +174,88 @@ describe('ConversationsService', () => {
       expect(group?.useSenderKeys).toBe(true);
       expect(group?.currentEpoch).toBe(3);
     });
+
+    it('hides a pre-join lastMessage from a late group joiner', async () => {
+      const fixture = makeService();
+      const alice = fixture.prisma.seedUser('alice');
+      const carol = fixture.prisma.seedUser('carol');
+      const conversationId = fixture.prisma.seedConversation('group', [
+        { userId: alice.userId, role: 'owner', joinedAt: minutesAgo(30) },
+        { userId: carol.userId, joinedAt: minutesAgo(10) },
+      ]);
+      seedMessage(fixture.prisma, {
+        conversationId,
+        senderDeviceId: alice.deviceId,
+        conversationOrder: 1,
+        serverReceivedAt: minutesAgo(20),
+      });
+
+      const [forCarol] = await fixture.service.listForUser(carol.userId);
+      const [forAlice] = await fixture.service.listForUser(alice.userId);
+
+      expect(forCarol?.lastMessage).toBeNull();
+      expect(forAlice?.lastMessage?.conversationOrder).toBe(1);
+    });
+
+    it('shows a channel subscriber only the owner, admins and themselves', async () => {
+      const { service, prisma } = makeService();
+      const owner = prisma.seedUser('owner');
+      const admin = prisma.seedUser('admin');
+      const subscriberA = prisma.seedUser('sub-a');
+      const subscriberB = prisma.seedUser('sub-b');
+      prisma.seedConversation('channel', [
+        { userId: owner.userId, role: 'owner' },
+        { userId: admin.userId, role: 'admin' },
+        { userId: subscriberA.userId, role: 'subscriber' },
+        { userId: subscriberB.userId, role: 'subscriber' },
+      ]);
+
+      const [forSubscriber] = await service.listForUser(subscriberA.userId);
+      const [forAdmin] = await service.listForUser(admin.userId);
+
+      expect(forSubscriber?.members.map((m) => m.handle).sort()).toEqual([
+        'admin',
+        'owner',
+        'sub-a',
+      ]);
+      expect(forAdmin?.members).toHaveLength(4);
+    });
   });
 
   describe('listMessagesForUser', () => {
     it('forbids non-members', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const carol = seedUser(prisma, 'carol');
-      const conversationId = seedDirect(prisma, alice.userId, bob.userId);
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const carol = prisma.seedUser('carol');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
 
       await expect(
-        service.listMessagesForUser(
-          { userId: carol.userId, deviceId: carol.deviceId },
-          conversationId,
-          { limit: 50 },
-        ),
-      ).rejects.toBeInstanceOf(ForbiddenException);
+        service.listMessagesForUser(carol, conversationId, { limit: 50 }),
+      ).rejects.toMatchObject({
+        status: 403,
+        response: { code: 'conversation_membership_required' },
+      });
     });
 
-    it('returns messages in ascending order and emits delivered events for peer messages', async () => {
+    it('returns messages in ascending order and marks peer messages delivered', async () => {
       const { service, prisma, gateway } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const conversationId = seedDirect(prisma, alice.userId, bob.userId);
-      seedMessage(prisma, {
-        conversationId,
-        senderDeviceId: bob.deviceId,
-        conversationOrder: 1,
-      });
-      seedMessage(prisma, {
-        conversationId,
-        senderDeviceId: alice.deviceId,
-        conversationOrder: 2,
-      });
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      seedMessage(prisma, { conversationId, senderDeviceId: bob.deviceId, conversationOrder: 1 });
+      seedMessage(prisma, { conversationId, senderDeviceId: alice.deviceId, conversationOrder: 2 });
 
-      const result = await service.listMessagesForUser(
-        { userId: alice.userId, deviceId: alice.deviceId },
-        conversationId,
-        { limit: 50 },
-      );
+      const result = await service.listMessagesForUser(alice, conversationId, { limit: 50 });
 
       expect(result.items.map((m) => m.conversationOrder)).toEqual([1, 2]);
       const deliveredEvents = gateway.emitted.filter((e) => e.event === 'message.delivered');
-      expect(deliveredEvents).toHaveLength(2);
+      expect(deliveredEvents.map((e) => e.userId).sort()).toEqual(
+        [alice.userId, bob.userId].sort(),
+      );
       expect(prisma.messageReceipts).toHaveLength(1);
       expect(prisma.messageReceipts[0]?.userId).toBe(alice.userId);
+      expect(result.items[0]?.deliveredAt).not.toBeNull();
       const state = prisma.deviceConversationStates.find(
         (s) => s.deviceId === alice.deviceId && s.conversationId === conversationId,
       );
@@ -263,20 +264,12 @@ describe('ConversationsService', () => {
 
     it('does not mark delivered for messages the viewer sent', async () => {
       const { service, prisma, gateway } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const conversationId = seedDirect(prisma, alice.userId, bob.userId);
-      seedMessage(prisma, {
-        conversationId,
-        senderDeviceId: alice.deviceId,
-        conversationOrder: 1,
-      });
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      seedMessage(prisma, { conversationId, senderDeviceId: alice.deviceId, conversationOrder: 1 });
 
-      await service.listMessagesForUser(
-        { userId: alice.userId, deviceId: alice.deviceId },
-        conversationId,
-        { limit: 50 },
-      );
+      await service.listMessagesForUser(alice, conversationId, { limit: 50 });
 
       expect(prisma.messageReceipts).toHaveLength(0);
       expect(gateway.emitted.filter((e) => e.event === 'message.delivered')).toHaveLength(0);
@@ -284,9 +277,9 @@ describe('ConversationsService', () => {
 
     it('excludes expired messages from the returned list', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const conversationId = seedDirect(prisma, alice.userId, bob.userId);
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
       seedMessage(prisma, {
         conversationId,
         senderDeviceId: bob.deviceId,
@@ -299,29 +292,129 @@ describe('ConversationsService', () => {
         conversationOrder: 2,
       });
 
-      const result = await service.listMessagesForUser(
-        { userId: alice.userId, deviceId: alice.deviceId },
-        conversationId,
-        { limit: 50 },
-      );
+      const result = await service.listMessagesForUser(alice, conversationId, { limit: 50 });
 
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]?.id).toBe(freshId);
+      expect(result.items.map((item) => item.id)).toEqual([freshId]);
     });
 
-    it('throws NotFoundException when cursor refers to unknown message', async () => {
+    it('answers an unknown cursor with message_not_found', async () => {
       const { service, prisma } = makeService();
-      const alice = seedUser(prisma, 'alice');
-      const bob = seedUser(prisma, 'bob');
-      const conversationId = seedDirect(prisma, alice.userId, bob.userId);
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
+
+      for (const cursor of ['nonexistent-id', randomUUID()]) {
+        await expect(
+          service.listMessagesForUser(alice, conversationId, { limit: 50, cursor }),
+        ).rejects.toMatchObject({ status: 404, response: { code: 'message_not_found' } });
+      }
+    });
+
+    it('rejects a malformed conversation id before touching the database', async () => {
+      const { service, prisma } = makeService();
+      const alice = prisma.seedUser('alice');
+      const findUnique = jest.spyOn(prisma.conversationMember, 'findUnique');
 
       await expect(
-        service.listMessagesForUser(
-          { userId: alice.userId, deviceId: alice.deviceId },
-          conversationId,
-          { limit: 50, cursor: 'nonexistent-id' },
-        ),
-      ).rejects.toBeInstanceOf(NotFoundException);
+        service.listMessagesForUser(alice, 'conv-1', { limit: 50 }),
+      ).rejects.toMatchObject({ status: 400, response: { code: 'validation_failed' } });
+      expect(findUnique).not.toHaveBeenCalled();
+    });
+
+    it('group member added after m1 lists only later messages', async () => {
+      const { service, carol, conversationId, afterJoin } = lateJoinerGroup();
+
+      const result = await service.listMessagesForUser(carol, conversationId, { limit: 50 });
+
+      expect(result.items.map((item) => item.id)).toEqual([afterJoin]);
+    });
+
+    it('no delivered receipts for pre-join messages', async () => {
+      const { service, prisma, gateway, carol, conversationId, beforeJoin, afterJoin } =
+        lateJoinerGroup();
+
+      await service.listMessagesForUser(carol, conversationId, { limit: 50 });
+
+      expect(prisma.messageReceipts.map((receipt) => receipt.messageId)).toEqual([afterJoin]);
+      const delivered = gateway.emitted.filter((e) => e.event === 'message.delivered');
+      expect(
+        delivered.every((e) => (e.payload as { messageId: string }).messageId !== beforeJoin),
+      ).toBe(true);
+    });
+
+    it('lets channel subscribers read the full backlog without receipts', async () => {
+      const { service, prisma, gateway } = makeService();
+      const owner = prisma.seedUser('owner');
+      const subscriber = prisma.seedUser('subscriber');
+      const conversationId = prisma.seedConversation('channel', [
+        { userId: owner.userId, role: 'owner', joinedAt: minutesAgo(30) },
+        { userId: subscriber.userId, role: 'subscriber', joinedAt: minutesAgo(5) },
+      ]);
+      seedMessage(prisma, {
+        conversationId,
+        senderDeviceId: owner.deviceId,
+        conversationOrder: 1,
+        serverReceivedAt: minutesAgo(20),
+      });
+
+      const result = await service.listMessagesForUser(subscriber, conversationId, { limit: 50 });
+
+      expect(result.items).toHaveLength(1);
+      expect(prisma.messageReceipts).toHaveLength(0);
+      expect(gateway.emitted).toHaveLength(0);
+    });
+  });
+
+  describe('setDisappearingTimer', () => {
+    it('updates the timer and notifies every member', async () => {
+      const { service, prisma, gateway } = makeService();
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
+
+      const { conversation } = await service.setDisappearingTimer(
+        alice.userId,
+        conversationId,
+        3600,
+      );
+
+      expect(conversation.disappearingTimerSeconds).toBe(3600);
+      expect(
+        gateway.emitted
+          .filter((e) => e.event === 'conversation.timer.changed')
+          .map((e) => e.userId)
+          .sort(),
+      ).toEqual([alice.userId, bob.userId].sort());
+    });
+
+    it('subscriber timer change 403', async () => {
+      const { service, prisma } = makeService();
+      const owner = prisma.seedUser('owner');
+      const subscriber = prisma.seedUser('subscriber');
+      const conversationId = prisma.seedConversation('channel', [
+        { userId: owner.userId, role: 'owner' },
+        { userId: subscriber.userId, role: 'subscriber' },
+      ]);
+
+      await expect(
+        service.setDisappearingTimer(subscriber.userId, conversationId, 60),
+      ).rejects.toMatchObject({ status: 403, response: { code: 'conversation_role_required' } });
+      expect(prisma.conversations[0]?.disappearingTimerSeconds).toBeNull();
+    });
+  });
+
+  describe('lifecycle', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('module init schedules no sweep timer', () => {
+      jest.useFakeTimers();
+      const { service } = makeService();
+
+      (service as { onModuleInit?: () => void }).onModuleInit?.();
+
+      expect(jest.getTimerCount()).toBe(0);
     });
   });
 });

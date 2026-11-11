@@ -1,3 +1,4 @@
+import { ConversationAccessService } from '../../src/common/conversation-access/conversation-access.service';
 import { MessagesService } from '../../src/modules/messages/messages.service';
 import { FakePrismaService } from '../support/fake-prisma.service';
 import { FakePushService, FakeRealtimeGateway, FakeSafetyService } from '../support/fake-services';
@@ -15,110 +16,36 @@ describe('MessagesService', () => {
       realtime as never,
       safety as never,
       metrics as never,
+      new ConversationAccessService(prisma as never, safety as never),
+      { isProduction: false } as never,
     );
 
-    prisma.users.push(
-      {
-        id: 'user-a',
-        handle: 'atlas',
-        displayName: 'Atlas',
-        avatarPath: null,
-        status: 'active',
-        activeDeviceId: 'device-a',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-      {
-        id: 'user-b',
-        handle: 'selene',
-        displayName: 'Selene',
-        avatarPath: null,
-        status: 'active',
-        activeDeviceId: 'device-b',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    );
+    const atlas = prisma.seedUser('atlas', { pushToken: 'push-a' });
+    const selene = prisma.seedUser('selene', { pushToken: 'push-b' });
+    const conversationId = prisma.seedConversation('direct', [atlas.userId, selene.userId]);
 
-    prisma.devices.push(
-      {
-        id: 'device-a',
-        userId: 'user-a',
-        platform: 'android',
-        deviceName: 'Pixel',
-        publicIdentityKey: 'pub-a',
-        signedPrekeyBundle: 'prekey-a',
-        authPublicKey: 'auth-a',
-        pushToken: 'push-a',
-        isActive: true,
-        revokedAt: null,
-        trustedAt: new Date(),
-        joinedFromDeviceId: null,
-        createdAt: new Date(),
-        lastSeenAt: new Date(),
-        lastSyncAt: null,
+    const dto = {
+      conversationId,
+      clientMessageId: 'client-msg-0001',
+      envelope: {
+        version: 'veil-envelope-v1-dev',
+        conversationId,
+        senderDeviceId: atlas.deviceId,
+        recipientUserId: selene.userId,
+        ciphertext: 'opaque-ciphertext',
+        nonce: 'nonce-1',
+        messageType: 'text' as const,
       },
-      {
-        id: 'device-b',
-        userId: 'user-b',
-        platform: 'ios',
-        deviceName: 'iPhone',
-        publicIdentityKey: 'pub-b',
-        signedPrekeyBundle: 'prekey-b',
-        authPublicKey: 'auth-b',
-        pushToken: 'push-b',
-        isActive: true,
-        revokedAt: null,
-        trustedAt: new Date(),
-        joinedFromDeviceId: null,
-        createdAt: new Date(),
-        lastSeenAt: new Date(),
-        lastSyncAt: null,
-      },
-    );
+    };
 
-    prisma.conversations.push({
-      id: 'conv-1',
-      type: 'direct',
-      createdAt: new Date(),
-    });
-    prisma.conversationMembers.push(
-      {
-        id: 'member-a',
-        conversationId: 'conv-1',
-        userId: 'user-a',
-        joinedAt: new Date(),
-      },
-      {
-        id: 'member-b',
-        conversationId: 'conv-1',
-        userId: 'user-b',
-        joinedAt: new Date(),
-      },
-    );
-
-    return { prisma, realtime, push, service };
+    return { prisma, realtime, push, service, atlas, selene, dto };
   }
 
-  const dto = {
-    conversationId: 'conv-1',
-    clientMessageId: 'client-msg-0001',
-    envelope: {
-      version: 'veil-envelope-v1-dev',
-      conversationId: 'conv-1',
-      senderDeviceId: 'device-a',
-      recipientUserId: 'user-b',
-      ciphertext: 'opaque-ciphertext',
-      nonce: 'nonce-1',
-      messageType: 'text' as const,
-    },
-  };
-
   it('deduplicates idempotent sends from the same device', async () => {
-    const { prisma, service, push } = createFixture();
+    const { prisma, service, push, atlas, dto } = createFixture();
 
-    const first = await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
-    const second = await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
+    const first = await service.send(atlas, dto as never);
+    const second = await service.send(atlas, dto as never);
 
     expect(first.idempotent).toBe(false);
     expect(second.idempotent).toBe(true);
@@ -128,9 +55,9 @@ describe('MessagesService', () => {
   });
 
   it('sends opaque wake-only push fallback when the recipient has no active socket', async () => {
-    const { push, service } = createFixture();
+    const { push, service, atlas, dto } = createFixture();
 
-    await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
+    await service.send(atlas, dto as never);
 
     expect(push.sentHints).toHaveLength(1);
     expect(push.sentHints[0]).toEqual({
@@ -145,11 +72,11 @@ describe('MessagesService', () => {
   });
 
   it('skips push fallback when the recipient already has an active socket', async () => {
-    const { realtime, push, service } = createFixture();
-    realtime.connectedUsers.add('user-b');
-    realtime.connectedDevices.add('device-b');
+    const { realtime, push, service, atlas, selene, dto } = createFixture();
+    realtime.connectedUsers.add(selene.userId);
+    realtime.connectedDevices.add(selene.deviceId);
 
-    await service.send({ userId: 'user-a', deviceId: 'device-a' }, dto as never);
+    await service.send(atlas, dto as never);
 
     expect(push.sentHints).toHaveLength(0);
   });

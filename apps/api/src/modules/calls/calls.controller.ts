@@ -1,7 +1,8 @@
-import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
+import { UuidParam } from '../../common/pipes/uuid-param.decorator';
 import { CallsService } from './calls.service';
 import { InitiateCallDto } from './dto/initiate-call.dto';
 
@@ -17,17 +18,17 @@ export class CallsController {
   }
 
   @Post(':id/accept')
-  acceptCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  acceptCall(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.callsService.acceptCall(request.auth, id);
   }
 
   @Post(':id/decline')
-  declineCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  declineCall(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.callsService.declineCall(request.auth, id);
   }
 
   @Post(':id/end')
-  endCall(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  endCall(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.callsService.endCall(request.auth, id);
   }
 

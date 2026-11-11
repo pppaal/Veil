@@ -772,12 +772,9 @@ describe('VEIL API (e2e)', () => {
       .set('Authorization', bearerA);
     expect(senderView.status).toBe(200);
     expect(senderView.body.items[1].clientMessageId).toBe('client-msg-1002');
-    expect(
-      senderView.body.items.some(
-        (item: { clientMessageId: string; readAt?: string | null }) =>
-          item.clientMessageId == 'client-msg-1002' && item.readAt,
-      ),
-    ).toBe(true);
+    // Summaries carry only the viewer's own receipt; the sender learns about
+    // the peer's read from the message.read event asserted below.
+    expect(senderView.body.items[1].readAt).toBeNull();
 
     expect(
       realtime.emitted.some(

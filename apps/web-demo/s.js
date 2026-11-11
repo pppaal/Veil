@@ -43,7 +43,7 @@ function mountViewer(rawFragment) {
       return;
     }
     try {
-      const text = await openSecret(crypto, blob, { fragmentKey: link.fragmentKey, passphrase });
+      const text = await openSecret(crypto, blob, link, passphrase);
       showSecret(text);
     } catch {
       // The server copy is gone, but the blob stays in memory so a mistyped

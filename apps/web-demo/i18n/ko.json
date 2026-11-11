@@ -64,5 +64,6 @@
   "keyChange.accept": "새 키 수락",
   "keyChange.sendBlocked": "상대의 보안 키가 바뀌었어요. 대화 상단에서 확인한 뒤 보낼 수 있어요.",
   "keyChange.composerFrozen": "보안 키 변경을 확인하기 전까지 전송이 중지됨",
-  "keyChange.sidebar": "⚠️ 보안 키 변경됨"
+  "keyChange.sidebar": "⚠️ 보안 키 변경됨",
+  "storage.upgradeBlocked": "다른 탭에 열려 있는 이전 버전의 VEIL을 닫아야 계속할 수 있어요."
 }

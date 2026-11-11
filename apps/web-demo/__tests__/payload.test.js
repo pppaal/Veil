@@ -120,7 +120,7 @@ describe('payload codec', () => {
   });
 
   it('sanitizes file names before they reach displayText', () => {
-    const decoded = decodePayload(encodePayload({ ...SAMPLES.file, name: 'invoice‮fdp.exe' }));
+    const decoded = decodePayload(encodePayload({ ...SAMPLES.file, name: 'invoice\u202efdp.exe' }));
     expect(decoded.displayText).toBe('📁 invoicefdp.exe');
     expect(decoded.media.name).toBe('invoicefdp.exe');
   });

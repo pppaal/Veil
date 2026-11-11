@@ -64,5 +64,6 @@
   "keyChange.accept": "新しいキーを受け入れる",
   "keyChange.sendBlocked": "相手のセキュリティキーが変わりました。チャット上部で確認してから送信してください。",
   "keyChange.composerFrozen": "キーの変更を確認するまで送信停止中",
-  "keyChange.sidebar": "⚠️ セキュリティキー変更"
+  "keyChange.sidebar": "⚠️ セキュリティキー変更",
+  "storage.upgradeBlocked": "続行するには、他のタブで開いている旧バージョンのVEILを閉じてください。"
 }

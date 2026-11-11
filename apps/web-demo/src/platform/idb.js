@@ -20,20 +20,32 @@ export const IDB_NAME = 'veil-demo';
 // (attachment keys included) spread into cached messages.
 export const IDB_VERSION = 3;
 
-export function createIdb(factory) {
+// onBlocked: a tab on an older build holds the database open, and this
+// upgrade waits until that tab closes. onDeletedElsewhere: another tab wiped
+// the database; this instance refuses all further work.
+export function createIdb(factory, { onBlocked, onDeletedElsewhere } = {}) {
   let connection = null;
+  let deletedElsewhere = false;
 
   function open() {
     return new Promise((resolve, reject) => {
       const request = factory.open(IDB_NAME, IDB_VERSION);
       request.onerror = () => reject(request.error);
+      request.onblocked = () => onBlocked?.();
       request.onupgradeneeded = (event) => upgrade(request.result, request.transaction, event.oldVersion);
       request.onsuccess = () => {
         const db = request.result;
         // Let a wipe or an upgrade in another tab proceed.
-        db.onversionchange = () => {
+        db.onversionchange = (event) => {
           db.close();
           connection = null;
+          // newVersion is null for a delete. Reopening would recreate the
+          // database from what this tab still holds in memory (its session
+          // record and keys included) and undo the other tab's wipe.
+          if (event.newVersion === null) {
+            deletedElsewhere = true;
+            onDeletedElsewhere?.();
+          }
         };
         resolve(db);
       };
@@ -41,6 +53,7 @@ export function createIdb(factory) {
   }
 
   async function run(storeName, mode, operation) {
+    if (deletedElsewhere) throw new Error('database deleted by another tab');
     connection ??= open().catch((error) => {
       connection = null;
       throw error;

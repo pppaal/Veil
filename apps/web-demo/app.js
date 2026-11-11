@@ -143,7 +143,12 @@ const state = {
 };
 
 // ---------- storage, session and crypto wiring ----------
-const idb = createIdb(indexedDB);
+const idb = createIdb(indexedDB, {
+  onBlocked: () => toast(t('storage.upgradeBlocked'), 'error'),
+  // Another tab wiped this browser's VEIL data. Reloading drops everything
+  // this tab still holds in memory and boots from the now-empty storage.
+  onDeletedElsewhere: () => location.reload(),
+});
 
 const sessionStore = createSessionStore({
   repo: {
@@ -4059,7 +4064,6 @@ function showImagePreview(convId, file) {
 
 // Update file picker + drop to route through the preview, not directly
 // to sendImageFile.
-const __veilOriginalPickAndSendImage = pickAndSendImage;
 pickAndSendImage = function (convId) {
   const input = document.createElement('input');
   input.type = 'file';

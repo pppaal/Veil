@@ -114,6 +114,39 @@ describe('createApiClient session lifecycle', () => {
     expect(onSessionRejected).not.toHaveBeenCalled();
   });
 
+  it('a 401 that lands after the session ended does not sign in again', async () => {
+    const { store } = await signedInStore();
+    let releaseSlow;
+    const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
+    let challenges = 0;
+    const byToken = ({ token }) => (token === 'revived' ? [200, { ok: true }] : [401, {}]);
+    const http = fakeFetch({
+      '/slow': async (request) => {
+        await slowGate;
+        return byToken(request);
+      },
+      '/auth/refresh': () => [401, {}],
+      // The first challenge is turned down; a second one would be accepted.
+      '/auth/challenge': () => (++challenges === 1 ? [401, {}] : [200, { challengeId: 'ch', challenge: 'c' }]),
+      '/auth/verify': () => [200, { accessToken: 'revived', refreshToken: 'revived' }],
+      '*': byToken,
+    });
+    const onSessionRejected = vi.fn();
+    const client = createApiClient({ fetchImpl: http.fetchImpl, baseUrl: '/v1', tokenStore: store, onSessionRejected });
+
+    const slow = client.authedApi('/slow').catch((error) => error);
+    await expect(client.authedApi('/fast')).rejects.toMatchObject({ reason: 'session_rejected' });
+    releaseSlow();
+
+    const error = await slow;
+    expect(error).toBeInstanceOf(AuthError);
+    expect(error.reason).toBe('no_session');
+    expect(http.count('/auth/challenge')).toBe(1);
+    expect(store.getAccessToken()).toBeNull();
+    expect(store.getRefreshToken()).toBeNull();
+    expect(onSessionRejected).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to a challenge signed with the stored device key', async () => {
     const { store, identity } = await signedInStore();
     let signature = null;

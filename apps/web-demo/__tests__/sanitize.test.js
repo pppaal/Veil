@@ -4,11 +4,11 @@ import { fileExtension, sanitizeAudioMime, sanitizeFilename, sniffImageMime } fr
 
 describe('sanitizeFilename', () => {
   it('strips bidi overrides so the real extension cannot hide', () => {
-    expect(sanitizeFilename('invoice‮fdp.exe')).toBe('invoicefdp.exe');
-    expect(fileExtension(sanitizeFilename('invoice‮fdp.exe'))).toBe('exe');
-    expect(sanitizeFilename('a‪b‫c‬d‭e.txt')).toBe('abcde.txt');
-    expect(sanitizeFilename('x⁦y⁧z⁨w⁩.png')).toBe('xyzw.png');
-    expect(sanitizeFilename('left‎right‏.pdf')).toBe('leftright.pdf');
+    expect(sanitizeFilename('invoice\u202efdp.exe')).toBe('invoicefdp.exe');
+    expect(fileExtension(sanitizeFilename('invoice\u202efdp.exe'))).toBe('exe');
+    expect(sanitizeFilename('a\u202ab\u202bc\u202cd\u202de.txt')).toBe('abcde.txt');
+    expect(sanitizeFilename('x\u2066y\u2067z\u2068w\u2069.png')).toBe('xyzw.png');
+    expect(sanitizeFilename('left\u200eright\u200f.pdf')).toBe('leftright.pdf');
   });
 
   it('strips C0 and C1 control characters', () => {
@@ -25,10 +25,11 @@ describe('sanitizeFilename', () => {
     expect(Array.from(emoji)).toHaveLength(120);
     expect(emoji.endsWith('.zip')).toBe(true);
     expect(Array.from(sanitizeFilename('b'.repeat(500)))).toHaveLength(120);
+    expect(sanitizeFilename(`${'c'.repeat(300)}.PDF`).endsWith('.PDF')).toBe(true);
   });
 
   it('falls back when nothing printable is left', () => {
-    expect(sanitizeFilename('‮\u0000')).toBe('file');
+    expect(sanitizeFilename('\u202e\u0000')).toBe('file');
     expect(sanitizeFilename(undefined)).toBe('file');
     expect(sanitizeFilename('   ')).toBe('file');
   });

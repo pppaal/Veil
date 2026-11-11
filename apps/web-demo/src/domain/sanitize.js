@@ -2,9 +2,9 @@
 // arrive inside the peer's payload, so a hostile sender picks them freely.
 
 // Bidi embeddings/overrides/isolates (U+202A-202E, U+2066-2069), LRM/RLM
-// and C0/C1 controls. A right-to-left override turns "invoice‮fdp.exe"
+// and C0/C1 controls. A right-to-left override turns "invoice\u202efdp.exe"
 // into what reads as "invoiceexe.pdf".
-const UNSAFE_FILENAME_CHARS_RE = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/g;
+const UNSAFE_FILENAME_CHARS_RE = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g;
 const MAX_FILENAME_CHARS = 120;
 const EXTENSION_RE = /^[A-Za-z0-9]{1,10}$/;
 
@@ -13,17 +13,22 @@ export function sanitizeFilename(name, fallback = 'file') {
   const chars = Array.from(cleaned);
   if (chars.length === 0) return fallback;
   if (chars.length <= MAX_FILENAME_CHARS) return cleaned;
-  const extension = fileExtension(cleaned);
+  const extension = lastExtension(cleaned);
   const suffix = extension ? `.${extension}` : '';
   return chars.slice(0, MAX_FILENAME_CHARS - suffix.length).join('') + suffix;
 }
 
 // The real (last) extension, shown next to the name so it cannot hide.
 export function fileExtension(name) {
+  return lastExtension(name).toLowerCase();
+}
+
+// As written, so a capped name keeps its extension's case.
+function lastExtension(name) {
   const dot = name.lastIndexOf('.');
   if (dot <= 0) return '';
   const extension = name.slice(dot + 1);
-  return EXTENSION_RE.test(extension) ? extension.toLowerCase() : '';
+  return EXTENSION_RE.test(extension) ? extension : '';
 }
 
 // Decrypted images become same-origin blob: URLs, which a user can open in a

@@ -64,5 +64,6 @@
   "keyChange.accept": "Accept new key",
   "keyChange.sendBlocked": "This contact's security key changed. Review it at the top of the chat before sending.",
   "keyChange.composerFrozen": "Sending paused until the key change is reviewed",
-  "keyChange.sidebar": "⚠️ security key changed"
+  "keyChange.sidebar": "⚠️ security key changed",
+  "storage.upgradeBlocked": "Close VEIL in your other tabs to continue: an older version is still open there."
 }

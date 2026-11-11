@@ -64,11 +64,15 @@ export function escapeHtml(value) {
 }
 
 function matchFence(source, open) {
-  FENCE_LANG_RE.lastIndex = open + FENCE.length;
-  const lang = FENCE_LANG_RE.exec(source)[0];
-  let bodyStart = open + FENCE.length + lang.length;
-  if (source[bodyStart] === '\n') bodyStart += 1;
-  const close = source.indexOf(FENCE, bodyStart + 1);
+  const afterOpen = open + FENCE.length;
+  FENCE_LANG_RE.lastIndex = afterOpen;
+  const info = FENCE_LANG_RE.exec(source)[0];
+  // A language tag needs the opening line to itself; in "```word```" the
+  // word is the code.
+  const ownLine = source[afterOpen + info.length] === '\n';
+  const lang = ownLine ? info : '';
+  const bodyStart = ownLine ? afterOpen + info.length + 1 : afterOpen;
+  const close = source.indexOf(FENCE, bodyStart);
   if (close === -1) return null;
   const body = source.slice(bodyStart, close).replace(/\n$/, '');
   return { node: { type: 'pre', lang, text: body }, end: close + FENCE.length };

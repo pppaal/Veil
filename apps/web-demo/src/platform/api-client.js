@@ -123,7 +123,10 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
       if (error?.status !== 401) throw error;
     }
     const current = tokenStore.getAccessToken();
-    const fresh = current && current !== token ? current : await recoverSession();
+    // The session ended while this request was in flight. Recovering now
+    // would quietly sign in again behind the restore screen.
+    if (!current) throw new AuthError('no_session');
+    const fresh = current !== token ? current : await recoverSession();
     if (fresh) {
       try {
         return await request(path, { ...options, token: fresh });

@@ -88,7 +88,7 @@ function mulberry32(seed) {
 const FUZZ_PIECES = [
   '*', '_', '`', '```', '```js\n', '\n', ' ', '@', '@alice', '@ab', '@bob_smith', 'https://', 'https://evil.example/?@alice',
   'http://a.example/*b*c', 'javascript:alert(1)', 'data:text/html,<b>x</b>', '<script>alert(1)</script>', '<img src=x onerror=alert(1)>',
-  '"', "'", '\u0000', '\u0000FENCE0\u0000', '&amp;', '](', ')', '(', 'text', '한국어', '🔥', '‮', '" onmouseover="x', '<a href=',
+  '"', "'", '\u0000', '\u0000FENCE0\u0000', '&amp;', '](', ')', '(', 'text', '한국어', '🔥', '\u202e', '" onmouseover="x', '<a href=',
   '>', '<', 'https://x.example/"onclick="y', 'HTTPS://UPPER.EXAMPLE', 'https://a.example/path_(x)', '*bold*', '_em_', '`code`',
 ];
 
@@ -150,6 +150,13 @@ describe('markdown-dom', () => {
 
   it('tokenizes fences before inline syntax', () => {
     expect(tokenize('```\n*not bold* @alice\n```')).toEqual([{ type: 'pre', lang: '', text: '*not bold* @alice' }]);
+  });
+
+  it('takes a language tag only from an opening line of its own', () => {
+    expect(tokenize('```\n```')).toEqual([{ type: 'pre', lang: '', text: '' }]);
+    expect(tokenize('```word```')).toEqual([{ type: 'pre', lang: '', text: 'word' }]);
+    expect(tokenize('```js code```')).toEqual([{ type: 'pre', lang: '', text: 'js code' }]);
+    expect(tokenize('```ts\nx\n```')).toEqual([{ type: 'pre', lang: 'ts', text: 'x' }]);
   });
 
   it('fuzz: 500 seeded inputs only produce allowed elements and attributes', () => {

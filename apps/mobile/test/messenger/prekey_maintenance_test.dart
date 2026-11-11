@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/bytes.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
@@ -22,12 +23,31 @@ class _Directory extends VeilApiClient {
   int countRequests = 0;
   final List<List<Map<String, dynamic>>> uploads = [];
   final List<String> signedPrekeyBundles = [];
+  final Set<int> storedOneTimePrekeyIds = {};
 
   /// How many signed prekey publishes still fail, as when offline.
   int failingSignedPrekeyPuts = 0;
 
+  /// How many requests are carried out but answered with an error, as when
+  /// the connection drops before the response arrives.
+  int lostAnswers = 0;
+
   @override
   Future<Map<String, dynamic>> getJson(String path, {required String? accessToken, Map<String, String>? query}) async {
+    if (path == '/keys/me') {
+      return {
+        'user': {'id': 'user-me', 'handle': 'me', 'activeDeviceId': 'dev-me'},
+        'devices': [
+          {
+            'deviceId': 'dev-me',
+            'identityPublicKey': 'ik-me',
+            'signedPrekeyBundle': signedPrekeyBundles.lastOrNull ?? 'none',
+            'isActive': true,
+            'oneTimePrekey': null,
+          },
+        ],
+      };
+    }
     expect(path, '/prekeys/count');
     countRequests += 1;
     return {'available': available};
@@ -38,7 +58,9 @@ class _Directory extends VeilApiClient {
     expect(path, '/prekeys');
     final prekeys = ((body as Map<String, dynamic>)['prekeys'] as List).cast<Map<String, dynamic>>();
     uploads.add(prekeys);
-    available += prekeys.length;
+    // Like the server, keys it already holds are skipped.
+    available += prekeys.where((prekey) => storedOneTimePrekeyIds.add(prekey['keyId'] as int)).length;
+    _answer();
     return {'uploaded': prekeys.length, 'available': available};
   }
 
@@ -49,10 +71,27 @@ class _Directory extends VeilApiClient {
       failingSignedPrekeyPuts -= 1;
       throw VeilApiException('Service unavailable', statusCode: 503);
     }
-    signedPrekeyBundles.add((body as Map<String, dynamic>)['signedPrekeyBundle'] as String);
-    return {'deviceId': 'dev-me', 'spkId': signedPrekeyBundles.length};
+    final bundle = (body as Map<String, dynamic>)['signedPrekeyBundle'] as String;
+    final served = signedPrekeyBundles.lastOrNull;
+    if (served != null && _spkIdOf(bundle) <= _spkIdOf(served)) {
+      throw VeilApiException('spkId must increase with every rotation', code: 'validation_failed', statusCode: 400);
+    }
+    signedPrekeyBundles.add(bundle);
+    _answer();
+    return {'deviceId': 'dev-me', 'spkId': _spkIdOf(bundle)};
   }
+
+  void _answer() {
+    if (lostAnswers == 0) return;
+    lostAnswers -= 1;
+    throw VeilApiException('Connection reset', code: 'network_unavailable');
+  }
+
+  static int _spkIdOf(String bundle) =>
+      (json.decode(utf8.decode(b64uDecode(bundle))) as Map<String, dynamic>)['spkId'] as int;
 }
+
+const _session = AppSessionState(accessToken: 'token', userId: 'user-me', deviceId: 'dev-me', handle: 'me');
 
 /// Records every bootstrap request a controller makes.
 class _RecordingSessions implements ConversationSessionBootstrapper {
@@ -111,14 +150,14 @@ void main() {
     await setUpDevice();
     directory.available = PrekeyMaintenance.minimumOneTimePrekeys - 1;
 
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
 
     expect(directory.uploads.single, hasLength(PrekeyMaintenance.oneTimePrekeyPoolSize - 19));
     final keyIds = {for (final prekey in directory.uploads.single) prekey['keyId']};
     expect(keyIds, hasLength(directory.uploads.single.length), reason: 'ids are never reused');
 
     // A full enough pool is left alone.
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     expect(directory.uploads, hasLength(1));
   });
 
@@ -127,11 +166,11 @@ void main() {
     directory.available = 100;
 
     now = start.add(const Duration(days: 6, hours: 23));
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     expect(directory.signedPrekeyBundles, isEmpty);
 
     now = start.add(const Duration(days: 7, minutes: 1));
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     final bundle = directory.signedPrekeyBundles.single;
     final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(identityRef);
     final verified = await verifyRemoteBundle(bundle, identityKey, now: now) as PrekeyBundleV2;
@@ -147,7 +186,7 @@ void main() {
     directory.available = 100;
     expect(await adapter.currentSignedPrekey(), isNull);
 
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
 
     final upgraded = LocalIdentity.tryParse(persistedRefs.single)!;
     expect(upgraded.version, 2);
@@ -164,13 +203,13 @@ void main() {
     directory.available = 100;
     directory.failingSignedPrekeyPuts = 1;
 
-    await maintenance.run(accessToken: 'token');
+    await maintenance.run(_session);
     expect(directory.signedPrekeyBundles, isEmpty);
     // The keyring already holds the v2 signed prekey and the upgraded ref.
     expect(LocalIdentity.tryParse(identityRef)!.version, 2);
 
     now = now.add(PrekeyMaintenance.resumeInterval);
-    await maintenance.run(accessToken: 'token');
+    await maintenance.run(_session);
 
     final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(v1Ref);
     final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now);
@@ -180,7 +219,7 @@ void main() {
 
     // Published now: later runs leave it alone until it is a week old.
     now = now.add(PrekeyMaintenance.resumeInterval);
-    await maintenance.run(accessToken: 'token');
+    await maintenance.run(_session);
     expect(directory.signedPrekeyBundles, hasLength(1));
   });
 
@@ -194,13 +233,13 @@ void main() {
     // spkId 2 is stale and spkId 3 fails too. The directory serves spkId 1
     // throughout, so it must still answer handshakes.
     now = start.add(const Duration(days: 8));
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     now = start.add(const Duration(days: 30));
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     expect(await adapter.pruneSignedPrekeys(), 0);
     expect(await storedIds(), {1, 2, 3});
 
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(identityRef);
     final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now);
     expect((published as PrekeyBundleV2).spkId, 3);
@@ -214,26 +253,73 @@ void main() {
     expect(await storedIds(), {3});
   });
 
+  test('a signed prekey stored by a publish whose answer was lost is recorded as published', () async {
+    await setUpDevice();
+    directory.available = 100;
+    now = start.add(const Duration(days: 8));
+    directory.lostAnswers = 1;
+
+    await maintenance.run(_session, force: true);
+    expect(directory.signedPrekeyBundles, hasLength(1), reason: 'the directory took it');
+    expect(await adapter.publishedSignedPrekeyId(), isNull, reason: 'this device never heard so');
+
+    // The retry is refused (spkId must increase); the directory evidently
+    // serves this very bundle, so the run records it and completes.
+    await maintenance.run(_session, force: true);
+    expect(await adapter.publishedSignedPrekeyId(), 2);
+    now = now.add(const Duration(hours: 1));
+    await maintenance.run(_session);
+    expect(directory.countRequests, 2, reason: 'the run completed, so the next resume is throttled');
+  });
+
+  test('a refused signed prekey the directory does not serve stays unpublished', () async {
+    await setUpDevice();
+    directory.available = 100;
+    now = start.add(const Duration(days: 8));
+    await maintenance.run(_session, force: true);
+    // Another rotation the directory refuses outright.
+    now = start.add(const Duration(days: 16));
+    directory.signedPrekeyBundles.add(_bundleWithSpkId(directory.signedPrekeyBundles.single, 99));
+
+    await maintenance.run(_session, force: true);
+    expect(await adapter.publishedSignedPrekeyId(), 2);
+  });
+
+  test('one-time prekeys whose upload failed are uploaded again, not replaced', () async {
+    await setUpDevice();
+    directory.available = 0;
+    directory.lostAnswers = 1;
+
+    await maintenance.run(_session, force: true);
+    final firstBatch = [for (final prekey in directory.uploads.single) prekey['keyId'] as int];
+    await maintenance.run(_session, force: true);
+
+    expect(directory.uploads, hasLength(2));
+    expect([for (final prekey in directory.uploads.last) prekey['keyId']], firstBatch);
+    expect(directory.available, PrekeyMaintenance.oneTimePrekeyPoolSize);
+    expect(await prekeyStore.loadOneTimePrekey(firstBatch.last + 1), isNull, reason: 'nothing more was generated');
+  });
+
   test('throttled to once per 6h', () async {
     await setUpDevice();
     directory.available = 100;
 
     await Future.wait([
-      maintenance.run(accessToken: 'token'),
-      maintenance.run(accessToken: 'token'),
+      maintenance.run(_session),
+      maintenance.run(_session),
     ]);
     expect(directory.countRequests, 1, reason: 'concurrent runs are one run');
 
     now = start.add(const Duration(hours: 5, minutes: 59));
-    await maintenance.run(accessToken: 'token');
+    await maintenance.run(_session);
     expect(directory.countRequests, 1);
 
     now = start.add(const Duration(hours: 6, minutes: 1));
-    await maintenance.run(accessToken: 'token');
+    await maintenance.run(_session);
     expect(directory.countRequests, 2);
 
     // Signing in or finishing a device transfer runs it regardless.
-    await maintenance.run(accessToken: 'token', force: true);
+    await maintenance.run(_session, force: true);
     expect(directory.countRequests, 3);
   });
 
@@ -247,8 +333,8 @@ void main() {
       clock: () => now,
     );
 
-    await failing.run(accessToken: 'token');
-    await maintenance.run(accessToken: 'token');
+    await failing.run(_session);
+    await maintenance.run(_session);
 
     expect(directory.uploads, hasLength(1));
   });
@@ -317,4 +403,10 @@ class _WithSessions implements CryptoAdapter {
 
   @override
   MessageCryptoEngine get messaging => _inner.messaging;
+}
+
+/// [bundle] claiming [spkId], as a directory that moved on would serve it.
+String _bundleWithSpkId(String bundle, int spkId) {
+  final fields = json.decode(utf8.decode(b64uDecode(bundle))) as Map<String, dynamic>;
+  return b64uEncode(utf8.encode(json.encode({...fields, 'spkId': spkId})));
 }

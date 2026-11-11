@@ -119,17 +119,21 @@ final keysApiProvider = Provider<KeysApi>((ref) {
 /// Contact identity pins, kept in the keystore and wiped with the device.
 /// What earlier builds knew is migrated in before any decision is made,
 /// reading the cache directly: the messenger decrypts and looks keys up as
-/// soon as it applies a session.
+/// soon as it applies a session. A cache that cannot be read fails the
+/// migration (to be tried again) rather than reading as empty, which would
+/// finish it with nothing carried over.
 final identityTrustProvider = Provider<IdentityTrust>((ref) {
   final storage = ref.read(secureStorageProvider);
-  final cache = ref.read(cacheHandleProvider);
   final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(storage.scoped(SecureScope.identity)));
   final trust = IdentityTrust(
     resolver,
-    ready: migrateLegacyTrust(
+    prepare: () => migrateLegacyTrust(
       storage: storage,
       resolver: resolver,
-      readConversations: cache?.readConversations ?? () async => const [],
+      readConversations: () async {
+        final cache = await ref.read(conversationCacheProvider.future);
+        return cache == null ? const [] : cache.readConversations();
+      },
     ),
   );
   ref.onDispose(trust.dispose);

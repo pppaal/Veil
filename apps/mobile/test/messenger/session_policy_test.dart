@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/session_policy.dart';
 
@@ -88,6 +91,18 @@ void main() {
       expect(
         _decide(session: _session(), bundle: _bundle(identityPublicKey: 'ik-reinstalled')),
         SessionAction.bootstrap,
+      );
+    });
+
+    test('the same identity key spelled with padding is not a new key', () {
+      final key = List<int>.generate(32, (i) => i);
+      expect(base64Url.encode(key), endsWith('='));
+      expect(
+        _decide(
+          session: _session(remoteIdentityPublicKey: base64UrlNoPadEncode(key)),
+          bundle: _bundle(identityPublicKey: base64Url.encode(key)),
+        ),
+        SessionAction.reuse,
       );
     });
 

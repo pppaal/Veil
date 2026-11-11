@@ -94,6 +94,23 @@ void main() {
     expect(session.remoteIdentityPublicKey, _key('reinstalled key'));
   });
 
+  test('approving a change makes every chat with the contact ask the directory again', () async {
+    relay.addDirect('conv-2', 'atlas', 'selene');
+    await atlas.refreshConversations();
+    await atlas.sendText(conversationId: 'conv-2', body: 'before the reinstall');
+    await waitFor(() => relay.conversations['conv-2']!.messages.length == 1);
+    // selene reinstalled; the first chat to meet her new key holds it back.
+    serveSelene(identityKey: _key('reinstalled key'));
+    expect(await trust.admit(conv, 'user-selene', 'dev-selene', _key('reinstalled key')), isFalse);
+
+    await atlas.approveIdentityChange(conv);
+    await atlas.sendText(conversationId: 'conv-2', body: 'after approval');
+    await waitFor(() => relay.conversations['conv-2']!.messages.length == 2);
+
+    final session = atlas.conversationById('conv-2')!.sessionState!;
+    expect(session.remoteIdentityPublicKey, _key('reinstalled key'), reason: 'the session to the replaced key is gone');
+  });
+
   test('verified contact key change requires reverification', () async {
     await trust.resolver.markVerified('user-selene', 'dev-selene', seleneKey());
     serveSelene(identityKey: _key('unverified replacement'));
@@ -142,6 +159,17 @@ void main() {
     expect(await noticeCodes(), [LocalNoticeCodes.identityNewDevice]);
     expect((await trust.resolver.pinFor('user-selene', 'dev-selene-2'))!.identityKey, _key('second phone'));
     expect(crypto.counts.bootstrap, 1);
+  });
+
+  test('one new device presented under two keys at once is admitted under one', () async {
+    final admitted = await Future.wait([
+      trust.admit(conv, 'user-selene', 'dev-selene-2', _key('second phone')),
+      trust.admit(conv, 'user-selene', 'dev-selene-2', _key('relay twin')),
+    ]);
+
+    expect(admitted, [true, false]);
+    expect((await trust.resolver.pinFor('user-selene', 'dev-selene-2'))!.identityKey, _key('second phone'));
+    expect(atlas.pendingIdentityChangeFor(conv)!.presentedKey, _key('relay twin'));
   });
 
   test('a new device of a verified contact waits for approval', () async {

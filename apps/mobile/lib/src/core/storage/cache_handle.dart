@@ -1,4 +1,5 @@
 import '../../features/conversations/data/conversation_models.dart';
+import '../../features/conversations/data/messenger/in_memory_message_content_store.dart';
 import 'conversation_cache_service.dart';
 
 /// A stable stand-in for the encrypted conversation cache, whose database
@@ -9,30 +10,47 @@ import 'conversation_cache_service.dart';
 /// content decrypted before the database opened would otherwise land in a
 /// throwaway in-memory store, and its single-use message keys would be
 /// spent for nothing.
+///
+/// A database that cannot be opened leaves the app as it runs without a
+/// local cache: nothing is kept beyond the process, but messaging, sign-out
+/// and wipe keep working. Each call tries the database again.
 class CacheHandle implements ConversationCacheService, MessageContentStore {
   CacheHandle(this._resolve);
 
-  /// Returns the cache that is current at the time of the call.
+  /// Returns the cache that is current at the time of the call; throws when
+  /// its database cannot be opened.
   final Future<DriftConversationCacheService> Function() _resolve;
+  final InMemoryMessageContentStore _processOnlyContent = InMemoryMessageContentStore();
+
+  Future<DriftConversationCacheService?> _cache() async {
+    try {
+      return await _resolve();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<MessageContentStore> _contents() async => await _cache() ?? _processOnlyContent;
 
   @override
-  Future<List<ConversationPreview>> readConversations() async => (await _resolve()).readConversations();
+  Future<List<ConversationPreview>> readConversations() async =>
+      await (await _cache())?.readConversations() ?? const [];
 
   @override
   Future<List<ChatMessage>> readMessages(String conversationId) async =>
-      (await _resolve()).readMessages(conversationId);
+      await (await _cache())?.readMessages(conversationId) ?? const [];
 
   @override
   Future<void> storeConversations(List<ConversationPreview> conversations) async =>
-      (await _resolve()).storeConversations(conversations);
+      (await _cache())?.storeConversations(conversations);
 
   @override
   Future<void> storeMessages(String conversationId, List<ChatMessage> messages) async =>
-      (await _resolve()).storeMessages(conversationId, messages);
+      (await _cache())?.storeMessages(conversationId, messages);
 
   @override
   Future<ConversationPagingState> readPagingState(String conversationId) async =>
-      (await _resolve()).readPagingState(conversationId);
+      await (await _cache())?.readPagingState(conversationId) ?? const ConversationPagingState();
 
   @override
   Future<void> storePagingState(
@@ -41,7 +59,7 @@ class CacheHandle implements ConversationCacheService, MessageContentStore {
     required bool hasMoreHistory,
     DateTime? lastSyncedAt,
   }) async =>
-      (await _resolve()).storePagingState(
+      (await _cache())?.storePagingState(
         conversationId,
         nextCursor: nextCursor,
         hasMoreHistory: hasMoreHistory,
@@ -49,15 +67,16 @@ class CacheHandle implements ConversationCacheService, MessageContentStore {
       );
 
   @override
-  Future<List<PendingMessageRecord>> readPendingMessages() async => (await _resolve()).readPendingMessages();
+  Future<List<PendingMessageRecord>> readPendingMessages() async =>
+      await (await _cache())?.readPendingMessages() ?? const [];
 
   @override
   Future<void> upsertPendingMessage(PendingMessageRecord pending) async =>
-      (await _resolve()).upsertPendingMessage(pending);
+      (await _cache())?.upsertPendingMessage(pending);
 
   @override
   Future<void> removePendingMessage(String clientMessageId) async =>
-      (await _resolve()).removePendingMessage(clientMessageId);
+      (await _cache())?.removePendingMessage(clientMessageId);
 
   @override
   Future<void> indexMessageBody({
@@ -65,7 +84,7 @@ class CacheHandle implements ConversationCacheService, MessageContentStore {
     required String messageId,
     required String searchableBody,
   }) async =>
-      (await _resolve()).indexMessageBody(
+      (await _cache())?.indexMessageBody(
         conversationId: conversationId,
         messageId: messageId,
         searchableBody: searchableBody,
@@ -76,51 +95,55 @@ class CacheHandle implements ConversationCacheService, MessageContentStore {
     required String conversationId,
     required String query,
   }) async =>
-      (await _resolve()).searchCachedMessageIds(conversationId: conversationId, query: query);
+      await (await _cache())?.searchCachedMessageIds(conversationId: conversationId, query: query) ?? const [];
 
   @override
   Future<MessageSearchPage> searchMessageArchive({
     required MessageSearchQuery query,
     required String currentDeviceId,
   }) async =>
-      (await _resolve()).searchMessageArchive(query: query, currentDeviceId: currentDeviceId);
+      await (await _cache())?.searchMessageArchive(query: query, currentDeviceId: currentDeviceId) ??
+      const MessageSearchPage(items: <MessageSearchResult>[]);
 
   @override
-  Future<void> purgeExpiredMessages() async => (await _resolve()).purgeExpiredMessages();
+  Future<void> purgeExpiredMessages() async => (await _cache())?.purgeExpiredMessages();
 
   @override
-  Future<void> clearAll() async => (await _resolve()).clearAll();
+  Future<void> clearAll() async {
+    _processOnlyContent.clear();
+    await (await _cache())?.clearAll();
+  }
 
   @override
-  Future<void> put(MessageContentRecord record) async => (await _resolve()).put(record);
+  Future<void> put(MessageContentRecord record) async => (await _contents()).put(record);
 
   @override
-  Future<MessageContentRecord?> get(String messageKey) async => (await _resolve()).get(messageKey);
+  Future<MessageContentRecord?> get(String messageKey) async => (await _contents()).get(messageKey);
 
   @override
   Future<Map<String, MessageContentRecord>> getMany(Iterable<String> messageKeys) async =>
-      (await _resolve()).getMany(messageKeys);
+      (await _contents()).getMany(messageKeys);
 
   @override
   Future<Map<String, DateTime>> innerExpiries(Iterable<String> messageKeys) async =>
-      (await _resolve()).innerExpiries(messageKeys);
+      (await _contents()).innerExpiries(messageKeys);
 
   @override
   Future<void> rekeyLocalToServer({
     required String clientMessageId,
     required String serverMessageId,
   }) async =>
-      (await _resolve()).rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: serverMessageId);
+      (await _contents()).rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: serverMessageId);
 
   @override
   Future<void> deleteConversation(String conversationId) async =>
-      (await _resolve()).deleteConversation(conversationId);
+      (await _contents()).deleteConversation(conversationId);
 
   @override
   Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys = const []}) async =>
-      (await _resolve()).deleteExpired(now, messageKeys: messageKeys);
+      (await _contents()).deleteExpired(now, messageKeys: messageKeys);
 
   @override
   Future<Set<String>> retiredAmong(Iterable<String> messageKeys) async =>
-      (await _resolve()).retiredAmong(messageKeys);
+      (await _contents()).retiredAmong(messageKeys);
 }

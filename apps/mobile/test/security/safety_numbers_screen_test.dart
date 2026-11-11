@@ -14,9 +14,11 @@ import 'package:veil_mobile/src/features/conversations/data/veil_messenger_contr
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
+import '../support/async_wait.dart';
 import '../support/fake_relay.dart';
 import '../support/memory_secure_store.dart';
 import '../support/mock_relay_parties.dart';
+import '../support/strict_mock_crypto_adapter.dart';
 
 const conv = 'conv-1';
 
@@ -65,8 +67,14 @@ class _Fixture {
         'identityPublicKey': servedKey,
       };
     });
-    // Disposed by the provider that owns it.
-    controller = mockPartyController(relay, 'atlas', identityTrust: trust);
+    // Disposed by the provider that owns it. Its engine opens a session from
+    // a peer's first frame, as protocol v2 does.
+    controller = mockPartyController(
+      relay,
+      'atlas',
+      identityTrust: trust,
+      adapter: StrictMockCryptoAdapter(localDeviceId: 'dev-atlas', opensSessionOnDecrypt: true),
+    );
     await tester.runAsync(() => controller.applySession(mockPartySession('atlas')));
   }
 
@@ -109,6 +117,48 @@ void main() {
     expect(find.text('The key server lists a different key'), findsOneWidget);
     expect(find.text('SAFETY NUMBER'), findsOneWidget);
     expect(find.text('Unverified'), findsOneWidget);
+  });
+
+  testWidgets('a direct conversation shows the device its session encrypts to', (tester) async {
+    final fixture = _Fixture();
+    await fixture.setUp(tester);
+    final resolver = fixture.trust.resolver;
+    await tester.runAsync(() async {
+      // The directory serves selene's pinned device as pinned, but a device
+      // of hers the directory does not list opened this conversation's
+      // session, so replies are encrypted to that one.
+      fixture.relay.bundleOverrides['selene'] = {
+        ...fixture.relay.partiesByHandle['selene']!.bundleJson,
+        'identityPublicKey': fixture.pinnedKey,
+      };
+      final otherKey = (await LibCryptoAdapter().identity.generateDeviceIdentity('dev-other')).identityPublicKey;
+      await resolver.approve('user-selene', 'dev-other', otherKey);
+      final mock = StrictMockCryptoAdapter();
+      final sealed = await mock.messaging.encryptMessage(
+        conversationId: conv,
+        senderDeviceId: 'dev-other',
+        recipientUserId: 'user-atlas',
+        body: 'hello',
+        messageKind: MessageKind.text,
+        recipientBundle: relayBundle(fixture.relay, 'atlas'),
+      );
+      fixture.relay
+          .inject(senderHandle: 'selene', conversationId: conv, envelope: mock.envelopeCodec.encodeApiEnvelope(sealed));
+      await fixture.controller.loadConversationMessages(conv);
+      await waitFor(() => fixture.controller.conversationById(conv)!.sessionState?.remoteDeviceId == 'dev-other');
+    });
+
+    await fixture.pumpScreen(tester, until: find.text('Mark as verified'));
+    expect(find.text('The key server lists another device'), findsOneWidget);
+    expect(find.text('The key server lists a different key'), findsNothing);
+
+    // What the user compares, and verifies, is the device replies go to.
+    await tester.tap(find.text('Mark as verified'));
+    await fixture.settleUntil(tester, () => find.text('Mark as verified').evaluate().isEmpty);
+    final shown = (await tester.runAsync(() => resolver.pinFor('user-selene', 'dev-other')))!;
+    final served = (await tester.runAsync(() => resolver.pinFor('user-selene', 'dev-selene')))!;
+    expect(shown.isVerified, isTrue);
+    expect(served.isVerified, isFalse);
   });
 
   testWidgets('verified contact key change is never accepted with one tap', (tester) async {
@@ -209,4 +259,15 @@ void main() {
     expect(accepted.identityKey, fixture.servedKey);
     expect(accepted.isVerified, isFalse);
   });
+}
+
+KeyBundle relayBundle(FakeRelay relay, String handle) {
+  final party = relay.partiesByHandle[handle]!;
+  return KeyBundle(
+    userId: party.userId,
+    deviceId: party.deviceId,
+    handle: handle,
+    identityPublicKey: party.identity.identityPublicKey,
+    signedPrekeyBundle: party.identity.signedPrekeyBundle,
+  );
 }

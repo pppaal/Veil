@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import '../../../../app/app_session_state.dart';
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/network/keys_api.dart';
+import '../../../../core/network/veil_api_exception.dart';
 
 /// Keeps this device reachable through the key directory: enough one-time
 /// prekeys for initiators to claim, a published signed prekey younger than a
@@ -42,26 +44,35 @@ class PrekeyMaintenance {
   final DateTime Function() _clock;
   DateTime? _lastCompletedAt;
   Future<void>? _running;
+  // One-time prekeys generated for a device whose upload did not complete.
+  // Their private halves are stored, so the next run uploads these instead
+  // of generating more (the directory skips any it already holds).
+  ({String deviceId, List<OneTimePrekey> prekeys})? _unpublished;
 
-  /// Runs maintenance unless a run completed within [resumeInterval];
-  /// [force] skips that check (sign-in, a completed device transfer).
-  /// Concurrent calls share one run. Best effort: a failed run is retried by
-  /// the next call and never throws.
-  Future<void> run({required String accessToken, bool force = false}) {
+  /// Runs maintenance for [session]'s device unless a run completed within
+  /// [resumeInterval]; [force] skips that check (sign-in, a completed device
+  /// transfer). Concurrent calls share one run. Best effort: a failed run is
+  /// retried by the next call and never throws.
+  Future<void> run(AppSessionState session, {bool force = false}) {
     final running = _running;
     if (running != null) return running;
+    final accessToken = session.accessToken;
+    final handle = session.handle;
+    final deviceId = session.deviceId;
     final last = _lastCompletedAt;
+    if (accessToken == null || handle == null || deviceId == null) return Future<void>.value();
     if (!force && last != null && _clock().difference(last) < resumeInterval) {
       return Future<void>.value();
     }
-    return _running = _runOnce(accessToken).whenComplete(() => _running = null);
+    final device = (accessToken: accessToken, handle: handle, deviceId: deviceId);
+    return _running = _runOnce(device).whenComplete(() => _running = null);
   }
 
-  Future<void> _runOnce(String accessToken) async {
+  Future<void> _runOnce(_Device device) async {
     final startedAt = _clock();
     try {
-      await _refillOneTimePrekeys(accessToken);
-      await _publishSignedPrekeyIfDue(accessToken, startedAt);
+      await _refillOneTimePrekeys(device);
+      await _publishSignedPrekeyIfDue(device, startedAt);
       await _prekeys.pruneSignedPrekeys(grace: signedPrekeyGrace);
       _lastCompletedAt = startedAt;
     } catch (_) {
@@ -70,11 +81,18 @@ class PrekeyMaintenance {
     }
   }
 
-  Future<void> _refillOneTimePrekeys(String accessToken) async {
-    final available = await _keys.oneTimePrekeyCount(accessToken: accessToken);
+  Future<void> _refillOneTimePrekeys(_Device device) async {
+    final unpublished = _unpublished;
+    if (unpublished != null && unpublished.deviceId == device.deviceId) {
+      await _keys.uploadOneTimePrekeys(unpublished.prekeys, accessToken: device.accessToken);
+    }
+    _unpublished = null;
+    final available = await _keys.oneTimePrekeyCount(accessToken: device.accessToken);
     if (available >= minimumOneTimePrekeys) return;
     final fresh = await _prekeys.generateOneTimePrekeys(count: oneTimePrekeyPoolSize - available);
-    await _keys.uploadOneTimePrekeys(fresh, accessToken: accessToken);
+    _unpublished = (deviceId: device.deviceId, prekeys: fresh);
+    await _keys.uploadOneTimePrekeys(fresh, accessToken: device.accessToken);
+    _unpublished = null;
   }
 
   // A fresh signed prekey the directory never accepted (its publish failed)
@@ -82,14 +100,28 @@ class PrekeyMaintenance {
   // identity has no signed prekey of its own, so it reports none and is
   // rotated at once. Either way a v1 identity ref is upgraded to v2, and the
   // new ref is stored before the bundle that needs it is published.
-  Future<void> _publishSignedPrekeyIfDue(String accessToken, DateTime now) async {
+  Future<void> _publishSignedPrekeyIfDue(_Device device, DateTime now) async {
     final current = await _prekeys.currentSignedPrekey();
     final fresh = current != null && now.difference(current.createdAt) <= signedPrekeyMaxAge;
     if (fresh && current.spkId == await _prekeys.publishedSignedPrekeyId()) return;
     final next = fresh ? current : await _prekeys.rotateSignedPrekey();
     final upgradedRef = next.upgradedIdentityPrivateRef;
     if (upgradedRef != null) await _persistIdentityRef(upgradedRef);
-    await _keys.rotateSignedPrekey(next.signedPrekeyBundle, accessToken: accessToken);
+    try {
+      await _keys.rotateSignedPrekey(next.signedPrekeyBundle, accessToken: device.accessToken);
+    } on VeilApiException catch (error) {
+      // A publish whose answer was lost left the directory holding this very
+      // bundle, and it refuses the same spkId twice; that refusal must not
+      // keep every later run from recording the publish.
+      if ((error.statusCode ?? 0) ~/ 100 != 4 || !await _directoryServes(device, next.signedPrekeyBundle)) rethrow;
+    }
     await _prekeys.markSignedPrekeyPublished(next.spkId);
   }
+
+  Future<bool> _directoryServes(_Device device, String signedPrekeyBundle) async {
+    final entry = await _keys.lookup(device.handle, accessToken: device.accessToken, claim: KeyClaim.none);
+    return entry.device(device.deviceId)?.bundle.signedPrekeyBundle == signedPrekeyBundle;
+  }
 }
+
+typedef _Device = ({String accessToken, String handle, String deviceId});

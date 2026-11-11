@@ -377,6 +377,7 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
         senderDeviceId: senderDeviceId,
         recipientUserId: recipientUserId,
         payload: InnerPayload(body: body, kind: messageKind, expiresAt: expiresAt, attachment: attachment),
+        recipientIdentityKey: recipientBundle.identityPublicKey,
       );
 
   @override

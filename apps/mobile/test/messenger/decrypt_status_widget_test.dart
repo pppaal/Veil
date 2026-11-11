@@ -240,4 +240,20 @@ void main() {
     expect(find.textContaining('"target"'), findsNothing);
     expect(find.textContaining('👍'), findsOneWidget);
   });
+
+  testWidgets('a reaction from an unproven sender is neither applied nor shown', (tester) async {
+    final reaction = json.encode({'v': 1, 'target': 'srv-1', 'emoji': '👍', 'op': 'add'});
+    final controller = await _pumpChat(tester, [
+      ('frame-1', 'text', _opened('react to me')),
+      (
+        'frame-2',
+        'reaction',
+        DecryptedMessage(body: reaction, messageKind: MessageKind.reaction, status: DecryptStatus.legacyUnauthenticated),
+      ),
+    ]);
+
+    expect(controller.messagesFor(_conv).firstWhere((message) => message.id == 'srv-1').reactions, isEmpty);
+    expect(find.textContaining('"target"'), findsNothing);
+    expect(find.text('Unverified sender (legacy)'), findsNothing);
+  });
 }

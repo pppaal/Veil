@@ -21,7 +21,8 @@ import '../domain/safety_numbers.dart';
 
 /// Safety numbers v2 over the identities this device pinned: what it
 /// actually encrypts to, never what the directory says right now. The
-/// directory is consulted only to warn when it serves a different key.
+/// directory is consulted only to warn when it serves a different key or
+/// device.
 class SafetyNumbersScreen extends ConsumerStatefulWidget {
   const SafetyNumbersScreen({
     required this.conversationId,
@@ -119,7 +120,12 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
     final served = await _directoryKeyOf(peer.handle);
     final pins = await resolver.pinsForUser(peer.userId);
-    final pin = _pinToShow(pins, servedDeviceId: served?.deviceId, sessionDeviceId: conversation.sessionState?.remoteDeviceId);
+    final pin = _pinToShow(
+      pins,
+      isDirect
+          ? [conversation.sessionState?.remoteDeviceId, conversation.recipientBundle.deviceId, served?.deviceId]
+          : [served?.deviceId],
+    );
     final pending = messenger.pendingIdentityChangeFor(conversation.id);
     final change = pending != null && pending.userId == peer.userId ? pending : null;
 
@@ -134,10 +140,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       number: await numberFor(pin?.identityKey),
       pendingChange: change,
       pendingNumber: await numberFor(change?.presentedKey),
-      directoryDiffers: served != null &&
-          pin != null &&
-          served.deviceId == pin.deviceId &&
-          !constantTimeBytesEqual(base64UrlNoPadDecode(served.key), base64UrlNoPadDecode(pin.identityKey)),
+      directory: served == null || pin == null
+          ? null
+          : served.deviceId != pin.deviceId
+              ? _DirectoryAnswer.otherDevice
+              : constantTimeBytesEqual(base64UrlNoPadDecode(served.key), base64UrlNoPadDecode(pin.identityKey))
+                  ? _DirectoryAnswer.matches
+                  : _DirectoryAnswer.otherKey,
       isDirect: isDirect,
     );
   }
@@ -152,12 +161,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     }
   }
 
-  static TrustedIdentity? _pinToShow(
-    List<TrustedIdentity> pins, {
-    required String? servedDeviceId,
-    required String? sessionDeviceId,
-  }) {
-    for (final deviceId in [servedDeviceId, sessionDeviceId]) {
+  // The pin of the first device in [preferred] that has one. A direct
+  // conversation prefers the device its session is bound to, because that
+  // is what every reply is encrypted to, whatever the directory serves now;
+  // a group seals to each of a member's devices, and the one the directory
+  // calls active stands for them.
+  static TrustedIdentity? _pinToShow(List<TrustedIdentity> pins, List<String?> preferred) {
+    for (final deviceId in preferred) {
       final match = pins.where((pin) => pin.deviceId == deviceId).firstOrNull;
       if (match != null) return match;
     }
@@ -426,7 +436,8 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     final pin = data.pin;
     final verified = pin?.isVerified ?? false;
     final change = data.pendingChange;
-    final warn = data.directoryDiffers || change != null || _scanMismatch;
+    final directoryDiffers = data.directory != null && data.directory != _DirectoryAnswer.matches;
+    final warn = directoryDiffers || change != null || _scanMismatch;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -464,12 +475,20 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             message: l10n.safetyNumbersScanMismatchBody,
           ),
         ],
-        if (data.directoryDiffers) ...[
+        if (data.directory == _DirectoryAnswer.otherKey) ...[
           const SizedBox(height: VeilSpace.md),
           VeilInlineBanner(
             tone: VeilBannerTone.warn,
             title: l10n.safetyNumbersDirectoryMismatchTitle,
             message: l10n.safetyNumbersDirectoryMismatchBody,
+          ),
+        ],
+        if (data.directory == _DirectoryAnswer.otherDevice) ...[
+          const SizedBox(height: VeilSpace.md),
+          VeilInlineBanner(
+            tone: VeilBannerTone.warn,
+            title: l10n.safetyNumbersDirectoryOtherDeviceTitle,
+            message: l10n.safetyNumbersDirectoryOtherDeviceBody,
           ),
         ],
         if (pin == null) ...[
@@ -799,7 +818,7 @@ class _DetailData extends _SafetyNumbersViewData {
     required this.number,
     required this.pendingChange,
     required this.pendingNumber,
-    required this.directoryDiffers,
+    required this.directory,
     required this.isDirect,
   });
 
@@ -815,9 +834,21 @@ class _DetailData extends _SafetyNumbersViewData {
   final PendingIdentityChange? pendingChange;
   final String? pendingNumber;
 
-  /// The directory serves the pinned device under another key.
-  final bool directoryDiffers;
+  /// How the directory's answer compares with [pin]; null when either is
+  /// unknown.
+  final _DirectoryAnswer? directory;
   final bool isDirect;
+}
+
+enum _DirectoryAnswer {
+  matches,
+
+  /// The directory serves the pinned device under another key.
+  otherKey,
+
+  /// The directory serves another device than the one [_DetailData.pin]
+  /// names: in a direct conversation, not the device it encrypts to.
+  otherDevice,
 }
 
 class _GroupListData extends _SafetyNumbersViewData {

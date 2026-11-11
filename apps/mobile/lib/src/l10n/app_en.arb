@@ -421,6 +421,8 @@
   "safetyNumbersNoPinBody": "Exchange a message first: this device pins the identity it talks to.",
   "safetyNumbersDirectoryMismatchTitle": "The key server lists a different key",
   "safetyNumbersDirectoryMismatchBody": "The key server now serves another identity key for this device than the one pinned here. Nothing is sent to that key unless you compare and accept it.",
+  "safetyNumbersDirectoryOtherDeviceTitle": "The key server lists another device",
+  "safetyNumbersDirectoryOtherDeviceBody": "This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.",
   "safetyNumbersPendingBody": "This contact presents a new identity key. Compare the new safety number below before accepting it.",
   "safetyNumbersAcceptNewKey": "Accept the new key",
   "safetyNumbersScanAction": "Compare a scanned code",

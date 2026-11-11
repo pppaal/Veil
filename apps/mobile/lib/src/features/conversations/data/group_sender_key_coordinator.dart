@@ -564,7 +564,9 @@ class GroupSenderKeyCoordinator {
   }
 
   /// The member's directory entry, provided the directory answers for that
-  /// very user; null when it has no trusted device for them.
+  /// very user; null when it has no trusted device for them. A malformed
+  /// answer vouches for none of the member's devices either, and must not
+  /// keep the chain from the other members.
   Future<KeyDirectoryEntry?> _directoryEntryOf(GroupMember member, String accessToken) async {
     final KeyDirectoryEntry entry;
     try {
@@ -572,6 +574,8 @@ class GroupSenderKeyCoordinator {
     } on VeilApiException catch (e) {
       if (_isNoActiveDevice(e)) return null;
       rethrow;
+    } on FormatException {
+      return null;
     }
     return entry.userId == member.userId ? entry : null;
   }

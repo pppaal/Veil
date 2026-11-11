@@ -1232,6 +1232,13 @@ class AppLocalizationsKo extends AppLocalizations {
       '키 서버가 이 기기에 고정된 것과 다른 신원 키를 제공하고 있습니다. 비교하고 수락하기 전에는 그 키로 아무것도 보내지 않습니다.';
 
   @override
+  String get safetyNumbersDirectoryOtherDeviceTitle => '키 서버가 다른 기기를 제공합니다';
+
+  @override
+  String get safetyNumbersDirectoryOtherDeviceBody =>
+      '이 대화는 키 서버가 지금 이 연락처에 제공하는 기기와 다른 기기로 암호화됩니다. 위 번호는 이 대화가 암호화하는 기기의 번호입니다. 신뢰하기 전에 연락처와 비교하세요.';
+
+  @override
   String get safetyNumbersPendingBody =>
       '이 연락처가 새 신원 키를 제시했습니다. 수락하기 전에 아래의 새 안전 번호를 비교하세요.';
 

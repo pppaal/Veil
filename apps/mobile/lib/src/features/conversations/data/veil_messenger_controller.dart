@@ -107,9 +107,9 @@ class VeilMessengerController extends ChangeNotifier {
   final PrekeyMaintenance? _prekeys;
   late final StreamSubscription<IdentityTrustEvent> _trustEvents;
   final ReactionLedger _reactions = ReactionLedger();
-  // Identity keys inbound handshakes proved, by conversation, from the
-  // verifier until the session they opened is recorded.
-  final Map<String, String> _handshakeIdentities = {};
+  // Devices and identity keys inbound handshakes proved, by conversation,
+  // from the verifier until the session they opened is recorded.
+  final Map<String, ({String deviceId, String key})> _handshakeIdentities = {};
   // Privacy switches, read on every use so a settings change applies at once.
   final bool Function() _readReceiptsEnabled;
   final bool Function() _typingIndicatorsEnabled;
@@ -298,7 +298,7 @@ class VeilMessengerController extends ChangeNotifier {
     await _refreshConversationsCore();
     await _connectRealtime();
     unawaited(_drainOutbox());
-    unawaited(_prekeys?.run(accessToken: session.accessToken!, force: true));
+    unawaited(_prekeys?.run(session, force: true));
   }
 
   /// The conversation the user is looking at right now, or null. Incoming
@@ -326,9 +326,8 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     await _refreshRealtimeAndSync(forceReconnect: true);
-    // The session may have signed out while this synced.
-    final accessToken = _session.accessToken;
-    if (accessToken != null) unawaited(_prekeys?.run(accessToken: accessToken));
+    // Reads the session now: it may have signed out while this synced.
+    unawaited(_prekeys?.run(_session));
   }
 
   Future<void> refreshConversations() async {
@@ -545,8 +544,14 @@ class VeilMessengerController extends ChangeNotifier {
     bool reverified = false,
     PendingIdentityChange? reviewed,
   }) async {
-    await _trust.approve(conversationId, reverified: reverified, reviewed: reviewed);
-    _directoryRecheck.add(conversationId);
+    final accepted = await _trust.approve(conversationId, reverified: reverified, reviewed: reviewed);
+    // Every chat with this contact may still hold a session to the identity
+    // the approval replaced.
+    _directoryRecheck.addAll([
+      conversationId,
+      for (final other in _conversations)
+        if (other.type == ConversationType.direct && other.recipientBundle.userId == accepted.userId) other.id,
+    ]);
     unawaited(_contents.retryPending(conversationId, messagesFor(conversationId)));
     await retryPendingMessages(conversationId);
   }
@@ -564,7 +569,7 @@ class VeilMessengerController extends ChangeNotifier {
       if (!await _trust.admit(conversation.id, conversation.recipientBundle.userId, claim.senderDeviceId, key)) {
         return false;
       }
-      _handshakeIdentities[conversation.id] = key;
+      _handshakeIdentities[conversation.id] = (deviceId: claim.senderDeviceId, key: key);
       return true;
     } catch (_) {
       // Fails closed; the frame is retried once the conversation resolves.
@@ -576,10 +581,13 @@ class VeilMessengerController extends ChangeNotifier {
     final notice = localNoticeFor(event, conversationMessages: messagesFor(event.conversationId), now: DateTime.now());
     if (notice != null && !messagesFor(event.conversationId).any((message) => message.id == notice.message.id)) {
       await _contents.storeLocalNotice(notice.message, notice.code);
+      // The trust layer outlives this controller and may have announced
+      // the change just before it was disposed.
+      if (_disposed) return;
       _mergeServerMessages(event.conversationId, [notice.message]);
       await _persistConversationState(event.conversationId);
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   // Stores the plaintext before encrypting so the sender can always show
@@ -643,17 +651,23 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     final isGroup = conversation.type == ConversationType.group;
-    final bundle = isGroup ? conversation.recipientBundle : await _bundleForSend(conversation);
-    return _cryptoEngine.encryptMessage(
-      conversationId: conversation.id,
-      senderDeviceId: senderDeviceId,
-      recipientUserId: isGroup ? '' : bundle.userId,
-      body: body,
-      messageKind: messageKind,
-      recipientBundle: bundle,
-      expiresAt: expiresAt,
-      attachment: attachment,
-    );
+    Future<CryptoEnvelope> sealFor(KeyBundle bundle) => _cryptoEngine.encryptMessage(
+          conversationId: conversation.id,
+          senderDeviceId: senderDeviceId,
+          recipientUserId: isGroup ? '' : bundle.userId,
+          body: body,
+          messageKind: messageKind,
+          recipientBundle: bundle,
+          expiresAt: expiresAt,
+          attachment: attachment,
+        );
+    if (isGroup) return sealFor(conversation.recipientBundle);
+    try {
+      return await sealFor(await _bundleForSend(conversation));
+    } on SessionRecipientChanged {
+      // A peer's handshake moved the session after the recipient was chosen.
+      return sealFor(await _bundleForSend(conversation, sessionMoved: true));
+    }
   }
 
   Future<void> sendAttachmentPlaceholder(
@@ -908,22 +922,29 @@ class VeilMessengerController extends ChangeNotifier {
   // Engines that run the responder half of the handshake inside decrypt
   // never pass through _ensureInboundSession. Once a peer frame has opened,
   // record the session it established, so replies, identity pinning and
-  // device-move detection have something to compare against.
+  // device-move detection have something to compare against. A handshake
+  // that moved an established conversation to another device or identity is
+  // recorded as well (see sessionNames), and the next send confirms that
+  // device with the directory before encrypting to it again.
   void _noteOpenedSession(CryptoEnvelope envelope, DecryptedMessage decrypted) {
     final conversationId = envelope.conversationId;
     // Taken whatever happens next, so a key proved by a handshake that was
     // not kept is never attributed to a later session.
-    final provenKey = _handshakeIdentities.remove(conversationId) ?? '';
+    final proven = _handshakeIdentities.remove(conversationId);
+    final provenKey = proven?.deviceId == envelope.senderDeviceId ? proven!.key : '';
     final conversation = conversationById(conversationId);
     final localDeviceId = _session.deviceId;
     if (localDeviceId == null ||
         envelope.senderDeviceId == localDeviceId ||
-        conversation?.sessionState != null ||
         (conversation != null && conversation.type != ConversationType.direct) ||
-        _unlistedInboundSessions.containsKey(conversationId) ||
         !decrypted.isOk ||
         !_sessionBootstrapper.hasSessionFor(conversationId)) {
       return;
+    }
+    final recorded = conversation?.sessionState ?? _unlistedInboundSessions[conversationId];
+    if (recorded != null) {
+      if (provenKey.isEmpty || sessionNames(recorded, envelope.senderDeviceId, provenKey)) return;
+      _directoryRecheck.add(conversationId);
     }
     _recordInboundSession(
       conversationId,
@@ -1489,7 +1510,9 @@ class VeilMessengerController extends ChangeNotifier {
             notifyListeners();
             if (!message.isMine && conversationId == _activeConversationId) {
               await markRead(message.id);
-            } else if (!message.isMine) {
+            } else if (!message.isMine && message.envelope.messageKind != MessageKind.reaction) {
+              // A reaction updates a message already seen. Trusting the
+              // relay's label costs nothing: it could withhold the message.
               unawaited(_notificationService?.showMessageNotification(
                 conversationId: conversationId,
                 title: 'VEIL',
@@ -2281,17 +2304,18 @@ class VeilMessengerController extends ChangeNotifier {
 
   // Steady-state sends on an established session use the stored bundle and
   // never touch the directory. A pending recheck asks it fresh and is only
-  // cleared once that answer has been applied.
-  Future<KeyBundle> _bundleForSend(ConversationPreview conversation) async {
+  // cleared once that answer has been applied. A session the engine reports
+  // [sessionMoved] reaches nobody this conversation chose, so it is replaced.
+  Future<KeyBundle> _bundleForSend(ConversationPreview conversation, {bool sessionMoved = false}) async {
     final pending = _trust.pendingFor(conversation.id);
     if (pending != null) throw IdentityChangedException(pending);
-    final recheck = _directoryRecheck.contains(conversation.id);
+    final recheck = sessionMoved || _directoryRecheck.contains(conversation.id);
     if (!recheck && _sessionBootstrapper.hasSessionFor(conversation.id)) {
       return conversation.recipientBundle;
     }
     final handle = conversation.peerHandle;
     final served = (recheck ? null : _peerBundles.fresh(handle)) ?? await _fetchPeerBundle(handle, KeyClaim.active);
-    final bundle = await _applyDirectoryAnswer(conversation.id, served);
+    final bundle = await _applyDirectoryAnswer(conversation.id, served, mustBootstrap: sessionMoved);
     _directoryRecheck.remove(conversation.id);
     return bundle;
   }
@@ -2325,6 +2349,7 @@ class VeilMessengerController extends ChangeNotifier {
     String conversationId,
     DirectoryDevice served, {
     bool mayBootstrap = true,
+    bool mustBootstrap = false,
   }) async {
     final conversation = conversationById(conversationId);
     final bundle = served.bundle;
@@ -2336,12 +2361,14 @@ class VeilMessengerController extends ChangeNotifier {
       throw StateError('The directory answered @${conversation.peerHandle} with another user.');
     }
     await _trust.require(conversationId, peerUserId, bundle.deviceId, bundle.identityPublicKey);
-    final action = decideSession(
-      engineHasSession: _sessionBootstrapper.hasSessionFor(conversationId),
-      session: conversation.sessionState,
-      localDeviceId: _session.deviceId!,
-      bundle: bundle,
-    );
+    final action = mustBootstrap
+        ? SessionAction.bootstrap
+        : decideSession(
+            engineHasSession: _sessionBootstrapper.hasSessionFor(conversationId),
+            session: conversation.sessionState,
+            localDeviceId: _session.deviceId!,
+            bundle: bundle,
+          );
     if (action == SessionAction.reuse) {
       _updateConversation(conversationId, (preview) => keepSession(preview, bundle));
     } else if (mayBootstrap) {

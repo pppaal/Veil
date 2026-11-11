@@ -205,6 +205,41 @@ void main() {
     expect(fingerprint, hash.sha256.convert(b64uDecode(alice.identity.identityPublicKey)).toString());
   });
 
+  test('a message is sealed only to the identity the caller chose', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    final mallory = await createParty('mallory');
+    await bootstrap(alice, bob, conversationId: _conversationId);
+    await receive(bob, await send(alice, bob, 'hello', conversationId: _conversationId));
+    expect((await receive(alice, await send(bob, alice, 'hi', conversationId: _conversationId))).body, 'hi');
+    // A handshake the pins admit replaces the sending state with one bound
+    // to mallory.
+    alice.adapter.setRemoteIdentityVerifier((_) async => true);
+    await bootstrap(mallory, alice, conversationId: _conversationId);
+    expect((await receive(alice, await send(mallory, alice, 'me too', conversationId: _conversationId))).isOk, isTrue);
+
+    await expectLater(
+        send(alice, bob, 'for bob', conversationId: _conversationId), throwsA(isA<SessionRecipientChanged>()));
+    // The same key in another base64url spelling is the same recipient.
+    final padded = base64Url.encode(b64uDecode(mallory.identity.identityPublicKey));
+    expect(padded, endsWith('='));
+    final sealed = await alice.adapter.messaging.encryptMessage(
+      conversationId: _conversationId,
+      senderDeviceId: alice.deviceId,
+      recipientUserId: mallory.userId,
+      body: 'for mallory',
+      messageKind: MessageKind.text,
+      recipientBundle: KeyBundle(
+        userId: mallory.userId,
+        deviceId: mallory.deviceId,
+        handle: mallory.name,
+        identityPublicKey: padded,
+        signedPrekeyBundle: mallory.identity.signedPrekeyBundle,
+      ),
+    );
+    expect((await receive(mallory, sealed)).body, 'for mallory');
+  });
+
   test('verifier rejection yields identityRejected and stores nothing', () async {
     final alice = await createParty('alice');
     final bob = await createParty('bob');

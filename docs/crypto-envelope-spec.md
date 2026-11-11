@@ -102,8 +102,13 @@ A device records which SPK the directory last accepted (registration publishes
 a fresh identity's spkId 1). Maintenance publishes until the newest SPK is that
 one: a newest SPK younger than 7 days whose publish failed is published again
 as it is (Ed25519 is deterministic, so the bundle is the same), an older one is
-rotated first. SPKs older than the published one are deleted 14 days after it
-was published; while no publication is recorded, none is deleted.
+rotated first. When the directory refuses such a publish but serves exactly
+that bundle for the device (the first publish succeeded and its answer was
+lost), the SPK is recorded as published. SPKs older than the published one are
+deleted 14 days after it was published; while no publication is recorded,
+none is deleted. One-time prekeys whose upload failed are uploaded again as
+they are by the next run (the directory skips ids it holds), never replaced by
+fresh ones.
 
 ### X3DH
 
@@ -372,7 +377,7 @@ every device a group chain key is sealed to or accepted from.
 | ------- | ------- |
 | no pin for the user | pinned (trust on first use), proceed |
 | pin matches | proceed |
-| new device, contact never verified | pinned, proceed, the conversation gets an `identity.new_device` notice |
+| new device, contact never verified | pinned in the same step as the decision, proceed, the conversation gets an `identity.new_device` notice |
 | new device, contact verified | refused until the user approves after re-verifying |
 | different key for a pinned device | refused until the user approves; if the pin was verified, approval requires re-verification |
 | device id already pinned under another user | refused; there is nothing to approve (group chains are keyed by device id) |
@@ -390,6 +395,19 @@ minutes), while a device that holds the chain is never sent it again. Notices ar
 rows the client inserts itself under the id prefix `notice:`; relayed rows
 carrying that prefix are dropped, and only local rows are rendered as notices.
 
+What a 1:1 conversation encrypts to is always what it shows. A handshake
+the pins admit becomes the engine's sending state, so when it comes from
+another device or proves another identity than the one the conversation
+records, the conversation records that device and key in its place, and
+asks the directory before the next send: a device the directory does not
+serve as the peer's active one gets no reply, because that send opens a
+session to the device the directory does serve, once the pins accept it.
+The engine checks this as well: it seals a message only on a sending state
+bound to the identity the caller chose (compared as bytes), and otherwise
+fails with `SessionRecipientChanged` without encrypting, upon which the
+messenger asks the directory and opens a new session. Approving a change
+makes every 1:1 conversation with that contact ask the directory again.
+
 Approving a change for a contact the user had verified takes a fresh
 comparison: either a scanned code that matches the presented key, or an
 explicit affirmation, next to the new safety number, that it was compared out
@@ -404,14 +422,19 @@ Builds before the pin table recorded identity knowledge in session state and
 safety-number verifications. On upgrade that knowledge is carried into the
 pin table before the first trust decision is made; until then every decision
 waits, so neither an inbound handshake nor a directory answer can be pinned on
-first use in its place. A verification is pinned as verified for the device
-its session talks to unless the session recorded a different key.
+first use in its place; a migration that fails (the cache cannot be read) is
+attempted again by the next decision. A verification is pinned as verified
+for the device its session talks to unless the session recorded a different
+key.
 
 Safety numbers (v2) are computed from the pinned `IKed` and the two user ids,
-never from the directory; when the directory serves a different key for the
-pinned device the screen warns. A scanned QR payload that does not match is a
-hard failure: nothing is verified or approved. Safety numbers never leave the
-device.
+never from the directory. In a 1:1 conversation the screen shows the device
+the conversation's session is bound to, the one every reply is encrypted to,
+and marking it verified verifies that device; for a group member it shows the
+device the directory calls active. The screen warns when the directory serves
+another key for that device, or another device. A scanned QR payload that does
+not match is a hard failure: nothing is verified or approved. Safety numbers
+never leave the device.
 
 Version pinning: once a `veil-envelope-v2` frame has authenticated in a 1:1
 conversation, that conversation accepts only v2; `veil-envelope-v1` and
@@ -424,8 +447,10 @@ Reactions travel end to end: a message of inner kind `reaction` whose body is
 compact JSON `{"v":1,"target":<message id>,"emoji":<1-8 code points>,"op":"add"|"remove"}`.
 A reaction applies only to a target in the same conversation, the latest
 reaction of each reactor wins by conversation order, and reaction messages
-never render on their own. The relay is not a reactor: the deprecated
-`message.reaction` realtime event is accepted and ignored.
+never render on their own; one that opened only as `legacyUnauthenticated`
+is neither applied nor shown, and no reaction raises a notification. The
+relay is not a reactor: the deprecated `message.reaction` realtime event is
+accepted and ignored.
 
 ### Local persistence (informative)
 

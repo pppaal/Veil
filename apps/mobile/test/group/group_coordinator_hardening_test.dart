@@ -542,6 +542,16 @@ void main() {
     expect((await carol.read(later)).body, 'welcome back');
   });
 
+  test('member whose directory entry is malformed is skipped without blocking the others', () async {
+    server.directory[carolId.handle] = {...server.directory[carolId.handle]!, 'devices': 'none'};
+
+    final envelope = await alice.send(group, 'carol cannot be vouched for');
+    expect(server.uploads, [
+      [bobId.userId],
+    ]);
+    expect((await bob.read(envelope)).body, 'carol cannot be vouched for');
+  });
+
   test('a lookup failure that is not about the member fails the round for a retry', () async {
     server.lookupFailures[carolId.handle] = _unavailable;
 

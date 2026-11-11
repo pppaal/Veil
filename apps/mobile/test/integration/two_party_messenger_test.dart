@@ -54,6 +54,16 @@ void main() {
     );
   }
 
+  // Syncs [party]'s copy of the conversation and opens the row that carries
+  // [envelope].
+  Future<DecryptedMessage> openRelayed(MessengerParty party, Map<String, dynamic> envelope) async {
+    await party.controller.loadConversationMessages(conv);
+    final row = party.controller.messagesFor(conv).firstWhere((m) => m.envelope.ciphertext == envelope['ciphertext']);
+    final opened = await party.controller.decryptMessage(row);
+    await settle();
+    return opened;
+  }
+
   test('refresh between sends keeps the session', () async {
     await deliver(alice, bob, 'm1');
     await alice.controller.refreshConversations();
@@ -430,6 +440,7 @@ void main() {
     expect(jsonEncode(relayed), isNot(contains('🔥')));
     final row = alice.controller.messagesFor(conv).last;
     expect((await alice.controller.decryptMessage(row)).messageKind, MessageKind.reaction);
+    expect(alice.notifications.shownForConversations, isEmpty, reason: 'a reaction is not a new message');
   });
 
   test('a frame for a conversation not listed yet still records the responder session', () async {
@@ -474,8 +485,11 @@ void main() {
     expect(bob.crypto.counts.bootstrap, 0);
   });
 
-  test('peer device change re-bootstraps the next send to the new device', () async {
+  test('peer device change moves the next send to the new device', () async {
     await deliver(alice, bob, 'before the move');
+    // Answered, so alice's handshake is settled and the new device's one
+    // replaces it (see SessionRecord.installingInbound).
+    await deliver(bob, alice, 'packing up');
     final newPhone = await MessengerParty.join(
       relay,
       handle: 'bob',
@@ -490,18 +504,67 @@ void main() {
     await newPhone.controller.sendText(conversationId: conv, body: 'new phone');
     await waitFor(() => newPhone.controller.pendingCountFor(conv) == 0);
     List<ChatMessage> relayed() => alice.controller.messagesFor(conv).where((m) => !m.isLocalNotice).toList();
-    await waitFor(() => relayed().length == 2);
+    await waitFor(() => relayed().length == 3);
     await alice.controller.decryptMessage(relayed().last);
     // bob was not verified, so his new device is admitted and announced.
     await waitFor(() => alice.controller.messagesFor(conv).any((m) => m.isLocalNotice));
-    await alice.controller.sendText(conversationId: conv, body: 'after the move');
-    await waitFor(() => alice.controller.pendingCountFor(conv) == 0);
+    await deliver(alice, newPhone, 'after the move');
 
+    // The directory confirms the device the new session is bound to, so
+    // alice answers on that session instead of forking it.
     expect(alice.api.directoryLookups, {'bob': 2});
-    expect(alice.crypto.counts.bootstrap, 2);
+    expect(alice.crypto.counts.bootstrap, 1);
     final session = alice.controller.conversations.firstWhere((item) => item.id == conv).sessionState!;
     expect(session.remoteDeviceId, 'dev-bob-2');
     expect(session.remoteIdentityPublicKey, newPhone.device.identity.identityPublicKey);
+  });
+
+  test('a device injected into an established conversation never gets a reply', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final ghost = await _InjectedDevice.mint('dev-ghost', owner: bob);
+    ConversationSessionState session() => alice.controller.conversationById(conv)!.sessionState!;
+
+    // bob is not verified, so a new device of his is admitted on first use
+    // and announced. The conversation names it from then on: the safety
+    // numbers describe the identity the engine now holds a session with.
+    final injected = await ghost.handshake(relay, alice, 'ghost hello');
+    expect((await openRelayed(alice, injected)).status, DecryptStatus.ok);
+    expect(alice.controller.messagesFor(conv).where((m) => m.isLocalNotice), hasLength(1));
+    expect(session().remoteDeviceId, 'dev-ghost');
+    expect(session().remoteIdentityPublicKey, ghost.identityKey);
+
+    // The reply goes to the device the directory serves, which is bob's.
+    await deliver(alice, bob, 'secret for bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(session().remoteDeviceId, 'dev-bob');
+
+    // Once alice verified that device, a fresh session from the injected one
+    // still does not take her replies.
+    final served = await alice.controller.fetchPeerKeyBundle('bob');
+    expect(served.deviceId, 'dev-bob');
+    await alice.pins.markVerified(bob.device.userId, served.deviceId, served.identityPublicKey);
+    await openRelayed(alice, await ghost.handshake(relay, alice, 'ghost again'));
+    await deliver(alice, bob, 'after verifying bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(await bob.bodies(conv), containsAllInOrder(['secret for bob', 'after verifying bob']));
+  });
+
+  test('the engine never seals to an identity the conversation did not choose', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final ghost = await _InjectedDevice.mint('dev-ghost', owner: bob);
+    // The injected handshake reaches alice's engine between a send choosing
+    // its recipient and sealing: the engine installs it as the sending
+    // state before the conversation hears of it.
+    final injected = await ghost.handshake(relay, alice, 'ghost hello');
+    final opened = await alice.lib.messaging.decryptMessage(alice.lib.envelopeCodec.decodeApiEnvelope(injected));
+    expect(opened.status, DecryptStatus.ok);
+    expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-bob');
+
+    await deliver(alice, bob, 'secret for bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-bob');
   });
 
   // Opens alice's latest message on bob's side, then the blob the relay
@@ -581,4 +644,58 @@ void main() {
     expect(relay.attachments[reference.attachmentId]!.uploadStatus, 'uploaded');
     expect(plaintext, hasLength(2048));
   });
+}
+
+/// A device the server invents under [owner]'s account, with an identity
+/// the server holds: every handshake it opens is genuine X3DH, only from a
+/// device [owner] never had.
+class _InjectedDevice {
+  _InjectedDevice._(this.deviceId, this.owner, this.adapter, this.identityKey);
+
+  static Future<_InjectedDevice> mint(String deviceId, {required MessengerParty owner}) async {
+    final adapter = LibCryptoAdapter();
+    final identity = await adapter.identity.generateDeviceIdentity(deviceId);
+    adapter.setLocalIdentityLoader(() async => identity.identityPrivateKeyRef);
+    return _InjectedDevice._(deviceId, owner, adapter, identity.identityPublicKey);
+  }
+
+  final String deviceId;
+  final MessengerParty owner;
+  final LibCryptoAdapter adapter;
+  final String identityKey;
+
+  /// Opens a fresh session to [peer] and relays [body] on it in [owner]'s
+  /// name; returns the envelope.
+  Future<Map<String, dynamic>> handshake(FakeRelay relay, MessengerParty peer, String body) async {
+    final peerBundle = KeyBundle(
+      userId: peer.device.userId,
+      deviceId: peer.device.deviceId,
+      handle: peer.device.handle,
+      identityPublicKey: peer.device.identity.identityPublicKey,
+      signedPrekeyBundle: peer.device.identity.signedPrekeyBundle,
+    );
+    await adapter.sessions.bootstrapSession(SessionBootstrapRequest(
+      conversationId: conv,
+      localDeviceId: deviceId,
+      localUserId: owner.device.userId,
+      remoteUserId: peerBundle.userId,
+      remoteDeviceId: peerBundle.deviceId,
+      remoteIdentityPublicKey: peerBundle.identityPublicKey,
+      remoteSignedPrekeyBundle: peerBundle.signedPrekeyBundle,
+    ));
+    final envelope = adapter.envelopeCodec.encodeApiEnvelope(await adapter.messaging.encryptMessage(
+      conversationId: conv,
+      senderDeviceId: deviceId,
+      recipientUserId: peerBundle.userId,
+      body: body,
+      messageKind: MessageKind.text,
+      recipientBundle: peerBundle,
+    ));
+    relay.inject(senderHandle: owner.device.handle, conversationId: conv, envelope: envelope);
+    return envelope;
+  }
+
+  /// What this device reads of a relayed envelope.
+  Future<DecryptedMessage> open(Map<String, dynamic> relayed) =>
+      adapter.messaging.decryptMessage(adapter.envelopeCodec.decodeApiEnvelope(relayed));
 }

@@ -152,6 +152,22 @@ void main() {
     expect(await resolver.pinsForUser('alice'), hasLength(1));
   });
 
+  test('a new device is admitted only when asked, and only for an unverified user', () async {
+    await resolver.evaluate('alice', 'dev-a', _key(1));
+    expect(await resolver.evaluate('alice', 'dev-b', _key(2)), isA<NewDeviceForKnownUser>());
+    expect(await resolver.pinFor('alice', 'dev-b'), isNull);
+
+    final admitted = await resolver.evaluate('alice', 'dev-b', _key(2), admitNewDeviceOfUnverifiedUser: true);
+    expect((admitted as NewDeviceForKnownUser).admitted!.approvedAt, isNotNull);
+    expect(await resolver.evaluate('alice', 'dev-b', _key(2)), isA<PinMatch>());
+
+    await resolver.markVerified('alice', 'dev-a', _key(1));
+    final held = await resolver.evaluate('alice', 'dev-c', _key(3), admitNewDeviceOfUnverifiedUser: true);
+    expect((held as NewDeviceForKnownUser).admitted, isNull);
+    expect(held.knownUserVerified, isTrue);
+    expect(await resolver.pinFor('alice', 'dev-c'), isNull);
+  });
+
   test('key encodings that differ only in padding are the same key', () async {
     await resolver.evaluate('alice', 'dev-a', _key(1));
     final padded = base64Url.encode(List<int>.filled(32, 1));

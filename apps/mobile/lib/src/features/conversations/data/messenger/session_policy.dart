@@ -1,4 +1,6 @@
 import '../../../../core/crypto/crypto_engine.dart';
+import '../../../../core/util/base64url.dart';
+import '../../../../core/util/constant_time.dart';
 import '../conversation_models.dart';
 
 // Re-bootstrapping a live 1:1 session silently forks it: the peer keeps the
@@ -30,11 +32,33 @@ SessionAction decideSession({
   // one this session was opened to: that identity is gone, and so is the
   // session it had.
   final sessionKey = session.remoteIdentityPublicKey;
-  if (sessionKey.isNotEmpty && bundle.identityPublicKey.isNotEmpty && sessionKey != bundle.identityPublicKey) {
+  if (sessionKey.isNotEmpty &&
+      bundle.identityPublicKey.isNotEmpty &&
+      !sameIdentityKey(sessionKey, bundle.identityPublicKey)) {
     return SessionAction.bootstrap;
   }
   return SessionAction.reuse;
 }
+
+/// Whether two base64url identity keys are the same key. Handshakes and the
+/// directory encode keys differently (padding), so the bytes are compared;
+/// a key that does not decode matches only itself.
+bool sameIdentityKey(String a, String b) {
+  if (a == b) return true;
+  try {
+    return constantTimeBytesEqual(base64UrlNoPadDecode(a), base64UrlNoPadDecode(b));
+  } on FormatException {
+    return false;
+  }
+}
+
+/// Whether [session] already names the device and identity an inbound
+/// handshake proved. When it does not, the handshake moved the conversation:
+/// the engine now encrypts to that identity, so the conversation must name
+/// it too, or safety numbers and directory checks would describe a session
+/// nothing uses any more.
+bool sessionNames(ConversationSessionState session, String deviceId, String identityKey) =>
+    session.remoteDeviceId == deviceId && sameIdentityKey(session.remoteIdentityPublicKey, identityKey);
 
 /// The conversation after a directory answer for a session it keeps. A
 /// session that has not recorded its peer's identity key yet (opened by the

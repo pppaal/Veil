@@ -6,9 +6,6 @@ enum KeyClaim {
   /// Only the user's active device: the device a 1:1 session is opened to.
   active,
 
-  /// Every trusted device, for per-device sessions.
-  all,
-
   /// Identity and signed prekeys only; nothing is consumed.
   none,
 }

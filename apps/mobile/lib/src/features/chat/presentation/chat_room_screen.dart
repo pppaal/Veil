@@ -606,9 +606,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
           future: decryptFuture,
           // Only the authenticated inner kind may render as system chrome;
           // the envelope's messageKind is set by whoever relayed it. A
-          // reaction shows on its target, never as a row of its own.
+          // reaction shows on its target, never as a row of its own, and one
+          // whose sender is unproven (legacy) is not shown at all.
           builder: (context, snapshot) => switch (snapshot.data) {
-            DecryptedMessage(isOk: true, messageKind: MessageKind.reaction) => const SizedBox.shrink(),
+            DecryptedMessage(
+              status: DecryptStatus.ok || DecryptStatus.legacyUnauthenticated,
+              messageKind: MessageKind.reaction,
+            ) =>
+              const SizedBox.shrink(),
             DecryptedMessage(isOk: true, messageKind: MessageKind.system) =>
               _SystemNoticeBubble(message: message, notice: snapshot.data!),
             _ => _AnimatedBubbleEntry(

@@ -137,7 +137,7 @@ void main() {
     final cached = Completer<List<ConversationPreview>>();
     final trust = IdentityTrust(
       resolver,
-      ready: migrateLegacyTrust(storage: storage, resolver: resolver, readConversations: () => cached.future),
+      prepare: () => migrateLegacyTrust(storage: storage, resolver: resolver, readConversations: () => cached.future),
     );
     addTearDown(trust.dispose);
 
@@ -152,19 +152,33 @@ void main() {
     expect(pin.isVerified, isTrue);
   });
 
-  test('a migration that fails holds every decision back', () async {
+  test('a migration that fails holds every decision back until it succeeds', () async {
+    await writeLegacyVerifications({
+      'conv-erin': {'peerIdentityPublicKey': _key(4), 'verifiedAt': DateTime.utc(2026, 3, 2).toIso8601String()},
+    });
+    var cacheOpen = false;
     final trust = IdentityTrust(
       resolver,
-      ready: migrateLegacyTrust(
+      prepare: () => migrateLegacyTrust(
         storage: storage,
         resolver: resolver,
-        readConversations: () async => throw StateError('cache unavailable'),
+        readConversations: () async {
+          if (!cacheOpen) throw StateError('cache unavailable');
+          return [_direct('conv-erin', userId: 'user-erin', key: _key(4), sessionDeviceId: 'dev-erin', sessionKey: '')];
+        },
       ),
     );
     addTearDown(trust.dispose);
 
     await expectLater(trust.admit('conv-erin', 'user-erin', 'dev-erin', _key(7)), throwsStateError);
+    await expectLater(trust.ready, throwsStateError);
     expect(await resolver.pinsForUser('user-erin'), isEmpty);
+
+    // Once the cache opens, the next decision carries the verification over
+    // first, and holds the forged key back against it.
+    cacheOpen = true;
+    expect(await trust.admit('conv-erin', 'user-erin', 'dev-erin', _key(7)), isFalse);
+    expect((await resolver.pinFor('user-erin', 'dev-erin'))!.isVerified, isTrue);
   });
 
   test('a legacy key that does not decode is skipped', () async {

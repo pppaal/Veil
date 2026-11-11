@@ -131,6 +131,18 @@ class RemoteIdentityClaim {
 /// (identity pinning). Returning false stores nothing.
 typedef RemoteIdentityVerifier = Future<bool> Function(RemoteIdentityClaim claim);
 
+/// Thrown by an engine asked to encrypt to an identity its sending state no
+/// longer reaches: a peer's handshake moved the session after the caller
+/// chose the recipient. Nothing was encrypted; choose the recipient again.
+class SessionRecipientChanged implements Exception {
+  const SessionRecipientChanged(this.conversationId);
+
+  final String conversationId;
+
+  @override
+  String toString() => 'The session of $conversationId moved to another identity before this message was sealed.';
+}
+
 /// Private half of a published signed prekey, kept so PreKey frames that
 /// name it can still be answered during the rotation grace period.
 class StoredSignedPrekey {

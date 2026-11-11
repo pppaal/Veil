@@ -60,9 +60,9 @@ void main() {
   test('lookup reads the active device, its claimed prekey and the other trusted devices', () async {
     final client = _Recorder(_entry());
 
-    final entry = await KeysApi(client, codec).lookup('selene', accessToken: 'token', claim: KeyClaim.all);
+    final entry = await KeysApi(client, codec).lookup('selene', accessToken: 'token', claim: KeyClaim.active);
 
-    expect(client.calls.single, 'GET /keys/selene {claim: all} token');
+    expect(client.calls.single, 'GET /keys/selene {claim: active} token');
     final active = entry.activeDevice!;
     expect(active.bundle.userId, 'user-selene');
     expect(active.bundle.handle, 'selene');

@@ -84,19 +84,25 @@ final class IdentityChangeResolved extends IdentityTrustEvent {
 /// accepts it with [approve]; a key change is never accepted automatically,
 /// and for a verified contact not even by a plain approval.
 class IdentityTrust {
-  /// Every decision waits for [ready], which completes once the pin table
-  /// holds what earlier builds knew (see migrateLegacyTrust). If it fails,
-  /// decisions fail with it: deciding without that knowledge would pin
-  /// whatever key arrives first.
-  IdentityTrust(this.resolver, {Future<void>? ready}) : ready = ready ?? Future<void>.value() {
+  /// [prepare] fills the pin table with what earlier builds knew (see
+  /// migrateLegacyTrust); it starts at once.
+  IdentityTrust(this.resolver, {Future<void> Function()? prepare}) : _prepare = prepare {
     // Its error reaches every decision that awaits it; it is not unhandled.
-    this.ready.ignore();
+    ready.ignore();
   }
 
   final TrustedIdentityResolver resolver;
-  final Future<void> ready;
+  final Future<void> Function()? _prepare;
+  Future<void>? _preparing;
   final Map<String, PendingIdentityChange> _pending = {};
   final StreamController<IdentityTrustEvent> _events = StreamController<IdentityTrustEvent>.broadcast(sync: true);
+
+  /// Completes once the pin table is prepared. Every decision waits for it
+  /// and fails while it fails: deciding without what earlier builds knew
+  /// would pin whatever key arrives first. A failed preparation is tried
+  /// again by the next caller, so a cache that opens late holds decisions
+  /// back only until it does.
+  Future<void> get ready => _preparing ??= _attemptPreparation();
 
   Stream<IdentityTrustEvent> get events => _events.stream;
 
@@ -106,13 +112,12 @@ class IdentityTrust {
   /// are recorded as the conversation's pending change.
   Future<bool> admit(String conversationId, String userId, String deviceId, String identityKey) async {
     await ready;
-    final verdict = await resolver.evaluate(userId, deviceId, identityKey);
+    final verdict = await resolver.evaluate(userId, deviceId, identityKey, admitNewDeviceOfUnverifiedUser: true);
     switch (verdict) {
       case FirstUse() || PinMatch():
         _resolveIfAbout(conversationId, userId, deviceId);
         return true;
       case NewDeviceForKnownUser(knownUserVerified: false):
-        await resolver.approve(userId, deviceId, identityKey);
         _events.add(NewDeviceAdmitted(conversationId, userId: userId, deviceId: deviceId));
         return true;
       case NewDeviceForKnownUser(knownUserVerified: true):
@@ -184,6 +189,17 @@ class IdentityTrust {
   void clearPending() => _pending.clear();
 
   Future<void> dispose() => _events.close();
+
+  Future<void> _attemptPreparation() async {
+    try {
+      // Through a future, so that even a preparation that throws at once is
+      // forgotten only after [ready] has recorded this attempt.
+      await Future<void>.sync(() => _prepare?.call());
+    } catch (_) {
+      _preparing = null;
+      rethrow;
+    }
+  }
 
   void _hold(
     String conversationId,

@@ -26,8 +26,17 @@ class TrustedIdentityResolver {
   DateTime _now() => _clock().toUtc();
 
   /// Classifies [identityKey] (base64url) for the device. Pins it when the
-  /// user has never been seen before; changes nothing otherwise.
-  Future<IdentityVerdict> evaluate(String userId, String deviceId, String identityKey) async {
+  /// user has never been seen before; changes nothing otherwise, except that
+  /// with [admitNewDeviceOfUnverifiedUser] a new device of a user none of
+  /// whose devices is verified is pinned as approved in the same step
+  /// ([NewDeviceForKnownUser.admitted]). Deciding and pinning under one lock
+  /// keeps two keys presented at once for one new device from both passing.
+  Future<IdentityVerdict> evaluate(
+    String userId,
+    String deviceId,
+    String identityKey, {
+    bool admitNewDeviceOfUnverifiedUser = false,
+  }) async {
     _requireAddress(userId, deviceId);
     final key = _canonicalKey(identityKey);
     return _locked((pins) async {
@@ -44,7 +53,18 @@ class TrustedIdentityResolver {
       }
       final knownDevices = pins.where((p) => p.userId == userId);
       if (knownDevices.isNotEmpty) {
-        return NewDeviceForKnownUser(knownUserVerified: knownDevices.any((p) => p.isVerified));
+        final verified = knownDevices.any((p) => p.isVerified);
+        if (verified || !admitNewDeviceOfUnverifiedUser) return NewDeviceForKnownUser(knownUserVerified: verified);
+        final now = _now();
+        final admitted = TrustedIdentity(
+          userId: userId,
+          deviceId: deviceId,
+          identityKey: key,
+          firstSeenAt: now,
+          approvedAt: now,
+        );
+        await _store.save([...pins, admitted]);
+        return NewDeviceForKnownUser(knownUserVerified: false, admitted: admitted);
       }
       final pinned = TrustedIdentity(
         userId: userId,

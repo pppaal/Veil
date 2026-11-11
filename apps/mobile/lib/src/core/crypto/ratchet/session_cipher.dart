@@ -86,11 +86,17 @@ class SessionCipher {
         return true;
       });
 
+  /// Seals [payload] on the conversation's sending state. [recipientIdentityKey]
+  /// (base64url, empty when the caller knows none) is the identity the caller
+  /// chose to reach: an inbound handshake can install a state bound to
+  /// another one in the meantime, and a message is never sealed to an
+  /// identity the caller did not choose ([SessionRecipientChanged]).
   Future<CryptoEnvelope> encrypt({
     required String conversationId,
     required String senderDeviceId,
     required String recipientUserId,
     required InnerPayload payload,
+    String recipientIdentityKey = '',
   }) =>
       store.serialized(conversationId, () async {
         final record = store[conversationId];
@@ -98,6 +104,7 @@ class SessionCipher {
           throw StateError('No session for conversation $conversationId. Bootstrap a session before sending.');
         }
         final live = record.current;
+        if (!_reaches(live, recipientIdentityKey)) throw SessionRecipientChanged(conversationId);
         final scratch = live.copy();
         final String version;
         final Uint8List frame;
@@ -496,6 +503,18 @@ class SessionCipher {
       throw StateError('Claimed one-time prekey is malformed.');
     }
     return public;
+  }
+
+  // Legacy states never learned their peer's identity, so only the caller's
+  // choice of session binds them.
+  static bool _reaches(RatchetState state, String identityKey) {
+    final bound = state.remoteIdentityKey;
+    if (bound == null || identityKey.isEmpty) return true;
+    try {
+      return constantTimeEquals(bound, b64uDecode(identityKey));
+    } on FormatException {
+      return false;
+    }
   }
 
   static bool _hasBaseKey(RatchetState state, Uint8List baseKey) {

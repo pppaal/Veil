@@ -1281,6 +1281,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'The key server now serves another identity key for this device than the one pinned here. Nothing is sent to that key unless you compare and accept it.';
 
   @override
+  String get safetyNumbersDirectoryOtherDeviceTitle =>
+      'The key server lists another device';
+
+  @override
+  String get safetyNumbersDirectoryOtherDeviceBody =>
+      'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.';
+
+  @override
   String get safetyNumbersPendingBody =>
       'This contact presents a new identity key. Compare the new safety number below before accepting it.';
 

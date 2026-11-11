@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type {
   ClaimOneTimePrekeyResponse,
   OneTimePrekeyCountResponse,
@@ -34,6 +35,7 @@ export class PrekeysController {
   // Legacy single-device claim, superseded by GET /v1/keys/:handle. A claim
   // consumes the target's pool, so it needs an authenticated requester whose
   // per-target budgets cap how fast any one device can drain it.
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Post('claim/:handle')
   claim(
     @Req() request: AuthenticatedRequest,

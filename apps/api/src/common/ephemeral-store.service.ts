@@ -85,16 +85,23 @@ export class EphemeralStoreService implements OnModuleDestroy {
 
   /**
    * Atomic counter for fixed-window budgets. The window starts at the first
-   * increment and is never extended by later ones (EXPIRE NX), so a caller
-   * hammering the key cannot keep its own window open forever.
+   * increment and is never extended by later ones, so a caller hammering the
+   * key cannot keep its own window open forever.
    */
   async incrementWithTtl(key: string, ttlSeconds: number): Promise<number> {
     this.purgeExpiredFallbackEntries();
     if (this.redis) {
-      const results = await this.redis.multi().incr(key).expire(key, ttlSeconds, 'NX').exec();
-      const [error, count] = results?.[0] ?? [];
-      if (error || typeof count !== 'number') {
-        throw error ?? new Error('Redis INCR returned no count');
+      // The key is created together with its expiry (SET NX EX) and INCR keeps
+      // that TTL, so no failure between two commands can leave a counter that
+      // never expires and locks its subject out for good.
+      const results = await this.redis
+        .multi()
+        .set(key, '0', 'EX', ttlSeconds, 'NX')
+        .incr(key)
+        .exec();
+      const [[createError] = [], [incrementError, count] = []] = results ?? [];
+      if (createError || incrementError || typeof count !== 'number') {
+        throw createError ?? incrementError ?? new Error('Redis INCR returned no count');
       }
       return count;
     }

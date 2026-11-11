@@ -62,17 +62,19 @@ that schedules sweeps. It runs shortly after boot and then every 10 minutes.
 
 | Key | Kept for | Notes |
 | --- | --- | --- |
-| `budget:*` | 1 hour | Key-directory budgets. The key holds only a SHA-256 digest of who looked up whom. |
+| `budget:*` | 1 hour | Key-directory budgets. The key holds a SHA-256 digest of who looked up whom instead of the ids. The digest is unkeyed, so someone who also holds the database ids can test a guessed pair; the one-hour expiry is what limits it. |
 | `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session; see `device-transfer-flow.md`. |
 
 ## Directory privacy
 
 The key directory follows the same minimisation:
 
-- `GET /v1/keys/:handle` needs a signed-in device. One-time prekeys are claimed
-  atomically in one transaction, at most 20 per hour per (requester device,
-  target user) and 50 per hour per target device. Over budget, the lookup
-  still succeeds but returns no one-time prekey and consumes nothing.
+- `GET /v1/keys/:handle` needs a signed-in device and, like the lookups it
+  replaces, allows 10 requests per minute per client, so the handle namespace
+  stays slow to enumerate. One-time prekeys are claimed atomically in one
+  transaction, at most 20 per hour per (requester device, target user) and 50
+  per hour per target device. Over budget, the lookup still succeeds but
+  returns no one-time prekey and consumes nothing.
 - The deprecated public `GET /v1/users/:handle/key-bundle` returns no display
   name, avatar, device platform or update time, answers with
   `Deprecation: true` and a `Link` to its successor, and allows 20 lookups per

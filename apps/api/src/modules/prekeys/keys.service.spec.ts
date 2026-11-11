@@ -227,6 +227,27 @@ describe('KeysService.getKeys', () => {
     expect(prisma.oneTimePrekeys.filter((p) => p.deviceId === revoked && p.consumedAt)).toEqual([]);
   });
 
+  it('claim=all claims in device id order, whatever order the devices are listed in', async () => {
+    const { keys, prisma, alice, bob, seedPrekeys } = await setup();
+    seedPrekeys(bob.phone, 1);
+    seedPrekeys(bob.laptop, 1);
+    const [lowId, highId] = [bob.phone, bob.laptop].sort();
+    for (const device of prisma.devices) {
+      if (device.id === lowId) device.trustedAt = new Date('2026-01-01');
+      if (device.id === highId) device.trustedAt = new Date('2026-03-01');
+    }
+    // The retention fake adds findFirst at runtime; the base type lacks it.
+    const prekeyTable = prisma.oneTimePrekey as unknown as {
+      findFirst: (args: { where: { deviceId: string } }) => Promise<unknown>;
+    };
+    const findFirst = jest.spyOn(prekeyTable, 'findFirst');
+
+    const result = await keys.getKeys(alice, 'bob', 'all');
+
+    expect(result.devices.map((d) => d.deviceId)).toEqual([highId, lowId]);
+    expect(findFirst.mock.calls.map(([args]) => args.where.deviceId)).toEqual([lowId, highId]);
+  });
+
   it('claim=none returns keys and consumes nothing', async () => {
     const { keys, alice, bob, seedPrekeys, unconsumed } = await setup();
     seedPrekeys(bob.phone, 2);
@@ -326,6 +347,17 @@ describe('key directory routes', () => {
     ]) {
       expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBeUndefined();
     }
+  });
+
+  it('handle lookups keep a per-minute rate limit', () => {
+    // The metadata keys @Throttle writes for the default throttler.
+    const perMinuteLimit = (handler: object) => [
+      Reflect.getMetadata('THROTTLER:TTLdefault', handler),
+      Reflect.getMetadata('THROTTLER:LIMITdefault', handler),
+    ];
+
+    expect(perMinuteLimit(KeysController.prototype.getKeys)).toEqual([60_000, 10]);
+    expect(perMinuteLimit(PrekeysController.prototype.claim)).toEqual([60_000, 30]);
   });
 
   it('the rotation body cannot carry an identity key', async () => {

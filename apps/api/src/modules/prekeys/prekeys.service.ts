@@ -110,6 +110,10 @@ export class PrekeysService {
     if (claimable.length === 0) {
       return new Map();
     }
+    // Claim in id order, not listing order (which follows lastSeenAt), so two
+    // concurrent lookups of the same account lock prekey rows in the same
+    // order and cannot deadlock each other.
+    claimable.sort();
 
     return this.prisma.$transaction(async (tx) => {
       const claimed = new Map<string, OneTimePrekeyUpload>();

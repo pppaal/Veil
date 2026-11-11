@@ -230,7 +230,9 @@ export class SafetyService {
         conversationId: dto.conversationId ?? null,
         messageId: dto.messageId ?? null,
         reason: dto.reason,
-        note: dto.note ?? null,
+        // A free-text note is plaintext the server would keep for the report's
+        // lifetime, so it is accepted for client compatibility but never stored.
+        note: null,
       },
       select: { id: true, createdAt: true },
     });

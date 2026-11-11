@@ -3,7 +3,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { forbidden, notFound } from '../../common/errors/api-error';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { CreateStoryDto } from './dto/create-story.dto';
+import { RelationshipService } from '../safety/relationship.service';
+import { CreateStoryDto, TEXT_STORY_CONTENT_URL } from './dto/create-story.dto';
 
 const STORY_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -12,17 +13,15 @@ export class StoriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly relationships: RelationshipService,
   ) {}
 
+  // A story's audience is its author's mutual contacts that neither side has
+  // blocked; adding someone as a contact never opens their stories on its own.
   async listStories(auth: { userId: string }) {
     const now = new Date();
 
-    const contacts = await this.prisma.userContact.findMany({
-      where: { userId: auth.userId },
-      select: { contactUserId: true },
-    });
-
-    const contactIds = contacts.map((c) => c.contactUserId);
+    const contactIds = await this.relationships.visibleContactIds(auth.userId);
     const userIds = [auth.userId, ...contactIds];
 
     const stories = await this.prisma.story.findMany({
@@ -72,16 +71,13 @@ export class StoriesService {
       data: {
         userId: auth.userId,
         contentType: dto.contentType,
-        contentUrl: dto.contentUrl,
+        contentUrl: dto.contentUrl ?? TEXT_STORY_CONTENT_URL,
         caption: dto.caption ?? null,
         expiresAt,
       },
     });
 
-    const contacts = await this.prisma.userContact.findMany({
-      where: { contactUserId: auth.userId },
-      select: { userId: true },
-    });
+    const audienceIds = await this.relationships.visibleContactIds(auth.userId);
 
     const user = await this.prisma.user.findUnique({
       where: { id: auth.userId },
@@ -98,8 +94,8 @@ export class StoriesService {
       expiresAt: story.expiresAt.toISOString(),
     };
 
-    for (const contact of contacts) {
-      this.realtimeGateway.emitToUser(contact.userId, 'story.new', payload);
+    for (const audienceId of audienceIds) {
+      this.realtimeGateway.emitToUser(audienceId, 'story.new', payload);
     }
 
     return {
@@ -119,7 +115,12 @@ export class StoriesService {
       where: { id: storyId },
     });
 
-    if (!story || story.expiresAt <= now) {
+    // Outside the audience the story does not exist, so ids cannot be probed.
+    if (
+      !story ||
+      story.expiresAt <= now ||
+      !(await this.relationships.canSeeStoriesOf(auth.userId, story.userId))
+    ) {
       throw notFound('story_not_found', 'Story not found or expired');
     }
 

@@ -93,6 +93,21 @@ describe('DeviceTransferService.getSessionStatus (state machine)', () => {
     expect((await status(activeSession(), claim())).status).toBe('claimed');
     expect((await status(activeSession(), null)).status).toBe('pending');
   });
+
+  it('reports a session killed by a second claim as invalidated, never completed', async () => {
+    const result = await status(
+      activeSession({ tokenHash: 'invalidated', completedAt: new Date() }),
+    );
+    expect(result).toMatchObject({ status: 'invalidated', completedAt: null });
+  });
+
+  it('reports a session closed after expiry or by a newer transfer as expired, never completed', async () => {
+    const result = await status(
+      activeSession({ tokenHash: 'closed', completedAt: new Date() }),
+      claim(),
+    );
+    expect(result).toMatchObject({ status: 'expired', completedAt: null, pendingClaim: null });
+  });
 });
 
 describe('DeviceTransferService.approve', () => {

@@ -1,6 +1,8 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
+import { DirectoryBudget } from './directory-budget';
 import { PrekeysService } from './prekeys.service';
+import { FakeEphemeralStoreService } from '../../../test/support/fake-services';
 
 // FakePrismaService doesn't model OneTimePrekey, so we hand-roll the handful
 // of prisma methods each path uses.
@@ -16,7 +18,8 @@ type Mocks = {
 };
 
 function makePrisma(m: Mocks) {
-  return {
+  const prisma = {
+    $transaction: async (run: (tx: unknown) => Promise<unknown>) => run(prisma),
     device: {
       findUnique: m.device?.findUnique ?? jest.fn(),
       findMany: m.device?.findMany ?? jest.fn(),
@@ -28,18 +31,26 @@ function makePrisma(m: Mocks) {
       findFirst: m.oneTimePrekey?.findFirst ?? jest.fn(),
       updateMany: m.oneTimePrekey?.updateMany ?? jest.fn(),
     },
-  } as never;
+  };
+  return prisma as never;
 }
+
+const makeService = (prisma: never) =>
+  new PrekeysService(prisma, new DirectoryBudget(new FakeEphemeralStoreService() as never));
 
 const USER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const DEVICE = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 const activeDevice = { userId: USER, isActive: true, revokedAt: null };
+const REQUESTER = {
+  userId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+  deviceId: 'dddddddd-dddd-dddd-dddd-dddddddddddd',
+};
 
 describe('PrekeysService.upload', () => {
   it('stores the batch (skipping duplicates) and returns uploaded + remaining count', async () => {
     const createMany = jest.fn(async () => ({ count: 2 }));
     const count = jest.fn(async () => 42);
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({
         device: { findUnique: jest.fn(async () => activeDevice) },
         oneTimePrekey: { createMany, count },
@@ -56,7 +67,7 @@ describe('PrekeysService.upload', () => {
   });
 
   it('rejects an upload for a device the caller does not own', async () => {
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({
         device: { findUnique: jest.fn(async () => ({ ...activeDevice, userId: 'someone-else' })) },
       }),
@@ -67,7 +78,7 @@ describe('PrekeysService.upload', () => {
   });
 
   it('rejects an upload from a revoked device', async () => {
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({
         device: { findUnique: jest.fn(async () => ({ ...activeDevice, revokedAt: new Date() })) },
       }),
@@ -87,11 +98,11 @@ describe('PrekeysService.claim', () => {
   it('claims the lowest unused prekey and marks it consumed', async () => {
     const findFirst = jest.fn(async () => ({ id: 'row1', keyId: 7, publicKey: 'pk7' }));
     const updateMany = jest.fn(async () => ({ count: 1 }));
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst, updateMany } }),
     );
 
-    const result = await svc.claim('alice');
+    const result = await svc.claim(REQUESTER, 'alice');
 
     expect(result).toEqual({ deviceId: DEVICE, prekey: { keyId: 7, publicKey: 'pk7' } });
     expect(updateMany).toHaveBeenCalledWith(
@@ -104,9 +115,9 @@ describe('PrekeysService.claim', () => {
 
   it('returns prekey=null when the pool is empty', async () => {
     const findFirst = jest.fn(async () => null);
-    const svc = new PrekeysService(makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst } }));
+    const svc = makeService(makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst } }));
 
-    expect(await svc.claim('alice')).toEqual({ deviceId: DEVICE, prekey: null });
+    expect(await svc.claim(REQUESTER, 'alice')).toEqual({ deviceId: DEVICE, prekey: null });
   });
 
   it('retries when it loses the race for a candidate, then succeeds on the next', async () => {
@@ -119,19 +130,19 @@ describe('PrekeysService.claim', () => {
       .fn()
       .mockResolvedValueOnce({ count: 0 })
       .mockResolvedValueOnce({ count: 1 });
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst, updateMany } }),
     );
 
-    const result = await svc.claim('alice');
+    const result = await svc.claim(REQUESTER, 'alice');
 
     expect(result).toEqual({ deviceId: DEVICE, prekey: { keyId: 2, publicKey: 'pk2' } });
     expect(updateMany).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a claim for an unknown handle', async () => {
-    const svc = new PrekeysService(makePrisma({ user: { findUnique: jest.fn(async () => null) } }));
-    await expect(svc.claim('ghost')).rejects.toBeInstanceOf(NotFoundException);
+    const svc = makeService(makePrisma({ user: { findUnique: jest.fn(async () => null) } }));
+    await expect(svc.claim(REQUESTER, 'ghost')).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('gives up with prekey=null after losing the race CLAIM_MAX_ATTEMPTS times', async () => {
@@ -140,22 +151,22 @@ describe('PrekeysService.claim', () => {
     // rather than spin forever.
     const findFirst = jest.fn(async () => ({ id: 'row', keyId: 1, publicKey: 'pk' }));
     const updateMany = jest.fn(async () => ({ count: 0 }));
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst, updateMany } }),
     );
 
-    expect(await svc.claim('alice')).toEqual({ deviceId: DEVICE, prekey: null });
+    expect(await svc.claim(REQUESTER, 'alice')).toEqual({ deviceId: DEVICE, prekey: null });
     // 5 attempts (CLAIM_MAX_ATTEMPTS), all lost.
     expect(updateMany).toHaveBeenCalledTimes(5);
   });
 
   it('rejects when the handle exists but has no active/trusted device', async () => {
-    const svc = new PrekeysService(
+    const svc = makeService(
       makePrisma({
         user: { findUnique: jest.fn(async () => ({ id: USER, activeDeviceId: DEVICE })) },
         device: { findMany: jest.fn(async () => []) },
       }),
     );
-    await expect(svc.claim('alice')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(svc.claim(REQUESTER, 'alice')).rejects.toBeInstanceOf(NotFoundException);
   });
 });

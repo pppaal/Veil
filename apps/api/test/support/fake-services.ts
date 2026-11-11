@@ -20,6 +20,18 @@ export class FakeEphemeralStoreService {
     this.values.delete(key);
     return JSON.parse(value) as T;
   }
+
+  async incrementWithTtl(key: string, _ttlSeconds: number): Promise<number> {
+    const next = Number(this.values.get(key) ?? '0') + 1;
+    this.values.set(key, String(next));
+    return next;
+  }
+
+  async setJsonIfAbsent<T>(key: string, value: T, _ttlSeconds: number): Promise<boolean> {
+    if (this.values.has(key)) return false;
+    this.values.set(key, JSON.stringify(value));
+    return true;
+  }
 }
 
 export class FakeConfigService {

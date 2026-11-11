@@ -15,6 +15,8 @@ import { AccountService } from './account.service';
 // implementation.
 
 type StepName =
+  | 'blobs.findMany'
+  | 'blobs.deleteObject'
   | 'phase1.user.update'
   | 'phase1.device.updateMany'
   | 'phase2.message.deleteMany'
@@ -37,9 +39,11 @@ function buildPrismaMock(opts?: {
   deviceIds?: string[];
   ownedGroupConversationIds?: string[];
   ownedChannelConversationIds?: string[];
+  uploadedStorageKeys?: string[];
 }) {
   const order: StepName[] = [];
   const deviceIds = opts?.deviceIds ?? ['device-1'];
+  const uploadedStorageKeys = opts?.uploadedStorageKeys ?? [];
   const ownedGroups = opts?.ownedGroupConversationIds ?? [];
   const ownedChannels = opts?.ownedChannelConversationIds ?? [];
 
@@ -93,7 +97,13 @@ function buildPrismaMock(opts?: {
       findMany: jest.fn().mockResolvedValue(ownedChannels.map((id) => ({ conversationId: id }))),
     },
     message: { deleteMany: jest.fn(record('phase2.message.deleteMany')) },
-    attachment: { deleteMany: jest.fn(record('phase2.attachment.deleteMany')) },
+    attachment: {
+      findMany: jest.fn(async () => {
+        order.push('blobs.findMany');
+        return uploadedStorageKeys.map((storageKey) => ({ storageKey }));
+      }),
+      deleteMany: jest.fn(record('phase2.attachment.deleteMany')),
+    },
     callRecord: { deleteMany: jest.fn(record('phase2.callRecord.deleteMany')) },
     messageReceipt: { deleteMany: jest.fn(record('phase2.messageReceipt.deleteMany')) },
     reaction: { deleteMany: jest.fn(record('phase2.reaction.deleteMany')) },
@@ -107,9 +117,14 @@ function buildPrismaMock(opts?: {
   return { prisma, order };
 }
 
-function buildService(prismaMock: ReturnType<typeof buildPrismaMock>['prisma']) {
+function buildService(
+  prismaMock: ReturnType<typeof buildPrismaMock>['prisma'],
+  storage: { deleteObject: (storageKey: string) => Promise<void> } = {
+    deleteObject: async () => undefined,
+  },
+) {
   const realtimeGateway = { disconnectUser: () => 0 } as never;
-  return new AccountService(prismaMock as never, realtimeGateway);
+  return new AccountService(prismaMock as never, realtimeGateway, storage as never);
 }
 
 const userId = 'user-victim';
@@ -166,5 +181,46 @@ describe('AccountService.deleteAccount', () => {
     await buildService(prisma).deleteAccount(userId);
     expect(order[order.length - 1]).toBe('phase3.user.delete');
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('deleteAccount calls deleteObject for every uploaded key', async () => {
+    const uploadedStorageKeys = ['attachments/a/1', 'attachments/b/2', 'attachments/c/3'];
+    const { prisma, order } = buildPrismaMock({
+      deviceIds: ['device-1', 'device-2'],
+      uploadedStorageKeys,
+    });
+    const deleted: string[] = [];
+    const storage = {
+      deleteObject: async (storageKey: string) => {
+        order.push('blobs.deleteObject');
+        deleted.push(storageKey);
+      },
+    };
+
+    await buildService(prisma, storage).deleteAccount(userId);
+
+    expect(deleted).toEqual(uploadedStorageKeys);
+    expect(prisma.attachment.findMany).toHaveBeenCalledWith({
+      where: { uploaderDeviceId: { in: ['device-1', 'device-2'] } },
+      select: { storageKey: true },
+    });
+    // Blobs go before the rows that point at them.
+    expect(order.lastIndexOf('blobs.deleteObject')).toBeLessThan(
+      order.indexOf('phase2.attachment.deleteMany'),
+    );
+  });
+
+  it('keeps erasing when a blob delete fails', async () => {
+    const { prisma, order } = buildPrismaMock({ uploadedStorageKeys: ['attachments/a/1'] });
+    const storage = {
+      deleteObject: async () => {
+        throw new Error('storage down');
+      },
+    };
+
+    await expect(buildService(prisma, storage).deleteAccount(userId)).resolves.toEqual({
+      deleted: true,
+    });
+    expect(order[order.length - 1]).toBe('phase3.user.delete');
   });
 });

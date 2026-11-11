@@ -64,6 +64,18 @@ describe('SafetyService.fileReport', () => {
     const res = await svc.fileReport(USER, dto());
     expect(res.reportId).toBe('r1');
   });
+
+  it('accepts a free-text note but never stores it', async () => {
+    const create = jest.fn(async () => ({ id: 'r1', createdAt: new Date() }));
+    const svc = make({ user: { findUnique: async () => ({ id: 'u2' }) }, abuseReport: { create } });
+
+    await svc.fileReport(USER, dto({ note: 'they sent me their home address' }));
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ note: null }) }),
+    );
+    expect(JSON.stringify(create.mock.calls)).not.toContain('home address');
+  });
 });
 
 describe('SafetyService.setConversationMute', () => {

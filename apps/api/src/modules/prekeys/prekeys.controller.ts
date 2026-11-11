@@ -7,19 +7,18 @@ import type {
   UploadOneTimePrekeysResponse,
 } from '@veil/contracts';
 
-import { Public } from '../../common/guards/public.decorator';
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { UploadPrekeysDto } from './dto/upload-prekeys.dto';
 import { PrekeysService } from './prekeys.service';
 
 @ApiTags('prekeys')
+@ApiBearerAuth()
 @Controller('prekeys')
 export class PrekeysController {
   constructor(private readonly prekeysService: PrekeysService) {}
 
-  // Authenticated: a device uploads/replenishes its own pool. The device id
-  // comes from the token, so a device can only ever write its own prekeys.
-  @ApiBearerAuth()
+  // A device uploads/replenishes its own pool. The device id comes from the
+  // token, so a device can only ever write its own prekeys.
   @Post()
   upload(
     @Req() request: AuthenticatedRequest,
@@ -28,19 +27,20 @@ export class PrekeysController {
     return this.prekeysService.upload(request.auth.userId, request.auth.deviceId, dto.prekeys);
   }
 
-  @ApiBearerAuth()
   @Get('count')
   count(@Req() request: AuthenticatedRequest): Promise<OneTimePrekeyCountResponse> {
     return this.prekeysService.count(request.auth.userId, request.auth.deviceId);
   }
 
-  // Public: an initiator claims one of the target's prekeys to start a session,
-  // mirroring the @Public key-bundle lookup. Consuming write, so throttle it to
-  // blunt pool-drain abuse; a claim reveals only opaque public key material.
-  @Public()
+  // Legacy single-device claim, superseded by GET /v1/keys/:handle. A claim
+  // consumes the target's pool, so it needs an authenticated requester whose
+  // per-target budgets cap how fast any one device can drain it.
   @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @Post('claim/:handle')
-  claim(@Param('handle') handle: string): Promise<ClaimOneTimePrekeyResponse> {
-    return this.prekeysService.claim(handle);
+  claim(
+    @Req() request: AuthenticatedRequest,
+    @Param('handle') handle: string,
+  ): Promise<ClaimOneTimePrekeyResponse> {
+    return this.prekeysService.claim(request.auth, handle);
   }
 }

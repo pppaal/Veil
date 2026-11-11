@@ -182,7 +182,7 @@ describe('VEIL API (e2e)', () => {
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 2048,
-      contentType: 'image/png',
+      contentType: upload.body.upload.headers['Content-Type'],
       metadata: {
         encrypted: 'true',
         sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',

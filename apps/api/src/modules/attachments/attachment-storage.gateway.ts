@@ -51,6 +51,12 @@ export interface AttachmentStorageGateway {
   createDownloadTarget(storageKey: string): Promise<AttachmentDownloadTarget>;
 }
 
+// The SDK sets no timeouts of its own, so a hung connection would pin the
+// request or retention sweep waiting on it forever. Each attempt is bounded;
+// the SDK's retries still cover transient failures.
+const STORAGE_CONNECTION_TIMEOUT_MS = 3_000;
+const STORAGE_REQUEST_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
   constructor(private readonly config: AppConfigService) {
@@ -61,6 +67,12 @@ export class S3AttachmentStorageGateway implements AttachmentStorageGateway {
       credentials: {
         accessKeyId: config.s3AccessKey,
         secretAccessKey: config.s3SecretKey,
+      },
+      requestHandler: {
+        connectionTimeout: STORAGE_CONNECTION_TIMEOUT_MS,
+        requestTimeout: STORAGE_REQUEST_TIMEOUT_MS,
+        // Without this the request timeout only logs a warning.
+        throwOnRequestTimeout: true,
       },
     });
     this.publicClient = new S3Client({

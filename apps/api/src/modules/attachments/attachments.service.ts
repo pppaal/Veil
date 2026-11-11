@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type {
   AttachmentDownloadTicketResponse,
   CompleteAttachmentUploadResponse,
@@ -15,6 +16,10 @@ import {
   type AttachmentStorageGateway,
 } from './attachment-storage.gateway';
 import { CompleteAttachmentUploadDto, CreateUploadTicketDto } from './dto/attachment.dto';
+
+// Every blob is ciphertext, so storage only ever sees this type; the real MIME
+// type travels inside the end-to-end encrypted attachment pointer.
+const STORED_ATTACHMENT_CONTENT_TYPE = 'application/octet-stream';
 
 @Injectable()
 export class AttachmentsService {
@@ -36,8 +41,10 @@ export class AttachmentsService {
     const attachment = await this.prisma.attachment.create({
       data: {
         uploaderDeviceId: deviceId,
-        storageKey: `attachments/${deviceId}/${randomUUID()}`,
-        contentType: dto.contentType,
+        // Opaque on purpose: no device id, so the object store cannot group
+        // blobs by uploader.
+        storageKey: `attachments/${randomUUID()}/${randomUUID()}`,
+        contentType: STORED_ATTACHMENT_CONTENT_TYPE,
         sizeBytes: dto.sizeBytes,
         sha256: dto.sha256,
         uploadStatus: 'pending',
@@ -181,24 +188,29 @@ export class AttachmentsService {
       );
     }
 
-    if (attachment.uploaderDeviceId !== auth.deviceId) {
-      const visibleMessage = await this.prisma.message.findFirst({
-        where: {
-          attachmentId,
-          conversation: {
-            members: {
-              some: {
-                userId: auth.userId,
-              },
+    // Access is granted by a live message only, never by having uploaded the
+    // blob: once every referencing message is deleted for everyone, consumed
+    // as view-once or expired, nobody can mint a new download URL.
+    const now = new Date();
+    const liveMessage = await this.prisma.message.findFirst({
+      where: {
+        attachmentId,
+        deletedAt: null,
+        attachmentRef: { not: Prisma.AnyNull },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        conversation: {
+          members: {
+            some: {
+              userId: auth.userId,
             },
           },
         },
-        select: { id: true },
-      });
+      },
+      select: { id: true },
+    });
 
-      if (!visibleMessage) {
-        throw forbidden('attachment_forbidden', 'Attachment is not accessible to actor');
-      }
+    if (!liveMessage) {
+      throw forbidden('attachment_forbidden', 'Attachment is not accessible to actor');
     }
 
     const download = await this.storageGateway.createDownloadTarget(attachment.storageKey);

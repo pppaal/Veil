@@ -1717,6 +1717,1134 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New encrypted message'**
   String get notificationNewMessageBody;
+
+  /// No description provided for @startDirectTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Find by Handle'**
+  String get startDirectTitle;
+
+  /// No description provided for @startDirectEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'DIRECT DISCOVERY'**
+  String get startDirectEyebrow;
+
+  /// No description provided for @startDirectHeroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No contact sync.'**
+  String get startDirectHeroTitle;
+
+  /// No description provided for @startDirectHeroBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.'**
+  String get startDirectHeroBody;
+
+  /// No description provided for @startDirectPillManual.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual discovery'**
+  String get startDirectPillManual;
+
+  /// No description provided for @startDirectPillNoGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'No social graph'**
+  String get startDirectPillNoGraph;
+
+  /// No description provided for @startDirectPillDirectOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct only'**
+  String get startDirectPillDirectOnly;
+
+  /// No description provided for @startDirectBannerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Deliberate discovery'**
+  String get startDirectBannerTitle;
+
+  /// No description provided for @startDirectBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations open only when you know the exact handle. There is no graph expansion layer here.'**
+  String get startDirectBannerBody;
+
+  /// No description provided for @startDirectMetricDiscovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Discovery'**
+  String get startDirectMetricDiscovery;
+
+  /// No description provided for @startDirectMetricDiscoveryValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual'**
+  String get startDirectMetricDiscoveryValue;
+
+  /// No description provided for @startDirectMetricGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'Graph'**
+  String get startDirectMetricGraph;
+
+  /// No description provided for @startDirectMetricGraphValue.
+  ///
+  /// In en, this message translates to:
+  /// **'None'**
+  String get startDirectMetricGraphValue;
+
+  /// No description provided for @startDirectMetricMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode'**
+  String get startDirectMetricMode;
+
+  /// No description provided for @startDirectMetricModeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct 1:1'**
+  String get startDirectMetricModeValue;
+
+  /// No description provided for @startDirectFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'TARGET HANDLE'**
+  String get startDirectFieldLabel;
+
+  /// No description provided for @startDirectAwaitingInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting input'**
+  String get startDirectAwaitingInput;
+
+  /// No description provided for @startDirectFieldCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Discovery stays manual. Direct conversations only.'**
+  String get startDirectFieldCaption;
+
+  /// No description provided for @startDirectInputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Handle'**
+  String get startDirectInputLabel;
+
+  /// No description provided for @startDirectErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to open conversation'**
+  String get startDirectErrorTitle;
+
+  /// No description provided for @startDirectOpening.
+  ///
+  /// In en, this message translates to:
+  /// **'Opening conversation'**
+  String get startDirectOpening;
+
+  /// No description provided for @startDirectOpenButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Open direct conversation'**
+  String get startDirectOpenButton;
+
+  /// No description provided for @startGroupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start Group Chat'**
+  String get startGroupTitle;
+
+  /// No description provided for @startGroupEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'GROUP CREATION'**
+  String get startGroupEyebrow;
+
+  /// No description provided for @startGroupHeroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Private by invitation.'**
+  String get startGroupHeroTitle;
+
+  /// No description provided for @startGroupHeroBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups are explicit. Add members by handle — VEIL never expands invites through contact graphs.'**
+  String get startGroupHeroBody;
+
+  /// No description provided for @startGroupPillInviteOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Invite-only'**
+  String get startGroupPillInviteOnly;
+
+  /// No description provided for @startGroupPillManualRoster.
+  ///
+  /// In en, this message translates to:
+  /// **'Manual roster'**
+  String get startGroupPillManualRoster;
+
+  /// No description provided for @startGroupPillE2E.
+  ///
+  /// In en, this message translates to:
+  /// **'E2E encrypted'**
+  String get startGroupPillE2E;
+
+  /// No description provided for @startGroupNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'GROUP NAME'**
+  String get startGroupNameLabel;
+
+  /// No description provided for @startGroupRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get startGroupRequired;
+
+  /// No description provided for @startGroupNameCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Visible to members. You can rename later.'**
+  String get startGroupNameCaption;
+
+  /// No description provided for @startGroupNameInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get startGroupNameInput;
+
+  /// No description provided for @startGroupDescriptionLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'DESCRIPTION'**
+  String get startGroupDescriptionLabel;
+
+  /// No description provided for @startGroupDescriptionCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Optional. Purpose, charter, or context for members.'**
+  String get startGroupDescriptionCaption;
+
+  /// No description provided for @startGroupDescriptionInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Description'**
+  String get startGroupDescriptionInput;
+
+  /// No description provided for @startGroupDescriptionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'What is this group for?'**
+  String get startGroupDescriptionHint;
+
+  /// No description provided for @startGroupMembersLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'INITIAL MEMBERS'**
+  String get startGroupMembersLabel;
+
+  /// No description provided for @startGroupNoneYet.
+  ///
+  /// In en, this message translates to:
+  /// **'None yet'**
+  String get startGroupNoneYet;
+
+  /// No description provided for @startGroupMembersCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} handle(s)'**
+  String startGroupMembersCount(int count);
+
+  /// No description provided for @startGroupMembersCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Comma or space separated handles. You can add more after creation.'**
+  String get startGroupMembersCaption;
+
+  /// No description provided for @startGroupMembersInput.
+  ///
+  /// In en, this message translates to:
+  /// **'Member handles'**
+  String get startGroupMembersInput;
+
+  /// No description provided for @startGroupPublicTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Public directory'**
+  String get startGroupPublicTitle;
+
+  /// No description provided for @startGroupPublicSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Public groups are discoverable by handle. Keep off for invite-only groups.'**
+  String get startGroupPublicSubtitle;
+
+  /// No description provided for @startGroupErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Unable to create group'**
+  String get startGroupErrorTitle;
+
+  /// No description provided for @startGroupCreating.
+  ///
+  /// In en, this message translates to:
+  /// **'Creating group'**
+  String get startGroupCreating;
+
+  /// No description provided for @startGroupCreateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Create group'**
+  String get startGroupCreateButton;
+
+  /// No description provided for @safetyNumbersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety Number'**
+  String get safetyNumbersTitle;
+
+  /// No description provided for @safetyNumbersLoadingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Deriving safety number'**
+  String get safetyNumbersLoadingTitle;
+
+  /// No description provided for @safetyNumbersLoadingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Hashing identity keys locally.'**
+  String get safetyNumbersLoadingBody;
+
+  /// No description provided for @safetyNumbersMarkedVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked as verified'**
+  String get safetyNumbersMarkedVerified;
+
+  /// No description provided for @safetyNumbersVerificationCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification cleared'**
+  String get safetyNumbersVerificationCleared;
+
+  /// No description provided for @safetyNumbersRotateDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotate session keys?'**
+  String get safetyNumbersRotateDialogTitle;
+
+  /// No description provided for @safetyNumbersRotateDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This forces a fresh Diffie-Hellman ratchet step on your next message. Old skipped message keys for this chat are dropped immediately. Use this if you suspect this device or your peer\'s device was briefly exposed — past messages stay readable, but any stolen session state stops being useful.'**
+  String get safetyNumbersRotateDialogBody;
+
+  /// No description provided for @safetyNumbersCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get safetyNumbersCancel;
+
+  /// No description provided for @safetyNumbersRotate.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotate'**
+  String get safetyNumbersRotate;
+
+  /// No description provided for @safetyNumbersSessionRotated.
+  ///
+  /// In en, this message translates to:
+  /// **'Session keys rotated'**
+  String get safetyNumbersSessionRotated;
+
+  /// No description provided for @safetyNumbersNoSessionYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No session yet — send a message first'**
+  String get safetyNumbersNoSessionYet;
+
+  /// No description provided for @safetyNumbersRotationFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotation failed: {error}'**
+  String safetyNumbersRotationFailed(String error);
+
+  /// No description provided for @safetyNumbersErrorTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not load safety number'**
+  String get safetyNumbersErrorTitle;
+
+  /// No description provided for @safetyNumbersRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Retry'**
+  String get safetyNumbersRetry;
+
+  /// No description provided for @safetyNumbersNoMembersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No other members'**
+  String get safetyNumbersNoMembersTitle;
+
+  /// No description provided for @safetyNumbersNoMembersBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This group has no other participants yet — invite someone to verify.'**
+  String get safetyNumbersNoMembersBody;
+
+  /// No description provided for @safetyNumbersGroupEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'VERIFY GROUP MEMBERS'**
+  String get safetyNumbersGroupEyebrow;
+
+  /// No description provided for @safetyNumbersGroupTitleGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify each member of this group'**
+  String get safetyNumbersGroupTitleGeneric;
+
+  /// No description provided for @safetyNumbersGroupTitleNamed.
+  ///
+  /// In en, this message translates to:
+  /// **'Verify each member of {groupName}'**
+  String safetyNumbersGroupTitleNamed(String groupName);
+
+  /// No description provided for @safetyNumbersGroupBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap a member to see their 60-digit safety number. Compare it on a channel you trust — read it aloud over a call or scan the QR. A mismatch means that specific member\'s device may be compromised.'**
+  String get safetyNumbersGroupBody;
+
+  /// No description provided for @safetyNumbersGroupRotateEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'ROTATE GROUP SESSION KEYS'**
+  String get safetyNumbersGroupRotateEyebrow;
+
+  /// No description provided for @safetyNumbersGroupRotateBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Forces a fresh DH ratchet step on the next group message and drops stashed skipped keys for this group. Affects every member — use if any participant\'s device was briefly exposed.'**
+  String get safetyNumbersGroupRotateBody;
+
+  /// No description provided for @safetyNumbersRotatingGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotating…'**
+  String get safetyNumbersRotatingGroup;
+
+  /// No description provided for @safetyNumbersRotateGroupButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotate group session keys'**
+  String get safetyNumbersRotateGroupButton;
+
+  /// No description provided for @safetyNumbersUnverified.
+  ///
+  /// In en, this message translates to:
+  /// **'Unverified'**
+  String get safetyNumbersUnverified;
+
+  /// No description provided for @safetyNumbersVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get safetyNumbersVerified;
+
+  /// No description provided for @safetyNumbersDetailEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'VERIFY IDENTITY'**
+  String get safetyNumbersDetailEyebrow;
+
+  /// No description provided for @safetyNumbersDetailTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Make sure you\'re talking to {peer}'**
+  String safetyNumbersDetailTitle(String peer);
+
+  /// No description provided for @safetyNumbersDetailBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Both of you should see the same 60-digit number. Compare on a channel you trust — read it aloud over a call, or scan the QR. If the numbers don\'t match, someone is in the middle of your conversation.'**
+  String get safetyNumbersDetailBody;
+
+  /// No description provided for @safetyNumbersKeyChangedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Peer identity key changed'**
+  String get safetyNumbersKeyChangedTitle;
+
+  /// No description provided for @safetyNumbersKeyChangedMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The identity key for this peer is different from the one you verified on {date}. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.'**
+  String safetyNumbersKeyChangedMessage(String date);
+
+  /// No description provided for @safetyNumbersVerifiedOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified on {date}'**
+  String safetyNumbersVerifiedOn(String date);
+
+  /// No description provided for @safetyNumbersVerifiedNote.
+  ///
+  /// In en, this message translates to:
+  /// **'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.'**
+  String get safetyNumbersVerifiedNote;
+
+  /// No description provided for @safetyNumbersClearVerification.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear verification'**
+  String get safetyNumbersClearVerification;
+
+  /// No description provided for @safetyNumbersReVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Re-verify with new key'**
+  String get safetyNumbersReVerify;
+
+  /// No description provided for @safetyNumbersMarkVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as verified'**
+  String get safetyNumbersMarkVerified;
+
+  /// No description provided for @safetyNumbersRotateEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'ROTATE SESSION KEYS'**
+  String get safetyNumbersRotateEyebrow;
+
+  /// No description provided for @safetyNumbersRotateBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Forces a fresh DH ratchet step on your next message and drops any stashed skipped keys. Use if this device or your peer\'s was briefly exposed.'**
+  String get safetyNumbersRotateBody;
+
+  /// No description provided for @safetyNumbersRotating.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotating…'**
+  String get safetyNumbersRotating;
+
+  /// No description provided for @safetyNumbersRotateButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Rotate session keys'**
+  String get safetyNumbersRotateButton;
+
+  /// No description provided for @safetyNumbersCardLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'SAFETY NUMBER'**
+  String get safetyNumbersCardLabel;
+
+  /// No description provided for @safetyNumbersScanLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'SCAN TO COMPARE'**
+  String get safetyNumbersScanLabel;
+
+  /// No description provided for @safetyNumbersQrNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This QR encodes only the 60-digit safety number, not your keys.'**
+  String get safetyNumbersQrNote;
+
+  /// No description provided for @deviceTransferTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Device Transfer'**
+  String get deviceTransferTitle;
+
+  /// No description provided for @deviceTransferHeroEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'TRANSFER'**
+  String get deviceTransferHeroEyebrow;
+
+  /// No description provided for @deviceTransferHeroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Old device required.'**
+  String get deviceTransferHeroTitle;
+
+  /// No description provided for @deviceTransferHeroBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer is a live trusted-device join. The old device issues the session and approves the exact new-device claim. VEIL does not create recovery.'**
+  String get deviceTransferHeroBody;
+
+  /// No description provided for @deviceTransferPillTrustedJoin.
+  ///
+  /// In en, this message translates to:
+  /// **'Trusted-device join'**
+  String get deviceTransferPillTrustedJoin;
+
+  /// No description provided for @deviceTransferPillNoFallback.
+  ///
+  /// In en, this message translates to:
+  /// **'No fallback'**
+  String get deviceTransferPillNoFallback;
+
+  /// No description provided for @deviceTransferPillNoCloud.
+  ///
+  /// In en, this message translates to:
+  /// **'No cloud recovery'**
+  String get deviceTransferPillNoCloud;
+
+  /// No description provided for @deviceTransferChipOldDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Old device'**
+  String get deviceTransferChipOldDevice;
+
+  /// No description provided for @deviceTransferChipNewDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'New device'**
+  String get deviceTransferChipNewDevice;
+
+  /// No description provided for @deviceTransferNoFallbackTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No fallback path'**
+  String get deviceTransferNoFallbackTitle;
+
+  /// No description provided for @deviceTransferNoFallbackBody.
+  ///
+  /// In en, this message translates to:
+  /// **'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.'**
+  String get deviceTransferNoFallbackBody;
+
+  /// No description provided for @deviceTransferWindowExpiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer window expired'**
+  String get deviceTransferWindowExpiredTitle;
+
+  /// No description provided for @deviceTransferSessionExpiredMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The old-device transfer session expired. Issue a fresh session from the old device.'**
+  String get deviceTransferSessionExpiredMessage;
+
+  /// No description provided for @deviceTransferClaimExpiredMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'This new-device claim expired. Register a fresh claim and request approval again.'**
+  String get deviceTransferClaimExpiredMessage;
+
+  /// No description provided for @deviceTransferMetricMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Mode'**
+  String get deviceTransferMetricMode;
+
+  /// No description provided for @deviceTransferMetricModeOld.
+  ///
+  /// In en, this message translates to:
+  /// **'Old device'**
+  String get deviceTransferMetricModeOld;
+
+  /// No description provided for @deviceTransferMetricModeNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New device'**
+  String get deviceTransferMetricModeNew;
+
+  /// No description provided for @deviceTransferMetricSession.
+  ///
+  /// In en, this message translates to:
+  /// **'Session'**
+  String get deviceTransferMetricSession;
+
+  /// No description provided for @deviceTransferSessionExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get deviceTransferSessionExpired;
+
+  /// No description provided for @deviceTransferSessionIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get deviceTransferSessionIdle;
+
+  /// No description provided for @deviceTransferSessionLive.
+  ///
+  /// In en, this message translates to:
+  /// **'Live'**
+  String get deviceTransferSessionLive;
+
+  /// No description provided for @deviceTransferMetricClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim'**
+  String get deviceTransferMetricClaim;
+
+  /// No description provided for @deviceTransferClaimMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Missing'**
+  String get deviceTransferClaimMissing;
+
+  /// No description provided for @deviceTransferClaimExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get deviceTransferClaimExpired;
+
+  /// No description provided for @deviceTransferClaimIssued.
+  ///
+  /// In en, this message translates to:
+  /// **'Issued'**
+  String get deviceTransferClaimIssued;
+
+  /// No description provided for @deviceTransferPayloadCopied.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer payload copied.'**
+  String get deviceTransferPayloadCopied;
+
+  /// No description provided for @deviceTransferReturnToConversations.
+  ///
+  /// In en, this message translates to:
+  /// **'Return to conversations'**
+  String get deviceTransferReturnToConversations;
+
+  /// No description provided for @deviceTransferPayloadInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer payload format is invalid.'**
+  String get deviceTransferPayloadInvalid;
+
+  /// No description provided for @deviceTransferPayloadImported.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer payload imported. Register this new device before the transfer window closes.'**
+  String get deviceTransferPayloadImported;
+
+  /// No description provided for @deviceTransferImportFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Import a valid transfer payload first.'**
+  String get deviceTransferImportFirst;
+
+  /// No description provided for @deviceTransferClaimRegistered.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim registered. Give this claim code to the old device and request approval before it expires.'**
+  String get deviceTransferClaimRegistered;
+
+  /// No description provided for @deviceTransferClaimFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim failed.'**
+  String get deviceTransferClaimFailed;
+
+  /// No description provided for @deviceTransferRegisterBeforeComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Register this new-device claim before completion.'**
+  String get deviceTransferRegisterBeforeComplete;
+
+  /// No description provided for @deviceTransferClaimExpiredRegisterFresh.
+  ///
+  /// In en, this message translates to:
+  /// **'This new-device claim has expired. Register a fresh claim first.'**
+  String get deviceTransferClaimExpiredRegisterFresh;
+
+  /// No description provided for @deviceTransferComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer complete. This device joined the trusted graph.'**
+  String get deviceTransferComplete;
+
+  /// No description provided for @deviceTransferFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer failed.'**
+  String get deviceTransferFailed;
+
+  /// No description provided for @deviceTransferOldRequiredTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Old device session required'**
+  String get deviceTransferOldRequiredTitle;
+
+  /// No description provided for @deviceTransferOldRequiredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in on a currently trusted device to issue and approve a transfer.'**
+  String get deviceTransferOldRequiredBody;
+
+  /// No description provided for @deviceTransferStep1Title.
+  ///
+  /// In en, this message translates to:
+  /// **'1. Initiate on old device'**
+  String get deviceTransferStep1Title;
+
+  /// No description provided for @deviceTransferStep1BodyReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Generate a short-lived session and token for the next device.'**
+  String get deviceTransferStep1BodyReady;
+
+  /// No description provided for @deviceTransferStep1BodyExpires.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer session expires {when}.'**
+  String deviceTransferStep1BodyExpires(String when);
+
+  /// No description provided for @deviceTransferStatusReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get deviceTransferStatusReady;
+
+  /// No description provided for @deviceTransferStatusExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'Expired'**
+  String get deviceTransferStatusExpired;
+
+  /// No description provided for @deviceTransferStatusIssued.
+  ///
+  /// In en, this message translates to:
+  /// **'Issued'**
+  String get deviceTransferStatusIssued;
+
+  /// No description provided for @deviceTransferIssuingToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Issuing token'**
+  String get deviceTransferIssuingToken;
+
+  /// No description provided for @deviceTransferIssueToken.
+  ///
+  /// In en, this message translates to:
+  /// **'Issue transfer token'**
+  String get deviceTransferIssueToken;
+
+  /// No description provided for @deviceTransferStep2Title.
+  ///
+  /// In en, this message translates to:
+  /// **'2. Approve on old device'**
+  String get deviceTransferStep2Title;
+
+  /// No description provided for @deviceTransferStep2BodyWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'No transfer session exists yet.'**
+  String get deviceTransferStep2BodyWaiting;
+
+  /// No description provided for @deviceTransferStep2BodyExpired.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer session expired. Clear it and issue a fresh one.'**
+  String get deviceTransferStep2BodyExpired;
+
+  /// No description provided for @deviceTransferStep2BodyAwaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait for the new device to register its claim, then approve that specific claim code here.'**
+  String get deviceTransferStep2BodyAwaiting;
+
+  /// No description provided for @deviceTransferStatusWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting'**
+  String get deviceTransferStatusWaiting;
+
+  /// No description provided for @deviceTransferStatusAwaitingClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Awaiting claim'**
+  String get deviceTransferStatusAwaitingClaim;
+
+  /// No description provided for @deviceTransferClaimFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'NEW-DEVICE CLAIM'**
+  String get deviceTransferClaimFieldLabel;
+
+  /// No description provided for @deviceTransferClaimFieldCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve only the exact claim code shown on the new device you trust.'**
+  String get deviceTransferClaimFieldCaption;
+
+  /// No description provided for @deviceTransferClaimInputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'New-device claim code'**
+  String get deviceTransferClaimInputLabel;
+
+  /// No description provided for @deviceTransferClaimInputHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste the claim code shown on the new device'**
+  String get deviceTransferClaimInputHint;
+
+  /// No description provided for @deviceTransferApproveClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve this claim'**
+  String get deviceTransferApproveClaim;
+
+  /// No description provided for @deviceTransferStep3Title.
+  ///
+  /// In en, this message translates to:
+  /// **'3. Hand payload to new device'**
+  String get deviceTransferStep3Title;
+
+  /// No description provided for @deviceTransferReadyToCopy.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready to copy'**
+  String get deviceTransferReadyToCopy;
+
+  /// No description provided for @deviceTransferIssueTokenFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Issue a transfer token first.'**
+  String get deviceTransferIssueTokenFirst;
+
+  /// No description provided for @deviceTransferPayloadExpiredNote.
+  ///
+  /// In en, this message translates to:
+  /// **'This payload is no longer valid. Clear it and issue a fresh transfer session.'**
+  String get deviceTransferPayloadExpiredNote;
+
+  /// No description provided for @deviceTransferCompleteOnNewNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete on the new device. The old device remains trusted until you revoke it explicitly.'**
+  String get deviceTransferCompleteOnNewNote;
+
+  /// No description provided for @deviceTransferCopyPayload.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy payload'**
+  String get deviceTransferCopyPayload;
+
+  /// No description provided for @deviceTransferClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get deviceTransferClear;
+
+  /// No description provided for @deviceTransferStatusTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer status'**
+  String get deviceTransferStatusTitle;
+
+  /// No description provided for @deviceTransferFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer failed'**
+  String get deviceTransferFailedTitle;
+
+  /// No description provided for @deviceTransferPayloadFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'TRANSFER PAYLOAD'**
+  String get deviceTransferPayloadFieldLabel;
+
+  /// No description provided for @deviceTransferPayloadFieldCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Import the short-lived session and token issued by the trusted old device.'**
+  String get deviceTransferPayloadFieldCaption;
+
+  /// No description provided for @deviceTransferPayloadInputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Paste transfer payload'**
+  String get deviceTransferPayloadInputLabel;
+
+  /// No description provided for @deviceTransferImportPayload.
+  ///
+  /// In en, this message translates to:
+  /// **'Import payload'**
+  String get deviceTransferImportPayload;
+
+  /// No description provided for @deviceTransferNewDeviceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'NEW DEVICE'**
+  String get deviceTransferNewDeviceLabel;
+
+  /// No description provided for @deviceTransferNewDeviceCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'This device proves its own claim. The old device only approves that exact claim.'**
+  String get deviceTransferNewDeviceCaption;
+
+  /// No description provided for @deviceTransferDeviceNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Device name'**
+  String get deviceTransferDeviceNameLabel;
+
+  /// No description provided for @deviceTransferSessionIdLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Session id'**
+  String get deviceTransferSessionIdLabel;
+
+  /// No description provided for @deviceTransferTokenLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer token'**
+  String get deviceTransferTokenLabel;
+
+  /// No description provided for @deviceTransferClaimNotRegistered.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim not registered'**
+  String get deviceTransferClaimNotRegistered;
+
+  /// No description provided for @deviceTransferClaimExpiredPill.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim expired'**
+  String get deviceTransferClaimExpiredPill;
+
+  /// No description provided for @deviceTransferClaimRegisteredPill.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim registered'**
+  String get deviceTransferClaimRegisteredPill;
+
+  /// No description provided for @deviceTransferOldApprovesExact.
+  ///
+  /// In en, this message translates to:
+  /// **'Old device approves exact claim'**
+  String get deviceTransferOldApprovesExact;
+
+  /// No description provided for @deviceTransferClaimCode.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim code {claimId}'**
+  String deviceTransferClaimCode(String claimId);
+
+  /// No description provided for @deviceTransferClaimFingerprint.
+  ///
+  /// In en, this message translates to:
+  /// **'Claim fingerprint {fingerprint}'**
+  String deviceTransferClaimFingerprint(String fingerprint);
+
+  /// No description provided for @deviceTransferFingerprintUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable'**
+  String get deviceTransferFingerprintUnavailable;
+
+  /// No description provided for @deviceTransferExpires.
+  ///
+  /// In en, this message translates to:
+  /// **'Expires {when}'**
+  String deviceTransferExpires(String when);
+
+  /// No description provided for @deviceTransferRegisteringClaim.
+  ///
+  /// In en, this message translates to:
+  /// **'Registering claim'**
+  String get deviceTransferRegisteringClaim;
+
+  /// No description provided for @deviceTransferRegisterNewDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Register this new device'**
+  String get deviceTransferRegisterNewDevice;
+
+  /// No description provided for @deviceTransferCompleting.
+  ///
+  /// In en, this message translates to:
+  /// **'Completing transfer'**
+  String get deviceTransferCompleting;
+
+  /// No description provided for @deviceTransferCompleteOnDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Complete on this device'**
+  String get deviceTransferCompleteOnDevice;
+
+  /// No description provided for @deviceTransferExpiryNow.
+  ///
+  /// In en, this message translates to:
+  /// **'now'**
+  String get deviceTransferExpiryNow;
+
+  /// No description provided for @deviceTransferExpiryInSeconds.
+  ///
+  /// In en, this message translates to:
+  /// **'in {seconds}s'**
+  String deviceTransferExpiryInSeconds(int seconds);
+
+  /// No description provided for @deviceTransferExpiryInMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'in {minutes}m'**
+  String deviceTransferExpiryInMinutes(int minutes);
+
+  /// No description provided for @deviceTransferExpiryAt.
+  ///
+  /// In en, this message translates to:
+  /// **'at {time}'**
+  String deviceTransferExpiryAt(String time);
+
+  /// No description provided for @themeModeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Theme'**
+  String get themeModeTitle;
+
+  /// No description provided for @themeModeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose how VEIL appears on this device.'**
+  String get themeModeSubtitle;
+
+  /// No description provided for @themeModeLight.
+  ///
+  /// In en, this message translates to:
+  /// **'Light'**
+  String get themeModeLight;
+
+  /// No description provided for @themeModeDark.
+  ///
+  /// In en, this message translates to:
+  /// **'Dark'**
+  String get themeModeDark;
+
+  /// No description provided for @themeModeSystem.
+  ///
+  /// In en, this message translates to:
+  /// **'System'**
+  String get themeModeSystem;
+
+  /// No description provided for @aiDemoBannerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Scripted demo'**
+  String get aiDemoBannerTitle;
+
+  /// No description provided for @aiDemoBannerBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Demo: replies are scripted on this device. Nothing is sent anywhere.'**
+  String get aiDemoBannerBody;
 }
 
 class _AppLocalizationsDelegate

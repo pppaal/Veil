@@ -19,7 +19,7 @@
     "architecture:check": "node ./scripts/crypto-architecture-check.mjs",
     "crypto:vectors:check": "node ./scripts/crypto-test-vectors.mjs --check",
     "ci:api": "pnpm build && pnpm lint && pnpm policy:check && pnpm architecture:check && pnpm crypto:vectors:check && pnpm test && pnpm -C apps/api test:e2e",
-    "ci:mobile": "pnpm mobile:codegen && pnpm mobile:analyze && pnpm mobile:test",
+    "ci:mobile": "node ./scripts/realtime-contract-check.mjs && node ./scripts/arb-parity-check.mjs && pnpm mobile:codegen && pnpm mobile:analyze && pnpm mobile:test",
     "ci:verify": "pnpm ci:api && pnpm ci:mobile",
     "beta:release:check": "pnpm ci:verify && pnpm alpha:smoke",
     "beta:release:evidence": "node ./scripts/beta-release-evidence.mjs",

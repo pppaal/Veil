@@ -507,5 +507,7 @@
   "themeModeSubtitle": "Choose how VEIL appears on this device.",
   "themeModeLight": "Light",
   "themeModeDark": "Dark",
-  "themeModeSystem": "System"
+  "themeModeSystem": "System",
+  "aiDemoBannerTitle": "Scripted demo",
+  "aiDemoBannerBody": "Demo: replies are scripted on this device. Nothing is sent anywhere."
 }

@@ -59,4 +59,24 @@ void main() {
       expect(() => decode(json), throwsFormatException, reason: jsonEncode(json));
     }
   });
+
+  test('an out-of-range expiry or size is malformed, not a crash', () {
+    // Raw text, because jsonEncode cannot write 1e400 (infinity once parsed).
+    const malformed = [
+      '{"pv":2,"b":"","k":"text","x":8640000000000001,"att":null}',
+      '{"pv":2,"b":"","k":"text","x":-8640000000000001,"att":null}',
+      '{"pv":2,"b":"","k":"file","x":null,"att":{"id":"a1","ck":"key","sz":1e400}}',
+      '{"pv":2,"b":"","k":"file","x":null,"att":{"id":"a1","ck":"key","sz":-1}}',
+      '{"pv":2,"b":"","k":"file","x":null,"att":{"id":"a1","ck":"key","sz":1.5}}',
+      '{"body":"","att":{"attachmentId":"a1","encryptedKey":"key","sizeBytes":1e400}}',
+      '{"body":"","att":{"id":"a1","ek":"key","sz":-1}}',
+    ];
+    for (final raw in malformed) {
+      expect(() => InnerPayload.decode(utf8.encode(raw), fallbackKind: MessageKind.text), throwsFormatException,
+          reason: raw);
+    }
+
+    final latest = decode({'pv': 2, 'b': '', 'k': 'text', 'x': 8640000000000000, 'att': null});
+    expect(latest.expiresAt, DateTime.fromMillisecondsSinceEpoch(8640000000000000));
+  });
 }

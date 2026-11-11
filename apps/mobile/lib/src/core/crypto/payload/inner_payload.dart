@@ -93,14 +93,23 @@ class InnerPayload {
 
   static String? _optionalText(Map<String, dynamic> map, String key) => map[key] == null ? null : _text(map, key);
 
+  // A double is refused too: 1e400 parses to infinity, which toInt() cannot
+  // convert, and no encoder writes a fractional size.
   static int _size(Map<String, dynamic> map, String key) {
     final value = map[key];
     if (value == null) return 0;
-    if (value is num) return value.toInt();
-    throw FormatException('inner payload field "$key" is not a number');
+    if (value is int && value >= 0) return value;
+    throw FormatException('inner payload field "$key" is not a non-negative integer');
   }
 
-  static DateTime? _fromMillis(Object? value) => value is int ? DateTime.fromMillisecondsSinceEpoch(value) : null;
+  static DateTime? _fromMillis(Object? value) {
+    if (value is! int) return null;
+    // Beyond this DateTime cannot represent the instant and would throw.
+    if (value.abs() > _maxEpochMillis) throw const FormatException('inner payload field "x" is out of range');
+    return DateTime.fromMillisecondsSinceEpoch(value);
+  }
+
+  static const int _maxEpochMillis = 8640000000000000;
 
   static DateTime? _fromIso(Object? value) => value is String ? DateTime.tryParse(value)?.toLocal() : null;
 

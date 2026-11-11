@@ -160,6 +160,12 @@ class SessionCipher {
       });
 
   Future<DecryptedMessage> decrypt(CryptoEnvelope envelope) async {
+    // The server relays these in clear and the v2 AAD length-prefixes them,
+    // so one too long to prefix is malformed. Rejected before the lock so it
+    // never reaches a session state.
+    if (![envelope.version, envelope.conversationId, envelope.senderDeviceId].every(fitsLengthPrefix)) {
+      return _invalidEnvelope(envelope);
+    }
     final Uint8List nonce;
     final Uint8List bytes;
     try {
@@ -537,8 +543,14 @@ class SessionCipher {
           return _Opened.ok(InnerPayload.decode(MessagePadding.unpad(padded), fallbackKind: fallbackKind));
         } on SecretBoxAuthenticationError {
           return _Opened.failed('aead_failed');
-        } on FormatException {
-          return _Opened.failed('malformed_payload');
+        } catch (e) {
+          // Backstop for the decoder: bytes the peer authenticated can still
+          // be hostile, and an error they provoke (RangeError is an
+          // ArgumentError) must fail this frame, not escape decrypt.
+          if (e is FormatException || e is ArgumentError || e is UnsupportedError) {
+            return _Opened.failed('malformed_payload');
+          }
+          rethrow;
         } finally {
           zeroize(messageKey);
         }

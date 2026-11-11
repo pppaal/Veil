@@ -331,6 +331,11 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 
 Non-`ok` results carry a placeholder body (`[Decryption failed]`, ...) that
 callers must not render as peer text; they branch on the status.
+Hostile input is a result, never an exception, and leaves session state
+untouched: an envelope whose version, conversationId or senderDeviceId exceeds
+65535 UTF-8 bytes (so `lp` cannot encode it) is an invalid envelope, and an
+authenticated payload whose `x` lies outside ±8.64e15 ms or whose size is not a
+non-negative integer is a malformed payload; both are `failed`.
 
 ### Local persistence (informative)
 

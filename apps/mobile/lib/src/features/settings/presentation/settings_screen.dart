@@ -44,6 +44,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
     final themeMode = ref.watch(themeModeProvider);
+    final privacy = ref.watch(privacyPreferencesProvider);
     final l10n = AppLocalizations.of(context);
 
     return VeilShell(
@@ -192,6 +193,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ],
             ),
+          ),
+          const SizedBox(height: VeilSpace.md),
+          VeilSectionLabel(l10n.settingsSectionPrivacy),
+          const SizedBox(height: VeilSpace.sm),
+          VeilActionCluster(
+            children: [
+              VeilListTileCard(
+                title: l10n.settingsReadReceiptsTitle,
+                subtitle: l10n.settingsReadReceiptsSubtitle,
+                leading: const Icon(Icons.done_all_rounded),
+                trailing: Switch.adaptive(
+                  value: privacy.sendReadReceipts,
+                  onChanged: privacy.setSendReadReceipts,
+                ),
+              ),
+              VeilListTileCard(
+                title: l10n.settingsTypingIndicatorsTitle,
+                subtitle: l10n.settingsTypingIndicatorsSubtitle,
+                leading: const Icon(Icons.keyboard_outlined),
+                trailing: Switch.adaptive(
+                  value: privacy.sendTypingIndicators,
+                  onChanged: privacy.setSendTypingIndicators,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: VeilSpace.md),
           const VeilSectionLabel('SECURITY'),

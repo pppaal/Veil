@@ -10,6 +10,9 @@ import '../core/crypto/crypto_adapter_registry.dart';
 import '../core/crypto/crypto_engine.dart';
 import '../core/crypto/group_sender_keys.dart';
 import '../core/crypto/lib_crypto_adapter.dart';
+import '../core/identity/trusted_identity_resolver.dart';
+import '../core/identity/trusted_identity_store.dart';
+import '../core/network/keys_api.dart';
 import '../core/network/pinned_http_client.dart';
 import '../core/network/veil_api_client.dart';
 import '../core/notifications/local_notification_service.dart';
@@ -21,12 +24,18 @@ import '../core/security/local_data_cipher.dart';
 import '../core/security/platform_security_service.dart';
 import '../core/security/sensitive_text_redactor.dart';
 import '../core/storage/app_database.dart';
+import '../core/storage/cache_handle.dart';
 import '../core/storage/conversation_cache_service.dart';
 import '../core/storage/database_provider.dart';
 import '../core/storage/secure_storage_service.dart';
 import '../features/attachments/data/attachment_temp_file_store.dart';
 import '../features/conversations/data/group_sender_key_coordinator.dart';
+import '../features/conversations/data/messenger/envelope_version_policy.dart';
+import '../features/conversations/data/messenger/identity_trust.dart';
+import '../features/conversations/data/messenger/legacy_trust_migration.dart';
+import '../features/conversations/data/messenger/prekey_maintenance.dart';
 import '../features/conversations/data/veil_messenger_controller.dart';
+import '../features/settings/data/privacy_preferences.dart';
 import 'app_session_state.dart';
 
 export 'app_session_state.dart' show AppSessionState, AuthFlowStage;
@@ -59,7 +68,7 @@ final appDatabaseFutureProvider = FutureProvider<AppDatabase>((ref) async {
 final cacheEpochProvider = StateProvider<int>((ref) => 0);
 
 final conversationCacheProvider =
-    FutureProvider<ConversationCacheService?>((ref) async {
+    FutureProvider<DriftConversationCacheService?>((ref) async {
   ref.watch(cacheEpochProvider);
   if (!VeilConfig.enableLocalCache) {
     return null;
@@ -90,6 +99,51 @@ final Provider<VeilApiClient> apiClientProvider = Provider<VeilApiClient>((ref) 
     // refresh token, which keeps the original 401 surface to the caller.
     tokenRefresher: () => ref.read(appSessionProvider.notifier).refreshSession(),
   );
+});
+
+/// The conversation cache as long-lived consumers hold it: one object for
+/// the app's life that always reaches the current database. Null when the
+/// local cache is turned off.
+final cacheHandleProvider = Provider<CacheHandle?>((ref) {
+  if (!VeilConfig.enableLocalCache) return null;
+  return CacheHandle(() async {
+    final cache = await ref.read(conversationCacheProvider.future);
+    return cache!;
+  });
+});
+
+final keysApiProvider = Provider<KeysApi>((ref) {
+  return KeysApi(ref.read(apiClientProvider), ref.read(cryptoAdapterProvider).keyBundles);
+});
+
+/// Contact identity pins, kept in the keystore and wiped with the device.
+/// What earlier builds knew is migrated in before any decision is made,
+/// reading the cache directly: the messenger decrypts and looks keys up as
+/// soon as it applies a session. A cache that cannot be read fails the
+/// migration (to be tried again) rather than reading as empty, which would
+/// finish it with nothing carried over.
+final identityTrustProvider = Provider<IdentityTrust>((ref) {
+  final storage = ref.read(secureStorageProvider);
+  final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(storage.scoped(SecureScope.identity)));
+  final trust = IdentityTrust(
+    resolver,
+    prepare: () => migrateLegacyTrust(
+      storage: storage,
+      resolver: resolver,
+      readConversations: () async {
+        final cache = await ref.read(conversationCacheProvider.future);
+        return cache == null ? const [] : cache.readConversations();
+      },
+    ),
+  );
+  ref.onDispose(trust.dispose);
+  return trust;
+});
+
+final privacyPreferencesProvider = ChangeNotifierProvider<PrivacyPreferences>((ref) {
+  final preferences = PrivacyPreferences(ref.read(secureStorageProvider).scoped(SecureScope.privacy));
+  unawaited(preferences.load());
+  return preferences;
 });
 
 final attachmentTempFileStoreProvider =
@@ -261,9 +315,10 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       );
 
       state = state.copyWith(authFlowStage: AuthFlowStage.registering);
+      // The display name stays on this device as the user's nickname; the
+      // relay learns the handle and keys only.
       final registered = await _apiClient.register({
         'handle': handle,
-        'displayName': displayName,
         'deviceName': 'VEIL Mobile',
         'platform': _platformName(),
         'publicIdentityKey': identity.identityPublicKey,
@@ -322,6 +377,13 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
   void lock() {
     state = state.copyWith(locked: true);
+  }
+
+  /// The user's own nickname, which only this device knows.
+  Future<void> updateLocalNickname(String nickname) async {
+    final value = nickname.isEmpty ? null : nickname;
+    await _storage.persistLocalNickname(value);
+    state = state.copyWith(displayName: value);
   }
 
   void unlock() {
@@ -588,7 +650,6 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         'signature': proof,
       });
 
-      final displayName = completed['displayName'] as String?;
       await _storage.persistDeviceSecretRefs(
         identityPrivateRef: identity.identityPrivateKeyRef,
         authPrivateKey: authKeyMaterial.privateKey,
@@ -600,7 +661,6 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         userId: verified['userId'] as String,
         deviceId: verified['deviceId'] as String,
         handle: handle,
-        displayName: displayName,
       );
 
       state = state.copyWith(
@@ -609,7 +669,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         userId: verified['userId'] as String,
         deviceId: verified['deviceId'] as String,
         handle: handle,
-        displayName: displayName,
+        displayName: null,
         locked: false,
         initializing: false,
         errorMessage: null,
@@ -639,10 +699,8 @@ final StateNotifierProvider<AppSessionController, AppSessionState>
     ref.read(secureStorageProvider),
     ref.read(apiClientProvider),
     ref.read(cryptoAdapterProvider),
-    cacheService: ref.watch(conversationCacheProvider).maybeWhen(
-          data: (cache) => cache,
-          orElse: () => null,
-        ),
+    // Read, not watched: the session controller outlives every database.
+    cacheService: ref.read(cacheHandleProvider),
     attachmentTempFileStore: ref.read(attachmentTempFileStoreProvider),
     onLocalCacheMaterialChanged: () {
       ref.read(cacheEpochProvider.notifier).state++;
@@ -667,12 +725,26 @@ final messengerControllerProvider =
   final notificationService = ref.read(localNotificationServiceProvider);
   final secureStorage = ref.read(secureStorageProvider);
   final cryptoAdapter = ref.read(cryptoAdapterProvider);
+  final keys = ref.read(keysApiProvider);
+  final trust = ref.read(identityTrustProvider);
+  final privacy = ref.read(privacyPreferencesProvider);
+  // Bound below; the group coordinator reaches the controller only after
+  // both exist.
+  late final VeilMessengerController controller;
 
   // Double Ratchet session persistence: wire the adapter's after-mutate
   // callback to secure storage, and build a restorer that rehydrates
   // snapshots into memory on first authenticated applySession.
   Future<void> Function()? sessionRestorer;
   GroupSenderKeyCoordinator? groupCrypto;
+  // Adapters that publish their own prekeys keep the directory stocked.
+  final prekeyMaintenance = cryptoAdapter is PrekeyManager
+      ? PrekeyMaintenance(
+          prekeys: cryptoAdapter as PrekeyManager,
+          keys: keys,
+          persistIdentityRef: secureStorage.replaceIdentityPrivateRef,
+        )
+      : null;
   if (cryptoAdapter is LibCryptoAdapter) {
     cryptoAdapter
       ..setSessionPersistence(
@@ -682,7 +754,9 @@ final messengerControllerProvider =
       // The responder side of the v2 handshake needs the persisted identity
       // and the prekey private halves it published.
       ..setLocalIdentityLoader(() => secureStorage.readIdentityPrivateRef())
-      ..setLocalPrekeyStore(SecureStorageLocalPrekeyStore(secureStorage));
+      ..setLocalPrekeyStore(SecureStorageLocalPrekeyStore(secureStorage))
+      // Inbound handshakes face the same identity pins as outbound ones.
+      ..setRemoteIdentityVerifier((claim) => controller.verifyRemoteIdentity(claim));
 
     // Group Sender Keys ride on the same identity material as the 1:1
     // ratchet (X25519 prekey for sealing, Ed25519 identity for authorship),
@@ -697,10 +771,13 @@ final messengerControllerProvider =
         resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519,
       ),
       apiClient: ref.read(apiClientProvider),
-      keyBundleCodec: cryptoAdapter.keyBundles,
+      keys: keys,
       identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
       localX25519PrivateParser: LibIdentityKeys.localX25519Private,
       localEd25519SeedParser: LibIdentityKeys.localEd25519Seed,
+      conversationLookup: (conversationId) => controller.conversationById(conversationId),
+      onKeysChanged: (conversationId) => controller.onGroupKeysChanged(conversationId),
+      trustCheck: trust.admit,
     );
 
     sessionRestorer = () async {
@@ -715,17 +792,17 @@ final messengerControllerProvider =
     };
   }
 
-  final controller = VeilMessengerController(
+  controller = VeilMessengerController(
     apiClient: ref.read(apiClientProvider),
     cryptoEngine: ref.read(messagingCryptoProvider),
     keyBundleCodec: cryptoAdapter.keyBundles,
     envelopeCodec: cryptoAdapter.envelopeCodec,
     sessionBootstrapper: cryptoAdapter.sessions,
     realtimeService: ref.read(realtimeServiceProvider),
-    cacheService: ref.watch(conversationCacheProvider).maybeWhen(
-          data: (cache) => cache,
-          orElse: () => null,
-        ),
+    // A stable handle, read lazily: watching the cache provider rebuilt the
+    // controller once the database opened, which dropped in-flight state
+    // such as attachment transfers.
+    cacheService: ref.read(cacheHandleProvider),
     attachmentTempFileStore: ref.read(attachmentTempFileStoreProvider),
     notificationService: notificationService,
     onSecurityException: (error) async {
@@ -736,6 +813,12 @@ final messengerControllerProvider =
     identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
     sessionSnapshotRestorer: sessionRestorer,
     groupCrypto: groupCrypto,
+    readReceiptsEnabled: () => privacy.sendReadReceipts,
+    typingIndicatorsEnabled: () => privacy.sendTypingIndicators,
+    keysApi: keys,
+    identityTrust: trust,
+    envelopeVersions: EnvelopeVersionPolicy(store: secureStorage.scoped(SecureScope.conversationPolicy)),
+    prekeyMaintenance: prekeyMaintenance,
   );
 
   final pushCoordinator = ref.read(pushTokenCoordinatorProvider);
@@ -755,7 +838,8 @@ final messengerControllerProvider =
   if (initial.isAuthenticated && initial.accessToken != null) {
     unawaited(pushCoordinator.bind(initial.accessToken!));
   }
-  ref.onDispose(controller.dispose);
+  // ChangeNotifierProvider disposes the controller itself; a second dispose
+  // here used to trip ChangeNotifier's disposed assertion.
   return controller;
 });
 

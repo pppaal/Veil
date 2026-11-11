@@ -860,6 +860,36 @@ abstract class AppLocalizations {
   /// **'No recovery path'**
   String get settingsNoRecoveryPath;
 
+  /// No description provided for @settingsSectionPrivacy.
+  ///
+  /// In en, this message translates to:
+  /// **'PRIVACY'**
+  String get settingsSectionPrivacy;
+
+  /// No description provided for @settingsReadReceiptsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send read receipts'**
+  String get settingsReadReceiptsTitle;
+
+  /// No description provided for @settingsReadReceiptsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'When off, contacts don\'t learn what you read, and you see their reads only as delivered.'**
+  String get settingsReadReceiptsSubtitle;
+
+  /// No description provided for @settingsTypingIndicatorsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Send typing indicators'**
+  String get settingsTypingIndicatorsTitle;
+
+  /// No description provided for @settingsTypingIndicatorsSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Lets contacts see while you type. Off unless you turn it on.'**
+  String get settingsTypingIndicatorsSubtitle;
+
   /// No description provided for @settingsLockNow.
   ///
   /// In en, this message translates to:
@@ -1424,11 +1454,71 @@ abstract class AppLocalizations {
   /// **'Decrypting envelope...'**
   String get chatDecryptingEnvelope;
 
-  /// No description provided for @chatDecryptingSystemNotice.
+  /// No description provided for @chatDecryptFailed.
   ///
   /// In en, this message translates to:
-  /// **'Decrypting system notice...'**
-  String get chatDecryptingSystemNotice;
+  /// **'Couldn\'t decrypt this message'**
+  String get chatDecryptFailed;
+
+  /// No description provided for @chatDecryptReplayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Repeated or expired message'**
+  String get chatDecryptReplayed;
+
+  /// No description provided for @chatDecryptAwaitingKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for the sender\'s key'**
+  String get chatDecryptAwaitingKey;
+
+  /// No description provided for @chatDecryptSessionMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for a secure session'**
+  String get chatDecryptSessionMissing;
+
+  /// No description provided for @chatDecryptIdentityRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'Held back: the sender\'s identity changed'**
+  String get chatDecryptIdentityRejected;
+
+  /// No description provided for @chatLegacyUnverifiedBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Unverified sender (legacy)'**
+  String get chatLegacyUnverifiedBadge;
+
+  /// No description provided for @chatNoticeIdentityChanged.
+  ///
+  /// In en, this message translates to:
+  /// **'A contact\'s safety number changed. Review it before trusting it again.'**
+  String get chatNoticeIdentityChanged;
+
+  /// No description provided for @chatNoticeIdentityNewDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'This contact started using a new device.'**
+  String get chatNoticeIdentityNewDevice;
+
+  /// No description provided for @chatIdentityChangedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety number changed'**
+  String get chatIdentityChangedTitle;
+
+  /// No description provided for @chatIdentityChangedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Sending is paused until you review the new safety number.'**
+  String get chatIdentityChangedBody;
+
+  /// No description provided for @chatIdentityChangedReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Review'**
+  String get chatIdentityChangedReview;
 
   /// No description provided for @chatRetrySend.
   ///
@@ -2024,12 +2114,6 @@ abstract class AppLocalizations {
   /// **'Marked as verified'**
   String get safetyNumbersMarkedVerified;
 
-  /// No description provided for @safetyNumbersVerificationCleared.
-  ///
-  /// In en, this message translates to:
-  /// **'Verification cleared'**
-  String get safetyNumbersVerificationCleared;
-
   /// No description provided for @safetyNumbersRotateDialogTitle.
   ///
   /// In en, this message translates to:
@@ -2198,12 +2282,6 @@ abstract class AppLocalizations {
   /// **'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.'**
   String get safetyNumbersVerifiedNote;
 
-  /// No description provided for @safetyNumbersClearVerification.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear verification'**
-  String get safetyNumbersClearVerification;
-
   /// No description provided for @safetyNumbersReVerify.
   ///
   /// In en, this message translates to:
@@ -2255,8 +2333,212 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersQrNote.
   ///
   /// In en, this message translates to:
-  /// **'This QR encodes only the 60-digit safety number, not your keys.'**
+  /// **'This QR holds both public identity keys and user ids, nothing secret.'**
   String get safetyNumbersQrNote;
+
+  /// No description provided for @safetyNumbersNoPinTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No identity pinned yet'**
+  String get safetyNumbersNoPinTitle;
+
+  /// No description provided for @safetyNumbersNoPinBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Exchange a message first: this device pins the identity it talks to.'**
+  String get safetyNumbersNoPinBody;
+
+  /// No description provided for @safetyNumbersDirectoryMismatchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The key server lists a different key'**
+  String get safetyNumbersDirectoryMismatchTitle;
+
+  /// No description provided for @safetyNumbersDirectoryMismatchBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The key server now serves another identity key for this device than the one pinned here. Nothing is sent to that key unless you compare and accept it.'**
+  String get safetyNumbersDirectoryMismatchBody;
+
+  /// No description provided for @safetyNumbersDirectoryOtherDeviceTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The key server lists another device'**
+  String get safetyNumbersDirectoryOtherDeviceTitle;
+
+  /// No description provided for @safetyNumbersDirectoryOtherDeviceBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.'**
+  String get safetyNumbersDirectoryOtherDeviceBody;
+
+  /// No description provided for @safetyNumbersPendingBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This contact presents a new identity key. Compare the new safety number below before accepting it.'**
+  String get safetyNumbersPendingBody;
+
+  /// No description provided for @safetyNumbersAcceptNewKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept the new key'**
+  String get safetyNumbersAcceptNewKey;
+
+  /// No description provided for @safetyNumbersScanAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare a scanned code'**
+  String get safetyNumbersScanAction;
+
+  /// No description provided for @safetyNumbersScanFieldLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Scanned code'**
+  String get safetyNumbersScanFieldLabel;
+
+  /// No description provided for @safetyNumbersScanVerify.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare'**
+  String get safetyNumbersScanVerify;
+
+  /// No description provided for @safetyNumbersScanMismatchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The codes do not match'**
+  String get safetyNumbersScanMismatchTitle;
+
+  /// No description provided for @safetyNumbersScanMismatchBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone may be in the middle of this conversation. Do not mark it verified; compare again in person.'**
+  String get safetyNumbersScanMismatchBody;
+
+  /// No description provided for @safetyNumbersScanInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That is not a VEIL safety code.'**
+  String get safetyNumbersScanInvalid;
+
+  /// No description provided for @safetyNumbersScanUnsupported.
+  ///
+  /// In en, this message translates to:
+  /// **'That code uses a safety-number version this app does not support.'**
+  String get safetyNumbersScanUnsupported;
+
+  /// No description provided for @safetyNumbersReverifyDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Compare the new safety number'**
+  String get safetyNumbersReverifyDialogTitle;
+
+  /// No description provided for @safetyNumbersReverifyDialogBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You had verified {peer}. Accept the new key as verified only after comparing this number with {peer} in person or on a call you trust.'**
+  String safetyNumbersReverifyDialogBody(String peer);
+
+  /// No description provided for @safetyNumbersReverifyAffirm.
+  ///
+  /// In en, this message translates to:
+  /// **'I compared this number with {peer} and it matches'**
+  String safetyNumbersReverifyAffirm(String peer);
+
+  /// No description provided for @safetyNumbersReverifyAccept.
+  ///
+  /// In en, this message translates to:
+  /// **'Accept as verified'**
+  String get safetyNumbersReverifyAccept;
+
+  /// No description provided for @safetyNumbersChangeReplaced.
+  ///
+  /// In en, this message translates to:
+  /// **'The safety number changed again while you were reviewing it. Compare the new number before accepting it.'**
+  String get safetyNumbersChangeReplaced;
+
+  /// No description provided for @profileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get profileTitle;
+
+  /// No description provided for @profileNicknameSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname saved on this device'**
+  String get profileNicknameSaved;
+
+  /// No description provided for @profileHandleLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'HANDLE'**
+  String get profileHandleLabel;
+
+  /// No description provided for @profileHandleCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Your handle cannot be changed.'**
+  String get profileHandleCaption;
+
+  /// No description provided for @profileNicknameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'NICKNAME'**
+  String get profileNicknameLabel;
+
+  /// No description provided for @profileNicknameCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Only this device knows it. Peers see your handle.'**
+  String get profileNicknameCaption;
+
+  /// No description provided for @profileNicknameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'How this device greets you'**
+  String get profileNicknameHint;
+
+  /// No description provided for @profileNicknameNotSet.
+  ///
+  /// In en, this message translates to:
+  /// **'Not set'**
+  String get profileNicknameNotSet;
+
+  /// No description provided for @profilePrivacyEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'PRIVACY'**
+  String get profilePrivacyEyebrow;
+
+  /// No description provided for @profilePrivacyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing about you on the relay'**
+  String get profilePrivacyTitle;
+
+  /// No description provided for @profilePrivacyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.'**
+  String get profilePrivacyBody;
+
+  /// No description provided for @profileSaveNickname.
+  ///
+  /// In en, this message translates to:
+  /// **'Save nickname'**
+  String get profileSaveNickname;
+
+  /// No description provided for @profileEditNickname.
+  ///
+  /// In en, this message translates to:
+  /// **'Edit nickname'**
+  String get profileEditNickname;
+
+  /// No description provided for @profileCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get profileCancel;
 
   /// No description provided for @deviceTransferTitle.
   ///

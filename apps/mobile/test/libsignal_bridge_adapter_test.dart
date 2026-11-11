@@ -210,7 +210,7 @@ void main() {
     expect(back.nonce, 'prekey');
   });
 
-  test('native errors become placeholders, never plaintext or crashes', () async {
+  test('native errors become typed failures, never plaintext or crashes', () async {
     const envelope = CryptoEnvelope(
       version: kLibsignalEnvelopeVersion,
       conversationId: 'conv-1',
@@ -221,18 +221,18 @@ void main() {
       messageKind: MessageKind.text,
     );
     final failed = await adapter.messaging.decryptMessage(envelope);
-    expect(failed.body, '[Decryption failed]');
+    expect(failed.body, isEmpty);
     expect(failed.status, DecryptStatus.failed);
     expect(failed.failureReason, 'decryptFailed');
 
     native.nextError = PlatformException(code: 'sessionNotFound');
     final missing = await adapter.messaging.decryptMessage(envelope);
-    expect(missing.body, '[Session not established — sync required]');
+    expect(missing.body, isEmpty);
     expect(missing.status, DecryptStatus.sessionMissing);
 
     native.nextError = PlatformException(code: 'identityMismatch');
     final rejected = await adapter.messaging.decryptMessage(envelope);
-    expect(rejected.body, '[Identity changed — verify safety number]');
+    expect(rejected.body, isEmpty);
     expect(rejected.status, DecryptStatus.identityRejected);
 
     // Unknown nonce tag = not a libsignal frame.
@@ -246,7 +246,7 @@ void main() {
       messageKind: MessageKind.text,
     );
     final invalid = await adapter.messaging.decryptMessage(bogus);
-    expect(invalid.body, '[Unable to decrypt: invalid envelope]');
+    expect(invalid.body, isEmpty);
     expect(invalid.status, DecryptStatus.failed);
 
     // Identity generation has no safe fallback: typed exception.

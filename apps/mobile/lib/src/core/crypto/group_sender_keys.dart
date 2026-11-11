@@ -369,8 +369,9 @@ class _OwnChain {
   final List<int> signingPublicKey;
   final int generation;
 
-  /// User ids this chain has been handed to. Kept with the chain so it is
-  /// persisted with it and starts empty for every new chain.
+  /// Recipients this chain has been handed to, named as the caller names
+  /// them (the coordinator: one entry per device). Kept with the chain so it
+  /// is persisted with it and starts empty for every new chain.
   final Set<String> deliveredTo;
 
   Map<String, dynamic> toJson() => {
@@ -391,8 +392,8 @@ class _OwnChain {
         signingPublicKey: base64UrlNoPadDecode(json['signingPub'] as String),
         generation: json['generation'] as int,
         // Absent from snapshots written before delivery was recorded; the
-        // chain is then handed to every member once more.
-        deliveredTo: {for (final userId in json['deliveredTo'] as List? ?? const []) userId as String},
+        // chain is then handed to every recipient once more.
+        deliveredTo: {for (final recipient in json['deliveredTo'] as List? ?? const []) recipient as String},
       );
 
   void wipe() {
@@ -635,22 +636,22 @@ class GroupSenderKeyEngine {
     return _exportOwn(state!);
   }
 
-  /// User ids [recordDelivered] has recorded as holding [key]; empty when
+  /// Recipients [recordDelivered] has recorded as holding [key]; empty when
   /// [key] is no longer our chain (rotated, re-keyed or forgotten since).
   Set<String> deliveredTo(GroupSenderKey key) {
     final own = _ownChainMatching(key);
     return own == null ? const <String>{} : Set<String>.unmodifiable(own.deliveredTo);
   }
 
-  /// Records that [key], our current chain, has been handed to [userIds].
+  /// Records that [key], our current chain, has been handed to [recipients].
   /// Persisted with the chain, so a restart neither forgets who still needs
   /// it nor sends it again to someone who has it. Ignored when [key] is no
   /// longer our chain.
-  Future<void> recordDelivered(GroupSenderKey key, Iterable<String> userIds) =>
+  Future<void> recordDelivered(GroupSenderKey key, Iterable<String> recipients) =>
       _lock.synchronized(key.groupId, () async {
         final own = _ownChainMatching(key);
         if (own == null) return;
-        own.deliveredTo.addAll(userIds);
+        own.deliveredTo.addAll(recipients);
         await _persist(key.groupId);
       });
 
@@ -1130,10 +1131,15 @@ class SealedGroupSenderKey {
     required this.recipientUserId,
     required this.encryptedChainKey,
     required this.nonce,
+    this.recipientDeviceId,
     this.version = kGroupKeyDistributionVersion,
   });
 
   final String recipientUserId;
+
+  /// The device whose identity the blob is sealed to. It routes the blob on
+  /// the relay; only that device can open it either way.
+  final String? recipientDeviceId;
 
   /// b64url( ephPub(32) || senderSig(64) || ct || tag(16) )
   final String encryptedChainKey;
@@ -1142,6 +1148,7 @@ class SealedGroupSenderKey {
 
   Map<String, dynamic> toUploadJson() => {
         'recipientUserId': recipientUserId,
+        if (recipientDeviceId != null) 'recipientDeviceId': recipientDeviceId,
         'encryptedChainKey': encryptedChainKey,
         'nonce': nonce,
         'version': version,
@@ -1183,6 +1190,7 @@ class GroupSenderKeySealer {
   Future<SealedGroupSenderKey> seal({
     required GroupSenderKey key,
     required String recipientUserId,
+    String? recipientDeviceId,
     required String recipientIdentityPublicKey,
     required String recipientSignedPrekeyBundle,
     required List<int> senderIdentityEd25519Seed,
@@ -1243,6 +1251,7 @@ class GroupSenderKeySealer {
       ..add(ctWithTag);
     return SealedGroupSenderKey(
       recipientUserId: recipientUserId,
+      recipientDeviceId: recipientDeviceId,
       encryptedChainKey: base64UrlNoPadEncode(blob.toBytes()),
       nonce: base64UrlNoPadEncode(nonce),
     );

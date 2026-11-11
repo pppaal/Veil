@@ -11,7 +11,8 @@ import 'trusted_identity.dart';
 class TrustedIdentityStore {
   TrustedIdentityStore(this._backend);
 
-  static const String storageKey = 'veil.identity.pins.v1';
+  /// Relative to the backend's own namespace (SecureScope.identity).
+  static const String storageKey = 'pins.v1';
   static const int _schemaVersion = 1;
 
   final IdentityKeyValueBackend _backend;

@@ -32,13 +32,29 @@ final class PinMatch extends IdentityVerdict {
 }
 
 /// The user is known but this device is not. Nothing is pinned until the
-/// user approves the device.
+/// user approves the device, unless the caller asked for a new device of an
+/// unverified user to be admitted (see TrustedIdentityResolver.evaluate).
 final class NewDeviceForKnownUser extends IdentityVerdict {
-  const NewDeviceForKnownUser({required this.knownUserVerified});
+  const NewDeviceForKnownUser({required this.knownUserVerified, this.admitted});
 
   /// Whether any of the user's pinned devices was verified out of band, in
   /// which case the new device must never be accepted silently.
   final bool knownUserVerified;
+
+  /// The pin this evaluation wrote for the device, when it admitted it.
+  final TrustedIdentity? admitted;
+
+  @override
+  bool get isTrusted => false;
+}
+
+/// The device id is pinned under another user. A device belongs to one
+/// account, so the directory misattributes one of the two; nothing is pinned,
+/// and no approval can resolve it.
+final class DeviceOfAnotherUser extends IdentityVerdict {
+  const DeviceOfAnotherUser(this.pinned);
+
+  final TrustedIdentity pinned;
 
   @override
   bool get isTrusted => false;

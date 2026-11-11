@@ -4,7 +4,6 @@ import 'dart:collection';
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../conversation_models.dart';
-import 'decrypt_outcome.dart';
 import 'in_memory_message_content_store.dart';
 
 typedef EnvelopeDecrypter = Future<DecryptedMessage> Function(CryptoEnvelope envelope);
@@ -132,6 +131,24 @@ class MessageContentService {
     );
     _memo.remove(record.messageKey);
     _remember(record.messageKey, Future.value(record.toDecryptedMessage()));
+    await _store.put(record);
+  }
+
+  /// Content of a notice this device wrote itself. It was never encrypted,
+  /// so it is stored as opened and no decrypt is ever attempted on it.
+  Future<void> storeLocalNotice(ChatMessage notice, String code) async {
+    final now = DateTime.now();
+    final record = MessageContentRecord(
+      messageKey: notice.id,
+      conversationId: notice.envelope.conversationId,
+      body: code,
+      kind: MessageKind.system,
+      status: MessageContentStatus.ok,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _memo.remove(notice.id);
+    _remember(notice.id, Future.value(record.toDecryptedMessage()));
     await _store.put(record);
   }
 
@@ -263,15 +280,16 @@ class MessageContentService {
       return existing;
     }
     final decrypted = await _decrypt(message.envelope);
-    final status = classifyDecryptOutcome(decrypted.body);
-    final opened = status == MessageContentStatus.ok;
+    final status = MessageContentStatus.of(decrypted.status);
+    final opened = status == MessageContentStatus.ok || status == MessageContentStatus.legacyUnauthenticated;
     final now = DateTime.now();
     final record = MessageContentRecord(
       messageKey: key,
       conversationId: message.envelope.conversationId,
       clientMessageId: message.clientMessageId,
       serverMessageId: _isLocalEcho(message) ? null : message.id,
-      body: decrypted.body,
+      // Whatever an adapter put in a failed result is not the peer's text.
+      body: opened ? decrypted.body : '',
       // Kind, expiry and attachment are trusted only from an authenticated
       // payload; a placeholder echoes unauthenticated envelope fields.
       kind: opened ? decrypted.messageKind : MessageKind.text,

@@ -1,75 +1,70 @@
 import '../../../../core/crypto/crypto_engine.dart';
+import '../../../../core/util/base64url.dart';
+import '../../../../core/util/constant_time.dart';
 import '../conversation_models.dart';
 
 // Re-bootstrapping a live 1:1 session silently forks it: the peer keeps the
 // old ratchet and every later message fails to decrypt. These rules keep
-// bootstraps to the cases where no usable session can exist.
+// bootstraps to the cases where no usable session can exist. They only ever
+// see a directory answer the identity pins already accepted.
 
 enum SessionAction { reuse, bootstrap }
 
-class SessionDecision {
-  const SessionDecision(this.action, {this.identityMismatch = false});
-
-  final SessionAction action;
-
-  /// The directory now serves a different identity key for the very device
-  /// the conversation pinned. Never a reason to re-bootstrap on its own.
-  final bool identityMismatch;
-}
-
-SessionDecision decideSession({
+SessionAction decideSession({
   required bool engineHasSession,
   required ConversationSessionState? session,
   required String localDeviceId,
   required KeyBundle bundle,
 }) {
-  final identityMismatch = _pinnedKeyChanged(session, localDeviceId: localDeviceId, bundle: bundle);
-  // Nothing to reuse, e.g. a ratchet snapshot that failed to restore. The
-  // bootstrap is unavoidable, but a new key for the pinned device is still
-  // flagged rather than silently adopted.
+  // Nothing to reuse, e.g. a ratchet snapshot that failed to restore.
   if (!engineHasSession) {
-    return SessionDecision(SessionAction.bootstrap, identityMismatch: identityMismatch);
+    return SessionAction.bootstrap;
   }
   // The engine holds a session the preview never recorded, e.g. one
   // established from an inbound message.
   if (session == null) {
-    return const SessionDecision(SessionAction.reuse);
+    return SessionAction.reuse;
   }
   if (!session.belongsToLocalDevice(localDeviceId) || !session.matchesBundle(bundle)) {
-    return const SessionDecision(SessionAction.bootstrap);
+    return SessionAction.bootstrap;
   }
-  return SessionDecision(SessionAction.reuse, identityMismatch: identityMismatch);
+  // The same device under a key the user has since accepted in place of the
+  // one this session was opened to: that identity is gone, and so is the
+  // session it had.
+  final sessionKey = session.remoteIdentityPublicKey;
+  if (sessionKey.isNotEmpty &&
+      bundle.identityPublicKey.isNotEmpty &&
+      !sameIdentityKey(sessionKey, bundle.identityPublicKey)) {
+    return SessionAction.bootstrap;
+  }
+  return SessionAction.reuse;
 }
 
-bool _pinnedKeyChanged(
-  ConversationSessionState? session, {
-  required String localDeviceId,
-  required KeyBundle bundle,
-}) {
-  if (session == null || !session.belongsToLocalDevice(localDeviceId) || !session.matchesBundle(bundle)) {
+/// Whether two base64url identity keys are the same key. Handshakes and the
+/// directory encode keys differently (padding), so the bytes are compared;
+/// a key that does not decode matches only itself.
+bool sameIdentityKey(String a, String b) {
+  if (a == b) return true;
+  try {
+    return constantTimeBytesEqual(base64UrlNoPadDecode(a), base64UrlNoPadDecode(b));
+  } on FormatException {
     return false;
   }
-  final pinnedKey = session.remoteIdentityPublicKey;
-  return pinnedKey.isNotEmpty && bundle.identityPublicKey.isNotEmpty && pinnedKey != bundle.identityPublicKey;
 }
 
-/// The conversation after a directory answer for a session it keeps.
-///
-/// A session that has not recorded its peer's identity key yet (opened by
-/// the peer's first frame, or created before keys were recorded) adopts the
-/// key served for the same device: trust on first use, from the same
-/// directory the initiator trusted. A different key for the bound device is
-/// only flagged and the pinned bundle stays, because that is who the live
-/// session actually encrypts to, and so what safety numbers must show.
-ConversationPreview keepSession(
-  ConversationPreview conversation,
-  KeyBundle served,
-  SessionDecision decision,
-) {
-  assert(decision.action == SessionAction.reuse);
-  if (decision.identityMismatch) {
-    return conversation.copyWith(identityMismatchPending: true);
-  }
+/// Whether [session] already names the device and identity an inbound
+/// handshake proved. When it does not, the handshake moved the conversation:
+/// the engine now encrypts to that identity, so the conversation must name
+/// it too, or safety numbers and directory checks would describe a session
+/// nothing uses any more.
+bool sessionNames(ConversationSessionState session, String deviceId, String identityKey) =>
+    session.remoteDeviceId == deviceId && sameIdentityKey(session.remoteIdentityPublicKey, identityKey);
+
+/// The conversation after a directory answer for a session it keeps. A
+/// session that has not recorded its peer's identity key yet (opened by the
+/// peer's first legacy frame, or created before keys were recorded) adopts
+/// the accepted key served for the same device.
+ConversationPreview keepSession(ConversationPreview conversation, KeyBundle served) {
   final session = conversation.sessionState;
   final pinsIdentity = session != null &&
       session.remoteIdentityPublicKey.isEmpty &&
@@ -101,11 +96,12 @@ bool comesFromNewPeerDevice(
 /// What this device knows about a session its engine opened by itself while
 /// decrypting a peer's first frame (protocol v2 and libsignal run the
 /// responder half of the handshake inside decrypt): the frame's
-/// authenticated sender device, and nothing about the engine's internals.
-/// The identity key is pinned later, as for any inbound session.
+/// authenticated sender device and, when the engine showed it to the
+/// identity verifier, the identity key the handshake proved.
 ConversationSessionState observedInboundSession(
   CryptoEnvelope envelope, {
   required String localDeviceId,
+  String remoteIdentityPublicKey = '',
 }) {
   return ConversationSessionState(
     sessionLocator: '',
@@ -116,6 +112,7 @@ ConversationSessionState observedInboundSession(
     remoteDeviceId: envelope.senderDeviceId,
     remoteIdentityFingerprint: '',
     bootstrappedAt: DateTime.now(),
+    remoteIdentityPublicKey: remoteIdentityPublicKey,
   );
 }
 

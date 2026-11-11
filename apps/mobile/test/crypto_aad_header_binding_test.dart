@@ -39,7 +39,7 @@ void main() {
 
     final result = await receive(bob, copyEnvelope(env, senderDeviceId: 'device-mallory'));
     expect(result.status, DecryptStatus.failed, reason: 'altered senderDeviceId must invalidate the GCM tag');
-    expect(result.body, startsWith('['));
+    expect(result.body, isEmpty);
 
     expect((await receive(bob, env)).body, 'authentic sender');
   });

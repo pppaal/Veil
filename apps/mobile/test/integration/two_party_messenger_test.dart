@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import '../support/async_wait.dart';
@@ -51,6 +54,16 @@ void main() {
     );
   }
 
+  // Syncs [party]'s copy of the conversation and opens the row that carries
+  // [envelope].
+  Future<DecryptedMessage> openRelayed(MessengerParty party, Map<String, dynamic> envelope) async {
+    await party.controller.loadConversationMessages(conv);
+    final row = party.controller.messagesFor(conv).firstWhere((m) => m.envelope.ciphertext == envelope['ciphertext']);
+    final opened = await party.controller.decryptMessage(row);
+    await settle();
+    return opened;
+  }
+
   test('refresh between sends keeps the session', () async {
     await deliver(alice, bob, 'm1');
     await alice.controller.refreshConversations();
@@ -94,6 +107,7 @@ void main() {
     await bob.refreshToken();
     await settle();
 
+    expect(bob.realtime.authUpdates, 1, reason: 'the socket takes the new token in place');
     expect(bob.realtime.connectCount, connects + 1);
     expect(bob.realtime.lastAccessToken, bob.session().accessToken);
     expect(bob.api.conversationFetches, conversationFetches);
@@ -293,68 +307,140 @@ void main() {
     await settle();
     await deliver(alice, bob, 'a3');
 
-    expect(alice.api.keyBundleFetches, {'bob': 1});
-    // The responder looks alice up once, when her first frame sets up its
-    // session, so it has her identity key for safety numbers.
-    expect(bob.api.keyBundleFetches, {'alice': 1});
+    expect(alice.api.directoryLookups, {'bob': 1});
+    // The responder pins the identity alice's handshake proved, so it never
+    // asks the directory about her.
+    expect(bob.api.directoryLookups, isEmpty);
     final bobView = bob.controller.conversations.firstWhere((item) => item.id == conv);
     expect(bobView.recipientBundle.identityPublicKey, alice.device.identity.identityPublicKey);
   });
 
-  test('identity key change for same device does not rebootstrap and flags preview', () async {
-    await deliver(alice, bob, 'before swap');
+  test('server identity swap blocked', () async {
+    await deliver(alice, bob, 'pinned');
+    // The pin outlives the app; the directory answer it was made from does not.
+    await alice.restart();
+    // A second conversation needs a fresh session, and the server answers
+    // the lookup with a key of its own for bob's very device.
+    relay.addDirect('conv-ab-2', 'alice', 'bob');
+    await alice.controller.refreshConversations();
     final impostor = await LibCryptoAdapter().identity.generateDeviceIdentity(bob.device.deviceId);
     relay.bundleOverrides['bob'] = {
       ...bob.device.bundleJson,
       'identityPublicKey': impostor.identityPublicKey,
       'signedPrekeyBundle': impostor.signedPrekeyBundle,
     };
+    alice.crypto.counts.reset();
 
-    final served = await alice.controller.fetchPeerKeyBundle('bob');
+    await alice.controller.sendText(conversationId: 'conv-ab-2', body: 'for bob only');
+    await settle();
 
-    expect(served.identityPublicKey, impostor.identityPublicKey);
-    final preview = alice.controller.conversations.firstWhere((item) => item.id == conv);
-    expect(preview.identityMismatchPending, isTrue);
-    expect(preview.sessionState!.remoteIdentityPublicKey, bob.device.identity.identityPublicKey);
-    // The live session still encrypts to bob's real key, so that is the key
-    // the conversation keeps showing for safety numbers.
-    expect(preview.recipientBundle.identityPublicKey, bob.device.identity.identityPublicKey);
-    expect(alice.crypto.counts.bootstrap, 1);
-    await waitFor(() async => (await alice.cache.readConversations())
-        .firstWhere((item) => item.id == conv)
-        .identityMismatchPending);
-
-    await deliver(alice, bob, 'after swap');
-    expect(await bob.bodies(conv), ['before swap', 'after swap']);
-    expect(alice.crypto.counts.bootstrap, 1);
+    expect(alice.crypto.counts.bootstrap, 0);
+    expect(relay.conversations['conv-ab-2']!.messages, isEmpty);
+    final change = alice.controller.pendingIdentityChangeFor('conv-ab-2')!;
+    expect(change.presentedKey, impostor.identityPublicKey);
+    expect(change.previousKey, bob.device.identity.identityPublicKey);
+    expect(alice.controller.errorMessage, isNull, reason: 'the issue belongs to the conversation');
+    expect(alice.controller.messagesFor('conv-ab-2').single.isLocalNotice, isTrue);
+    // The established conversation keeps working with the pinned key.
+    await deliver(alice, bob, 'still you');
   });
 
-  test('responder flags an identity key change for the initiator device', () async {
+  test('forged inbound session rejected', () async {
     await deliver(alice, bob, 'hello bob');
-    await waitFor(
-      () => bob.controller.conversations
-          .firstWhere((item) => item.id == conv)
-          .sessionState!
-          .remoteIdentityPublicKey
-          .isNotEmpty,
-      reason: 'the responder never pinned the initiator identity key',
+    // The server opens a session to bob in alice's name, from an identity it
+    // controls on alice's device id.
+    final forger = LibCryptoAdapter();
+    final forged = await forger.identity.generateDeviceIdentity(alice.device.deviceId);
+    forger.setLocalIdentityLoader(() async => forged.identityPrivateKeyRef);
+    await forger.sessions.bootstrapSession(SessionBootstrapRequest(
+      conversationId: conv,
+      localDeviceId: alice.device.deviceId,
+      localUserId: alice.device.userId,
+      remoteUserId: bob.device.userId,
+      remoteDeviceId: bob.device.deviceId,
+      remoteIdentityPublicKey: bob.device.identity.identityPublicKey,
+      remoteSignedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+    ));
+    final envelope = await forger.messaging.encryptMessage(
+      conversationId: conv,
+      senderDeviceId: alice.device.deviceId,
+      recipientUserId: bob.device.userId,
+      body: 'trust me',
+      messageKind: MessageKind.text,
+      recipientBundle: KeyBundle(
+        userId: bob.device.userId,
+        deviceId: bob.device.deviceId,
+        handle: 'bob',
+        identityPublicKey: bob.device.identity.identityPublicKey,
+        signedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+      ),
     );
-    final impostor = await LibCryptoAdapter().identity.generateDeviceIdentity(alice.device.deviceId);
-    relay.bundleOverrides['alice'] = {
-      ...alice.device.bundleJson,
-      'identityPublicKey': impostor.identityPublicKey,
-      'signedPrekeyBundle': impostor.signedPrekeyBundle,
-    };
+    relay.inject(senderHandle: 'alice', conversationId: conv, envelope: forger.envelopeCodec.encodeApiEnvelope(envelope));
 
-    await bob.controller.fetchPeerKeyBundle('alice');
+    await bob.controller.loadConversationMessages(conv);
+    await waitFor(() => bob.controller.pendingIdentityChangeFor(conv) != null, reason: 'the forgery was not caught');
 
-    final preview = bob.controller.conversations.firstWhere((item) => item.id == conv);
-    expect(preview.identityMismatchPending, isTrue);
-    expect(preview.sessionState!.remoteIdentityPublicKey, alice.device.identity.identityPublicKey);
-    expect(preview.recipientBundle.identityPublicKey, alice.device.identity.identityPublicKey);
-    expect(bob.crypto.counts.bootstrap, 0);
-    await deliver(bob, alice, 'still you?');
-    expect(await alice.bodies(conv), ['hello bob', 'still you?']);
+    final forgedRow = bob.controller.messagesFor(conv).firstWhere((m) => m.envelope.ciphertext == envelope.ciphertext);
+    final opened = await bob.controller.decryptMessage(forgedRow);
+    expect(opened.status, DecryptStatus.identityRejected);
+    expect(opened.body, isEmpty);
+    expect(bob.controller.pendingIdentityChangeFor(conv)!.presentedKey, forged.identityPublicKey);
+    // Nothing was installed: alice's real session still reads.
+    await deliver(alice, bob, 'the real alice');
+    expect(await bob.bodies(conv), containsAllInOrder(['hello bob', 'the real alice']));
+    expect(await bob.bodies(conv), isNot(contains('trust me')));
+  });
+
+  test('OPK claimed and consumed exactly once', () async {
+    final carol = await MessengerParty.join(
+      relay,
+      handle: 'carol',
+      userId: 'user-carol',
+      deviceId: 'dev-carol',
+      maintainPrekeys: true,
+    );
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-ac', 'alice', 'carol');
+    await carol.signIn();
+    await waitFor(
+      () => (relay.oneTimePrekeys['dev-carol']?.length ?? 0) == PrekeyMaintenance.oneTimePrekeyPoolSize,
+      timeout: const Duration(seconds: 10),
+      reason: 'carol never published her one-time prekeys',
+    );
+    await alice.controller.refreshConversations();
+
+    await deliver(alice, carol, 'first contact', conversationId: 'conv-ac');
+    await deliver(alice, carol, 'second', conversationId: 'conv-ac');
+    await deliver(carol, alice, 'reply', conversationId: 'conv-ac');
+
+    final claimed = relay.claimedOneTimePrekeys['dev-carol']!;
+    expect(claimed, hasLength(1), reason: 'one session, one claim');
+    expect(relay.oneTimePrekeys['dev-carol'], hasLength(PrekeyMaintenance.oneTimePrekeyPoolSize - 1));
+    // Carol's handshake used it up: the private half is gone.
+    expect(await carol.prekeyStore.loadOneTimePrekey(claimed.single), isNull);
+    expect(await carol.prekeyStore.loadOneTimePrekey(claimed.single + 1), isNotNull);
+  });
+
+  test('a reaction travels end to end and lands on its target', () async {
+    await deliver(alice, bob, 'react to me');
+    await settle();
+    final target = bob.controller.messagesFor(conv).single;
+    final relayedBefore = relay.conversations[conv]!.messages.length;
+
+    await bob.controller.toggleReaction(target, '🔥');
+    await waitFor(() => alice.controller.messagesFor(conv).first.reactions.isNotEmpty);
+
+    final reacted = alice.controller.messagesFor(conv).first;
+    expect(reacted.reactions.single.emoji, '🔥');
+    expect(reacted.reactions.single.userId, bob.device.userId);
+    // The relay saw one more encrypted message and nothing it could read.
+    final relayed = relay.conversations[conv]!.messages.last;
+    expect(relay.conversations[conv]!.messages, hasLength(relayedBefore + 1));
+    expect(relayed['messageType'], 'reaction');
+    expect(jsonEncode(relayed), isNot(contains('🔥')));
+    final row = alice.controller.messagesFor(conv).last;
+    expect((await alice.controller.decryptMessage(row)).messageKind, MessageKind.reaction);
+    expect(alice.notifications.shownForConversations, isEmpty, reason: 'a reaction is not a new message');
   });
 
   test('a frame for a conversation not listed yet still records the responder session', () async {
@@ -399,8 +485,11 @@ void main() {
     expect(bob.crypto.counts.bootstrap, 0);
   });
 
-  test('peer device change re-bootstraps the next send to the new device', () async {
+  test('peer device change moves the next send to the new device', () async {
     await deliver(alice, bob, 'before the move');
+    // Answered, so alice's handshake is settled and the new device's one
+    // replaces it (see SessionRecord.installingInbound).
+    await deliver(bob, alice, 'packing up');
     final newPhone = await MessengerParty.join(
       relay,
       handle: 'bob',
@@ -414,16 +503,68 @@ void main() {
     // only sign she gets that bob moved.
     await newPhone.controller.sendText(conversationId: conv, body: 'new phone');
     await waitFor(() => newPhone.controller.pendingCountFor(conv) == 0);
-    await waitFor(() => alice.controller.messagesFor(conv).length == 2);
-    await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
-    await alice.controller.sendText(conversationId: conv, body: 'after the move');
-    await waitFor(() => alice.controller.pendingCountFor(conv) == 0);
+    List<ChatMessage> relayed() => alice.controller.messagesFor(conv).where((m) => !m.isLocalNotice).toList();
+    await waitFor(() => relayed().length == 3);
+    await alice.controller.decryptMessage(relayed().last);
+    // bob was not verified, so his new device is admitted and announced.
+    await waitFor(() => alice.controller.messagesFor(conv).any((m) => m.isLocalNotice));
+    await deliver(alice, newPhone, 'after the move');
 
-    expect(alice.api.keyBundleFetches, {'bob': 2});
-    expect(alice.crypto.counts.bootstrap, 2);
+    // The directory confirms the device the new session is bound to, so
+    // alice answers on that session instead of forking it.
+    expect(alice.api.directoryLookups, {'bob': 2});
+    expect(alice.crypto.counts.bootstrap, 1);
     final session = alice.controller.conversations.firstWhere((item) => item.id == conv).sessionState!;
     expect(session.remoteDeviceId, 'dev-bob-2');
     expect(session.remoteIdentityPublicKey, newPhone.device.identity.identityPublicKey);
+  });
+
+  test('a device injected into an established conversation never gets a reply', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final ghost = await _InjectedDevice.mint('dev-ghost', owner: bob);
+    ConversationSessionState session() => alice.controller.conversationById(conv)!.sessionState!;
+
+    // bob is not verified, so a new device of his is admitted on first use
+    // and announced. The conversation names it from then on: the safety
+    // numbers describe the identity the engine now holds a session with.
+    final injected = await ghost.handshake(relay, alice, 'ghost hello');
+    expect((await openRelayed(alice, injected)).status, DecryptStatus.ok);
+    expect(alice.controller.messagesFor(conv).where((m) => m.isLocalNotice), hasLength(1));
+    expect(session().remoteDeviceId, 'dev-ghost');
+    expect(session().remoteIdentityPublicKey, ghost.identityKey);
+
+    // The reply goes to the device the directory serves, which is bob's.
+    await deliver(alice, bob, 'secret for bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(session().remoteDeviceId, 'dev-bob');
+
+    // Once alice verified that device, a fresh session from the injected one
+    // still does not take her replies.
+    final served = await alice.controller.fetchPeerKeyBundle('bob');
+    expect(served.deviceId, 'dev-bob');
+    await alice.pins.markVerified(bob.device.userId, served.deviceId, served.identityPublicKey);
+    await openRelayed(alice, await ghost.handshake(relay, alice, 'ghost again'));
+    await deliver(alice, bob, 'after verifying bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(await bob.bodies(conv), containsAllInOrder(['secret for bob', 'after verifying bob']));
+  });
+
+  test('the engine never seals to an identity the conversation did not choose', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final ghost = await _InjectedDevice.mint('dev-ghost', owner: bob);
+    // The injected handshake reaches alice's engine between a send choosing
+    // its recipient and sealing: the engine installs it as the sending
+    // state before the conversation hears of it.
+    final injected = await ghost.handshake(relay, alice, 'ghost hello');
+    final opened = await alice.lib.messaging.decryptMessage(alice.lib.envelopeCodec.decodeApiEnvelope(injected));
+    expect(opened.status, DecryptStatus.ok);
+    expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-bob');
+
+    await deliver(alice, bob, 'secret for bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-bob');
   });
 
   // Opens alice's latest message on bob's side, then the blob the relay
@@ -466,7 +607,7 @@ void main() {
     await deliver(alice, bob, 'session up');
     await alice.restart();
     await settle();
-    final fetches = Map<String, int>.of(alice.api.keyBundleFetches);
+    final fetches = Map<String, int>.of(alice.api.directoryLookups);
 
     await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
@@ -475,7 +616,7 @@ void main() {
     final (_, plaintext) = await openLatestAttachment();
     expect(plaintext, hasLength(2048));
     // A lookup would tell the relay whom alice is about to message.
-    expect(alice.api.keyBundleFetches, fetches);
+    expect(alice.api.directoryLookups, fetches);
   });
 
   test('re-ticketing after the upload ticket expired reuses the sealed attachment id', () async {
@@ -503,4 +644,58 @@ void main() {
     expect(relay.attachments[reference.attachmentId]!.uploadStatus, 'uploaded');
     expect(plaintext, hasLength(2048));
   });
+}
+
+/// A device the server invents under [owner]'s account, with an identity
+/// the server holds: every handshake it opens is genuine X3DH, only from a
+/// device [owner] never had.
+class _InjectedDevice {
+  _InjectedDevice._(this.deviceId, this.owner, this.adapter, this.identityKey);
+
+  static Future<_InjectedDevice> mint(String deviceId, {required MessengerParty owner}) async {
+    final adapter = LibCryptoAdapter();
+    final identity = await adapter.identity.generateDeviceIdentity(deviceId);
+    adapter.setLocalIdentityLoader(() async => identity.identityPrivateKeyRef);
+    return _InjectedDevice._(deviceId, owner, adapter, identity.identityPublicKey);
+  }
+
+  final String deviceId;
+  final MessengerParty owner;
+  final LibCryptoAdapter adapter;
+  final String identityKey;
+
+  /// Opens a fresh session to [peer] and relays [body] on it in [owner]'s
+  /// name; returns the envelope.
+  Future<Map<String, dynamic>> handshake(FakeRelay relay, MessengerParty peer, String body) async {
+    final peerBundle = KeyBundle(
+      userId: peer.device.userId,
+      deviceId: peer.device.deviceId,
+      handle: peer.device.handle,
+      identityPublicKey: peer.device.identity.identityPublicKey,
+      signedPrekeyBundle: peer.device.identity.signedPrekeyBundle,
+    );
+    await adapter.sessions.bootstrapSession(SessionBootstrapRequest(
+      conversationId: conv,
+      localDeviceId: deviceId,
+      localUserId: owner.device.userId,
+      remoteUserId: peerBundle.userId,
+      remoteDeviceId: peerBundle.deviceId,
+      remoteIdentityPublicKey: peerBundle.identityPublicKey,
+      remoteSignedPrekeyBundle: peerBundle.signedPrekeyBundle,
+    ));
+    final envelope = adapter.envelopeCodec.encodeApiEnvelope(await adapter.messaging.encryptMessage(
+      conversationId: conv,
+      senderDeviceId: deviceId,
+      recipientUserId: peerBundle.userId,
+      body: body,
+      messageKind: MessageKind.text,
+      recipientBundle: peerBundle,
+    ));
+    relay.inject(senderHandle: owner.device.handle, conversationId: conv, envelope: envelope);
+    return envelope;
+  }
+
+  /// What this device reads of a relayed envelope.
+  Future<DecryptedMessage> open(Map<String, dynamic> relayed) =>
+      adapter.messaging.decryptMessage(adapter.envelopeCodec.decodeApiEnvelope(relayed));
 }

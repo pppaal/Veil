@@ -36,7 +36,6 @@ ConversationPreview _preview({
   String id = 'conv-1',
   KeyBundle bundle = _serverBundle,
   ConversationSessionState? session,
-  bool identityMismatchPending = false,
   int? timer,
   DateTime? updatedAt,
 }) {
@@ -49,23 +48,17 @@ ConversationPreview _preview({
     updatedAt: updatedAt ?? DateTime.utc(2026, 4, 1),
     sessionState: session,
     disappearingTimerSeconds: timer,
-    identityMismatchPending: identityMismatchPending,
   );
 }
 
 void main() {
-  test('keeps the local session, bundle and identity flag when the server has none', () {
-    final local = _preview(
-      bundle: _fullBundle,
-      session: _session(),
-      identityMismatchPending: true,
-    );
+  test('keeps the local session and bundle when the server has none', () {
+    final local = _preview(bundle: _fullBundle, session: _session());
 
     final merged = mergeConversationPreviews([local], [_preview()]).single;
 
     expect(merged.sessionState, same(local.sessionState));
     expect(merged.recipientBundle, same(_fullBundle));
-    expect(merged.identityMismatchPending, isTrue);
   });
 
   test('takes everything else from the server', () {

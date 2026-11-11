@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import 'fake_relay.dart';
@@ -15,7 +19,8 @@ void seedMockParties(FakeRelay relay, String conversationId, List<String> handle
       userId: 'user-$handle',
       deviceId: 'dev-$handle',
       identity: DeviceIdentityMaterial(
-        identityPublicKey: 'ik-$handle',
+        // Identity pins compare keys as base64url bytes.
+        identityPublicKey: base64UrlNoPadEncode(utf8.encode('ik-$handle')),
         identityPrivateKeyRef: 'ref-$handle',
         signedPrekeyBundle: 'spk-$handle',
       ),
@@ -32,6 +37,7 @@ VeilMessengerController mockPartyController(
   ConversationCacheService? cacheService,
   bool Function()? readReceiptsEnabled,
   bool Function()? typingIndicatorsEnabled,
+  IdentityTrust? identityTrust,
 }) {
   final crypto = adapter ?? StrictMockCryptoAdapter(localDeviceId: 'dev-$handle');
   return VeilMessengerController(
@@ -44,6 +50,7 @@ VeilMessengerController mockPartyController(
     cacheService: cacheService,
     readReceiptsEnabled: readReceiptsEnabled,
     typingIndicatorsEnabled: typingIndicatorsEnabled,
+    identityTrust: identityTrust,
   );
 }
 

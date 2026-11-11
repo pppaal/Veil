@@ -3,6 +3,7 @@ import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/group_sender_keys.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+import 'package:veil_mobile/src/core/network/keys_api.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/group_sender_key_coordinator.dart';
@@ -61,20 +62,25 @@ class _RelayClient extends VeilApiClient {
           {String? cursor, int limit = 50}) async =>
       {'items': const <Map<String, dynamic>>[], 'nextCursor': null};
 
+  // GET /keys/:handle with each user's single device.
   @override
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
-    final d = relay.devicesByHandle[handle]!;
-    final bundle = {
-      'userId': d.userId,
-      'deviceId': d.deviceId,
-      'handle': d.handle,
-      'identityPublicKey': d.identity.identityPublicKey,
-      'signedPrekeyBundle': d.identity.signedPrekeyBundle,
-    };
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    required String? accessToken,
+    Map<String, String>? query,
+  }) async {
+    final d = relay.devicesByHandle[path.substring('/keys/'.length)]!;
     return {
-      'user': {'activeDeviceId': d.deviceId},
-      'bundle': bundle,
-      'deviceBundles': [bundle],
+      'user': {'id': d.userId, 'handle': d.handle, 'activeDeviceId': d.deviceId},
+      'devices': [
+        {
+          'deviceId': d.deviceId,
+          'identityPublicKey': d.identity.identityPublicKey,
+          'signedPrekeyBundle': d.identity.signedPrekeyBundle,
+          'isActive': true,
+          'oneTimePrekey': null,
+        },
+      ],
     };
   }
 
@@ -162,10 +168,12 @@ class _Member {
       engine: engine,
       sealer: GroupSenderKeySealer(resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519),
       apiClient: api,
-      keyBundleCodec: adapter.keyBundles,
+      keys: KeysApi(api, adapter.keyBundles),
       identityPrivateRefLoader: () async => device.identity.identityPrivateKeyRef,
       localX25519PrivateParser: LibIdentityKeys.localX25519Private,
       localEd25519SeedParser: LibIdentityKeys.localEd25519Seed,
+      conversationLookup: (conversationId) => controller.conversationById(conversationId),
+      onKeysChanged: (conversationId) => controller.onGroupKeysChanged(conversationId),
     );
     realtime = _FakeRealtime();
     controller = VeilMessengerController(
@@ -201,12 +209,14 @@ class _Member {
       ));
 
   /// Decrypt a frame the relay recorded, as the UI would.
-  Future<String> read(Map<String, dynamic> sentBody) async {
+  Future<DecryptedMessage> decrypt(Map<String, dynamic> sentBody) async {
     final env = adapter.envelopeCodec.decodeApiEnvelope(
       (sentBody['envelope'] as Map<String, dynamic>)..['conversationId'] = groupId,
     );
-    return (await controller.decryptEnvelope(env)).body;
+    return controller.decryptEnvelope(env);
   }
+
+  Future<String> read(Map<String, dynamic> sentBody) async => (await decrypt(sentBody)).body;
 }
 
 Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 50));
@@ -338,7 +348,9 @@ void main() {
     expect(after['groupEpoch'], 1);
     expect(await bob.read(after), 'after');
     // carol still holds epoch-0 state only.
-    expect(await carol.read(after), '[Message from a previous group epoch]');
+    final stale = await carol.decrypt(after);
+    expect(stale.status, DecryptStatus.failed);
+    expect(stale.failureReason, 'epochMismatch');
   });
 
   test('legacy groups (flag off) keep the 1:1 envelope path untouched', () async {

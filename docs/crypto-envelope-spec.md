@@ -63,7 +63,7 @@ correct and this document is stale — file a correction.
 | Max skipped keys per session          | 1000, oldest evicted first              |
 | Skipped-key lifetime                  | 7 days                                  |
 | Max SPK age / future skew at initiate | 60 days / 1 day                         |
-| Superseded SPK grace                  | 14 days after its successor was created |
+| Superseded SPK grace                  | 14 days after a newer SPK was published |
 | Archived states per conversation      | 5, each kept 30 days after its last use |
 
 ### Identity keys and the bundle (contract C1)
@@ -98,6 +98,18 @@ The device-local identity private ref (never transmitted) is
 A fresh identity uses spkId 1. Rotating draws a new SPK with id `max + 1`; a
 v1 ref (no `spk`) is upgraded by promoting its X25519 key to IKx.
 
+A device records which SPK the directory last accepted (registration publishes
+a fresh identity's spkId 1). Maintenance publishes until the newest SPK is that
+one: a newest SPK younger than 7 days whose publish failed is published again
+as it is (Ed25519 is deterministic, so the bundle is the same), an older one is
+rotated first. When the directory refuses such a publish but serves exactly
+that bundle for the device (the first publish succeeded and its answer was
+lost), the SPK is recorded as published. SPKs older than the published one are
+deleted 14 days after it was published; while no publication is recorded,
+none is deleted. One-time prekeys whose upload failed are uploaded again as
+they are by the next run (the directory skips ids it holds), never replaced by
+fresh ones.
+
 ### X3DH
 
 The initiator A, holding B's verified bundle and optionally a claimed OPK:
@@ -117,8 +129,9 @@ preKeyHeader (168 bytes) = IKed_A(32) || IKx_A(32) || ikxSig_A(64) || EK(32)
 
 The responder B processes a PreKey frame whose `EK` matches no stored state:
 
-1. Load the SPK named by `spkId`: the current one, or a superseded one whose
-   successor is at most 14 days old. Otherwise fail (`spk_unavailable`).
+1. Load the SPK named by `spkId`: the published one or a newer one, or an
+   older one until 14 days after the published one was published. Otherwise
+   fail (`spk_unavailable`).
 2. If `opkId != 0xFFFFFFFF`, load that OPK. If it is gone, fail
    (`opk_unavailable`) without changing any state.
 3. Verify `ikxSig_A` against `IKed_A`; otherwise fail (`bad_ikx_signature`).
@@ -335,13 +348,109 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 
-Non-`ok` results carry a placeholder body (`[Decryption failed]`, ...) that
-callers must not render as peer text; they branch on the status.
+Non-`ok` results carry an empty body. Callers branch on the status, never on
+the body, and render a non-`ok` result as the client's own failure indicator,
+so no text a peer sends (for instance the literal `[Decryption failed]`) can
+pass for one. `legacyUnauthenticated` shows its text marked as coming from an
+unverified sender.
 Hostile input is a result, never an exception, and leaves session state
 untouched: an envelope whose version, conversationId or senderDeviceId exceeds
 65535 UTF-8 bytes (so `lp` cannot encode it) is an invalid envelope, and an
 authenticated payload whose `x` lies outside ±8.64e15 ms or whose size is not a
 non-negative integer is a malformed payload; both are `failed`.
+
+### Identity trust (mobile)
+
+The directory is relayed by the server, so a client never takes an identity
+key from it on trust alone. Each device keeps a pin table, one entry per
+contact device: `(userId, deviceId) -> IKed`, with `firstSeenAt`, an optional
+`verifiedAt` (the user compared safety numbers or a QR code) and an optional
+`approvedAt`. It lives in the device keystore and is wiped with the device.
+
+Every identity a conversation is about to use is evaluated against it: before
+any outbound bootstrap (the directory's answer for the peer's active device),
+for every inbound PreKey handshake (the verifier receives the `IKed` the
+handshake proved, after AEAD success and before anything is stored), and for
+every device a group chain key is sealed to or accepted from.
+
+| Verdict | Outcome |
+| ------- | ------- |
+| no pin for the user | pinned (trust on first use), proceed |
+| pin matches | proceed |
+| new device, contact never verified | pinned in the same step as the decision, proceed, the conversation gets an `identity.new_device` notice |
+| new device, contact verified | refused until the user approves after re-verifying |
+| different key for a pinned device | refused until the user approves; if the pin was verified, approval requires re-verification |
+| device id already pinned under another user | refused; there is nothing to approve (group chains are keyed by device id) |
+
+A refusal is never resolved automatically. In a 1:1 conversation it blocks
+sending (no bootstrap, no encryption) and inbound handshakes from that
+identity yield `identityRejected`, which is retried once the user approves.
+The conversation gets an `identity.changed` notice once per presented key.
+In a Sender Keys group the refused device is not sealed to and its
+distributions are not installed; the rest of the group proceeds. A chain key
+is sealed once to each trusted device, and the sender records delivery per
+device, so a device approved later, or one a member adds later, gets its own
+copy on a later send (a member's directory entry is reused for at most ten
+minutes), while a device that holds the chain is never sent it again. Notices are
+rows the client inserts itself under the id prefix `notice:`; relayed rows
+carrying that prefix are dropped, and only local rows are rendered as notices.
+
+What a 1:1 conversation encrypts to is always what it shows. A handshake
+the pins admit becomes the engine's sending state, so when it comes from
+another device or proves another identity than the one the conversation
+records, the conversation records that device and key in its place, and
+asks the directory before the next send: a device the directory does not
+serve as the peer's active one gets no reply, because that send opens a
+session to the device the directory does serve, once the pins accept it.
+The engine checks this as well: it seals a message only on a sending state
+bound to the identity the caller chose (compared as bytes), and otherwise
+fails with `SessionRecipientChanged` without encrypting, upon which the
+messenger asks the directory and opens a new session. Approving a change
+makes every 1:1 conversation with that contact ask the directory again.
+
+Approving a change for a contact the user had verified takes a fresh
+comparison: either a scanned code that matches the presented key, or an
+explicit affirmation, next to the new safety number, that it was compared out
+of band. The new key is then pinned as verified. A plain approval, offered
+only for contacts that were never verified, pins the new key unverified.
+An approval names the change the user reviewed (device and presented key). A
+later refusal in the same conversation replaces the pending change, and an
+approval of the replaced one accepts nothing; a re-verification that names no
+change is refused.
+
+Builds before the pin table recorded identity knowledge in session state and
+safety-number verifications. On upgrade that knowledge is carried into the
+pin table before the first trust decision is made; until then every decision
+waits, so neither an inbound handshake nor a directory answer can be pinned on
+first use in its place; a migration that fails (the cache cannot be read) is
+attempted again by the next decision. A verification is pinned as verified
+for the device its session talks to unless the session recorded a different
+key.
+
+Safety numbers (v2) are computed from the pinned `IKed` and the two user ids,
+never from the directory. In a 1:1 conversation the screen shows the device
+the conversation's session is bound to, the one every reply is encrypted to,
+and marking it verified verifies that device; for a group member it shows the
+device the directory calls active. The screen warns when the directory serves
+another key for that device, or another device. A scanned QR payload that does
+not match is a hard failure: nothing is verified or approved. Safety numbers
+never leave the device.
+
+Version pinning: once a `veil-envelope-v2` frame has authenticated in a 1:1
+conversation, that conversation accepts only v2; `veil-envelope-v1` and
+`veil-envelope-v1-dev` frames are refused before decryption with `failed` /
+`downgrade_rejected`. The pin is kept in the keystore apart from session
+state. A Sender Keys group never routes anything but `veil-group-v1` frames to
+the group engine, and never opens a 1:1 session.
+
+Reactions travel end to end: a message of inner kind `reaction` whose body is
+compact JSON `{"v":1,"target":<message id>,"emoji":<1-8 code points>,"op":"add"|"remove"}`.
+A reaction applies only to a target in the same conversation, the latest
+reaction of each reactor wins by conversation order, and reaction messages
+never render on their own; one that opened only as `legacyUnauthenticated`
+is neither applied nor shown, and no reaction raises a notification. The
+relay is not a reactor: the deprecated `message.reaction` realtime event is
+accepted and ignored.
 
 ### Local persistence (informative)
 

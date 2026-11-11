@@ -155,7 +155,13 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   Future<SignedPrekeyRotation> rotateSignedPrekey() => _keyring.rotateSignedPrekey();
 
   @override
-  Future<DateTime?> currentSignedPrekeyCreatedAt() => _keyring.currentSignedPrekeyCreatedAt();
+  Future<SignedPrekeyRotation?> currentSignedPrekey() => _keyring.currentSignedPrekey();
+
+  @override
+  Future<int?> publishedSignedPrekeyId() => _keyring.publishedSignedPrekeyId();
+
+  @override
+  Future<void> markSignedPrekeyPublished(int spkId) => _keyring.markSignedPrekeyPublished(spkId);
 
   @override
   Future<int> pruneSignedPrekeys({Duration grace = signedPrekeyGrace}) => _keyring.pruneSignedPrekeys(grace);
@@ -371,6 +377,7 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
         senderDeviceId: senderDeviceId,
         recipientUserId: recipientUserId,
         payload: InnerPayload(body: body, kind: messageKind, expiresAt: expiresAt, attachment: attachment),
+        recipientIdentityKey: recipientBundle.identityPublicKey,
       );
 
   @override

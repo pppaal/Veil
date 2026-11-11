@@ -333,24 +333,31 @@ class PendingMessageRecord {
 /// are single-use, so the stored status decides whether a row may ever be
 /// decrypted again.
 enum MessageContentStatus {
-  ok('ok'),
-  failed('failed'),
-  replayed('replayed'),
-  awaitingKey('awaiting_key'),
-  sessionMissing('session_missing');
+  ok('ok', DecryptStatus.ok),
+  failed('failed', DecryptStatus.failed),
+  replayed('replayed', DecryptStatus.replayed),
+  awaitingKey('awaiting_key', DecryptStatus.awaitingKey),
+  sessionMissing('session_missing', DecryptStatus.sessionMissing),
+  identityRejected('identity_rejected', DecryptStatus.identityRejected),
+  legacyUnauthenticated('legacy_unauthenticated', DecryptStatus.legacyUnauthenticated);
 
-  const MessageContentStatus(this.storageName);
+  const MessageContentStatus(this.storageName, this.decryptStatus);
 
   final String storageName;
+  final DecryptStatus decryptStatus;
 
   /// Final rows are never decrypted again. The others are retried only when
-  /// key material for their conversation changes.
-  bool get isFinal => this == ok || this == failed || this == replayed;
+  /// key material or trust for their conversation changes: a rejected
+  /// identity reopens once the user approves it.
+  bool get isFinal => this == ok || this == failed || this == replayed || this == legacyUnauthenticated;
 
   static MessageContentStatus fromStorageName(String name) => values.firstWhere(
         (status) => status.storageName == name,
         orElse: () => failed,
       );
+
+  static MessageContentStatus of(DecryptStatus status) =>
+      values.firstWhere((candidate) => candidate.decryptStatus == status);
 }
 
 const _localMessageContentKeyPrefix = 'local:';
@@ -401,6 +408,7 @@ class MessageContentRecord {
         messageKind: kind,
         expiresAt: innerExpiresAt,
         attachment: attachment,
+        status: status.decryptStatus,
       );
 }
 
@@ -602,7 +610,6 @@ class DriftConversationCacheService implements ConversationCacheService, Message
                   auditHint: sessionAuditHint,
                   remoteIdentityPublicKey: sessionRemoteIdentityPublicKey ?? '',
                 ),
-          identityMismatchPending: row.identityMismatchPending,
         ),
       );
     }
@@ -727,7 +734,6 @@ class DriftConversationCacheService implements ConversationCacheService, Message
           )),
           sessionRemoteIdentityPublicKey: Value(await _encrypt(
               conversation.sessionState?.remoteIdentityPublicKey)),
-          identityMismatchPending: Value(conversation.identityMismatchPending),
           paginationCursor: Value(existing?.paginationCursor),
           hasMoreHistory: Value(existing?.hasMoreHistory ?? true),
           lastSyncedAt: Value(existing?.lastSyncedAt),

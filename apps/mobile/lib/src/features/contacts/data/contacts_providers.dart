@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/network/veil_api_client.dart';
+import '../../../core/storage/secure_storage_service.dart';
+import 'contact_nicknames.dart';
 
 class ContactEntry {
   const ContactEntry({
@@ -33,11 +35,12 @@ class ContactEntry {
     return handle;
   }
 
-  static ContactEntry fromJson(Map<String, dynamic> json) {
+  /// A relay contact row with the nickname this device keeps for it.
+  static ContactEntry fromJson(Map<String, dynamic> json, {String? nickname}) {
     return ContactEntry(
       handle: (json['handle'] as String?) ?? '',
       displayName: json['displayName'] as String?,
-      nickname: json['nickname'] as String?,
+      nickname: nickname,
       avatarPath: json['avatarPath'] as String?,
       addedAt:
           DateTime.tryParse(json['addedAt'] as String? ?? '')?.toLocal() ??
@@ -47,10 +50,11 @@ class ContactEntry {
 }
 
 class ContactsController extends ChangeNotifier {
-  ContactsController({required this.apiClient, required this.ref});
+  ContactsController({required this.apiClient, required this.ref, required this.nicknames});
 
   final VeilApiClient apiClient;
   final Ref ref;
+  final ContactNicknames nicknames;
 
   List<ContactEntry> _contacts = const [];
   bool _loading = false;
@@ -76,10 +80,11 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       final raw = await apiClient.getContacts(token);
-      _contacts = raw
-          .whereType<Map<String, dynamic>>()
-          .map(ContactEntry.fromJson)
-          .toList();
+      final labels = await nicknames.readAll();
+      _contacts = [
+        for (final json in raw.whereType<Map<String, dynamic>>())
+          ContactEntry.fromJson(json, nickname: labels[json['handle']]),
+      ];
     } catch (error) {
       _errorMessage = formatUserFacingError(error);
     } finally {
@@ -95,11 +100,8 @@ class ContactsController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
     try {
-      await apiClient.addContact(token, {
-        'handle': handle.trim(),
-        if (nickname != null && nickname.trim().isNotEmpty)
-          'nickname': nickname.trim(),
-      });
+      await apiClient.addContact(token, {'handle': handle.trim()});
+      await nicknames.write(handle.trim(), nickname ?? '');
       await refresh();
       return true;
     } catch (error) {
@@ -119,6 +121,7 @@ class ContactsController extends ChangeNotifier {
     notifyListeners();
     try {
       await apiClient.removeContact(token, handle);
+      await nicknames.remove(handle);
       _contacts =
           _contacts.where((contact) => contact.handle != handle).toList();
       return true;
@@ -153,6 +156,7 @@ final contactsControllerProvider =
   final controller = ContactsController(
     apiClient: ref.read(apiClientProvider),
     ref: ref,
+    nicknames: ContactNicknames(ref.read(secureStorageProvider).scoped(SecureScope.contacts)),
   );
 
   ref.listen(appSessionProvider, (previous, next) {

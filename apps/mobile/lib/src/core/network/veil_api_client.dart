@@ -122,10 +122,6 @@ class VeilApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
-    return _get('/users/$handle/key-bundle');
-  }
-
   // /conversations returns {items, nextCursor} per the contracts package, not
   // a raw array — the original _getList shape was a stale assumption.
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
@@ -239,21 +235,6 @@ class VeilApiClient {
     return _post('/messages/$messageId/read', const {}, accessToken: accessToken);
   }
 
-  Future<Map<String, dynamic>> addReaction(
-    String accessToken,
-    String messageId,
-    String emoji,
-  ) async {
-    return _post('/messages/$messageId/reactions', {'emoji': emoji}, accessToken: accessToken);
-  }
-
-  Future<Map<String, dynamic>> removeReaction(
-    String accessToken,
-    String messageId,
-  ) async {
-    return _delete('/messages/$messageId/reactions', accessToken: accessToken);
-  }
-
   // Group and channel endpoints
 
   Future<Map<String, dynamic>> createGroup(
@@ -321,17 +302,6 @@ class VeilApiClient {
   }
 
   // Profile and contacts endpoints
-
-  Future<Map<String, dynamic>> getProfile(String accessToken) async {
-    return _get('/profile', accessToken: accessToken);
-  }
-
-  Future<Map<String, dynamic>> updateProfile(
-    String accessToken,
-    Map<String, dynamic> body,
-  ) async {
-    return _patch('/profile', body, accessToken: accessToken);
-  }
 
   Future<Map<String, dynamic>> getPublicProfile(
     String accessToken,
@@ -599,16 +569,6 @@ class VeilApiClient {
   }) async {
     return _decodeMap(
       await _authedRequest('DELETE', path, accessToken: accessToken, body: body),
-    );
-  }
-
-  Future<Map<String, dynamic>> _patch(
-    String path,
-    Object body, {
-    String? accessToken,
-  }) async {
-    return _decodeMap(
-      await _authedRequest('PATCH', path, accessToken: accessToken, body: body),
     );
   }
 

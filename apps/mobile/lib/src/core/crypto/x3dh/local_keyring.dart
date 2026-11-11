@@ -138,59 +138,115 @@ class LocalKeyring {
   }
 
   Future<SignedPrekeyRotation> _rotateSignedPrekey(LocalIdentityKeys keys) async {
-    final identity = keys.identity;
-    final stored = await _signedPrekeysInStore(identity);
+    final stored = await _signedPrekeysInStore(keys.identity);
     final spkId = stored.fold<int>(0, (highest, p) => max(highest, p.keyId)) + 1;
     if (spkId >= maxU32) {
       throw StateError('Signed prekey ids are exhausted.');
     }
     final pair = await generateX25519KeyPair(_random);
-    final createdAt = _clock();
-    await store.saveSignedPrekey(StoredSignedPrekey(keyId: spkId, privateKey: pair.privateKey, createdAt: createdAt));
-    final bundle = await PrekeyBundleV2.sign(
-      ed25519Seed: identity.ed25519Seed,
-      ikx: keys.x25519Public,
-      spkId: spkId,
-      spk: pair.publicKey,
-      createdAt: createdAt,
-    );
-    // A v1 ref has no SPK slot; its X25519 identity key becomes IKx.
-    final upgradedRef = identity.version < 2
-        ? LocalIdentity.encodeV2(
-            ed25519Seed: identity.ed25519Seed,
-            x25519Private: identity.x25519Private,
-            signedPrekey: SignedPrekeySecret(id: spkId, privateKey: pair.privateKey, createdAt: createdAt),
-          )
-        : null;
-    zeroize(pair.privateKey);
-    return SignedPrekeyRotation(
-      signedPrekeyBundle: bundle.encode(),
-      spkId: spkId,
-      createdAt: createdAt,
-      upgradedIdentityPrivateRef: upgradedRef,
-    );
+    final rotated = StoredSignedPrekey(keyId: spkId, privateKey: pair.privateKey, createdAt: _clock());
+    try {
+      await store.saveSignedPrekey(rotated);
+      return await _publishable(keys, rotated);
+    } finally {
+      zeroize(pair.privateKey);
+    }
   }
 
-  Future<DateTime?> currentSignedPrekeyCreatedAt() async {
-    final stored = _sorted(await store.loadSignedPrekeys());
-    if (stored.isNotEmpty) return stored.last.createdAt;
+  Future<SignedPrekeyRotation?> currentSignedPrekey() async {
     final keys = await resolveIdentity();
-    keys.destroy();
-    return keys.identity.signedPrekey?.createdAt;
+    var stored = const <StoredSignedPrekey>[];
+    try {
+      stored = _sorted(await store.loadSignedPrekeys());
+      final embedded = keys.identity.signedPrekey;
+      final newest = stored.lastOrNull ??
+          (embedded == null
+              ? null
+              : StoredSignedPrekey(keyId: embedded.id, privateKey: embedded.privateKey, createdAt: embedded.createdAt));
+      return newest == null ? null : await _publishable(keys, newest);
+    } finally {
+      keys.destroy();
+      for (final prekey in stored) {
+        zeroize(prekey.privateKey);
+      }
+    }
   }
+
+  // The bundle that publishes [prekey], and for a v1 ref, which has no SPK
+  // slot, the v2 ref that embeds it and promotes the X25519 identity key to
+  // IKx.
+  Future<SignedPrekeyRotation> _publishable(LocalIdentityKeys keys, StoredSignedPrekey prekey) async {
+    final identity = keys.identity;
+    final pair = await x25519KeyPairFromPrivate(prekey.privateKey);
+    try {
+      final bundle = await PrekeyBundleV2.sign(
+        ed25519Seed: identity.ed25519Seed,
+        ikx: keys.x25519Public,
+        spkId: prekey.keyId,
+        spk: pair.publicKey,
+        createdAt: prekey.createdAt,
+      );
+      final upgradedRef = identity.version < 2
+          ? LocalIdentity.encodeV2(
+              ed25519Seed: identity.ed25519Seed,
+              x25519Private: identity.x25519Private,
+              signedPrekey: SignedPrekeySecret(
+                id: prekey.keyId,
+                privateKey: pair.privateKey,
+                createdAt: prekey.createdAt,
+              ),
+            )
+          : null;
+      return SignedPrekeyRotation(
+        signedPrekeyBundle: bundle.encode(),
+        spkId: prekey.keyId,
+        createdAt: prekey.createdAt,
+        upgradedIdentityPrivateRef: upgradedRef,
+      );
+    } finally {
+      zeroize(pair.privateKey);
+    }
+  }
+
+  Future<int?> publishedSignedPrekeyId() async => (await _publication())?.spkId;
+
+  Future<void> markSignedPrekeyPublished(int spkId) =>
+      store.saveSignedPrekeyPublication(SignedPrekeyPublication(spkId: spkId, publishedAt: _clock()));
 
   Future<int> pruneSignedPrekeys(Duration grace) async {
-    final stored = _sorted(await store.loadSignedPrekeys());
-    final now = _clock();
+    final publication = await _publication();
     var pruned = 0;
-    for (var i = 0; i < stored.length - 1; i++) {
-      if (now.difference(stored[i + 1].createdAt) > grace) {
-        await store.deleteSignedPrekey(stored[i].keyId);
+    for (final prekey in await store.loadSignedPrekeys()) {
+      if (_retired(prekey.keyId, publication, grace)) {
+        await store.deleteSignedPrekey(prekey.keyId);
         pruned += 1;
       }
     }
     return pruned;
   }
+
+  // What the directory serves, as far as this device knows. Registration
+  // publishes the signed prekey embedded in a new identity, and the store
+  // stays empty until the first rotation, so that one needs no record.
+  Future<SignedPrekeyPublication?> _publication() async {
+    final recorded = await store.loadSignedPrekeyPublication();
+    if (recorded != null || (await store.loadSignedPrekeys()).isNotEmpty) return recorded;
+    final keys = await resolveIdentity();
+    final embedded = keys.identity.signedPrekey;
+    final publication =
+        embedded == null ? null : SignedPrekeyPublication(spkId: embedded.id, publishedAt: embedded.createdAt);
+    keys.destroy();
+    return publication;
+  }
+
+  // A signed prekey older than the published one stops answering handshakes
+  // [grace] after that one was published: until then initiators may still
+  // have fetched it. The published one, and any newer one not yet published,
+  // never retire, whatever their age.
+  bool _retired(int keyId, SignedPrekeyPublication? publication, Duration grace) =>
+      publication != null &&
+      keyId < publication.spkId &&
+      _clock().difference(publication.publishedAt) > grace;
 
   /// Loads everything needed to answer [header], claiming its one-time
   /// prekey so a concurrent handshake cannot use it too. Callers must
@@ -244,16 +300,14 @@ class LocalKeyring {
   // The store is authoritative once a rotation has populated it; until then
   // the only SPK is the one embedded in the identity ref.
   Future<X25519KeyPair?> _signedPrekey(LocalIdentity identity, int spkId) async {
-    final stored = _sorted(await store.loadSignedPrekeys());
+    final stored = await store.loadSignedPrekeys();
     if (stored.isEmpty) {
       final embedded = identity.signedPrekey;
       return embedded != null && embedded.id == spkId ? x25519KeyPairFromPrivate(embedded.privateKey) : null;
     }
-    final index = stored.indexWhere((p) => p.keyId == spkId);
-    if (index < 0) return null;
-    final successor = index + 1 < stored.length ? stored[index + 1] : null;
-    if (successor != null && _clock().difference(successor.createdAt) > signedPrekeyGrace) return null;
-    return x25519KeyPairFromPrivate(stored[index].privateKey);
+    final match = stored.where((p) => p.keyId == spkId).firstOrNull;
+    if (match == null || _retired(spkId, await _publication(), signedPrekeyGrace)) return null;
+    return x25519KeyPairFromPrivate(match.privateKey);
   }
 
   Future<List<StoredSignedPrekey>> _signedPrekeysInStore(LocalIdentity identity) async {

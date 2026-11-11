@@ -30,8 +30,6 @@ class CachedConversations extends Table {
   TextColumn get sessionAuditHint => text().nullable()();
   TextColumn get sessionBootstrappedAt => text().nullable()();
   TextColumn get sessionRemoteIdentityPublicKey => text().nullable()();
-  BoolColumn get identityMismatchPending =>
-      boolean().withDefault(const Constant(false))();
   TextColumn get paginationCursor => text().nullable()();
   BoolColumn get hasMoreHistory =>
       boolean().withDefault(const Constant(true))();
@@ -134,7 +132,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -214,14 +212,15 @@ class AppDatabase extends _$AppDatabase {
               cachedConversations,
               cachedConversations.sessionRemoteIdentityPublicKey,
             );
-            await migrator.addColumn(
-              cachedConversations,
-              cachedConversations.identityMismatchPending,
-            );
             // Search now reads message_contents; drop the old per-message
             // copies of decrypted text instead of leaving them unread.
             await customStatement('UPDATE cached_messages SET search_body = NULL');
             await _createRetirementGuard();
+          }
+          if (from == 9) {
+            // Schema 9 flagged identity changes per conversation; the pin
+            // table in the keystore decides them now.
+            await customStatement('ALTER TABLE cached_conversations DROP COLUMN identity_mismatch_pending');
           }
           await _createIndexes();
         },

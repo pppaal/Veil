@@ -26,11 +26,24 @@ class TrustedIdentityResolver {
   DateTime _now() => _clock().toUtc();
 
   /// Classifies [identityKey] (base64url) for the device. Pins it when the
-  /// user has never been seen before; changes nothing otherwise.
-  Future<IdentityVerdict> evaluate(String userId, String deviceId, String identityKey) async {
+  /// user has never been seen before; changes nothing otherwise, except that
+  /// with [admitNewDeviceOfUnverifiedUser] a new device of a user none of
+  /// whose devices is verified is pinned as approved in the same step
+  /// ([NewDeviceForKnownUser.admitted]). Deciding and pinning under one lock
+  /// keeps two keys presented at once for one new device from both passing.
+  Future<IdentityVerdict> evaluate(
+    String userId,
+    String deviceId,
+    String identityKey, {
+    bool admitNewDeviceOfUnverifiedUser = false,
+  }) async {
     _requireAddress(userId, deviceId);
     final key = _canonicalKey(identityKey);
     return _locked((pins) async {
+      // Group chains are keyed by device id alone, so the same id under a
+      // second user would let that user take over the first one's chain.
+      final elsewhere = pins.where((p) => p.deviceId == deviceId && p.userId != userId).firstOrNull;
+      if (elsewhere != null) return DeviceOfAnotherUser(elsewhere);
       final pin = _pinIn(pins, userId, deviceId);
       if (pin != null) {
         if (pin.identityKey == key) return PinMatch(pin);
@@ -40,7 +53,18 @@ class TrustedIdentityResolver {
       }
       final knownDevices = pins.where((p) => p.userId == userId);
       if (knownDevices.isNotEmpty) {
-        return NewDeviceForKnownUser(knownUserVerified: knownDevices.any((p) => p.isVerified));
+        final verified = knownDevices.any((p) => p.isVerified);
+        if (verified || !admitNewDeviceOfUnverifiedUser) return NewDeviceForKnownUser(knownUserVerified: verified);
+        final now = _now();
+        final admitted = TrustedIdentity(
+          userId: userId,
+          deviceId: deviceId,
+          identityKey: key,
+          firstSeenAt: now,
+          approvedAt: now,
+        );
+        await _store.save([...pins, admitted]);
+        return NewDeviceForKnownUser(knownUserVerified: false, admitted: admitted);
       }
       final pinned = TrustedIdentity(
         userId: userId,
@@ -86,6 +110,23 @@ class TrustedIdentityResolver {
       final verified = pin.verifiedOn(_now());
       await _store.save([..._othersThan(pins, userId, deviceId), verified]);
       return verified;
+    });
+  }
+
+  /// Imports a verification recorded before the pin table existed: pins
+  /// [identityKey] as verified at [verifiedAt] when the device has no pin
+  /// yet or pins exactly this key. A different pin is left alone, because a
+  /// verification never replaces a key.
+  Future<void> adoptVerified(String userId, String deviceId, String identityKey, {required DateTime verifiedAt}) async {
+    _requireAddress(userId, deviceId);
+    final key = _canonicalKey(identityKey);
+    await _locked((pins) async {
+      final pin = _pinIn(pins, userId, deviceId);
+      if (pin != null && pin.identityKey != key) return;
+      final verified = (pin ??
+              TrustedIdentity(userId: userId, deviceId: deviceId, identityKey: key, firstSeenAt: verifiedAt.toUtc()))
+          .verifiedOn(verifiedAt.toUtc());
+      await _store.save([..._othersThan(pins, userId, deviceId), verified]);
     });
   }
 

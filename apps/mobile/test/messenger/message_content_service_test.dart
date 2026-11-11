@@ -65,11 +65,14 @@ class _ScriptedDecrypter {
 DecryptedMessage Function(CryptoEnvelope) _plain(String body, {AttachmentReference? attachment}) =>
     (_) => DecryptedMessage(body: body, messageKind: MessageKind.text, attachment: attachment);
 
-DecryptedMessage Function(CryptoEnvelope) _placeholder(String body) => (envelope) => DecryptedMessage(
-      body: body,
+/// A decrypt that did not open. It echoes the unauthenticated envelope and
+/// some adapter text, none of which may be kept.
+DecryptedMessage Function(CryptoEnvelope) _failure(DecryptStatus status) => (envelope) => DecryptedMessage(
+      body: 'adapter text',
       messageKind: envelope.messageKind,
       expiresAt: envelope.expiresAt,
       attachment: envelope.attachment,
+      status: status,
     );
 
 MessageContentService _service(
@@ -126,7 +129,7 @@ void main() {
   });
 
   test('own messages are shown from stored plaintext and never decrypted', () async {
-    final decrypter = _ScriptedDecrypter([_placeholder('[Decryption failed]')]);
+    final decrypter = _ScriptedDecrypter([_failure(DecryptStatus.failed)]);
     final service = _service(decrypter.call);
     final envelope = _envelope('own-1');
 
@@ -157,17 +160,17 @@ void main() {
 
   test('only rows waiting for key material are retried', () async {
     final decrypter = _ScriptedDecrypter([
-      _placeholder('[Awaiting sender key — sync required]'),
+      _failure(DecryptStatus.awaitingKey),
       _plain('finally readable'),
     ]);
-    final failing = _ScriptedDecrypter([_placeholder('[Decryption failed]'), _plain('never')]);
+    final failing = _ScriptedDecrypter([_failure(DecryptStatus.failed), _plain('never')]);
     final service = _service(decrypter.call);
     final failingService = _service(failing.call);
     final waiting = _message('srv-1', _envelope('frame-1'));
     final broken = _message('srv-2', _envelope('frame-2'));
 
-    expect((await service.read(waiting)).body, '[Awaiting sender key — sync required]');
-    expect((await service.read(waiting)).body, '[Awaiting sender key — sync required]');
+    expect((await service.read(waiting)).status, DecryptStatus.awaitingKey);
+    expect((await service.read(waiting)).status, DecryptStatus.awaitingKey);
     expect(decrypter.calls, 1);
 
     await service.retryPending(_conversationId, [waiting]);
@@ -177,14 +180,14 @@ void main() {
 
     await failingService.read(broken);
     await failingService.retryPending(_conversationId, [broken]);
-    expect((await failingService.read(broken)).body, '[Decryption failed]');
+    expect((await failingService.read(broken)).status, DecryptStatus.failed);
     expect(failing.calls, 1);
   });
 
   test('placeholders never carry kind, expiry or attachment from the envelope', () async {
     final stored = <MessageContentRecord>[];
     final service = _service(
-      _ScriptedDecrypter([_placeholder('[Decryption failed]')]).call,
+      _ScriptedDecrypter([_failure(DecryptStatus.failed)]).call,
       stored: stored,
     );
 
@@ -192,10 +195,13 @@ void main() {
       _message('srv-1', _envelope('frame-1', attachment: _outerAttachment)),
     );
 
+    expect(shown.status, DecryptStatus.failed);
+    expect(shown.body, isEmpty);
     expect(shown.messageKind, MessageKind.text);
     expect(shown.expiresAt, isNull);
     expect(shown.attachment, isNull);
     expect(stored.single.status, MessageContentStatus.failed);
+    expect(stored.single.body, isEmpty);
   });
 
   test('attachment metadata is taken only from the inner payload', () async {
@@ -276,7 +282,7 @@ void main() {
   });
 
   test('an ack replaces a failed read of our own echo that lost its clientMessageId', () async {
-    final decrypter = _ScriptedDecrypter([_placeholder('[Decryption failed]')]);
+    final decrypter = _ScriptedDecrypter([_failure(DecryptStatus.failed)]);
     final database = AppDatabase(NativeDatabase.memory());
     addTearDown(database.close);
     final cache = DriftConversationCacheService(database, envelopeCodec: StrictMockCryptoAdapter().envelopeCodec);
@@ -290,7 +296,7 @@ void main() {
     );
     final service = _service(decrypter.call, cache: cache);
     final echo = _message('srv-1', _envelope('own-1'), isMine: true);
-    expect((await service.read(echo)).body, '[Decryption failed]');
+    expect((await service.read(echo)).status, DecryptStatus.failed);
 
     await service.acknowledge(clientMessageId: 'client-1', serverMessageId: 'srv-1');
 

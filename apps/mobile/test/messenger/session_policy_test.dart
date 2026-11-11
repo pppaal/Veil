@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/session_policy.dart';
 
@@ -43,7 +46,7 @@ ConversationPreview _conversation({ConversationSessionState? session, String dev
   );
 }
 
-SessionDecision _decide({
+SessionAction _decide({
   bool engineHasSession = true,
   ConversationSessionState? session,
   KeyBundle? bundle,
@@ -59,68 +62,55 @@ SessionDecision _decide({
 void main() {
   group('decideSession', () {
     test('bootstraps only when the engine has no session', () {
-      expect(_decide(engineHasSession: false, session: _session()).action, SessionAction.bootstrap);
+      expect(_decide(engineHasSession: false, session: _session()), SessionAction.bootstrap);
     });
 
     test('reuses a live session for the same device', () {
-      final decision = _decide(session: _session());
-      expect(decision.action, SessionAction.reuse);
-      expect(decision.identityMismatch, isFalse);
+      expect(_decide(session: _session()), SessionAction.reuse);
     });
 
     test('reuses an engine session the preview never recorded', () {
-      expect(_decide(session: null).action, SessionAction.reuse);
+      expect(_decide(session: null), SessionAction.reuse);
     });
 
     test('a changed remote device bootstraps', () {
       expect(
-        _decide(session: _session(), bundle: _bundle(deviceId: 'dev-selene-2')).action,
+        _decide(session: _session(), bundle: _bundle(deviceId: 'dev-selene-2')),
         SessionAction.bootstrap,
       );
     });
 
     test('a session recorded for another local device bootstraps', () {
       expect(
-        _decide(session: _session(localDeviceId: 'dev-old-phone')).action,
+        _decide(session: _session(localDeviceId: 'dev-old-phone')),
         SessionAction.bootstrap,
       );
     });
 
-    test('a new identity key on the same device keeps the session and flags it', () {
-      final decision = _decide(
-        session: _session(),
-        bundle: _bundle(identityPublicKey: 'ik-impostor'),
+    test('an accepted new identity key for the same device bootstraps', () {
+      expect(
+        _decide(session: _session(), bundle: _bundle(identityPublicKey: 'ik-reinstalled')),
+        SessionAction.bootstrap,
       );
-      expect(decision.action, SessionAction.reuse);
-      expect(decision.identityMismatch, isTrue);
     });
 
-    test('a new identity key for the pinned device is flagged even when a bootstrap is unavoidable', () {
-      final decision = _decide(
-        engineHasSession: false,
-        session: _session(),
-        bundle: _bundle(identityPublicKey: 'ik-impostor'),
+    test('the same identity key spelled with padding is not a new key', () {
+      final key = List<int>.generate(32, (i) => i);
+      expect(base64Url.encode(key), endsWith('='));
+      expect(
+        _decide(
+          session: _session(remoteIdentityPublicKey: base64UrlNoPadEncode(key)),
+          bundle: _bundle(identityPublicKey: base64Url.encode(key)),
+        ),
+        SessionAction.reuse,
       );
-      expect(decision.action, SessionAction.bootstrap);
-      expect(decision.identityMismatch, isTrue);
     });
 
-    test('a bootstrap to a different device is not an identity mismatch', () {
-      final decision = _decide(
-        engineHasSession: false,
-        session: _session(),
-        bundle: _bundle(deviceId: 'dev-selene-2', identityPublicKey: 'ik-selene-2'),
+    test('a session without a recorded identity key is reused', () {
+      expect(
+        _decide(session: _session(remoteIdentityPublicKey: ''), bundle: _bundle(identityPublicKey: 'ik-anything')),
+        SessionAction.reuse,
       );
-      expect(decision.action, SessionAction.bootstrap);
-      expect(decision.identityMismatch, isFalse);
-    });
-
-    test('a session without a recorded identity key cannot be compared', () {
-      final decision = _decide(
-        session: _session(remoteIdentityPublicKey: ''),
-        bundle: _bundle(identityPublicKey: 'ik-anything'),
-      );
-      expect(decision.identityMismatch, isFalse);
     });
   });
 
@@ -129,30 +119,18 @@ void main() {
       final conversation = _conversation(session: _session(remoteIdentityPublicKey: ''));
       final served = _bundle(deviceId: 'dev-selene', identityPublicKey: 'ik-selene');
 
-      final kept = keepSession(conversation, served, _decide(session: conversation.sessionState, bundle: served));
+      final kept = keepSession(conversation, served);
 
       expect(kept.sessionState!.remoteIdentityPublicKey, 'ik-selene');
       expect(kept.sessionState!.sessionLocator, 'session://conv-1');
       expect(kept.recipientBundle, same(served));
-      expect(kept.identityMismatchPending, isFalse);
-    });
-
-    test('a different key for the bound device flags and keeps the pinned bundle', () {
-      final conversation = _conversation(session: _session(), deviceId: 'dev-selene');
-      final served = _bundle(identityPublicKey: 'ik-impostor');
-
-      final kept = keepSession(conversation, served, _decide(session: conversation.sessionState, bundle: served));
-
-      expect(kept.identityMismatchPending, isTrue);
-      expect(kept.recipientBundle, same(conversation.recipientBundle));
-      expect(kept.sessionState!.remoteIdentityPublicKey, 'ik-selene');
     });
 
     test('an engine session the preview never recorded takes the served bundle', () {
       final conversation = _conversation();
       final served = _bundle(deviceId: 'dev-selene');
 
-      final kept = keepSession(conversation, served, _decide(bundle: served));
+      final kept = keepSession(conversation, served);
 
       expect(kept.sessionState, isNull);
       expect(kept.recipientBundle, same(served));

@@ -24,7 +24,8 @@ class MockCryptoAdapter implements CryptoAdapter, PrekeyManager {
   final DeviceAuthChallengeSigner _deviceAuthSigner;
   int _nextOneTimePrekeyId = 1;
   int _signedPrekeyId = 1;
-  DateTime? _signedPrekeyCreatedAt;
+  SignedPrekeyRotation? _signedPrekey;
+  int? _publishedSignedPrekeyId;
 
   @override
   Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100}) async {
@@ -39,17 +40,23 @@ class MockCryptoAdapter implements CryptoAdapter, PrekeyManager {
   @override
   Future<SignedPrekeyRotation> rotateSignedPrekey() async {
     _signedPrekeyId += 1;
-    final createdAt = DateTime.now().toUtc();
-    _signedPrekeyCreatedAt = createdAt;
-    return SignedPrekeyRotation(
+    return _signedPrekey = SignedPrekeyRotation(
       signedPrekeyBundle: _opaqueToken(_random, 32),
       spkId: _signedPrekeyId,
-      createdAt: createdAt,
+      createdAt: DateTime.now().toUtc(),
     );
   }
 
   @override
-  Future<DateTime?> currentSignedPrekeyCreatedAt() async => _signedPrekeyCreatedAt;
+  Future<SignedPrekeyRotation?> currentSignedPrekey() async => _signedPrekey;
+
+  @override
+  Future<int?> publishedSignedPrekeyId() async => _publishedSignedPrekeyId;
+
+  @override
+  Future<void> markSignedPrekeyPublished(int spkId) async {
+    _publishedSignedPrekeyId = spkId;
+  }
 
   @override
   Future<int> pruneSignedPrekeys({Duration grace = const Duration(days: 14)}) async => 0;
@@ -259,21 +266,12 @@ class _MockMessageCryptoEngine implements MessageCryptoEngine {
     }
 
     // Not produced by this process: the mock cannot "decrypt" it, so it
-    // reports a failure with a kind-specific placeholder and, like the real
-    // adapters, never trusts the unauthenticated outer attachment.
+    // reports a failure with no body and, like the real adapters, never
+    // trusts the unauthenticated outer attachment.
     return DecryptedMessage(
       status: DecryptStatus.failed,
       failureReason: 'mock_unknown_ciphertext',
-      body: switch (envelope.messageKind) {
-        MessageKind.file => 'Encrypted attachment',
-        MessageKind.image => 'Encrypted image',
-        MessageKind.system => 'Encrypted system envelope',
-        MessageKind.text => 'Encrypted message',
-        MessageKind.voice => 'Encrypted voice note',
-        MessageKind.sticker => 'Encrypted sticker',
-        MessageKind.reaction => 'Encrypted reaction',
-        MessageKind.call => 'Encrypted call event',
-      },
+      body: '',
       messageKind: envelope.messageKind,
       expiresAt: envelope.expiresAt,
     );

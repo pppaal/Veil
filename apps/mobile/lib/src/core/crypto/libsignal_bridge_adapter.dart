@@ -442,7 +442,7 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
         messageType = _kCiphertextTypeWhisper;
         break;
       default:
-        return _failure(envelope, DecryptStatus.failed, 'invalid_envelope', '[Unable to decrypt: invalid envelope]');
+        return _failure(envelope, DecryptStatus.failed, 'invalid_envelope');
     }
     try {
       final r = await _channel.invoke('decryptMessage', {
@@ -461,31 +461,23 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
         attachment: payload.attachment,
       );
     } on CryptoBridgeException catch (e) {
-      // Same user-facing placeholders as the lib adapter so the UI needs no
+      // Same typed outcomes as the lib adapter so the UI needs no
       // adapter-specific branching. Never a plaintext fallback.
       return switch (e.code) {
-        'sessionNotFound' => _failure(
-            envelope,
-            DecryptStatus.sessionMissing,
-            e.code,
-            '[Session not established — sync required]',
-          ),
-        'identityMismatch' => _failure(
-            envelope,
-            DecryptStatus.identityRejected,
-            e.code,
-            '[Identity changed — verify safety number]',
-          ),
-        'bridgeUnavailable' => _failure(envelope, DecryptStatus.failed, e.code, '[Crypto bridge unavailable]'),
-        _ => _failure(envelope, DecryptStatus.failed, e.code, '[Decryption failed]'),
+        'sessionNotFound' => _failure(envelope, DecryptStatus.sessionMissing, e.code),
+        'identityMismatch' => _failure(envelope, DecryptStatus.identityRejected, e.code),
+        // Nothing was consumed while the native side was down, so the frame
+        // can be retried like one whose session is missing.
+        'bridgeUnavailable' => _failure(envelope, DecryptStatus.sessionMissing, e.code),
+        _ => _failure(envelope, DecryptStatus.failed, e.code),
       };
     } catch (_) {
-      return _failure(envelope, DecryptStatus.failed, 'malformed_payload', '[Decryption failed]');
+      return _failure(envelope, DecryptStatus.failed, 'malformed_payload');
     }
   }
 
-  static DecryptedMessage _failure(CryptoEnvelope envelope, DecryptStatus status, String reason, String body) =>
-      DecryptedMessage(body: body, messageKind: envelope.messageKind, status: status, failureReason: reason);
+  static DecryptedMessage _failure(CryptoEnvelope envelope, DecryptStatus status, String reason) =>
+      DecryptedMessage(body: '', messageKind: envelope.messageKind, status: status, failureReason: reason);
 
   @override
   Future<AttachmentCipher> encryptAttachment({

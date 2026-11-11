@@ -429,6 +429,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsNoRecoveryPath => 'No recovery path';
 
   @override
+  String get settingsSectionPrivacy => 'PRIVACY';
+
+  @override
+  String get settingsReadReceiptsTitle => 'Send read receipts';
+
+  @override
+  String get settingsReadReceiptsSubtitle =>
+      'When off, contacts don\'t learn what you read, and you see their reads only as delivered.';
+
+  @override
+  String get settingsTypingIndicatorsTitle => 'Send typing indicators';
+
+  @override
+  String get settingsTypingIndicatorsSubtitle =>
+      'Lets contacts see while you type. Off unless you turn it on.';
+
+  @override
   String get settingsLockNow => 'Lock now';
 
   @override
@@ -740,7 +757,41 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDecryptingEnvelope => 'Decrypting envelope...';
 
   @override
-  String get chatDecryptingSystemNotice => 'Decrypting system notice...';
+  String get chatDecryptFailed => 'Couldn\'t decrypt this message';
+
+  @override
+  String get chatDecryptReplayed => 'Repeated or expired message';
+
+  @override
+  String get chatDecryptAwaitingKey => 'Waiting for the sender\'s key';
+
+  @override
+  String get chatDecryptSessionMissing => 'Waiting for a secure session';
+
+  @override
+  String get chatDecryptIdentityRejected =>
+      'Held back: the sender\'s identity changed';
+
+  @override
+  String get chatLegacyUnverifiedBadge => 'Unverified sender (legacy)';
+
+  @override
+  String get chatNoticeIdentityChanged =>
+      'A contact\'s safety number changed. Review it before trusting it again.';
+
+  @override
+  String get chatNoticeIdentityNewDevice =>
+      'This contact started using a new device.';
+
+  @override
+  String get chatIdentityChangedTitle => 'Safety number changed';
+
+  @override
+  String get chatIdentityChangedBody =>
+      'Sending is paused until you review the new safety number.';
+
+  @override
+  String get chatIdentityChangedReview => 'Review';
 
   @override
   String get chatRetrySend => 'Retry send';
@@ -1084,9 +1135,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersMarkedVerified => 'Marked as verified';
 
   @override
-  String get safetyNumbersVerificationCleared => 'Verification cleared';
-
-  @override
   String get safetyNumbersRotateDialogTitle => 'Rotate session keys?';
 
   @override
@@ -1189,9 +1237,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.';
 
   @override
-  String get safetyNumbersClearVerification => 'Clear verification';
-
-  @override
   String get safetyNumbersReVerify => 'Re-verify with new key';
 
   @override
@@ -1218,7 +1263,125 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersQrNote =>
-      'This QR encodes only the 60-digit safety number, not your keys.';
+      'This QR holds both public identity keys and user ids, nothing secret.';
+
+  @override
+  String get safetyNumbersNoPinTitle => 'No identity pinned yet';
+
+  @override
+  String get safetyNumbersNoPinBody =>
+      'Exchange a message first: this device pins the identity it talks to.';
+
+  @override
+  String get safetyNumbersDirectoryMismatchTitle =>
+      'The key server lists a different key';
+
+  @override
+  String get safetyNumbersDirectoryMismatchBody =>
+      'The key server now serves another identity key for this device than the one pinned here. Nothing is sent to that key unless you compare and accept it.';
+
+  @override
+  String get safetyNumbersDirectoryOtherDeviceTitle =>
+      'The key server lists another device';
+
+  @override
+  String get safetyNumbersDirectoryOtherDeviceBody =>
+      'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.';
+
+  @override
+  String get safetyNumbersPendingBody =>
+      'This contact presents a new identity key. Compare the new safety number below before accepting it.';
+
+  @override
+  String get safetyNumbersAcceptNewKey => 'Accept the new key';
+
+  @override
+  String get safetyNumbersScanAction => 'Compare a scanned code';
+
+  @override
+  String get safetyNumbersScanFieldLabel => 'Scanned code';
+
+  @override
+  String get safetyNumbersScanVerify => 'Compare';
+
+  @override
+  String get safetyNumbersScanMismatchTitle => 'The codes do not match';
+
+  @override
+  String get safetyNumbersScanMismatchBody =>
+      'Someone may be in the middle of this conversation. Do not mark it verified; compare again in person.';
+
+  @override
+  String get safetyNumbersScanInvalid => 'That is not a VEIL safety code.';
+
+  @override
+  String get safetyNumbersScanUnsupported =>
+      'That code uses a safety-number version this app does not support.';
+
+  @override
+  String get safetyNumbersReverifyDialogTitle =>
+      'Compare the new safety number';
+
+  @override
+  String safetyNumbersReverifyDialogBody(String peer) {
+    return 'You had verified $peer. Accept the new key as verified only after comparing this number with $peer in person or on a call you trust.';
+  }
+
+  @override
+  String safetyNumbersReverifyAffirm(String peer) {
+    return 'I compared this number with $peer and it matches';
+  }
+
+  @override
+  String get safetyNumbersReverifyAccept => 'Accept as verified';
+
+  @override
+  String get safetyNumbersChangeReplaced =>
+      'The safety number changed again while you were reviewing it. Compare the new number before accepting it.';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileNicknameSaved => 'Nickname saved on this device';
+
+  @override
+  String get profileHandleLabel => 'HANDLE';
+
+  @override
+  String get profileHandleCaption => 'Your handle cannot be changed.';
+
+  @override
+  String get profileNicknameLabel => 'NICKNAME';
+
+  @override
+  String get profileNicknameCaption =>
+      'Only this device knows it. Peers see your handle.';
+
+  @override
+  String get profileNicknameHint => 'How this device greets you';
+
+  @override
+  String get profileNicknameNotSet => 'Not set';
+
+  @override
+  String get profilePrivacyEyebrow => 'PRIVACY';
+
+  @override
+  String get profilePrivacyTitle => 'Nothing about you on the relay';
+
+  @override
+  String get profilePrivacyBody =>
+      'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.';
+
+  @override
+  String get profileSaveNickname => 'Save nickname';
+
+  @override
+  String get profileEditNickname => 'Edit nickname';
+
+  @override
+  String get profileCancel => 'Cancel';
 
   @override
   String get deviceTransferTitle => 'Device Transfer';

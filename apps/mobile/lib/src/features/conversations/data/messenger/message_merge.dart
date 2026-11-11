@@ -55,7 +55,9 @@ int compareMessages(ChatMessage a, ChatMessage b) {
   final aOrder = a.conversationOrder;
   final bOrder = b.conversationOrder;
   if (aOrder != null && bOrder != null) {
-    return aOrder.compareTo(bOrder);
+    // A local notice shares the order of the message it followed.
+    final byOrder = aOrder.compareTo(bOrder);
+    return byOrder != 0 ? byOrder : a.sentAt.compareTo(b.sentAt);
   }
   if (aOrder != null) {
     return -1;
@@ -106,31 +108,4 @@ MessageDeliveryState resolveDeliveryState({
     return MessageDeliveryState.delivered;
   }
   return base;
-}
-
-/// Applies one user's reaction change. Returns [current] itself when nothing
-/// changed so callers can skip a rebuild.
-List<Reaction> mergeReaction({
-  required List<Reaction> current,
-  required String messageId,
-  required String userId,
-  required String emoji,
-  required String action,
-}) {
-  final withoutUser = current.where((r) => r.userId != userId).toList();
-  if (action == 'remove' || emoji.isEmpty) {
-    if (withoutUser.length == current.length) {
-      return current;
-    }
-    return withoutUser;
-  }
-  withoutUser.add(
-    Reaction(
-      messageId: messageId,
-      userId: userId,
-      emoji: emoji,
-      createdAt: DateTime.now(),
-    ),
-  );
-  return withoutUser;
 }

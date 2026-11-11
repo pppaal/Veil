@@ -264,3 +264,50 @@ describe('CallsService endCall', () => {
     await expect(service.endCall(callee, callId)).resolves.toMatchObject({ status: 'ended' });
   });
 });
+
+describe('CallsService listCalls', () => {
+  it('names a direct call after the peer', async () => {
+    const { service, caller, seedCall } = createFixture();
+    seedCall('ended');
+
+    const [call] = await service.listCalls(caller);
+
+    expect(call).toMatchObject({
+      initiatedByMe: true,
+      counterparty: 'callee',
+      counterpartyHandle: 'callee',
+    });
+  });
+
+  it('names a legacy channel call after the channel, never a subscriber', async () => {
+    const { service, prisma, caller } = createFixture();
+    const otherSubscriber = prisma.seedUser('other-subscriber');
+    const viewer = prisma.seedUser('viewer');
+    const channelId = prisma.seedConversation('channel', [
+      { userId: otherSubscriber.userId, role: 'subscriber' },
+      { userId: caller.userId, role: 'owner' },
+      { userId: viewer.userId, role: 'subscriber' },
+    ]);
+    prisma.callRecords.push({
+      id: randomUUID(),
+      conversationId: channelId,
+      initiatorDeviceId: caller.deviceId,
+      callType: 'voice',
+      status: 'missed',
+      startedAt: new Date(),
+      endedAt: new Date(),
+      duration: null,
+    });
+
+    const calls = await service.listCalls(viewer);
+
+    expect(calls).toEqual([
+      expect.objectContaining({
+        conversationId: channelId,
+        counterparty: `channel ${channelId.slice(0, 8)}`,
+        counterpartyHandle: null,
+      }),
+    ]);
+    expect(JSON.stringify(calls)).not.toContain('other-subscriber');
+  });
+});

@@ -108,12 +108,26 @@ export const isActionAllowed = (
   action: ConversationAction,
 ): boolean => POLICY[type][role].includes(action);
 
-/**
- * The earliest message a member may see. Group members only see messages
- * received after they joined, so an added member cannot read (or mark
- * delivered) the backlog. Direct conversations have no join history, and a
- * channel is a public broadcast whose backlog is part of what subscribers
- * sign up for, so both are unrestricted.
- */
+// Whether members only see messages received after they joined. In a group
+// an added member must not read (or mark delivered) the backlog. Direct
+// conversations have no join history, and a channel is a public broadcast
+// whose backlog is part of what subscribers sign up for.
+const HIDES_PRE_JOIN_HISTORY: Readonly<Record<ConversationType, boolean>> = Object.freeze({
+  direct: false,
+  group: true,
+  channel: false,
+});
+
+/** The earliest message a member who joined at joinedAt may see, or null for all of them. */
 export const historyVisibleSince = (type: ConversationType, joinedAt: Date): Date | null =>
-  type === 'group' ? joinedAt : null;
+  HIDES_PRE_JOIN_HISTORY[type] ? joinedAt : null;
+
+/**
+ * The latest join time of a member who may see a message received at
+ * receivedAt, or null when every member may: the inverse of
+ * historyVisibleSince. Events about a stored message (edits, deletions,
+ * reactions, view-once consumption) are limited to this audience, because
+ * an edit is re-encrypted under a key a late joiner already holds.
+ */
+export const messageAudienceJoinedBy = (type: ConversationType, receivedAt: Date): Date | null =>
+  HIDES_PRE_JOIN_HISTORY[type] ? receivedAt : null;

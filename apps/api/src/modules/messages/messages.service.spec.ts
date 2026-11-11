@@ -530,6 +530,23 @@ describe('MessagesService', () => {
       expect(prisma.messageReceipts).toHaveLength(receiptsBefore);
       expect(gateway.emitted).toHaveLength(0);
     });
+
+    it('receipts do not reach a blocked direct peer', async () => {
+      const { service, prisma, gateway, safety, alice, bob, sendFromAlice } = directFixture();
+      const sent = await sendFromAlice();
+      safety.setBlocked(bob.userId, alice.userId);
+      gateway.emitted.length = 0;
+
+      await service.markRead(bob, sent.message.id);
+
+      expect(gateway.emitted.map((e) => [e.userId, e.event])).toEqual([
+        [bob.userId, 'message.delivered'],
+        [bob.userId, 'message.read'],
+      ]);
+      expect(prisma.messageReceipts).toEqual([
+        expect.objectContaining({ userId: bob.userId, readAt: expect.any(Date) }),
+      ]);
+    });
   });
 
   describe('edit and delete', () => {
@@ -820,6 +837,38 @@ describe('MessagesService', () => {
       expect(orders).toEqual(Array.from({ length: 50 }, (_, index) => index + 1));
       expect(results.every((result) => !result.idempotent)).toBe(true);
     });
+
+    it('a counter left behind by a pre-0017 writer resyncs instead of wedging sends', async () => {
+      const { prisma, conversationId, sendFromAlice } = directFixture();
+      await sendFromAlice();
+      // An instance still on the old allocator inserts MAX()+1 without
+      // touching last_order.
+      prisma.messages.push({
+        ...prisma.messages[0]!,
+        id: randomUUID(),
+        clientMessageId: 'legacy-allocator',
+        conversationOrder: 2,
+      });
+      // Postgres rolls a failed send's increment back; the fake keeps it, so
+      // restore it here to reproduce the wedge the resync has to break.
+      const conversation = prisma.conversations.find((c) => c.id === conversationId)!;
+      const transaction = prisma.$transaction.bind(prisma);
+      prisma.$transaction = (async (callback: (tx: FakePrismaService) => Promise<unknown>) => {
+        const lastOrderBefore = conversation.lastOrder;
+        try {
+          return await transaction(callback);
+        } catch (error) {
+          conversation.lastOrder = lastOrderBefore;
+          throw error;
+        }
+      }) as typeof prisma.$transaction;
+
+      const m3 = await sendFromAlice();
+      const m4 = await sendFromAlice();
+
+      expect([m3.message.conversationOrder, m4.message.conversationOrder]).toEqual([3, 4]);
+      expect(conversation.lastOrder).toBe(4);
+    });
   });
 
   describe('reactions', () => {
@@ -884,6 +933,93 @@ describe('MessagesService', () => {
         status: 404,
         response: { code: 'message_not_found' },
       });
+    });
+  });
+
+  describe('late group joiners', () => {
+    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000);
+
+    // Carol is added after both pre-join messages reached the relay.
+    const lateJoinerGroup = async () => {
+      const fixture = makeService();
+      const { prisma, service } = fixture;
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const carol = prisma.seedUser('carol');
+      const conversationId = prisma.seedConversation('group', [
+        { userId: alice.userId, joinedAt: minutesAgo(30) },
+        { userId: bob.userId, joinedAt: minutesAgo(30) },
+      ]);
+      const sendFromAlice = (overrides: Partial<Parameters<typeof buildSendDto>[0]> = {}) =>
+        service.send(alice, buildSendDto({ conversationId, sender: alice, ...overrides }));
+
+      const preJoin = await sendFromAlice();
+      const preJoinViewOnce = await sendFromAlice({ viewOnce: true });
+      for (const message of prisma.messages) {
+        message.serverReceivedAt = minutesAgo(10);
+      }
+      prisma.conversationMembers.push({
+        id: randomUUID(),
+        conversationId,
+        userId: carol.userId,
+        role: 'member',
+        joinedAt: minutesAgo(5),
+      });
+      fixture.gateway.emitted.length = 0;
+      return { ...fixture, alice, bob, carol, sendFromAlice, preJoin, preJoinViewOnce };
+    };
+
+    const editTo = (ciphertext: string) => ({
+      ciphertext,
+      nonce: 'nonce-v2',
+      version: 'veil-envelope-v1',
+    });
+
+    it('late group joiner receives no message.edited for a pre-join message', async () => {
+      const { service, gateway, alice, bob, carol, preJoin } = await lateJoinerGroup();
+
+      await service.edit(alice, preJoin.message.id, editTo('edited-pre-join-ciphertext'));
+
+      const edited = gateway.emitted.filter((e) => e.event === 'message.edited');
+      expect(edited.map((e) => e.userId).sort()).toEqual([alice.userId, bob.userId].sort());
+      expect(gateway.emitted.filter((e) => e.userId === carol.userId)).toEqual([]);
+    });
+
+    it('late group joiner receives no reaction, delete or consume event for pre-join messages', async () => {
+      const { service, gateway, alice, bob, carol, preJoin, preJoinViewOnce } =
+        await lateJoinerGroup();
+
+      await service.addReaction(bob, preJoin.message.id, '👍');
+      await service.removeReaction(bob, preJoin.message.id);
+      await service.delete(alice, preJoin.message.id);
+      await service.markRead(bob, preJoinViewOnce.message.id);
+
+      expect(new Set(gateway.emitted.map((e) => e.event))).toEqual(
+        new Set([
+          'message.reaction',
+          'message.deleted',
+          'message.delivered',
+          'message.read',
+          'message.consumed',
+        ]),
+      );
+      expect(gateway.emitted.filter((e) => e.userId === carol.userId)).toEqual([]);
+    });
+
+    it('late group joiner receives events for messages sent after joining', async () => {
+      const { service, gateway, alice, bob, carol, sendFromAlice } = await lateJoinerGroup();
+      const posted = await sendFromAlice();
+      gateway.emitted.length = 0;
+
+      await service.edit(alice, posted.message.id, editTo('edited-post-join-ciphertext'));
+      await service.addReaction(bob, posted.message.id, '👍');
+      await service.delete(alice, posted.message.id);
+
+      expect(gateway.emitted.filter((e) => e.userId === carol.userId).map((e) => e.event)).toEqual([
+        'message.edited',
+        'message.reaction',
+        'message.deleted',
+      ]);
     });
   });
 

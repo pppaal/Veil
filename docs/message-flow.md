@@ -36,9 +36,9 @@ Every conversation-scoped endpoint and realtime handler authorizes through one d
 
 - Any other type/role pair may do nothing.
 - A non-member gets `403 conversation_membership_required`, whether or not the conversation exists. A member whose role lacks the action gets `403 conversation_role_required`.
-- In a direct conversation, a block in either direction makes the peer unreachable for send, edit, react, typing and call (`403 peer_unreachable`). Reading history, deleting your own message and changing the timer still work.
+- In a direct conversation, a block in either direction makes the peer unreachable for send, edit, react, typing and call (`403 peer_unreachable`). Reading history, deleting your own message and changing the timer still work, and the delivered/read receipts they produce reach only the reader's own devices.
 - Calls are direct-only; placing one elsewhere is `403 call_not_allowed`.
-- Group members only see messages received after they joined: history, the conversation-list `lastMessage`, delivered receipts and message-level actions all hide the backlog. Channels are a public broadcast and keep their backlog visible to new subscribers.
+- Group members only see messages received after they joined: history, the conversation-list `lastMessage`, delivered receipts and message-level actions all hide the backlog. Realtime events about an existing message (`message.edited`, `message.deleted`, `message.reaction`, `message.consumed`) reach only the members who joined no later than its `serverReceivedAt`; an edit is re-encrypted under the current group key, which a late joiner already holds. Channels are a public broadcast and keep their backlog visible to new subscribers.
 - Channel subscribers never see each other: conversation summaries list only the owner, admins and the viewer, and `GET /conversations/channel/:id` gives non-staff only the subscriber count and the admins.
 - Groups are capped at 25 members (`409 group_member_limit`). Sender Keys cannot be turned off once enabled (`400 sender_keys_irreversible`). The owner must transfer ownership (`POST /conversations/group/:id/owner`) before leaving (`409 owner_immutable`).
 
@@ -48,10 +48,12 @@ Every conversation-scoped endpoint and realtime handler authorizes through one d
 - Direct conversations, channels and legacy groups accept the pairwise family: `veil-envelope-v1`, `veil-envelope-v1-dev`, `veil-envelope-v2`, `libsignal-v1`. A group with Sender Keys accepts only `veil-group-v1`, so no member can downgrade it. Anything else is `400 envelope_version_mismatch`.
 - A production relay refuses the development markers `veil-envelope-v1-dev` and the `dev-wrap` attachment hint (`400 envelope_version_forbidden`).
 - An edit must keep the stored version (`400 envelope_version_mismatch`), comes from the original sending device, and is only possible within 24 hours of `serverReceivedAt` (`403 edit_window_expired`).
+- Messages stored before migration `0017_conversation_integrity` were written without a version, so they all report `veil-envelope-v1`, including Sender Keys (`veil-group-v1`) and `libsignal-v1` history. The true version cannot be recovered. A client that fails to decrypt such a message should retry with the decryptor the conversation currently uses, and an edit of such a message is refused unless it really was `veil-envelope-v1`.
 
 ## Ordering
 
 - `conversationOrder` is allocated from `conversations.last_order`, incremented under the row lock in a default-isolation transaction. Orders are unique per conversation and never reused, even after the newest message is hard-deleted by view-once consumption or expiry.
+- During a rolling deploy of migration `0017_conversation_integrity`, instances still on the old `MAX(conversation_order) + 1` allocator insert without bumping `last_order`. A send that then collides on `(conversation_id, conversation_order)` raises `last_order` to the highest stored order and retries once, so the counter catches up instead of failing every later send. A send can still fail while old instances keep writing to the same conversation; the client's idempotent retry succeeds once they are gone.
 - A retried send with the same `(senderDeviceId, clientMessageId)` returns the stored message with `idempotent: true`.
 
 ## Client delivery lifecycle
@@ -109,7 +111,7 @@ Every conversation-scoped endpoint and realtime handler authorizes through one d
 
 ## Receipt consistency
 
-- Receipt events (`message.delivered`, `message.read`) go only to the message sender's devices and the reader's own devices; other group members never learn who read what. Channels have no receipts at all.
+- Receipt events (`message.delivered`, `message.read`) go only to the message sender's devices and the reader's own devices; other group members never learn who read what. Channels have no receipts at all, and in a direct conversation blocked in either direction the sender gets none.
 - Every message summary carries only the requesting viewer's own receipt timestamps. Realtime broadcasts carry none. A sender learns about delivery and reads from the receipt events, not from history.
 - Receipt transitions must only move forward: `sent -> delivered -> read`.
 - Repeated `read` actions should not emit duplicate downstream receipt events after the first successful transition.

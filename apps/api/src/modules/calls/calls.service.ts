@@ -125,13 +125,18 @@ export class CallsService {
       take: 50,
       include: {
         conversation: {
-          include: {
-            members: {
-              include: {
-                user: { select: { id: true, handle: true, displayName: true } },
-              },
-            },
+          select: {
+            type: true,
             groupMeta: { select: { name: true } },
+            channelMeta: { select: { name: true } },
+            // Only a direct conversation has a person on the other end; at
+            // most one other member is loaded so a large group or channel
+            // costs nothing and never names an arbitrary member.
+            members: {
+              where: { userId: { not: auth.userId } },
+              take: 1,
+              select: { user: { select: { handle: true, displayName: true } } },
+            },
           },
         },
         initiatorDevice: { select: { userId: true } },
@@ -139,13 +144,11 @@ export class CallsService {
     });
 
     return calls.map((call) => {
-      const otherMember = call.conversation.members.find((m) => m.userId !== auth.userId);
+      const { type, groupMeta, channelMeta, members } = call.conversation;
+      const peer = type === 'direct' ? members[0]?.user : undefined;
       const counterparty =
-        call.conversation.groupMeta?.name ??
-        otherMember?.user.displayName ??
-        otherMember?.user.handle ??
-        'Unknown';
-      const counterpartyHandle = otherMember?.user.handle ?? null;
+        groupMeta?.name ?? channelMeta?.name ?? peer?.displayName ?? peer?.handle ?? 'Unknown';
+      const counterpartyHandle = peer?.handle ?? null;
 
       return {
         id: call.id,

@@ -168,6 +168,7 @@ describe('RealtimeGateway handshake', () => {
   ) =>
     ({
       id: `socket-${randomUUID()}`,
+      connected: true,
       data: {},
       handshake: { headers: { origin: 'https://app.veil' }, auth: {}, query: {}, ...handshake },
       disconnect,
@@ -252,6 +253,23 @@ describe('RealtimeGateway handshake', () => {
     await gw.handleConnection(client);
     gw.handleDisconnect(client);
 
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('never registers a socket that disconnected during the handshake', async () => {
+    jest.useFakeTimers();
+    const { gw } = handshakeGateway('active', 120);
+    const client = buildClient({ auth: { token: 'tok' } }, jest.fn()) as unknown as {
+      connected: boolean;
+    };
+
+    const connecting = gw.handleConnection(client as never);
+    client.connected = false;
+    gw.handleDisconnect(client as never);
+    await connecting;
+
+    expect(gw.hasConnectedUser('u1')).toBe(false);
+    expect(gw.connectedDeviceIdsForUser('u1')).toEqual([]);
     expect(jest.getTimerCount()).toBe(0);
   });
 

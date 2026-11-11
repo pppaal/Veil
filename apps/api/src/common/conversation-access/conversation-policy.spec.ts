@@ -6,6 +6,7 @@ import {
   POLICY,
   historyVisibleSince,
   isActionAllowed,
+  messageAudienceJoinedBy,
 } from './conversation-policy';
 
 // The complete authorization matrix, written out independently of the
@@ -125,5 +126,12 @@ describe('conversation policy', () => {
     expect(historyVisibleSince('group', joinedAt)).toBe(joinedAt);
     expect(historyVisibleSince('direct', joinedAt)).toBeNull();
     expect(historyVisibleSince('channel', joinedAt)).toBeNull();
+  });
+
+  it('limits the audience of a message to members who could list it', () => {
+    const receivedAt = new Date('2026-05-01T00:00:00.000Z');
+    expect(messageAudienceJoinedBy('group', receivedAt)).toBe(receivedAt);
+    expect(messageAudienceJoinedBy('direct', receivedAt)).toBeNull();
+    expect(messageAudienceJoinedBy('channel', receivedAt)).toBeNull();
   });
 });

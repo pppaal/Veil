@@ -92,13 +92,22 @@ export class ConversationAccessService {
     if (!isActionAllowed(conversation.type, member.role, action)) {
       throw apiError('conversation_role_required');
     }
-    if (
-      conversation.type === 'direct' &&
-      PEER_REACHING_ACTIONS.has(action) &&
-      (await this.isDirectPeerBlocked(conversation.id, member.userId))
-    ) {
+    if (PEER_REACHING_ACTIONS.has(action) && !(await this.isPeerReachable(access))) {
       throw apiError('peer_unreachable', 'Peer is unreachable');
     }
+  }
+
+  /**
+   * Whether anything the member does may reach the other side. Only a direct
+   * conversation can be cut off, by a block in either direction. Actions a
+   * blocked member keeps (reading, marking read) use this to stay silent
+   * towards the peer.
+   */
+  async isPeerReachable(access: ConversationAccess): Promise<boolean> {
+    return (
+      access.conversation.type !== 'direct' ||
+      !(await this.isDirectPeerBlocked(access.conversation.id, access.member.userId))
+    );
   }
 
   private async isDirectPeerBlocked(conversationId: string, userId: string): Promise<boolean> {

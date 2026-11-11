@@ -113,6 +113,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         return;
       }
 
+      // The client may have gone away while the checks above were awaited.
+      // handleDisconnect has then already run, so registering now would
+      // leave a dead socket, its gauge increment and its expiry timer behind.
+      if (!client.connected) {
+        return;
+      }
+
       // A socket lives no longer than the token that opened it; the client
       // reconnects with a refreshed token.
       const expiryTimer = setTimeout(

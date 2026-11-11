@@ -363,6 +363,7 @@ export interface ChannelSummaryResponse {
   name: string;
   description: string | null;
   isPublic: boolean;
+  /** Every member of the channel, the owner and admins included. */
   subscriberCount: number;
   admins: ChannelAdminSummary[];
   viewerRole: MemberRole | null;

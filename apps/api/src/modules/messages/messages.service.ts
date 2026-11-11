@@ -9,6 +9,7 @@ import type {
   RemoveReactionResponse,
   SendMessageResponse,
 } from '@veil/contracts';
+import type { ConversationType } from '@veil/shared';
 import { isUUID } from 'class-validator';
 
 import { AppConfigService } from '../../common/config/app-config.service';
@@ -19,6 +20,7 @@ import {
 import {
   EMITS_RECEIPTS,
   historyVisibleSince,
+  messageAudienceJoinedBy,
   type ConversationAction,
 } from '../../common/conversation-access/conversation-policy';
 import { apiError } from '../../common/errors/api-error';
@@ -56,6 +58,13 @@ const MESSAGE_ACCESS_SELECT = {
 type AccessedMessage = Prisma.MessageGetPayload<{ select: typeof MESSAGE_ACCESS_SELECT }>;
 
 type Actor = { userId: string; deviceId: string };
+
+// What send() resolved for a new row beyond the client's envelope.
+type NewMessageFields = {
+  expiresAt: Date | null;
+  attachmentId: string | null;
+  receiptUserIds: string[];
+};
 
 @Injectable()
 export class MessagesService {
@@ -207,8 +216,11 @@ export class MessagesService {
 
     if (recordsReceipt) {
       // Receipts go to the sender and the reader's own devices only; other
-      // group members never learn who read what.
-      const audience = [{ userId: senderUserId }, { userId: auth.userId }];
+      // group members never learn who read what, and a blocked direct peer
+      // does not learn that the reader is still reading.
+      const audience = (await this.access.isPeerReachable(access))
+        ? [{ userId: senderUserId }, { userId: auth.userId }]
+        : [{ userId: auth.userId }];
       if (!previous?.deliveredAt) {
         this.realtimeGateway.emitConversationMembers(audience, 'message.delivered', {
           messageId,
@@ -232,7 +244,7 @@ export class MessagesService {
 
     if (consumesViewOnce) {
       this.realtimeGateway.emitConversationMembers(
-        await this.members(message.conversationId),
+        await this.messageAudience(access.conversation.type, message),
         'message.consumed',
         { messageId, conversationId: message.conversationId, consumedAt: now.toISOString() },
       );
@@ -254,7 +266,7 @@ export class MessagesService {
   // (an edit must not switch decryptors). editCount lets the UI show
   // "(수정됨)" without the server keeping prior revisions.
   async edit(auth: Actor, messageId: string, dto: EditMessageDto): Promise<EditMessageResponse> {
-    const { message } = await this.requireMessageAccess(auth.userId, messageId, 'edit');
+    const { message, access } = await this.requireMessageAccess(auth.userId, messageId, 'edit');
     if (message.senderDeviceId !== auth.deviceId) {
       throw apiError('message_not_owned', 'Only the original sender may edit');
     }
@@ -287,7 +299,7 @@ export class MessagesService {
     });
 
     this.realtimeGateway.emitConversationMembers(
-      await this.members(message.conversationId),
+      await this.messageAudience(access.conversation.type, message),
       'message.edited',
       toMessageSummary(updated, { broadcast: true }),
     );
@@ -298,7 +310,7 @@ export class MessagesService {
   // ciphertext is replaced with a tombstone so the server cannot re-deliver
   // the original body even by accident.
   async delete(auth: Actor, messageId: string): Promise<DeleteMessageResponse> {
-    const { message } = await this.requireMessageAccess(auth.userId, messageId, 'delete');
+    const { message, access } = await this.requireMessageAccess(auth.userId, messageId, 'delete');
     if (message.senderDeviceId !== auth.deviceId) {
       throw apiError('message_not_owned', 'Only the original sender may delete');
     }
@@ -318,7 +330,7 @@ export class MessagesService {
     });
 
     this.realtimeGateway.emitConversationMembers(
-      await this.members(message.conversationId),
+      await this.messageAudience(access.conversation.type, message),
       'message.deleted',
       { messageId, deletedAt: deletedAt.toISOString() },
     );
@@ -330,7 +342,7 @@ export class MessagesService {
     messageId: string,
     emoji: string,
   ): Promise<AddReactionResponse> {
-    const { message } = await this.requireMessageAccess(auth.userId, messageId, 'react');
+    const { message, access } = await this.requireMessageAccess(auth.userId, messageId, 'react');
 
     const reaction = await this.prisma.reaction.upsert({
       where: { messageId_userId: { messageId, userId: auth.userId } },
@@ -339,7 +351,7 @@ export class MessagesService {
     });
 
     this.realtimeGateway.emitConversationMembers(
-      await this.members(message.conversationId),
+      await this.messageAudience(access.conversation.type, message),
       'message.reaction',
       { messageId, userId: auth.userId, emoji, action: 'add' },
     );
@@ -350,12 +362,12 @@ export class MessagesService {
     auth: { userId: string },
     messageId: string,
   ): Promise<RemoveReactionResponse> {
-    const { message } = await this.requireMessageAccess(auth.userId, messageId, 'react');
+    const { message, access } = await this.requireMessageAccess(auth.userId, messageId, 'react');
 
     await this.prisma.reaction.deleteMany({ where: { messageId, userId: auth.userId } });
 
     this.realtimeGateway.emitConversationMembers(
-      await this.members(message.conversationId),
+      await this.messageAudience(access.conversation.type, message),
       'message.reaction',
       { messageId, userId: auth.userId, emoji: '', action: 'remove' },
     );
@@ -440,6 +452,30 @@ export class MessagesService {
     return attachment.attachmentId;
   }
 
+  private async persistMessage(
+    auth: Actor,
+    dto: SendMessageDto,
+    resolved: NewMessageFields,
+  ): Promise<{ message: MessageSummaryRow; idempotent: boolean }> {
+    try {
+      return { message: await this.insertWithNextOrder(auth, dto, resolved), idempotent: false };
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code !== 'P2002') {
+        throw error;
+      }
+      // A concurrent retry of the same (device, clientMessageId) won the
+      // insert; hand back the stored message instead of an error.
+      const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
+      if (existing) {
+        return { message: existing, idempotent: true };
+      }
+      // The only other unique key is (conversation_id, conversation_order),
+      // so the counter is behind a row written without it.
+      await this.resyncOrderCounter(dto.conversationId);
+      return { message: await this.insertWithNextOrder(auth, dto, resolved), idempotent: false };
+    }
+  }
+
   /**
    * Allocates the next conversationOrder from conversations.last_order and
    * inserts the message in one default-isolation transaction. The increment
@@ -447,51 +483,58 @@ export class MessagesService {
    * distinct, gap-free orders without SERIALIZABLE retries; a rolled-back
    * send also rolls back its increment.
    */
-  private async persistMessage(
+  private insertWithNextOrder(
     auth: Actor,
     dto: SendMessageDto,
-    resolved: { expiresAt: Date | null; attachmentId: string | null; receiptUserIds: string[] },
-  ): Promise<{ message: MessageSummaryRow; idempotent: boolean }> {
-    try {
-      const message = await this.prisma.$transaction(async (tx) => {
-        const { lastOrder } = await tx.conversation.update({
-          where: { id: dto.conversationId },
-          data: { lastOrder: { increment: 1 } },
-          select: { lastOrder: true },
-        });
-        return tx.message.create({
-          data: {
-            conversationId: dto.conversationId,
-            senderDeviceId: auth.deviceId,
-            clientMessageId: dto.clientMessageId,
-            conversationOrder: lastOrder,
-            envelopeVersion: dto.envelope.version,
-            ciphertext: dto.envelope.ciphertext,
-            nonce: dto.envelope.nonce,
-            messageType: dto.envelope.messageType,
-            attachmentId: resolved.attachmentId,
-            attachmentRef: resolved.attachmentId
-              ? { attachmentId: resolved.attachmentId }
-              : Prisma.JsonNull,
-            expiresAt: resolved.expiresAt,
-            viewOnce: dto.envelope.viewOnce === true,
-            replyToMessageId: dto.replyToMessageId ?? null,
-            receipts: { create: resolved.receiptUserIds.map((userId) => ({ userId })) },
-          },
-          include: MESSAGE_SUMMARY_INCLUDE,
-        });
+    resolved: NewMessageFields,
+  ): Promise<MessageSummaryRow> {
+    return this.prisma.$transaction(async (tx) => {
+      const { lastOrder } = await tx.conversation.update({
+        where: { id: dto.conversationId },
+        data: { lastOrder: { increment: 1 } },
+        select: { lastOrder: true },
       });
-      return { message, idempotent: false };
-    } catch (error) {
-      // A concurrent retry of the same (device, clientMessageId) won the
-      // insert; hand back the stored message instead of an error.
-      if ((error as { code?: unknown } | null)?.code === 'P2002') {
-        const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
-        if (existing) {
-          return { message: existing, idempotent: true };
-        }
-      }
-      throw error;
+      return tx.message.create({
+        data: {
+          conversationId: dto.conversationId,
+          senderDeviceId: auth.deviceId,
+          clientMessageId: dto.clientMessageId,
+          conversationOrder: lastOrder,
+          envelopeVersion: dto.envelope.version,
+          ciphertext: dto.envelope.ciphertext,
+          nonce: dto.envelope.nonce,
+          messageType: dto.envelope.messageType,
+          attachmentId: resolved.attachmentId,
+          attachmentRef: resolved.attachmentId
+            ? { attachmentId: resolved.attachmentId }
+            : Prisma.JsonNull,
+          expiresAt: resolved.expiresAt,
+          viewOnce: dto.envelope.viewOnce === true,
+          replyToMessageId: dto.replyToMessageId ?? null,
+          receipts: { create: resolved.receiptUserIds.map((userId) => ({ userId })) },
+        },
+        include: MESSAGE_SUMMARY_INCLUDE,
+      });
+    });
+  }
+
+  /**
+   * Raises the counter to the highest stored order. An instance still
+   * running the pre-0017 MAX()+1 allocator during a rolling deploy inserts
+   * without bumping last_order; every later send would then collide and roll
+   * its own increment back, wedging the conversation for good.
+   */
+  private async resyncOrderCounter(conversationId: string): Promise<void> {
+    const newest = await this.prisma.message.findFirst({
+      where: { conversationId },
+      orderBy: { conversationOrder: 'desc' },
+      select: { conversationOrder: true },
+    });
+    if (newest) {
+      await this.prisma.conversation.updateMany({
+        where: { id: conversationId, lastOrder: { lt: newest.conversationOrder } },
+        data: { lastOrder: newest.conversationOrder },
+      });
     }
   }
 
@@ -512,6 +555,26 @@ export class MessagesService {
   private members(conversationId: string): Promise<Array<{ userId: string }>> {
     return this.prisma.conversationMember.findMany({
       where: { conversationId },
+      select: { userId: true },
+    });
+  }
+
+  /**
+   * The members who receive events about a stored message: those who can
+   * list it. A group member added after the message reached the relay gets
+   * none of its edits, deletions, reactions or consumption, exactly as
+   * history hides the message itself.
+   */
+  private messageAudience(
+    type: ConversationType,
+    message: Pick<AccessedMessage, 'conversationId' | 'serverReceivedAt'>,
+  ): Promise<Array<{ userId: string }>> {
+    const joinedBy = messageAudienceJoinedBy(type, message.serverReceivedAt);
+    return this.prisma.conversationMember.findMany({
+      where: {
+        conversationId: message.conversationId,
+        ...(joinedBy ? { joinedAt: { lte: joinedBy } } : {}),
+      },
       select: { userId: true },
     });
   }

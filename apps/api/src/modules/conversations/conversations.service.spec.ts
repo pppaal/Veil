@@ -1,8 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
+import { Test } from '@nestjs/testing';
+
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { PrismaService } from '../../common/prisma.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeRealtimeGateway, FakeSafetyService } from '../../../test/support/fake-services';
+import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { SafetyService } from '../safety/safety.service';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 import { ConversationsService } from './conversations.service';
 
@@ -275,6 +280,24 @@ describe('ConversationsService', () => {
       expect(gateway.emitted.filter((e) => e.event === 'message.delivered')).toHaveLength(0);
     });
 
+    it('delivered receipts do not reach a blocked direct peer', async () => {
+      const { service, prisma, gateway, safety } = makeService();
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      seedMessage(prisma, { conversationId, senderDeviceId: bob.deviceId, conversationOrder: 1 });
+      safety.setBlocked(alice.userId, bob.userId);
+
+      await service.listMessagesForUser(alice, conversationId, { limit: 50 });
+
+      expect(gateway.emitted.map((e) => [e.userId, e.event])).toEqual([
+        [alice.userId, 'message.delivered'],
+      ]);
+      expect(prisma.messageReceipts).toEqual([
+        expect.objectContaining({ userId: alice.userId, deliveredAt: expect.any(Date) }),
+      ]);
+    });
+
     it('excludes expired messages from the returned list', async () => {
       const { service, prisma } = makeService();
       const alice = prisma.seedUser('alice');
@@ -408,13 +431,28 @@ describe('ConversationsService', () => {
       jest.useRealTimers();
     });
 
-    it('module init schedules no sweep timer', () => {
+    it('module init schedules no sweep timer', async () => {
       jest.useFakeTimers();
-      const { service } = makeService();
+      const { prisma, gateway, safety } = makeService();
+      // A real Nest module runs every lifecycle hook the provider declares,
+      // so a sweep re-added under any hook name is caught.
+      const moduleRef = await Test.createTestingModule({
+        providers: [
+          ConversationsService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: RealtimeGateway, useValue: gateway },
+          { provide: SafetyService, useValue: safety },
+          {
+            provide: ConversationAccessService,
+            useValue: new ConversationAccessService(prisma as never, safety as never),
+          },
+        ],
+      }).compile();
 
-      (service as { onModuleInit?: () => void }).onModuleInit?.();
+      await moduleRef.init();
 
       expect(jest.getTimerCount()).toBe(0);
+      await moduleRef.close();
     });
   });
 });

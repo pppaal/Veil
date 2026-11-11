@@ -85,6 +85,19 @@ describe('ConversationAccessService', () => {
     }
   });
 
+  it('reports a direct peer unreachable after a block in either direction', async () => {
+    const { access, safety, alice, bob, directId } = fixture();
+    const membership = await access.requireMember(bob.userId, directId);
+    expect(await access.isPeerReachable(membership)).toBe(true);
+
+    safety.setBlocked(bob.userId, alice.userId);
+
+    expect(await access.isPeerReachable(membership)).toBe(false);
+    expect(await access.isPeerReachable(await access.requireMember(alice.userId, directId))).toBe(
+      false,
+    );
+  });
+
   it('does not apply direct block rules to groups', async () => {
     const { access, prisma, safety, alice, bob } = fixture();
     const groupId = prisma.seedConversation('group', [alice.userId, bob.userId]);

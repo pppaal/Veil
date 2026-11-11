@@ -8,7 +8,10 @@ import type {
 } from '@veil/contracts';
 import { isUUID } from 'class-validator';
 
-import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import {
+  ConversationAccessService,
+  type ConversationAccess,
+} from '../../common/conversation-access/conversation-access.service';
 import {
   EMITS_RECEIPTS,
   historyVisibleSince,
@@ -181,11 +184,8 @@ export class ConversationsService {
     conversationId: string,
     query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
-    const { conversation, member } = await this.access.requireAccess(
-      auth.userId,
-      conversationId,
-      'readHistory',
-    );
+    const access = await this.access.requireAccess(auth.userId, conversationId, 'readHistory');
+    const { conversation, member } = access;
     const requestedLimit = Number(query.limit ?? 50);
     const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 50;
 
@@ -214,7 +214,7 @@ export class ConversationsService {
     });
 
     if (EMITS_RECEIPTS[conversation.type]) {
-      await this.markDeliveredForViewer(messages, auth.userId);
+      await this.markDeliveredForViewer(messages, access);
     }
 
     const highestConversationOrder =
@@ -238,19 +238,27 @@ export class ConversationsService {
 
   // Marks the fetched page delivered for the viewer. Only messages the viewer
   // may list reach here, so pre-join group history is never acknowledged.
-  // Each delivered receipt goes to the sender and the viewer's own devices.
+  // Each delivered receipt goes to the sender and the viewer's own devices,
+  // except that a blocked direct peer hears nothing.
   private async markDeliveredForViewer(
     messages: MessageSummaryRow[],
-    viewerUserId: string,
+    viewer: ConversationAccess,
   ): Promise<void> {
+    const viewerUserId = viewer.member.userId;
+    const undelivered = messages.filter(
+      (message) =>
+        message.senderDevice.userId !== viewerUserId &&
+        !message.receipts.find((receipt) => receipt.userId === viewerUserId)?.deliveredAt,
+    );
+    if (undelivered.length === 0) {
+      return;
+    }
+    const notifySenders = await this.access.isPeerReachable(viewer);
     const deliveredAt = new Date();
 
-    for (const message of messages) {
+    for (const message of undelivered) {
       const senderUserId = message.senderDevice.userId;
       const existingReceipt = message.receipts.find((receipt) => receipt.userId === viewerUserId);
-      if (senderUserId === viewerUserId || existingReceipt?.deliveredAt) {
-        continue;
-      }
 
       await this.prisma.messageReceipt.upsert({
         where: { messageId_userId: { messageId: message.id, userId: viewerUserId } },
@@ -265,7 +273,9 @@ export class ConversationsService {
       }
 
       this.realtimeGateway.emitConversationMembers(
-        [{ userId: senderUserId }, { userId: viewerUserId }],
+        notifySenders
+          ? [{ userId: senderUserId }, { userId: viewerUserId }]
+          : [{ userId: viewerUserId }],
         'message.delivered',
         { messageId: message.id, userId: viewerUserId, deliveredAt: deliveredAt.toISOString() },
       );

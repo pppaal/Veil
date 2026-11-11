@@ -20,6 +20,8 @@ runs in polling mode. Playwright starts it; nothing else is needed.
   session runs on, show the same number.
 - A relay that swaps Bob's identity and opens a session to Alice as Bob's
   device is refused: Alice sees the key-change banner and cannot send.
+  Once she declines that key, she sends to Bob again, and the refused frame,
+  which the relay still serves, raises nothing after a reload.
 - A message deleted by its sender, and one past the relay's conversation
   timer, leave both pages and the sidebar, and their rows in the
   decrypt-once store are retired on both devices, with history polling as

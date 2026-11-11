@@ -1004,9 +1004,9 @@ function renderActivePanel() {
 }
 
 // Shown while a peer presents an identity key the pins do not admit.
-// Sending stays frozen until the user accepts the new key; a contact they
-// had verified has to be verified again, by comparing the new safety number,
-// and so does a device of theirs that was never verified.
+// Sending stays frozen until the user accepts the new key or declines it; a
+// contact they had verified has to be verified again, by comparing the new
+// safety number, and so does a device of theirs that was never verified.
 function renderKeyChangeBanner(convId, peer) {
   const change = trust.pendingChange(peer.userId);
   let text = change?.verified ? 'keyChange.bannerVerified' : 'keyChange.banner';
@@ -1014,10 +1014,35 @@ function renderKeyChangeBanner(convId, peer) {
   return el('div', { class: 'key-change-banner', role: 'alert' }, [
     el('div', { class: 'key-change-text' }, [t(text, { handle: peer.handle })]),
     el('button', {
+      class: 'btn btn-ghost btn-compact key-change-decline',
+      onclick: () => declinePeerKeyChange(convId, peer),
+    }, [t('keyChange.decline')]),
+    el('button', {
       class: 'btn btn-secondary btn-compact',
       onclick: () => (change?.verified ? openSafetyNumberDialog(convId, peer) : acceptPeerKeyChange(convId, peer)),
     }, [t(change?.verified ? 'safety.compare' : 'keyChange.review')]),
   ]);
+}
+
+// Declines the change pending when the banner was clicked: that device and
+// key stay refused without being raised again, and the conversation sends
+// on to the identity it already has. It adds no trust, so a verified
+// contact's change may be declined as well.
+async function declinePeerKeyChange(convId, peer) {
+  const reviewed = trust.pendingChange(peer.userId);
+  if (!reviewed) return;
+  const ok = await uiConfirm({
+    title: t('keyChange.declineTitle', { handle: peer.handle }),
+    body: t('keyChange.declineBody', { handle: peer.handle }),
+    okLabel: t('keyChange.decline'),
+  });
+  if (!ok) return;
+  const outcome = await secure.declineChange(convId, reviewed);
+  if (outcome === 'session-key') {
+    toast(t('keyChange.declineSessionKey', { handle: peer.handle }), 'error');
+  } else if (outcome === 'superseded' && trust.pendingChange(peer.userId)) {
+    toast(t('keyChange.superseded', { handle: peer.handle }), 'error');
+  }
 }
 
 // Accepts the change pending when the banner was clicked, never one that

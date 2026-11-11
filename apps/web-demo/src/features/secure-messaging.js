@@ -6,11 +6,12 @@
 //          exactly once and stores the result before the session moves on
 //   retire drops what was kept of a message that was deleted or expired
 // A peer whose identity changed is frozen here for sending until the user
-// reviews the change; nothing in this module ever refetches keys because a
-// message failed to decrypt.
+// reviews the change (accepts, verifies or declines it); nothing in this
+// module ever refetches keys because a message failed to decrypt.
 
 import { effectiveExpiry, isPast } from '../core/expiry.js';
 import { BundleError } from '../crypto/bundle.js';
+import { constantTimeEqual } from '../crypto/bytes.js';
 import { LEGACY_ENVELOPE_VERSION } from '../crypto/frame.js';
 import { isLegacyIdentity } from '../crypto/identity.js';
 import { isLegacyV1DevEnvelope } from '../crypto/legacy-v1dev.js';
@@ -244,6 +245,21 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     async safetyKey(conversationId) {
       const peer = getPeer(conversationId);
       return peer ? trust.safetyKey(peer.userId, await cipher.sessionIdentity(conversationId)) : null;
+    },
+
+    // Declines `reviewed`, the change pending for this conversation's peer
+    // (src/crypto/pins.js reject), so that sending goes on to the identity
+    // the session sends to. Resolves to 'declined'; 'superseded' when it is
+    // no longer the pending change; or 'session-key' when it is that very
+    // identity, which only a comparison can settle: declined, it would leave
+    // the conversation nobody to send to.
+    async declineChange(conversationId, reviewed) {
+      const peer = getPeer(conversationId);
+      if (!peer) return 'superseded';
+      const session = await cipher.sessionIdentity(conversationId);
+      if (session?.remoteDeviceId === reviewed.deviceId
+        && constantTimeEqual(session.remoteIdentityKey, reviewed.identityKey)) return 'session-key';
+      return (await trust.reject(peer.userId, reviewed)) ? 'declined' : 'superseded';
     },
 
     // Retires every stored message whose expiry has passed, shown or not.

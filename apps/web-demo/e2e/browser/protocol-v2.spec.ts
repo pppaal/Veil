@@ -201,6 +201,28 @@ test.describe('protocol v2 in the browser', () => {
     // The history from before the swap is untouched.
     expect((await bubbleTexts(alice)).slice(0, texts.length)).toEqual(texts);
   });
+
+  // The refused frame stays on the relay, and every history refresh and
+  // reload opens it again: once declined, it raises nothing.
+  test('declining the relay key resumes the conversation, across a reload', async () => {
+    const page = alice.page;
+    await page.locator('.key-change-banner .key-change-decline').click();
+    await page.locator('#confirm-ok').click();
+    await expect(page.locator('.key-change-banner')).toHaveCount(0);
+    await send(alice, 'after declining');
+    await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 }).toContain('after declining');
+
+    await page.reload();
+    await expect(page.locator('#app')).toBeVisible();
+    await openChatWith(alice, bob);
+    await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 }).toContain('after declining');
+    // Let a polling round fetch the refused frame from the relay as well.
+    await page.waitForTimeout(5_000);
+    await expect(page.locator('.key-change-banner')).toHaveCount(0);
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+    await send(alice, 'after reloading');
+    await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 }).toContain('after reloading');
+  });
 });
 
 // Contract C4 and deletion on the device: once a message is deleted or its

@@ -3,6 +3,7 @@ import { UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import { AuthService } from './auth.service';
+import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { FakeConfigService, FakeEphemeralStoreService } from '../../../test/support/fake-services';
@@ -21,9 +22,17 @@ const registration = (handle: string, keyPair: KeyPair, pushToken?: string) => (
   pushToken,
 });
 
-function setup(options: { prisma?: FakePrismaService; config?: FakeConfigService } = {}) {
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function setup(
+  options: {
+    prisma?: FakePrismaService;
+    config?: FakeConfigService;
+    store?: FakeEphemeralStoreService | EphemeralStoreService;
+  } = {},
+) {
   const prisma = options.prisma ?? new FakePrismaService();
-  const store = new FakeEphemeralStoreService();
+  const store = options.store ?? new FakeEphemeralStoreService();
   const jwt = new JwtService();
   const keyHelper = new DeviceAuthTestHelper();
   const service = new AuthService(
@@ -337,6 +346,34 @@ describe('AuthService', () => {
       });
       await expect(service.refresh(later[0]!.refreshToken)).resolves.toBeDefined();
     });
+
+    it('keeps a family in active use when later logins overflow the window', async () => {
+      const { service, registerAndLogin, login } = setup();
+      const { verified: active, registered, keyPair } = await registerAndLogin('busydevice');
+      const abandoned = await login('busydevice', registered.deviceId, keyPair);
+      for (let i = 0; i < 3; i += 1) {
+        await login('busydevice', registered.deviceId, keyPair);
+      }
+      const rotated = await service.refresh(active.refreshToken);
+
+      await login('busydevice', registered.deviceId, keyPair);
+
+      await expect(service.refresh(rotated.refreshToken)).resolves.toBeDefined();
+      await expect(service.refresh(abandoned.refreshToken)).rejects.toMatchObject({
+        response: { code: 'refresh_token_invalid' },
+      });
+    });
+
+    it('refuses a family that the device index no longer lists', async () => {
+      const { service, store, registerAndLogin } = setup();
+      const { verified, registered } = await registerAndLogin('unlisted');
+      // What a lost read-modify-write of the index (a concurrent login) leaves.
+      await store.setJson(`auth:refresh-families:${registered.deviceId}`, [], 60);
+
+      await expect(service.refresh(verified.refreshToken)).rejects.toMatchObject({
+        response: { code: 'refresh_token_invalid' },
+      });
+    });
   });
 
   describe('logout', () => {
@@ -363,6 +400,39 @@ describe('AuthService', () => {
       }
       await expect(service.refresh(bystander.verified.refreshToken)).resolves.toBeDefined();
       await expect(store.getJson(`auth:blacklist:${decoded.jti}`)).resolves.not.toBeNull();
+    });
+
+    describe('with the TTL-honouring in-memory store', () => {
+      // FakeEphemeralStoreService ignores TTLs, which hid an index that expired
+      // while the families it listed were kept alive by rotation.
+      let now: number;
+
+      beforeEach(() => {
+        now = Date.parse('2026-01-01T00:00:00Z');
+        jest.spyOn(Date, 'now').mockImplementation(() => now);
+      });
+
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('logout revokes a family kept alive past the refresh TTL by refreshes alone', async () => {
+        const store = new EphemeralStoreService(new FakeConfigService() as never);
+        const { service, registerAndLogin } = setup({ store });
+        const { verified, registered } = await registerAndLogin('dailyrefresh');
+
+        let { refreshToken } = verified;
+        for (let day = 1; day <= 31; day += 1) {
+          now += DAY_MS;
+          ({ refreshToken } = await service.refresh(refreshToken));
+        }
+
+        await service.logout({ userId: registered.userId, deviceId: registered.deviceId });
+
+        await expect(service.refresh(refreshToken)).rejects.toMatchObject({
+          response: { code: 'refresh_token_invalid' },
+        });
+      });
     });
   });
 });

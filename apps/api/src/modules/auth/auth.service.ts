@@ -29,7 +29,6 @@ interface StoredRefreshToken {
   userId: string;
   deviceId: string;
   familyId: string;
-  issuedAt: number;
 }
 
 interface RefreshFamily {
@@ -58,8 +57,8 @@ const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 // the owner's pending login just by requesting a new challenge. A small
 // window removes that lockout while still bounding outstanding challenges.
 const MAX_OUTSTANDING_CHALLENGES = 3;
-// A device normally holds one refresh family; older ones are abandoned
-// sessions and are revoked when the window overflows.
+// A device normally holds one refresh family; the least recently used ones
+// are abandoned sessions and are revoked when the window overflows.
 const MAX_REFRESH_FAMILIES_PER_DEVICE = 5;
 
 const challengeKey = (challengeId: string): string => `auth:challenge:${challengeId}`;
@@ -74,12 +73,14 @@ const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 // no usable tokens.
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
+// Moves (or appends) id to the newest end, so the oldest entries are the
+// least recently used ones.
 const appendKeepingNewest = (
   ids: readonly string[],
   id: string,
   limit: number,
 ): { kept: string[]; evicted: string[] } => {
-  const all = [...ids, id];
+  const all = [...ids.filter((existing) => existing !== id), id];
   return { kept: all.slice(-limit), evicted: all.slice(0, -limit) };
 };
 
@@ -256,7 +257,8 @@ export class AuthService {
       throw unauthorized('invalid_device_signature', 'Invalid device signature');
     }
 
-    const familyId = await this.startRefreshFamily(device.id);
+    const familyId = randomUUID();
+    await this.recordRefreshFamily(device.id, await this.listRefreshFamilies(device.id), familyId);
     const tokens = await this.issueTokenPair(
       device.userId,
       device.id,
@@ -323,6 +325,15 @@ export class AuthService {
       throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
     }
 
+    // Logout revokes exactly the families the device index lists, so a family
+    // the index lost (to a concurrent read-modify-write) is refused here
+    // instead of living on beyond logout's reach.
+    const deviceFamilies = await this.listRefreshFamilies(stored.deviceId);
+    if (!deviceFamilies.includes(stored.familyId)) {
+      await this.revokeRefreshFamily(stored.familyId);
+      throw unauthorized('refresh_token_invalid', 'Refresh token invalid');
+    }
+
     const device = await this.prisma.device.findUnique({
       where: { id: stored.deviceId },
       include: { user: true },
@@ -338,6 +349,10 @@ export class AuthService {
       throw unauthorized('device_not_active', 'Device is not active');
     }
 
+    // Every rotation renews the family, so it must renew the index entry too:
+    // otherwise a device that only ever refreshes outlives its index and
+    // logout finds nothing to revoke.
+    await this.recordRefreshFamily(device.id, deviceFamilies, stored.familyId);
     const tokens = await this.issueTokenPair(
       device.userId,
       device.id,
@@ -413,10 +428,18 @@ export class AuthService {
     await this.ephemeralStore.setJson(challengeIndexKey(deviceId), kept, ttlSeconds);
   }
 
-  private async startRefreshFamily(deviceId: string): Promise<string> {
-    const familyId = randomUUID();
-    const families =
-      (await this.ephemeralStore.getJson<string[]>(deviceFamiliesKey(deviceId))) ?? [];
+  private async listRefreshFamilies(deviceId: string): Promise<string[]> {
+    return (await this.ephemeralStore.getJson<string[]>(deviceFamiliesKey(deviceId))) ?? [];
+  }
+
+  // Marks familyId as the device's most recently used family and gives the
+  // index a full refresh TTL, so the index outlives every family it lists.
+  // Families pushed out of the window are revoked.
+  private async recordRefreshFamily(
+    deviceId: string,
+    families: readonly string[],
+    familyId: string,
+  ): Promise<void> {
     const { kept, evicted } = appendKeepingNewest(
       families,
       familyId,
@@ -426,7 +449,6 @@ export class AuthService {
       await this.revokeRefreshFamily(evictedId);
     }
     await this.ephemeralStore.setJson(deviceFamiliesKey(deviceId), kept, REFRESH_TOKEN_TTL_SECONDS);
-    return familyId;
   }
 
   private async revokeRefreshFamily(familyId: string): Promise<void> {
@@ -462,7 +484,7 @@ export class AuthService {
     const tokenHash = hashToken(refreshToken);
     await this.ephemeralStore.setJson<StoredRefreshToken>(
       refreshTokenKey(tokenHash),
-      { userId, deviceId, familyId, issuedAt: Date.now() },
+      { userId, deviceId, familyId },
       REFRESH_TOKEN_TTL_SECONDS,
     );
     await this.ephemeralStore.setJson<RefreshFamily>(

@@ -81,10 +81,6 @@
 
     <form id="register-form" class="auth-form" autocomplete="off" novalidate>
       <label class="field">
-        <span class="field-label" data-i18n="auth.form.displayName">표시 이름</span>
-        <input id="reg-name" type="text" placeholder="Alice" maxlength="40" />
-      </label>
-      <label class="field">
         <span class="field-label" data-i18n="auth.form.handle">핸들</span>
         <input id="reg-handle" type="text" placeholder="alice" pattern="[a-z0-9_]+" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" />
         <span class="field-hint" data-i18n="auth.form.handle.hint">소문자, 숫자, _ 만 가능. 한 번 정하면 못 바꿔요.</span>
@@ -122,6 +118,12 @@
       </button>
     </div>
   </header>
+
+  <!-- An identity from before protocol v2 reads its history but cannot send. -->
+  <div id="legacy-banner" class="legacy-banner hidden" role="alert">
+    <span data-i18n="legacy.banner">이 브라우저의 신원은 이전 데모 형식이에요. 기록은 읽을 수 있지만 보낼 수 없어요. 계속 대화하려면 새 신원을 만드세요.</span>
+    <button id="legacy-new-identity" class="btn btn-secondary btn-compact" data-i18n="legacy.createNew">새 신원 만들기</button>
+  </div>
 
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-me" id="sidebar-me"></div>

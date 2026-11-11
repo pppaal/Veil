@@ -31,6 +31,23 @@ export function createSessionStore({ repo, subtle }) {
       record = next;
     },
 
+    // Prekey rotation and replenishment (src/crypto/prekeys.js) change the
+    // identity's key fields in place.
+    async update(fields) {
+      if (!record) return;
+      Object.assign(record, fields);
+      await repo.put(record);
+    },
+
+    // Another tab may have rotated prekeys or renewed tokens since this one
+    // loaded the record; the stored fields are merged into the same object,
+    // which the app holds as the signed-in identity.
+    async reload() {
+      const stored = record ? await repo.get() : null;
+      if (stored) Object.assign(record, stored);
+      return record;
+    },
+
     getAccessToken: () => record?.accessToken ?? null,
     getRefreshToken: () => record?.refreshToken ?? null,
 

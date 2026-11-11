@@ -1,6 +1,6 @@
-// Codec for the plaintext inside a 'veil-envelope-v1-dev' ciphertext. The
-// wire forms are the ones earlier web builds send, so mixed-version chats
-// keep working:
+// Decoder for the plaintext inside a retired v1-dev envelope
+// (src/crypto/legacy-v1dev.js), in the forms earlier web builds sent, so
+// their history stays readable:
 //   text   plain UTF-8 string
 //   reply  {"v":1,"text":…,"replyTo":<messageId>}
 //   image  {"kind":"image","attachmentId","mime","key","nonce","width","height"}
@@ -10,7 +10,7 @@
 // '[unsupported message]', never to raw JSON: raw JSON of an image or file
 // payload would put the attachment key on screen.
 
-import { decodeBase64Url, encodeBase64Url } from '../core/base64url.js';
+import { decodeBase64Url } from '../core/base64url.js';
 import { sanitizeFilename } from './sanitize.js';
 
 export const UNSUPPORTED_TEXT = '[unsupported message]';
@@ -18,6 +18,7 @@ export const KIND_LABELS = Object.freeze({
   image: '🖼 이미지',
   file: '📁 파일',
   voice: '🎤 음성',
+  reaction: '💬 반응',
 });
 
 const ATTACHMENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,8 +34,6 @@ const boundedString = (max) => (value) => typeof value === 'string' && value.len
 // as octet-stream and voice types are allowlisted before playback. Earlier
 // builds sent '' when the browser knew no type, so empty is valid.
 const isMimeHint = (value) => typeof value === 'string' && value.length <= MIME_MAX_CHARS;
-// An unusable hint is sent as '' rather than failing the send.
-const mimeHint = (value) => (isMimeHint(value) ? value : '');
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
 const isAttachmentId = (value) => typeof value === 'string' && ATTACHMENT_ID_RE.test(value);
 const isBase64Url = (length) => (value) => {
@@ -46,7 +45,6 @@ const isBase64Url = (length) => (value) => {
   }
 };
 
-// Field order is the wire order; encode emits keys in exactly this order.
 const MEDIA_SCHEMAS = {
   image: {
     attachmentId: isAttachmentId,
@@ -72,51 +70,6 @@ const MEDIA_SCHEMAS = {
 };
 
 const REPLY_FIELDS = new Set(['v', 'text', 'replyTo']);
-
-export function encodePayload(payload) {
-  switch (payload?.kind) {
-    case 'text':
-      requireString(payload.text);
-      // Prose that would parse as a structured payload is wrapped, so typed
-      // text can never be mistaken for media or a reply on the other side.
-      return parseStructured(payload.text) === null
-        ? payload.text
-        : JSON.stringify({ v: 1, text: payload.text, replyTo: null });
-    case 'reply':
-      requireString(payload.text);
-      if (!MESSAGE_ID_RE.test(payload.replyTo ?? '')) throw new TypeError('reply needs a message id');
-      return JSON.stringify({ v: 1, text: payload.text, replyTo: payload.replyTo });
-    case 'image':
-      return encodeMedia({
-        kind: 'image',
-        attachmentId: payload.attachmentId,
-        mime: mimeHint(payload.mime),
-        key: encodeBase64Url(payload.key),
-        nonce: encodeBase64Url(payload.nonce),
-        width: payload.width ?? 0,
-        height: payload.height ?? 0,
-      });
-    case 'file':
-      return encodeMedia({
-        kind: 'file',
-        attachmentId: payload.attachmentId,
-        mime: mimeHint(payload.mime),
-        name: payload.name,
-        sizeBytes: payload.sizeBytes,
-        key: encodeBase64Url(payload.key),
-        nonce: encodeBase64Url(payload.nonce),
-      });
-    case 'voice':
-      return encodeMedia({
-        kind: 'voice',
-        mime: mimeHint(payload.mime),
-        durationMs: payload.durationMs,
-        audio: encodeBase64Url(payload.audio),
-      });
-    default:
-      throw new TypeError(`unsupported payload kind: ${payload?.kind}`);
-  }
-}
 
 // Returns { kind, displayText, replyTo, media? }. displayText is always safe
 // to render and never carries key material; media holds the decoded
@@ -171,12 +124,6 @@ function decodeMedia(value) {
   }
 }
 
-function encodeMedia(fields) {
-  const encoded = JSON.stringify(fields);
-  if (decodePayload(encoded).kind !== fields.kind) throw new TypeError(`invalid ${fields.kind} payload`);
-  return encoded;
-}
-
 // A JSON object carrying a `kind` or `v` tag is a structured payload; any
 // other text, JSON-looking or not, is prose.
 function parseStructured(text) {
@@ -198,10 +145,6 @@ function matchesSchema(value, schema) {
 
 function hasOnlyFields(value, allowed) {
   return Object.keys(value).every((field) => allowed.has(field));
-}
-
-function requireString(text) {
-  if (typeof text !== 'string') throw new TypeError('text payload needs a string');
 }
 
 function media(displayText, descriptor) {

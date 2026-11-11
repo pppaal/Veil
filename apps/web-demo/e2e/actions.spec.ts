@@ -2,13 +2,11 @@ import { test, expect, Browser, BrowserContext, Page } from '@playwright/test';
 
 async function registerAndOpen(
   browser: Browser,
-  displayName: string,
   handle: string,
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto('./');
-  await page.fill('#reg-name', displayName);
   await page.fill('#reg-handle', handle);
   await page.click('#reg-btn');
   await expect(page.locator('#app')).toBeVisible();
@@ -24,8 +22,8 @@ test.describe('VEIL web demo — message actions', () => {
     const senderHandle = `snd${stamp}`;
     const recvHandle = `rcv${stamp}`;
 
-    const sender = await registerAndOpen(browser, 'Sender', senderHandle);
-    const recv = await registerAndOpen(browser, 'Receiver', recvHandle);
+    const sender = await registerAndOpen(browser, senderHandle);
+    const recv = await registerAndOpen(browser, recvHandle);
 
     // Open chat from sender's side.
     await sender.page.click('#new-chat-btn');

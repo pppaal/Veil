@@ -27,7 +27,8 @@ const CACHED_CONVERSATION_FIELDS = Object.freeze([
   'useSenderKeys',
   'currentEpoch',
 ]);
-const CACHED_MEMBER_FIELDS = Object.freeze(['userId', 'handle', 'displayName']);
+// Handles only: profile text is not something the server keeps any more.
+const CACHED_MEMBER_FIELDS = Object.freeze(['userId', 'handle']);
 
 const QUEUED_ENVELOPE_FIELDS = Object.freeze([
   'version',

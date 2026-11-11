@@ -1,119 +1,161 @@
-import { describe, expect, it, vi } from 'vitest';
-import { webcrypto } from 'node:crypto';
+// Trust on first use for Ed25519 identity keys, keyed (userId, deviceId),
+// enforced on the directory path and on inbound handshakes alike.
 
-import { generateIdentity } from '../src/crypto/identity.js';
-import { createDevEnvelopeCrypto, PeerKeyChangedError } from '../src/crypto/dev-envelope.js';
-import { createPeerKeyDirectory, createPinStore } from '../src/crypto/pins.js';
+import { describe, expect, it } from 'vitest';
 
-const CONVERSATION = 'c-1';
+import { encodeBase64Url } from '../src/core/base64url.js';
+import { DecryptStatus } from '../src/crypto/session-cipher.js';
+import { createPinStore, PinVerdict, ReverificationRequiredError } from '../src/crypto/pins.js';
+import { textContent } from '../src/domain/content.js';
+import { PeerKeyChangedError } from '../src/features/secure-messaging.js';
+import { createMemoryKv } from '../src/platform/kv.js';
+import { CONVERSATION } from './support/devices.js';
+import { conversation, createEndpoint, directoryEntryOf, serverMessage } from './support/messaging.js';
 
-function pinRepo() {
-  const rows = new Map();
-  return {
-    rows,
-    get: vi.fn(async (userId) => rows.get(userId) ?? null),
-    put: vi.fn(async (pin) => { rows.set(pin.userId, pin); }),
-  };
+const OTHER_CONVERSATION = '0d4c1a2b-3d4e-4f50-8a9b-0c1d2e3f4a5c';
+const key = (byte) => new Uint8Array(32).fill(byte);
+
+async function sendText(from, to, text, conversationId = CONVERSATION) {
+  const clientMessageId = `web-${text}`;
+  const envelope = await from.secure.seal(conversationId, textContent(text), { clientMessageId });
+  const message = serverMessage(envelope, { clientMessageId });
+  await from.secure.acknowledge(message);
+  return { message, opened: await to.secure.open(message) };
 }
 
-async function device(userId, deviceId) {
-  return { userId, deviceId, ...(await generateIdentity(webcrypto.subtle)) };
-}
-
-// One side of a direct conversation: its own identity, a directory that
-// serves `peerKey()` for the other user, and the envelope crypto on top.
-function endpoint({ self, peer, peerKey, repo, onKeyChange }) {
-  const fetchPeerKey = vi.fn(async () => peerKey());
-  const directory = createPeerKeyDirectory({ fetchPeerKey, pins: createPinStore(repo), onKeyChange });
-  const crypto = createDevEnvelopeCrypto({
-    crypto: webcrypto,
-    directory,
-    getSelf: () => self,
-    getPeer: (conversationId) => (conversationId === CONVERSATION ? { userId: peer.userId, handle: 'peer' } : null),
-  });
-  return { fetchPeerKey, directory, crypto };
+// Bob's account on a new identity: the server says it is Bob, same user id.
+async function bobReplacement(directory, { deviceId }) {
+  const impostor = await createEndpoint({ userId: 'u-bob', deviceId, handle: 'bob', directory });
+  directory.set('bob', directoryEntryOf(impostor));
+  return impostor;
 }
 
 describe('identity pins', () => {
-  it('pins the first key and reports later matches', async () => {
+  it('pins the first key and reports later matches, changes and new devices', async () => {
     let clock = 0;
-    const repo = pinRepo();
-    const pins = createPinStore(repo, { now: () => `t${++clock}` });
-    expect(await pins.check('u-bob', 'key-1')).toEqual({ status: 'pinned', pin: { userId: 'u-bob', peerKey: 'key-1', firstSeenAt: 't1' } });
-    expect((await pins.check('u-bob', 'key-1')).status).toBe('match');
-    expect((await pins.check('u-bob', 'key-2')).status).toBe('changed');
-    expect(repo.rows.get('u-bob').peerKey).toBe('key-1');
+    const kv = createMemoryKv('id', { indexField: 'userId' });
+    const pins = createPinStore(kv, { now: () => ++clock });
+    expect(await pins.check('u-bob', 'd-1', key(1))).toMatchObject({
+      verdict: PinVerdict.FIRST_USE,
+      pin: { userId: 'u-bob', deviceId: 'd-1', identityKey: encodeBase64Url(key(1)), firstSeenAt: 1, verifiedAt: null },
+    });
+    expect((await pins.check('u-bob', 'd-1', key(1))).verdict).toBe(PinVerdict.MATCH);
+    expect((await pins.check('u-bob', 'd-1', key(2))).verdict).toBe(PinVerdict.CHANGED);
+    expect((await pins.check('u-bob', 'd-2', key(2))).verdict).toBe(PinVerdict.NEW_DEVICE);
+    expect((await pins.pinsFor('u-bob')).map((pin) => pin.identityKey)).toEqual([encodeBase64Url(key(1))]);
+    expect((await pins.check('u-carol', 'd-9', key(9))).verdict).toBe(PinVerdict.FIRST_USE);
   });
 
   it('changed peer key freezes sending until accepted', async () => {
-    const alice = await device('u-alice', 'd-alice');
-    const bobOld = await device('u-bob', 'd-bob-old');
-    const bobNew = await device('u-bob', 'd-bob-new');
-    const repo = pinRepo();
+    const { alice, bob, directory } = await conversation();
+    expect((await sendText(alice, bob, 'hello')).opened.content.text).toBe('hello');
 
-    // First session pins Bob's original key.
-    const firstSession = endpoint({ self: alice, peer: bobOld, peerKey: () => bobOld.xPubB64u, repo });
-    expect(await firstSession.crypto.ensureSendable(CONVERSATION)).toBe(true);
-    expect(repo.rows.get('u-bob').peerKey).toBe(bobOld.xPubB64u);
-
-    // After a reload the directory serves a different key for Bob.
-    const onKeyChange = vi.fn();
-    const alicePage = endpoint({ self: alice, peer: bobNew, peerKey: () => bobNew.xPubB64u, repo, onKeyChange });
-    await expect(alicePage.crypto.encrypt(CONVERSATION, 'hello')).rejects.toBeInstanceOf(PeerKeyChangedError);
-    await expect(alicePage.crypto.ensureSendable(CONVERSATION)).rejects.toBeInstanceOf(PeerKeyChangedError);
-    expect(onKeyChange).toHaveBeenCalledWith('u-bob');
-    expect(alicePage.directory.pendingChange('u-bob')).toBe(bobNew.xPubB64u);
-    expect(repo.rows.get('u-bob').peerKey).toBe(bobOld.xPubB64u);
+    // The directory now serves another identity for Bob, in a conversation
+    // Alice has no session in yet.
+    const impostor = await bobReplacement(directory, { deviceId: 'd-bob' });
+    alice.peers.set(OTHER_CONVERSATION, { userId: 'u-bob', handle: 'bob' });
+    impostor.peers.set(OTHER_CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+    await expect(alice.secure.seal(OTHER_CONVERSATION, textContent('x'), { clientMessageId: 'c1' }))
+      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    expect(alice.keyChanges).toEqual(['u-bob']);
+    expect(alice.trust.pendingChange('u-bob')).toMatchObject({ verdict: PinVerdict.CHANGED, deviceId: 'd-bob' });
+    // Frozen everywhere with Bob, the established conversation included.
+    await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: 'c2' }))
+      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    expect((await createPinStore(alice.pinKv).pinsFor('u-bob'))[0].identityKey)
+      .toBe(encodeBase64Url(bob.device.record.ik.publicKey));
 
     // Explicit acceptance re-pins and unfreezes; the new key is the one used.
-    expect(await alicePage.directory.accept('u-bob')).toBe(true);
-    alicePage.crypto.forgetPeer('u-bob');
-    expect(alicePage.directory.pendingChange('u-bob')).toBeNull();
-    expect(repo.rows.get('u-bob').peerKey).toBe(bobNew.xPubB64u);
-    const sealed = await alicePage.crypto.encrypt(CONVERSATION, 'hello');
+    expect(await alice.trust.accept('u-bob')).toBe(true);
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    expect((await createPinStore(alice.pinKv).pinsFor('u-bob'))[0].identityKey)
+      .toBe(encodeBase64Url(impostor.device.record.ik.publicKey));
+    expect((await sendText(alice, impostor, 'accepted', OTHER_CONVERSATION)).opened.content.text).toBe('accepted');
+  });
 
-    const bobPage = endpoint({ self: bobNew, peer: alice, peerKey: () => alice.xPubB64u, repo: pinRepo() });
-    expect(await bobPage.crypto.decrypt({ conversationId: CONVERSATION, senderDeviceId: 'd-alice', ...sealed }))
-      .toEqual({ payload: 'hello' });
+  it('inbound handshake from a changed identity is rejected and stores nothing', async () => {
+    const { alice, bob, directory } = await conversation();
+    expect((await sendText(bob, alice, 'genuine')).opened.content.text).toBe('genuine');
+    const before = await alice.device.stores.sessions.get(CONVERSATION);
+
+    // A relay that holds another identity opens a session to Alice as Bob's
+    // device: the handshake authenticates, the identity does not match.
+    const impostor = await bobReplacement(directory, { deviceId: 'd-bob' });
+    impostor.peers.set(CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+    const envelope = await impostor.secure.seal(CONVERSATION, textContent('trust me'), { clientMessageId: 'i-1' });
+    const message = serverMessage(envelope, { clientMessageId: 'i-1' });
+    const opkCount = (await alice.device.stores.oneTimePrekeys.all()).length;
+    expect(await alice.secure.open(message)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+    expect(alice.trust.pendingChange('u-bob')).toMatchObject({ verdict: PinVerdict.CHANGED });
+    expect(await alice.device.stores.sessions.get(CONVERSATION)).toEqual(before);
+    expect((await alice.device.stores.oneTimePrekeys.all()).length).toBe(opkCount);
+    expect(await alice.contentStore.get(CONVERSATION, message.id)).toBeNull();
+    await expect(alice.secure.seal(CONVERSATION, textContent('reply'), { clientMessageId: 'r' }))
+      .rejects.toBeInstanceOf(PeerKeyChangedError);
+
+    // Once the user accepts the change, the same frame opens.
+    await alice.trust.accept('u-bob');
+    expect((await alice.secure.open(message)).content.text).toBe('trust me');
+  });
+
+  it('verified contact key change requires reverification', async () => {
+    const { alice, bob, directory } = await conversation();
+    await sendText(alice, bob, 'hello');
+    await alice.trust.markVerified('u-bob', 'd-bob', bob.device.record.ik.publicKey);
+    const impostor = await bobReplacement(directory, { deviceId: 'd-bob-2' });
+    alice.peers.set(OTHER_CONVERSATION, { userId: 'u-bob', handle: 'bob' });
+    await expect(alice.secure.seal(OTHER_CONVERSATION, textContent('x'), { clientMessageId: 'c1' }))
+      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    expect(alice.trust.pendingChange('u-bob')).toMatchObject({ verdict: PinVerdict.NEW_DEVICE, verified: true });
+    await expect(alice.trust.accept('u-bob')).rejects.toBeInstanceOf(ReverificationRequiredError);
+    expect(alice.trust.pendingChange('u-bob')).not.toBeNull();
+
+    await alice.trust.markVerified('u-bob', 'd-bob-2', impostor.device.record.ik.publicKey);
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    impostor.peers.set(OTHER_CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+    expect((await sendText(alice, impostor, 're-verified', OTHER_CONVERSATION)).opened.content.text).toBe('re-verified');
   });
 
   it('no refetch after decrypt failures', async () => {
-    const alice = await device('u-alice', 'd-alice');
-    const bob = await device('u-bob', 'd-bob');
-    const repo = pinRepo();
-    const alicePage = endpoint({ self: alice, peer: bob, peerKey: () => bob.xPubB64u, repo });
-    const bobPage = endpoint({ self: bob, peer: alice, peerKey: () => alice.xPubB64u, repo: pinRepo() });
-    const genuine = await bobPage.crypto.encrypt(CONVERSATION, 'genuine');
+    const { alice, bob } = await conversation();
+    const { message } = await sendText(bob, alice, 'genuine');
+    expect(alice.lookups).toBe(0);
+    expect(bob.lookups).toBe(1);
 
-    const tampered = genuine.ciphertext.slice(0, -2) + (genuine.ciphertext.endsWith('AA') ? 'BB' : 'AA');
+    const bytes = message.ciphertext;
+    const flip = (text) => text.slice(0, -2) + (text.endsWith('AA') ? 'BB' : 'AA');
     const attempts = [
-      { ciphertext: tampered, nonce: genuine.nonce },
-      { ciphertext: 'v2.AAAA', nonce: genuine.nonce },
-      { ciphertext: 'v2.!!!', nonce: genuine.nonce },
-      { ciphertext: genuine.ciphertext, nonce: 'AAAAAAAAAAAAAAAA' },
-      { ciphertext: tampered, nonce: genuine.nonce },
+      { ciphertext: flip(bytes) },
+      { ciphertext: 'AgI' },
+      { ciphertext: '!!!' },
+      { nonce: 'AAAAAAAAAAAAAAAA' },
+      { senderDeviceId: 'd-mallory' },
+      { messageType: 'image' },
     ];
-    for (const attempt of attempts) {
-      expect(await alicePage.crypto.decrypt({ conversationId: CONVERSATION, senderDeviceId: 'd-bob', ...attempt }))
-        .toEqual({ failure: 'failed' });
+    for (const [index, overrides] of attempts.entries()) {
+      const tampered = { ...message, id: `forged-${index}`, ...overrides };
+      expect((await alice.secure.open(tampered)).failure).toBeDefined();
     }
-    expect(alicePage.fetchPeerKey).toHaveBeenCalledTimes(1);
-    expect(repo.put).toHaveBeenCalledTimes(1);
-    expect(await alicePage.crypto.decrypt({ conversationId: CONVERSATION, senderDeviceId: 'd-bob', ...genuine }))
-      .toEqual({ payload: 'genuine' });
-    expect(alicePage.fetchPeerKey).toHaveBeenCalledTimes(1);
+    expect(alice.lookups).toBe(0);
+    expect(bob.lookups).toBe(1);
+    expect((await alice.secure.open(message)).content.text).toBe('genuine');
+    // Replies go out on the session the handshake opened: still no lookup.
+    await sendText(alice, bob, 'reply');
+    expect(alice.lookups).toBe(0);
   });
 
   it('retries an unreachable directory but not a resolved key', async () => {
-    const pins = createPinStore(pinRepo());
-    const fetchPeerKey = vi.fn()
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValue('key-1');
-    const directory = createPeerKeyDirectory({ fetchPeerKey, pins });
-    await expect(directory.resolve('u-bob', 'bob')).rejects.toThrow('offline');
-    await expect(directory.resolve('u-bob', 'bob')).resolves.toEqual({ trustedKey: 'key-1', pendingKey: null });
-    await directory.resolve('u-bob', 'bob');
-    expect(fetchPeerKey).toHaveBeenCalledTimes(2);
-    expect(await directory.accept('u-bob')).toBe(false);
+    const { alice, bob, directory } = await conversation();
+    let offline = true;
+    const serve = directoryEntryOf(bob);
+    directory.set('bob', async () => {
+      if (offline) throw new Error('offline');
+      return serve();
+    });
+    await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: 'c1' })).rejects.toThrow('offline');
+    offline = false;
+    await sendText(alice, bob, 'online');
+    await sendText(alice, bob, 'again');
+    expect(alice.lookups).toBe(2);
   });
 });

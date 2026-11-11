@@ -135,7 +135,7 @@ describe('watchOldDeviceTransfer', () => {
     await expect(transfer.outcome).resolves.toBe('session-ended');
     expect(await Promise.all(device.rejections)).toEqual(['session-ended']);
     expect(device.stored().edPrivKey).toBeDefined();
-    expect(device.stored().xPrivKey).toBeDefined();
+    expect(device.stored().ik.privateKey).toBeDefined();
   });
 
   it('an approval still in flight when the session is rejected counts', async () => {

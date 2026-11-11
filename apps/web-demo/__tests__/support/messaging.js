@@ -1,0 +1,113 @@
+// Two-party harness one level above support/devices.js: each endpoint is the
+// app's secure-messaging stack (pins, decrypt-once content store, session
+// cipher) over in-memory stores, with a directory the test controls.
+
+import { webcrypto } from 'node:crypto';
+
+import { createLocks } from '../../src/crypto/locks.js';
+import { createIdentityTrust, createPinStore } from '../../src/crypto/pins.js';
+import { createSecureMessaging } from '../../src/features/secure-messaging.js';
+import { createContentStore } from '../../src/platform/content-store.js';
+import { createMemoryKv } from '../../src/platform/kv.js';
+import { CONVERSATION, createDevice, subtle } from './devices.js';
+
+const random = (length) => webcrypto.getRandomValues(new Uint8Array(length));
+
+export const contentStores = () => ({
+  records: createMemoryKv('key', { indexField: 'conversationId' }),
+  keys: createMemoryKv('conversationId'),
+});
+
+export const openContentStore = (stores) => createContentStore({ subtle, random, ...stores, locks: createLocks(null) });
+
+// directory: Map handle -> async () => { deviceId, identityKey, signedPrekeyBundle, oneTimePrekey }
+export async function createEndpoint({ userId, deviceId, handle, directory }) {
+  const endpoint = {
+    userId,
+    deviceId,
+    handle,
+    peers: new Map(), // conversationId -> { userId, handle }
+    stores: contentStores(),
+    pinKv: createMemoryKv('id', { indexField: 'userId' }),
+    lookups: 0,
+    keyChanges: [],
+  };
+  endpoint.device = await createDevice({
+    userId,
+    deviceId,
+    verifyIdentity: ({ conversationId, senderDeviceId, identityKey }) => {
+      const peer = endpoint.peers.get(conversationId);
+      return peer ? endpoint.trust.admit(peer.userId, senderDeviceId, identityKey) : false;
+    },
+  });
+
+  endpoint.restart = () => {
+    endpoint.device.restart();
+    endpoint.trust = createIdentityTrust({
+      pins: createPinStore(endpoint.pinKv),
+      onChange: (changed) => endpoint.keyChanges.push(changed),
+    });
+    endpoint.contentStore = openContentStore(endpoint.stores);
+    endpoint.secure = createSecureMessaging({
+      cipher: endpoint.device.cipher,
+      trust: endpoint.trust,
+      lookupPeer: async (peer) => {
+        endpoint.lookups += 1;
+        return directory.get(peer.handle)();
+      },
+      contentStore: endpoint.contentStore,
+      legacyReader: { decrypt: async () => ({ failure: 'no-key' }) },
+      getSelf: () => ({ ...endpoint.device.record, deviceId }),
+      getPeer: (conversationId) => endpoint.peers.get(conversationId) ?? null,
+    });
+    return endpoint;
+  };
+
+  return endpoint.restart();
+}
+
+// What the directory serves for an endpoint: its device's current keys and a
+// fresh one-time prekey per lookup.
+export const directoryEntryOf = (endpoint) => async () => {
+  const entry = await endpoint.device.directoryEntry();
+  return {
+    deviceId: entry.remoteDeviceId,
+    identityKey: entry.remoteIdentityKey,
+    signedPrekeyBundle: entry.signedPrekeyBundle,
+    oneTimePrekey: entry.oneTimePrekey,
+  };
+};
+
+export async function conversation({ conversationId = CONVERSATION } = {}) {
+  const directory = new Map();
+  const alice = await createEndpoint({ userId: 'u-alice', deviceId: 'd-alice', handle: 'alice', directory });
+  const bob = await createEndpoint({ userId: 'u-bob', deviceId: 'd-bob', handle: 'bob', directory });
+  directory.set('alice', directoryEntryOf(alice));
+  directory.set('bob', directoryEntryOf(bob));
+  alice.peers.set(conversationId, { userId: bob.userId, handle: bob.handle });
+  bob.peers.set(conversationId, { userId: alice.userId, handle: alice.handle });
+  return { alice, bob, directory };
+}
+
+// The summary the server returns for an envelope it stored.
+let order = 0;
+export function serverMessage(envelope, { clientMessageId, id = webcrypto.randomUUID() } = {}) {
+  order += 1;
+  return {
+    id,
+    clientMessageId,
+    conversationId: envelope.conversationId,
+    senderDeviceId: envelope.senderDeviceId,
+    conversationOrder: order,
+    version: envelope.version,
+    ciphertext: envelope.ciphertext,
+    nonce: envelope.nonce,
+    messageType: envelope.messageType,
+    attachment: envelope.attachment ?? null,
+    expiresAt: null,
+    serverReceivedAt: new Date(Date.UTC(2026, 10, 11, 9, 0, order)).toISOString(),
+    deletedAt: null,
+    editedAt: null,
+    replyToMessageId: null,
+  };
+}

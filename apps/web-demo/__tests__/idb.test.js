@@ -297,7 +297,7 @@ describe('upgrade from version 2', () => {
       nextRetryAt: 5,
     }]);
     const [conversation] = await idb.all('conversations');
-    expect(conversation.members).toEqual([{ userId: 'u-1', handle: 'alice', displayName: 'Alice' }]);
+    expect(conversation.members).toEqual([{ userId: 'u-1', handle: 'alice' }]);
     expect(conversation).not.toHaveProperty('_unread');
     expect(await idb.all('kakao-archive-meta'))
       .toEqual([{ id: 'kakao-1', title: 'Family', importedAt: '2026-10-01', messageCount: 1 }]);

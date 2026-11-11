@@ -1,14 +1,26 @@
-// Device identity: an Ed25519 key that signs auth challenges and an X25519
-// key for the envelope ECDH. Private halves are created non-extractable, so
-// script running in the page (an XSS, a hostile extension) can at most use
-// them while the page is open, never copy them out. With device-bound
-// identity and no recovery, a copied key would be a permanent, silent
-// takeover. Public halves stay exportable whatever the flag says.
+// Device identity. A protocol-v2 identity is
+//   edPrivKey / edPubB64u   Ed25519 auth key: signs auth challenges and
+//                           device-transfer proofs, nothing else
+//   ik                      Ed25519 identity key (IKed): signs only IKx and
+//                           signed prekeys, so a challenge string the server
+//                           picks can never double as a bundle signature
+//   ikx, signedPrekeys      X25519 identity key and signed prekeys
+//                           (src/crypto/prekeys.js)
+//   sessionKek              AES-GCM key sealing the stored ratchet states
+// Every private key is created non-extractable, so script running in the
+// page (an XSS, a hostile extension) can at most use it while the page is
+// open, never copy it out. With device-bound identity and no recovery, a
+// copied key would be a permanent, silent takeover. Public halves stay
+// exportable whatever the flag says.
+//
+// Identities from before protocol v2 published their X25519 key as the
+// identity key. The directory pins that key for the device's lifetime, so
+// such an identity can never publish a v2 bundle: it can still read its old
+// history (src/crypto/legacy-v1dev.js) but has to be replaced to send.
 
 import { encodeBase64Url } from '../core/base64url.js';
-
-const ED25519 = { name: 'Ed25519' };
-const X25519 = { name: 'X25519' };
+import { createIdentityKeys, signBundle } from './bundle.js';
+import { ED25519, generateEd25519, generateStorageKey, generateX25519, X25519 } from './keys.js';
 
 const PRIVATE_KEY_SLOTS = [
   {
@@ -29,14 +41,37 @@ const PRIVATE_KEY_SLOTS = [
 
 const JWK_FIELD_RE = /jwk/i;
 
-export async function generateIdentity(subtle) {
-  const ed = await subtle.generateKey(ED25519, false, ['sign', 'verify']);
-  const x = await subtle.generateKey(X25519, false, ['deriveBits']);
+export const isLegacyIdentity = (record) => !record?.ik;
+
+// The identity fields of a new device record.
+export async function generateIdentity(subtle, { nowMs = Date.now() } = {}) {
+  const auth = await generateEd25519(subtle);
+  const keys = { x25519: () => generateX25519(subtle), ed25519: () => generateEd25519(subtle) };
+  const { ik, ikx, ikxSig, spk } = await createIdentityKeys(subtle, keys, nowMs);
   return {
-    edPrivKey: ed.privateKey,
-    edPubB64u: encodeBase64Url(await subtle.exportKey('raw', ed.publicKey)),
-    xPrivKey: x.privateKey,
-    xPubB64u: encodeBase64Url(await subtle.exportKey('raw', x.publicKey)),
+    edPrivKey: auth.privateKey,
+    edPubB64u: encodeBase64Url(auth.publicKey),
+    ik,
+    ikx: { ...ikx, signature: ikxSig },
+    // Published with the registration (or transfer claim) itself.
+    signedPrekeys: [{ ...spk, publishedAt: nowMs, supersededAt: null }],
+    nextOneTimePrekeyId: 1,
+    sessionKek: await generateStorageKey(subtle),
+  };
+}
+
+// What /auth/register and /device-transfer/claim publish for an identity:
+// its keys and the bundle of its current signed prekey.
+export async function publishedKeys(subtle, identity) {
+  const current = identity.signedPrekeys.find((spk) => spk.supersededAt === null);
+  return {
+    publicIdentityKey: encodeBase64Url(identity.ik.publicKey),
+    signedPrekeyBundle: await signBundle(subtle, identity.ik.privateKey, {
+      ikx: identity.ikx.publicKey,
+      ikxSig: identity.ikx.signature,
+      spk: current,
+    }),
+    authPublicKey: identity.edPubB64u,
   };
 }
 
@@ -46,7 +81,8 @@ export async function signChallenge(subtle, edPrivKey, challenge) {
 }
 
 // Brings a stored session record up to the current key hygiene and reports
-// whether it changed, so the caller re-saves it. Runs on every restore:
+// whether it changed, so the caller re-saves it. Runs on every restore, and
+// concerns the key slots of identities from before protocol v2:
 //  - private keys held as JWK by older builds (including the device-transfer
 //    path) are imported as non-extractable CryptoKeys;
 //  - extractable CryptoKeys from builds that generated them that way are

@@ -95,7 +95,7 @@ describe('persistence serializers', () => {
       id: 'c-1',
       type: 'direct',
       createdAt: '2026-11-01T00:00:00.000Z',
-      members: [{ userId: 'u-1', handle: 'alice', displayName: 'Alice' }],
+      members: [{ userId: 'u-1', handle: 'alice' }],
       lastMessage: serializeMessageForCache(conversation.lastMessage),
     });
     expect(serializeConversationForCache({ id: 'c-2', members: [] }).lastMessage).toBeNull();

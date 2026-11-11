@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { webcrypto } from 'node:crypto';
 
 import { decodeBase64Url, encodeBase64Url } from '../src/core/base64url.js';
-import { generateIdentity, migrateStoredIdentity, signChallenge } from '../src/crypto/identity.js';
+import { verifyBundle } from '../src/crypto/bundle.js';
+import {
+  generateIdentity,
+  isLegacyIdentity,
+  migrateStoredIdentity,
+  publishedKeys,
+  signChallenge,
+} from '../src/crypto/identity.js';
 
 const { subtle } = webcrypto;
 
@@ -34,25 +41,50 @@ async function legacyRecord() {
 describe('generateIdentity', () => {
   it('private keys non-extractable and exportKey rejects', async () => {
     const identity = await generateIdentity(subtle);
-    for (const key of [identity.edPrivKey, identity.xPrivKey]) {
+    const privateKeys = [
+      identity.edPrivKey,
+      identity.ik.privateKey,
+      identity.ikx.privateKey,
+      ...identity.signedPrekeys.map((spk) => spk.privateKey),
+    ];
+    for (const key of privateKeys) {
       expect(key.type).toBe('private');
       expect(key.extractable).toBe(false);
       await expect(subtle.exportKey('jwk', key)).rejects.toThrow();
       await expect(subtle.exportKey('pkcs8', key)).rejects.toThrow();
     }
+    expect(identity.sessionKek.extractable).toBe(false);
+    await expect(subtle.exportKey('raw', identity.sessionKek)).rejects.toThrow();
   });
 
   it('public raw export works', async () => {
     const alice = await generateIdentity(subtle);
     const bob = await generateIdentity(subtle);
     expect(decodeBase64Url(alice.edPubB64u)).toHaveLength(32);
-    expect(decodeBase64Url(alice.xPubB64u)).toHaveLength(32);
+    expect(alice.ik.publicKey).toHaveLength(32);
+    expect(alice.ikx.publicKey).toHaveLength(32);
 
     const signature = await signChallenge(subtle, alice.edPrivKey, 'challenge-123');
     expect(await verifies(alice.edPubB64u, 'challenge-123', signature)).toBe(true);
     expect(await verifies(bob.edPubB64u, 'challenge-123', signature)).toBe(false);
 
-    expect(await sharedSecret(alice.xPrivKey, bob.xPubB64u)).toEqual(await sharedSecret(bob.xPrivKey, alice.xPubB64u));
+    const bobIkx = encodeBase64Url(bob.ikx.publicKey);
+    const aliceIkx = encodeBase64Url(alice.ikx.publicKey);
+    expect(await sharedSecret(alice.ikx.privateKey, bobIkx)).toEqual(await sharedSecret(bob.ikx.privateKey, aliceIkx));
+  });
+
+  it('publishes an Ed25519 identity key and a v2 bundle signed by it, apart from the auth key', async () => {
+    const nowMs = Date.parse('2026-11-11T09:00:00Z');
+    const identity = await generateIdentity(subtle, { nowMs });
+    const published = await publishedKeys(subtle, identity);
+    expect(published.publicIdentityKey).toBe(encodeBase64Url(identity.ik.publicKey));
+    expect(published.authPublicKey).toBe(identity.edPubB64u);
+    expect(published.publicIdentityKey).not.toBe(published.authPublicKey);
+    const bundle = await verifyBundle(subtle, published.signedPrekeyBundle, identity.ik.publicKey, { nowMs });
+    expect(bundle).toMatchObject({ spkId: 1, spkTs: nowMs });
+    expect(bundle.ikx).toEqual(identity.ikx.publicKey);
+    expect(isLegacyIdentity(identity)).toBe(false);
+    expect(isLegacyIdentity({ edPrivKey: identity.edPrivKey, xPrivKey: identity.ikx.privateKey })).toBe(true);
   });
 });
 

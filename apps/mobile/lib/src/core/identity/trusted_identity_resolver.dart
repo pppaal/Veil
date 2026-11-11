@@ -89,6 +89,23 @@ class TrustedIdentityResolver {
     });
   }
 
+  /// Imports a verification recorded before the pin table existed: pins
+  /// [identityKey] as verified at [verifiedAt] when the device has no pin
+  /// yet or pins exactly this key. A different pin is left alone, because a
+  /// verification never replaces a key.
+  Future<void> adoptVerified(String userId, String deviceId, String identityKey, {required DateTime verifiedAt}) async {
+    _requireAddress(userId, deviceId);
+    final key = _canonicalKey(identityKey);
+    await _locked((pins) async {
+      final pin = _pinIn(pins, userId, deviceId);
+      if (pin != null && pin.identityKey != key) return;
+      final verified = (pin ??
+              TrustedIdentity(userId: userId, deviceId: deviceId, identityKey: key, firstSeenAt: verifiedAt.toUtc()))
+          .verifiedOn(verifiedAt.toUtc());
+      await _store.save([..._othersThan(pins, userId, deviceId), verified]);
+    });
+  }
+
   Future<TrustedIdentity?> pinFor(String userId, String deviceId) =>
       _locked((pins) async => _pinIn(pins, userId, deviceId));
 

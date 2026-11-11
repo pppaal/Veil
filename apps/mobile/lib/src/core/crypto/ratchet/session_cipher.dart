@@ -25,14 +25,6 @@ import 'ratchet_state.dart';
 import 'session_record.dart';
 import 'session_store.dart';
 
-// Placeholder bodies for non-ok results. Callers branch on DecryptStatus;
-// the text only keeps today's UI wording.
-const String _invalidEnvelopeBody = '[Unable to decrypt: invalid envelope]';
-const String _failedBody = '[Decryption failed]';
-const String _sessionMissingBody = '[Session not established — sync required]';
-const String _replayedBody = '[Replayed or out-of-window message]';
-const String _identityRejectedBody = '[Identity changed — verify safety number]';
-
 const String _auditHintV2 = 'x3dh-v2+double-ratchet+hkdf-sha256+aes256gcm';
 const String _auditHintLegacy = 'x25519-double-ratchet+hkdf-sha256+aes256gcm';
 
@@ -565,24 +557,17 @@ class SessionCipher {
         status: status,
       );
 
+  /// Non-ok results carry no body at all, so nothing a peer can type ever
+  /// looks like one; callers branch on [DecryptStatus].
   static DecryptedMessage _failure(CryptoEnvelope envelope, DecryptStatus status, String? reason) => DecryptedMessage(
-        body: switch (status) {
-          DecryptStatus.replayed => _replayedBody,
-          DecryptStatus.sessionMissing => _sessionMissingBody,
-          DecryptStatus.identityRejected => _identityRejectedBody,
-          _ => _failedBody,
-        },
+        body: '',
         messageKind: envelope.messageKind,
         status: status,
         failureReason: reason,
       );
 
-  static DecryptedMessage _invalidEnvelope(CryptoEnvelope envelope) => DecryptedMessage(
-        body: _invalidEnvelopeBody,
-        messageKind: envelope.messageKind,
-        status: DecryptStatus.failed,
-        failureReason: 'invalid_envelope',
-      );
+  static DecryptedMessage _invalidEnvelope(CryptoEnvelope envelope) =>
+      _failure(envelope, DecryptStatus.failed, 'invalid_envelope');
 }
 
 class _Opened {

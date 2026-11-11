@@ -21,6 +21,7 @@ const int maxU32 = 0xFFFFFFFF;
 const Duration maxSignedPrekeyAge = Duration(days: 60);
 // Tolerates clock skew between devices without accepting far-future stamps.
 const Duration maxSignedPrekeyClockSkew = Duration(days: 1);
+const int _maxEpochMillis = 8640000000000000;
 
 class SignedPrekeySecret {
   SignedPrekeySecret({required this.id, required this.privateKey, required this.createdAt});
@@ -190,7 +191,9 @@ Future<RemotePrekeyBundle> verifyRemoteBundle(
 PrekeyBundleV2 _parseV2(Map<String, dynamic> map) {
   final spkId = map['spkId'];
   final spkTs = map['spkTs'];
-  if (spkId is! int || spkId < 0 || spkId > maxU32 || spkTs is! int || spkTs < 0) {
+  // A timestamp DateTime cannot hold would make the freshness check throw
+  // a RangeError instead of refusing the bundle.
+  if (spkId is! int || spkId < 0 || spkId > maxU32 || spkTs is! int || spkTs < 0 || spkTs > _maxEpochMillis) {
     throw StateError('Signed prekey bundle has an invalid spkId or spkTs.');
   }
   return PrekeyBundleV2(

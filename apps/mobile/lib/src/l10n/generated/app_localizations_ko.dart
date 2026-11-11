@@ -402,6 +402,23 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsNoRecoveryPath => '복구 경로 없음';
 
   @override
+  String get settingsSectionPrivacy => '개인정보';
+
+  @override
+  String get settingsReadReceiptsTitle => '읽음 확인 보내기';
+
+  @override
+  String get settingsReadReceiptsSubtitle =>
+      '끄면 상대가 내가 읽은 것을 알 수 없고, 나도 상대의 읽음을 전달됨으로만 봅니다.';
+
+  @override
+  String get settingsTypingIndicatorsTitle => '입력 중 표시 보내기';
+
+  @override
+  String get settingsTypingIndicatorsSubtitle =>
+      '상대가 내가 입력 중인지 볼 수 있습니다. 켜기 전에는 꺼져 있습니다.';
+
+  @override
   String get settingsLockNow => '지금 잠그기';
 
   @override
@@ -706,7 +723,38 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatDecryptingEnvelope => '엔벨로프 복호화 중...';
 
   @override
-  String get chatDecryptingSystemNotice => '시스템 알림 복호화 중...';
+  String get chatDecryptFailed => '이 메시지를 복호화할 수 없습니다';
+
+  @override
+  String get chatDecryptReplayed => '중복되었거나 만료된 메시지';
+
+  @override
+  String get chatDecryptAwaitingKey => '보낸 사람의 키를 기다리는 중';
+
+  @override
+  String get chatDecryptSessionMissing => '보안 세션을 기다리는 중';
+
+  @override
+  String get chatDecryptIdentityRejected => '보류됨: 보낸 사람의 신원이 바뀌었습니다';
+
+  @override
+  String get chatLegacyUnverifiedBadge => '확인되지 않은 발신자(레거시)';
+
+  @override
+  String get chatNoticeIdentityChanged =>
+      '연락처의 안전 번호가 바뀌었습니다. 다시 신뢰하기 전에 확인하세요.';
+
+  @override
+  String get chatNoticeIdentityNewDevice => '이 연락처가 새 기기를 사용하기 시작했습니다.';
+
+  @override
+  String get chatIdentityChangedTitle => '안전 번호가 바뀌었습니다';
+
+  @override
+  String get chatIdentityChangedBody => '새 안전 번호를 확인할 때까지 전송이 중지됩니다.';
+
+  @override
+  String get chatIdentityChangedReview => '확인하기';
 
   @override
   String get chatRetrySend => '전송 재시도';
@@ -1042,9 +1090,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersMarkedVerified => '확인됨으로 표시했습니다';
 
   @override
-  String get safetyNumbersVerificationCleared => '확인 기록을 지웠습니다';
-
-  @override
   String get safetyNumbersRotateDialogTitle => '세션 키를 교체할까요?';
 
   @override
@@ -1145,9 +1190,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 상대방이 재설치하거나 기기를 변경하면 이 확인은 무효화되며 경고가 표시됩니다.';
 
   @override
-  String get safetyNumbersClearVerification => '확인 기록 지우기';
-
-  @override
   String get safetyNumbersReVerify => '새 키로 다시 확인';
 
   @override
@@ -1173,7 +1215,50 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersScanLabel => '스캔하여 비교';
 
   @override
-  String get safetyNumbersQrNote => '이 QR에는 60자리 안전 번호만 담겨 있으며, 키는 포함되지 않습니다.';
+  String get safetyNumbersQrNote =>
+      '이 QR에는 양쪽의 공개 신원 키와 사용자 ID만 담겨 있으며, 비밀 정보는 없습니다.';
+
+  @override
+  String get safetyNumbersNoPinTitle => '아직 고정된 신원이 없습니다';
+
+  @override
+  String get safetyNumbersNoPinBody => '먼저 메시지를 주고받으세요. 이 기기는 대화하는 신원을 고정합니다.';
+
+  @override
+  String get safetyNumbersDirectoryMismatchTitle => '키 서버가 다른 키를 제공합니다';
+
+  @override
+  String get safetyNumbersDirectoryMismatchBody =>
+      '키 서버가 이 기기에 고정된 것과 다른 신원 키를 제공하고 있습니다. 비교하고 수락하기 전에는 그 키로 아무것도 보내지 않습니다.';
+
+  @override
+  String get safetyNumbersPendingBody =>
+      '이 연락처가 새 신원 키를 제시했습니다. 수락하기 전에 아래의 새 안전 번호를 비교하세요.';
+
+  @override
+  String get safetyNumbersAcceptNewKey => '새 키 수락';
+
+  @override
+  String get safetyNumbersScanAction => '스캔한 코드 비교';
+
+  @override
+  String get safetyNumbersScanFieldLabel => '스캔한 코드';
+
+  @override
+  String get safetyNumbersScanVerify => '비교';
+
+  @override
+  String get safetyNumbersScanMismatchTitle => '코드가 일치하지 않습니다';
+
+  @override
+  String get safetyNumbersScanMismatchBody =>
+      '누군가 이 대화를 가로채고 있을 수 있습니다. 확인됨으로 표시하지 말고 직접 만나 다시 비교하세요.';
+
+  @override
+  String get safetyNumbersScanInvalid => 'VEIL 안전 코드가 아닙니다.';
+
+  @override
+  String get safetyNumbersScanUnsupported => '이 앱이 지원하지 않는 안전 번호 버전의 코드입니다.';
 
   @override
   String get deviceTransferTitle => '기기 이전';

@@ -335,13 +335,66 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 
-Non-`ok` results carry a placeholder body (`[Decryption failed]`, ...) that
-callers must not render as peer text; they branch on the status.
+Non-`ok` results carry an empty body. Callers branch on the status, never on
+the body, and render a non-`ok` result as the client's own failure indicator,
+so no text a peer sends (for instance the literal `[Decryption failed]`) can
+pass for one. `legacyUnauthenticated` shows its text marked as coming from an
+unverified sender.
 Hostile input is a result, never an exception, and leaves session state
 untouched: an envelope whose version, conversationId or senderDeviceId exceeds
 65535 UTF-8 bytes (so `lp` cannot encode it) is an invalid envelope, and an
 authenticated payload whose `x` lies outside ±8.64e15 ms or whose size is not a
 non-negative integer is a malformed payload; both are `failed`.
+
+### Identity trust (mobile)
+
+The directory is relayed by the server, so a client never takes an identity
+key from it on trust alone. Each device keeps a pin table, one entry per
+contact device: `(userId, deviceId) -> IKed`, with `firstSeenAt`, an optional
+`verifiedAt` (the user compared safety numbers or a QR code) and an optional
+`approvedAt`. It lives in the device keystore and is wiped with the device.
+
+Every identity a conversation is about to use is evaluated against it: before
+any outbound bootstrap (the directory's answer for the peer's active device),
+for every inbound PreKey handshake (the verifier receives the `IKed` the
+handshake proved, after AEAD success and before anything is stored), and for
+every device a group chain key is sealed to or accepted from.
+
+| Verdict | Outcome |
+| ------- | ------- |
+| no pin for the user | pinned (trust on first use), proceed |
+| pin matches | proceed |
+| new device, contact never verified | pinned, proceed, the conversation gets an `identity.new_device` notice |
+| new device, contact verified | refused until the user approves after re-verifying |
+| different key for a pinned device | refused until the user approves; if the pin was verified, approval requires re-verification |
+
+A refusal is never resolved automatically. In a 1:1 conversation it blocks
+sending (no bootstrap, no encryption) and inbound handshakes from that
+identity yield `identityRejected`, which is retried once the user approves.
+The conversation gets an `identity.changed` notice once per presented key.
+In a Sender Keys group the refused device is not sealed to and its
+distributions are not installed; the rest of the group proceeds. Notices are
+rows the client inserts itself under the id prefix `notice:`, which no relay
+id can carry, and only such rows are rendered as notices.
+
+Safety numbers (v2) are computed from the pinned `IKed` and the two user ids,
+never from the directory; when the directory serves a different key for the
+pinned device the screen warns. A scanned QR payload that does not match is a
+hard failure: nothing is verified or approved. Safety numbers never leave the
+device.
+
+Version pinning: once a `veil-envelope-v2` frame has authenticated in a 1:1
+conversation, that conversation accepts only v2; `veil-envelope-v1` and
+`veil-envelope-v1-dev` frames are refused before decryption with `failed` /
+`downgrade_rejected`. The pin is kept in the keystore apart from session
+state. A Sender Keys group never routes anything but `veil-group-v1` frames to
+the group engine, and never opens a 1:1 session.
+
+Reactions travel end to end: a message of inner kind `reaction` whose body is
+compact JSON `{"v":1,"target":<message id>,"emoji":<1-8 code points>,"op":"add"|"remove"}`.
+A reaction applies only to a target in the same conversation, the latest
+reaction of each reactor wins by conversation order, and reaction messages
+never render on their own.
 
 ### Local persistence (informative)
 

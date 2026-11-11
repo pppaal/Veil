@@ -1,13 +1,6 @@
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 
-/// Body the production ratchet returns when a message key was already used.
-const strictReplayPlaceholder = '[Replayed or out-of-window message]';
-
-/// Body the production ratchet returns for a frame it cannot open, which is
-/// what a sender gets for its own envelopes.
-const strictOwnEnvelopePlaceholder = '[Decryption failed]';
-
 /// MockCryptoAdapter with production ratchet semantics where tests care
 /// about them: every ciphertext opens at most once, a device can never open
 /// what it sealed itself, and sessions exist only after a bootstrap. The
@@ -94,17 +87,13 @@ class _StrictMessaging implements MessageCryptoEngine {
 
   @override
   Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
+    // What the production ratchet reports for a sender's own frame, which it
+    // cannot open, and for a message key that was already used.
     if (_ownDeviceIds.contains(envelope.senderDeviceId)) {
-      return DecryptedMessage(
-        body: strictOwnEnvelopePlaceholder,
-        messageKind: envelope.messageKind,
-      );
+      return DecryptedMessage(body: '', messageKind: envelope.messageKind, status: DecryptStatus.failed);
     }
     if (!_opened.add(envelope.ciphertext)) {
-      return DecryptedMessage(
-        body: strictReplayPlaceholder,
-        messageKind: envelope.messageKind,
-      );
+      return DecryptedMessage(body: '', messageKind: envelope.messageKind, status: DecryptStatus.replayed);
     }
     onOpened?.call(envelope.conversationId);
     return _inner.decryptMessage(envelope);

@@ -76,6 +76,19 @@ class FakeRelay {
   /// Directory answers that replace a party's real bundle (identity swaps).
   final Map<String, Map<String, dynamic>> bundleOverrides = {};
 
+  /// Extra trusted devices the directory lists for a handle, beside its
+  /// active one (a ghost device a hostile server injects, for instance).
+  final Map<String, List<Map<String, dynamic>>> extraDevices = {};
+
+  /// Signed-prekey bundles devices published with PUT /keys/signed-prekey.
+  final Map<String, String> publishedSignedPrekeys = {};
+
+  /// Unclaimed one-time prekeys each device published, in key id order.
+  final Map<String, List<OneTimePrekey>> oneTimePrekeys = {};
+
+  /// Every one-time prekey the directory handed out, by device.
+  final Map<String, List<int>> claimedOneTimePrekeys = {};
+
   /// Sealed sender-key distributions waiting for pickup, by recipient user.
   final Map<String, List<Map<String, dynamic>>> groupDistributions = {};
 
@@ -226,6 +239,43 @@ class FakeRelay {
     return message;
   }
 
+  /// GET /keys/:handle, like KeysService: the active device first, a
+  /// one-time prekey claimed for each device the mode selects, and nothing
+  /// claimed when a user looks up their own account.
+  Map<String, dynamic> _lookup(RelayParty requester, String handle, String claim) {
+    final party = partiesByHandle[handle];
+    if (party == null) {
+      throw VeilApiException('not found', statusCode: 404, code: 'active_device_not_found');
+    }
+    final active = bundleOverrides[handle] ??
+        {
+          ...party.bundleJson,
+          if (publishedSignedPrekeys[party.deviceId] case final spk?) 'signedPrekeyBundle': spk,
+        };
+    Map<String, dynamic> device(Map<String, dynamic> bundle, {required bool isActive}) {
+      final deviceId = bundle['deviceId'] as String;
+      final claims = requester.userId != party.userId && (claim == 'all' || (claim == 'active' && isActive));
+      final pool = oneTimePrekeys[deviceId];
+      final prekey = claims && pool != null && pool.isNotEmpty ? pool.removeAt(0) : null;
+      if (prekey != null) claimedOneTimePrekeys.putIfAbsent(deviceId, () => []).add(prekey.keyId);
+      return {
+        'deviceId': deviceId,
+        'identityPublicKey': bundle['identityPublicKey'],
+        'signedPrekeyBundle': bundle['signedPrekeyBundle'],
+        'isActive': isActive,
+        'oneTimePrekey': prekey == null ? null : {'keyId': prekey.keyId, 'publicKey': prekey.publicKey},
+      };
+    }
+
+    return {
+      'user': {'id': party.userId, 'handle': handle, 'activeDeviceId': active['deviceId']},
+      'devices': [
+        device(active, isActive: true),
+        for (final extra in extraDevices[handle] ?? const <Map<String, dynamic>>[]) device(extra, isActive: false),
+      ],
+    };
+  }
+
   void _markRead(RelayParty reader, String messageId) {
     for (final conversation in conversations.values) {
       for (final message in conversation.messages) {
@@ -265,8 +315,9 @@ class FakeRelayClient extends VeilApiClient {
 
   int conversationFetches = 0;
   int messageFetches = 0;
-  final Map<String, int> keyBundleFetches = {};
+  final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
+  final List<String> signedPrekeyUploads = [];
 
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
@@ -300,15 +351,44 @@ class FakeRelayClient extends VeilApiClient {
     };
   }
 
+  // The key directory and prekey routes the app reaches through the
+  // generic authenticated helpers (KeysApi).
   @override
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
-    keyBundleFetches[handle] = (keyBundleFetches[handle] ?? 0) + 1;
-    final bundle = relay.bundleOverrides[handle] ?? relay.partiesByHandle[handle]!.bundleJson;
-    return {
-      'user': {'activeDeviceId': bundle['deviceId']},
-      'bundle': bundle,
-      'deviceBundles': [bundle],
-    };
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    required String? accessToken,
+    Map<String, String>? query,
+  }) async {
+    if (path.startsWith('/keys/')) {
+      final handle = Uri.decodeComponent(path.substring('/keys/'.length));
+      directoryLookups[handle] = (directoryLookups[handle] ?? 0) + 1;
+      return relay._lookup(me, handle, query?['claim'] ?? 'active');
+    }
+    if (path == '/prekeys/count') {
+      return {'available': relay.oneTimePrekeys[me.deviceId]?.length ?? 0};
+    }
+    throw UnimplementedError('GET $path');
+  }
+
+  @override
+  Future<Map<String, dynamic>> postJson(String path, {required String? accessToken, Object? body}) async {
+    if (path != '/prekeys') throw UnimplementedError('POST $path');
+    final pool = relay.oneTimePrekeys.putIfAbsent(me.deviceId, () => []);
+    final uploaded = [
+      for (final raw in ((body as Map<String, dynamic>)['prekeys'] as List).cast<Map<String, dynamic>>())
+        OneTimePrekey(keyId: raw['keyId'] as int, publicKey: raw['publicKey'] as String),
+    ];
+    pool.addAll(uploaded);
+    return {'uploaded': uploaded.length, 'available': pool.length};
+  }
+
+  @override
+  Future<Map<String, dynamic>> putJson(String path, {required String? accessToken, Object? body}) async {
+    if (path != '/keys/signed-prekey') throw UnimplementedError('PUT $path');
+    final bundle = (body as Map<String, dynamic>)['signedPrekeyBundle'] as String;
+    relay.publishedSignedPrekeys[me.deviceId] = bundle;
+    signedPrekeyUploads.add(bundle);
+    return {'deviceId': me.deviceId, 'spkId': signedPrekeyUploads.length};
   }
 
   @override
@@ -410,6 +490,7 @@ class FakeRelayClient extends VeilApiClient {
         'epoch': epoch,
         'fromUserId': me.userId,
         'fromDeviceId': me.deviceId,
+        'recipientDeviceId': distribution['recipientDeviceId'],
         'encryptedChainKey': distribution['encryptedChainKey'],
         'nonce': distribution['nonce'],
         'version': distribution['version'],
@@ -435,7 +516,10 @@ class FakeRelayClient extends VeilApiClient {
       'epoch': epoch,
       'distributions': [
         for (final blob in relay.groupDistributions[me.userId] ?? const <Map<String, dynamic>>[])
-          if (blob['conversationId'] == conversationId && blob['epoch'] == epoch) blob,
+          if (blob['conversationId'] == conversationId &&
+              blob['epoch'] == epoch &&
+              (blob['recipientDeviceId'] == null || blob['recipientDeviceId'] == me.deviceId))
+            blob,
       ],
     };
   }
@@ -480,6 +564,19 @@ class FakeRelayRealtime extends RealtimeService {
   @override
   void emit(String event, Map<String, dynamic> payload) {
     emittedEvents.add(event);
+  }
+
+  int authUpdates = 0;
+
+  /// A token rotation reconnects the same socket with the new token.
+  @override
+  void updateAuth(String token) {
+    authUpdates += 1;
+    final onEvent = _onEvent;
+    if (onEvent == null) return;
+    final onConnectionChanged = _onConnectionChanged;
+    disconnect();
+    connect(baseUrl: '', accessToken: token, onEvent: onEvent, onConnectionChanged: onConnectionChanged);
   }
 
   /// Server-to-client push. Dropped while disconnected, like a real socket.

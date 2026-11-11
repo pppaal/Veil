@@ -114,7 +114,7 @@ void main() {
     for (final envelope in [a0, a1, a2]) {
       final again = await receive(bob, envelope);
       expect(again.status, DecryptStatus.replayed);
-      expect(again.body, '[Replayed or out-of-window message]');
+      expect(again.body, isEmpty);
     }
 
     // Across a turn: Alice's first-chain frames stay replays after Bob's

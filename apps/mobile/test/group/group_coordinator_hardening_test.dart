@@ -4,23 +4,30 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/group_sender_keys.dart';
 import 'package:veil_mobile/src/core/crypto/message_padding.dart';
+import 'package:veil_mobile/src/core/identity/identity_key_value_backend.dart';
+import 'package:veil_mobile/src/core/identity/trusted_identity_resolver.dart';
+import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
+import 'package:veil_mobile/src/core/network/keys_api.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/group_sender_key_coordinator.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 
 import 'support/group_fixtures.dart';
 
 // Coordinator-level hardening against a malicious relay/directory: it must
-// not graft unauthenticated attachments onto messages, pick devices for us,
-// or seal to / accept from identities the trust check refuses. One member the
-// directory cannot serve must not cost the other members the chain either,
-// and who our chain has reached must survive a restart.
+// not graft unauthenticated attachments onto messages, or seal to / accept
+// from identities the pins refuse, such as a device the server slips into a
+// verified member's entry. One member the directory cannot serve must not
+// cost the other members the chain either, and who our chain has reached
+// must survive a restart.
 
 /// The server: a directory the test can rewrite plus the distribution relay.
 class _Server {
   final Map<String, Map<String, dynamic>> directory = <String, Map<String, dynamic>>{};
   final Map<String, List<Map<String, dynamic>>> buffered = <String, List<Map<String, dynamic>>>{};
   final List<List<String>> uploads = <List<String>>[];
+  final List<List<String>> uploadedDevices = <List<String>>[];
 
   /// Handle -> error the directory answers with instead of an entry.
   final Map<String, VeilApiException> lookupFailures = <String, VeilApiException>{};
@@ -28,14 +35,22 @@ class _Server {
   /// Error the relay answers every distribution upload with, if set.
   VeilApiException? uploadFailure;
 
-  void publish(TestIdentity user, {List<TestIdentity>? devices, String? activeDeviceId}) {
-    final listed = devices ?? [user];
+  /// The user's entry in GET /keys/:handle, listing [devices] (by default
+  /// just [user]'s own device).
+  void publish(TestIdentity user, {List<TestIdentity>? devices}) {
     directory[user.handle] = {
-      'user': {'activeDeviceId': activeDeviceId ?? user.deviceId},
-      'bundle': listed.first.directoryBundle,
-      'deviceBundles': [for (final d in listed) d.directoryBundle],
+      'user': {'id': user.userId, 'handle': user.handle, 'activeDeviceId': user.deviceId},
+      'devices': [for (final d in devices ?? [user]) _listing(d, isActive: d.deviceId == user.deviceId)],
     };
   }
+
+  static Map<String, dynamic> _listing(TestIdentity device, {required bool isActive, String? signedPrekeyBundle}) => {
+        'deviceId': device.deviceId,
+        'identityPublicKey': device.identityPublicKey,
+        'signedPrekeyBundle': signedPrekeyBundle ?? device.signedPrekeyBundle,
+        'isActive': isActive,
+        'oneTimePrekey': null,
+      };
 }
 
 class _ServerClient extends VeilApiClient {
@@ -45,7 +60,12 @@ class _ServerClient extends VeilApiClient {
   final TestIdentity me;
 
   @override
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    required String? accessToken,
+    Map<String, String>? query,
+  }) async {
+    final handle = path.substring('/keys/'.length);
     final failure = server.lookupFailures[handle];
     if (failure != null) throw failure;
     return server.directory[handle]!;
@@ -60,17 +80,20 @@ class _ServerClient extends VeilApiClient {
   }) async {
     final failure = server.uploadFailure;
     if (failure != null) throw failure;
-    server.uploads.add([for (final d in distributions) d['recipientUserId'] as String]);
+    server.uploads.add({for (final d in distributions) d['recipientUserId'] as String}.toList());
+    server.uploadedDevices.add([for (final d in distributions) d['recipientDeviceId'] as String]);
     for (final d in distributions) {
-      // Like the real relay, a re-send to the same recipient in the same
-      // epoch replaces the blob still buffered for them.
+      // Like the real relay, a re-send to the same recipient device in the
+      // same epoch replaces the blob still buffered for it.
       server.buffered.putIfAbsent(d['recipientUserId'] as String, () => [])
-        ..removeWhere((b) => b['fromDeviceId'] == me.deviceId && b['epoch'] == epoch)
+        ..removeWhere((b) =>
+            b['fromDeviceId'] == me.deviceId && b['epoch'] == epoch && b['recipientDeviceId'] == d['recipientDeviceId'])
         ..add({
           'conversationId': conversationId,
           'epoch': epoch,
           'fromUserId': me.userId,
           'fromDeviceId': me.deviceId,
+          'recipientDeviceId': d['recipientDeviceId'],
           'encryptedChainKey': d['encryptedChainKey'],
           'nonce': d['nonce'],
           'version': d['version'],
@@ -80,8 +103,13 @@ class _ServerClient extends VeilApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> getGroupKeyDistributions(String accessToken, String conversationId) async =>
-      {'epoch': 0, 'distributions': server.buffered[me.userId] ?? const <Map<String, dynamic>>[]};
+  Future<Map<String, dynamic>> getGroupKeyDistributions(String accessToken, String conversationId) async => {
+        'epoch': 0,
+        'distributions': [
+          for (final blob in server.buffered[me.userId] ?? const <Map<String, dynamic>>[])
+            if (blob['recipientDeviceId'] == me.deviceId) blob,
+        ],
+      };
 }
 
 class _BundleCodec implements KeyBundleCodec {
@@ -106,23 +134,28 @@ class _Member {
     this._directory,
     this._group, {
     Map<String, Map<String, dynamic>>? store,
-  }) : stored = store ?? <String, Map<String, dynamic>>{} {
+    IdentityKeyValueBackend? pinStore,
+  })  : stored = store ?? <String, Map<String, dynamic>>{},
+        pinStore = pinStore ?? InMemoryIdentityKeyValueBackend() {
+    final client = _ServerClient(_server, identity);
+    trust = IdentityTrust(TrustedIdentityResolver(store: TrustedIdentityStore(this.pinStore)));
     coordinator = GroupSenderKeyCoordinator(
       engine: GroupSenderKeyEngine(persister: _persist),
       sealer: _directory.sealer(),
-      apiClient: _ServerClient(_server, identity),
-      keyBundleCodec: _BundleCodec(),
+      apiClient: client,
+      keys: KeysApi(client, _BundleCodec()),
       identityPrivateRefLoader: () async => 'ref',
       localX25519PrivateParser: (_) => identity.x25519Private,
       localEd25519SeedParser: (_) => identity.ed25519Seed,
-      trustCheck: (userId, deviceId, key) async {
+      conversationLookup: (_) => _group,
+      trustCheck: (conversationId, userId, deviceId, key) async {
         trustChecks.add('$userId/$deviceId/$key');
         if (unresolvable.contains(userId)) {
           throw const FormatException('corrupt pin record');
         }
-        return !distrusted.contains(userId);
+        return !distrusted.contains(userId) && await trust.admit(conversationId, userId, deviceId, key);
       },
-    )..conversationLookup = (_) => _group;
+    );
   }
 
   final TestIdentity identity;
@@ -130,6 +163,10 @@ class _Member {
   final IdentityDirectory _directory;
   final ConversationPreview _group;
   late final GroupSenderKeyCoordinator coordinator;
+
+  /// This device's identity pins, the same pin policy the app runs.
+  late final IdentityTrust trust;
+  final IdentityKeyValueBackend pinStore;
 
   /// This device's secure store: the engine's last persisted snapshot per
   /// group, round-tripped through JSON as the real store does.
@@ -151,7 +188,7 @@ class _Member {
   /// The same device after the app restarts: a new engine and coordinator
   /// that know only what the secure store restores.
   Future<_Member> restart() async {
-    final next = _Member(identity, _server, _directory, _group, store: stored);
+    final next = _Member(identity, _server, _directory, _group, store: stored, pinStore: pinStore);
     await next.coordinator.restoreFromSnapshots(Map.of(stored));
     return next;
   }
@@ -180,7 +217,7 @@ class _Member {
       coordinator.decryptMessage(envelope, accessToken: 't', localUserId: identity.userId);
 
   Future<void> receiveRealtime(Map<String, dynamic> distribution) =>
-      coordinator.handleKeyDistributionEvent(distribution, localUserId: identity.userId);
+      coordinator.handleKeyDistributionEvent(distribution, localUserId: identity.userId, accessToken: 't');
 
   bool holdsChainOf(TestIdentity sender) =>
       coordinator.engine.hasSenderKeyFor(groupId: groupId, senderDeviceId: sender.deviceId);
@@ -274,31 +311,45 @@ void main() {
     expect(out.attachment, isNull);
   });
 
-  test('inner attachment pointer decodes from long-key and short-key forms', () async {
-    final longForm = await bob.read(await alice.send(group, 'photo', attachment: _attachment));
+  test('group frames carry the 1:1 inner payload and still read older pointer forms', () async {
+    final current = await bob.read(await alice.send(group, 'photo', attachment: _attachment));
+    expect(current.body, 'photo');
+    expect(current.attachment?.attachmentId, 'att-1');
+    expect(current.attachment?.encryptedKey, 'wrapped');
+    expect(current.attachment?.sizeBytes, 1234);
+    // The storage key is a relay detail and is not sealed into the frame.
+    expect(current.attachment?.storageKey, isEmpty);
+
+    Future<DecryptedMessage> readLegacy(Map<String, dynamic> payload) async {
+      final ct = await alice.coordinator.engine.encrypt(
+        groupId: groupId,
+        localDeviceId: aliceId.deviceId,
+        plaintext: MessagePadding.pad(utf8.encode(json.encode(payload))),
+      );
+      return bob.read(CryptoEnvelope(
+        version: kGroupEnvelopeVersion,
+        conversationId: groupId,
+        senderDeviceId: aliceId.deviceId,
+        recipientUserId: '',
+        ciphertext: ct.payload,
+        nonce: ct.nonce,
+        messageKind: MessageKind.text,
+      ));
+    }
+
+    // Older group clients wrote long keys; older 1:1 clients short ones.
+    final longForm = await readLegacy({
+      'body': 'photo',
+      'kind': 'image',
+      'att': {'attachmentId': 'att-1', 'storageKey': 'blobs/att-1', 'sizeBytes': 1234, 'sha256': 'digest'},
+    });
     expect(longForm.attachment?.storageKey, 'blobs/att-1');
     expect(longForm.attachment?.sizeBytes, 1234);
-
-    // The 1:1 adapter writes the same pointer with short keys.
-    final shortPayload = json.encode({
+    final shortForm = await readLegacy({
       'body': 'photo',
       'kind': 'image',
       'att': {'id': 'att-2', 'sk': 'blobs/att-2', 'ct': 'image/jpeg', 'sz': 99, 'h': 'd', 'ek': 'k', 'n': 'n'},
     });
-    final ct = await alice.coordinator.engine.encrypt(
-      groupId: groupId,
-      localDeviceId: aliceId.deviceId,
-      plaintext: MessagePadding.pad(utf8.encode(shortPayload)),
-    );
-    final shortForm = await bob.read(CryptoEnvelope(
-      version: kGroupEnvelopeVersion,
-      conversationId: groupId,
-      senderDeviceId: aliceId.deviceId,
-      recipientUserId: '',
-      ciphertext: ct.payload,
-      nonce: ct.nonce,
-      messageKind: MessageKind.text,
-    ));
     expect(shortForm.messageKind, MessageKind.image);
     expect(shortForm.attachment?.attachmentId, 'att-2');
     expect(shortForm.attachment?.storageKey, 'blobs/att-2');
@@ -306,27 +357,54 @@ void main() {
     expect(shortForm.attachment?.sizeBytes, 99);
   });
 
-  test('member without active device is skipped, not sealed to first bundle', () async {
-    // The directory lists only a server-injected device for bob.
+  test('seals once per trusted device with recipientDeviceId', () async {
+    final bobTablet = await TestIdentity.generate(userId: bobId.userId, deviceId: 'dev-bob-tablet', handle: 'bob');
+    directory.add(bobTablet);
+    server.publish(bobId, devices: [bobId, bobTablet]);
+
+    final envelope = await alice.send(group, 'to every device');
+
+    expect(server.uploadedDevices, [
+      [bobId.deviceId, bobTablet.deviceId, carolId.deviceId],
+    ]);
+    expect(server.uploads, [
+      [bobId.userId, carolId.userId],
+    ]);
+    // Each device opens the blob addressed to it.
+    final tablet = _Member(bobTablet, server, directory, group);
+    expect((await bob.read(envelope)).body, 'to every device');
+    expect((await tablet.read(envelope)).body, 'to every device');
+
+    // Every member holds the chain now, so later sends upload nothing.
+    await alice.prepareSend(group);
+    expect(server.uploads, hasLength(1));
+  });
+
+  test('server-injected device for verified member is not sealed to and its distribution is rejected', () async {
+    // alice verified bob's device out of band.
+    await alice.trust.admit(groupId, bobId.userId, bobId.deviceId, bobId.identityPublicKey);
+    await alice.trust.resolver.markVerified(bobId.userId, bobId.deviceId, bobId.identityPublicKey);
+    // The server lists a device of its own under bob's account.
     final ghost = await TestIdentity.generate(userId: bobId.userId, deviceId: 'dev-ghost', handle: 'bob');
     directory.add(ghost);
-    server.publish(bobId, devices: [ghost], activeDeviceId: bobId.deviceId);
+    server.publish(bobId, devices: [bobId, ghost]);
 
     await alice.prepareSend(group);
-    expect(server.uploads, [
-      [carolId.userId],
-    ]);
+    expect(server.uploadedDevices.single, [bobId.deviceId, carolId.deviceId]);
     expect(directory.resolvedBundles, isNot(contains(ghost.signedPrekeyBundle)));
+    final pending = alice.trust.pendingFor(groupId)!;
+    expect(pending.deviceId, ghost.deviceId);
+    expect(pending.requiresReverification, isTrue);
 
-    // bob's real device shows up: the next send hands him the chain.
-    server.publish(bobId);
-    final envelope = await alice.send(group, 'now you can read this');
-    expect(server.uploads.last, [bobId.userId]);
-    expect((await bob.read(envelope)).body, 'now you can read this');
-
-    // Nobody is pending any more, so later sends upload nothing.
-    await alice.prepareSend(group);
-    expect(server.uploads, hasLength(2));
+    // The ghost's chain, signed with the ghost's identity, is refused.
+    final ghostMember = _Member(ghost, server, directory, group);
+    final forged = await ghostMember.send(group, 'impersonating bob');
+    final blob = server.buffered[aliceId.userId]!.singleWhere((b) => b['fromDeviceId'] == ghost.deviceId);
+    await alice.receiveRealtime(blob);
+    expect(alice.holdsChainOf(ghost), isFalse);
+    final read = await alice.read(forged);
+    expect(read.status, DecryptStatus.awaitingKey);
+    expect(read.body, isEmpty);
   });
 
   test('trustCheck false prevents sealing and rejects distribution signer', () async {
@@ -344,7 +422,7 @@ void main() {
     await bob.receiveRealtime(blob);
     expect(bob.trustChecks, contains('${aliceId.userId}/${aliceId.deviceId}/${aliceId.identityPublicKey}'));
     expect(bob.holdsChainOf(aliceId), isFalse);
-    expect((await bob.read(envelope)).body, '[Awaiting sender key — sync required]');
+    expect((await bob.read(envelope)).status, DecryptStatus.awaitingKey);
 
     // The trust decision was the only thing in the way.
     bob.distrusted.clear();
@@ -412,10 +490,8 @@ void main() {
   test('member whose signed prekey does not verify is skipped', () async {
     // carol's entry presents a prekey her identity key never signed.
     server.directory[carolId.handle] = {
-      'user': {'activeDeviceId': carolId.deviceId},
-      'deviceBundles': [
-        {...carolId.directoryBundle, 'signedPrekeyBundle': bobId.signedPrekeyBundle},
-      ],
+      'user': {'id': carolId.userId, 'handle': carolId.handle, 'activeDeviceId': carolId.deviceId},
+      'devices': [_Server._listing(carolId, isActive: true, signedPrekeyBundle: bobId.signedPrekeyBundle)],
     };
 
     final envelope = await alice.send(group, 'hello bob');
@@ -506,12 +582,13 @@ void main() {
     expect((await carol.read(envelope)).body, 'readable by everyone');
   });
 
-  test('placeholder for an unreadable frame ignores the outer kind', () async {
+  test('an unreadable frame carries no body and ignores the outer kind', () async {
     bob.distrusted.add(aliceId.userId);
     final envelope = await alice.send(group, 'hello');
 
     final out = await bob.read(_withOuter(envelope, messageKind: MessageKind.system));
-    expect(out.body, '[Awaiting sender key — sync required]');
+    expect(out.status, DecryptStatus.awaitingKey);
+    expect(out.body, isEmpty);
     expect(out.messageKind, MessageKind.text);
   });
 }

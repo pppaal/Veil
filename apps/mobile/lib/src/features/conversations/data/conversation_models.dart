@@ -38,9 +38,8 @@ class GroupMeta {
 
 // Lightweight per-member projection used when the client needs to enumerate
 // a group's participants — currently for per-peer safety-number verification.
-// Does NOT carry key material; consumers fetch the KeyBundle on demand via
-// the users/:handle/key-bundle endpoint. Keeping keys out of the preview
-// layer means we don't pay the N-fetch cost on every conversation list load.
+// Does NOT carry key material: identities come from the local pin table, and
+// devices from the key directory when a chain key is sealed.
 class GroupMember {
   const GroupMember({
     required this.userId,
@@ -271,7 +270,6 @@ class ConversationPreview {
     this.disappearingTimerSeconds,
     this.useSenderKeys = false,
     this.groupEpoch,
-    this.identityMismatchPending = false,
   });
 
   final String id;
@@ -301,10 +299,6 @@ class ConversationPreview {
   // Current membership generation (conversations.current_epoch). Null when
   // unknown (e.g. hydrated from cache before the first refresh).
   final int? groupEpoch;
-  // The directory served a different identity key for the device this
-  // conversation's session is bound to. The session and the pinned bundle
-  // are kept as-is; the flag is what the safety-number flow reacts to.
-  final bool identityMismatchPending;
 
   ConversationPreview copyWith({
     String? id,
@@ -323,7 +317,6 @@ class ConversationPreview {
     Object? disappearingTimerSeconds = _unset,
     bool? useSenderKeys,
     Object? groupEpoch = _unset,
-    bool? identityMismatchPending,
   }) {
     return ConversationPreview(
       id: id ?? this.id,
@@ -350,10 +343,14 @@ class ConversationPreview {
           : disappearingTimerSeconds as int?,
       useSenderKeys: useSenderKeys ?? this.useSenderKeys,
       groupEpoch: identical(groupEpoch, _unset) ? this.groupEpoch : groupEpoch as int?,
-      identityMismatchPending: identityMismatchPending ?? this.identityMismatchPending,
     );
   }
 }
+
+/// Id prefix of rows this device inserts into a conversation by itself,
+/// such as identity notices. Relay ids are UUIDs, so no peer and no server
+/// can produce a row that passes for one.
+const String localNoticeIdPrefix = 'notice:';
 
 class ChatMessage {
   static const Object _unset = Object();
@@ -396,6 +393,7 @@ class ChatMessage {
       deliveryState == MessageDeliveryState.pending ||
       deliveryState == MessageDeliveryState.uploading;
   bool get hasFailed => deliveryState == MessageDeliveryState.failed;
+  bool get isLocalNotice => id.startsWith(localNoticeIdPrefix);
 
   ChatMessage copyWith({
     String? id,

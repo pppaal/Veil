@@ -6,7 +6,7 @@ import '../conversation_models.dart';
 /// The server never knows session state and only knows the peer's user id,
 /// so its previews arrive with no session and an empty bundle. Taking them
 /// wholesale made the next send re-bootstrap the 1:1 session and fork the
-/// ratchet; the local session, bundle and identity flag are kept instead.
+/// ratchet; the local session and bundle are kept instead.
 /// Everything else (membership, last message, timers, epoch) follows the
 /// server, and conversations missing from the server list are dropped.
 List<ConversationPreview> mergeConversationPreviews(
@@ -28,8 +28,6 @@ ConversationPreview _mergePreview(ConversationPreview? local, ConversationPrevie
   return incoming.copyWith(
     sessionState: incoming.sessionState ?? local.sessionState,
     recipientBundle: keepBundle ? local.recipientBundle : incoming.recipientBundle,
-    identityMismatchPending:
-        incoming.identityMismatchPending || local.identityMismatchPending,
   );
 }
 

@@ -30,6 +30,7 @@ import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/stickers/presentation/sticker_picker_screen.dart';
 import '../../features/stories/presentation/stories_screen.dart';
 import '../../features/stories/presentation/story_viewer_screen.dart';
+import '../../features/stories/stories_feature.dart';
 import '../../features/voice/presentation/voice_recorder_screen.dart';
 import '../theme/veil_theme.dart';
 import '../../shared/presentation/veil_ui.dart';
@@ -123,7 +124,7 @@ List<RouteBase> _buildRoutes() {
       routes: [
         GoRoute(path: '/conversations', builder: (context, state) => const ConversationListScreen()),
         GoRoute(path: '/calls', builder: (context, state) => const CallHistoryScreen()),
-        GoRoute(path: '/stories', builder: (context, state) => const StoriesScreen()),
+        if (kStoriesEnabled) GoRoute(path: '/stories', builder: (context, state) => const StoriesScreen()),
         GoRoute(path: '/contacts', builder: (context, state) => const ContactsScreen()),
       ],
     ),
@@ -179,12 +180,13 @@ List<RouteBase> _buildRoutes() {
         contactHandle: state.pathParameters['conversationId'],
       ),
     ),
-    GoRoute(
-      path: '/story-viewer/:userId',
-      builder: (context, state) => StoryViewerScreen(
-        authorUserId: state.pathParameters['userId']!,
+    if (kStoriesEnabled)
+      GoRoute(
+        path: '/story-viewer/:userId',
+        builder: (context, state) => StoryViewerScreen(
+          authorUserId: state.pathParameters['userId']!,
+        ),
       ),
-    ),
     GoRoute(
       path: '/ai-chat',
       pageBuilder: (context, state) => _veilPushPage(state, const AiChatScreen()),
@@ -296,7 +298,8 @@ class _VeilMainShell extends StatelessWidget {
   static const _tabs = <_VeilNavTab>[
     _VeilNavTab(path: '/conversations', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: 'Chats'),
     _VeilNavTab(path: '/contacts', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Contacts'),
-    _VeilNavTab(path: '/stories', icon: Icons.amp_stories_outlined, activeIcon: Icons.amp_stories_rounded, label: 'Stories'),
+    if (kStoriesEnabled)
+      _VeilNavTab(path: '/stories', icon: Icons.amp_stories_outlined, activeIcon: Icons.amp_stories_rounded, label: 'Stories'),
     _VeilNavTab(path: '/calls', icon: Icons.call_outlined, activeIcon: Icons.call_rounded, label: 'Calls'),
   ];
 

@@ -1130,10 +1130,15 @@ class SealedGroupSenderKey {
     required this.recipientUserId,
     required this.encryptedChainKey,
     required this.nonce,
+    this.recipientDeviceId,
     this.version = kGroupKeyDistributionVersion,
   });
 
   final String recipientUserId;
+
+  /// The device whose identity the blob is sealed to. It routes the blob on
+  /// the relay; only that device can open it either way.
+  final String? recipientDeviceId;
 
   /// b64url( ephPub(32) || senderSig(64) || ct || tag(16) )
   final String encryptedChainKey;
@@ -1142,6 +1147,7 @@ class SealedGroupSenderKey {
 
   Map<String, dynamic> toUploadJson() => {
         'recipientUserId': recipientUserId,
+        if (recipientDeviceId != null) 'recipientDeviceId': recipientDeviceId,
         'encryptedChainKey': encryptedChainKey,
         'nonce': nonce,
         'version': version,
@@ -1183,6 +1189,7 @@ class GroupSenderKeySealer {
   Future<SealedGroupSenderKey> seal({
     required GroupSenderKey key,
     required String recipientUserId,
+    String? recipientDeviceId,
     required String recipientIdentityPublicKey,
     required String recipientSignedPrekeyBundle,
     required List<int> senderIdentityEd25519Seed,
@@ -1243,6 +1250,7 @@ class GroupSenderKeySealer {
       ..add(ctWithTag);
     return SealedGroupSenderKey(
       recipientUserId: recipientUserId,
+      recipientDeviceId: recipientDeviceId,
       encryptedChainKey: base64UrlNoPadEncode(blob.toBytes()),
       nonce: base64UrlNoPadEncode(nonce),
     );

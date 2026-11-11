@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
 import '../support/async_wait.dart';
@@ -94,6 +97,7 @@ void main() {
     await bob.refreshToken();
     await settle();
 
+    expect(bob.realtime.authUpdates, 1, reason: 'the socket takes the new token in place');
     expect(bob.realtime.connectCount, connects + 1);
     expect(bob.realtime.lastAccessToken, bob.session().accessToken);
     expect(bob.api.conversationFetches, conversationFetches);
@@ -293,68 +297,139 @@ void main() {
     await settle();
     await deliver(alice, bob, 'a3');
 
-    expect(alice.api.keyBundleFetches, {'bob': 1});
-    // The responder looks alice up once, when her first frame sets up its
-    // session, so it has her identity key for safety numbers.
-    expect(bob.api.keyBundleFetches, {'alice': 1});
+    expect(alice.api.directoryLookups, {'bob': 1});
+    // The responder pins the identity alice's handshake proved, so it never
+    // asks the directory about her.
+    expect(bob.api.directoryLookups, isEmpty);
     final bobView = bob.controller.conversations.firstWhere((item) => item.id == conv);
     expect(bobView.recipientBundle.identityPublicKey, alice.device.identity.identityPublicKey);
   });
 
-  test('identity key change for same device does not rebootstrap and flags preview', () async {
-    await deliver(alice, bob, 'before swap');
+  test('server identity swap blocked', () async {
+    await deliver(alice, bob, 'pinned');
+    // The pin outlives the app; the directory answer it was made from does not.
+    await alice.restart();
+    // A second conversation needs a fresh session, and the server answers
+    // the lookup with a key of its own for bob's very device.
+    relay.addDirect('conv-ab-2', 'alice', 'bob');
+    await alice.controller.refreshConversations();
     final impostor = await LibCryptoAdapter().identity.generateDeviceIdentity(bob.device.deviceId);
     relay.bundleOverrides['bob'] = {
       ...bob.device.bundleJson,
       'identityPublicKey': impostor.identityPublicKey,
       'signedPrekeyBundle': impostor.signedPrekeyBundle,
     };
+    alice.crypto.counts.reset();
 
-    final served = await alice.controller.fetchPeerKeyBundle('bob');
+    await alice.controller.sendText(conversationId: 'conv-ab-2', body: 'for bob only');
+    await settle();
 
-    expect(served.identityPublicKey, impostor.identityPublicKey);
-    final preview = alice.controller.conversations.firstWhere((item) => item.id == conv);
-    expect(preview.identityMismatchPending, isTrue);
-    expect(preview.sessionState!.remoteIdentityPublicKey, bob.device.identity.identityPublicKey);
-    // The live session still encrypts to bob's real key, so that is the key
-    // the conversation keeps showing for safety numbers.
-    expect(preview.recipientBundle.identityPublicKey, bob.device.identity.identityPublicKey);
-    expect(alice.crypto.counts.bootstrap, 1);
-    await waitFor(() async => (await alice.cache.readConversations())
-        .firstWhere((item) => item.id == conv)
-        .identityMismatchPending);
-
-    await deliver(alice, bob, 'after swap');
-    expect(await bob.bodies(conv), ['before swap', 'after swap']);
-    expect(alice.crypto.counts.bootstrap, 1);
+    expect(alice.crypto.counts.bootstrap, 0);
+    expect(relay.conversations['conv-ab-2']!.messages, isEmpty);
+    final change = alice.controller.pendingIdentityChangeFor('conv-ab-2')!;
+    expect(change.presentedKey, impostor.identityPublicKey);
+    expect(change.previousKey, bob.device.identity.identityPublicKey);
+    expect(alice.controller.errorMessage, isNull, reason: 'the issue belongs to the conversation');
+    expect(alice.controller.messagesFor('conv-ab-2').single.isLocalNotice, isTrue);
+    // The established conversation keeps working with the pinned key.
+    await deliver(alice, bob, 'still you');
   });
 
-  test('responder flags an identity key change for the initiator device', () async {
+  test('forged inbound session rejected', () async {
     await deliver(alice, bob, 'hello bob');
-    await waitFor(
-      () => bob.controller.conversations
-          .firstWhere((item) => item.id == conv)
-          .sessionState!
-          .remoteIdentityPublicKey
-          .isNotEmpty,
-      reason: 'the responder never pinned the initiator identity key',
+    // The server opens a session to bob in alice's name, from an identity it
+    // controls on alice's device id.
+    final forger = LibCryptoAdapter();
+    final forged = await forger.identity.generateDeviceIdentity(alice.device.deviceId);
+    forger.setLocalIdentityLoader(() async => forged.identityPrivateKeyRef);
+    await forger.sessions.bootstrapSession(SessionBootstrapRequest(
+      conversationId: conv,
+      localDeviceId: alice.device.deviceId,
+      localUserId: alice.device.userId,
+      remoteUserId: bob.device.userId,
+      remoteDeviceId: bob.device.deviceId,
+      remoteIdentityPublicKey: bob.device.identity.identityPublicKey,
+      remoteSignedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+    ));
+    final envelope = await forger.messaging.encryptMessage(
+      conversationId: conv,
+      senderDeviceId: alice.device.deviceId,
+      recipientUserId: bob.device.userId,
+      body: 'trust me',
+      messageKind: MessageKind.text,
+      recipientBundle: KeyBundle(
+        userId: bob.device.userId,
+        deviceId: bob.device.deviceId,
+        handle: 'bob',
+        identityPublicKey: bob.device.identity.identityPublicKey,
+        signedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+      ),
     );
-    final impostor = await LibCryptoAdapter().identity.generateDeviceIdentity(alice.device.deviceId);
-    relay.bundleOverrides['alice'] = {
-      ...alice.device.bundleJson,
-      'identityPublicKey': impostor.identityPublicKey,
-      'signedPrekeyBundle': impostor.signedPrekeyBundle,
-    };
+    relay.inject(senderHandle: 'alice', conversationId: conv, envelope: forger.envelopeCodec.encodeApiEnvelope(envelope));
 
-    await bob.controller.fetchPeerKeyBundle('alice');
+    await bob.controller.loadConversationMessages(conv);
+    await waitFor(() => bob.controller.pendingIdentityChangeFor(conv) != null, reason: 'the forgery was not caught');
 
-    final preview = bob.controller.conversations.firstWhere((item) => item.id == conv);
-    expect(preview.identityMismatchPending, isTrue);
-    expect(preview.sessionState!.remoteIdentityPublicKey, alice.device.identity.identityPublicKey);
-    expect(preview.recipientBundle.identityPublicKey, alice.device.identity.identityPublicKey);
-    expect(bob.crypto.counts.bootstrap, 0);
-    await deliver(bob, alice, 'still you?');
-    expect(await alice.bodies(conv), ['hello bob', 'still you?']);
+    final forgedRow = bob.controller.messagesFor(conv).firstWhere((m) => m.envelope.ciphertext == envelope.ciphertext);
+    final opened = await bob.controller.decryptMessage(forgedRow);
+    expect(opened.status, DecryptStatus.identityRejected);
+    expect(opened.body, isEmpty);
+    expect(bob.controller.pendingIdentityChangeFor(conv)!.presentedKey, forged.identityPublicKey);
+    // Nothing was installed: alice's real session still reads.
+    await deliver(alice, bob, 'the real alice');
+    expect(await bob.bodies(conv), containsAllInOrder(['hello bob', 'the real alice']));
+    expect(await bob.bodies(conv), isNot(contains('trust me')));
+  });
+
+  test('OPK claimed and consumed exactly once', () async {
+    final carol = await MessengerParty.join(
+      relay,
+      handle: 'carol',
+      userId: 'user-carol',
+      deviceId: 'dev-carol',
+      maintainPrekeys: true,
+    );
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-ac', 'alice', 'carol');
+    await carol.signIn();
+    await waitFor(
+      () => (relay.oneTimePrekeys['dev-carol']?.length ?? 0) == PrekeyMaintenance.oneTimePrekeyPoolSize,
+      timeout: const Duration(seconds: 10),
+      reason: 'carol never published her one-time prekeys',
+    );
+    await alice.controller.refreshConversations();
+
+    await deliver(alice, carol, 'first contact', conversationId: 'conv-ac');
+    await deliver(alice, carol, 'second', conversationId: 'conv-ac');
+    await deliver(carol, alice, 'reply', conversationId: 'conv-ac');
+
+    final claimed = relay.claimedOneTimePrekeys['dev-carol']!;
+    expect(claimed, hasLength(1), reason: 'one session, one claim');
+    expect(relay.oneTimePrekeys['dev-carol'], hasLength(PrekeyMaintenance.oneTimePrekeyPoolSize - 1));
+    // Carol's handshake used it up: the private half is gone.
+    expect(await carol.prekeyStore.loadOneTimePrekey(claimed.single), isNull);
+    expect(await carol.prekeyStore.loadOneTimePrekey(claimed.single + 1), isNotNull);
+  });
+
+  test('a reaction travels end to end and lands on its target', () async {
+    await deliver(alice, bob, 'react to me');
+    await settle();
+    final target = bob.controller.messagesFor(conv).single;
+    final relayedBefore = relay.conversations[conv]!.messages.length;
+
+    await bob.controller.toggleReaction(target, '🔥');
+    await waitFor(() => alice.controller.messagesFor(conv).first.reactions.isNotEmpty);
+
+    final reacted = alice.controller.messagesFor(conv).first;
+    expect(reacted.reactions.single.emoji, '🔥');
+    expect(reacted.reactions.single.userId, bob.device.userId);
+    // The relay saw one more encrypted message and nothing it could read.
+    final relayed = relay.conversations[conv]!.messages.last;
+    expect(relay.conversations[conv]!.messages, hasLength(relayedBefore + 1));
+    expect(relayed['messageType'], 'reaction');
+    expect(jsonEncode(relayed), isNot(contains('🔥')));
+    final row = alice.controller.messagesFor(conv).last;
+    expect((await alice.controller.decryptMessage(row)).messageKind, MessageKind.reaction);
   });
 
   test('a frame for a conversation not listed yet still records the responder session', () async {
@@ -414,12 +489,15 @@ void main() {
     // only sign she gets that bob moved.
     await newPhone.controller.sendText(conversationId: conv, body: 'new phone');
     await waitFor(() => newPhone.controller.pendingCountFor(conv) == 0);
-    await waitFor(() => alice.controller.messagesFor(conv).length == 2);
-    await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
+    List<ChatMessage> relayed() => alice.controller.messagesFor(conv).where((m) => !m.isLocalNotice).toList();
+    await waitFor(() => relayed().length == 2);
+    await alice.controller.decryptMessage(relayed().last);
+    // bob was not verified, so his new device is admitted and announced.
+    await waitFor(() => alice.controller.messagesFor(conv).any((m) => m.isLocalNotice));
     await alice.controller.sendText(conversationId: conv, body: 'after the move');
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0);
 
-    expect(alice.api.keyBundleFetches, {'bob': 2});
+    expect(alice.api.directoryLookups, {'bob': 2});
     expect(alice.crypto.counts.bootstrap, 2);
     final session = alice.controller.conversations.firstWhere((item) => item.id == conv).sessionState!;
     expect(session.remoteDeviceId, 'dev-bob-2');
@@ -466,7 +544,7 @@ void main() {
     await deliver(alice, bob, 'session up');
     await alice.restart();
     await settle();
-    final fetches = Map<String, int>.of(alice.api.keyBundleFetches);
+    final fetches = Map<String, int>.of(alice.api.directoryLookups);
 
     await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
@@ -475,7 +553,7 @@ void main() {
     final (_, plaintext) = await openLatestAttachment();
     expect(plaintext, hasLength(2048));
     // A lookup would tell the relay whom alice is about to message.
-    expect(alice.api.keyBundleFetches, fetches);
+    expect(alice.api.directoryLookups, fetches);
   });
 
   test('re-ticketing after the upload ticket expired reuses the sealed attachment id', () async {

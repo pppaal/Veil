@@ -859,7 +859,7 @@ void main() {
     expect(expiries['srv-timed']!.isAtSameMomentAs(expiry), isTrue);
   });
 
-  test('migration 8 to 9 creates table', () async {
+  test('migration from 8 creates the content tables', () async {
     final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
       for (final statement in _schemaVersion8) {
         raw.execute(statement);
@@ -886,10 +886,8 @@ void main() {
     expect(triggers.map((row) => row.data['name']), contains('message_contents_skip_retired'));
     final conversationColumns =
         await legacy.customSelect('PRAGMA table_info(cached_conversations)').get();
-    expect(
-      conversationColumns.map((row) => row.data['name']),
-      containsAll(['session_remote_identity_public_key', 'identity_mismatch_pending']),
-    );
+    expect(conversationColumns.map((row) => row.data['name']), contains('session_remote_identity_public_key'));
+    expect(conversationColumns.map((row) => row.data['name']), isNot(contains('identity_mismatch_pending')));
     final migratedMessage = await legacy
         .customSelect("SELECT search_body FROM cached_messages WHERE id = 'msg-old'")
         .getSingle();
@@ -899,7 +897,7 @@ void main() {
       legacy,
       envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
     );
-    expect((await migratedCache.readConversations()).single.identityMismatchPending, isFalse);
+    expect((await migratedCache.readConversations()).single.id, 'conv-old');
     await migratedCache.put(_content('srv-new', 'conv-old', 'first row after upgrade'));
     expect((await migratedCache.get('srv-new'))!.body, 'first row after upgrade');
   });

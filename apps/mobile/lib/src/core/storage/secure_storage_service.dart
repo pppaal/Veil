@@ -7,6 +7,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../crypto/crypto_engine.dart';
 import '../crypto/ratchet/session_lock.dart';
+import '../identity/identity_key_value_backend.dart';
 
 abstract class SecureKeyValueStore {
   Future<void> write({required String key, required String? value});
@@ -104,9 +105,9 @@ class SecureStorageService {
   static const _oneTimePrekeyPrefix = 'veil.crypto.opk.';
   static const _signedPrekeyPrefix = 'veil.crypto.spk.';
   static const _cryptoQueueKey = 'crypto-state';
-  // Safety-number verification attestations — records that a conversation's
-  // peer identity key was human-verified at a point in time. Single-blob
-  // layout, since FlutterSecureStorage cannot enumerate keys portably.
+  // Safety-number verifications of earlier builds, keyed by conversation
+  // ("conversationId" or "conversationId:memberUserId"). Only read once, to
+  // carry them into the identity pin table, then deleted.
   static const _safetyVerificationsKey = 'veil.security.safety_verifications';
 
   // Every crypto-state read-modify-write goes through this one serial queue,
@@ -118,11 +119,18 @@ class SecureStorageService {
 
   Future<T> _serialCrypto<T>(Future<T> Function() action) => _cryptoQueue.synchronized(_cryptoQueueKey, action);
 
+  /// Read/write/delete confined to [scope]'s keys.
+  ScopedSecureStore scoped(SecureScope scope) => ScopedSecureStore._(this, scope);
+
+  /// Stores a new device identity. Prekeys of an earlier identity are
+  /// dropped with it: once rotations fill the prekey store it takes
+  /// precedence over the signed prekey embedded in the identity ref.
   Future<void> persistDeviceSecretRefs({
     required String identityPrivateRef,
     required String authPrivateKey,
     required String authPublicKey,
   }) async {
+    await clearPrekeys();
     await _storage.write(key: _identityKey, value: identityPrivateRef);
     await _storage.write(key: _authPrivateKey, value: authPrivateKey);
     await _storage.write(key: _authPublicKey, value: authPublicKey);
@@ -134,6 +142,11 @@ class SecureStorageService {
     return (identityPrivateRef?.isNotEmpty ?? false) &&
         (authPrivateKey?.isNotEmpty ?? false);
   }
+
+  /// Replaces the identity ref with the same identity in a newer encoding
+  /// (a v1 ref upgraded by its first signed-prekey rotation).
+  Future<void> replaceIdentityPrivateRef(String identityPrivateRef) =>
+      _storage.write(key: _identityKey, value: identityPrivateRef);
 
   Future<String?> readIdentityPrivateRef() async {
     return _storage.read(key: _identityKey);
@@ -299,6 +312,11 @@ class SecureStorageService {
       displayName: displayName,
     );
   }
+
+  /// The user's own nickname. Local only: the relay never stores one.
+  Future<void> persistLocalNickname(String? nickname) => nickname == null || nickname.isEmpty
+      ? _storage.delete(key: _displayNameKey)
+      : _storage.write(key: _displayNameKey, value: nickname);
 
   Future<void> clearSession() async {
     await _storage.delete(key: _accessTokenKey);
@@ -482,77 +500,6 @@ class SecureStorageService {
     }
   }
 
-  // Composite key format: direct conversations use the raw conversationId;
-  // group per-member attestations use "$conversationId:$memberUserId". The
-  // colon is safe because both halves are opaque server-generated IDs with
-  // no colons of their own. Direct reads stay source-compatible.
-  String _safetyVerificationKey(String conversationId, String? memberUserId) {
-    if (memberUserId == null || memberUserId.isEmpty) return conversationId;
-    return '$conversationId:$memberUserId';
-  }
-
-  Future<SafetyVerificationRecord?> readSafetyVerification(
-    String conversationId, {
-    String? memberUserId,
-  }) async {
-    final all = await readAllSafetyVerifications();
-    return all[_safetyVerificationKey(conversationId, memberUserId)];
-  }
-
-  // Returns a map of memberUserId -> record for every per-member attestation
-  // stashed against [conversationId]. Useful for rendering the group safety-
-  // numbers list without N round-trips.
-  Future<Map<String, SafetyVerificationRecord>>
-      readSafetyVerificationsForGroup(String conversationId) async {
-    final all = await readAllSafetyVerifications();
-    final prefix = '$conversationId:';
-    final result = <String, SafetyVerificationRecord>{};
-    all.forEach((key, value) {
-      if (key.startsWith(prefix)) {
-        result[key.substring(prefix.length)] = value;
-      }
-    });
-    return result;
-  }
-
-  Future<void> writeSafetyVerification(
-    String conversationId,
-    SafetyVerificationRecord record, {
-    String? memberUserId,
-  }) async {
-    final all = await readAllSafetyVerifications();
-    final next = <String, Map<String, dynamic>>{};
-    all.forEach((key, value) {
-      next[key] = value.toJson();
-    });
-    next[_safetyVerificationKey(conversationId, memberUserId)] = record.toJson();
-    await _storage.write(
-      key: _safetyVerificationsKey,
-      value: json.encode(next),
-    );
-  }
-
-  Future<void> clearSafetyVerification(
-    String conversationId, {
-    String? memberUserId,
-  }) async {
-    final all = await readAllSafetyVerifications();
-    final target = _safetyVerificationKey(conversationId, memberUserId);
-    if (!all.containsKey(target)) return;
-    final next = <String, Map<String, dynamic>>{};
-    all.forEach((key, value) {
-      if (key != target) next[key] = value.toJson();
-    });
-    if (next.isEmpty) {
-      await _storage.delete(key: _safetyVerificationsKey);
-    } else {
-      await _storage.write(
-        key: _safetyVerificationsKey,
-        value: json.encode(next),
-      );
-    }
-  }
-
   Future<void> clearAllSafetyVerifications() async {
     await _storage.delete(key: _safetyVerificationsKey);
   }
@@ -651,6 +598,9 @@ class SecureStorageService {
     await clearGroupSenderKeySnapshots();
     await clearPrekeys();
     await clearAllSafetyVerifications();
+    for (final scope in SecureScope.values) {
+      await scoped(scope).clear();
+    }
     if (!preservePin) {
       await clearPin();
     }
@@ -722,6 +672,78 @@ class SecureStorageService {
     }
     return buffer.toString();
   }
+}
+
+/// Namespaces that features keep their own small documents under. Every one
+/// is forgotten when the device's local state is wiped.
+enum SecureScope {
+  /// Contact identity pins (trust on first use).
+  identity('veil.identity'),
+
+  /// Per-conversation security policy, such as accepted envelope versions.
+  conversationPolicy('veil.conversation_policy'),
+
+  /// Privacy switches the user set on this device.
+  privacy('veil.settings.privacy'),
+
+  /// Private nicknames for contacts.
+  contacts('veil.contacts');
+
+  const SecureScope(this.namespace);
+
+  final String namespace;
+}
+
+/// The keystore seen through one [SecureScope]. FlutterSecureStorage cannot
+/// enumerate keys, so the scope records every key it writes in an index;
+/// that is what lets [clear] forget all of them.
+class ScopedSecureStore implements IdentityKeyValueBackend {
+  ScopedSecureStore._(this._service, this._scope);
+
+  final SecureStorageService _service;
+  final SecureScope _scope;
+
+  SecureKeyValueStore get _storage => _service._storage;
+
+  String _qualified(String key) => '${_scope.namespace}.$key';
+
+  String get _indexKey => '${_scope.namespace}#keys';
+
+  Future<T> _serial<T>(Future<T> Function() action) =>
+      _service._cryptoQueue.synchronized(_scope.namespace, action);
+
+  @override
+  Future<String?> read(String key) => _storage.read(key: _qualified(key));
+
+  @override
+  Future<void> write(String key, String value) => _serial(() async {
+        final keys = await _readIndex();
+        if (keys.add(key)) await _writeIndex(keys);
+        await _storage.write(key: _qualified(key), value: value);
+      });
+
+  @override
+  Future<void> delete(String key) => _serial(() async {
+        await _storage.delete(key: _qualified(key));
+        final keys = await _readIndex();
+        if (keys.remove(key)) await _writeIndex(keys);
+      });
+
+  Future<void> clear() => _serial(() async {
+        for (final key in await _readIndex()) {
+          await _storage.delete(key: _qualified(key));
+        }
+        await _storage.delete(key: _indexKey);
+      });
+
+  Future<Set<String>> _readIndex() async {
+    final raw = await _storage.read(key: _indexKey);
+    final decoded = raw == null ? null : json.decode(raw);
+    return {if (decoded is List) ...decoded.whereType<String>()};
+  }
+
+  Future<void> _writeIndex(Set<String> keys) =>
+      _storage.write(key: _indexKey, value: json.encode(keys.toList()));
 }
 
 /// [LocalPrekeyStore] backed by the device keystore. Shares
@@ -854,43 +876,28 @@ class StoredAuthKeyMaterial {
   final String publicKey;
 }
 
+/// A safety-number verification as earlier builds stored it, before the
+/// identity pin table recorded verifications itself.
 class SafetyVerificationRecord {
   const SafetyVerificationRecord({
     required this.peerIdentityPublicKey,
-    required this.safetyNumber,
     required this.verifiedAt,
   });
 
-  /// Base64url (no padding) Ed25519 public key the user verified against.
-  /// If the peer later rotates identity, the stored value won't match and
-  /// the UI must warn.
+  /// Base64url (no padding) Ed25519 public key the user verified.
   final String peerIdentityPublicKey;
-
-  /// 60-digit safety number the user compared.
-  final String safetyNumber;
 
   final DateTime verifiedAt;
 
-  Map<String, dynamic> toJson() => {
-        'peerIdentityPublicKey': peerIdentityPublicKey,
-        'safetyNumber': safetyNumber,
-        'verifiedAt': verifiedAt.toUtc().toIso8601String(),
-      };
-
   static SafetyVerificationRecord? tryFromJson(Map<String, dynamic> json) {
     final peer = json['peerIdentityPublicKey'] as String?;
-    final number = json['safetyNumber'] as String?;
     final verifiedAtRaw = json['verifiedAt'] as String?;
-    if (peer == null || number == null || verifiedAtRaw == null) {
+    if (peer == null || verifiedAtRaw == null) {
       return null;
     }
     final verifiedAt = DateTime.tryParse(verifiedAtRaw);
     if (verifiedAt == null) return null;
-    return SafetyVerificationRecord(
-      peerIdentityPublicKey: peer,
-      safetyNumber: number,
-      verifiedAt: verifiedAt.toUtc(),
-    );
+    return SafetyVerificationRecord(peerIdentityPublicKey: peer, verifiedAt: verifiedAt.toUtc());
   }
 }
 

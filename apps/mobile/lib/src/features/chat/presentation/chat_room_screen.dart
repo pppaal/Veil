@@ -16,6 +16,7 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import '../../reactions/presentation/reaction_picker_widget.dart';
+import 'decrypt_status_view.dart';
 import 'message_expiration.dart';
 
 class ChatRoomScreen extends ConsumerStatefulWidget {
@@ -333,6 +334,24 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
             icon: historyBanner.icon,
           ),
         ],
+        // Only a 1:1 conversation pauses; a group just leaves the device out.
+        if (conversation?.type == ConversationType.direct &&
+            controller.pendingIdentityChangeFor(widget.conversationId) != null) ...[
+          const SizedBox(height: VeilSpace.sm),
+          VeilInlineBanner(
+            title: l10n.chatIdentityChangedTitle,
+            message: l10n.chatIdentityChangedBody,
+            tone: VeilBannerTone.warn,
+            icon: Icons.gpp_maybe_outlined,
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => context.push('/safety-numbers/${widget.conversationId}'),
+              child: Text(l10n.chatIdentityChangedReview),
+            ),
+          ),
+        ],
         if (controller.errorMessage != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
@@ -586,13 +605,17 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         child: FutureBuilder<DecryptedMessage>(
           future: decryptFuture,
           // Only the authenticated inner kind may render as system chrome;
-          // the envelope's messageKind is set by whoever relayed it.
-          builder: (context, snapshot) => snapshot.data?.messageKind == MessageKind.system
-              ? _SystemNoticeBubble(message: message, decryptFuture: decryptFuture)
-              : _AnimatedBubbleEntry(
-                  fromRight: message.isMine,
-                  child: _buildBubbleWithReactions(controller, message, decryptFuture),
-                ),
+          // the envelope's messageKind is set by whoever relayed it. A
+          // reaction shows on its target, never as a row of its own.
+          builder: (context, snapshot) => switch (snapshot.data) {
+            DecryptedMessage(isOk: true, messageKind: MessageKind.reaction) => const SizedBox.shrink(),
+            DecryptedMessage(isOk: true, messageKind: MessageKind.system) =>
+              _SystemNoticeBubble(message: message, notice: snapshot.data!),
+            _ => _AnimatedBubbleEntry(
+                fromRight: message.isMine,
+                child: _buildBubbleWithReactions(controller, message, decryptFuture),
+              ),
+          },
         ),
       ),
     );
@@ -770,12 +793,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       if (mounted) setState(() => _sendScale = 1.0);
     });
 
-    await ref.read(messengerControllerProvider).sendText(
-          conversationId: widget.conversationId,
-          body: body,
-          disappearAfter: _messageTtl,
-        );
-    _messageController.clear();
+    final controller = ref.read(messengerControllerProvider);
+    await controller.sendText(
+      conversationId: widget.conversationId,
+      body: body,
+      disappearAfter: _messageTtl,
+    );
+    // Held back by an identity change: the text stays for after the review.
+    if (controller.pendingIdentityChangeFor(widget.conversationId) == null) {
+      _messageController.clear();
+    }
   }
 
   Future<void> _showAttachmentTicket(String attachmentId) async {
@@ -859,7 +886,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Future<void> _showReactionPicker(ChatMessage message) async {
     final controller = ref.read(messengerControllerProvider);
     final decrypted = await controller.decryptMessage(message);
-    if (!mounted || decrypted.messageKind == MessageKind.system) {
+    if (!mounted || !decrypted.isOk || decrypted.messageKind == MessageKind.system) {
       return;
     }
     VeilHaptics.selection();
@@ -1326,7 +1353,7 @@ class _MessageBubble extends StatelessWidget {
                   future: decryptFuture,
                   builder: (context, snapshot) {
                   final decrypted = snapshot.data;
-                  final body = decrypted?.body ?? l10n.chatDecryptingEnvelope;
+                  final status = decrypted?.status;
                   // Attachment metadata comes only from the authenticated
                   // payload; the envelope carries a bare pointer.
                   final attachmentId = decrypted?.attachment?.attachmentId;
@@ -1337,7 +1364,19 @@ class _MessageBubble extends StatelessWidget {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(body),
+                      switch (status) {
+                        null => Text(l10n.chatDecryptingEnvelope),
+                        DecryptStatus.ok => Text(decrypted!.body),
+                        DecryptStatus.legacyUnauthenticated => Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(decrypted!.body),
+                              const SizedBox(height: VeilSpace.xs),
+                              VeilStatusPill(label: l10n.chatLegacyUnverifiedBadge, tone: VeilBannerTone.warn),
+                            ],
+                          ),
+                        _ => DecryptFailureChip(status: status),
+                      },
                       if (transferSnapshot != null) ...[
                         const SizedBox(height: 12),
                         _AttachmentTransferPanel(
@@ -1489,55 +1528,48 @@ class _MessageBubble extends StatelessWidget {
 class _SystemNoticeBubble extends StatelessWidget {
   const _SystemNoticeBubble({
     required this.message,
-    required this.decryptFuture,
+    required this.notice,
   });
 
   final ChatMessage message;
-  final Future<DecryptedMessage> decryptFuture;
+  final DecryptedMessage notice;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
-    final l10n = AppLocalizations.of(context);
     return Center(
-      child: FutureBuilder<DecryptedMessage>(
-        future: decryptFuture,
-        builder: (context, snapshot) {
-          final body = snapshot.data?.body ?? l10n.chatDecryptingSystemNotice;
-          return Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            padding: const EdgeInsets.symmetric(
-              horizontal: VeilSpace.md,
-              vertical: VeilSpace.sm,
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 420),
+        padding: const EdgeInsets.symmetric(
+          horizontal: VeilSpace.md,
+          vertical: VeilSpace.sm,
+        ),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(VeilRadius.pill),
+          color: palette.surfaceOverlay,
+          border: Border.all(color: palette.strokeStrong),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              message.isLocalNotice ? Icons.gpp_maybe_outlined : Icons.camera_alt_outlined,
+              size: VeilIconSize.sm,
+              color: palette.warning,
             ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(VeilRadius.pill),
-              color: palette.surfaceOverlay,
-              border: Border.all(color: palette.strokeStrong),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.camera_alt_outlined,
-                  size: VeilIconSize.sm,
-                  color: palette.warning,
+            const SizedBox(width: VeilSpace.sm),
+            Flexible(
+              child: Text(
+                systemNoticeText(AppLocalizations.of(context), message, notice.body),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette.textMuted,
                 ),
-                const SizedBox(width: VeilSpace.sm),
-                Flexible(
-                  child: Text(
-                    body,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: palette.textMuted,
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          );
-        },
+          ],
+        ),
       ),
     );
   }

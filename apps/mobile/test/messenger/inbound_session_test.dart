@@ -12,7 +12,8 @@ const conv = 'conv-1';
 // Protocol v2 and libsignal open the responder session inside decrypt, so
 // the controller's own inbound bootstrap never runs for them. The session
 // must still end up on the conversation, bound to the device that sent the
-// frame, with the peer's identity key pinned from the directory.
+// frame. An engine that does not report the identity its handshake proved
+// (this mock) leaves the peer's key to be pinned from the directory.
 void main() {
   late FakeRelay relay;
 
@@ -59,15 +60,15 @@ void main() {
     await atlas.loadConversationMessages(conv);
     ConversationSessionState? session() =>
         atlas.conversations.firstWhere((item) => item.id == conv).sessionState;
-    await waitFor(() => session()?.remoteIdentityPublicKey == 'ik-selene');
+    await waitFor(() => session()?.remoteIdentityPublicKey == relay.partiesByHandle['selene']!.identity.identityPublicKey);
 
     expect(session()!.remoteDeviceId, 'dev-selene');
-    expect(relay.clientFor('atlas').keyBundleFetches, {'selene': 1});
+    expect(relay.clientFor('atlas').directoryLookups, {'selene': 1});
 
     // A reply reuses that session instead of opening a second one.
     await atlas.sendText(conversationId: conv, body: 'hi back');
     await waitFor(() => atlas.pendingCountFor(conv) == 0);
-    expect(relay.clientFor('atlas').keyBundleFetches, {'selene': 1});
+    expect(relay.clientFor('atlas').directoryLookups, {'selene': 1});
   });
 
   test('no session is recorded while the engine holds none', () async {
@@ -80,7 +81,7 @@ void main() {
     await settle();
 
     expect(atlas.conversations.single.sessionState, isNull);
-    expect(relay.clientFor('atlas').keyBundleFetches, isEmpty);
+    expect(relay.clientFor('atlas').directoryLookups, isEmpty);
   });
 
   test('a session held back for an unlisted conversation is never put on a group', () async {
@@ -107,6 +108,6 @@ void main() {
     await settle();
 
     expect(atlas.conversations.firstWhere((item) => item.id == 'grp-legacy').sessionState, isNull);
-    expect(relay.clientFor('atlas').keyBundleFetches, isEmpty);
+    expect(relay.clientFor('atlas').directoryLookups, isEmpty);
   });
 }

@@ -33,7 +33,7 @@ void main() {
           client: MockClient((_) => Completer<http.Response>().future),
         );
         Object? error;
-        api.getProfile('token').then((_) {}, onError: (Object e) {
+        api.getJson('/profile', accessToken: 'token').then((_) {}, onError: (Object e) {
           error = e;
         });
 
@@ -52,7 +52,7 @@ void main() {
       );
 
       await expectLater(
-        api.getProfile('token'),
+        api.getJson('/profile', accessToken: 'token'),
         throwsA(_apiError(TransportErrorCode.unavailable)),
       );
     });
@@ -66,7 +66,7 @@ void main() {
       );
 
       await expectLater(
-        api.getProfile('token'),
+        api.getJson('/profile', accessToken: 'token'),
         throwsA(_apiError(TransportErrorCode.pinMismatch)),
       );
     });
@@ -83,7 +83,7 @@ void main() {
       );
 
       await expectLater(
-        api.getProfile('token'),
+        api.getJson('/profile', accessToken: 'token'),
         throwsA(_apiError('device_not_active', statusCode: 403)),
       );
     });
@@ -112,7 +112,7 @@ void main() {
       );
 
       final responses = Future.wait([
-        api.getProfile('stale'),
+        api.getJson('/profile', accessToken: 'stale'),
         api.listDevices('stale'),
         api.getConversations('stale'),
       ]);
@@ -149,7 +149,7 @@ void main() {
 
       final outcomes = await Future.wait([
         for (var i = 0; i < 3; i++)
-          api.getProfile('stale').then<Object>((value) => value, onError: (Object e) => e),
+          api.getJson('/profile', accessToken: 'stale').then<Object>((value) => value, onError: (Object e) => e),
       ]);
 
       expect(
@@ -170,7 +170,7 @@ void main() {
       );
 
       await expectLater(
-        api.getProfile('stale'),
+        api.getJson('/profile', accessToken: 'stale'),
         throwsA(isA<VeilApiException>().having((e) => e.statusCode, 'statusCode', 401)),
       );
     });
@@ -191,7 +191,7 @@ void main() {
         },
       );
 
-      await api.getProfile('stale');
+      await api.getJson('/profile', accessToken: 'stale');
       await api.listDevices('stale');
 
       expect(refreshCalls, 1);

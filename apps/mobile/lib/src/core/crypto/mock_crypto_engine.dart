@@ -259,21 +259,12 @@ class _MockMessageCryptoEngine implements MessageCryptoEngine {
     }
 
     // Not produced by this process: the mock cannot "decrypt" it, so it
-    // reports a failure with a kind-specific placeholder and, like the real
-    // adapters, never trusts the unauthenticated outer attachment.
+    // reports a failure with no body and, like the real adapters, never
+    // trusts the unauthenticated outer attachment.
     return DecryptedMessage(
       status: DecryptStatus.failed,
       failureReason: 'mock_unknown_ciphertext',
-      body: switch (envelope.messageKind) {
-        MessageKind.file => 'Encrypted attachment',
-        MessageKind.image => 'Encrypted image',
-        MessageKind.system => 'Encrypted system envelope',
-        MessageKind.text => 'Encrypted message',
-        MessageKind.voice => 'Encrypted voice note',
-        MessageKind.sticker => 'Encrypted sticker',
-        MessageKind.reaction => 'Encrypted reaction',
-        MessageKind.call => 'Encrypted call event',
-      },
+      body: '',
       messageKind: envelope.messageKind,
       expiresAt: envelope.expiresAt,
     );

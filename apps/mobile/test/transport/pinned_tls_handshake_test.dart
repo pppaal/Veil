@@ -132,7 +132,7 @@ void main() {
       );
 
       await expectLater(
-        api.getKeyBundle('alice'),
+        api.getJson('/keys/alice', accessToken: 'token'),
         throwsA(
           isA<VeilApiException>()
               .having((e) => e.code, 'code', 'tls_pin_mismatch'),

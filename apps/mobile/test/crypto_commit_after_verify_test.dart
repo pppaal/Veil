@@ -37,7 +37,7 @@ void main() {
 
     final forgedResult = await receive(bob, copyEnvelope(env2, ciphertext: b64uEncode(forged)));
     expect(forgedResult.status, DecryptStatus.failed, reason: 'forged frame must not decrypt');
-    expect(forgedResult.body, startsWith('['));
+    expect(forgedResult.body, isEmpty);
 
     expect((await receive(bob, env2)).body, 'second message');
   });

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/core/util/base64url.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -92,7 +94,7 @@ void main() {
     expect(payload['recipientUserId'], 'user-selene');
     final refreshedConversation = controller.conversations.firstWhere((item) => item.id == 'conv-1');
     expect(refreshedConversation.recipientBundle.deviceId, 'device-selene-primary');
-    expect(refreshedConversation.recipientBundle.identityPublicKey, 'pub-selene-primary');
+    expect(refreshedConversation.recipientBundle.identityPublicKey, _testKey('pub-selene-primary'));
     expect(refreshedConversation.sessionState, isNotNull);
     expect(
       refreshedConversation.sessionState?.sessionEnvelopeVersion,
@@ -108,71 +110,6 @@ void main() {
       refreshedConversation.sessionState?.remoteIdentityFingerprint,
       isNotEmpty,
     );
-  });
-
-  test('a bootstrap forced by a lost session still flags a new key for the pinned device', () async {
-    final api = _FakeVeilApiClient();
-    // The preview pinned selene's device under an older key, but the engine
-    // lost the session (a ratchet snapshot that failed to restore).
-    final pinned = ConversationSessionState(
-      sessionLocator: 'session://conv-1',
-      sessionEnvelopeVersion: 'veil-envelope-v1',
-      requiresLocalPersistence: true,
-      sessionSchemaVersion: 1,
-      localDeviceId: 'device-local',
-      remoteDeviceId: 'device-selene-primary',
-      remoteIdentityFingerprint: 'fp-old',
-      bootstrappedAt: DateTime.utc(2026, 3, 30),
-      remoteIdentityPublicKey: 'pub-selene-before',
-    );
-    final crypto = StrictMockCryptoAdapter();
-    final controller = VeilMessengerController(
-      apiClient: api,
-      cryptoEngine: crypto.messaging,
-      keyBundleCodec: crypto.keyBundles,
-      envelopeCodec: crypto.envelopeCodec,
-      sessionBootstrapper: crypto.sessions,
-      realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(
-        conversations: [
-          ConversationPreview(
-            id: 'conv-1',
-            peerHandle: 'selene',
-            peerDisplayName: 'Selene',
-            recipientBundle: const KeyBundle(
-              userId: 'user-selene',
-              deviceId: 'device-selene-primary',
-              handle: 'selene',
-              identityPublicKey: 'pub-selene-before',
-              signedPrekeyBundle: 'prekey-before',
-            ),
-            lastEnvelope: null,
-            updatedAt: DateTime.utc(2026, 3, 30),
-            sessionState: pinned,
-          ),
-        ],
-      ),
-    );
-    addTearDown(controller.dispose);
-    await controller.applySession(
-      const AppSessionState(
-        accessToken: 'token',
-        userId: 'user-local',
-        deviceId: 'device-local',
-        handle: 'atlas',
-        displayName: 'Atlas',
-        onboardingAccepted: true,
-        locked: false,
-        initializing: false,
-      ),
-    );
-
-    await controller.sendText(conversationId: 'conv-1', body: 'still there?');
-    await waitFor(() => api.sentPayloads.length == 1);
-
-    final conversation = controller.conversations.firstWhere((item) => item.id == 'conv-1');
-    expect(conversation.identityMismatchPending, isTrue);
-    expect(conversation.sessionState!.remoteIdentityPublicKey, 'pub-selene-primary');
   });
 
   test(
@@ -1272,6 +1209,10 @@ void main() {
   });
 }
 
+/// Identity keys are compared as base64url bytes, so test labels are
+/// encoded into such a key.
+String _testKey(String label) => base64UrlNoPadEncode(utf8.encode(label));
+
 class _FakeVeilApiClient extends VeilApiClient {
   _FakeVeilApiClient({
     Map<_PagedQuery, Map<String, dynamic>>? pagedMessages,
@@ -1373,35 +1314,24 @@ class _FakeVeilApiClient extends VeilApiClient {
     return {'items': items, 'nextCursor': null};
   }
 
+  // GET /keys/:handle: the active device first, a second trusted one after.
   @override
-  Future<Map<String, dynamic>> getKeyBundle(String handle) async {
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    required String? accessToken,
+    Map<String, String>? query,
+  }) async {
+    final handle = path.substring('/keys/'.length);
+    Map<String, dynamic> device(String role, {required bool isActive}) => {
+          'deviceId': 'device-$handle-$role',
+          'identityPublicKey': _testKey('pub-$handle-$role'),
+          'signedPrekeyBundle': 'prekey-$handle-$role',
+          'isActive': isActive,
+          'oneTimePrekey': null,
+        };
     return {
-      'user': {
-        'activeDeviceId': 'device-$handle-primary',
-      },
-      'bundle': {
-        'userId': 'user-$handle',
-        'deviceId': 'device-$handle',
-        'handle': handle,
-        'identityPublicKey': 'pub-$handle',
-        'signedPrekeyBundle': 'prekey-$handle',
-      },
-      'deviceBundles': [
-        {
-          'userId': 'user-$handle',
-          'deviceId': 'device-$handle-primary',
-          'handle': handle,
-          'identityPublicKey': 'pub-$handle-primary',
-          'signedPrekeyBundle': 'prekey-$handle-primary',
-        },
-        {
-          'userId': 'user-$handle',
-          'deviceId': 'device-$handle-secondary',
-          'handle': handle,
-          'identityPublicKey': 'pub-$handle-secondary',
-          'signedPrekeyBundle': 'prekey-$handle-secondary',
-        },
-      ],
+      'user': {'id': 'user-$handle', 'handle': handle, 'activeDeviceId': 'device-$handle-primary'},
+      'devices': [device('primary', isActive: true), device('secondary', isActive: false)],
     };
   }
 

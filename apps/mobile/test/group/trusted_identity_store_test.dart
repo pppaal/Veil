@@ -116,7 +116,7 @@ void main() {
     expect(await reopened.evaluate('bob', 'dev-b', _key(2)), isA<PinMatch>());
 
     final stored = json.decode((await backend.read(TrustedIdentityStore.storageKey))!) as Map<String, dynamic>;
-    expect(TrustedIdentityStore.storageKey, 'veil.identity.pins.v1');
+    expect(TrustedIdentityStore.storageKey, 'pins.v1');
     expect(stored['v'], 1);
     expect(stored['pins'], hasLength(2));
   });

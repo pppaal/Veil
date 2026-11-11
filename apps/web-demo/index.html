@@ -71,8 +71,12 @@
       <div class="restore-info">
         <div class="restore-label" data-i18n="auth.restore.label">저장된 세션</div>
         <div class="restore-handle" id="restore-handle">@…</div>
+        <div id="restore-rejected" class="restore-rejected hidden" role="alert" data-i18n="auth.restore.rejected">서버가 이 기기의 세션을 거부했어요. 기기가 해지되었을 수 있어요. 키는 이 브라우저에 그대로 남아 있어요.</div>
       </div>
-      <button id="restore-btn" class="btn btn-primary btn-compact" data-i18n="auth.restore.continue">계속</button>
+      <div class="restore-actions">
+        <button id="restore-btn" class="btn btn-primary btn-compact" data-i18n="auth.restore.continue">계속</button>
+        <button id="restore-delete-btn" class="link-btn link-danger" data-i18n="auth.restore.delete">이 신원 삭제</button>
+      </div>
     </div>
 
     <form id="register-form" class="auth-form" autocomplete="off" novalidate>

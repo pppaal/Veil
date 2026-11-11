@@ -58,6 +58,28 @@ export function activeLang() {
   return active;
 }
 
+// Translations may emphasise with <strong>…</strong> and break lines with
+// <br>; nothing else in a translation is ever parsed as markup.
+const RICH_TOKEN_RE = /(<strong>|<\/strong>|<br\s*\/?>)/;
+const BREAK_RE = /^<br\s*\/?>$/;
+
+function richText(markup) {
+  const fragment = document.createDocumentFragment();
+  let target = fragment;
+  for (const part of markup.split(RICH_TOKEN_RE)) {
+    if (part === '<strong>') {
+      target = fragment.appendChild(document.createElement('strong'));
+    } else if (part === '</strong>') {
+      target = fragment;
+    } else if (BREAK_RE.test(part)) {
+      target.appendChild(document.createElement('br'));
+    } else if (part) {
+      target.appendChild(document.createTextNode(part));
+    }
+  }
+  return fragment;
+}
+
 // Walks the DOM once at init and replaces text/HTML for any element with
 // a data-i18n attribute. Keeps existing static strings working without
 // touching every render path immediately — Phase AA can grow into the
@@ -69,7 +91,7 @@ function applyDomTranslations() {
   }
   for (const node of document.querySelectorAll('[data-i18n-html]')) {
     const key = node.getAttribute('data-i18n-html');
-    if (key) node.innerHTML = t(key);
+    if (key) node.replaceChildren(richText(t(key)));
   }
   for (const node of document.querySelectorAll('[data-i18n-placeholder]')) {
     const key = node.getAttribute('data-i18n-placeholder');

@@ -69,9 +69,11 @@ describe('renderMessageInline — markdown', () => {
 
 describe('renderMessageInline — URL auto-link', () => {
   it('linkifies http and https URLs', () => {
+    // href is the URL as parsed by new URL(); the visible text stays as typed.
     expect(renderMessageInline('see https://example.com today')).toContain(
-      '<a href="https://example.com" target="_blank" rel="noopener noreferrer">https://example.com</a>',
+      '<a href="https://example.com/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">https://example.com</a>',
     );
+    expect(renderMessageInline('plain http://example.org/x')).toContain('<a href="http://example.org/x"');
   });
 
   it('does NOT linkify javascript: pseudo-URLs', () => {

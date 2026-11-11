@@ -39,15 +39,15 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       (the `cydia` entry) from `apps/mobile/ios/Runner/Info.plist` (lines ~29-32). The README
       already claims it was removed; the plist still has it. Apple rejects jailbreak-probe schemes.
 - [ ] **Add the export-compliance key.** Add to `apps/mobile/ios/Runner/Info.plist`:
-      ```xml
-      <key>ITSAppUsesNonExemptEncryption</key>
-      <true/>
-      ```
-      VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
-      **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
-      the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
-      boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
-      VEIL uses only standard published algorithms, so no CCATS/ERN is required.
+  ```xml
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <true/>
+  ```
+  VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
+  **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
+  the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
+  boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
+  VEIL uses only standard published algorithms, so no CCATS/ERN is required.
 - [x] **Fix the EN subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` now
       uses "Encrypted privacy messenger" (27 chars). KO subtitle is fine.
 - [ ] **(Optional, cosmetic) Align CFBundleURLName.** `Info.plist` `CFBundleURLName` is
@@ -91,12 +91,12 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       stale `iPhone Developer`. Set `DEVELOPMENT_TEAM` to your Team ID; let Xcode manage the identity.
 - [ ] First-build bootstrap on the Mac (the project has never been built — no `Generated.xcconfig`,
       no `Pods/`):
-      ```bash
-      cd apps/mobile
-      flutter pub get
-      cd ios && pod install && cd ..
-      flutter build ios --config-only
-      ```
+  ```bash
+  cd apps/mobile
+  flutter pub get
+  cd ios && pod install && cd ..
+  flutter build ios --config-only
+  ```
 
 ## 4. Create the App Store Connect app record  · owner: human-account
 

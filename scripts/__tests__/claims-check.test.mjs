@@ -98,6 +98,40 @@ test('unledgered claim sentence fails', () => {
   assert.deepEqual(failures, ['README.md: unledgered claim "Your data is never stored anywhere."']);
 });
 
+test('a line that opens with an inline code span does not hide later claims', () => {
+  const markdownLite = [
+    '- Markdown lite: `*bold*`,',
+    '  ```` ```fenced code blocks``` ````, auto-linked URLs',
+    '',
+    'Your data is never stored anywhere.',
+    '',
+  ].join('\n');
+  const failures = checkClaims(tree({ 'README.md': `${README}\n${markdownLite}` }));
+  assert.deepEqual(failures, ['README.md: unledgered claim "Your data is never stored anywhere."']);
+});
+
+test('fenced code is skipped up to a closing fence of its own kind and length', () => {
+  const source = [
+    'Intro.',
+    '````md',
+    '```',
+    'Never stored, inside a longer fence.',
+    '````',
+    '~~~',
+    'Deleted on fetch, inside a tilde fence.',
+    '~~~',
+    'Outro.',
+  ].join('\n');
+  assert.deepEqual(sentencesOf(source, 'README.md'), ['Intro.', 'Outro.']);
+});
+
+test('a fence that never closes hides nothing', () => {
+  assert.deepEqual(sentencesOf('Intro.\n\n```\nNever stored.\n', 'README.md'), [
+    'Intro.',
+    'Never stored.',
+  ]);
+});
+
 test('a quote its source no longer says fails', () => {
   const failures = checkClaims(
     tree({ 'README.md': README.replace('end-to-end encrypted', 'encrypted') }),

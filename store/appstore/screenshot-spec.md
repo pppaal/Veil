@@ -106,8 +106,8 @@ most users see without scrolling.
 | # | Screen | VEIL feature it shows | Caption intent (en) | Caption intent (ko) |
 |---|---|---|---|---|
 | 1 | **Onboarding / sign-up** | No phone number, no email, no real name. Device-bound identity. | "No phone number. No email. No recovery." | "전화번호도, 이메일도, 복구도 없이." |
-| 2 | **Conversation list** | 1:1 and group conversations, presence, unread state. | "Your conversations live only on this device." | "대화는 이 기기에만 존재합니다." |
-| 3 | **Encrypted chat with attachments** | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | "End-to-end encrypted. Servers never see plaintext." | "종단간 암호화. 서버는 평문을 볼 수 없습니다." |
+| 2 | **Conversation list** | 1:1 and group conversations, presence, unread state. | "Only you and the people you talk to can read your chats." | "대화는 나와 대화 상대만 읽을 수 있습니다." |
+| 3 | **Encrypted chat with attachments** | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | "End-to-end encrypted. Servers never see your messages in plaintext." | "종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다." |
 | 4 | **Encrypted device transfer** | Atomic device transfer — old device must be alive; identity moves, never copied to a server. | "Move to a new phone — securely, with no cloud copy." | "클라우드 복사 없이 새 기기로 안전하게 이전." |
 | 5 | **App lock** | Local app lock with PIN and biometrics (Face ID / Touch ID). | "Lock the app with a PIN or biometrics." | "PIN 또는 생체 인증으로 앱을 잠그세요." |
 | 6 | **Settings / privacy posture** | No ads, no tracking, no third-party analytics; theme + language; the "no recovery" safety model. | "No ads. No tracking. By design." | "광고 없음. 추적 없음. 설계 원칙입니다." |

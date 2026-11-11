@@ -12,7 +12,7 @@ claims:
     text: "Message content is end-to-end encrypted on the sending device; the server relays and stores only ciphertext it cannot decrypt."
     sources:
       - file: README.md
-        quote: "Open-source, end-to-end encrypted messenger — no phone number, no account, no plaintext on the server."
+        quote: "Open-source, end-to-end encrypted messenger — no phone number, no account, no plaintext messages on the server."
       - file: README.md
         quote: "License: AGPL v3 End-to-end encrypted Privacy invariants: CI-enforced"
       - file: docs/privacy-policy-en.md
@@ -44,7 +44,7 @@ claims:
       - file: store/appstore/metadata-ko.txt
         quote: "메신저,암호화,프라이버시,E2EE,보안,채팅,익명,PIN,개인정보"
       - file: store/appstore/screenshot-spec.md
-        quote: "3 | Encrypted chat with attachments | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | \"End-to-end encrypted. Servers never see plaintext.\" | \"종단간 암호화. 서버는 평문을 볼 수 없습니다.\""
+        quote: "3 | Encrypted chat with attachments | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | \"End-to-end encrypted. Servers never see your messages in plaintext.\" | \"종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다.\""
       - file: store/appstore/submission-checklist.md
         quote: "VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is YES/true."
       - file: store/play/full-en.txt
@@ -69,12 +69,14 @@ claims:
       - test: apps/api/src/modules/messages/messages.service.spec.ts
         name: "reaction envelope accepted and no push sent"
   - id: no-plaintext-on-server
-    text: "The server stores no plaintext user content: messages, reactions and stories are ciphertext, and display names, profile text, contact names and report notes are not stored. The only plaintext-named fields left are the allowlisted group and channel metadata and the device label."
+    text: "The server stores no plaintext message content: messages, reactions and stories are ciphertext, and display names, profile text, contact names and report notes are not stored. Group and channel names and descriptions and device labels are still stored in readable form; the schema privacy gate allowlists exactly these, and the privacy policy lists them."
     sources:
       - file: README.md
-        quote: "Open-source, end-to-end encrypted messenger — no phone number, no account, no plaintext on the server."
+        quote: "Open-source, end-to-end encrypted messenger — no phone number, no account, no plaintext messages on the server."
       - file: README.md
-        quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext on the server."
+        quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext messages on the server."
+      - file: README.md
+        quote: "This keeps the privacy invariants — no plaintext messages on the server, no recovery path, no admin override — from being silently stripped out of a hosted fork."
       - file: docs/privacy-policy-en.md
         quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
       - file: docs/privacy-policy-ko.md
@@ -123,13 +125,17 @@ claims:
       - file: README.md
         quote: "No recovery."
       - file: README.md
-        quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext on the server."
+        quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext messages on the server."
       - file: README.md
         quote: "The \"no recovery\" rule is not just documentation — it is encoded in scripts/policy-check.mjs as a CI gate that fails the build on any commit that introduces a recovery flow or table, an admin message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc console logging in mobile."
       - file: README.md
         quote: "No cloud backup exists"
       - file: README.md
         quote: "No account recovery, password reset, or admin override"
+      - file: README.md
+        quote: "No Recovery rationale"
+      - file: README.md
+        quote: "This keeps the privacy invariants — no plaintext messages on the server, no recovery path, no admin override — from being silently stripped out of a hosted fork."
       - file: docs/privacy-policy-en.md
         quote: "VEIL has no account recovery path by design."
       - file: docs/privacy-policy-ko.md
@@ -233,11 +239,20 @@ claims:
         quote: "Veil implements its own end-to-end encryption (a Double Ratchet over X25519, AES-256-GCM, Ed25519, and HKDF-SHA256)."
     evidence:
       - gate: scripts/crypto-test-vectors.mjs
+  - id: forward-secrecy-ratchet
+    text: "One-to-one sessions in the mobile app use a Double Ratchet: each message has its own key from a one-way KDF chain and the DH ratchet steps on every turn, so the session keys a device holds today cannot decrypt messages it already received. CI pins the ratchet's key schedule with known-answer vectors."
+    sources:
+      - file: README.md
+        quote: "Forward Secrecy Ratchet Design — implemented mobile ratchet"
+    evidence:
+      - gate: scripts/crypto-test-vectors.mjs
   - id: sealed-sender-not-implemented
     text: "Sealed sender is not implemented, and its current design is under revision because it would not hide the sender: the server authenticates the sending device of every message."
     sources:
       - file: README.md
         quote: "Sealed sender is under revision: the current design in docs/sealed-sender-design.md does not hide the sender from the server."
+      - file: README.md
+        quote: "Sealed Sender Design — under revision: the current design does not hide the sender"
       - file: docs/security-hardening-roadmap.md
         quote: "Sealed sender (metadata) | 📝 under revision | sealed-sender-design.md: the current design does not hide the sender"
       - file: docs/security-hardening-roadmap.md

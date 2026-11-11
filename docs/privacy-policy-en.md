@@ -13,6 +13,7 @@ The service collects only:
 - A user-chosen handle.
 - End-to-end encrypted message payloads that the server cannot decrypt.
 - The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
+- Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.
 
 Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form. Every field the server stores, how long it is kept and who can see it is listed in [What a seized VEIL server reveals](server-data-inventory.md), which is generated from the database schema and checked on every change.
 

@@ -73,6 +73,7 @@
       <li>이용자가 선택한 핸들(Handle)</li>
       <li>종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)</li>
       <li>전달에 필요한 메타데이터(대화 참여자, 메시지 도착 시각, 수신·읽음 확인, 기기의 마지막 접속일)</li>
+      <li>그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)</li>
     </ul>
     <p>표시 이름, 프로필 문구, 반응, 스토리 내용, 이용자가 연락처에 붙인 이름은 서버에 읽을 수 있는 형태로 저장되지 않습니다. 서버가 저장하는 모든 항목과 보관 기간, 열람 범위는 데이터베이스 스키마에서 자동 생성되어 변경 때마다 검사되는 <a href="https://github.com/pppaal/Veil/blob/main/docs/server-data-inventory.md">서버 데이터 목록</a>에 공개되어 있습니다.</p>
     <p>다음 항목은 <strong>수집하지 않습니다</strong>.</p>
@@ -151,6 +152,7 @@
       <li>A user-chosen handle.</li>
       <li>End-to-end encrypted message payloads that the server cannot decrypt.</li>
       <li>The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).</li>
+      <li>Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.</li>
     </ul>
     <p>Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form. Every field the server stores, how long it is kept and who can see it is listed in <a href="https://github.com/pppaal/Veil/blob/main/docs/server-data-inventory.md">What a seized VEIL server reveals</a>, which is generated from the database schema and checked on every change.</p>
     <p>The service does <strong>not</strong> collect:</p>

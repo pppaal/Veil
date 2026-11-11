@@ -203,6 +203,45 @@ const STARTS_UNIT = /^\s*(?:[-*•>]\s|#+\s|\d+\.\s)/;
 const SECTION_HEADER = /^\s*(?:■.*|\[[^\]]*\])\s*$/;
 const TABLE_ROW = /^\s*\|/;
 
+// CommonMark code fences: at most three spaces of indent, then a run of three
+// or more backticks or tildes. A backtick fence's info string cannot contain
+// a backtick, which is what tells a fence from a line that merely opens with
+// an inline code span such as `` ```code``` ``. A fence indented further, as
+// in a nested list item, is not recognised, so its lines are scanned: the
+// check errs towards reading too much, never too little.
+const FENCE_OPENING = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FENCE_CLOSING = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+
+/**
+ * Indices of the lines that are fenced code, delimiters included. A fence
+ * closes only on a run of its own character at least as long as the run that
+ * opened it. A fence that never closes hides nothing: CommonMark would render
+ * the rest of the file as code, but skipping it would let one stray fence take
+ * every later sentence out of the claims check.
+ */
+function fencedLineIndices(lines) {
+  const fenced = new Set();
+  let opening = null;
+  lines.forEach((line, index) => {
+    if (opening === null) {
+      const match = FENCE_OPENING.exec(line);
+      const [run, info] = match ? [match[1], match[2]] : [];
+      if (match && !(run.startsWith('`') && info.includes('`'))) {
+        opening = { index, char: run[0], length: run.length };
+      }
+      return;
+    }
+    const closing = FENCE_CLOSING.exec(line);
+    if (closing && closing[1][0] === opening.char && closing[1].length >= opening.length) {
+      for (let fencedIndex = opening.index; fencedIndex <= index; fencedIndex += 1) {
+        fenced.add(fencedIndex);
+      }
+      opening = null;
+    }
+  });
+  return fenced;
+}
+
 /**
  * Claim-sized units of a source: paragraphs and list items split into
  * sentences, table rows kept whole (a row states one capability), fenced
@@ -210,21 +249,18 @@ const TABLE_ROW = /^\s*\|/;
  */
 export function sentencesOf(source, path) {
   const text = path.endsWith('.html') ? htmlToText(source) : source;
+  const lines = text.split('\n');
+  const fenced = fencedLineIndices(lines);
   const units = [];
   let current = [];
-  let inFence = false;
   const flush = () => {
     if (current.length > 0) units.push({ text: current.join(' '), split: true });
     current = [];
   };
-  for (const line of text.split('\n')) {
-    if (/^\s*```/.test(line)) {
+  for (const [index, line] of lines.entries()) {
+    if (fenced.has(index)) {
       flush();
-      inFence = !inFence;
-      continue;
-    }
-    if (inFence) continue;
-    if (line.trim() === '') {
+    } else if (line.trim() === '') {
       flush();
     } else if (TABLE_ROW.test(line)) {
       flush();

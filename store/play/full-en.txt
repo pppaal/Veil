@@ -5,12 +5,12 @@ single handle — anonymous, encrypted, and ad-free.
 
 ■ Why VEIL
 • Sign up with no phone number, no email, no real name — an anonymous secure messenger.
-• Every message is end-to-end encrypted on-device. Servers never see plaintext.
+• Every message is end-to-end encrypted on-device. Servers never see your messages in plaintext.
 • No ads, no tracking, no third-party analytics.
 
 ■ Core principles
 • No phone number. No email. No real name required.
-• Every message is end-to-end encrypted on-device. Servers never see plaintext.
+• Every message is end-to-end encrypted on-device. Servers never see your messages in plaintext.
 • No recovery path. If you lose the device, the conversations go with it. This is the VEIL safety model.
 
 ■ Cryptography (real encrypted chat)

@@ -2,6 +2,8 @@
 // enforced on the directory path, on inbound handshakes and on every frame
 // sealed or opened alike.
 
+import { randomUUID } from 'node:crypto';
+
 import { describe, expect, it } from 'vitest';
 
 import { encodeBase64Url } from '../src/core/base64url.js';
@@ -374,8 +376,9 @@ describe('identity pins', () => {
       { senderDeviceId: 'd-mallory' },
       { messageType: 'image' },
     ];
-    for (const [index, overrides] of attempts.entries()) {
-      const tampered = { ...message, id: `forged-${index}`, ...overrides };
+    for (const overrides of attempts) {
+      // Each under an id of its own, so each reaches the session.
+      const tampered = { ...message, id: randomUUID(), ...overrides };
       expect((await alice.secure.open(tampered)).failure).toBeDefined();
     }
     expect(alice.lookups).toBe(0);

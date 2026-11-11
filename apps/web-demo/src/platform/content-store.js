@@ -9,6 +9,11 @@
 // another id does not open. Deleting a conversation's key crypto-shreds all
 // of its records at once, whatever copies of the rows survive.
 //
+// A sealed value names its author (value.author, a device id). The relay
+// picks the ids content is filed under, so a row that holds one author's
+// content is never rewritten with another's: an id it reuses for someone
+// else's frame cannot replace, nor take over, what was kept under it.
+//
 // A message that was deleted or has expired is retired: its sealed content
 // is overwritten by a marker that only says so. Its message key is spent,
 // so a relay that serves it again gets it hidden rather than shown as a
@@ -52,11 +57,15 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
   }
 
   // A record's expiry only ever comes earlier: rewriting it (an edit, a
-  // move) keeps the one it had.
+  // move) keeps the one it had. Resolves to false, writing nothing, when the
+  // row holds content another author wrote; a retired row is not written
+  // either, but nothing of that message is meant to be kept.
   function put(conversationId, id, value, { expiresAt = null } = {}) {
     return withRow(conversationId, id, async () => {
       const existing = await records.get(rowKey(conversationId, id));
-      if (existing?.retired) return;
+      if (existing?.retired) return true;
+      const prior = existing ? await unseal(conversationId, id, existing) : null;
+      if (prior && prior.author !== value.author) return false;
       const key = await keyFor(conversationId);
       const nonce = random(GCM_NONCE_BYTES);
       const plain = utf8(JSON.stringify(value));
@@ -70,6 +79,7 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
         nonce,
         sealed,
       });
+      return true;
     });
   }
 
@@ -121,7 +131,8 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
       } else {
         const value = await unseal(conversationId, fromId, row);
         if (value === null) return;
-        await put(conversationId, toId, value, { expiresAt: earlierExpiry(row.expiresAt, expiresAt) });
+        // Another author's content under toId stays, and ours stays where it is.
+        if (!(await put(conversationId, toId, value, { expiresAt: earlierExpiry(row.expiresAt, expiresAt) }))) return;
       }
       await records.delete(row.key);
     },

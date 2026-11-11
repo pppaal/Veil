@@ -47,8 +47,16 @@ export class PeerUnavailableError extends Error {
 // Our own sends are stored under their client id until the server names them.
 const clientKey = (clientMessageId) => `client:${clientMessageId}`;
 // The content-store record marking how much of a conversation's history this
-// device deleted; message ids are UUIDs, so it cannot collide with one.
+// device deleted.
 const HISTORY_CLEARED = 'history-cleared';
+// Message ids are UUIDs (the server's Message.id). An envelope with any other
+// id is not opened or retired, so the relay cannot name either local key
+// above as a message of its own.
+const SERVER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isServerId = (id) => typeof id === 'string' && SERVER_ID.test(id);
+
+// The store already holds another author's content under this message id.
+class AuthorConflictError extends Error {}
 
 // lookupPeer(peer) -> { deviceId, identityKey, signedPrekeyBundle, oneTimePrekey }
 // from GET /v1/keys/:handle?claim=active, or a BundleError when the claimed
@@ -116,13 +124,18 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
   // Keeps freshly decrypted content, unless it has already expired: then
   // nothing of it is written, though its message key is spent all the same.
+  // Its author is the senderDeviceId the frame's AAD bound and the AEAD just
+  // verified. Under an id that holds another author's content it throws, so
+  // the session does not commit: the frame's key stays unspent and it still
+  // opens under its own id.
   async function keep(raw, content) {
     const expiresAt = effectiveExpiry(content.expiresAt, raw.expiresAt);
     if (isPast(expiresAt, clock())) {
       await contentStore.retire(raw.conversationId, raw.id);
       return { failure: 'retired' };
     }
-    await contentStore.put(raw.conversationId, raw.id, { content, nonce: raw.nonce }, { expiresAt });
+    const value = { content, nonce: raw.nonce, author: raw.senderDeviceId };
+    if (!(await contentStore.put(raw.conversationId, raw.id, value, { expiresAt }))) throw new AuthorConflictError();
     return { content };
   }
 
@@ -142,11 +155,12 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
       },
     });
     if (result.status === DecryptStatus.OK) return kept;
-    // Another tab may have decrypted it first.
+    // Another tab may have decrypted it first: then what it kept is this
+    // very frame's content.
     if (result.status === DecryptStatus.REPLAYED) {
       const stored = await contentStore.get(raw.conversationId, raw.id);
       if (stored?.retired) return { failure: 'retired' };
-      if (stored) return { content: stored.content };
+      if (stored?.author === raw.senderDeviceId && stored.nonce === raw.nonce) return { content: stored.content };
     }
     return { failure: result.status };
   }
@@ -159,7 +173,7 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     // unreadable to us.
     async seal(conversationId, content, { clientMessageId }) {
       const peer = await prepare(conversationId);
-      await contentStore.put(conversationId, clientKey(clientMessageId), { content, nonce: null });
+      await contentStore.put(conversationId, clientKey(clientMessageId), { content, nonce: null, author: getSelf().deviceId });
       try {
         return await encrypt(conversationId, peer, content);
       } catch (error) {
@@ -175,7 +189,7 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     },
 
     rememberEdit: (conversationId, messageId, content, nonce) =>
-      contentStore.put(conversationId, messageId, { content, nonce }),
+      contentStore.put(conversationId, messageId, { content, nonce, author: getSelf().deviceId }),
 
     // Files our own content under the id the server gave the message, with
     // the expiry the relay set on it: the record must expire with it even if
@@ -190,8 +204,12 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     // { content } or { failure }: 'retired' for a message deleted or
     // expired, 'cleared' for history this device deleted, or why it is
     // locked. Our own protocol-v2 messages cannot be decrypted (their keys
-    // were single-use), so they come only from the store.
+    // were single-use), so they come only from the store. A stored record is
+    // returned only for the author it names: the relay labels each envelope
+    // with a sender, and must not be able to show one party's words as the
+    // other's.
     async open(raw) {
+      if (!isServerId(raw.id)) return { failure: 'failed' };
       const cleared = await contentStore.get(raw.conversationId, HISTORY_CLEARED);
       if (cleared && raw.conversationOrder <= cleared.throughOrder) return { failure: 'cleared' };
       const own = isOwn(raw);
@@ -203,7 +221,9 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
         stored = await contentStore.get(raw.conversationId, raw.id);
       }
       if (stored?.retired) return { failure: 'retired' };
-      if (own) return stored ? { content: stored.content } : { failure: 'own-missing' };
+      if (own) return stored?.author === raw.senderDeviceId ? { content: stored.content } : { failure: 'own-missing' };
+      // Not decrypted here either: the frame still opens under its own id.
+      if (stored && stored.author !== raw.senderDeviceId) return { failure: 'failed' };
       if (stored?.nonce === raw.nonce) return { content: stored.content };
       const opened = await decryptOnce(raw);
       // An edit that does not open keeps the last content that did; one that
@@ -214,7 +234,7 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
     // For good: a ciphertext of it the relay serves again stays hidden.
     async retire(raw) {
-      await contentStore.retire(raw.conversationId, raw.id);
+      if (isServerId(raw.id)) await contentStore.retire(raw.conversationId, raw.id);
       if (isOwn(raw) && raw.clientMessageId) await contentStore.delete(raw.conversationId, clientKey(raw.clientMessageId));
     },
 

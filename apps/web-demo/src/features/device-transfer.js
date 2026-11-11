@@ -1,5 +1,7 @@
-// Old-device side of a device transfer: poll the transfer session, surface
-// the new device's claim for approval, and work out how the transfer ended.
+// Device transfer. The old device's side, watchOldDeviceTransfer: poll the
+// transfer session, surface the new device's claim for approval, and work out
+// how the transfer ended. The new device's side ends in
+// storeTransferredIdentity, below.
 //
 // `outcome` resolves to one of
 //   'completed'      the handle now lives on the new device; this copy of the
@@ -127,4 +129,33 @@ export function watchOldDeviceTransfer({
       settle('cancelled');
     },
   };
+}
+
+// New device: store the identity a completed transfer activated. By the time
+// /device-transfer/complete answers, the server has activated these keys and
+// revoked the old device, which then destroys its own copy, so until they are
+// saved the keys in memory here are the identity's only copy. They are saved
+// first, before anything that can fail or wait, and clearing what a replaced
+// identity left in this browser runs after as best effort: its failure is
+// returned for the caller to report, never allowed to cost the new identity.
+// A failed save throws with nothing else touched, so the caller keeps the
+// keys and can call this again.
+export async function storeTransferredIdentity({ completion, keys, sessionStore, clearReplacedIdentity = null }) {
+  // The private keys are non-extractable CryptoKeys, stored by structured
+  // clone. /complete does not name the user; every login records it
+  // (session-store saveTokens).
+  await sessionStore.save({
+    handle: completion.handle,
+    userId: null,
+    deviceId: completion.newDeviceId,
+    ...keys,
+    accessToken: null,
+    refreshToken: null,
+  });
+  try {
+    await clearReplacedIdentity?.();
+    return { cleanupError: null };
+  } catch (cleanupError) {
+    return { cleanupError };
+  }
 }

@@ -23,26 +23,49 @@ export async function wipeEverything({
   onBlocked,
   databaseName = IDB_NAME,
 }) {
-  const failures = [];
-  const attempt = async (step) => {
-    try {
-      await step();
-    } catch (error) {
-      failures.push(error);
-    }
-  };
+  const { attempt, finish } = collectFailures();
   await attempt(async () => closeDatabase?.());
   // Started first and awaited last, so a blocked delete does not hold up the
   // other steps.
   const databaseDeleted = attempt(() => deleteDatabase(indexedDB, databaseName, onBlocked));
+  await clearBrowserStorage(attempt, { localStorage, sessionStorage, caches });
+  await databaseDeleted;
+  finish();
+}
+
+// The same wipe without deleting the database, for an identity replaced in
+// place: clearDatabase empties it but for the record that replaced the old
+// one, which the caller has already written.
+export async function wipeInPlace({ clearDatabase, localStorage, sessionStorage, caches }) {
+  const { attempt, finish } = collectFailures();
+  await attempt(clearDatabase);
+  await clearBrowserStorage(attempt, { localStorage, sessionStorage, caches });
+  finish();
+}
+
+function collectFailures() {
+  const failures = [];
+  return {
+    async attempt(step) {
+      try {
+        await step();
+      } catch (error) {
+        failures.push(error);
+      }
+    },
+    finish() {
+      if (failures.length > 0) throw new AggregateError(failures, 'wipe incomplete');
+    },
+  };
+}
+
+async function clearBrowserStorage(attempt, { localStorage, sessionStorage, caches }) {
   await attempt(() => removePrefixedKeys(localStorage));
   await attempt(() => removePrefixedKeys(sessionStorage));
   await attempt(async () => {
     if (!caches) return;
     for (const name of await caches.keys()) await caches.delete(name);
   });
-  await databaseDeleted;
-  if (failures.length > 0) throw new AggregateError(failures, 'wipe incomplete');
 }
 
 function deleteDatabase(factory, name, onBlocked) {

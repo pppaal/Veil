@@ -7,9 +7,12 @@
 //
 //   blob     = "v2." + b64u(salt16) + "." + b64u(iv12) + "." + b64u(AES-256-GCM ciphertext)
 //   fragment = <id> "." ("k2" | "p2") "." b64u(fragmentKey32)       p2 = passphrase required
-//   key      = HKDF-SHA256(ikm = fragmentKey || PBKDF2-SHA256(passphrase, salt, 600000, 32 bytes),
+//   key      = HKDF-SHA256(ikm = fragmentKey || PBKDF2-SHA256(NFC(passphrase), salt, 600000, 32 bytes),
 //                          salt, info = "veil-secret-v2")
-// Without a passphrase the ikm is the fragment key alone.
+// Without a passphrase the ikm is the fragment key alone. The passphrase is
+// sealed in Unicode NFC, so it opens however the reader's keyboard composes
+// the same characters. Links sealed before that used it as typed, as v1 does,
+// so opening falls back to the passphrase as typed when NFC changes it.
 //
 // v1 is read-only. The mobile app still seals it (one_time_link.dart), and
 // opening its links exposes nothing new: a key-mode link already carries a
@@ -44,7 +47,7 @@ export async function sealSecret(crypto, plaintext, passphrase = '') {
   const fragmentKey = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-  const key = await deriveSecretKey(crypto.subtle, fragmentKey, salt, passphrase);
+  const key = await deriveSecretKey(crypto.subtle, fragmentKey, salt, passphrase.normalize('NFC'));
   const sealed = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext));
   const mode = passphrase ? 'p2' : 'k2';
   return {
@@ -57,9 +60,16 @@ export async function sealSecret(crypto, plaintext, passphrase = '') {
 export async function openSecret(crypto, blob, link, passphrase = '') {
   const [version, ...fields] = String(blob).split('.');
   if (version !== link.version) throw unsupportedFormat();
-  const opened = version === SEALED_VERSION
-    ? await openVersion2(crypto.subtle, fields, link.fragmentKey, passphrase)
-    : await openLegacyVersion1(crypto.subtle, fields, link.fragmentKey, passphrase);
+  const open = version === SEALED_VERSION ? openVersion2 : openLegacyVersion1;
+  const attempt = (candidate) => open(crypto.subtle, fields, link.fragmentKey, candidate);
+  const normalized = passphrase.normalize('NFC');
+  let opened;
+  try {
+    opened = await attempt(normalized);
+  } catch (error) {
+    if (normalized === passphrase) throw error;
+    opened = await attempt(passphrase);
+  }
   return new TextDecoder().decode(opened);
 }
 

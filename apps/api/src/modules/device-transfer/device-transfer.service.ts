@@ -61,11 +61,14 @@ const claimKey = (sessionId: string): string => `transfer:claim:${sessionId}`;
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
-// A session killed by a competing claim keeps this in place of its token
-// hash: the token can never match again, and the state stays durable (unlike
-// an ephemeral marker) so the old device is never told 'completed' — which
-// would make it log itself out — for a transfer that did not happen.
+// A session that ends without a transfer keeps one of these in place of its
+// token hash: the token can never match again, and the state stays durable
+// (unlike an ephemeral marker) so the old device is never told 'completed' —
+// which makes it log itself out — for a transfer that did not happen.
+// Killed by a competing claim:
 const INVALIDATED_TOKEN_HASH = 'invalidated';
+// Closed after it expired, or superseded by a newer transfer:
+const CLOSED_TOKEN_HASH = 'closed';
 
 @Injectable()
 export class DeviceTransferService {
@@ -284,16 +287,20 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
-    // A claim racing the invalidation can be rewritten after it, so an
-    // invalidated session never shows one.
+    // A claim racing the invalidation can be rewritten after it, so a session
+    // that ended without a transfer never shows one.
     const invalidated = session.tokenHash === INVALIDATED_TOKEN_HASH;
-    const pendingClaim = invalidated
-      ? null
-      : await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(args.sessionId));
+    const closed = session.tokenHash === CLOSED_TOKEN_HASH;
+    const pendingClaim =
+      invalidated || closed
+        ? null
+        : await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(args.sessionId));
 
     let status: TransferSessionStatus;
     if (invalidated) {
       status = 'invalidated';
+    } else if (closed) {
+      status = 'expired';
     } else if (session.completedAt) {
       status = 'completed';
     } else if (session.expiresAt.getTime() <= Date.now()) {
@@ -310,7 +317,8 @@ export class DeviceTransferService {
       sessionId: session.id,
       status,
       expiresAt: session.expiresAt.toISOString(),
-      completedAt: session.completedAt && !invalidated ? session.completedAt.toISOString() : null,
+      completedAt:
+        session.completedAt && status === 'completed' ? session.completedAt.toISOString() : null,
       pendingClaim: pendingClaim
         ? {
             claimId: pendingClaim.claimId,
@@ -512,6 +520,7 @@ export class DeviceTransferService {
           completedAt: null,
         },
         data: {
+          tokenHash: CLOSED_TOKEN_HASH,
           completedAt: new Date(),
         },
       });
@@ -548,8 +557,10 @@ export class DeviceTransferService {
         id: {
           in: expired.map((session) => session.id),
         },
+        completedAt: null,
       },
       data: {
+        tokenHash: CLOSED_TOKEN_HASH,
         completedAt: now,
       },
     });
@@ -570,9 +581,9 @@ export class DeviceTransferService {
     }
 
     await this.ephemeralStore.delete(claimKey(sessionId));
-    await this.prisma.deviceTransferSession.update({
-      where: { id: sessionId },
-      data: { completedAt: new Date() },
+    await this.prisma.deviceTransferSession.updateMany({
+      where: { id: sessionId, completedAt: null },
+      data: { tokenHash: CLOSED_TOKEN_HASH, completedAt: new Date() },
     });
     return true;
   }

@@ -37,6 +37,19 @@ Invalidation is durable: the session's token hash is replaced by a marker that
 can never match a token, and the session is closed. It does not depend on the
 ephemeral store keeping a flag alive.
 
+## Ending without a transfer
+
+The old device logs itself out when status reports `completed`, so only a
+transfer that actually happened may report it. A session that ends any other
+way keeps a marker in place of its token hash and reports:
+
+| How the session ended | Status |
+| --- | --- |
+| A second valid claim | `invalidated` |
+| It expired (including when a late claim, approve or complete closes it) | `expired` |
+| The old device started a newer transfer | `expired` |
+| `complete` succeeded | `completed` |
+
 ## Claimant fingerprint
 
 `claimantFingerprint` is the full SHA-256, in lowercase hex, of the new

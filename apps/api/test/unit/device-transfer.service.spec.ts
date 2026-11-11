@@ -321,7 +321,9 @@ describe('DeviceTransferService first-claim-wins', () => {
     const approve = (claimId: string) =>
       service.approve(oldDevice, { sessionId: init.sessionId, claimId });
 
-    return { prisma, store, init, claimant, status, approve };
+    const restart = () => service.init(oldDevice, { oldDeviceId: 'device-old' });
+
+    return { prisma, store, init, claimant, status, approve, restart };
   }
 
   const codeOf = async (promise: Promise<unknown>) =>
@@ -388,6 +390,29 @@ describe('DeviceTransferService first-claim-wins', () => {
     expect(claimantFingerprint).toMatch(/^([0-9a-f]{4} ){15}[0-9a-f]{4}$/);
     expect(claimantFingerprint.replace(/ /g, '')).toBe(expected);
     expect((await status()).pendingClaim?.claimantFingerprint).toBe(claimantFingerprint);
+  });
+
+  it('a claim arriving after expiry leaves the old device seeing expired, not completed', async () => {
+    const { prisma, init, claimant, status } = await startTransfer();
+    prisma.transferSessions.find((item) => item.id === init.sessionId)!.expiresAt = new Date(
+      Date.now() - 1000,
+    );
+
+    expect(await codeOf(claimant().claim())).toBe('transfer_session_inactive');
+    expect(await status()).toMatchObject({ status: 'expired', completedAt: null });
+  });
+
+  it('a session superseded by a new transfer reports expired, not completed', async () => {
+    const { claimant, status, restart } = await startTransfer();
+    await claimant().claim();
+
+    await restart();
+
+    expect(await status()).toMatchObject({
+      status: 'expired',
+      completedAt: null,
+      pendingClaim: null,
+    });
   });
 
   it('a completed transfer keeps reporting completed after a late claim', async () => {

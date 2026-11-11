@@ -328,8 +328,10 @@ class SecureStorageService {
         return result;
       });
 
-  /// Writes are dropped when the stored snapshot already has a higher
-  /// `rev`, so an older ratchet state can never overwrite a newer one.
+  /// Refuses (throws [StateError]) when the stored snapshot already has a
+  /// higher `rev`, so an older ratchet state can never overwrite a newer
+  /// one. The refusal is loud because the caller treats completion as
+  /// durability and would otherwise publish state that is not on disk.
   Future<void> writeSessionSnapshot(
     String conversationId,
     Map<String, dynamic> snapshot,
@@ -338,7 +340,9 @@ class SecureStorageService {
         await _migrateLegacySessionsOnce();
         final incomingRev = (snapshot['rev'] as num?)?.toInt();
         final storedRev = await _storedSessionRev(conversationId);
-        if (incomingRev != null && storedRev != null && incomingRev < storedRev) return;
+        if (incomingRev != null && storedRev != null && incomingRev < storedRev) {
+          throw StateError('Session snapshot rev $incomingRev is older than the stored rev $storedRev.');
+        }
         final index = await _readSessionIndex();
         if (!index.contains(conversationId)) {
           await _writeSessionIndex([...index, conversationId]);

@@ -1,16 +1,17 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import '../bytes.dart';
-import '../x3dh/x3dh_handshake.dart';
-import 'aead.dart';
-
 /// Protocol v2 wire frame (docs/crypto-envelope-spec.md §v2):
 ///
 ///   0x02 || type || [PreKey header (168)] || ratchetPub(32) || u32 PN
 ///        || u32 N || ciphertext || tag(16)
 ///
 /// type 0x01 = PreKey (initiator not yet acknowledged), 0x02 = Normal.
+library;
+
+import 'dart:convert';
+import 'dart:typed_data';
+
+import '../bytes.dart';
+import '../x3dh/x3dh_handshake.dart';
+import 'aead.dart';
 
 const String envelopeVersionV2 = 'veil-envelope-v2';
 const String frameAadLabelV4 = 'veil-frame-aad-v4';

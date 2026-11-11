@@ -1,12 +1,13 @@
-import '../bytes.dart';
-import 'ratchet_state.dart';
-
 /// All ratchet states for one conversation: the state we send on plus
 /// archived states that may still receive in-flight messages (re-bootstrap,
 /// glare, a peer that re-initiated).
 ///
 /// Persisted as snapshot schema v4: `{v: 4, rev, current, archived[]}`.
 /// `rev` only grows, so storage can refuse a write that lost a race.
+library;
+
+import '../bytes.dart';
+import 'ratchet_state.dart';
 
 const int sessionSnapshotSchemaVersion = 4;
 const int maxArchivedStates = 5;

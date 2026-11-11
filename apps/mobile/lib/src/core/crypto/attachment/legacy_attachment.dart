@@ -1,3 +1,13 @@
+/// Decrypts references produced before the attachment-pointer model, whose
+/// content key was wrapped to the recipient's static X25519 identity key.
+/// Kept read-only so attachments already received stay openable; nothing
+/// produces this format any more.
+///
+///   encryptedKey = ephPub(32) || wrapCiphertext || wrapTag(16)
+///   nonce        = b64u(contentNonce) "." b64u(wrapNonce)
+///   wrapKey      = HKDF(X25519(identity, ephPub), salt ephPub, "veil-attachment-wrap-v1")
+library;
+
 import 'dart:convert';
 
 import 'package:cryptography/cryptography.dart';
@@ -8,15 +18,6 @@ import '../ratchet/aead.dart';
 import '../ratchet/kdf.dart';
 import '../x3dh/curve25519.dart';
 import '../x3dh/identity_keys.dart';
-
-/// Decrypts references produced before the attachment-pointer model, whose
-/// content key was wrapped to the recipient's static X25519 identity key.
-/// Kept read-only so attachments already received stay openable; nothing
-/// produces this format any more.
-///
-///   encryptedKey = ephPub(32) || wrapCiphertext || wrapTag(16)
-///   nonce        = b64u(contentNonce) "." b64u(wrapNonce)
-///   wrapKey      = HKDF(X25519(identity, ephPub), salt ephPub, "veil-attachment-wrap-v1")
 
 final Sha256 _sha256 = Sha256();
 

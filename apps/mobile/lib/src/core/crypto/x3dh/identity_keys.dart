@@ -1,15 +1,16 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import '../bytes.dart';
-import 'curve25519.dart';
-
 /// Identity private refs and published prekey bundles (contract C1).
 ///
 /// Every peer holds an Ed25519 identity key (IK) and an X25519 identity key
 /// (IKx) certified by IK, plus a rotating signed prekey (SPK). Bundles are
 /// base64url(compact UTF-8 JSON) with a fixed key order so independent
 /// implementations produce identical strings.
+library;
+
+import 'dart:convert';
+import 'dart:typed_data';
+
+import '../bytes.dart';
+import 'curve25519.dart';
 
 const String ikxSignatureLabel = 'veil-ikx-v2';
 const String spkSignatureLabel = 'veil-spk-v2';

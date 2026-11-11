@@ -1,3 +1,8 @@
+/// Double Ratchet send and receive steps (Signal spec §3.4–3.5) over a
+/// scratch [RatchetState]. Nothing here commits: callers apply these to a
+/// copy and keep it only after the AEAD verifies.
+library;
+
 import 'dart:typed_data';
 
 import '../bytes.dart';
@@ -5,10 +10,6 @@ import '../random_source.dart';
 import '../x3dh/curve25519.dart';
 import 'kdf.dart';
 import 'ratchet_state.dart';
-
-/// Double Ratchet send and receive steps (Signal spec §3.4–3.5) over a
-/// scratch [RatchetState]. Nothing here commits: callers apply these to a
-/// copy and keep it only after the AEAD verifies.
 
 // Most keys one received frame may force us to derive and stash. Bounds the
 // HKDF work and memory a hostile header can demand.

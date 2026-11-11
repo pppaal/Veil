@@ -4,8 +4,9 @@ import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 
 import 'support/crypto_harness.dart';
 
-// Session records keep superseded states for in-flight messages, and glare
-// (both peers initiating at once) converges on one sending state.
+// Session records keep superseded states for in-flight messages, glare
+// (both peers initiating at once) converges on one sending state, and an
+// established conversation stays bound to its peer's identity.
 void main() {
   const conversationId = 'conv-glare';
 
@@ -78,5 +79,53 @@ void main() {
     final reply = await send(bob, alice, 'reply on new session', conversationId: conversationId);
     expect(await body(alice, reply), 'reply on new session');
     expect(frameOf(await send(alice, bob, 'settled', conversationId: conversationId)).preKey, isNull);
+  });
+
+  test('a PreKey frame from another identity cannot take over an established conversation', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    final mallory = await createParty('mallory');
+    final bobSnapshots = SnapshotRecorder();
+    bob.adapter.setSessionPersistence(persister: bobSnapshots.call);
+    final prekey = (await bob.adapter.generateOneTimePrekeys(count: 1)).single;
+    await bootstrap(alice, bob, conversationId: conversationId);
+    expect(await body(bob, await send(alice, bob, 'a0', conversationId: conversationId)), 'a0');
+    expect(await body(alice, await send(bob, alice, 'b0', conversationId: conversationId)), 'b0');
+    final committed = bobSnapshots.latest[conversationId];
+    final writes = bobSnapshots.writes.length;
+
+    // No verifier is configured. A hostile server routes Mallory, who holds
+    // a genuine identity of her own, into the conversation.
+    await bootstrap(mallory, bob, conversationId: conversationId, oneTimePrekey: prekey);
+    final injected = await receive(bob, await send(mallory, bob, 'hi', conversationId: conversationId));
+    expect(injected.status, DecryptStatus.identityRejected);
+    expect(injected.body, isNot('hi'));
+    expect(bobSnapshots.writes, hasLength(writes));
+    expect(bobSnapshots.latest[conversationId], committed);
+
+    final reply = await send(bob, alice, 'secret for alice', conversationId: conversationId);
+    expect(await body(alice, reply), 'secret for alice');
+    expect((await receive(mallory, reply)).isOk, isFalse);
+
+    // The rejected frame consumed nothing: its one-time prekey still opens
+    // an unrelated conversation.
+    final carol = await createParty('carol');
+    await bootstrap(carol, bob, conversationId: 'conv-carol', oneTimePrekey: prekey);
+    expect(await body(bob, await send(carol, bob, 'hi bob', conversationId: 'conv-carol')), 'hi bob');
+  });
+
+  test('legacy states pin no identity: a v2 handshake upgrades a v1 conversation', () async {
+    final alice = await createParty('alice');
+    final bob = await createLegacyParty('bob');
+    await bootstrap(alice, bob, conversationId: conversationId);
+    final first = await send(alice, bob, 'over v1', conversationId: conversationId);
+    await acceptLegacy(bob, alice, first, conversationId: conversationId);
+    expect((await receive(bob, first)).status, DecryptStatus.legacyUnauthenticated);
+
+    final rotation = await bob.adapter.rotateSignedPrekey();
+    await bootstrap(alice, bob, conversationId: conversationId, signedPrekeyBundle: rotation.signedPrekeyBundle);
+    final upgraded = await send(alice, bob, 'over v2', conversationId: conversationId);
+    expect(frameOf(upgraded).preKey, isNotNull);
+    expect(await body(bob, upgraded), 'over v2');
   });
 }

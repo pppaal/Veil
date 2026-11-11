@@ -1,12 +1,13 @@
-import 'dart:collection';
-import 'dart:typed_data';
-
-import '../bytes.dart';
-
 /// One Double Ratchet session state (Signal's "session state"). Mutable on
 /// purpose, but only ever mutated on a private [copy]: the session cipher
 /// commits the copy after AEAD success and destroys whichever object lost,
 /// so a failed or concurrent operation can never roll state back.
+library;
+
+import 'dart:collection';
+import 'dart:typed_data';
+
+import '../bytes.dart';
 
 const int protocolLegacy = 1;
 const int protocolV2 = 2;

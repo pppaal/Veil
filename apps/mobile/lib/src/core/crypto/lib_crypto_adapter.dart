@@ -10,7 +10,6 @@ import 'bytes.dart';
 import 'crypto_engine.dart';
 import 'payload/inner_payload.dart';
 import 'random_source.dart';
-import 'ratchet/frame_codec.dart';
 import 'ratchet/legacy_session.dart';
 import 'ratchet/session_cipher.dart';
 import 'ratchet/session_store.dart';
@@ -130,7 +129,8 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   /// Forces the next outbound message on this conversation to perform a DH
   /// ratchet step (the "rotate keys" UX, a post-compromise reset) and drops
   /// the current state's skipped keys so pre-rotation stragglers no longer
-  /// decrypt. Returns false when no session exists.
+  /// decrypt. Returns false when no session exists or the peer has not yet
+  /// replied to our handshake.
   Future<bool> forceRekeyNextSend(String conversationId) => _cipher.forceRekey(conversationId);
 
   void setLocalPrekeyStore(LocalPrekeyStore store) {
@@ -232,8 +232,10 @@ class _LibCryptoEnvelopeCodec implements CryptoEnvelopeCodec, InboundEnvelopeIns
     }
   }
 
+  /// The version assumed for envelopes stored without one; those predate
+  /// v2. Outgoing envelopes take their version from the session instead.
   @override
-  String get defaultEnvelopeVersion => envelopeVersionV2;
+  String get defaultEnvelopeVersion => envelopeVersionLegacy;
 
   @override
   String? get defaultAttachmentWrapAlgorithmHint => attachmentAlgorithmV2;
@@ -379,7 +381,6 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
     required String storageKey,
     required String contentType,
     required List<int> plaintext,
-    @Deprecated('The content key travels inside the ratchet payload; nothing is wrapped to the recipient.')
     required KeyBundle recipientBundle,
   }) =>
       encryptAttachmentV2(

@@ -1,11 +1,19 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as hash;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/bytes.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+import 'package:veil_mobile/src/core/crypto/message_padding.dart';
+import 'package:veil_mobile/src/core/crypto/payload/inner_payload.dart';
+import 'package:veil_mobile/src/core/crypto/random_source.dart';
+import 'package:veil_mobile/src/core/crypto/ratchet/aead.dart';
+import 'package:veil_mobile/src/core/crypto/ratchet/double_ratchet.dart';
 import 'package:veil_mobile/src/core/crypto/ratchet/frame_codec.dart';
+import 'package:veil_mobile/src/core/crypto/ratchet/kdf.dart';
+import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/x3dh_handshake.dart';
 
@@ -18,11 +26,92 @@ Map<String, dynamic> _decodeBundle(String bundle) =>
 
 String _encodeBundle(Map<String, dynamic> map) => b64uEncode(utf8.encode(json.encode(map)));
 
-/// Rewrites the PreKey header of [envelope]'s frame, keeping everything else.
-CryptoEnvelope _withPreKeyHeader(CryptoEnvelope envelope, PreKeyHeader header) {
-  final frame = b64uDecode(envelope.ciphertext);
-  final forged = concatBytes([frame.sublist(0, 2), header.encode(), frame.sublist(2 + PreKeyHeader.encodedLength)]);
-  return copyEnvelope(envelope, ciphertext: b64uEncode(forged));
+/// The identity fields a PreKey header carries.
+typedef _IdentityClaim = ({Uint8List ed25519, Uint8List x25519, Uint8List ikxSignature});
+
+/// What anyone can copy from [party]'s published identity and bundle.
+_IdentityClaim _publishedClaim(Party party) {
+  final bundle = _decodeBundle(party.identity.signedPrekeyBundle);
+  return (
+    ed25519: b64uDecode(party.identity.identityPublicKey),
+    x25519: b64uDecode(bundle['ikx'] as String),
+    ikxSignature: b64uDecode(bundle['ikxSig'] as String),
+  );
+}
+
+Uint8List _ikxPrivate(Party party) => LocalIdentity.tryParse(party.identity.identityPrivateKeyRef)!.x25519Private;
+
+/// A first PreKey frame built by hand: the header carries [claim], and DH1
+/// uses [dh1Private], the X25519 private key the sender really holds. Every
+/// other byte (DH2..DH4, ratchet init, header, AAD with the X3DH AD, seal)
+/// is computed exactly as an honest initiator would, so the frame is
+/// internally consistent and authenticates only if DH1 matches the claim.
+Future<CryptoEnvelope> _handcraftedPreKeyFrame({
+  required Party to,
+  required String senderDeviceId,
+  required _IdentityClaim claim,
+  required List<int> dh1Private,
+  required OneTimePrekey oneTimePrekey,
+  required String body,
+}) async {
+  final random = SecureRandomSource();
+  final bundle =
+      await verifyRemoteBundle(to.identity.signedPrekeyBundle, to.identity.identityPublicKey) as PrekeyBundleV2;
+  final ephemeral = await generateX25519KeyPair(random);
+  final keys = await deriveInitiatorKeys(
+    identityEd25519: claim.ed25519,
+    identityX25519Private: dh1Private,
+    identityX25519: claim.x25519,
+    ephemeralPrivate: ephemeral.privateKey,
+    remoteIdentityEd25519: b64uDecode(to.identity.identityPublicKey),
+    remoteIdentityX25519: bundle.ikx,
+    remoteSignedPrekey: bundle.spk,
+    remoteOneTimePrekey: b64uDecode(oneTimePrekey.publicKey),
+  );
+  final chain = await deriveInitialSendingChain(keys.sharedKey, bundle.spk, random);
+  final preKey = PreKeyHeader(
+    identityEd25519: claim.ed25519,
+    identityX25519: claim.x25519,
+    identityX25519Signature: claim.ikxSignature,
+    baseKey: ephemeral.publicKey,
+    signedPrekeyId: bundle.spkId,
+    oneTimePrekeyId: oneTimePrekey.keyId,
+  );
+  final header = FrameV2.encodeHeader(
+    preKeyHeader: preKey.encode(),
+    ratchetPublic: chain.ratchetKeyPair.publicKey,
+    previousCounter: 0,
+    counter: 0,
+  );
+  final nonce = random.nextBytes(gcmNonceLength);
+  final sealed = await aesGcmSeal(
+    key: await deriveMessageKey(chain.chainKey, 0),
+    nonce: nonce,
+    plaintext: MessagePadding.pad(InnerPayload(body: body, kind: MessageKind.text).encode()),
+    aad: buildFrameAadV4(
+      version: envelopeVersionV2,
+      conversationId: _conversationId,
+      senderDeviceId: senderDeviceId,
+      messageKind: MessageKind.text.name,
+      header: header,
+      associatedData: keys.associatedData,
+    ),
+  );
+  return CryptoEnvelope(
+    version: envelopeVersionV2,
+    conversationId: _conversationId,
+    senderDeviceId: senderDeviceId,
+    recipientUserId: to.userId,
+    ciphertext: b64uEncode(concatBytes([header, sealed])),
+    nonce: b64uEncode(nonce),
+    messageKind: MessageKind.text,
+  );
+}
+
+/// Storage whose one-time prekey deletes always fail.
+class _UndeletableOneTimePrekeys extends InMemoryLocalPrekeyStore {
+  @override
+  Future<void> deleteOneTimePrekey(int keyId) => Future.error(StateError('storage unavailable'));
 }
 
 void main() {
@@ -32,43 +121,58 @@ void main() {
     final mallory = await createParty('mallory');
     final recorder = SnapshotRecorder();
     bob.adapter.setSessionPersistence(persister: recorder.call);
+    final prekey = (await bob.adapter.generateOneTimePrekeys(count: 1)).single;
+    final aliceClaim = _publishedClaim(alice);
 
-    // Mallory holds every public key of Alice and Bob, including Alice's
-    // genuine ikxSig, but none of Alice's private keys.
-    await bootstrap(mallory, bob, conversationId: _conversationId);
-    final forged = await send(mallory, bob, 'hi bob, it is alice (forged)', conversationId: _conversationId);
-    final malloryHeader = frameOf(forged).preKey!;
-    final aliceBundle = _decodeBundle(alice.identity.signedPrekeyBundle);
-    final claimingAlice = PreKeyHeader(
-      identityEd25519: b64uDecode(alice.identity.identityPublicKey),
-      identityX25519: b64uDecode(aliceBundle['ikx'] as String),
-      identityX25519Signature: b64uDecode(aliceBundle['ikxSig'] as String),
-      baseKey: malloryHeader.baseKey,
-      signedPrekeyId: malloryHeader.signedPrekeyId,
-      oneTimePrekeyId: malloryHeader.oneTimePrekeyId,
+    // Mallory copies everything Alice publishes, her genuine ikxSig
+    // included, and builds an otherwise perfect frame. Without IKx_A's
+    // private key she can only compute DH1 with a key of her own.
+    final forged = await _handcraftedPreKeyFrame(
+      to: bob,
+      senderDeviceId: alice.deviceId,
+      claim: aliceClaim,
+      dh1Private: _ikxPrivate(mallory),
+      oneTimePrekey: prekey,
+      body: 'hi bob, it is alice (forged)',
     );
-
-    final result =
-        await receive(bob, copyEnvelope(_withPreKeyHeader(forged, claimingAlice), senderDeviceId: alice.deviceId));
+    final result = await receive(bob, forged);
     expect(result.status, DecryptStatus.failed);
+    expect(result.failureReason, 'aead_failed');
     expect(result.body, isNot(contains('forged')));
     expect(bob.adapter.sessions.hasSessionFor(_conversationId), isFalse);
     expect(recorder.writes, isEmpty);
 
-    // Pairing Alice's identity key with Mallory's own X25519 key instead
-    // fails the IKx certification outright.
-    final mixed = PreKeyHeader(
-      identityEd25519: claimingAlice.identityEd25519,
-      identityX25519: malloryHeader.identityX25519,
-      identityX25519Signature: malloryHeader.identityX25519Signature,
-      baseKey: malloryHeader.baseKey,
-      signedPrekeyId: malloryHeader.signedPrekeyId,
-      oneTimePrekeyId: malloryHeader.oneTimePrekeyId,
+    // Pairing Alice's identity key with Mallory's own certified X25519 key
+    // instead fails the IKx certification outright.
+    final malloryClaim = _publishedClaim(mallory);
+    final mixed = await _handcraftedPreKeyFrame(
+      to: bob,
+      senderDeviceId: alice.deviceId,
+      claim: (ed25519: aliceClaim.ed25519, x25519: malloryClaim.x25519, ikxSignature: malloryClaim.ikxSignature),
+      dh1Private: _ikxPrivate(mallory),
+      oneTimePrekey: prekey,
+      body: 'mixed',
     );
-    final mixedResult = await receive(bob, _withPreKeyHeader(forged, mixed));
+    final mixedResult = await receive(bob, mixed);
     expect(mixedResult.status, DecryptStatus.failed);
     expect(mixedResult.failureReason, 'bad_ikx_signature');
     expect(bob.adapter.sessions.hasSessionFor(_conversationId), isFalse);
+    expect(recorder.writes, isEmpty);
+
+    // Positive control: the same construction with Alice's real IKx private
+    // key opens the session, on the one-time prekey the forgeries left
+    // untouched.
+    final genuine = await _handcraftedPreKeyFrame(
+      to: bob,
+      senderDeviceId: alice.deviceId,
+      claim: aliceClaim,
+      dh1Private: _ikxPrivate(alice),
+      oneTimePrekey: prekey,
+      body: 'really alice',
+    );
+    final accepted = await receive(bob, genuine);
+    expect(accepted.status, DecryptStatus.ok, reason: accepted.failureReason);
+    expect(accepted.body, 'really alice');
   });
 
   test('session binds initiator fingerprint (non-empty)', () async {
@@ -139,6 +243,24 @@ void main() {
     expect(reused.status, DecryptStatus.failed);
     expect(reused.failureReason, 'opk_unavailable');
     expect(bob.adapter.sessions.hasSessionFor('conv-carol'), isFalse);
+  });
+
+  test('a failed OPK delete still returns the plaintext and keeps the OPK spent', () async {
+    final alice = await createParty('alice');
+    final carol = await createParty('carol');
+    final bob = await createParty('bob');
+    bob.adapter.setLocalPrekeyStore(_UndeletableOneTimePrekeys());
+    final prekey = (await bob.adapter.generateOneTimePrekeys(count: 1)).single;
+
+    await bootstrap(alice, bob, conversationId: 'conv-alice', oneTimePrekey: prekey);
+    final first = await receive(bob, await send(alice, bob, 'first', conversationId: 'conv-alice'));
+    expect(first.status, DecryptStatus.ok);
+    expect(first.body, 'first');
+
+    await bootstrap(carol, bob, conversationId: 'conv-carol', oneTimePrekey: prekey);
+    final reused = await receive(bob, await send(carol, bob, 'reuse', conversationId: 'conv-carol'));
+    expect(reused.status, DecryptStatus.failed);
+    expect(reused.failureReason, 'opk_unavailable');
   });
 
   test('two initiators get distinct OPKs and both decrypt', () async {

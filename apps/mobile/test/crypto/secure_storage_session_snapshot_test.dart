@@ -48,7 +48,9 @@ void main() {
     final store = _SlowStore(1);
     final service = SecureStorageService(store);
     await service.writeSessionSnapshot('conv-a', _snapshot(5, 'five'));
-    await service.writeSessionSnapshot('conv-a', _snapshot(3, 'three'));
+    // Refused loudly: the session store only publishes state once its write
+    // completes, so a silent drop would leave memory ahead of disk.
+    await expectLater(service.writeSessionSnapshot('conv-a', _snapshot(3, 'three')), throwsStateError);
     expect((await service.readAllSessionSnapshots())['conv-a']!['marker'], 'five');
 
     await service.writeSessionSnapshot('conv-a', _snapshot(6, 'six'));
@@ -56,8 +58,27 @@ void main() {
 
     // The guard survives a restart: the stored rev is read back.
     final restarted = SecureStorageService(store);
-    await restarted.writeSessionSnapshot('conv-a', _snapshot(4, 'four'));
+    await expectLater(restarted.writeSessionSnapshot('conv-a', _snapshot(4, 'four')), throwsStateError);
     expect((await restarted.readAllSessionSnapshots())['conv-a']!['marker'], 'six');
+  });
+
+  test('a session re-created over an unreadable snapshot is still durable', () async {
+    // Written while the clock ran ahead; it no longer parses, and the clock
+    // has since gone back.
+    final now = DateTime.utc(2026, 11, 1);
+    final aheadRev = now.add(const Duration(days: 30)).microsecondsSinceEpoch;
+    final storage = SecureStorageService(_SlowStore(5));
+    await storage.writeSessionSnapshot('conv-r', {'v': 4, 'rev': aheadRev, 'current': 'unreadable'});
+    final alice = await createParty('alice', clock: () => now);
+    final bob = await createParty('bob', clock: () => now);
+    alice.adapter.setSessionPersistence(persister: storage.writeSessionSnapshot);
+    await alice.adapter.restoreSessionsFromSnapshots(await storage.readAllSessionSnapshots());
+    expect(alice.adapter.sessions.hasSessionFor('conv-r'), isFalse);
+
+    await bootstrap(alice, bob, conversationId: 'conv-r');
+    final stored = (await storage.readAllSessionSnapshots())['conv-r']!;
+    expect(stored['rev'] as int, greaterThan(aheadRev));
+    expect(stored['current'], isA<Map<String, dynamic>>());
   });
 
   test('concurrent writes for two conversations survive slow storage', () async {

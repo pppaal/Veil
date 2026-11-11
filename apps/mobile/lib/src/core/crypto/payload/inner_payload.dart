@@ -1,8 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import '../crypto_engine.dart';
-
 /// The authenticated plaintext inside every 1:1 frame, shared by all
 /// adapters so they cannot drift apart again.
 ///
@@ -12,6 +7,12 @@ import '../crypto_engine.dart';
 /// Legacy v1 frames carry {"body","kind","expiresAt"(ISO),"att"} with either
 /// the short attachment keys (id, sk, ct, ...) or the long ones
 /// (attachmentId, storageKey, ...); the decoder accepts all of them.
+library;
+
+import 'dart:convert';
+import 'dart:typed_data';
+
+import '../crypto_engine.dart';
 
 const int innerPayloadVersion = 2;
 

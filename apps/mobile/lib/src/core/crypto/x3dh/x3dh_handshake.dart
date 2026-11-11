@@ -1,15 +1,16 @@
+/// X3DH key agreement for protocol v2 (docs/crypto-envelope-spec.md §v2).
+///
+/// DH1 = DH(IKx_A, SPK_B) is what authenticates the initiator: only the
+/// holder of IKx_A's private key can compute it, so a party holding nothing
+/// but public bundles (including the server) cannot open a session as A.
+library;
+
 import 'dart:convert';
 import 'dart:typed_data';
 
 import '../bytes.dart';
 import '../ratchet/kdf.dart';
 import 'curve25519.dart';
-
-/// X3DH key agreement for protocol v2 (docs/crypto-envelope-spec.md §v2).
-///
-/// DH1 = DH(IKx_A, SPK_B) is what authenticates the initiator: only the
-/// holder of IKx_A's private key can compute it, so a party holding nothing
-/// but public bundles (including the server) cannot open a session as A.
 
 const String x3dhInfoLabel = 'veil-x3dh-v2';
 const int noOneTimePrekeyId = 0xFFFFFFFF;

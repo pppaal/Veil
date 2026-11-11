@@ -1,9 +1,10 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
 /// Byte-level helpers shared by every crypto component, so wire encodings
 /// (base64url without padding, big-endian integers, length prefixes) are
 /// defined exactly once.
+library;
+
+import 'dart:convert';
+import 'dart:typed_data';
 
 String b64uEncode(List<int> bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
@@ -64,8 +65,10 @@ Uint8List u64be(int value) {
   return out;
 }
 
+// The top byte is multiplied rather than shifted so the result stays
+// unsigned where ints are 32-bit signed (dart2js).
 int readU32be(List<int> bytes, int offset) =>
-    (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+    bytes[offset] * 0x1000000 + ((bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]);
 
 Uint8List concatBytes(Iterable<List<int>> parts) {
   final builder = BytesBuilder(copy: false);

@@ -8,6 +8,8 @@ import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
 import 'package:veil_mobile/src/core/crypto/message_padding.dart';
 import 'package:veil_mobile/src/core/crypto/payload/inner_payload.dart';
 import 'package:veil_mobile/src/core/crypto/ratchet/frame_codec.dart';
+import 'package:veil_mobile/src/core/crypto/ratchet/kdf.dart';
+import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/x3dh_handshake.dart';
 
 import 'support/crypto_harness.dart';
@@ -72,6 +74,50 @@ void main() {
     final header = PreKeyHeader.decode(hex(x3dh['preKeyHeader']));
     expect(hexEncode(header.encode()), x3dh['preKeyHeader']);
     expect(hexEncode(header.baseKey), x3dh['ephemeralPublic']);
+  });
+
+  // The transcript test pins these through whole frames; checking each
+  // intermediate on its own points straight at the term that broke.
+  test('X3DH terms and ratchet KDF steps', () async {
+    Future<String> dh(Object? private, Object? public) async =>
+        hexEncode(await x25519SharedSecret(hex(private), hex(public)));
+    final ratchetInit = vectors['ratchetInit'] as Map<String, dynamic>;
+
+    // Each DH from both ends.
+    expect(await dh(alice['ikxPrivate'], bundle['spkPublic']), x3dh['dh1']);
+    expect(await dh(bundle['spkPrivate'], alice['ikxPublic']), x3dh['dh1']);
+    expect(await dh(x3dh['ephemeralPrivate'], bundle['ikxPublic']), x3dh['dh2']);
+    expect(await dh(bundle['ikxPrivate'], x3dh['ephemeralPublic']), x3dh['dh2']);
+    expect(await dh(x3dh['ephemeralPrivate'], bundle['spkPublic']), x3dh['dh3']);
+    expect(await dh(bundle['spkPrivate'], x3dh['ephemeralPublic']), x3dh['dh3']);
+    expect(await dh(x3dh['ephemeralPrivate'], oneTime['public']), x3dh['dh4']);
+    expect(await dh(oneTime['private'], x3dh['ephemeralPublic']), x3dh['dh4']);
+    expect(x3dh['ikm'], '${'ff' * 32}${x3dh['dh1']}${x3dh['dh2']}${x3dh['dh3']}${x3dh['dh4']}');
+    final sharedKey =
+        await hkdfSha256(ikm: hex(x3dh['ikm']), salt: hex(x3dh['salt']), info: hex(x3dh['info']), length: 32);
+    expect(hexEncode(sharedKey), x3dh['sharedKey']);
+
+    Future<void> expectRootStep(Object? rootKey, Object? dhOutput, Object? nextRootKey, Object? chainKey) async {
+      final (root, chain) = await kdfRootKey(hex(rootKey), hex(dhOutput));
+      expect(hexEncode(root), nextRootKey);
+      expect(hexEncode(chain), chainKey);
+    }
+
+    expect(await dh(ratchetInit['aliceRatchetPrivate'], bundle['spkPublic']), ratchetInit['dhOutput']);
+    await expectRootStep(
+        x3dh['sharedKey'], ratchetInit['dhOutput'], ratchetInit['rootKey'], ratchetInit['sendChainKey']);
+    final bobStep = sendSteps['bob'] as Map<String, dynamic>;
+    expect(await dh(bobStep['ratchetPrivate'], ratchetInit['aliceRatchetPublic']), bobStep['dhOutput']);
+    await expectRootStep(ratchetInit['rootKey'], bobStep['dhOutput'], bobStep['rootKey'], bobStep['chainKey']);
+    final aliceStep = sendSteps['alice'] as Map<String, dynamic>;
+    expect(await dh(aliceStep['ratchetPrivate'], bobStep['ratchetPublic']), aliceStep['dhOutput']);
+    await expectRootStep(bobStep['rootKey'], aliceStep['dhOutput'], aliceStep['rootKey'], aliceStep['chainKey']);
+
+    for (final message in messages.values) {
+      final messageKey = await deriveMessageKey(hex(message['chainKey']), message['counter'] as int);
+      expect(hexEncode(messageKey), message['messageKey'], reason: '${message['label']} message key');
+    }
+    expect(hexEncode(await nextChainKey(hex(messages['A0']!['chainKey']))), messages['A1']!['chainKey']);
   });
 
   test('attachment pointer cipher', () async {

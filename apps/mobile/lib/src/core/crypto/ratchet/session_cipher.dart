@@ -1,3 +1,8 @@
+/// 1:1 session operations over [SessionRecordStore]. Every operation runs
+/// under the conversation's serial lock, works on a copy of the state it
+/// touches, and commits (durably) only once the result is authenticated.
+library;
+
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart' as hash;
@@ -19,10 +24,6 @@ import 'legacy_session.dart';
 import 'ratchet_state.dart';
 import 'session_record.dart';
 import 'session_store.dart';
-
-/// 1:1 session operations over [SessionRecordStore]. Every operation runs
-/// under the conversation's serial lock, works on a copy of the state it
-/// touches, and commits (durably) only once the result is authenticated.
 
 // Placeholder bodies for non-ok results. Callers branch on DecryptStatus;
 // the text only keeps today's UI wording.
@@ -81,7 +82,10 @@ class SessionCipher {
 
   Future<bool> forceRekey(String conversationId) => store.serialized(conversationId, () async {
         final record = store[conversationId];
-        if (record == null) return false;
+        // Until the peer replies, it can only reach our later chains through
+        // the ratchet key in the handshake frames, so a second send step
+        // would strand every later frame if those were lost.
+        if (record == null || record.current.awaitingFirstReply) return false;
         final live = record.current;
         final scratch = live.copy()
           ..needsSendStep = true
@@ -162,10 +166,10 @@ class SessionCipher {
       nonce = b64uDecode(envelope.nonce);
       bytes = b64uDecode(envelope.ciphertext);
     } on FormatException {
-      return _failure(envelope, DecryptStatus.failed, 'invalid_envelope');
+      return _invalidEnvelope(envelope);
     }
     if (nonce.length != gcmNonceLength) {
-      return _failure(envelope, DecryptStatus.failed, 'invalid_envelope');
+      return _invalidEnvelope(envelope);
     }
     // Any version other than v1 takes the v2 path, where the version string
     // is bound into the AAD: a relabelled envelope fails authentication.
@@ -179,7 +183,7 @@ class SessionCipher {
     try {
       frame = FrameV2.decode(bytes);
     } on FormatException {
-      return _failure(envelope, DecryptStatus.failed, 'invalid_envelope');
+      return _invalidEnvelope(envelope);
     }
     return store.serialized(envelope.conversationId, () async {
       final record = store[envelope.conversationId];
@@ -201,7 +205,7 @@ class SessionCipher {
     try {
       frame = LegacyFrame.decode(bytes);
     } on FormatException {
-      return _failure(envelope, DecryptStatus.failed, 'invalid_envelope');
+      return _invalidEnvelope(envelope);
     }
     return store.serialized(envelope.conversationId, () async {
       final record = store[envelope.conversationId];
@@ -334,9 +338,9 @@ class SessionCipher {
         state.destroy();
         return _failure(envelope, DecryptStatus.failed, opened.reason);
       }
-      // Asked only once the handshake authenticated, so a pinning verifier
-      // never sees an identity claim nobody proved.
-      if (!await _identityAccepted(envelope, header)) {
+      // Decided only once the handshake authenticated, so neither a pinning
+      // verifier nor identityRejected ever concerns a claim nobody proved.
+      if (!await _identityAccepted(envelope, header, record)) {
         state.destroy();
         return _failure(envelope, DecryptStatus.identityRejected, 'identity_rejected');
       }
@@ -346,7 +350,7 @@ class SessionCipher {
         state.destroy();
         return _failure(envelope, DecryptStatus.failed, 'persist_failed');
       }
-      if (header.usesOneTimePrekey) await keyring.consumeOneTimePrekey(header.oneTimePrekeyId);
+      if (header.usesOneTimePrekey) await _consumeOneTimePrekey(header.oneTimePrekeyId);
       return _success(payload, DecryptStatus.ok);
     } on FormatException {
       return _failure(envelope, DecryptStatus.failed, 'low_order_key');
@@ -356,15 +360,38 @@ class SessionCipher {
     }
   }
 
-  Future<bool> _identityAccepted(CryptoEnvelope envelope, PreKeyHeader header) async {
+  /// A configured verifier (the trust store) owns this decision. Without
+  /// one, the conversation stays bound to the identity of its most recent
+  /// authenticated (v2) state, which only a local bootstrap can change:
+  /// otherwise any genuine identity the server steers here could take over
+  /// the sending state of an established conversation. Legacy states never
+  /// authenticated their peer, so they pin nothing.
+  Future<bool> _identityAccepted(CryptoEnvelope envelope, PreKeyHeader header, SessionRecord? record) async {
     final verifier = identityVerifier;
-    if (verifier == null) return true;
-    return verifier(RemoteIdentityClaim(
-      conversationId: envelope.conversationId,
-      senderDeviceId: envelope.senderDeviceId,
-      identityKeyEd25519: b64uEncode(header.identityEd25519),
-      identityKeyX25519: b64uEncode(header.identityX25519),
-    ));
+    if (verifier != null) {
+      return verifier(RemoteIdentityClaim(
+        conversationId: envelope.conversationId,
+        senderDeviceId: envelope.senderDeviceId,
+        identityKeyEd25519: b64uEncode(header.identityEd25519),
+        identityKeyX25519: b64uEncode(header.identityX25519),
+      ));
+    }
+    final bound = record?.states.where((s) => s.protocol == protocolV2).firstOrNull;
+    if (bound == null) return true;
+    final pinned = bound.remoteIdentityKey;
+    return pinned != null && constantTimeEquals(pinned, header.identityEd25519);
+  }
+
+  /// The session is already durable, so its plaintext must be returned even
+  /// if the delete fails: a retry would only report a replay. The keyring
+  /// marks the prekey spent before deleting it, so it cannot open a second
+  /// session either way.
+  Future<void> _consumeOneTimePrekey(int keyId) async {
+    try {
+      await keyring.consumeOneTimePrekey(keyId);
+    } catch (_) {
+      // Only the stored private half outlives the failure; see above.
+    }
   }
 
   Future<RatchetState> _initiateV2(SessionBootstrapRequest request, PrekeyBundleV2 bundle, DateTime now) async {
@@ -511,15 +538,24 @@ class SessionCipher {
         status: status,
       );
 
-  static DecryptedMessage _failure(CryptoEnvelope envelope, DecryptStatus status, String? reason) {
-    final body = switch (status) {
-      DecryptStatus.replayed => _replayedBody,
-      DecryptStatus.sessionMissing => _sessionMissingBody,
-      DecryptStatus.identityRejected => _identityRejectedBody,
-      _ => reason == 'invalid_envelope' ? _invalidEnvelopeBody : _failedBody,
-    };
-    return DecryptedMessage(body: body, messageKind: envelope.messageKind, status: status, failureReason: reason);
-  }
+  static DecryptedMessage _failure(CryptoEnvelope envelope, DecryptStatus status, String? reason) => DecryptedMessage(
+        body: switch (status) {
+          DecryptStatus.replayed => _replayedBody,
+          DecryptStatus.sessionMissing => _sessionMissingBody,
+          DecryptStatus.identityRejected => _identityRejectedBody,
+          _ => _failedBody,
+        },
+        messageKind: envelope.messageKind,
+        status: status,
+        failureReason: reason,
+      );
+
+  static DecryptedMessage _invalidEnvelope(CryptoEnvelope envelope) => DecryptedMessage(
+        body: _invalidEnvelopeBody,
+        messageKind: envelope.messageKind,
+        status: DecryptStatus.failed,
+        failureReason: 'invalid_envelope',
+      );
 }
 
 class _Opened {

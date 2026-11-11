@@ -124,14 +124,21 @@ The responder B processes a PreKey frame whose `EK` matches no stored state:
 3. Verify `ikxSig_A` against `IKed_A`; otherwise fail (`bad_ikx_signature`).
 4. Mirror DH1..DH4 with its private keys and derive `SK` and `AD`.
 5. Initialise its ratchet (below) and receive the frame. The AEAD MUST verify.
-6. Only then consult the identity verifier, when one is configured; a veto
-   yields `identityRejected` and stores nothing.
+6. Only then decide whether the identity is acceptable (see "Session records
+   and glare"), so the decision is only ever made about a proven identity. A
+   refusal yields `identityRejected`, stores nothing and consumes no OPK.
 7. Install the state (see "Session records and glare"), persist it, and only
-   then delete the OPK private key.
+   then delete the OPK private key. A failed delete does not undo the
+   session; the OPK is still treated as spent.
 
 A forged initiator holding only public bundles cannot compute DH1 and its frame
 fails authentication. Both sides record `remoteIdentityFingerprint =
 hex(SHA-256(IKed_remote))`, never empty.
+
+A PreKey frame without an OPK can be replayed. While its state is stored, the
+replay lands on that state and is `replayed`; once the state has aged out of
+the record (below), the same frame would install it again. This is inherent to
+X3DH, so initiators SHOULD claim an OPK whenever the directory has one.
 
 ### Double Ratchet
 
@@ -171,6 +178,16 @@ only after the AEAD verifies:
 One frame may stash at most 200 keys in total; a session keeps at most 1000
 (oldest evicted) for at most 7 days. Superseded root, chain and ratchet-private
 buffers are overwritten after every commit.
+
+A Normal frame is tried on up to six states (current plus archived), and each
+attempt may do one DH step and derive up to 200 keys before the AEAD rejects
+it. A forged frame therefore costs the receiver a bounded few thousand HKDF
+calls; this is the protocol's CPU amplification ceiling.
+
+A manual rekey (forcing a send step without a receive) is refused while the
+state still awaits the peer's first reply: until then the peer can only reach
+later chains through the ratchet key in the handshake frames, so a second step
+would strand every later frame if those were lost.
 
 ### Frame
 
@@ -234,6 +251,10 @@ just `{"attachmentId"}` for blob lifecycle (contract C3); extra outer fields are
 accepted and discarded, and receivers never fall back to the outer pointer.
 Receivers compare the digest in constant time before decrypting, then unpad.
 
+Interop limitation: on a legacy (v1) session the same raw-key pointer travels
+inside the v1 payload. Confidentiality is unchanged (it is still inside the
+ratchet), but apps older than v2 cannot open such attachments.
+
 ### Session records and glare
 
 A conversation holds a record: the current (sending) state plus up to 5
@@ -248,6 +269,19 @@ the other remains decryptable. Normal frames are tried on the current state,
 then the archived ones, each on a copy; the first that authenticates is
 committed. Every operation on a conversation is serialized.
 
+Identity binding: when an identity verifier is configured (the trust store), it
+decides whether an authenticated PreKey frame may install its state, including
+an identity change in an established conversation, so it MUST pin identities
+itself. Without one, the conversation is bound to the remote `IKed` of its most
+recent v2 state (the current state if it is v2, otherwise the newest archived
+v2 state): a PreKey frame from any other identity yields `identityRejected`,
+stores nothing and consumes no OPK. Without this rule, any genuine identity a
+hostile server routes into an established conversation would become the
+sending state and read the replies. Only a local bootstrap changes the binding.
+Re-initiation by the same identity and glare are unaffected, and legacy states
+never authenticated their peer, so a record without v2 states binds nothing and
+a v2 handshake can upgrade it.
+
 ### Decrypt results
 
 | Status                  | Meaning                                                    |
@@ -257,7 +291,7 @@ committed. Every operation on a conversation is serialized.
 | `replayed`              | `(pub, N)` already consumed or its chain left behind       |
 | `sessionMissing`        | Normal frame with no matching session                      |
 | `awaitingKey`           | group frame whose sender key has not arrived               |
-| `identityRejected`      | the identity verifier vetoed an authenticated handshake    |
+| `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 
 Non-`ok` results carry a placeholder body (`[Decryption failed]`, ...) that
@@ -266,11 +300,13 @@ callers must not render as peer text; they branch on the status.
 ### Local persistence (informative)
 
 Snapshot schema 4 is `{"v":4,"rev":<int>,"current":<state>,"archived":[{"archivedAt","state"}]}`.
-`rev` only grows (at least previous + 1, seeded from the clock in
-microseconds), every commit is persisted before the operation returns (an
-encrypt never hands out ciphertext whose state could be lost), and storage
-drops a write whose `rev` is lower than the stored one. v2/v3 snapshots restore
-as the current state of a record. See
+`rev` only grows (at least previous + 1 and above any rev read back from
+storage for that conversation, even from a snapshot that no longer parses;
+seeded from the clock in microseconds), every commit is persisted before the
+operation returns (an encrypt never hands out ciphertext whose state could be
+lost), and storage refuses, with an error, a write whose `rev` is lower than
+the stored one, so the operation fails instead of publishing state that is not
+on disk. v2/v3 snapshots restore as the current state of a record. See
 [crypto-session-state-migration.md](crypto-session-state-migration.md).
 
 ---

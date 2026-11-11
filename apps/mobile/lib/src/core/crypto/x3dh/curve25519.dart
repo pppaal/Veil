@@ -1,13 +1,14 @@
+/// Thin byte-oriented wrappers over package:cryptography's X25519/Ed25519 so
+/// the protocol code handles plain buffers it owns (and can zeroize) instead
+/// of key objects whose internal copies it cannot reach.
+library;
+
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
 import '../bytes.dart';
 import '../random_source.dart';
-
-/// Thin byte-oriented wrappers over package:cryptography's X25519/Ed25519 so
-/// the protocol code handles plain buffers it owns (and can zeroize) instead
-/// of key objects whose internal copies it cannot reach.
 
 final X25519 _x25519 = X25519();
 final Ed25519 _ed25519 = Ed25519();

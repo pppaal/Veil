@@ -1,12 +1,13 @@
-import 'dart:convert';
-import 'dart:typed_data';
-
-import 'package:cryptography/cryptography.dart';
-
 /// The ratchet's key-derivation functions. Labels and salts are wire format
 /// (pinned by packages/shared/test-vectors/crypto-kat.json): protocol v2
 /// reuses the v1 root/chain/message KDFs unchanged and only changes what
 /// feeds them.
+library;
+
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:cryptography/cryptography.dart';
 
 const String rootKdfLabel = 'veil-dh-rk-v2';
 const String messageKeyLabel = 'veil-msg-v1';

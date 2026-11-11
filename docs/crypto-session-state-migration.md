@@ -65,10 +65,12 @@ performs:
   states (30 days) that still receive in-flight messages after a
   re-bootstrap, a peer reset or glare.
 - `rev` only grows. The adapter persists every commit and waits for the write
-  before the operation returns; storage refuses a write whose `rev` is lower
-  than the one it holds, so a slow older write can never overwrite a newer
-  state. `rev` is seeded from the clock (microseconds) so a re-created record
-  outranks a stale stored one.
+  before the operation returns; storage refuses, with an error, a write whose
+  `rev` is lower than the one it holds, so an older state can never overwrite
+  a newer one and the operation fails instead of running ahead of disk. `rev`
+  is seeded from the clock (microseconds) and kept above any rev restore read
+  back for that conversation, including from an unreadable snapshot, so a
+  re-created record outranks the stored one even after the clock went back.
 - A state map records its `protocol`: `2` for X3DH sessions, `1` for legacy
   `veil-envelope-v1` sessions, which keep working with peers that still
   publish v1 bundles and are reported as `legacyUnauthenticated`.

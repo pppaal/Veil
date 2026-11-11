@@ -105,7 +105,9 @@ the transcript and compare every envelope byte for byte.
 memory and byte-compares against the committed JSON, failing on any drift. The
 Node-version string in the file is ignored by the check, since it legitimately
 varies across runners. The mobile suite replays `protocolV2` against the Dart
-adapter on every run.
+adapter on every run, and also checks each intermediate (DH1–DH4 from both
+ends, the HKDF ikm, every root/chain step and message key) on its own so a
+broken vector names the term that drifted.
 
 **Regenerate:** `node scripts/crypto-test-vectors.mjs` (only when intentionally
 adding/altering vectors — review the diff).

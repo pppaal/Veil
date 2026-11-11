@@ -1,3 +1,7 @@
+/// Local identity and prekey private material: generation, rotation, and
+/// the lookups a responder needs to answer a PreKey frame.
+library;
+
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -7,9 +11,6 @@ import '../random_source.dart';
 import 'curve25519.dart';
 import 'identity_keys.dart';
 import 'x3dh_handshake.dart';
-
-/// Local identity and prekey private material: generation, rotation, and
-/// the lookups a responder needs to answer a PreKey frame.
 
 // How long a superseded signed prekey still answers PreKey frames, so
 // initiators holding a just-rotated bundle are not stranded.
@@ -58,6 +59,9 @@ class LocalKeyring {
   final RandomSource _random;
   final DateTime Function() _clock;
   final Set<int> _oneTimePrekeysInUse = {};
+  // Used by a committed session. Remembered for the process lifetime so a
+  // failed delete cannot make a one-time prekey claimable again.
+  final Set<int> _spentOneTimePrekeys = {};
 
   LocalPrekeyStore store = InMemoryLocalPrekeyStore();
   Future<String?> Function()? identityLoader;
@@ -198,22 +202,40 @@ class LocalKeyring {
     } on StateError {
       throw PrekeyUnavailable('local_identity_unavailable');
     }
-    final signedPrekey = await _signedPrekey(identity.identity, header.signedPrekeyId);
-    if (signedPrekey == null) throw PrekeyUnavailable('spk_unavailable');
-    if (!header.usesOneTimePrekey) return HandshakePrekeys(identity, signedPrekey, null);
+    X25519KeyPair? signedPrekey;
+    try {
+      signedPrekey = await _signedPrekey(identity.identity, header.signedPrekeyId);
+      if (signedPrekey == null) throw PrekeyUnavailable('spk_unavailable');
+      return HandshakePrekeys(identity, signedPrekey, await _claimOneTimePrekey(header));
+    } catch (_) {
+      // Any sender can name unknown prekeys; do not leave the private keys
+      // already loaded for it lingering in memory.
+      identity.destroy();
+      zeroize(signedPrekey?.privateKey);
+      rethrow;
+    }
+  }
+
+  Future<Uint8List?> _claimOneTimePrekey(PreKeyHeader header) async {
+    if (!header.usesOneTimePrekey) return null;
     final keyId = header.oneTimePrekeyId;
-    if (!_oneTimePrekeysInUse.add(keyId)) throw PrekeyUnavailable('opk_unavailable');
+    if (_spentOneTimePrekeys.contains(keyId) || !_oneTimePrekeysInUse.add(keyId)) {
+      throw PrekeyUnavailable('opk_unavailable');
+    }
     final oneTime = await store.loadOneTimePrekey(keyId);
     if (oneTime == null) {
       _oneTimePrekeysInUse.remove(keyId);
       throw PrekeyUnavailable('opk_unavailable');
     }
-    return HandshakePrekeys(identity, signedPrekey, Uint8List.fromList(oneTime));
+    return Uint8List.fromList(oneTime);
   }
 
   void releaseOneTimePrekey(PreKeyHeader header) => _oneTimePrekeysInUse.remove(header.oneTimePrekeyId);
 
-  Future<void> consumeOneTimePrekey(int keyId) => store.deleteOneTimePrekey(keyId);
+  Future<void> consumeOneTimePrekey(int keyId) {
+    _spentOneTimePrekeys.add(keyId);
+    return store.deleteOneTimePrekey(keyId);
+  }
 
   // The store is authoritative once a rotation has populated it; until then
   // the only SPK is the one embedded in the identity ref.

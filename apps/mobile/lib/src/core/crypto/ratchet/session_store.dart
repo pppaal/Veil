@@ -20,6 +20,9 @@ class SessionRecordStore {
 
   final DateTime Function() _clock;
   final Map<String, SessionRecord> _records = {};
+  // Highest rev storage reported per conversation, including snapshots that
+  // failed to parse: a record re-created over one must still outrank it.
+  final Map<String, int> _storedRevs = {};
   final SessionLock _lock = SessionLock();
   final Set<Future<void>> _inflightWrites = {};
 
@@ -34,9 +37,10 @@ class SessionRecordStore {
 
   /// Must run inside [serialized] for the same conversation.
   Future<void> commit(String conversationId, RecordUpdate update) async {
-    final previousRev = _records[conversationId]?.rev ?? 0;
-    // Seeding from the clock keeps a re-created record (e.g. after a corrupt
-    // snapshot) above the rev storage already holds.
+    final previousRev = max(_records[conversationId]?.rev ?? 0, _storedRevs[conversationId] ?? 0);
+    // The clock seed keeps a record created before its snapshot was ever
+    // restored above the stored rev in the common case; storage refuses the
+    // write in the rare one where the clock went backwards.
     final rev = max(previousRev + 1, _clock().microsecondsSinceEpoch);
     final record = update.record.withRev(rev);
     final persister = this.persister;
@@ -57,6 +61,8 @@ class SessionRecordStore {
 
   /// Rehydrates a persisted record unless memory already holds a newer one.
   Future<void> restore(String conversationId, Map<String, dynamic> snapshot) => serialized(conversationId, () async {
+        final storedRev = snapshot['rev'];
+        if (storedRev is int) _storedRevs[conversationId] = max(storedRev, _storedRevs[conversationId] ?? 0);
         final restored = SessionRecord.fromSnapshot(snapshot, now: _clock());
         if (restored == null) return;
         final existing = _records[conversationId];

@@ -1,3 +1,12 @@
+/// Protocol v1 ('veil-envelope-v1'), kept byte-compatible for peers that
+/// still publish v1 bundles. Its one-DH bootstrap authenticates only the
+/// responder, so everything decrypted here is reported as
+/// legacyUnauthenticated.
+///
+///   frame = ratchetPub(32) || u32 N || ciphertext || tag(16)
+///   AAD   = "veil-frame-aad-v3" || ratchetPub || u32 N || utf8(senderDeviceId)
+library;
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -11,14 +20,6 @@ import '../x3dh/identity_keys.dart';
 import 'aead.dart';
 import 'kdf.dart';
 import 'ratchet_state.dart';
-
-/// Protocol v1 ('veil-envelope-v1'), kept byte-compatible for peers that
-/// still publish v1 bundles. Its one-DH bootstrap authenticates only the
-/// responder, so everything decrypted here is reported as
-/// legacyUnauthenticated.
-///
-///   frame = ratchetPub(32) || u32 N || ciphertext || tag(16)
-///   AAD   = "veil-frame-aad-v3" || ratchetPub || u32 N || utf8(senderDeviceId)
 
 const String envelopeVersionLegacy = 'veil-envelope-v1';
 const String frameAadLabelV3 = 'veil-frame-aad-v3';

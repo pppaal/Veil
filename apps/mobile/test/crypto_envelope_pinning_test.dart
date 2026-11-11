@@ -16,8 +16,11 @@ void main() {
       expect(LibCryptoAdapter().adapterId, 'lib-x3dh-x25519-aes256gcm-v4');
     });
 
-    test('envelope version is frozen', () {
-      expect(LibCryptoAdapter().envelopeCodec.defaultEnvelopeVersion, 'veil-envelope-v2');
+    // The default only labels envelopes stored without a version, which
+    // predate v2 (matching decodeApiEnvelope). What a v2 session sends is
+    // pinned under "Envelope JSON shape".
+    test('default envelope version is frozen', () {
+      expect(LibCryptoAdapter().envelopeCodec.defaultEnvelopeVersion, 'veil-envelope-v1');
     });
 
     test('attachment algorithm hint is frozen', () {

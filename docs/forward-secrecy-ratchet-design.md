@@ -45,9 +45,13 @@ every frame until the responder replies, and the associated data
 The responder needs no explicit bootstrap: decrypting a PreKey frame looks up
 the named SPK (current, or superseded within a 14-day grace) and OPK, verifies
 the IKx certificate, mirrors the DHs, receives the frame, and only after the
-AEAD verified asks the optional identity verifier (identity pinning, wired in a
-later wave). The OPK private key is deleted after the new state is durable, so
-a second handshake naming it fails closed.
+AEAD verified decides whether the identity is acceptable: the identity
+verifier when one is configured (identity pinning, wired in a later wave),
+otherwise the conversation's binding to the identity of its most recent v2
+state, so a different identity cannot take over an established conversation.
+The OPK private key is deleted after the new state is durable and is treated
+as spent even if that delete fails, so a second handshake naming it fails
+closed.
 
 ## Ratchet
 
@@ -98,7 +102,12 @@ Glare (both peers initiate before either hears back): each side installs the
 other's state from its PreKey frame; the state initiated by the lexicographically
 lower identity key becomes the sending state on both sides, and the other stays
 decryptable. A locally initiated state that already received something is
-replaced by a peer's new PreKey frame (the peer evidently reset).
+replaced by a peer's new PreKey frame from the same identity (the peer
+evidently reset).
+
+A manual rekey is refused while a locally initiated state still awaits its
+first reply: the peer can only reach later chains through the handshake
+frames' ratchet key.
 
 ## Attachments
 
@@ -112,25 +121,28 @@ carries just the attachment id; receivers never trust outer attachment fields.
 
 Snapshot schema v4 `{v: 4, rev, current, archived[]}` is stored per
 conversation (`veil.crypto.session.<sha256hex(id)>` plus an index) through one
-serial write queue that drops a write whose `rev` is older than the stored one.
+serial write queue that refuses, with an error, a write whose `rev` is older
+than the stored one.
 See [crypto-session-state-migration.md](crypto-session-state-migration.md).
 
 ## Tests
 
-- `test/crypto/x3dh_v2_test.dart` — forged initiator, fingerprints, verifier
-  veto, OPK single use, SPK rotation grace and pruning, bundle signatures and
-  freshness, v1 identity upgrade, the C1 bundle vector.
+- `test/crypto/x3dh_v2_test.dart` — a self-consistent forged initiator that
+  only DH1 stops (with a positive control), fingerprints, verifier veto, OPK
+  single use (also when its delete fails), SPK rotation grace and pruning,
+  bundle signatures and freshness, v1 identity upgrade, the C1 bundle vector.
 - `test/crypto/dh_ratchet_reorder_test.dart` — audit scenarios S1/S2, 20 seeded
   shuffles with delays across turn flips, replay classification.
 - `test/crypto/ratchet_concurrency_test.dart` — audit S3, fuzzed interleaving,
   encrypt waits for the persister.
-- `test/crypto/session_record_glare_test.dart` — glare convergence and lossless
-  re-bootstrap.
+- `test/crypto/session_record_glare_test.dart` — glare convergence, lossless
+  re-bootstrap, identity binding of an established conversation, v1-to-v2
+  upgrade.
 - `test/crypto/session_snapshot_v4_test.dart`,
   `test/crypto/secure_storage_session_snapshot_test.dart` — snapshot schema,
   v2/v3 restore, rev ordering, slow concurrent storage, legacy blob migration.
 - `test/crypto/crypto_kat_v2_test.dart` — byte-for-byte replay of the Node
-  reference vectors.
+  reference vectors, plus each X3DH term and ratchet KDF step on its own.
 - `test/dh_ratchet_test.dart`, `test/session_rekey_test.dart`,
   `test/crypto_zeroization_test.dart` and the other `test/crypto_*` suites.
 

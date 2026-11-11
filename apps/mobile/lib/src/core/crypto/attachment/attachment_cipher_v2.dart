@@ -1,3 +1,13 @@
+/// Attachment pointer model (Signal-style): a fresh random key and nonce per
+/// blob, carried only inside the ratchet-encrypted payload, so attachments
+/// inherit the session's forward secrecy and nothing is wrapped to a static
+/// identity key.
+///
+///   padded = ISO7816(plaintext) to padmeLength(len + 1)
+///   blob   = AES-256-GCM(key, nonce, padded, aad = "veil-att-v2" || utf8(id))
+///   digest = SHA-256(blob)
+library;
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -8,15 +18,6 @@ import '../crypto_engine.dart';
 import '../message_padding.dart';
 import '../random_source.dart';
 import '../ratchet/aead.dart';
-
-/// Attachment pointer model (Signal-style): a fresh random key and nonce per
-/// blob, carried only inside the ratchet-encrypted payload, so attachments
-/// inherit the session's forward secrecy and nothing is wrapped to a static
-/// identity key.
-///
-///   padded = ISO7816(plaintext) to padmeLength(len + 1)
-///   blob   = AES-256-GCM(key, nonce, padded, aad = "veil-att-v2" || utf8(id))
-///   digest = SHA-256(blob)
 
 const String attachmentAlgorithmV2 = 'aes256gcm-v2';
 const String attachmentAadLabel = 'veil-att-v2';

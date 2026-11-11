@@ -11,6 +11,9 @@ import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_s
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
+import 'support/async_wait.dart';
+import 'support/strict_mock_crypto_adapter.dart';
+
 void main() {
   test('sendText drains outbox and replaces optimistic message with server ack',
       () async {
@@ -55,7 +58,9 @@ void main() {
   test('sendText prefers the active device bundle from the local directory response',
       () async {
     final api = _FakeVeilApiClient();
-    final crypto = createDefaultCryptoAdapter();
+    // Sessions must be tracked for the controller to know one is needed; the
+    // plain mock claims a session exists for every conversation.
+    final crypto = StrictMockCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
       cryptoEngine: crypto.messaging,
@@ -103,6 +108,71 @@ void main() {
       refreshedConversation.sessionState?.remoteIdentityFingerprint,
       isNotEmpty,
     );
+  });
+
+  test('a bootstrap forced by a lost session still flags a new key for the pinned device', () async {
+    final api = _FakeVeilApiClient();
+    // The preview pinned selene's device under an older key, but the engine
+    // lost the session (a ratchet snapshot that failed to restore).
+    final pinned = ConversationSessionState(
+      sessionLocator: 'session://conv-1',
+      sessionEnvelopeVersion: 'veil-envelope-v1',
+      requiresLocalPersistence: true,
+      sessionSchemaVersion: 1,
+      localDeviceId: 'device-local',
+      remoteDeviceId: 'device-selene-primary',
+      remoteIdentityFingerprint: 'fp-old',
+      bootstrappedAt: DateTime.utc(2026, 3, 30),
+      remoteIdentityPublicKey: 'pub-selene-before',
+    );
+    final crypto = StrictMockCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: _MemoryConversationCache(
+        conversations: [
+          ConversationPreview(
+            id: 'conv-1',
+            peerHandle: 'selene',
+            peerDisplayName: 'Selene',
+            recipientBundle: const KeyBundle(
+              userId: 'user-selene',
+              deviceId: 'device-selene-primary',
+              handle: 'selene',
+              identityPublicKey: 'pub-selene-before',
+              signedPrekeyBundle: 'prekey-before',
+            ),
+            lastEnvelope: null,
+            updatedAt: DateTime.utc(2026, 3, 30),
+            sessionState: pinned,
+          ),
+        ],
+      ),
+    );
+    addTearDown(controller.dispose);
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await controller.sendText(conversationId: 'conv-1', body: 'still there?');
+    await waitFor(() => api.sentPayloads.length == 1);
+
+    final conversation = controller.conversations.firstWhere((item) => item.id == 'conv-1');
+    expect(conversation.identityMismatchPending, isTrue);
+    expect(conversation.sessionState!.remoteIdentityPublicKey, 'pub-selene-primary');
   });
 
   test(
@@ -418,7 +488,12 @@ void main() {
     );
 
     await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+    final clientMessageId = controller.messagesFor('conv-1').single.clientMessageId!;
+    // The first attempt seals the file to disk before uploading; a retry
+    // issued while it is still running would be a no-op.
+    await waitFor(() =>
+        controller.attachmentTransferForMessage(clientMessageId)?.phase ==
+        AttachmentTransferPhase.failed);
 
     expect(controller.pendingCountFor('conv-1'), 1);
     expect(
@@ -888,6 +963,7 @@ void main() {
     final api =
         _FakeVeilApiClient(uploadDelay: const Duration(milliseconds: 80));
     final tempStore = _FakeAttachmentTempFileStore();
+    final cache = _MemoryConversationCache();
     final crypto = createDefaultCryptoAdapter();
     final controller = VeilMessengerController(
       apiClient: api,
@@ -896,7 +972,7 @@ void main() {
       envelopeCodec: crypto.envelopeCodec,
       sessionBootstrapper: crypto.sessions,
       realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(),
+      cacheService: cache,
       attachmentTempFileStore: tempStore,
     );
 
@@ -914,10 +990,12 @@ void main() {
     );
 
     await controller.sendAttachmentPlaceholder('conv-1', filename: 'brief.enc');
-    await Future<void>.delayed(const Duration(milliseconds: 10));
-
     final clientMessageId =
         controller.messagesFor('conv-1').single.clientMessageId!;
+    await waitFor(() =>
+        controller.attachmentTransferForMessage(clientMessageId)?.phase ==
+        AttachmentTransferPhase.uploading);
+
     await controller.cancelPendingAttachment(clientMessageId);
     await Future<void>.delayed(const Duration(milliseconds: 40));
 
@@ -926,7 +1004,12 @@ void main() {
         MessageDeliveryState.failed);
     expect(controller.attachmentTransferForMessage(clientMessageId)?.phase,
         AttachmentTransferPhase.canceled);
-    expect(tempStore.deletedPaths, isEmpty);
+    // Sealing replaced the staged plaintext with its ciphertext before the
+    // upload began; that ciphertext is the draft a retry uploads.
+    final draft = (await cache.readPendingMessages()).single.attachmentUploadDraft!;
+    expect(draft.sealedReference, isNotNull);
+    expect(tempStore.deletedPaths, isNot(contains(draft.tempFilePath)));
+    expect(File(draft.tempFilePath!).existsSync(), isTrue);
   });
 
   test('archive search returns filtered local results from cached history',

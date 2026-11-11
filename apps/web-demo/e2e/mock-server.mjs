@@ -347,15 +347,23 @@ const routes = [
     }
     return { conversation: conversationSummary(user, conversation) };
   }],
+  // As ConversationsService.listMessages pages: the newest `limit` (1 to
+  // 100, default 50) messages before the cursor message, in conversation
+  // order, and while the page is full a cursor to the page before it.
   ['GET', /^\/v1\/conversations\/([^/]+)\/messages$/, (req, [conversationId]) => {
     const { user } = authenticate(req);
     conversationFor(user, conversationId);
     if (db.shuffle) releaseOneHeld(user, conversationId);
-    const items = db.messages
+    const requested = Number(req.query.get('limit') ?? 50);
+    const limit = Number.isFinite(requested) ? Math.min(100, Math.max(1, requested)) : 50;
+    const cursor = req.query.get('cursor');
+    const before = cursor ? db.messages.find((m) => m.id === cursor && m.conversationId === conversationId) : null;
+    if (cursor && !before) throw new HttpError(404, 'message_not_found');
+    const page = db.messages
       .filter((m) => m.conversationId === conversationId && visibleTo(user, m))
-      .slice(-50)
-      .map(summaryFor);
-    return { items };
+      .filter((m) => !before || m.conversationOrder < before.conversationOrder)
+      .slice(-limit);
+    return { items: page.map(summaryFor), nextCursor: page.length === limit ? page[0].id : null };
   }],
 
   ['POST', /^\/v1\/messages$/, (req) => {
@@ -474,6 +482,7 @@ const server = http.createServer(async (req, res) => {
       if (!match) continue;
       const raw = await readBody(req);
       req.body = raw.length > 0 ? JSON.parse(raw.toString('utf8')) : {};
+      req.query = url.searchParams;
       sendJson(res, 200, await handler(req, match.slice(1)));
       return;
     }

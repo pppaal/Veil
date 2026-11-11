@@ -30,6 +30,7 @@ import { formatSafetyNumber, matchesPeerCode, safetyNumber, verificationCode } f
 import { createSessionCipher } from './src/crypto/session-cipher.js';
 import { createSessionRepo } from './src/crypto/session-repo.js';
 import { mediaContent, textContent } from './src/domain/content.js';
+import { fetchHistory, mergeHistory } from './src/domain/history.js';
 import { ingestMessage, isGone, isShown, isTextKind, previewLabel } from './src/domain/ingest.js';
 import { createAttachmentFetcher } from './src/domain/media.js';
 import { KIND_LABELS } from './src/domain/payload.js';
@@ -154,6 +155,7 @@ const state = {
   conversations: [],           // ConversationSummary[] (lastMessage ingested)
   conversationsLoaded: false,  // false until first /conversations response lands
   messagesByConv: new Map(),   // convId -> message views (src/domain/ingest.js) + receipts
+  historyThrough: new Map(),   // convId -> conversationOrder history is fetched through (advanceHistory)
   openTabs: [],                // convId[] order = open order
   activeConv: null,            // primary panel convId | null
   secondaryConv: null,         // split-mode right panel convId | null
@@ -491,8 +493,10 @@ function connectSocket() {
     // Slow polling to a heartbeat once we have the WS push channel.
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(loadConversations, 30000);
-    // Reconnect is the moment to retry anything we couldn't send while offline.
+    // Reconnect is the moment to retry anything we couldn't send while offline,
+    // and to fetch what arrived meanwhile: the push channel replays nothing.
     drainOutbound();
+    for (const convId of state.openTabs) refreshMessages(convId);
   });
   s.on('disconnect', (reason) => {
     setConnPill('connecting', reason === 'io server disconnect' ? '연결 끊김' : '재연결 중…');
@@ -1597,6 +1601,7 @@ async function hydrateFromCache() {
       list.sort((a, b) => a.conversationOrder - b.conversationOrder);
       const views = await Promise.all(list.map((row) => ingest(row, { previous: findMessage(convId, row.id) })));
       setConversationMessages(convId, views);
+      advanceHistory(convId, list.at(-1).conversationOrder);
       for (const view of views) if (view.kind === 'expired') persistMessage(view);
     }));
   } catch (e) {
@@ -1638,8 +1643,7 @@ async function persistMessage(msg) {
   } catch {}
 }
 
-async function persistMessages(convId) {
-  const list = state.messagesByConv.get(convId) || [];
+async function persistMessages(list) {
   for (const m of list) await persistMessage(m);
 }
 
@@ -1830,6 +1834,7 @@ function resetSessionState() {
   state.conversations = [];
   state.conversationsLoaded = false;
   state.messagesByConv.clear();
+  state.historyThrough.clear();
   state.activeConv = null;
   state.secondaryConv = null;
   state.openTabs = [];
@@ -2060,21 +2065,29 @@ async function refreshMessages(convId) {
   const target = convId ?? state.activeConv;
   if (!target) return;
   try {
-    const r = await authedApi(`/conversations/${target}/messages?limit=50`);
-    const items = r.items ?? [];
-    // Unchanged messages keep their views (no re-decrypt, blob URLs intact).
-    const fresh = await Promise.all(items.map((raw) => ingest(raw, { previous: findMessage(target, raw.id) })));
-    // Preserve any pending optimistic entries that haven't been ACKed yet.
-    const seenClientIds = new Set(items.map((m) => m.clientMessageId));
-    const pendings = (state.messagesByConv.get(target) || []).filter(
-      (m) => (m._status === 'pending' || m._status === 'failed') && !seenClientIds.has(m.clientMessageId),
+    const items = await fetchHistory(
+      (query) => authedApi(`/conversations/${target}/messages?${query}`),
+      { through: state.historyThrough.get(target) ?? 0 },
     );
-    setConversationMessages(target, [...fresh, ...pendings]);
+    // One at a time and oldest first, so each ratchet chain moves forward in
+    // order. Unchanged messages keep their views (no re-decrypt, blob URLs
+    // intact).
+    const fresh = [];
+    for (const raw of items) fresh.push(await ingest(raw, { previous: findMessage(target, raw.id) }));
+    setConversationMessages(target, mergeHistory(state.messagesByConv.get(target) || [], items, fresh));
+    advanceHistory(target, items.at(-1)?.conversationOrder);
     if (target === state.activeConv || target === state.secondaryConv) renderActivePanel();
-    persistMessages(target);
+    persistMessages(fresh);
   } catch {
     // A rejected session is handled by endSession; anything else retries on the next poll.
   }
+}
+
+// What a history refresh, or the cache, has covered. Messages pushed live
+// do not count: one that arrives on top of a backlog never fetched must not
+// stop the next refresh from paging back through it.
+function advanceHistory(convId, order) {
+  if (Number.isFinite(order)) state.historyThrough.set(convId, Math.max(state.historyThrough.get(convId) ?? 0, order));
 }
 
 async function sendMessage(textarea, convId) {

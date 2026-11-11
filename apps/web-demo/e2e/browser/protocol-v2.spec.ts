@@ -225,6 +225,103 @@ test.describe('protocol v2 in the browser', () => {
   });
 });
 
+// History is fetched a page at a time, newest first. A device that was away
+// while more than a page arrived gets all of it, and opens its ratchet
+// chain in order: a frame at the top of a long backlog, opened first, would
+// need more skipped keys than one frame may stash. Reactions are messages
+// too, so they fill pages without being bubbles.
+test.describe('a backlog longer than a page', () => {
+  const stamp = Date.now().toString(36).slice(-6);
+  const BACKLOG = 260;
+  const label = (n: number) => `m${String(n).padStart(3, '0')} backlog`;
+  const backlog = Array.from({ length: BACKLOG }, (_, i) => label(i + 1));
+  // Erin reacts to these of her messages while Frank is away.
+  const reacted = [label(50), label(150), label(250)];
+  let erin: Device;
+  let frank: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    erin = await register(browser, `erin${stamp}`);
+    frank = await register(browser, `frank${stamp}`);
+  });
+
+  test.afterAll(async () => {
+    await erin?.context.close();
+    await frank?.context.close();
+  });
+
+  // Each text goes through the composer in one synchronous step, and the
+  // next only once its bubble shows: the panel is rebuilt on every poll and
+  // send, and a keypress that lands while it is drops, so a fill-then-press
+  // per message would lose one now and then in a run this long.
+  async function sendAll(device: Device, texts: string[]): Promise<void> {
+    await device.page.evaluate(async (all) => {
+      const own = () => document.querySelectorAll('.panel-msgs .msg-row.me').length;
+      for (const text of all) {
+        const before = own();
+        const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        while (own() === before) await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }, texts);
+  }
+
+  async function react(device: Device, text: string): Promise<void> {
+    const row = device.page.locator('.panel-msgs .msg-row', { hasText: text });
+    await expect(row.locator('.msg:not(.pending)')).toHaveCount(1);
+    // A rebuilt panel closes the menu; open it again until the click lands.
+    await expect(async () => {
+      await row.click({ button: 'right' });
+      await device.page.locator('.msg-action-menu .msg-action-row button').first().click({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
+    await expect(row.locator('.msg-reaction-chip')).toHaveCount(1);
+  }
+
+  test('is fetched whole and opened in order, and stays after a refresh', async () => {
+    test.setTimeout(300_000);
+    await startChat(erin, frank);
+    await send(erin, label(0));
+    await expect.poll(() => bubbleTexts(frank), { timeout: 20_000 }).toEqual([label(0)]);
+    // Frank goes away; his keys and history stay in his browser profile.
+    await frank.page.close();
+
+    let sent = 0;
+    for (const target of reacted) {
+      const through = backlog.indexOf(target) + 1;
+      await sendAll(erin, backlog.slice(sent, through));
+      sent = through;
+      await react(erin, target);
+    }
+    await sendAll(erin, backlog.slice(sent));
+    await expect(erin.page.locator('.msg-row.me:not(:has(.msg.pending))')).toHaveCount(BACKLOG + 1, { timeout: 60_000 });
+
+    frank.page = await frank.context.newPage();
+    await frank.page.goto('./');
+    await expect(frank.page.locator('#app')).toBeVisible();
+    await openChatWith(frank, erin);
+    const everything = [label(0), ...backlog];
+    await expect.poll(() => bubbleTexts(frank), { timeout: 120_000 }).toEqual(everything);
+    await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
+    for (const text of reacted) {
+      await expect(frank.page.locator('.panel-msgs .msg-row', { hasText: text }).locator('.msg-reaction-chip')).toHaveCount(1);
+    }
+
+    // Later refreshes fetch only the newest page; nothing drops out.
+    await frank.page.waitForTimeout(5_000);
+    expect(await bubbleTexts(frank)).toEqual(everything);
+    await frank.page.reload();
+    await expect(frank.page.locator('#app')).toBeVisible();
+    await openChatWith(frank, erin);
+    await expect.poll(() => bubbleTexts(frank), { timeout: 30_000 }).toEqual(everything);
+    await frank.page.waitForTimeout(5_000);
+    expect(await bubbleTexts(frank)).toEqual(everything);
+    await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
+  });
+});
+
 // Contract C4 and deletion on the device: once a message is deleted or its
 // expiry passes, it leaves the panel and the sidebar, and its row in the
 // decrypt-once store is retired, on the sender's device and the

@@ -16,12 +16,30 @@ class VeilConfig {
     defaultValue: true,
   );
 
-  // Comma-separated list of base64 SHA-256 leaf-cert fingerprints the client
-  // will trust when talking to [apiBaseUrl]. Empty means "no pin" (dev mode).
+  // Comma-separated TLS pins ('spki:<b64>', 'leaf:<b64>' or legacy unprefixed
+  // leaf pins; see pinned_http_client.dart) the client trusts for both the
+  // API and the realtime WebSocket. Empty means "no pin" (dev mode).
   // Production builds MUST pass --dart-define VEIL_TLS_PINS=... so a
-  // compromised CA can't transparently MITM the API connection.
+  // compromised CA can't transparently MITM the API connection or steal the
+  // bearer token from the WebSocket handshake.
   static const tlsPins = String.fromEnvironment(
     'VEIL_TLS_PINS',
+    defaultValue: '',
+  );
+
+  // Pins for the object store that receives encrypted attachment uploads
+  // (presigned URLs usually point at a different host than the API). Same
+  // format as [tlsPins]; empty falls back to the platform trust store.
+  static const objectStoragePins = String.fromEnvironment(
+    'VEIL_OBJECT_STORAGE_PINS',
+    defaultValue: '',
+  );
+
+  // Comma-separated hostnames presigned upload URLs may point at. When set,
+  // an upload ticket naming any other host is refused before a byte leaves
+  // the device.
+  static const objectStorageHosts = String.fromEnvironment(
+    'VEIL_OBJECT_STORAGE_HOSTS',
     defaultValue: '',
   );
 

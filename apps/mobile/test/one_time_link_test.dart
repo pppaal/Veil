@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link.dart';
+import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.dart';
 
 void main() {
   const secret = '넷플릭스 비번 Vx9\$kQ2! / 계좌 3333-04 🔐';
@@ -43,5 +47,41 @@ void main() {
     final ctLen =
         base64Url.decode(ctB64.padRight((ctB64.length + 3) & ~3, '=')).length;
     expect(ctLen, 2 + 16); // plaintext + tag
+  });
+
+  group('OneTimeLinkService', () {
+    test('posts only the ciphertext and keeps the key in the fragment', () async {
+      late http.Request posted;
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((request) async {
+          posted = request;
+          return http.Response(jsonEncode({'id': 'link-1'}), 201);
+        }),
+      );
+
+      final link = await service.createLink(secret);
+
+      expect(posted.url.toString(), 'https://api.veil.test/v1/s');
+      final body = jsonDecode(posted.body) as Map<String, dynamic>;
+      expect(body.keys, ['ciphertext']);
+      final fragment = Uri.parse(link).fragment;
+      expect(link, startsWith('https://api.veil.test/demo/s.html#link-1.k.'));
+      expect(posted.body.contains(fragment.split('.k.').last), isFalse);
+      expect(
+        await OneTimeLink.open(body['ciphertext'] as String, fragment.substring('link-1.'.length)),
+        secret,
+      );
+    });
+
+    test('a stalled request times out instead of hanging the screen', () async {
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((_) => Completer<http.Response>().future),
+        requestTimeout: const Duration(milliseconds: 50),
+      );
+
+      await expectLater(service.createLink('x'), throwsA(isA<TimeoutException>()));
+    });
   });
 }

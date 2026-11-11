@@ -10,9 +10,11 @@ overstating what's already there.
 | Capability | State | Evidence |
 | --- | --- | --- |
 | E2E (X25519 + AES-256-GCM + Ed25519, Double Ratchet) | ✅ strong | `lib_crypto_adapter.dart`, `crypto-envelope-spec.md` |
-| No backup / no recovery / device-bound identity | ✅ strong | enforced by `policy-check.mjs` |
+| No backup / no recovery / device-bound identity | ✅ strong | enforced by `policy-check.mjs` (routes, modules, schema models, contracts, mobile backup code) |
+| No plaintext user content on the server | ✅ CI-enforced | `schema-privacy-check.mjs`, [`server-data-inventory.md`](server-data-inventory.md) |
+| Public claims backed by tests | ✅ CI-enforced | `claims-check.mjs`, [`claims.yaml`](claims.yaml) |
 | TLS pinning | ✅ present | `buildPinnedHttpClient`, 5 files |
-| Hardware-backed keys (Secure Enclave / StrongBox) | ✅ present | 28 files |
+| Hardware-isolated keys (Secure Enclave / StrongBox) | ❌ absent | keys sit in OS secure storage (Keychain / Keystore-encrypted preferences), not in a hardware key store |
 | Screen-capture / preview protection | ✅ present | `screenCaptureProtection`, 7 files |
 | Integrity / jailbreak-root detection | ✅ present | `integrityCompromised`, 12 files |
 | Disappearing / view-once messages | ✅ present | 100 files |
@@ -22,10 +24,10 @@ overstating what's already there.
 | **Message-length padding** | ⚠️ **absent in prod** | only `padRight` in tests; ciphertext length ≈ plaintext length |
 | **Key zeroization** | ⚠️ weak | collection `.clear()` only; no true secret wiping (Dart GC/strings) |
 | **Reproducible builds** | ❌ absent | no `SOURCE_DATE_EPOCH` / verifiable build; "open source" is currently unverifiable against the published APK |
-| **Key transparency** | ❌ absent | safety numbers are manual; nothing auto-detects a malicious server swapping keys |
+| **Key transparency** | ❌ absent | safety numbers are manual; nothing auto-detects a malicious server swapping keys. Deleted handles are quarantined for 90 days, so a re-registered handle cannot pass as its old owner right away |
 | **Duress / panic mode** | ❌ absent | no decoy unlock / panic wipe |
 | Post-quantum | 📝 specced (#6/#7) | `post-quantum-migration-spec.md` |
-| Sealed sender (metadata) | 📝 specced (#8) | `sealed-sender-spec.md` |
+| Sealed sender (metadata) | 📝 under revision | [`sealed-sender-design.md`](sealed-sender-design.md): the current design does not hide the sender |
 
 ## 2. Prioritized additions
 
@@ -92,9 +94,9 @@ external audit; build/padding work (A, B) can proceed in parallel now.
 
 ## 4. Honest framing
 
-VEIL is already genuinely strong — hardware keys, ratchet, no-recovery,
-integrity detection, manual key verification are all real and measured
-above. The gaps are the *next tier* (verifiable builds, traffic-shape and
+VEIL is already genuinely strong — the ratchet, no-recovery, a server that
+stores no plaintext user content, integrity detection and manual key
+verification are all real and measured above. The gaps are the *next tier* (verifiable builds, traffic-shape and
 server-key-substitution resistance), i.e. moving from "we encrypt your
 content and minimize data" to "you don't have to trust our build, our
 server's key honesty, or our traffic not leaking shape." Don't claim these

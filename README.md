@@ -19,9 +19,19 @@ is gone for good. That tradeoff is the product.
 
 The "no recovery" rule is not just documentation — it is encoded in
 [`scripts/policy-check.mjs`](scripts/policy-check.mjs) as a CI gate that
-fails the build on any commit that introduces a recovery flow, an admin
-message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc
+fails the build on any commit that introduces a recovery flow or table, an
+admin message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc
 console logging in mobile.
+
+Two more gates keep the rest of this README honest:
+
+- [`scripts/schema-privacy-check.mjs`](scripts/schema-privacy-check.mjs)
+  requires a privacy annotation on every database field and publishes the
+  result as [What a seized VEIL server reveals](docs/server-data-inventory.md).
+- [`scripts/claims-check.mjs`](scripts/claims-check.mjs) fails CI when a
+  privacy or security claim in this README, the privacy policies, the site
+  or the store listings is not in the [claims ledger](docs/claims.yaml) with
+  the test or gate that backs it.
 
 ---
 
@@ -29,7 +39,7 @@ console logging in mobile.
 
 | Path | Description |
 |---|---|
-| `apps/api/` | NestJS backend — 23 modules, 276 unit + 8 e2e tests, 16 Prisma migrations |
+| `apps/api/` | NestJS backend — 23 modules, Jest unit + supertest e2e suites, 18 Prisma migrations |
 | `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`), 32 test files |
 | `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. 47 Vitest unit + 4 Playwright e2e specs |
 | `packages/contracts/` | Typed API + realtime contracts (single source of truth) |
@@ -44,10 +54,13 @@ console logging in mobile.
 
 ## Product non-negotiables
 
-These are enforced by `scripts/policy-check.mjs`. A PR that violates any of
-them will fail CI:
+These are enforced by `scripts/policy-check.mjs` and
+`scripts/schema-privacy-check.mjs`. A PR that violates any of them will fail
+CI:
 
-- The server never stores plaintext message bodies
+- The server stores no plaintext user content: messages, reactions and
+  stories are ciphertext, and display names, profile text and contact names
+  are not stored at all
 - No cloud backup exists
 - No account recovery, password reset, or admin override
 - Identity is device-bound; transfer requires the old device alive
@@ -83,9 +96,8 @@ them will fail CI:
   X25519 ECDH + HKDF-SHA256 + AES-256-GCM, plus Ed25519 device
   signing. Session state persisted in OS-level encrypted secure
   storage. Implementation in `apps/mobile/lib/src/core/crypto/`.
-- Web demo: simpler per-message ECDH (envelope v2). Unified envelope
-  v3 spec written ([`docs/envelope-v3-unified-spec.md`](docs/envelope-v3-unified-spec.md))
-  but implementation deferred to post-audit.
+- Web demo: a browser client for the same API; its protocol status is
+  tracked in [`docs/envelope-v3-unified-spec.md`](docs/envelope-v3-unified-spec.md).
 - Group chats: new mobile groups use **Sender Keys** (per-member HKDF
   chains, per-epoch Ed25519 authorship, full re-key on every join/leave;
   `veil-group-v1`). Groups created by older clients stay on the legacy
@@ -96,14 +108,15 @@ them will fail CI:
   has not been compiled on a real toolchain yet; default builds still use
   the Dart ratchet. See
   [`docs/libsignal-migration-implementation.md`](docs/libsignal-migration-implementation.md).
-- Sealed Sender (metadata reduction) design in
-  [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md).
+- Sealed sender is under revision: the current design in
+  [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md) does not
+  hide the sender from the server.
 
 ### Backend (`apps/api`)
 - 23 modules: `auth`, `users`, `devices`, `conversations`, `messages`,
   `attachments`, `realtime`, `device-transfer`, `safety`, `metrics`,
   `push`, `calls`, `stories`, `groups`, `channels`, `contacts`,
-  `profile`, `account`, `prekeys`, `recovery`, `retention`, `secret`,
+  `profile`, `account`, `handles`, `prekeys`, `retention`, `secret`,
   `health`
 - JWT with 1-hour TTL, atomic refresh (Redis `GETDEL`), JTI blacklist,
   WS force-disconnect on logout
@@ -113,7 +126,13 @@ them will fail CI:
   and revokes old in one shot, then disconnects the old WS
 - Reply / edit / delete on messages, with real-time `message.edited`
   and `message.deleted` events
-- Reactions with `message.reaction` real-time fanout
+- Reactions are ordinary encrypted messages (`messageType: 'reaction'`);
+  the relay never sees the emoji or its target
+- Stories are ciphertext addressed to an explicit audience of mutual
+  contacts
+- Deleted accounts' handles are quarantined for 90 days (only a peppered
+  HMAC is kept), so nobody can re-register a contact's handle right away
+- Device last-seen and last-sync times are kept to the UTC day
 - Bearer-token-gated `/v1/metrics` (Prometheus format)
 
 ### Web demo (`apps/web-demo`)
@@ -260,7 +279,7 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 - [Internal Pre-Audit Crypto Review](docs/internal-precheck-crypto-review.md) — reading-level review, NOT external audit
 - [Envelope v3 Unified Spec](docs/envelope-v3-unified-spec.md) — design only, not implemented
 - [Group Sender Keys Design](docs/group-sender-keys-design.md) — design only
-- [Sealed Sender Design](docs/sealed-sender-design.md) — design only
+- [Sealed Sender Design](docs/sealed-sender-design.md) — under revision: the current design does not hide the sender
 - [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)
 - [Crypto Mobile Bridge Design](docs/crypto-mobile-bridge-design.md)
 - [Crypto Session State Migration](docs/crypto-session-state-migration.md)
@@ -305,6 +324,9 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 - [Six-Month Roadmap](docs/six-month-roadmap.md)
 
 ### Privacy + design
+- [What a seized VEIL server reveals](docs/server-data-inventory.md) — generated from the schema in CI
+- [Claims ledger](docs/claims.yaml) — every public claim and the test or gate behind it
+- [Server-side metadata retention](docs/metadata-retention.md)
 - [Privacy Policy — English](docs/privacy-policy-en.md)
 - [Privacy Policy — Korean](docs/privacy-policy-ko.md)
 - [Mobile Design System](docs/mobile-design-system.md)

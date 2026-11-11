@@ -17,7 +17,7 @@ single handle — anonymous, encrypted, and ad-free.
 • X25519 key exchange + AES-256-GCM symmetric encryption
 • Ed25519 device signatures
 • HKDF-SHA256 session key derivation
-• Payloads are sealed just before transit and never stored server-side.
+• Messages are encrypted on your device and stored on the server only as ciphertext until they expire, at most 30 days.
 
 ■ Features
 • 1:1 and group conversations with encrypted attachments

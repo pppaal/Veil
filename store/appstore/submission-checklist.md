@@ -48,9 +48,8 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
       boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
       VEIL uses only standard published algorithms, so no CCATS/ERN is required.
-- [ ] **Fix the EN subtitle (30-char limit).** `store/appstore/metadata-en.txt` subtitle
-      "End-to-end encrypted privacy messenger" is 38 chars. Rewrite to ≤30, e.g.
-      "Encrypted privacy messenger" (27) or "E2E encrypted private chat" (26). KO subtitle is fine.
+- [x] **Fix the EN subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` now
+      uses "Encrypted privacy messenger" (27 chars). KO subtitle is fine.
 - [ ] **(Optional, cosmetic) Align CFBundleURLName.** `Info.plist` `CFBundleURLName` is
       `app.veil.messenger` but the bundle id is `io.veil.mobile`. Align or leave; not a blocker.
 - [ ] **Author the two missing source docs** referenced by this checklist (they do not exist yet):
@@ -180,8 +179,8 @@ Transcribe `store/appstore/app-privacy-answers.md` into App Store Connect → **
 
 - [ ] Data collected: **User ID** (linked, App Functionality, not tracking), **Device ID**
       (linked, App Functionality, not tracking), **User Content / encrypted payloads**
-      (NOT linked — server holds only ciphertext, App Functionality, not tracking),
-      **Crash Data** (opt-in Sentry, NOT linked, App Functionality, not tracking).
+      (NOT linked — server holds only ciphertext, App Functionality, not tracking).
+      **Crash Data: not collected** (no crash-reporting SDK ships).
 - [ ] **Tracking: No.** Mark the long "Data Not Collected" list accordingly.
 
 ## 11. Content rights  · owner: human-account
@@ -215,7 +214,7 @@ In App Store Connect export-compliance flow (or at TestFlight upload):
       - How to test **1:1 and group messaging** using **two devices/simulators** (you exchange
         the on-screen identity to start a conversation).
       - That **no account recovery exists by design** (losing the device loses the chats).
-      - The **opt-in Sentry crash toggle** (off by default).
+      - That **no crash-reporting SDK** ships, so no diagnostics leave the device.
       - Contact: `privacy@veil.app`.
 - [ ] Provide an App Review **contact name + phone + email**.
 

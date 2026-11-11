@@ -125,8 +125,8 @@ our App Privacy "nutrition label" answers). Summary:
 - **User content** (message payloads): transited as **ciphertext only**. The
   server cannot decrypt it, so it is declared unlinked. Messages, media, and
   attachments are end-to-end encrypted.
-- **Crash diagnostics** (Sentry): **opt-in and disabled by default**; not linked
-  to the user; used only for App Functionality; not for tracking.
+- **Crash diagnostics:** not collected. The app ships no crash-reporting SDK
+  (CI rejects adding one without a privacy review).
 - **Not collected:** contacts, location, health/fitness, financial info, browsing
   history, search history, purchases, usage/analytics data, and sensitive info
   (see `app-privacy-answers.md` for the complete "Data Not Collected" list).

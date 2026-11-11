@@ -1,13 +1,16 @@
 # Encrypted recovery backup — design
 
 > **REMOVED: contradicts [no-recovery.md](no-recovery.md).** The server-side
-> recovery backup module (`/v1/recovery/backup`) has been deleted and the
-> policy gate (`scripts/policy-check.mjs`) now rejects any recovery or backup
-> route or module in the API. A passphrase-sealed copy of identity keys is
-> still a recovery authority, which is exactly what VEIL refuses to have. The
-> unused `RecoveryBlob` table and contract types are dropped in a follow-up
-> schema change. This document is kept only as the record of the rejected
-> design; nothing below describes current behaviour.
+> recovery backup module (`/v1/recovery/backup`) has been deleted, migration
+> `0018_plaintext_elimination` drops the `recovery_blobs` table, and the
+> contract types are gone. The policy gate (`scripts/policy-check.mjs`) now
+> rejects any recovery or backup route or module in the API, any recovery or
+> backup model in `schema.prisma`, any recovery or backup type in
+> `packages/contracts/src`, and an `apps/mobile/lib/src/core/backup`
+> directory. A passphrase-sealed copy of identity keys is still a recovery
+> authority, which is exactly what VEIL refuses to have. This document is kept
+> only as the record of the rejected design; nothing below describes current
+> behaviour.
 
 ## Status
 

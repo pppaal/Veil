@@ -47,5 +47,22 @@
   "toast.deleteFail": "delete failed: {error}",
   "toast.reactionFail": "reaction failed: {error}",
   "common.cancel": "cancel",
-  "common.confirm": "ok"
+  "common.confirm": "ok",
+  "auth.restore.retry": "retry",
+  "auth.restore.rejected": "The server rejected this device's session — the device may have been revoked. Your keys are still on this browser.",
+  "auth.restore.delete": "Delete this identity",
+  "notifications.newMessage": "New message",
+  "settings.notifications.level": "Notification content",
+  "settings.notifications.off": "Off",
+  "settings.notifications.generic": "\"New message\" only (default)",
+  "settings.notifications.sender": "Show sender",
+  "settings.notifications.senderPreview": "Sender and preview",
+  "keyChange.banner": "@{handle}'s security key changed. Sending in this chat is paused until you review it.",
+  "keyChange.review": "Review",
+  "keyChange.confirmTitle": "Accept @{handle}'s new key?",
+  "keyChange.confirmBody": "They may have switched devices, or someone may be trying to intercept this conversation. Only accept after confirming with them another way (in person, a call).",
+  "keyChange.accept": "Accept new key",
+  "keyChange.sendBlocked": "This contact's security key changed. Review it at the top of the chat before sending.",
+  "keyChange.composerFrozen": "Sending paused until the key change is reviewed",
+  "keyChange.sidebar": "⚠️ security key changed"
 }

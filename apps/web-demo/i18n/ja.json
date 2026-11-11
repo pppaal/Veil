@@ -47,5 +47,22 @@
   "toast.deleteFail": "削除失敗: {error}",
   "toast.reactionFail": "反応失敗: {error}",
   "common.cancel": "キャンセル",
-  "common.confirm": "OK"
+  "common.confirm": "OK",
+  "auth.restore.retry": "再試行",
+  "auth.restore.rejected": "サーバーがこのデバイスのセッションを拒否しました。デバイスが失効した可能性があります。鍵はこのブラウザに残っています。",
+  "auth.restore.delete": "このIDを削除",
+  "notifications.newMessage": "新着メッセージ",
+  "settings.notifications.level": "通知の内容",
+  "settings.notifications.off": "オフ",
+  "settings.notifications.generic": "「新着メッセージ」のみ（既定）",
+  "settings.notifications.sender": "送信者を表示",
+  "settings.notifications.senderPreview": "送信者とプレビュー",
+  "keyChange.banner": "@{handle} のセキュリティキーが変わりました。確認するまでこのチャットでは送信できません。",
+  "keyChange.review": "確認",
+  "keyChange.confirmTitle": "@{handle} の新しいキーを受け入れますか？",
+  "keyChange.confirmBody": "相手がデバイスを変えた可能性もありますが、誰かが会話を傍受しようとしている可能性もあります。別の方法（対面、電話）で相手に確認してから受け入れてください。",
+  "keyChange.accept": "新しいキーを受け入れる",
+  "keyChange.sendBlocked": "相手のセキュリティキーが変わりました。チャット上部で確認してから送信してください。",
+  "keyChange.composerFrozen": "キーの変更を確認するまで送信停止中",
+  "keyChange.sidebar": "⚠️ セキュリティキー変更"
 }

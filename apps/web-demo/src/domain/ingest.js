@@ -1,0 +1,71 @@
+// The single path from an envelope to what the UI shows. Live socket
+// events, history refreshes, cache hydration and edits all go through
+// ingestMessage, so a payload is decoded by exactly one codec and attachment
+// keys can only end up inside a media handle, never in displayText.
+//
+// A MessageView is the cached envelope fields plus the decoded content:
+//   { ...CACHED_MESSAGE_FIELDS, kind, displayText, replyTo, media }
+// kind is a payload kind ('text' | 'reply' | 'image' | 'file' | 'voice'),
+// 'unsupported', 'locked' (could not decrypt) or 'deleted'. Because the view
+// is built from the cached fields only, a live summary and its cached copy
+// yield the same view.
+
+import { serializeMessageForCache } from '../platform/persist.js';
+import { createMediaHandle } from './media.js';
+import { decodePayload, KIND_LABELS } from './payload.js';
+
+export const DELETED_TEXT = '🚫 삭제된 메시지';
+export const LOCKED_LABELS = Object.freeze({
+  legacy: '🔒 이전 형식',
+  'no-key': '🔒 키 미해결',
+  failed: '🔒 복호화 실패',
+});
+const PREVIEW_MAX_CHARS = 120;
+
+// options.decrypt(raw) resolves to { payload } or { failure } (a key of
+// LOCKED_LABELS). options.media is handed to media handles for lazy
+// download. options.previous is the current view of the same message: when
+// the ciphertext is unchanged its content is reused instead of decrypting
+// again, which keeps blob URLs alive across refreshes.
+export async function ingestMessage(raw, { decrypt, media, previous = null }) {
+  const envelope = serializeMessageForCache(raw);
+  if (raw.deletedAt) return view(envelope, { kind: 'deleted', displayText: DELETED_TEXT });
+  if (previous && previous.kind !== 'locked' && sameCiphertext(previous, raw)) {
+    return view(envelope, previous);
+  }
+  const result = await Promise.resolve()
+    .then(() => decrypt(raw))
+    .catch(() => ({ failure: 'failed' }));
+  if (typeof result?.payload !== 'string') {
+    return view(envelope, { kind: 'locked', displayText: LOCKED_LABELS[result?.failure] ?? LOCKED_LABELS.failed });
+  }
+  const decoded = decodePayload(result.payload);
+  return view(envelope, {
+    kind: decoded.kind,
+    displayText: decoded.displayText,
+    replyTo: decoded.replyTo,
+    media: decoded.media ? createMediaHandle(decoded.media, media) : null,
+  });
+}
+
+export function isTextKind(kind) {
+  return kind === 'text' || kind === 'reply';
+}
+
+// What the sidebar and notifications may show: the text of a text message,
+// a kind label for everything else, never a payload.
+export function previewLabel(message) {
+  if (isTextKind(message.kind)) {
+    const text = message.displayText;
+    return text.length > PREVIEW_MAX_CHARS ? `${text.slice(0, PREVIEW_MAX_CHARS)}…` : text;
+  }
+  return KIND_LABELS[message.kind] ?? message.displayText;
+}
+
+function view(envelope, { kind, displayText, replyTo = null, media = null }) {
+  return { ...envelope, kind, displayText, replyTo, media };
+}
+
+function sameCiphertext(previous, raw) {
+  return previous.ciphertext === raw.ciphertext && previous.nonce === raw.nonce;
+}

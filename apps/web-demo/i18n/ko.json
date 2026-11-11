@@ -47,5 +47,22 @@
   "toast.deleteFail": "삭제 실패: {error}",
   "toast.reactionFail": "반응 실패: {error}",
   "common.cancel": "취소",
-  "common.confirm": "확인"
+  "common.confirm": "확인",
+  "auth.restore.retry": "다시 시도",
+  "auth.restore.rejected": "서버가 이 기기의 세션을 거부했어요. 기기가 해지되었을 수 있어요. 키는 이 브라우저에 그대로 남아 있어요.",
+  "auth.restore.delete": "이 신원 삭제",
+  "notifications.newMessage": "새 메시지",
+  "settings.notifications.level": "알림 내용",
+  "settings.notifications.off": "끄기",
+  "settings.notifications.generic": "\"새 메시지\"만 (기본)",
+  "settings.notifications.sender": "보낸 사람 표시",
+  "settings.notifications.senderPreview": "보낸 사람 + 미리보기",
+  "keyChange.banner": "@{handle} 의 보안 키가 바뀌었어요. 확인하기 전까지 이 대화에서는 보낼 수 없어요.",
+  "keyChange.review": "확인",
+  "keyChange.confirmTitle": "@{handle} 의 새 키를 수락할까요?",
+  "keyChange.confirmBody": "상대가 기기를 바꿨을 수도 있지만, 누군가 대화를 가로채려는 것일 수도 있어요. 다른 경로(직접 만나기, 전화)로 상대에게 확인한 뒤에만 수락하세요.",
+  "keyChange.accept": "새 키 수락",
+  "keyChange.sendBlocked": "상대의 보안 키가 바뀌었어요. 대화 상단에서 확인한 뒤 보낼 수 있어요.",
+  "keyChange.composerFrozen": "보안 키 변경을 확인하기 전까지 전송이 중지됨",
+  "keyChange.sidebar": "⚠️ 보안 키 변경됨"
 }

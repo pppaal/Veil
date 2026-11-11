@@ -1,11 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
+import type { KeyClaimMode, KeysResponse, RotateSignedPrekeyResponse } from '@veil/contracts';
 
 import { badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
 import { DIRECTORY_BUDGETS, DirectoryBudget } from './directory-budget';
-import type { KeyClaimMode, KeyDirectoryResponse, RotateSignedPrekeyResponse } from './keys.types';
 import { PrekeysService, type DirectoryRequester } from './prekeys.service';
 import { decodeSignedPrekeyBundleV2, verifySignedPrekeyBundleV2 } from './signed-prekey-bundle';
 
@@ -44,7 +44,7 @@ export class KeysService {
     requester: DirectoryRequester,
     handle: string,
     mode: KeyClaimMode,
-  ): Promise<KeyDirectoryResponse> {
+  ): Promise<KeysResponse> {
     const user = await this.prisma.user.findUnique({
       where: { handle: handle.toLowerCase() },
       select: { id: true, handle: true, activeDeviceId: true },

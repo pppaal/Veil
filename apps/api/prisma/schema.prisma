@@ -7,6 +7,14 @@ datasource db {
   url      = env("VEIL_DATABASE_URL")
 }
 
+// Every stored field carries a `/// @privacy(class, retention, visibleTo)`
+// annotation. scripts/schema-privacy-check.mjs enforces it in CI and
+// generates docs/server-data-inventory.md ("What a seized VEIL server
+// reveals") from it. Relation fields store nothing and are not annotated.
+//   class:     ciphertext | routing | operational | public | secret-hash
+//   retention: <n>s|m|h|d (swept by RetentionService) | account | forever
+//   visibleTo: self | members | server | public
+
 enum UserStatus {
   active
   locked
@@ -58,76 +66,69 @@ enum CallStatus {
   declined
 }
 
-enum StoryContentType {
-  text
-  image
-  video
-}
-
 enum AttachmentUploadStatus {
   pending
   uploaded
   failed
 }
 
+// Profile text (display name, bio, status, avatar) is not stored at all until
+// it can be stored end-to-end encrypted; a user is a handle plus devices.
 model User {
-  id               String               @id @default(uuid()) @db.Uuid
-  handle           String               @unique @db.VarChar(32)
-  displayName      String?              @map("display_name") @db.VarChar(80)
-  avatarPath       String?              @map("avatar_path")
-  status           UserStatus           @default(active)
-  activeDeviceId   String?              @map("active_device_id") @db.Uuid
-  createdAt        DateTime             @default(now()) @map("created_at")
-  updatedAt        DateTime             @updatedAt @map("updated_at")
-  devices          Device[]             @relation("UserDevices")
-  activeDevice     Device?              @relation("ActiveDevice", fields: [activeDeviceId], references: [id], onDelete: SetNull)
-  conversationRefs ConversationMember[]
-  receipts         MessageReceipt[]
-  transferSessions DeviceTransferSession[]
-  profile          UserProfile?
-  contacts         UserContact[]          @relation("UserContacts")
-  contactOf        UserContact[]          @relation("UserContactOf")
-  createdGroups    GroupMeta[]
-  createdChannels  ChannelMeta[]
-  stories          Story[]
-  storyViews       StoryView[]
-  reactions        Reaction[]
-  blocksOutgoing   UserBlock[]            @relation("BlocksOutgoing")
-  blocksIncoming   UserBlock[]            @relation("BlocksIncoming")
+  /// @privacy(class=routing, retention=account, visibleTo=public)
+  id                String                  @id @default(uuid()) @db.Uuid
+  /// @privacy(class=public, retention=account, visibleTo=public)
+  handle            String                  @unique @db.VarChar(32)
+  /// @privacy(class=operational, retention=account, visibleTo=public)
+  status            UserStatus              @default(active)
+  /// @privacy(class=routing, retention=account, visibleTo=public)
+  activeDeviceId    String?                 @map("active_device_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=server)
+  createdAt         DateTime                @default(now()) @map("created_at")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
+  updatedAt         DateTime                @updatedAt @map("updated_at")
+  devices           Device[]                @relation("UserDevices")
+  activeDevice      Device?                 @relation("ActiveDevice", fields: [activeDeviceId], references: [id], onDelete: SetNull)
+  conversationRefs  ConversationMember[]
+  receipts          MessageReceipt[]
+  transferSessions  DeviceTransferSession[]
+  contacts          UserContact[]           @relation("UserContacts")
+  contactOf         UserContact[]           @relation("UserContactOf")
+  createdGroups     GroupMeta[]
+  createdChannels   ChannelMeta[]
+  stories           Story[]
+  storyViews        StoryView[]
+  storyAudiences    StoryAudience[]
+  blocksOutgoing    UserBlock[]             @relation("BlocksOutgoing")
+  blocksIncoming    UserBlock[]             @relation("BlocksIncoming")
   conversationMutes ConversationMute[]
-  reportsFiled     AbuseReport[]          @relation("ReportsFiled")
-  reportsAgainst   AbuseReport[]          @relation("ReportsAgainst")
+  reportsFiled      AbuseReport[]           @relation("ReportsFiled")
+  reportsAgainst    AbuseReport[]           @relation("ReportsAgainst")
   groupMemberEpochs GroupMemberEpoch[]
-  recoveryBlob     RecoveryBlob?
 
   @@index([activeDeviceId])
   @@map("users")
 }
 
-// Passphrase-sealed account recovery backup. Stores ONLY the opaque
-// client-side envelope (mobile BackupEnvelope: PBKDF2-SHA256 600k +
-// AES-256-GCM); the passphrase and the derived key never reach the server,
-// so the server cannot decrypt this even though it holds the user's
-// (encrypted) identity material. One row per user — re-uploading replaces
-// the previous backup. See docs/recovery-backup-design.md. Note: the
-// lost-device *retrieval* auth path is a separate, still-open design
-// decision; this table is the storage substrate only.
-model RecoveryBlob {
-  userId     String   @id @map("user_id") @db.Uuid
-  ciphertext String
-  // Envelope format marker (e.g. "veilbak:v1"), so a future KDF/format bump
-  // is forward-compatible without a schema change.
-  format     String   @default("veilbak:v1") @db.VarChar(32)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+// Handles of deleted accounts stay reserved for a quarantine period, so a
+// stranger cannot re-register @alice and inherit the trust her contacts gave
+// her. Only a peppered HMAC of the handle is kept, never the handle itself.
+model RetiredHandle {
+  /// @privacy(class=secret-hash, retention=90d, visibleTo=server)
+  handleHmac   String   @id @map("handle_hmac") @db.VarChar(64)
+  /// @privacy(class=operational, retention=90d, visibleTo=server)
+  retiredUntil DateTime @map("retired_until")
 
-  @@map("recovery_blobs")
+  @@index([retiredUntil])
+  @@map("retired_handles")
 }
 
 model UserBlock {
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   blockerUserId String   @map("blocker_user_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   blockedUserId String   @map("blocked_user_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=self)
   createdAt     DateTime @default(now()) @map("created_at")
   blocker       User     @relation("BlocksOutgoing", fields: [blockerUserId], references: [id], onDelete: Cascade)
   blocked       User     @relation("BlocksIncoming", fields: [blockedUserId], references: [id], onDelete: Cascade)
@@ -138,12 +139,16 @@ model UserBlock {
 }
 
 model ConversationMute {
-  userId         String    @map("user_id") @db.Uuid
-  conversationId String    @map("conversation_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
+  userId         String       @map("user_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
+  conversationId String       @map("conversation_id") @db.Uuid
   // null = muted indefinitely. A future date = auto-unmutes after that time.
-  mutedUntil     DateTime? @map("muted_until")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  mutedUntil     DateTime?    @map("muted_until")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@id([userId, conversationId])
@@ -151,49 +156,75 @@ model ConversationMute {
   @@map("conversation_mutes")
 }
 
+// No free-text note: there is no moderator viewer, so a note would be
+// plaintext the server keeps for nobody.
 model AbuseReport {
-  id              String   @id @default(uuid()) @db.Uuid
-  reporterUserId  String   @map("reporter_user_id") @db.Uuid
-  reportedUserId  String   @map("reported_user_id") @db.Uuid
-  conversationId  String?  @map("conversation_id") @db.Uuid
-  messageId       String?  @map("message_id") @db.Uuid
-  reason          String   @db.VarChar(40)
-  note            String?  @db.VarChar(1000)
-  createdAt       DateTime @default(now()) @map("created_at")
-  reporter        User     @relation("ReportsFiled", fields: [reporterUserId], references: [id], onDelete: Cascade)
-  reported        User     @relation("ReportsAgainst", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  /// @privacy(class=routing, retention=90d, visibleTo=self)
+  id             String   @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=90d, visibleTo=server)
+  reporterUserId String   @map("reporter_user_id") @db.Uuid
+  /// @privacy(class=routing, retention=90d, visibleTo=server)
+  reportedUserId String   @map("reported_user_id") @db.Uuid
+  /// @privacy(class=routing, retention=90d, visibleTo=server)
+  conversationId String?  @map("conversation_id") @db.Uuid
+  /// @privacy(class=routing, retention=90d, visibleTo=server)
+  messageId      String?  @map("message_id") @db.Uuid
+  /// @privacy(class=operational, retention=90d, visibleTo=server)
+  reason         String   @db.VarChar(40)
+  /// @privacy(class=operational, retention=90d, visibleTo=self)
+  createdAt      DateTime @default(now()) @map("created_at")
+  reporter       User     @relation("ReportsFiled", fields: [reporterUserId], references: [id], onDelete: Cascade)
+  reported       User     @relation("ReportsAgainst", fields: [reportedUserId], references: [id], onDelete: Cascade)
 
   @@index([reportedUserId, createdAt])
   @@index([reporterUserId, createdAt])
+  @@index([createdAt])
   @@map("abuse_reports")
 }
 
 model Device {
-  id                String                  @id @default(uuid()) @db.Uuid
-  userId            String                  @map("user_id") @db.Uuid
-  platform          DevicePlatform
-  deviceName        String                  @map("device_name") @db.VarChar(80)
-  publicIdentityKey String                  @map("public_identity_key")
-  signedPrekeyBundle String                 @map("signed_prekey_bundle")
-  authPublicKey     String                  @map("auth_public_key")
-  pushToken         String?                 @map("push_token")
-  isActive          Boolean                 @default(true) @map("is_active")
-  revokedAt         DateTime?               @map("revoked_at")
-  trustedAt         DateTime                @default(now()) @map("trusted_at")
-  joinedFromDeviceId String?                @map("joined_from_device_id") @db.Uuid
-  createdAt         DateTime                @default(now()) @map("created_at")
-  lastSeenAt        DateTime                @default(now()) @map("last_seen_at")
-  lastSyncAt        DateTime?               @map("last_sync_at")
-  user              User                    @relation("UserDevices", fields: [userId], references: [id], onDelete: Cascade)
-  activeForUsers    User[]                  @relation("ActiveDevice")
-  sentMessages      Message[]
-  attachments       Attachment[]
-  oldTransferSessions DeviceTransferSession[] @relation("OldDeviceTransfer")
-  joinedFromDevice  Device?                 @relation("JoinedDeviceGraph", fields: [joinedFromDeviceId], references: [id], onDelete: SetNull)
-  joinedDevices     Device[]                @relation("JoinedDeviceGraph")
-  conversationStates DeviceConversationState[]
-  initiatedCalls     CallRecord[]
-  oneTimePrekeys     OneTimePrekey[]
+  /// @privacy(class=routing, retention=account, visibleTo=public)
+  id                  String                    @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=public)
+  userId              String                    @map("user_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  platform            DevicePlatform
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  deviceName          String                    @map("device_name") @db.VarChar(80)
+  /// @privacy(class=public, retention=account, visibleTo=public)
+  publicIdentityKey   String                    @map("public_identity_key")
+  /// @privacy(class=public, retention=account, visibleTo=public)
+  signedPrekeyBundle  String                    @map("signed_prekey_bundle")
+  /// @privacy(class=public, retention=account, visibleTo=server)
+  authPublicKey       String                    @map("auth_public_key")
+  /// @privacy(class=routing, retention=account, visibleTo=server)
+  pushToken           String?                   @map("push_token")
+  /// @privacy(class=operational, retention=account, visibleTo=public)
+  isActive            Boolean                   @default(true) @map("is_active")
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  revokedAt           DateTime?                 @map("revoked_at")
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  trustedAt           DateTime                  @default(now()) @map("trusted_at")
+  /// @privacy(class=routing, retention=account, visibleTo=self)
+  joinedFromDeviceId  String?                   @map("joined_from_device_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  createdAt           DateTime                  @default(now()) @map("created_at")
+  // Activity timestamps hold the start of the UTC day only, and are written
+  // at most once a day, so they cannot be read back as an activity timeline.
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  lastSeenAt          DateTime                  @default(now()) @map("last_seen_at")
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  lastSyncAt          DateTime?                 @map("last_sync_at")
+  user                User                      @relation("UserDevices", fields: [userId], references: [id], onDelete: Cascade)
+  activeForUsers      User[]                    @relation("ActiveDevice")
+  sentMessages        Message[]
+  attachments         Attachment[]
+  oldTransferSessions DeviceTransferSession[]   @relation("OldDeviceTransfer")
+  joinedFromDevice    Device?                   @relation("JoinedDeviceGraph", fields: [joinedFromDeviceId], references: [id], onDelete: SetNull)
+  joinedDevices       Device[]                  @relation("JoinedDeviceGraph")
+  conversationStates  DeviceConversationState[]
+  initiatedCalls      CallRecord[]
+  oneTimePrekeys      OneTimePrekey[]
 
   @@index([userId, isActive])
   @@index([joinedFromDeviceId])
@@ -206,16 +237,22 @@ model Device {
 // (atomic, never handed out twice); the owner replenishes the pool when it
 // runs low. When the pool is empty the initiator falls back to signed-prekey-
 // only X3DH. Consumed rows are kept (consumedAt set) so keyIds are never
-// reused; a retention sweep can prune old consumed rows later. See
+// reused, then swept 30 days after consumption. See
 // docs/libsignal-migration-design.md (phase L.4).
 model OneTimePrekey {
+  /// @privacy(class=routing, retention=30d, visibleTo=server)
   id         String    @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=public)
   deviceId   String    @map("device_id") @db.Uuid
   // Client-assigned id for this prekey, unique within the device so the
   // client can correlate its stored private half.
+  /// @privacy(class=public, retention=30d, visibleTo=public)
   keyId      Int       @map("key_id")
+  /// @privacy(class=public, retention=30d, visibleTo=public)
   publicKey  String    @map("public_key")
+  /// @privacy(class=operational, retention=30d, visibleTo=server)
   consumedAt DateTime? @map("consumed_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=server)
   createdAt  DateTime  @default(now()) @map("created_at")
   device     Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
 
@@ -226,43 +263,51 @@ model OneTimePrekey {
 }
 
 model Conversation {
-  id        String               @id @default(uuid()) @db.Uuid
-  type      ConversationType     @default(direct)
-  createdAt DateTime             @default(now()) @map("created_at")
+  /// @privacy(class=routing, retention=forever, visibleTo=members)
+  id                       String                    @id @default(uuid()) @db.Uuid
+  /// @privacy(class=operational, retention=forever, visibleTo=members)
+  type                     ConversationType          @default(direct)
+  /// @privacy(class=operational, retention=forever, visibleTo=members)
+  createdAt                DateTime                  @default(now()) @map("created_at")
   // Per-conversation default TTL for new messages, in seconds. null = off.
   // Client uses this to auto-stamp expiresAt on outgoing messages, and
   // server enforces it as an upper bound on incoming messages.
-  disappearingTimerSeconds Int?  @map("disappearing_timer_seconds")
+  /// @privacy(class=operational, retention=forever, visibleTo=members)
+  disappearingTimerSeconds Int?                      @map("disappearing_timer_seconds")
   // Deterministic dedupe key for direct conversations: sortedUserIds.join('|').
   // Null for group/channel rows. The unique index on this column means two
   // concurrent createDirect calls between the same pair can't both create a
   // conversation — one wins, the other catches P2002 and returns the
   // existing conversation.
-  directKey String?              @map("direct_key") @db.VarChar(80)
+  /// @privacy(class=routing, retention=forever, visibleTo=server)
+  directKey                String?                   @map("direct_key") @db.VarChar(80)
   // Monotonic group epoch. Incremented on every membership change (join /
-  // leave / remove). Group Sender Keys (design-only, see
-  // docs/group-sender-keys-design.md) use this to scope key material to a
-  // membership generation so a removed member cannot decrypt future
-  // ciphertext. Always 0 for direct conversations. Int (not BigInt) is
-  // ample: a membership change per second for 60+ years stays under 2^31.
-  currentEpoch Int               @default(0) @map("current_epoch")
+  // leave / remove). Group Sender Keys (see docs/group-sender-keys-design.md)
+  // use this to scope key material to a membership generation so a removed
+  // member cannot decrypt future ciphertext. Always 0 for direct
+  // conversations. Int (not BigInt) is ample: a membership change per second
+  // for 60+ years stays under 2^31.
+  /// @privacy(class=operational, retention=forever, visibleTo=members)
+  currentEpoch             Int                       @default(0) @map("current_epoch")
   // Group Sender Keys opt-in (phase AB.2). When true the server enforces the
   // group_epoch_stale gate on inbound sends and clients negotiate per-sender
   // keys; when false (the default, and all existing groups) the group stays
   // on the legacy single shared key with no epoch enforcement.
-  groupUseSenderKeys Boolean      @default(false) @map("group_use_sender_keys")
+  /// @privacy(class=operational, retention=forever, visibleTo=members)
+  groupUseSenderKeys       Boolean                   @default(false) @map("group_use_sender_keys")
   // Last conversationOrder handed out. Sends increment it under the row lock,
   // so orders are unique and never reused, even after the newest message is
   // hard-deleted (view-once consumption, expiry).
-  lastOrder    Int               @default(0) @map("last_order")
-  members      ConversationMember[]
-  messages     Message[]
-  deviceStates DeviceConversationState[]
-  groupMeta    GroupMeta?
-  channelMeta  ChannelMeta?
-  callRecords  CallRecord[]
-  mutes        ConversationMute[]
-  memberEpochs GroupMemberEpoch[]
+  /// @privacy(class=operational, retention=forever, visibleTo=server)
+  lastOrder                Int                       @default(0) @map("last_order")
+  members                  ConversationMember[]
+  messages                 Message[]
+  deviceStates             DeviceConversationState[]
+  groupMeta                GroupMeta?
+  channelMeta              ChannelMeta?
+  callRecords              CallRecord[]
+  mutes                    ConversationMute[]
+  memberEpochs             GroupMemberEpoch[]
 
   @@unique([directKey])
   @@map("conversations")
@@ -276,9 +321,13 @@ model Conversation {
 // Server-side bookkeeping only — no key material lives here (key
 // distribution rides the existing 1:1 ratchet, see the design doc).
 model GroupMemberEpoch {
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   conversationId String       @map("conversation_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   userId         String       @map("user_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=server)
   joinedEpoch    Int          @map("joined_epoch")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
   leftEpoch      Int?         @map("left_epoch")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -289,13 +338,18 @@ model GroupMemberEpoch {
 }
 
 model ConversationMember {
-  id             String        @id @default(uuid()) @db.Uuid
-  conversationId String        @map("conversation_id") @db.Uuid
-  userId         String        @map("user_id") @db.Uuid
-  role           MemberRole    @default(member)
-  joinedAt       DateTime      @default(now()) @map("joined_at")
-  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// @privacy(class=routing, retention=account, visibleTo=server)
+  id             String       @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=members)
+  conversationId String       @map("conversation_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=members)
+  userId         String       @map("user_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=members)
+  role           MemberRole   @default(member)
+  /// @privacy(class=operational, retention=account, visibleTo=server)
+  joinedAt       DateTime     @default(now()) @map("joined_at")
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, userId])
   @@index([userId])
@@ -303,14 +357,20 @@ model ConversationMember {
 }
 
 model DeviceConversationState {
-  id                        String       @id @default(uuid()) @db.Uuid
-  deviceId                  String       @map("device_id") @db.Uuid
-  conversationId            String       @map("conversation_id") @db.Uuid
-  lastSyncedConversationOrder Int?       @map("last_synced_conversation_order")
-  lastReadConversationOrder Int?         @map("last_read_conversation_order")
-  updatedAt                 DateTime     @updatedAt @map("updated_at")
-  device                    Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  conversation              Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  /// @privacy(class=routing, retention=account, visibleTo=server)
+  id                          String       @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
+  deviceId                    String       @map("device_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
+  conversationId              String       @map("conversation_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  lastSyncedConversationOrder Int?         @map("last_synced_conversation_order")
+  /// @privacy(class=operational, retention=account, visibleTo=self)
+  lastReadConversationOrder   Int?         @map("last_read_conversation_order")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
+  updatedAt                   DateTime     @updatedAt @map("updated_at")
+  device                      Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  conversation                Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@unique([deviceId, conversationId])
   @@index([deviceId, updatedAt])
@@ -318,44 +378,65 @@ model DeviceConversationState {
   @@map("device_conversation_states")
 }
 
+// Reactions travel as ordinary end-to-end encrypted messages (messageType
+// 'reaction'); the relay never learns the emoji or its target.
 model Message {
-  id               String        @id @default(uuid()) @db.Uuid
-  conversationId   String        @map("conversation_id") @db.Uuid
-  senderDeviceId   String        @map("sender_device_id") @db.Uuid
-  clientMessageId  String        @map("client_message_id") @db.VarChar(80)
-  conversationOrder Int         @map("conversation_order")
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  id                String           @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  conversationId    String           @map("conversation_id") @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  senderDeviceId    String           @map("sender_device_id") @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  clientMessageId   String           @map("client_message_id") @db.VarChar(80)
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  conversationOrder Int              @map("conversation_order")
   // Envelope format the sender used (veil-envelope-v1/-v2, veil-group-v1,
   // libsignal-v1, ...). Receivers select their decryptor from it; rows
   // written before it was persisted default to the original v1 format.
-  envelopeVersion  String        @default("veil-envelope-v1") @map("envelope_version") @db.VarChar(32)
-  ciphertext       String
-  nonce            String
-  messageType      MessageType   @map("message_type")
-  attachmentId     String?       @map("attachment_id") @db.Uuid
-  attachmentRef    Json?         @map("attachment_ref")
-  serverReceivedAt DateTime      @default(now()) @map("server_received_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  envelopeVersion   String           @default("veil-envelope-v1") @map("envelope_version") @db.VarChar(32)
+  /// @privacy(class=ciphertext, retention=30d, visibleTo=members)
+  ciphertext        String
+  /// @privacy(class=ciphertext, retention=30d, visibleTo=members)
+  nonce             String
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  messageType       MessageType      @map("message_type")
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  attachmentId      String?          @map("attachment_id") @db.Uuid
+  // Only ever {attachmentId}: attachment metadata travels inside the E2E
+  // payload.
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  attachmentRef     Json?            @map("attachment_ref")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  serverReceivedAt  DateTime         @default(now()) @map("server_received_at")
   // Reply / quote support. Null on first-class messages; UUID FK to
   // another message when this is a reply. ON DELETE SET NULL so the
   // chip survives a deleted parent (UI shows "원본 삭제됨").
-  replyToMessageId String?       @map("reply_to_message_id") @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
+  replyToMessageId  String?          @map("reply_to_message_id") @db.Uuid
   // Set when the sender re-encrypts the body. The original ciphertext is
   // overwritten — we keep no edit history server-side. editCount lets
   // the UI show "(수정됨)" without storing revisions the user can't view.
-  editedAt         DateTime?     @map("edited_at")
-  editCount        Int           @default(0) @map("edit_count")
-  deletedAt        DateTime?     @map("deleted_at")
-  expiresAt        DateTime?     @map("expires_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  editedAt          DateTime?        @map("edited_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  editCount         Int              @default(0) @map("edit_count")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  deletedAt         DateTime?        @map("deleted_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  expiresAt         DateTime?        @map("expires_at")
   // View-once messages are hard-deleted as soon as any non-sender member
   // marks them read. Sender sees a "viewed" ghost but the ciphertext is
   // gone from the server.
-  viewOnce         Boolean       @default(false) @map("view_once")
-  conversation     Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderDevice     Device        @relation(fields: [senderDeviceId], references: [id], onDelete: Restrict)
-  attachment       Attachment?   @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
-  replyTo          Message?      @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  replies          Message[]     @relation("MessageReplies")
-  receipts         MessageReceipt[]
-  reactions        Reaction[]
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
+  viewOnce          Boolean          @default(false) @map("view_once")
+  conversation      Conversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderDevice      Device           @relation(fields: [senderDeviceId], references: [id], onDelete: Restrict)
+  attachment        Attachment?      @relation(fields: [attachmentId], references: [id], onDelete: SetNull)
+  replyTo           Message?         @relation("MessageReplies", fields: [replyToMessageId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  replies           Message[]        @relation("MessageReplies")
+  receipts          MessageReceipt[]
 
   @@unique([senderDeviceId, clientMessageId])
   // Backstop for the conversations.last_order counter: a conversation can
@@ -364,50 +445,74 @@ model Message {
   @@index([conversationId, serverReceivedAt])
   @@index([attachmentId])
   @@index([replyToMessageId])
-  // The disappearing-message sweep filters on expires_at every ~10 min; without
-  // this index it full-scans the largest table and degrades forever.
+  // The retention sweeps filter on expires_at and server_received_at every
+  // ~10 min; without these indexes they full-scan the largest table.
   @@index([expiresAt])
+  @@index([serverReceivedAt])
   @@map("messages")
 }
 
 model MessageReceipt {
+  /// @privacy(class=routing, retention=30d, visibleTo=server)
   id          String    @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
   messageId   String    @map("message_id") @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
   userId      String    @map("user_id") @db.Uuid
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   deliveredAt DateTime? @map("delivered_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   readAt      DateTime? @map("read_at")
   message     Message   @relation(fields: [messageId], references: [id], onDelete: Cascade)
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, userId])
   @@index([userId])
+  @@index([readAt])
+  @@index([deliveredAt])
   @@map("message_receipts")
 }
 
 model Attachment {
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
   id               String                 @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=server)
   uploaderDeviceId String                 @map("uploader_device_id") @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=server)
   storageKey       String                 @map("storage_key")
+  /// @privacy(class=operational, retention=30d, visibleTo=server)
   contentType      String                 @map("content_type")
+  /// @privacy(class=operational, retention=30d, visibleTo=server)
   sizeBytes        Int                    @map("size_bytes")
+  /// @privacy(class=operational, retention=30d, visibleTo=server)
   sha256           String
+  /// @privacy(class=operational, retention=30d, visibleTo=self)
   uploadStatus     AttachmentUploadStatus @default(pending) @map("upload_status")
+  /// @privacy(class=operational, retention=30d, visibleTo=server)
   createdAt        DateTime               @default(now()) @map("created_at")
   uploaderDevice   Device                 @relation(fields: [uploaderDeviceId], references: [id], onDelete: Restrict)
   messages         Message[]
 
   @@index([uploaderDeviceId, createdAt])
   @@index([storageKey])
+  @@index([createdAt])
   @@map("attachments")
 }
 
 model DeviceTransferSession {
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   id          String    @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   userId      String    @map("user_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   oldDeviceId String    @map("old_device_id") @db.Uuid
+  /// @privacy(class=secret-hash, retention=account, visibleTo=server)
   tokenHash   String    @map("token_hash")
+  /// @privacy(class=operational, retention=account, visibleTo=self)
   expiresAt   DateTime  @map("expires_at")
+  /// @privacy(class=operational, retention=account, visibleTo=self)
   completedAt DateTime? @map("completed_at")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
   createdAt   DateTime  @default(now()) @map("created_at")
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   oldDevice   Device    @relation("OldDeviceTransfer", fields: [oldDeviceId], references: [id], onDelete: Restrict)
@@ -418,16 +523,25 @@ model DeviceTransferSession {
 }
 
 model GroupMeta {
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   id              String       @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=members)
   conversationId  String       @unique @map("conversation_id") @db.Uuid
+  /// @privacy(class=public, retention=account, visibleTo=members)
   name            String       @db.VarChar(120)
+  /// @privacy(class=public, retention=account, visibleTo=members)
   description     String?      @db.VarChar(500)
-  avatarPath      String?      @map("avatar_path")
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   createdByUserId String       @map("created_by_user_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=members)
   isPublic        Boolean      @default(false) @map("is_public")
+  /// @privacy(class=operational, retention=account, visibleTo=members)
   memberLimit     Int          @default(500) @map("member_limit")
+  /// @privacy(class=routing, retention=account, visibleTo=members)
   link            String?      @unique @db.VarChar(120)
+  /// @privacy(class=operational, retention=account, visibleTo=members)
   createdAt       DateTime     @default(now()) @map("created_at")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
   updatedAt       DateTime     @updatedAt @map("updated_at")
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   createdBy       User         @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
@@ -437,16 +551,25 @@ model GroupMeta {
 }
 
 model ChannelMeta {
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   id              String       @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=public)
   conversationId  String       @unique @map("conversation_id") @db.Uuid
+  /// @privacy(class=public, retention=account, visibleTo=public)
   name            String       @db.VarChar(120)
+  /// @privacy(class=public, retention=account, visibleTo=public)
   description     String?      @db.VarChar(500)
-  avatarPath      String?      @map("avatar_path")
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   createdByUserId String       @map("created_by_user_id") @db.Uuid
+  /// @privacy(class=operational, retention=account, visibleTo=public)
   isPublic        Boolean      @default(false) @map("is_public")
+  /// @privacy(class=operational, retention=account, visibleTo=public)
   subscriberCount Int          @default(0) @map("subscriber_count")
+  /// @privacy(class=routing, retention=account, visibleTo=public)
   link            String?      @unique @db.VarChar(120)
+  /// @privacy(class=operational, retention=account, visibleTo=public)
   createdAt       DateTime     @default(now()) @map("created_at")
+  /// @privacy(class=operational, retention=account, visibleTo=server)
   updatedAt       DateTime     @updatedAt @map("updated_at")
   conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   createdBy       User         @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
@@ -455,11 +578,16 @@ model ChannelMeta {
   @@map("channel_metas")
 }
 
+// A one-way contact list entry. Names users give their contacts stay on the
+// device; the server keeps only who added whom.
 model UserContact {
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   id            String   @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   userId        String   @map("user_id") @db.Uuid
+  /// @privacy(class=routing, retention=account, visibleTo=self)
   contactUserId String   @map("contact_user_id") @db.Uuid
-  nickname      String?  @db.VarChar(80)
+  /// @privacy(class=operational, retention=account, visibleTo=self)
   createdAt     DateTime @default(now()) @map("created_at")
   user          User     @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
   contactUser   User     @relation("UserContactOf", fields: [contactUserId], references: [id], onDelete: Cascade)
@@ -469,42 +597,55 @@ model UserContact {
   @@map("user_contacts")
 }
 
-model UserProfile {
-  id            String    @id @default(uuid()) @db.Uuid
-  userId        String    @unique @map("user_id") @db.Uuid
-  bio           String?   @db.VarChar(300)
-  statusMessage String?   @map("status_message") @db.VarChar(140)
-  statusEmoji   String?   @map("status_emoji") @db.VarChar(8)
-  lastStatusAt  DateTime? @map("last_status_at")
-  avatarPath    String?   @map("avatar_path")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("user_profiles")
-}
-
+// A story is an end-to-end encrypted envelope for an explicit audience the
+// author chose; the server never sees its content or type.
 model Story {
-  id          String           @id @default(uuid()) @db.Uuid
-  userId      String           @map("user_id") @db.Uuid
-  contentType StoryContentType @map("content_type")
-  contentUrl  String           @map("content_url")
-  caption     String?          @db.VarChar(300)
-  expiresAt   DateTime         @map("expires_at")
-  viewCount   Int              @default(0) @map("view_count")
-  createdAt   DateTime         @default(now()) @map("created_at")
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  views       StoryView[]
+  /// @privacy(class=routing, retention=24h, visibleTo=members)
+  id              String          @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=24h, visibleTo=members)
+  userId          String          @map("user_id") @db.Uuid
+  /// @privacy(class=ciphertext, retention=24h, visibleTo=members)
+  ciphertext      String
+  /// @privacy(class=operational, retention=24h, visibleTo=members)
+  envelopeVersion String          @map("envelope_version") @db.VarChar(32)
+  /// @privacy(class=operational, retention=24h, visibleTo=members)
+  expiresAt       DateTime        @map("expires_at")
+  /// @privacy(class=operational, retention=24h, visibleTo=server)
+  viewCount       Int             @default(0) @map("view_count")
+  /// @privacy(class=operational, retention=24h, visibleTo=members)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  views           StoryView[]
+  audience        StoryAudience[]
 
   @@index([userId, createdAt])
   @@index([expiresAt])
   @@map("stories")
 }
 
+// Who a story is for. Listing, viewing and the story.new event go by this
+// table only, never by the contact graph at read time.
+model StoryAudience {
+  /// @privacy(class=routing, retention=24h, visibleTo=server)
+  storyId String @map("story_id") @db.Uuid
+  /// @privacy(class=routing, retention=24h, visibleTo=server)
+  userId  String @map("user_id") @db.Uuid
+  story   Story  @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([storyId, userId])
+  @@index([userId])
+  @@map("story_audiences")
+}
+
 model StoryView {
+  /// @privacy(class=routing, retention=24h, visibleTo=server)
   id           String   @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=24h, visibleTo=self)
   storyId      String   @map("story_id") @db.Uuid
+  /// @privacy(class=routing, retention=24h, visibleTo=server)
   viewerUserId String   @map("viewer_user_id") @db.Uuid
+  /// @privacy(class=operational, retention=24h, visibleTo=self)
   viewedAt     DateTime @default(now()) @map("viewed_at")
   story        Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   viewer       User     @relation(fields: [viewerUserId], references: [id], onDelete: Cascade)
@@ -514,34 +655,29 @@ model StoryView {
   @@map("story_views")
 }
 
-model Reaction {
-  id        String   @id @default(uuid()) @db.Uuid
-  messageId String   @map("message_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  emoji     String   @db.VarChar(32)
-  createdAt DateTime @default(now()) @map("created_at")
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, userId])
-  @@index([userId])
-  @@map("reactions")
-}
-
 model CallRecord {
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
   id                String       @id @default(uuid()) @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
   conversationId    String       @map("conversation_id") @db.Uuid
+  /// @privacy(class=routing, retention=30d, visibleTo=members)
   initiatorDeviceId String       @map("initiator_device_id") @db.Uuid
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   callType          CallType     @map("call_type")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   status            CallStatus   @default(ringing)
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   startedAt         DateTime     @default(now()) @map("started_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   endedAt           DateTime?    @map("ended_at")
+  /// @privacy(class=operational, retention=30d, visibleTo=members)
   duration          Int?
   conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   initiatorDevice   Device       @relation(fields: [initiatorDeviceId], references: [id], onDelete: Restrict)
 
   @@index([conversationId, startedAt])
   @@index([initiatorDeviceId])
+  @@index([status, startedAt])
   @@map("call_records")
 }
 
@@ -551,9 +687,13 @@ model CallRecord {
 // any leftover is purged after expiresAt. No user binding: a recipient
 // needs no account, which is the whole point of the feature.
 model SecretBlob {
+  /// @privacy(class=routing, retention=7d, visibleTo=public)
   id         String   @id @default(uuid()) @db.Uuid
+  /// @privacy(class=ciphertext, retention=7d, visibleTo=public)
   ciphertext String
+  /// @privacy(class=operational, retention=7d, visibleTo=server)
   createdAt  DateTime @default(now()) @map("created_at")
+  /// @privacy(class=operational, retention=7d, visibleTo=public)
   expiresAt  DateTime @map("expires_at")
 
   @@index([expiresAt])

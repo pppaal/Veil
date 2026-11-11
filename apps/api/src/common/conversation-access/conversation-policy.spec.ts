@@ -16,7 +16,6 @@ const EXPECTED_GRANTS: Record<string, string[]> = {
     'send',
     'edit',
     'delete',
-    'react',
     'typing',
     'setTimer',
     'call',
@@ -28,7 +27,6 @@ const EXPECTED_GRANTS: Record<string, string[]> = {
     'send',
     'edit',
     'delete',
-    'react',
     'typing',
     'setTimer',
     'readMembers',
@@ -39,7 +37,6 @@ const EXPECTED_GRANTS: Record<string, string[]> = {
     'send',
     'edit',
     'delete',
-    'react',
     'typing',
     'setTimer',
     'readMembers',
@@ -51,7 +48,6 @@ const EXPECTED_GRANTS: Record<string, string[]> = {
     'send',
     'edit',
     'delete',
-    'react',
     'typing',
     'setTimer',
     'readMembers',
@@ -95,7 +91,7 @@ const table = conversationTypes.flatMap((type) =>
 
 describe('conversation policy', () => {
   it('covers every type x role x action combination', () => {
-    expect(table).toHaveLength(3 * 4 * 11);
+    expect(table).toHaveLength(3 * 4 * 10);
   });
 
   it.each(table)('$type/$role $action -> $allowed', ({ type, role, action, allowed }) => {

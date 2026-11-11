@@ -5,8 +5,6 @@ import { Prisma } from '@prisma/client';
 type UserRecord = {
   id: string;
   handle: string;
-  displayName: string | null;
-  avatarPath: string | null;
   status: 'active' | 'locked' | 'revoked';
   activeDeviceId: string | null;
   createdAt: Date;
@@ -59,7 +57,6 @@ type GroupMetaRecord = {
   conversationId: string;
   name: string;
   description: string | null;
-  avatarPath: string | null;
   createdByUserId: string;
   isPublic: boolean;
   memberLimit: number;
@@ -73,7 +70,6 @@ type ChannelMetaRecord = {
   conversationId: string;
   name: string;
   description: string | null;
-  avatarPath: string | null;
   createdByUserId: string;
   isPublic: boolean;
   subscriberCount: number;
@@ -155,28 +151,12 @@ type UserContactRecord = {
   id: string;
   userId: string;
   contactUserId: string;
-  nickname: string | null;
   createdAt: Date;
 };
 
-type UserProfileRecord = {
-  id: string;
-  userId: string;
-  bio: string | null;
-  statusMessage: string | null;
-  statusEmoji: string | null;
-  lastStatusAt: Date | null;
-  avatarPath: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type ReactionRecord = {
-  id: string;
-  messageId: string;
-  userId: string;
-  emoji: string;
-  createdAt: Date;
+type RetiredHandleRecord = {
+  handleHmac: string;
+  retiredUntil: Date;
 };
 
 type OneTimePrekeyRecord = {
@@ -214,7 +194,7 @@ type ModelName =
   | 'conversationMember'
   | 'message'
   | 'messageReceipt'
-  | 'reaction'
+  | 'retiredHandle'
   | 'groupMeta'
   | 'channelMeta'
   | 'groupMemberEpoch'
@@ -269,9 +249,8 @@ export class FakePrismaService {
   deviceConversationStates: DeviceConversationStateRecord[] = [];
   transferSessions: DeviceTransferSessionRecord[] = [];
   oneTimePrekeys: OneTimePrekeyRecord[] = [];
-  reactions: ReactionRecord[] = [];
+  retiredHandles: RetiredHandleRecord[] = [];
   userContacts: UserContactRecord[] = [];
-  userProfiles: UserProfileRecord[] = [];
   groupMetas: GroupMetaRecord[] = [];
   channelMetas: ChannelMetaRecord[] = [];
   groupMemberEpochs: GroupMemberEpochRecord[] = [];
@@ -291,6 +270,11 @@ export class FakePrismaService {
     findMany: async (_args: any) => [] as any[],
     create: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
+    updateMany: async ({ where, data }: any) => {
+      const rows = this.findRows('device', { where });
+      for (const row of rows) this.applyData(row, data);
+      return { count: rows.length };
+    },
   };
 
   conversation = this.delegate('conversation', (data) => this.insertConversation(data));
@@ -377,15 +361,15 @@ export class FakePrismaService {
     upsert: async (_args: any) => undefined as any,
   };
 
-  reaction = this.delegate('reaction', (data) => {
-    const record: ReactionRecord = {
-      id: makeId('reaction'),
-      messageId: data.messageId,
-      userId: data.userId,
-      emoji: data.emoji,
-      createdAt: new Date(),
+  retiredHandle = this.delegate('retiredHandle', (data) => {
+    if (this.retiredHandles.some((item) => item.handleHmac === data.handleHmac)) {
+      throw uniqueViolation('handle_hmac');
+    }
+    const record: RetiredHandleRecord = {
+      handleHmac: data.handleHmac,
+      retiredUntil: data.retiredUntil,
     };
-    this.reactions.push(record);
+    this.retiredHandles.push(record);
     return record;
   });
 
@@ -394,11 +378,6 @@ export class FakePrismaService {
     findUnique: async (_args: any) => undefined as any,
     create: async (_args: any) => undefined as any,
     delete: async (_args: any) => undefined as any,
-  };
-
-  userProfile = {
-    findUnique: async (_args: any) => undefined as any,
-    upsert: async (_args: any) => undefined as any,
   };
 
   oneTimePrekey = {
@@ -452,8 +431,6 @@ export class FakePrismaService {
       const record: UserRecord = {
         id: makeId('user'),
         handle: data.handle,
-        displayName: data.displayName ?? null,
-        avatarPath: null,
         status: data.status ?? 'active',
         activeDeviceId: data.activeDeviceId ?? null,
         createdAt: new Date(),
@@ -705,16 +682,7 @@ export class FakePrismaService {
         if (!user) {
           return { ...record, contactUser: null };
         }
-        const select = include.contactUser.select ?? {};
-        const contactUser: any = {};
-        if (select.id) contactUser.id = user.id;
-        if (select.handle) contactUser.handle = user.handle;
-        if (select.displayName) contactUser.displayName = user.displayName;
-        if (select.profile) {
-          const profile = this.userProfiles.find((item) => item.userId === user.id);
-          contactUser.profile = profile ? this.pick(profile, select.profile.select) : null;
-        }
-        return { ...record, contactUser };
+        return { ...record, contactUser: this.pick(user, include.contactUser.select ?? {}) };
       });
     };
 
@@ -732,7 +700,6 @@ export class FakePrismaService {
         id: makeId('contact'),
         userId: data.userId,
         contactUserId: data.contactUserId,
-        nickname: data.nickname ?? null,
         createdAt: new Date(),
       };
       this.userContacts.push(record);
@@ -747,33 +714,6 @@ export class FakePrismaService {
       if (index < 0) return null;
       const [removed] = this.userContacts.splice(index, 1);
       return removed;
-    };
-
-    this.userProfile.findUnique = async ({ where, select }: any) => {
-      const record = this.userProfiles.find((item) => item.userId === where.userId);
-      if (!record) return null;
-      return select ? this.pick(record, select) : record;
-    };
-
-    this.userProfile.upsert = async ({ where, update, create }: any) => {
-      const record = this.userProfiles.find((item) => item.userId === where.userId);
-      if (record) {
-        Object.assign(record, update, { updatedAt: new Date() });
-        return record;
-      }
-      const created: UserProfileRecord = {
-        id: makeId('profile'),
-        userId: create.userId ?? where.userId,
-        bio: create.bio ?? null,
-        statusMessage: create.statusMessage ?? null,
-        statusEmoji: create.statusEmoji ?? null,
-        lastStatusAt: create.lastStatusAt ?? null,
-        avatarPath: create.avatarPath ?? null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      this.userProfiles.push(created);
-      return created;
     };
 
     this.deviceTransferSession.create = async ({ data }: any) => {
@@ -870,8 +810,6 @@ export class FakePrismaService {
     this.users.push({
       id: userId,
       handle,
-      displayName: handle,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: deviceId,
       createdAt: now,
@@ -1054,7 +992,6 @@ export class FakePrismaService {
       conversationId: data.conversationId,
       name: data.name,
       description: data.description ?? null,
-      avatarPath: data.avatarPath ?? null,
       createdByUserId: data.createdByUserId,
       isPublic: data.isPublic ?? false,
       memberLimit: data.memberLimit ?? 500,
@@ -1072,7 +1009,6 @@ export class FakePrismaService {
       conversationId: data.conversationId,
       name: data.name,
       description: data.description ?? null,
-      avatarPath: data.avatarPath ?? null,
       createdByUserId: data.createdByUserId,
       isPublic: data.isPublic ?? false,
       subscriberCount: data.subscriberCount ?? 0,
@@ -1153,8 +1089,8 @@ export class FakePrismaService {
         return this.messages;
       case 'messageReceipt':
         return this.messageReceipts;
-      case 'reaction':
-        return this.reactions;
+      case 'retiredHandle':
+        return this.retiredHandles;
       case 'groupMeta':
         return this.groupMetas;
       case 'channelMeta':
@@ -1228,8 +1164,6 @@ export class FakePrismaService {
         return one('attachment', (a) => a.id === row.attachmentId);
       case 'message.receipts':
         return many('messageReceipt', (r) => r.messageId === row.id);
-      case 'message.reactions':
-        return many('reaction', (r) => r.messageId === row.id);
       case 'groupMeta.conversation':
       case 'channelMeta.conversation':
       case 'callRecord.conversation':
@@ -1409,7 +1343,6 @@ export class FakePrismaService {
     if (model === 'message') {
       const removedIds = new Set(rows.map((row) => row.id));
       this.messageReceipts = this.messageReceipts.filter((r) => !removedIds.has(r.messageId));
-      this.reactions = this.reactions.filter((r) => !removedIds.has(r.messageId));
       for (const message of this.messages) {
         if (message.replyToMessageId && removedIds.has(message.replyToMessageId)) {
           message.replyToMessageId = null;

@@ -30,8 +30,6 @@ describe('DevicesService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-2',
       createdAt: new Date(),
@@ -102,8 +100,6 @@ describe('DevicesService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-current',
       createdAt: new Date(),
@@ -163,8 +159,6 @@ describe('DevicesService', () => {
     prisma.users.push({
       id: 'user-1',
       handle: 'icarus',
-      displayName: null,
-      avatarPath: null,
       status: 'active',
       activeDeviceId: 'device-1',
       createdAt: new Date(),

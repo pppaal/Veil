@@ -79,6 +79,17 @@ const envObject = z.object({
   // never resubmit consumed ones, so a bounded window is safe. 0 disables the
   // sweep (retain indefinitely). Default 30 days.
   VEIL_PREKEY_CONSUMED_RETENTION_DAYS: z.coerce.number().int().min(0).default(30),
+  // Hard cap on how long any message ciphertext stays on the server, delivered
+  // or not, whatever the disappearing timer says. 0 disables the cap (only
+  // the timer and view-once then remove messages). Default 30 days.
+  VEIL_MESSAGE_MAX_AGE_DAYS: z.coerce.number().int().min(0).default(30),
+  // Key for the HMAC that stands in for a deleted account's handle while it
+  // is quarantined. Without the key, the retired_handles table cannot be
+  // checked against a list of candidate handles. Required in production.
+  VEIL_RETIRED_HANDLE_PEPPER: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32).optional(),
+  ),
   VEIL_AUDITED_CRYPTO_ATTESTED: envBoolean(false),
   // SHA-256 (lowercase hex) of the signed external audit report. Production
   // refuses to boot without it, so an attestation always names the exact

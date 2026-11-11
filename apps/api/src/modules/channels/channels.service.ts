@@ -43,7 +43,7 @@ export class ChannelsService {
         },
       },
       include: {
-        members: { include: { user: { select: { id: true, handle: true, displayName: true } } } },
+        members: { include: { user: { select: { id: true, handle: true } } } },
         channelMeta: true,
       },
     });
@@ -63,7 +63,6 @@ export class ChannelsService {
       members: conversation.members.map((m) => ({
         userId: m.userId,
         handle: m.user.handle,
-        displayName: m.user.displayName,
         role: m.role,
       })),
     };
@@ -217,12 +216,11 @@ export class ChannelsService {
   private async listMembers(conversationId: string): Promise<ChannelMemberSummary[]> {
     const members = await this.prisma.conversationMember.findMany({
       where: { conversationId },
-      select: { userId: true, role: true, user: { select: { handle: true, displayName: true } } },
+      select: { userId: true, role: true, user: { select: { handle: true } } },
     });
     return members.map((member) => ({
       userId: member.userId,
       handle: member.user.handle,
-      displayName: member.user.displayName,
       role: member.role,
     }));
   }

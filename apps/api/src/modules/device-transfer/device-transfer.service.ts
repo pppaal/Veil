@@ -12,6 +12,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 import { AppConfigService } from '../../common/config/app-config.service';
+import { utcDayStart } from '../../common/device-activity';
 import { conflict, forbidden, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
@@ -432,6 +433,7 @@ export class DeviceTransferService {
             authPublicKey: pendingClaim.authPublicKey,
             isActive: true,
             trustedAt: completedAt,
+            lastSeenAt: utcDayStart(completedAt),
             joinedFromDeviceId: session.oldDeviceId,
           },
         });
@@ -484,7 +486,6 @@ export class DeviceTransferService {
       revokedDeviceId: session.oldDeviceId,
       preferredDeviceId: result.id,
       handle: session.user.handle,
-      displayName: session.user.displayName,
       completedAt: completedAt.toISOString(),
     };
   }

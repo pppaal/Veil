@@ -10,10 +10,6 @@ import {
 } from '../attachments/attachment-storage.gateway';
 import { AttachmentReleaser, UNREFERENCED_ATTACHMENT } from './attachment-releaser';
 
-// The privacy policy promises ciphertext is purged after at most 30 days,
-// delivered or not, whatever the disappearing timer says.
-export const MESSAGE_MAX_AGE_DAYS = 30;
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 10 * 60 * 1000;
 const BOOT_SWEEP_DELAY_MS = 7_000;
@@ -24,7 +20,7 @@ const BOOT_SWEEP_DELAY_MS = 7_000;
 const BATCH_SIZE = 1000;
 const MAX_BATCHES_PER_SWEEP = 20;
 // Batches do database work only (object storage is called after commit), but
-// deleting 1000 messages cascades to their receipts and reactions, which can
+// deleting 1000 messages cascades to their receipts and replies, which can
 // outlast Prisma's 5 s default sized for request paths on a busy primary.
 const BATCH_TRANSACTION_TIMEOUT_MS = 30_000;
 
@@ -177,13 +173,20 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
         name: 'expiredMessages',
         batch: (tx) => this.deleteMessages(tx, releaser, { expiresAt: { lte: now } }),
       },
-      {
+    ];
+
+    // The privacy policy promises ciphertext is gone after at most
+    // VEIL_MESSAGE_MAX_AGE_DAYS (30 by default), delivered or not, whatever
+    // the disappearing timer says.
+    if (this.config.messageMaxAgeDays > 0) {
+      const cutoff = daysBefore(now, this.config.messageMaxAgeDays);
+      sweeps.push({
         name: 'agedMessages',
-        batch: (tx) =>
-          this.deleteMessages(tx, releaser, {
-            serverReceivedAt: { lt: daysBefore(now, MESSAGE_MAX_AGE_DAYS) },
-          }),
-      },
+        batch: (tx) => this.deleteMessages(tx, releaser, { serverReceivedAt: { lt: cutoff } }),
+      });
+    }
+
+    sweeps.push(
       { name: 'expiredStories', batch: (tx) => this.deleteExpiredStories(tx, now) },
       {
         name: 'missedCalls',
@@ -203,7 +206,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
             startedBefore: new Date(now.getTime() - ACTIVE_CALL_MAX_MS),
           }),
       },
-    ];
+    );
 
     if (this.config.callRecordRetentionDays > 0) {
       const cutoff = daysBefore(now, this.config.callRecordRetentionDays);
@@ -227,7 +230,10 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    sweeps.push({ name: 'secretBlobs', batch: (tx) => this.deleteExpiredSecretBlobs(tx, now) });
+    sweeps.push(
+      { name: 'secretBlobs', batch: (tx) => this.deleteExpiredSecretBlobs(tx, now) },
+      { name: 'retiredHandles', batch: (tx) => this.deleteExpiredRetiredHandles(tx, now) },
+    );
     return sweeps;
   }
 
@@ -279,7 +285,8 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
 
   // @retention-sweep Story
   // @retention-sweep StoryView
-  // Stories live 24 hours; their who-viewed-whom rows go with them.
+  // @retention-sweep StoryAudience
+  // Stories live 24 hours; who they were for and who viewed them go with them.
   private async deleteExpiredStories(tx: Tx, now: Date): Promise<BatchOutcome> {
     const stories = await tx.story.findMany({
       where: { expiresAt: { lte: now } },
@@ -292,6 +299,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
 
     const storyIds = stories.map((story) => story.id);
     await tx.storyView.deleteMany({ where: { storyId: { in: storyIds } } });
+    await tx.storyAudience.deleteMany({ where: { storyId: { in: storyIds } } });
     const { count } = await tx.story.deleteMany({ where: { id: { in: storyIds } } });
     return { affected: count, full: stories.length === BATCH_SIZE };
   }
@@ -444,6 +452,24 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
       where: { id: { in: blobs.map((blob) => blob.id) } },
     });
     return { affected: count, full: blobs.length === BATCH_SIZE };
+  }
+
+  // @retention-sweep RetiredHandle
+  // A deleted account's handle is free again once its quarantine ends.
+  private async deleteExpiredRetiredHandles(tx: Tx, now: Date): Promise<BatchOutcome> {
+    const retired = await tx.retiredHandle.findMany({
+      where: { retiredUntil: { lte: now } },
+      select: { handleHmac: true },
+      take: BATCH_SIZE,
+    });
+    if (retired.length === 0) {
+      return EMPTY_BATCH;
+    }
+
+    const { count } = await tx.retiredHandle.deleteMany({
+      where: { handleHmac: { in: retired.map((row) => row.handleHmac) } },
+    });
+    return { affected: count, full: retired.length === BATCH_SIZE };
   }
 }
 

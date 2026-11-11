@@ -16,7 +16,8 @@ export class RegisterDto implements RegisterRequest {
   @Matches(/^[a-z0-9](?!.*[._]{2})[a-z0-9._]*[a-z0-9]$/)
   handle!: string;
 
-  @ApiPropertyOptional()
+  /** @deprecated Accepted so older clients can still register; never stored. */
+  @ApiPropertyOptional({ deprecated: true })
   @IsOptional()
   @IsString()
   @MaxLength(80)

@@ -6,7 +6,6 @@ import type { ConversationMessageSummary, OuterAttachmentPointer } from '@veil/c
 export const MESSAGE_SUMMARY_INCLUDE = {
   senderDevice: { select: { userId: true } },
   receipts: { select: { userId: true, deliveredAt: true, readAt: true } },
-  reactions: { select: { userId: true, emoji: true } },
 } satisfies Prisma.MessageInclude;
 
 export type MessageSummaryRow = Prisma.MessageGetPayload<{
@@ -69,9 +68,5 @@ export const toMessageSummary = (
     replyToMessageId: row.replyToMessageId,
     deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
     readAt: receipt?.readAt?.toISOString() ?? null,
-    reactions: row.reactions.map((reaction) => ({
-      userId: reaction.userId,
-      emoji: reaction.emoji,
-    })),
   };
 };

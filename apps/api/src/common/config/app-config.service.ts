@@ -3,6 +3,11 @@ import { ConfigService } from '@nestjs/config';
 
 import type { ClientIpSource, EnvConfig } from './env.schema';
 
+// Development stand-in for VEIL_RETIRED_HANDLE_PEPPER. Production refuses to
+// boot with it, because a published pepper makes the quarantine table
+// reversible by hashing candidate handles.
+export const DEV_RETIRED_HANDLE_PEPPER = 'veil-dev-retired-handle-pepper-not-for-production';
+
 @Injectable()
 export class AppConfigService {
   constructor(private readonly configService: ConfigService<EnvConfig, true>) {}
@@ -133,6 +138,17 @@ export class AppConfigService {
     return this.configService.get('VEIL_PREKEY_CONSUMED_RETENTION_DAYS', { infer: true });
   }
 
+  get messageMaxAgeDays(): number {
+    return this.configService.get('VEIL_MESSAGE_MAX_AGE_DAYS', { infer: true });
+  }
+
+  get retiredHandlePepper(): string {
+    return (
+      this.configService.get('VEIL_RETIRED_HANDLE_PEPPER', { infer: true }) ??
+      DEV_RETIRED_HANDLE_PEPPER
+    );
+  }
+
   get cryptoAuditAttested(): boolean {
     return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
   }
@@ -194,6 +210,13 @@ export class AppConfigService {
       errors.push(
         'VEIL_JWT_SECRET is a placeholder or shorter than 32 chars. ' +
           'Generate a real one with `openssl rand -base64 32`.',
+      );
+    }
+
+    if (this.retiredHandlePepper === DEV_RETIRED_HANDLE_PEPPER) {
+      errors.push(
+        'VEIL_RETIRED_HANDLE_PEPPER is not set. Generate one with ' +
+          '`openssl rand -base64 32`; it keys the quarantine of deleted handles.',
       );
     }
 

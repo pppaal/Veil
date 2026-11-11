@@ -17,8 +17,6 @@ export const DIRECTORY_BUDGETS = {
   prekeyClaimsPerRequester: { name: 'opk-claim-requester', limit: 20 },
   // Every requester together draining one target device's pool.
   prekeyClaimsPerTargetDevice: { name: 'opk-claim-device', limit: 50 },
-  // Anonymous lookups of the deprecated public key-bundle route.
-  publicBundleLookups: { name: 'public-bundle', limit: 20 },
   signedPrekeyRotations: { name: 'spk-rotation', limit: 10 },
 } as const satisfies Record<string, DirectoryBudgetRule>;
 

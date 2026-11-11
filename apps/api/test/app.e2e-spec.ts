@@ -104,9 +104,12 @@ describe('VEIL API (e2e)', () => {
     const readinessUnauthed = await api.get('/v1/health/ready');
     expect(readinessUnauthed.status).toBe(401);
 
-    const missingBundle = await api.get('/v1/users/unknown/key-bundle');
-    expect(missingBundle.status).toBe(404);
-    expect(missingBundle.body.code).toBe('active_device_not_found');
+    // Key material is only served to signed-in devices: the old public
+    // key-bundle route is gone and the directory needs a bearer token.
+    const removedBundleRoute = await api.get('/v1/users/unknown/key-bundle');
+    expect(removedBundleRoute.status).toBe(404);
+    const anonymousDirectory = await api.get('/v1/keys/unknown');
+    expect(anonymousDirectory.status).toBe(401);
   });
 
   it('covers registration, conversations, messages, attachments, and device transfer', async () => {
@@ -159,13 +162,12 @@ describe('VEIL API (e2e)', () => {
     expect(initialDevices.body.items[0].deviceName).toBe('VEIL Desktop');
     expect(initialDevices.body.items[0].trustState).toBe('current');
 
-    const keyBundle = await api.get('/v1/users/icarus/key-bundle');
-    expect(keyBundle.status).toBe(200);
-    expect(keyBundle.body.bundle.identityPublicKey).toBe('pub-a');
-    expect(Array.isArray(keyBundle.body.deviceBundles)).toBe(true);
-    expect(keyBundle.body.deviceBundles.length).toBeGreaterThan(0);
-    expect(keyBundle.body.deviceBundles[0].deviceId).toBeDefined();
-    expect(keyBundle.body.bundle.authPublicKey).toBeUndefined();
+    const directory = await api.get('/v1/keys/icarus?claim=none').set('Authorization', bearer);
+    expect(directory.status).toBe(200);
+    expect(directory.body.user.activeDeviceId).toBe(registerA.body.deviceId);
+    expect(directory.body.devices).toHaveLength(1);
+    expect(directory.body.devices[0].identityPublicKey).toBe('pub-a');
+    expect(directory.body.devices[0].authPublicKey).toBeUndefined();
 
     const conversation = await api
       .post('/v1/conversations/direct')
@@ -299,7 +301,7 @@ describe('VEIL API (e2e)', () => {
     });
     expect(transferComplete.status).toBe(201);
     expect(transferComplete.body.handle).toBe('icarus');
-    expect(transferComplete.body.displayName).toBe('Icarus');
+    expect(transferComplete.body).not.toHaveProperty('displayName');
 
     const replayedTransferComplete = await api.post('/v1/device-transfer/complete').send({
       sessionId: transferInit.body.sessionId,

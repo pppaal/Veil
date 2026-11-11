@@ -1,12 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
-  AddReactionResponse,
   DeleteLocalMessageResponse,
   DeleteMessageResponse,
   EditMessageResponse,
   MarkMessageReadResponse,
-  RemoveReactionResponse,
   SendMessageResponse,
 } from '@veil/contracts';
 import type { ConversationType } from '@veil/shared';
@@ -23,9 +21,11 @@ import {
   messageAudienceJoinedBy,
   type ConversationAction,
 } from '../../common/conversation-access/conversation-policy';
+import { recordDeviceSynced } from '../../common/device-activity';
 import { apiError } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
+import { wakesRecipient } from '../push/push-policy';
 import { PushService } from '../push/push.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SafetyService } from '../safety/safety.service';
@@ -160,9 +160,12 @@ export class MessagesService {
     });
 
     const broadcastSummary = toMessageSummary(created.message, { broadcast: true });
+    const wakeRecipients = wakesRecipient(dto.envelope.messageType);
     for (const recipientUserId of recipientUserIds) {
       this.realtimeGateway.emitToUser(recipientUserId, 'message.new', broadcastSummary);
-      await this.dispatchPushFallbackIfNeeded(recipientUserId, dto.conversationId);
+      if (wakeRecipients) {
+        await this.dispatchPushFallbackIfNeeded(recipientUserId, dto.conversationId);
+      }
     }
     this.realtimeGateway.emitConversationMembers(
       memberUserIds.map((userId) => ({ userId })),
@@ -335,43 +338,6 @@ export class MessagesService {
       { messageId, deletedAt: deletedAt.toISOString() },
     );
     return { messageId, deletedAt: deletedAt.toISOString() };
-  }
-
-  async addReaction(
-    auth: { userId: string },
-    messageId: string,
-    emoji: string,
-  ): Promise<AddReactionResponse> {
-    const { message, access } = await this.requireMessageAccess(auth.userId, messageId, 'react');
-
-    const reaction = await this.prisma.reaction.upsert({
-      where: { messageId_userId: { messageId, userId: auth.userId } },
-      update: { emoji },
-      create: { messageId, userId: auth.userId, emoji },
-    });
-
-    this.realtimeGateway.emitConversationMembers(
-      await this.messageAudience(access.conversation.type, message),
-      'message.reaction',
-      { messageId, userId: auth.userId, emoji, action: 'add' },
-    );
-    return { reactionId: reaction.id, messageId, emoji };
-  }
-
-  async removeReaction(
-    auth: { userId: string },
-    messageId: string,
-  ): Promise<RemoveReactionResponse> {
-    const { message, access } = await this.requireMessageAccess(auth.userId, messageId, 'react');
-
-    await this.prisma.reaction.deleteMany({ where: { messageId, userId: auth.userId } });
-
-    this.realtimeGateway.emitConversationMembers(
-      await this.messageAudience(access.conversation.type, message),
-      'message.reaction',
-      { messageId, userId: auth.userId, emoji: '', action: 'remove' },
-    );
-    return { messageId, acknowledged: true };
   }
 
   /**
@@ -562,8 +528,8 @@ export class MessagesService {
   /**
    * The members who receive events about a stored message: those who can
    * list it. A group member added after the message reached the relay gets
-   * none of its edits, deletions, reactions or consumption, exactly as
-   * history hides the message itself.
+   * none of its edits, deletions or consumption, exactly as history hides the
+   * message itself.
    */
   private messageAudience(
     type: ConversationType,
@@ -589,10 +555,7 @@ export class MessagesService {
       update: progress,
       create: { deviceId, conversationId, ...progress },
     });
-    await this.prisma.device.update({
-      where: { id: deviceId },
-      data: { lastSyncAt: new Date() },
-    });
+    await recordDeviceSynced(this.prisma, deviceId);
   }
 
   private async dispatchPushFallbackIfNeeded(

@@ -4,7 +4,6 @@ export const CONVERSATION_ACTIONS = [
   'send',
   'edit',
   'delete',
-  'react',
   'typing',
   'setTimer',
   'call',
@@ -25,7 +24,6 @@ const DIRECT_MEMBER = grant(
   'send',
   'edit',
   'delete',
-  'react',
   'typing',
   'setTimer',
   'call',
@@ -37,7 +35,6 @@ const GROUP_MEMBER = grant(
   'send',
   'edit',
   'delete',
-  'react',
   'typing',
   'setTimer',
   'readMembers',
@@ -97,7 +94,6 @@ export const EMITS_RECEIPTS: Readonly<Record<ConversationType, boolean>> = Objec
 export const PEER_REACHING_ACTIONS: ReadonlySet<ConversationAction> = new Set<ConversationAction>([
   'send',
   'edit',
-  'react',
   'typing',
   'call',
 ]);
@@ -126,7 +122,7 @@ export const historyVisibleSince = (type: ConversationType, joinedAt: Date): Dat
  * The latest join time of a member who may see a message received at
  * receivedAt, or null when every member may: the inverse of
  * historyVisibleSince. Events about a stored message (edits, deletions,
- * reactions, view-once consumption) are limited to this audience, because
+ * view-once consumption) are limited to this audience, because
  * an edit is re-encrypted under a key a late joiner already holds.
  */
 export const messageAudienceJoinedBy = (type: ConversationType, receivedAt: Date): Date | null =>

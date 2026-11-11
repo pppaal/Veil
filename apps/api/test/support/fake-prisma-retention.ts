@@ -5,7 +5,7 @@ import { Prisma } from '@prisma/client';
 import { FakePrismaService } from './fake-prisma.service';
 
 // FakePrismaService models each query shape by hand. The retention sweeps,
-// the key directory and the story/profile audience checks use generic
+// the key directory and the story audience checks use generic
 // filters (OR, relation filters, take, compound uniques) and tables it does
 // not model, so this subclass evaluates the subset of Prisma's where-language
 // those services use. An operator it does not know throws, so a test can
@@ -17,15 +17,16 @@ type RelationFilter = (row: Row, filter: any) => boolean;
 type StoryRecord = {
   id: string;
   userId: string;
-  contentType: 'text' | 'image' | 'video';
-  contentUrl: string;
-  caption: string | null;
+  ciphertext: string;
+  envelopeVersion: string;
   expiresAt: Date;
   viewCount: number;
   createdAt: Date;
 };
 
 type StoryViewRecord = { id: string; storyId: string; viewerUserId: string; viewedAt: Date };
+
+type StoryAudienceRecord = { storyId: string; userId: string };
 
 type UserBlockRecord = { blockerUserId: string; blockedUserId: string; createdAt: Date };
 
@@ -47,7 +48,6 @@ type AbuseReportRecord = {
   conversationId: string | null;
   messageId: string | null;
   reason: string;
-  note: string | null;
   createdAt: Date;
 };
 
@@ -210,7 +210,18 @@ function table<T extends Row>(options: TableOptions<T>) {
       if (!options.create) throw new Error('fake prisma: create not modelled for this table');
       const row = options.create(args.data);
       options.rows().push(row);
-      return { ...row };
+      return project(row, args);
+    },
+    upsert: async (args: Row) => {
+      const [row] = matching(flattenUnique(args.where));
+      if (row) {
+        Object.assign(row, args.update);
+        return project(row, args);
+      }
+      if (!options.create) throw new Error('fake prisma: create not modelled for this table');
+      const created = options.create(args.create);
+      options.rows().push(created);
+      return project(created, args);
     },
     updateMany: async (args: Row) => {
       const rows = matching(args.where);
@@ -234,6 +245,7 @@ function table<T extends Row>(options: TableOptions<T>) {
 export class RetentionFakePrismaService extends FakePrismaService {
   stories: StoryRecord[] = [];
   storyViews: StoryViewRecord[] = [];
+  storyAudiences: StoryAudienceRecord[] = [];
   userBlocks: UserBlockRecord[] = [];
   callRecords: CallRecordRow[] = [];
   abuseReports: AbuseReportRecord[] = [];
@@ -248,15 +260,27 @@ export class RetentionFakePrismaService extends FakePrismaService {
   story = table<StoryRecord>({
     rows: () => this.stories,
     replace: (rows) => (this.stories = rows),
-    create: (data) => ({
-      id: randomUUID(),
-      userId: data.userId,
-      contentType: data.contentType,
-      contentUrl: data.contentUrl,
-      caption: data.caption ?? null,
-      expiresAt: data.expiresAt,
-      viewCount: 0,
-      createdAt: new Date(),
+    create: (data) => {
+      const id = randomUUID();
+      for (const member of data.audience?.create ?? []) {
+        this.storyAudiences.push({ storyId: id, userId: member.userId });
+      }
+      return {
+        id,
+        userId: data.userId,
+        ciphertext: data.ciphertext,
+        envelopeVersion: data.envelopeVersion,
+        expiresAt: data.expiresAt,
+        viewCount: 0,
+        createdAt: new Date(),
+      };
+    },
+    relations: () => ({
+      audience: (story, filter) =>
+        matchesList(
+          this.storyAudiences.filter((member) => member.storyId === story.id),
+          filter,
+        ),
     }),
     hydrate: (story, include) => {
       const views = this.storyViews.filter((view) => view.storyId === story.id);
@@ -270,6 +294,11 @@ export class RetentionFakePrismaService extends FakePrismaService {
         _count: { views: views.length },
       };
     },
+  });
+
+  storyAudience = table<StoryAudienceRecord>({
+    rows: () => this.storyAudiences,
+    replace: (rows) => (this.storyAudiences = rows),
   });
 
   storyView = table<StoryViewRecord>({
@@ -320,9 +349,15 @@ export class RetentionFakePrismaService extends FakePrismaService {
       replace: (rows) => (this.messages = rows),
       relations: () => ({ conversation: conversationOf }),
     });
+    // History reads include relations (sender, receipts), which the base
+    // engine projects; the sweeps' selects need this table's operators.
+    const listWithRelations = this.message.findMany;
+    const findFirstWithRelations = this.message.findFirst;
     Object.assign(this.message, {
-      findMany: messages.findMany,
-      findFirst: messages.findFirst,
+      findMany: (args: Row = {}) =>
+        args.include ? listWithRelations(args) : messages.findMany(args),
+      findFirst: (args: Row = {}) =>
+        args.include ? findFirstWithRelations(args) : messages.findFirst(args),
       deleteMany: messages.deleteMany,
     });
 
@@ -366,8 +401,18 @@ export class RetentionFakePrismaService extends FakePrismaService {
     const reports = table<AbuseReportRecord>({
       rows: () => this.abuseReports,
       replace: (rows) => (this.abuseReports = rows),
+      create: (data) => ({
+        id: randomUUID(),
+        reporterUserId: data.reporterUserId,
+        reportedUserId: data.reportedUserId,
+        conversationId: data.conversationId ?? null,
+        messageId: data.messageId ?? null,
+        reason: data.reason,
+        createdAt: new Date(),
+      }),
     });
     Object.assign(this.abuseReport, {
+      create: reports.create,
       findMany: reports.findMany,
       deleteMany: reports.deleteMany,
     });
@@ -375,12 +420,35 @@ export class RetentionFakePrismaService extends FakePrismaService {
     const blocks = table<UserBlockRecord>({
       rows: () => this.userBlocks,
       replace: (rows) => (this.userBlocks = rows),
+      create: (data) => ({
+        blockerUserId: data.blockerUserId,
+        blockedUserId: data.blockedUserId,
+        createdAt: new Date(),
+      }),
+      hydrate: (block, include) => ({
+        ...block,
+        blocked: pick(
+          this.users.find((user) => user.id === block.blockedUserId)!,
+          include.blocked?.select,
+        ),
+      }),
     });
-    Object.assign(this.userBlock, { findFirst: blocks.findFirst, findMany: blocks.findMany });
+    Object.assign(this.userBlock, {
+      findFirst: blocks.findFirst,
+      findMany: blocks.findMany,
+      upsert: blocks.upsert,
+    });
 
     const contacts = table({
       rows: () => this.userContacts,
       replace: (rows) => (this.userContacts = rows),
+      hydrate: (contact, include) => ({
+        ...contact,
+        contactUser: pick(
+          this.users.find((user) => user.id === contact.contactUserId)!,
+          include.contactUser?.select,
+        ),
+      }),
     });
     Object.assign(this.userContact, { findMany: contacts.findMany });
 
@@ -390,12 +458,6 @@ export class RetentionFakePrismaService extends FakePrismaService {
       relations: () => ({ conversation: conversationOf }),
     });
     Object.assign(this.conversationMember, { findFirst: members.findFirst });
-
-    const devices = table({
-      rows: () => this.devices,
-      replace: (rows) => (this.devices = rows),
-    });
-    Object.assign(this.device, { updateMany: devices.updateMany });
   }
 
   async $transaction<T>(callback: (tx: this) => Promise<T>, options?: unknown): Promise<T> {
@@ -438,7 +500,6 @@ export class RetentionFakePrismaService extends FakePrismaService {
       id: randomUUID(),
       userId,
       contactUserId,
-      nickname: null,
       createdAt: new Date(),
     });
   }

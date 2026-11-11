@@ -1,3 +1,6 @@
+import { createHmac } from 'node:crypto';
+
+import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { AccountService } from './account.service';
 
 // Destructive-cascade spec. Phase L split deleteAccount into three phases:
@@ -6,8 +9,8 @@ import { AccountService } from './account.service';
 //                       + device.updateMany(isActive=false)
 //   Phase 2 (no tx):    chunked deleteMany on the bulky child tables, in
 //                       Restrict-FK-respecting order.
-//   Phase 3 (small tx): deviceTransferSession + userProfile cleanup, then
-//                       device.deleteMany + user.delete.
+//   Phase 3 (small tx): deviceTransferSession cleanup, then device.deleteMany,
+//                       the handle quarantine and user.delete.
 //
 // These tests use jest.fn() mocks so we can verify the high-level contract
 // without wiring up every model. The Restrict-ordering invariant is the key
@@ -23,17 +26,19 @@ type StepName =
   | 'phase2.attachment.deleteMany'
   | 'phase2.callRecord.deleteMany'
   | 'phase2.messageReceipt.deleteMany'
-  | 'phase2.reaction.deleteMany'
   | 'phase2.storyView.deleteMany'
   | 'phase2.story.deleteMany'
   | 'phase2.userContact.deleteMany'
   | 'phase2.conversationMember.deleteMany'
   | 'phase2.conversation.deleteMany'
   | 'phase3.deviceTransferSession.deleteMany'
-  | 'phase3.userProfile.deleteMany'
   | 'phase3.user.update'
   | 'phase3.device.deleteMany'
+  | 'phase3.retiredHandle.upsert'
   | 'phase3.user.delete';
+
+const PEPPER = 'account-spec-pepper-0123456789abcdef';
+const HANDLE = 'victim';
 
 function buildPrismaMock(opts?: {
   deviceIds?: string[];
@@ -50,11 +55,12 @@ function buildPrismaMock(opts?: {
   // Each call site records its label so the spec can assert the ordering.
   const record =
     (label: StepName) =>
-    (...args: unknown[]): { count: number } => {
+    (...args: unknown[]): { count: number; handle: string } => {
       order.push(label);
       void args;
-      return { count: 0 };
+      return { count: 0, handle: HANDLE };
     };
+  const upserts: Array<{ where: { handleHmac: string }; create: { retiredUntil: Date } }> = [];
 
   const transactionFn = jest.fn(async (cb: (tx: any) => Promise<unknown>) => {
     const tx = {
@@ -68,11 +74,16 @@ function buildPrismaMock(opts?: {
       deviceTransferSession: {
         deleteMany: jest.fn(record('phase3.deviceTransferSession.deleteMany')),
       },
-      userProfile: { deleteMany: jest.fn(record('phase3.userProfile.deleteMany')) },
+      retiredHandle: {
+        upsert: jest.fn((args: (typeof upserts)[number]) => {
+          upserts.push(args);
+          return record('phase3.retiredHandle.upsert')();
+        }),
+      },
     };
     // First call: Phase 1 only sees user.update + device.updateMany.
-    // Final call: Phase 3 sees deviceTransferSession + userProfile + user
-    //             update + device.deleteMany + user.delete.
+    // Final call: Phase 3 sees deviceTransferSession + user update +
+    //             device.deleteMany + the handle quarantine + user.delete.
     if (transactionFn.mock.calls.length === 1) {
       // Replace user.update label per phase by inspecting the call count.
       // (We just appended phase1.user.update via the closure above.)
@@ -106,7 +117,6 @@ function buildPrismaMock(opts?: {
     },
     callRecord: { deleteMany: jest.fn(record('phase2.callRecord.deleteMany')) },
     messageReceipt: { deleteMany: jest.fn(record('phase2.messageReceipt.deleteMany')) },
-    reaction: { deleteMany: jest.fn(record('phase2.reaction.deleteMany')) },
     storyView: { deleteMany: jest.fn(record('phase2.storyView.deleteMany')) },
     story: { deleteMany: jest.fn(record('phase2.story.deleteMany')) },
     userContact: { deleteMany: jest.fn(record('phase2.userContact.deleteMany')) },
@@ -114,7 +124,7 @@ function buildPrismaMock(opts?: {
     conversation: { deleteMany: jest.fn(record('phase2.conversation.deleteMany')) },
   };
 
-  return { prisma, order };
+  return { prisma, order, upserts };
 }
 
 function buildService(
@@ -124,7 +134,11 @@ function buildService(
   },
 ) {
   const realtimeGateway = { disconnectUser: () => 0 } as never;
-  return new AccountService(prismaMock as never, realtimeGateway, storage as never);
+  const retiredHandles = new RetiredHandlesService(
+    prismaMock as never,
+    { retiredHandlePepper: PEPPER } as never,
+  );
+  return new AccountService(prismaMock as never, realtimeGateway, storage as never, retiredHandles);
 }
 
 const userId = 'user-victim';
@@ -174,6 +188,22 @@ describe('AccountService.deleteAccount', () => {
     });
     await buildService(prisma).deleteAccount(userId);
     expect(order).toContain('phase2.conversation.deleteMany');
+  });
+
+  it('quarantines the handle for 90 days in the transaction that deletes the user', async () => {
+    const { prisma, order, upserts } = buildPrismaMock();
+    const before = Date.now();
+    await buildService(prisma).deleteAccount(userId);
+
+    expect(order.slice(-2)).toEqual(['phase3.retiredHandle.upsert', 'phase3.user.delete']);
+    expect(upserts).toHaveLength(1);
+    // Only the peppered digest is stored, never the handle itself.
+    expect(upserts[0]!.where.handleHmac).toBe(
+      createHmac('sha256', PEPPER).update(HANDLE).digest('hex'),
+    );
+    expect(JSON.stringify(upserts[0])).not.toContain(HANDLE);
+    const quarantineDays = (upserts[0]!.create.retiredUntil.getTime() - before) / 86_400_000;
+    expect(Math.round(quarantineDays)).toBe(90);
   });
 
   it('finishes by deleting the user row inside the final transaction', async () => {

@@ -3,24 +3,22 @@ import { METHOD_METADATA, MODULE_METADATA, PATH_METADATA } from '@nestjs/common/
 
 import { IS_PUBLIC_KEY } from '../../src/common/guards/public.decorator';
 
-// Every route reachable without a bearer token. Adding one widens the
+// Exactly the routes reachable without a bearer token. Adding one widens the
 // unauthenticated attack surface (enumeration, abuse, metadata leaks), so a
-// new entry here needs a security review, not just a passing test.
-const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
+// new entry here needs a security review, not just a passing test. Nothing
+// about a user or their keys is on this list.
+const PUBLIC_ROUTES: readonly string[] = [
   'GET /v1/health',
   'GET /v1/metrics',
   'POST /v1/auth/register',
   'POST /v1/auth/challenge',
   'POST /v1/auth/verify',
   'POST /v1/auth/refresh',
-  'GET /v1/users/:handle',
-  'GET /v1/users/:handle/key-bundle',
-  'POST /v1/prekeys/claim/:handle',
   'POST /v1/device-transfer/claim',
   'POST /v1/device-transfer/complete',
   'POST /v1/s',
   'GET /v1/s/:id',
-]);
+];
 
 const GLOBAL_PREFIX = 'v1';
 
@@ -144,13 +142,18 @@ describe('route auth matrix', () => {
     expect(all).toEqual(expect.arrayContaining(['POST /v1/messages', 'GET /v1/health']));
   });
 
-  // Subset, not equality: sibling work in this wave is removing @Public from
-  // some of these routes in parallel.
-  it('every @Public route is in the reviewed allowlist', () => {
-    const unreviewed = routes
-      .filter((entry) => entry.isPublic && !PUBLIC_ROUTES.has(entry.route))
-      .map((entry) => entry.route);
-    expect(unreviewed).toEqual([]);
+  // Equality, not a subset: a stale entry would let a route quietly turn
+  // public again without anyone reviewing it.
+  it('route-auth-matrix equals final PUBLIC_ROUTES', () => {
+    const publicRoutes = routes.filter((entry) => entry.isPublic).map((entry) => entry.route);
+    expect([...publicRoutes].sort()).toEqual([...PUBLIC_ROUTES].sort());
+  });
+
+  it('serves no key material or profile without a bearer token', () => {
+    const all = routes.map((entry) => entry.route);
+    expect(all).not.toContain('GET /v1/users/:handle/key-bundle');
+    expect(all).toContain('GET /v1/keys/:handle');
+    expect(routes.find((entry) => entry.route === 'GET /v1/keys/:handle')?.isPublic).toBe(false);
   });
 
   it('no route offers recovery or backup', () => {

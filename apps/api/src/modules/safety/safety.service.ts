@@ -26,7 +26,7 @@ export class SafetyService {
       orderBy: { createdAt: 'desc' },
       include: {
         blocked: {
-          select: { id: true, handle: true, displayName: true },
+          select: { id: true, handle: true },
         },
       },
     });
@@ -35,7 +35,6 @@ export class SafetyService {
       items: blocks.map((block) => ({
         userId: block.blocked.id,
         handle: block.blocked.handle,
-        displayName: block.blocked.displayName,
         blockedAt: block.createdAt.toISOString(),
       })),
     };
@@ -48,7 +47,7 @@ export class SafetyService {
 
     const target = await this.prisma.user.findUnique({
       where: { id: blockedUserId },
-      select: { id: true, handle: true, displayName: true },
+      select: { id: true, handle: true },
     });
 
     if (!target) {
@@ -73,7 +72,6 @@ export class SafetyService {
       blocked: {
         userId: target.id,
         handle: target.handle,
-        displayName: target.displayName,
         blockedAt: block.createdAt.toISOString(),
       },
     };
@@ -229,10 +227,9 @@ export class SafetyService {
         reportedUserId: dto.reportedUserId,
         conversationId: dto.conversationId ?? null,
         messageId: dto.messageId ?? null,
+        // dto.note is accepted from older clients and dropped: there is no
+        // moderator viewer, so the server would keep plaintext for nobody.
         reason: dto.reason,
-        // A free-text note is plaintext the server would keep for the report's
-        // lifetime, so it is accepted for client compatibility but never stored.
-        note: null,
       },
       select: { id: true, createdAt: true },
     });

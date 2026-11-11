@@ -1,5 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 
+import { utcDayStart } from '../../src/common/device-activity';
 import { JwtAuthGuard } from '../../src/common/guards/jwt-auth.guard';
 
 type Req = { headers: Record<string, string | undefined>; auth?: unknown };
@@ -18,6 +19,7 @@ const activeDevice = {
   userId: 'u1',
   isActive: true,
   revokedAt: null,
+  lastSeenAt: utcDayStart(new Date()),
   user: { status: 'active' },
 };
 
@@ -35,11 +37,20 @@ function build(
       opts.verify ?? (async () => ({ sub: 'u1', deviceId: 'd1', handle: 'alice', jti: 'j1' })),
   } as never;
   const config = { jwtSecret: 's', jwtAudience: 'a', jwtIssuer: 'i' } as never;
+  const activityWrites: unknown[] = [];
   const prisma = {
-    device: { findUnique: async () => opts.device ?? activeDevice },
+    device: {
+      findUnique: async () => opts.device ?? activeDevice,
+      updateMany: async (args: unknown) => {
+        activityWrites.push(args);
+        return { count: 1 };
+      },
+    },
   } as never;
   const ephemeralStore = { getJson: async () => opts.blacklisted ?? null } as never;
-  return new JwtAuthGuard(reflector, jwtService, config, prisma, ephemeralStore);
+  return Object.assign(new JwtAuthGuard(reflector, jwtService, config, prisma, ephemeralStore), {
+    activityWrites,
+  });
 }
 
 const authed = () => ctx({ headers: { authorization: 'Bearer t' } });
@@ -97,6 +108,21 @@ describe('JwtAuthGuard', () => {
       handle: 'alice',
       jti: 'j1',
     });
+  });
+
+  it('records the day a device was last seen, at most once a day', async () => {
+    const today = utcDayStart(new Date());
+    const seenToday = build();
+    await seenToday.canActivate(authed());
+    expect(seenToday.activityWrites).toEqual([]);
+
+    const seenYesterday = build({
+      device: { ...activeDevice, lastSeenAt: new Date(today.getTime() - 3_600_000) },
+    });
+    await seenYesterday.canActivate(authed());
+    expect(seenYesterday.activityWrites).toEqual([
+      { where: { id: 'd1', lastSeenAt: { not: today } }, data: { lastSeenAt: today } },
+    ]);
   });
 
   it('maps a token-verify failure to a generic unauthorized', async () => {

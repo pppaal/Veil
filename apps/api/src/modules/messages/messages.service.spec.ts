@@ -648,14 +648,21 @@ describe('MessagesService', () => {
     });
 
     it('blocked direct peer react/edit 403', async () => {
-      const { service, safety, alice, bob, sendFromAlice } = directFixture();
+      const { service, safety, alice, bob, conversationId, sendFromAlice } = directFixture();
       const sent = await sendFromAlice();
       safety.setBlocked(alice.userId, bob.userId);
 
-      await expect(service.addReaction(bob, sent.message.id, '👍')).rejects.toMatchObject({
-        status: 403,
-        response: { code: 'peer_unreachable' },
-      });
+      await expect(
+        service.send(
+          bob,
+          buildSendDto({
+            conversationId,
+            sender: bob,
+            recipientUserId: alice.userId,
+            messageType: 'reaction',
+          }),
+        ),
+      ).rejects.toMatchObject({ status: 403, response: { code: 'peer_unreachable' } });
       await expect(
         service.edit(alice, sent.message.id, {
           ciphertext: 'ciphertext-v2',
@@ -872,44 +879,70 @@ describe('MessagesService', () => {
   });
 
   describe('reactions', () => {
-    it('addReaction upserts and emits', async () => {
-      const { service, gateway, bob, sendFromAlice } = directFixture();
-      const sent = await sendFromAlice();
+    // An offline recipient with a push token: anything that wakes devices
+    // reaches FakePushService.
+    const offlineRecipientFixture = () => {
+      const fixture = makeService();
+      const alice = fixture.prisma.seedUser('alice');
+      const bob = fixture.prisma.seedUser('bob', { pushToken: 'bob-push-token' });
+      const conversationId = fixture.prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      const sendFromAlice = (overrides: Partial<Parameters<typeof buildSendDto>[0]> = {}) =>
+        fixture.service.send(
+          alice,
+          buildSendDto({
+            conversationId,
+            sender: alice,
+            recipientUserId: bob.userId,
+            ...overrides,
+          }),
+        );
+      return { ...fixture, alice, bob, conversationId, sendFromAlice };
+    };
+
+    it('reaction envelope accepted and no push sent', async () => {
+      const { prisma, gateway, push, bob, sendFromAlice } = offlineRecipientFixture();
+      await sendFromAlice();
+      push.sentHints.length = 0;
       gateway.emitted.length = 0;
 
-      const reaction = await service.addReaction(bob, sent.message.id, '👍');
+      const reaction = await sendFromAlice({ messageType: 'reaction' });
 
-      expect(reaction.emoji).toBe('👍');
-      expect(
-        gateway.emitted.some(
-          (e) =>
-            e.event === 'message.reaction' && (e.payload as { action: string }).action === 'add',
-        ),
-      ).toBe(true);
+      expect(reaction.idempotent).toBe(false);
+      expect(reaction.message.messageType).toBe('reaction');
+      // The relay stores the envelope as it came: it never parses the inner
+      // {v, target, emoji, op} body, which only exists inside the ciphertext.
+      const stored = prisma.messages.find((message) => message.id === reaction.message.id)!;
+      expect(stored).toMatchObject({ messageType: 'reaction', ciphertext: 'ciphertext-blob' });
+      expect(gateway.emitted.filter((e) => e.userId === bob.userId).map((e) => e.event)).toEqual([
+        'message.new',
+        'conversation.sync',
+      ]);
+      expect(push.sentHints).toEqual([]);
     });
 
-    it('removeReaction emits with action=remove', async () => {
-      const { service, gateway, bob, sendFromAlice } = directFixture();
-      const sent = await sendFromAlice();
-      await service.addReaction(bob, sent.message.id, '❤️');
-      gateway.emitted.length = 0;
+    it('still wakes offline recipients for ordinary messages', async () => {
+      const { push, sendFromAlice } = offlineRecipientFixture();
 
-      await service.removeReaction(bob, sent.message.id);
+      await sendFromAlice({ messageType: 'text' });
 
-      expect(
-        gateway.emitted.some(
-          (e) =>
-            e.event === 'message.reaction' && (e.payload as { action: string }).action === 'remove',
-        ),
-      ).toBe(true);
+      expect(push.sentHints).toEqual([{ pushToken: 'bob-push-token', hint: { kind: 'wake' } }]);
     });
 
-    it('rejects reactions from non-members', async () => {
-      const { service, prisma, sendFromAlice } = directFixture();
+    it('rejects reaction messages from non-members', async () => {
+      const { service, prisma, conversationId, bob } = directFixture();
       const mallory = prisma.seedUser('mallory');
-      const sent = await sendFromAlice();
 
-      await expect(service.addReaction(mallory, sent.message.id, '👍')).rejects.toMatchObject({
+      await expect(
+        service.send(
+          mallory,
+          buildSendDto({
+            conversationId,
+            sender: mallory,
+            recipientUserId: bob.userId,
+            messageType: 'reaction',
+          }),
+        ),
+      ).rejects.toMatchObject({
         status: 403,
         response: { code: 'conversation_membership_required' },
       });
@@ -929,10 +962,32 @@ describe('MessagesService', () => {
         joinedAt: new Date(Date.now() + 1000),
       });
 
-      await expect(service.addReaction(bob, before.message.id, '👍')).rejects.toMatchObject({
+      await expect(service.markRead(bob, before.message.id)).rejects.toMatchObject({
         status: 404,
         response: { code: 'message_not_found' },
       });
+    });
+  });
+
+  describe('device activity', () => {
+    it('lastSyncAt truncated to day and not rewritten within the day', async () => {
+      const { prisma, alice, sendFromAlice } = directFixture();
+      const updateMany = jest.spyOn(prisma.device, 'updateMany');
+
+      await sendFromAlice();
+      const device = prisma.devices.find((candidate) => candidate.id === alice.deviceId)!;
+      const firstSync = device.lastSyncAt!;
+      expect(firstSync.toISOString()).toMatch(/T00:00:00\.000Z$/);
+      expect(firstSync.getTime()).toBeLessThanOrEqual(Date.now());
+      expect(Date.now() - firstSync.getTime()).toBeLessThan(24 * 60 * 60 * 1000);
+
+      await sendFromAlice();
+
+      expect(device.lastSyncAt).toBe(firstSync);
+      const writes = await Promise.all(
+        updateMany.mock.results.map((result) => result.value as Promise<{ count: number }>),
+      );
+      expect(writes.map((write) => write.count)).toEqual([1, 0]);
     });
   });
 
@@ -985,39 +1040,29 @@ describe('MessagesService', () => {
       expect(gateway.emitted.filter((e) => e.userId === carol.userId)).toEqual([]);
     });
 
-    it('late group joiner receives no reaction, delete or consume event for pre-join messages', async () => {
+    it('late group joiner receives no delete or consume event for pre-join messages', async () => {
       const { service, gateway, alice, bob, carol, preJoin, preJoinViewOnce } =
         await lateJoinerGroup();
 
-      await service.addReaction(bob, preJoin.message.id, '👍');
-      await service.removeReaction(bob, preJoin.message.id);
       await service.delete(alice, preJoin.message.id);
       await service.markRead(bob, preJoinViewOnce.message.id);
 
       expect(new Set(gateway.emitted.map((e) => e.event))).toEqual(
-        new Set([
-          'message.reaction',
-          'message.deleted',
-          'message.delivered',
-          'message.read',
-          'message.consumed',
-        ]),
+        new Set(['message.deleted', 'message.delivered', 'message.read', 'message.consumed']),
       );
       expect(gateway.emitted.filter((e) => e.userId === carol.userId)).toEqual([]);
     });
 
     it('late group joiner receives events for messages sent after joining', async () => {
-      const { service, gateway, alice, bob, carol, sendFromAlice } = await lateJoinerGroup();
+      const { service, gateway, alice, carol, sendFromAlice } = await lateJoinerGroup();
       const posted = await sendFromAlice();
       gateway.emitted.length = 0;
 
       await service.edit(alice, posted.message.id, editTo('edited-post-join-ciphertext'));
-      await service.addReaction(bob, posted.message.id, '👍');
       await service.delete(alice, posted.message.id);
 
       expect(gateway.emitted.filter((e) => e.userId === carol.userId).map((e) => e.event)).toEqual([
         'message.edited',
-        'message.reaction',
         'message.deleted',
       ]);
     });

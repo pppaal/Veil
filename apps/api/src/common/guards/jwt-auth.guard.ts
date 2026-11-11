@@ -5,6 +5,7 @@ import { Reflector } from '@nestjs/core';
 import type { AuthenticatedRequest } from './authenticated-request';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { AppConfigService } from '../config/app-config.service';
+import { recordDeviceSeen, utcDayStart } from '../device-activity';
 import { EphemeralStoreService } from '../ephemeral-store.service';
 import { unauthorized } from '../errors/api-error';
 import { PrismaService } from '../prisma.service';
@@ -78,6 +79,13 @@ export class JwtAuthGuard implements CanActivate {
         device.user.status !== 'active'
       ) {
         throw unauthorized('device_not_active', 'Device is not active');
+      }
+
+      // Checked against the loaded row first, so a device already seen today
+      // costs no write at all.
+      const now = new Date();
+      if (device.lastSeenAt.getTime() !== utcDayStart(now).getTime()) {
+        await recordDeviceSeen(this.prisma, device.id, now);
       }
 
       request.auth = {

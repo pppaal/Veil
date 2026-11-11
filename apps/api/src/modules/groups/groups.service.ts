@@ -99,7 +99,7 @@ export class GroupsService {
           },
         },
         include: {
-          members: { include: { user: { select: { id: true, handle: true, displayName: true } } } },
+          members: { include: { user: { select: { id: true, handle: true } } } },
           groupMeta: true,
         },
       });
@@ -138,7 +138,6 @@ export class GroupsService {
       members: conversation.members.map((m) => ({
         userId: m.userId,
         handle: m.user.handle,
-        displayName: m.user.displayName,
         role: m.role,
       })),
     };
@@ -151,7 +150,7 @@ export class GroupsService {
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
       include: {
-        members: { include: { user: { select: { id: true, handle: true, displayName: true } } } },
+        members: { include: { user: { select: { id: true, handle: true } } } },
         groupMeta: true,
         messages: {
           where: {
@@ -182,7 +181,6 @@ export class GroupsService {
       members: conversation.members.map((m) => ({
         userId: m.userId,
         handle: m.user.handle,
-        displayName: m.user.displayName,
         role: m.role,
       })),
       lastMessage: latest ? toMessageSummary(latest, { viewerUserId: auth.userId }) : null,

@@ -42,7 +42,16 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
-    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD required}"]
+    # No append-only file. An AOF keeps every write, with its absolute expiry
+    # time, until a rewrite (by default not before 64 MB), so keys that expire
+    # after minutes (rate-limit counters keyed by client IP, prekey-claim
+    # budgets, group key distributions) would stay readable on disk for weeks.
+    # An RDB snapshot holds only the keys alive when it is taken, and the next
+    # write replaces it within a minute. Snapshots are still needed: refresh
+    # tokens live only here, Redis saves on shutdown, and the mobile app does
+    # not yet fall back to a fresh device-key challenge when its refresh token
+    # is gone. See docs/metadata-retention.md.
+    command: ["redis-server", "--appendonly", "no", "--save", "60 1", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD required}"]
     expose:
       - "6379"
     healthcheck:
@@ -109,6 +118,11 @@ services:
       VEIL_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       VEIL_S3_BUCKET: ${MINIO_BUCKET:-veil-encrypted}
       VEIL_JWT_SECRET: ${VEIL_JWT_SECRET:?VEIL_JWT_SECRET required (openssl rand -base64 32)}
+      # Keys the HMAC that quarantines deleted handles; production refuses to
+      # boot without it. The :? guard makes compose refuse to start anything
+      # when it is missing, so a forgotten pepper is caught before the
+      # entrypoint runs `prisma migrate deploy`.
+      VEIL_RETIRED_HANDLE_PEPPER: ${VEIL_RETIRED_HANDLE_PEPPER:?VEIL_RETIRED_HANDLE_PEPPER required (openssl rand -base64 32)}
       VEIL_JWT_AUDIENCE: ${VEIL_JWT_AUDIENCE:-veil-mobile}
       VEIL_JWT_ISSUER: ${VEIL_JWT_ISSUER:-veil-api}
       VEIL_PUSH_PROVIDER: ${VEIL_PUSH_PROVIDER:-none}

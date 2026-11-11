@@ -443,6 +443,36 @@ export class RetentionFakePrismaService extends FakePrismaService {
     });
     Object.assign(this.userContact, { findMany: contacts.findMany });
 
+    // The revoked-device sweep filters on the rows that still reference a
+    // device; queries that include relations keep the base engine.
+    const devices = table({
+      rows: () => this.devices,
+      replace: (rows) => (this.devices = rows),
+      relations: () => ({
+        sentMessages: (device, filter) =>
+          matchesList(
+            this.messages.filter((message) => message.senderDeviceId === device.id),
+            filter,
+          ),
+        attachments: (device, filter) =>
+          matchesList(
+            this.attachments.filter((attachment) => attachment.uploaderDeviceId === device.id),
+            filter,
+          ),
+        initiatedCalls: (device, filter) =>
+          matchesList(
+            this.callRecords.filter((call) => call.initiatorDeviceId === device.id),
+            filter,
+          ),
+      }),
+    });
+    const listDevicesWithRelations = this.device.findMany;
+    Object.assign(this.device, {
+      findMany: (args: Row = {}) =>
+        args.include ? listDevicesWithRelations(args) : devices.findMany(args),
+      deleteMany: devices.deleteMany,
+    });
+
     const members = table({
       rows: () => this.conversationMembers,
       replace: (rows) => (this.conversationMembers = rows),

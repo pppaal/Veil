@@ -29,6 +29,10 @@ const ACTIVE_CALL_MAX_MS = 12 * 60 * 60 * 1000;
 const READ_RECEIPT_MAX_AGE_DAYS = 7;
 const UNREAD_RECEIPT_MAX_AGE_DAYS = 30;
 const ABUSE_REPORT_MAX_AGE_DAYS = 90;
+// A revoked device row is kept this long so the device list can still show it
+// as revoked; by then the published message cap has removed its messages,
+// the main rows that still point at it.
+const REVOKED_DEVICE_MAX_AGE_DAYS = 30;
 const ORPHAN_ATTACHMENT_GRACE_MS = DAY_MS;
 
 // Only finished calls are ever deleted; ringing and active ones are first
@@ -233,6 +237,10 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     sweeps.push(
       { name: 'secretBlobs', batch: (tx) => this.deleteExpiredSecretBlobs(tx, now) },
       { name: 'retiredHandles', batch: (tx) => this.deleteExpiredRetiredHandles(tx, now) },
+      {
+        name: 'revokedDevices',
+        batch: (tx) => this.deleteRevokedDevices(tx, daysBefore(now, REVOKED_DEVICE_MAX_AGE_DAYS)),
+      },
     );
     return sweeps;
   }
@@ -452,6 +460,35 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
       where: { id: { in: blobs.map((blob) => blob.id) } },
     });
     return { affected: count, full: blobs.length === BATCH_SIZE };
+  }
+
+  // @retention-sweep Device
+  // A revoked device loses its label, one-time prekeys and sync cursors when
+  // it is revoked (revokeDevice). The row, with its platform, public keys and
+  // trust dates, goes once it has been revoked long enough and no message,
+  // attachment or call record still references it (those foreign keys are
+  // RESTRICT); time alone is not enough, since call records can be kept
+  // longer outside production. Its transfer sessions are closed (the device
+  // is revoked) and go with it.
+  private async deleteRevokedDevices(tx: Tx, cutoff: Date): Promise<BatchOutcome> {
+    const devices = await tx.device.findMany({
+      where: {
+        revokedAt: { lt: cutoff },
+        sentMessages: { none: {} },
+        attachments: { none: {} },
+        initiatedCalls: { none: {} },
+      },
+      select: { id: true },
+      take: BATCH_SIZE,
+    });
+    if (devices.length === 0) {
+      return EMPTY_BATCH;
+    }
+
+    const deviceIds = devices.map((device) => device.id);
+    await tx.deviceTransferSession.deleteMany({ where: { oldDeviceId: { in: deviceIds } } });
+    const { count } = await tx.device.deleteMany({ where: { id: { in: deviceIds } } });
+    return { affected: count, full: devices.length === BATCH_SIZE };
   }
 
   // @retention-sweep RetiredHandle

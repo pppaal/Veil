@@ -1,5 +1,14 @@
 import { createHmac } from 'node:crypto';
 
+import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { RetentionFakePrismaService } from '../../../test/support/fake-prisma-retention';
+import {
+  FakeAttachmentStorageGateway,
+  FakeRealtimeGateway,
+  FakeSafetyService,
+} from '../../../test/support/fake-services';
+import { ConversationsService } from '../conversations/conversations.service';
+import { CreateDirectConversationDto } from '../conversations/dto/create-direct-conversation.dto';
 import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { AccountService } from './account.service';
 
@@ -32,6 +41,10 @@ type StepName =
   | 'phase2.conversationMember.deleteMany'
   | 'phase2.conversation.deleteMany'
   | 'phase3.deviceTransferSession.deleteMany'
+  | 'phase3.conversationMember.findMany'
+  | 'phase3.conversation.updateMany'
+  | 'phase3.conversationMember.deleteMany'
+  | 'phase3.conversation.deleteMany'
   | 'phase3.user.update'
   | 'phase3.device.deleteMany'
   | 'phase3.retiredHandle.upsert'
@@ -45,8 +58,10 @@ function buildPrismaMock(opts?: {
   ownedGroupConversationIds?: string[];
   ownedChannelConversationIds?: string[];
   uploadedStorageKeys?: string[];
+  directConversationIds?: string[];
 }) {
   const order: StepName[] = [];
+  const directConversationIds = opts?.directConversationIds ?? [];
   const deviceIds = opts?.deviceIds ?? ['device-1'];
   const uploadedStorageKeys = opts?.uploadedStorageKeys ?? [];
   const ownedGroups = opts?.ownedGroupConversationIds ?? [];
@@ -73,6 +88,17 @@ function buildPrismaMock(opts?: {
       },
       deviceTransferSession: {
         deleteMany: jest.fn(record('phase3.deviceTransferSession.deleteMany')),
+      },
+      conversationMember: {
+        findMany: jest.fn(async () => {
+          order.push('phase3.conversationMember.findMany');
+          return directConversationIds.map((conversationId) => ({ conversationId }));
+        }),
+        deleteMany: jest.fn(record('phase3.conversationMember.deleteMany')),
+      },
+      conversation: {
+        updateMany: jest.fn(record('phase3.conversation.updateMany')),
+        deleteMany: jest.fn(record('phase3.conversation.deleteMany')),
       },
       retiredHandle: {
         upsert: jest.fn((args: (typeof upserts)[number]) => {
@@ -252,5 +278,78 @@ describe('AccountService.deleteAccount', () => {
       deleted: true,
     });
     expect(order[order.length - 1]).toBe('phase3.user.delete');
+  });
+});
+
+// The same deletion against stored rows, with direct conversations opened by
+// the real ConversationsService, so the key format is the one it writes.
+describe('AccountService.deleteAccount against stored rows', () => {
+  function setup() {
+    const prisma = new RetentionFakePrismaService();
+    const safety = new FakeSafetyService();
+    const conversations = new ConversationsService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      safety as never,
+      new ConversationAccessService(prisma as never, safety as never),
+    );
+    const account = new AccountService(
+      prisma as never,
+      { disconnectUser: () => 0 } as never,
+      new FakeAttachmentStorageGateway() as never,
+      new RetiredHandlesService(prisma as never, { retiredHandlePepper: PEPPER } as never),
+    );
+    const addUser = async (handle: string) => {
+      const id = await prisma.addUser(handle);
+      await prisma.addDevice(id);
+      return id;
+    };
+    const openDirect = async (fromUserId: string, peerHandle: string) => {
+      const dto = new CreateDirectConversationDto();
+      dto.peerHandle = peerHandle;
+      return (await conversations.createDirect(fromUserId, dto)).conversation.id;
+    };
+    // Every stored row of every table the fake holds.
+    const storedRows = () =>
+      JSON.stringify(Object.values(prisma).filter((value) => Array.isArray(value)));
+    return { prisma, account, addUser, openDirect, storedRows };
+  }
+
+  it('leaves no stored row naming the deleted user, while the peers keep their conversations', async () => {
+    const { prisma, account, addUser, openDirect, storedRows } = setup();
+    const alice = await addUser('alice');
+    const bob = await addUser('bob');
+    const carol = await addUser('carol');
+    const withBob = await openDirect(alice, 'bob');
+    const withCarol = await openDirect(carol, 'alice');
+    expect(storedRows()).toContain(alice);
+
+    await account.deleteAccount(alice);
+
+    expect(storedRows()).not.toContain(alice);
+    expect(prisma.conversations.map((conversation) => conversation.id).sort()).toEqual(
+      [withBob, withCarol].sort(),
+    );
+    expect(
+      prisma.conversationMembers.map((member) => [member.conversationId, member.userId]).sort(),
+    ).toEqual(
+      [
+        [withBob, bob],
+        [withCarol, carol],
+      ].sort(),
+    );
+  });
+
+  it('deletes a direct conversation once both of its members have deleted their accounts', async () => {
+    const { prisma, account, addUser, openDirect } = setup();
+    const alice = await addUser('alice');
+    const bob = await addUser('bob');
+    await openDirect(alice, 'bob');
+
+    await account.deleteAccount(alice);
+    await account.deleteAccount(bob);
+
+    expect(prisma.conversations).toEqual([]);
+    expect(prisma.conversationMembers).toEqual([]);
   });
 });

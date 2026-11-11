@@ -3,6 +3,7 @@ import type { ChannelMemberSummary, ChannelSummaryResponse } from '@veil/contrac
 import { isUUID } from 'class-validator';
 
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { removeConversationMember } from '../../common/conversation-access/conversation-departure';
 import { isActionAllowed } from '../../common/conversation-access/conversation-policy';
 import { apiError } from '../../common/errors/api-error';
 import type { AuthContext } from '../../common/guards/authenticated-request';
@@ -194,9 +195,9 @@ export class ChannelsService {
       throw apiError('owner_immutable', 'Owner cannot unsubscribe. Transfer ownership first.');
     }
 
-    await this.prisma.conversationMember.delete({
-      where: { conversationId_userId: { conversationId, userId: auth.userId } },
-    });
+    await this.prisma.$transaction((tx) =>
+      removeConversationMember(tx, conversationId, auth.userId),
+    );
 
     // Only the leaver and the people who can see the member list hear about
     // it; other subscribers must not observe membership churn.

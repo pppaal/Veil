@@ -13,9 +13,11 @@ else below is metadata the server needs to deliver it.
 Retention is counted from the event that starts the clock (a message reaching
 the server, a prekey being consumed, an account being deleted); the sweeps
 that enforce it are described in [metadata-retention.md](metadata-retention.md).
-Short-lived Redis keys (rate-limit budgets, auth challenges, refresh-token
-hashes) and encrypted attachment blobs in object storage are not database
-fields and are covered there too.
+Short-lived Redis keys (rate-limit counters keyed by client address or
+device, key-directory budgets, auth challenges, refresh-token hashes with
+their user and device ids, sealed group key distributions) and encrypted
+attachment blobs in object storage are not database fields and are covered
+there too.
 
 ## Classes
 
@@ -23,7 +25,7 @@ fields and are covered there too.
 | --- | --- | --- |
 | `ciphertext` | encrypted on the client; the server cannot read it | 4 |
 | `routing` | identifiers the server needs to route, authorize and link rows | 65 |
-| `operational` | timestamps, flags, counters and states the service runs on | 71 |
+| `operational` | timestamps, flags, counters and states the service runs on | 69 |
 | `public` | meant to be seen by other users: handles, public keys, channel names | 10 |
 | `secret-hash` | a hash or keyed hash of a secret; the secret itself is not stored | 2 |
 
@@ -110,7 +112,7 @@ such field fails CI.
 | `authPublicKey` | `auth_public_key` | public | account lifetime | server |
 | `pushToken` | `push_token` | routing | account lifetime | server |
 | `isActive` | `is_active` | operational | account lifetime | public |
-| `revokedAt` | `revoked_at` | operational | account lifetime | self |
+| `revokedAt` | `revoked_at` | operational | 30 days | self |
 | `trustedAt` | `trusted_at` | operational | account lifetime | self |
 | `joinedFromDeviceId` | `joined_from_device_id` | routing | account lifetime | self |
 | `createdAt` | `created_at` | operational | account lifetime | self |
@@ -136,7 +138,7 @@ such field fails CI.
 | `type` | `type` | operational | forever | members |
 | `createdAt` | `created_at` | operational | forever | members |
 | `disappearingTimerSeconds` | `disappearing_timer_seconds` | operational | forever | members |
-| `directKey` | `direct_key` | routing | forever | server |
+| `directKey` | `direct_key` | routing | account lifetime | server |
 | `currentEpoch` | `current_epoch` | operational | forever | members |
 | `groupUseSenderKeys` | `group_use_sender_keys` | operational | forever | members |
 | `lastOrder` | `last_order` | operational | forever | server |
@@ -148,7 +150,6 @@ such field fails CI.
 | `conversationId` | `conversation_id` | routing | account lifetime | server |
 | `userId` | `user_id` | routing | account lifetime | server |
 | `joinedEpoch` | `joined_epoch` | operational | account lifetime | server |
-| `leftEpoch` | `left_epoch` | operational | account lifetime | server |
 
 ### `conversation_members` (ConversationMember)
 
@@ -169,7 +170,6 @@ such field fails CI.
 | `conversationId` | `conversation_id` | routing | account lifetime | self |
 | `lastSyncedConversationOrder` | `last_synced_conversation_order` | operational | account lifetime | self |
 | `lastReadConversationOrder` | `last_read_conversation_order` | operational | account lifetime | self |
-| `updatedAt` | `updated_at` | operational | account lifetime | server |
 
 ### `messages` (Message)
 

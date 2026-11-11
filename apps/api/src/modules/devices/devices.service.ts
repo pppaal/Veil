@@ -8,6 +8,7 @@ import type {
 
 import { AppConfigService } from '../../common/config/app-config.service';
 import { utcDayStart } from '../../common/device-activity';
+import { revokeDevice } from '../../common/device-revocation';
 import { forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
 import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
@@ -140,14 +141,7 @@ export class DevicesService {
 
     const revokedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.device.update({
-        where: { id: dto.deviceId },
-        data: {
-          isActive: false,
-          revokedAt,
-          pushToken: null,
-        },
-      });
+      await revokeDevice(tx, dto.deviceId, revokedAt);
 
       const user = await tx.user.findUnique({
         where: { id: userId },

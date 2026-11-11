@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import { ConflictException } from '@nestjs/common';
 
+import { REVOKED_DEVICE_NAME } from '../../src/common/device-revocation';
 import { Ed25519DeviceAuthVerifier } from '../../src/modules/auth/device-auth-verifier';
 import { DeviceTransferService } from '../../src/modules/device-transfer/device-transfer.service';
 import { DeviceAuthTestHelper } from '../support/device-auth-test-helper';
@@ -54,6 +55,21 @@ describe('DeviceTransferService', () => {
       lastSeenAt: new Date(),
       lastSyncAt: null,
     });
+    prisma.oneTimePrekeys.push({
+      id: 'opk-old',
+      deviceId: 'device-old',
+      keyId: 1,
+      publicKey: 'opk-pub',
+      consumedAt: null,
+      createdAt: new Date(),
+    });
+    prisma.deviceConversationStates.push({
+      id: 'state-old',
+      deviceId: 'device-old',
+      conversationId: 'conversation-1',
+      lastSyncedConversationOrder: 3,
+      lastReadConversationOrder: 2,
+    });
 
     const init = await service.init(
       { userId: 'user-1', deviceId: 'device-old' },
@@ -102,6 +118,10 @@ describe('DeviceTransferService', () => {
     expect(oldDeviceAfter.isActive).toBe(false);
     expect(oldDeviceAfter.revokedAt).toBeInstanceOf(Date);
     expect(oldDeviceAfter.pushToken).toBeNull();
+    // A revoked device keeps no label, one-time prekeys or sync cursors.
+    expect(oldDeviceAfter.deviceName).toBe(REVOKED_DEVICE_NAME);
+    expect(prisma.oneTimePrekeys).toEqual([]);
+    expect(prisma.deviceConversationStates).toEqual([]);
     expect(
       prisma.devices.find((item) => item.id == completed.newDeviceId)!.joinedFromDeviceId,
     ).toBe('device-old');

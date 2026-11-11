@@ -1,5 +1,6 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
+import { REVOKED_DEVICE_NAME } from '../../common/device-revocation';
 import { DevicesService } from './devices.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeRealtimeGateway } from '../../../test/support/fake-services';
@@ -207,6 +208,43 @@ describe('DevicesService', () => {
     expect(prisma.devices[0]!.pushToken).toBeNull();
     expect(prisma.users[0]!.activeDeviceId).toBe('device-2');
     expect(realtime.disconnectedDevices.has('device-1')).toBe(true);
+  });
+
+  it('drops the revoked device label, one-time prekeys and sync cursors, and keeps the others', async () => {
+    const prisma = new FakePrismaService();
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+    );
+    const { userId, deviceId: revokedId } = prisma.seedUser('icarus');
+    const keptId = prisma.seedDevice(userId);
+    for (const deviceId of [revokedId, keptId]) {
+      prisma.oneTimePrekeys.push({
+        id: `opk-${deviceId}`,
+        deviceId,
+        keyId: 1,
+        publicKey: 'opk-pub',
+        consumedAt: null,
+        createdAt: new Date(),
+      });
+      prisma.deviceConversationStates.push({
+        id: `state-${deviceId}`,
+        deviceId,
+        conversationId: 'conversation-1',
+        lastSyncedConversationOrder: 3,
+        lastReadConversationOrder: 2,
+      });
+    }
+
+    await service.revoke(userId, { deviceId: revokedId });
+
+    const revoked = prisma.devices.find((device) => device.id === revokedId)!;
+    expect(revoked.revokedAt).not.toBeNull();
+    expect(revoked.deviceName).toBe(REVOKED_DEVICE_NAME);
+    expect(prisma.devices.find((device) => device.id === keptId)!.deviceName).toBe('Test device');
+    expect(prisma.oneTimePrekeys.map((prekey) => prekey.deviceId)).toEqual([keptId]);
+    expect(prisma.deviceConversationStates.map((state) => state.deviceId)).toEqual([keptId]);
   });
 
   it('rejects revoking a device owned by another user', async () => {

@@ -30,6 +30,7 @@ VEIL private beta uses a trusted-device graph, not cloud recovery and not Telegr
 
 - Revoking a device invalidates that device's bearer usage and websocket session.
 - If the revoked device was the preferred device, VEIL selects another trusted device as the preferred device when available.
+- Revoking (or transferring away from) a device replaces its label with "Removed device" and deletes its push token, unclaimed one-time prekeys and sync cursors at once. The device list shows it as `revoked` until the row is deleted, once it has been revoked for 30 days and no message, attachment or call record references it (`docs/metadata-retention.md`).
 - Revoke does not create a recovery path.
 
 ## Per-device sync state
@@ -52,8 +53,8 @@ These values are metadata only. Message bodies remain ciphertext-like payloads.
 ## What stays unchanged for real crypto
 
 - Join still requires an existing trusted device.
-- Device graph metadata can remain server-side.
-- Per-device sync cursors can remain server-side.
+- Device graph metadata of active devices can remain server-side; revoked devices are deleted as described under "Revoke flow".
+- Per-device sync cursors can remain server-side, as conversation orders without timestamps.
 - Ciphertext-only message relay architecture stays intact.
 
 ## What must change for audited real crypto

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../common/prisma.service';
 import {
@@ -120,8 +121,12 @@ export class AccountService {
         where: { OR: [{ userId }, { contactUserId: userId }] },
       }),
     );
+    // Direct memberships stay until Phase 3, which needs them to find the
+    // user's direct conversations (see releaseDirectConversations).
     await tryStep('conversationMembers', () =>
-      this.prisma.conversationMember.deleteMany({ where: { userId } }),
+      this.prisma.conversationMember.deleteMany({
+        where: { userId, conversation: { type: { not: 'direct' } } },
+      }),
     );
 
     if (ownedConversationIds.length > 0) {
@@ -158,6 +163,7 @@ export class AccountService {
       } else {
         await tx.deviceTransferSession.deleteMany({ where: { userId } });
       }
+      await this.releaseDirectConversations(tx, userId);
       await tx.user.update({
         where: { id: userId },
         data: { activeDeviceId: null },
@@ -168,6 +174,38 @@ export class AccountService {
     });
 
     return { deleted: true };
+  }
+
+  // A direct conversation's dedupe key is its two members' ids
+  // (ConversationsService.createDirect), and nothing cascades it from the user
+  // row, so it would name the deleted account next to the peer forever. No one
+  // can open a direct conversation with a deleted account again, so the key
+  // has nothing left to dedupe: it is cleared, and a conversation this leaves
+  // with no members at all is deleted. Runs in Phase 3 so a retry after a
+  // partial failure still finds the conversations through the memberships.
+  private async releaseDirectConversations(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<void> {
+    const conversationIds = (
+      await tx.conversationMember.findMany({
+        where: { userId, conversation: { type: 'direct' } },
+        select: { conversationId: true },
+      })
+    ).map((membership) => membership.conversationId);
+    if (conversationIds.length === 0) {
+      return;
+    }
+    await tx.conversation.updateMany({
+      where: { id: { in: conversationIds } },
+      data: { directKey: null },
+    });
+    await tx.conversationMember.deleteMany({
+      where: { userId, conversationId: { in: conversationIds } },
+    });
+    await tx.conversation.deleteMany({
+      where: { id: { in: conversationIds }, members: { none: {} } },
+    });
   }
 
   // Best effort: a blob that fails to delete must not block the erasure of

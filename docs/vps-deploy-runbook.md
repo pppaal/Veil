@@ -78,6 +78,9 @@ sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$(openssl rand -base64 32 | tr -d '/
 sed -i "s|^MINIO_ROOT_USER=.*|MINIO_ROOT_USER=veil-$(openssl rand -hex 4)|" .env.prod
 sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=$(openssl rand -base64 32)|" .env.prod
 sed -i "s|^VEIL_JWT_SECRET=.*|VEIL_JWT_SECRET=$(openssl rand -base64 32)|" .env.prod
+# 삭제된 계정 핸들의 격리용 HMAC 키. 한 번 만들고 절대 바꾸지 마세요:
+# 바꾸면 격리 중인 핸들이 일찍 다시 등록 가능해집니다.
+sed -i "s|^VEIL_RETIRED_HANDLE_PEPPER=.*|VEIL_RETIRED_HANDLE_PEPPER=$(openssl rand -base64 32)|" .env.prod
 sed -i "s|^VEIL_METRICS_AUTH_TOKEN=.*|VEIL_METRICS_AUTH_TOKEN=$(openssl rand -hex 24)|" .env.prod
 sed -i "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 24)|" .env.prod
 
@@ -198,6 +201,59 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
 ```
 
 마이그레이션은 멱등이므로 재실행 안전.
+
+### 8.1 업그레이드 주의: 마이그레이션 0018 (plaintext 제거) 이 들어간 릴리스
+
+이미 운영 중인 스택을 이 릴리스로 올릴 때는 `git pull` 전에 아래를 순서대로
+하세요.
+
+1. **`VEIL_RETIRED_HANDLE_PEPPER` 추가.** 없으면 compose 가 어떤 컨테이너도
+   띄우지 않고 (`VEIL_RETIRED_HANDLE_PEPPER required`) 멈춥니다. 마이그레이션
+   전에 멈추므로 데이터는 그대로입니다. 값이 비어 있을 때만 채우므로 이미 있는
+   pepper 는 바뀌지 않습니다 (바꾸면 격리 중인 핸들이 일찍 풀립니다):
+
+   ```bash
+   grep -q '^VEIL_RETIRED_HANDLE_PEPPER=' .env.prod || echo 'VEIL_RETIRED_HANDLE_PEPPER=' >> .env.prod
+   sed -i "s|^VEIL_RETIRED_HANDLE_PEPPER=$|VEIL_RETIRED_HANDLE_PEPPER=$(openssl rand -base64 32)|" .env.prod
+   ```
+
+2. **마이그레이션 0018 은 되돌릴 수 없습니다.** `reactions`, `user_profiles`,
+   `recovery_blobs` 테이블과 표시 이름·아바타·연락처 별명·신고 메모 컬럼을
+   지우고, 모든 스토리를 삭제합니다. 이전 이미지는 마이그레이션된 스키마에서
+   돌지 않으므로, 롤백은 덤프 복원뿐입니다. 업그레이드 직전에 덤프를 하나
+   뜨고 (`postgres-backup` 의 마지막 덤프가 하루 전일 수 있음):
+
+   ```bash
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+     pg_dump -U veil -d veil -F c > ./veil-pre-upgrade-$(date +%Y%m%d-%H%M%S).dump
+   chmod 600 ./veil-pre-upgrade-*.dump
+   ```
+
+   이 덤프와 `veil_prod_backups` 의 업그레이드 이전 덤프에는 0018 이 지우는
+   평문이 남아 있습니다. 업그레이드가 확인되면 이 덤프를 지우세요. 볼륨의
+   이전 덤프는 `BACKUP_RETENTION_DAYS` 가 지나면 정리됩니다.
+
+3. **Redis append-only 파일 끄기.** 이 릴리스의 compose 는 Redis 를
+   `--appendonly no --save "60 1"` 로 띄웁니다 (이유는
+   [metadata-retention.md](metadata-retention.md)). 그냥 재배포하면 Redis 가
+   AOF 를 읽지 않고 빈 상태로 떠서 모든 모바일 기기가 로그아웃됩니다. 재배포
+   전에 살아 있는 키를 스냅샷으로 옮기고, 재배포 후 AOF 를 지우세요:
+
+   ```bash
+   REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' .env.prod | cut -d= -f2-)
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     redis-cli -a "$REDIS_PASSWORD" --no-auth-warning CONFIG SET appendonly no
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     redis-cli -a "$REDIS_PASSWORD" --no-auth-warning SAVE
+   # 여기서 위의 업데이트 절차 (git pull, up -d --build) 진행.
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     rm -rf /data/appendonlydir
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep aof_enabled
+   # aof_enabled:0 이어야 합니다.
+   ```
+
+   `appendonlydir` 를 지우지 않으면 만료된 키의 기록이 볼륨에 그대로 남습니다.
 
 ## 9. 사고 대응 (1인 베타 운영용)
 

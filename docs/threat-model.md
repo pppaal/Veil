@@ -25,7 +25,9 @@
 - a deleted account's handle is quarantined for 90 days (a peppered HMAC, not
   the handle, is kept), so a stranger cannot re-register it and inherit the
   trust its contacts gave the old owner
-- device last-seen and last-sync times are stored as the UTC day only
+- device last-seen and last-sync times are stored as the UTC day only, and
+  per-conversation sync and read cursors as conversation orders with no
+  timestamp
 - device transfer requires explicit action from the active old device
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure

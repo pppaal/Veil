@@ -18,6 +18,11 @@
 //                                       swap the victim's directory keys for a
 //                                       relay-held identity and open a session
 //                                       to the target as the victim's device
+//   POST /__test/timer {seconds}        set the outer expiresAt of messages
+//                                       stored from now on, as the API does
+//                                       for a conversation timer (null: off).
+//                                       Expired messages are still served, as
+//                                       a lagging or hostile relay would
 //
 // Usage: node apps/web-demo/e2e/mock-server.mjs   (VEIL_MOCK_PORT, default 4317)
 
@@ -70,6 +75,7 @@ function reset() {
     blobs: new Map(),
     shuffle: false,
     tamper: false,
+    timerSeconds: null,
   };
 }
 reset();
@@ -149,7 +155,7 @@ function storeMessage(device, conversation, { clientMessageId, envelope }) {
     nonce: envelope.nonce,
     messageType: envelope.messageType,
     attachment: envelope.attachment?.attachmentId ? { attachmentId: envelope.attachment.attachmentId } : null,
-    expiresAt: null,
+    expiresAt: db.timerSeconds ? new Date(Date.now() + db.timerSeconds * 1000).toISOString() : null,
     viewOnce: false,
     serverReceivedAt: now(),
     deletedAt: null,
@@ -251,6 +257,10 @@ const routes = [
   }],
   ['POST', /^\/__test\/impersonate$/, async (req) => {
     await impersonate(req.body);
+    return {};
+  }],
+  ['POST', /^\/__test\/timer$/, (req) => {
+    db.timerSeconds = req.body.seconds ?? null;
     return {};
   }],
   ['GET', /^\/__test\/health$/, () => ({ ok: true })],

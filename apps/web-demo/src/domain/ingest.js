@@ -9,10 +9,16 @@
 //   { ...CACHED_MESSAGE_FIELDS, kind, displayText, replyTo, media, legacy,
 //     reaction, expiresAtMs }
 // kind is a content kind (src/domain/content.js), 'locked' (could not be
-// opened), 'deleted', or 'cleared' (history this device deleted). Because
-// the view is built from the cached fields only, a live summary and its
-// cached copy yield the same view.
+// opened), 'deleted', 'expired' (past its expiry, or retired by this device
+// and served again) or 'cleared' (history this device deleted). Because the
+// view is built from the cached fields only, a live summary and its cached
+// copy yield the same view.
+//
+// Whichever path brings a message here in a deleted or expired state, what
+// this device kept of it is retired there and then (options.retire): a
+// tombstone fetched by a history poll purges as surely as a realtime event.
 
+import { effectiveExpiry, isPast } from '../core/expiry.js';
 import { serializeMessageForCache } from '../platform/persist.js';
 import { createMediaHandle } from './media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from './payload.js';
@@ -27,26 +33,49 @@ export const LOCKED_LABELS = Object.freeze({
   'own-missing': '🔒 이 기기에 내용 없음',
 });
 const PREVIEW_MAX_CHARS = 120;
+// Views with nothing left to show: no bubble, preview or search hit.
+const GONE_KINDS = new Set(['cleared', 'expired']);
 
 // options.open(raw) resolves to { content } or { failure } (a key of
-// LOCKED_LABELS). options.media is handed to media handles for lazy
-// download. options.previous is the current view of the same message: when
-// the ciphertext and everything its decryption is bound to are unchanged, its
-// content is reused instead of opening it again, which keeps blob URLs alive
-// across refreshes.
-export async function ingestMessage(raw, { open, media, previous = null }) {
+// LOCKED_LABELS, or 'cleared' or 'retired'). options.retire(raw) drops what
+// was kept of a deleted or expired message. options.media is handed to media
+// handles for lazy download. options.previous is the current view of the
+// same message: when the ciphertext and everything its decryption is bound
+// to are unchanged, its content is reused instead of opening it again, which
+// keeps blob URLs alive across refreshes. options.now is the time expiries
+// are judged at.
+export async function ingestMessage(raw, { open, retire, media, previous = null, now = Date.now() }) {
   const envelope = serializeMessageForCache(raw);
-  if (raw.deletedAt) return view(envelope, { kind: 'deleted', displayText: DELETED_TEXT });
+  if (raw.deletedAt) {
+    // A view that is already a tombstone was retired when it became one.
+    if (previous?.kind !== 'deleted') await retire(raw);
+    return view(envelope, { kind: 'deleted', displayText: DELETED_TEXT });
+  }
+  const opened = await openView(envelope, raw, { open, media, previous });
+  if (!isPast(opened.expiresAtMs, now)) return opened;
+  await retire(raw);
+  return view(envelope, { kind: 'expired', displayText: '' });
+}
+
+async function openView(envelope, raw, { open, media, previous }) {
   if (previous && previous.kind !== 'locked' && sameSealedContent(previous, raw)) {
-    return view(envelope, previous);
+    // The relay can bring an expiry forward, never push it back.
+    const expiresAtMs = GONE_KINDS.has(previous.kind) ? null : effectiveExpiry(previous.expiresAtMs, envelope.expiresAt);
+    return view(envelope, { ...previous, expiresAtMs });
   }
   const result = await Promise.resolve()
     .then(() => open(raw))
     .catch(() => ({ failure: 'failed' }));
-  // History this device deleted is not a failure to show.
+  // History this device deleted, or a message it retired, is not a failure
+  // to show.
   if (result?.failure === 'cleared') return view(envelope, { kind: 'cleared', displayText: '' });
+  if (result?.failure === 'retired') return view(envelope, { kind: 'expired', displayText: '' });
   if (!result?.content) {
-    return view(envelope, { kind: 'locked', displayText: LOCKED_LABELS[result?.failure] ?? LOCKED_LABELS.failed });
+    return view(envelope, {
+      kind: 'locked',
+      displayText: LOCKED_LABELS[result?.failure] ?? LOCKED_LABELS.failed,
+      expiresAtMs: effectiveExpiry(null, envelope.expiresAt),
+    });
   }
   return contentView(envelope, result.content, media);
 }
@@ -59,8 +88,7 @@ function contentView(envelope, content, media) {
     media: createMediaHandle(content, media),
     legacy: content.legacy,
     reaction: content.reaction,
-    // Contract C4: the earlier of the authenticated and the relayed expiry.
-    expiresAtMs: earliest(content.expiresAt, envelope.expiresAt ? Date.parse(envelope.expiresAt) : null),
+    expiresAtMs: effectiveExpiry(content.expiresAt, envelope.expiresAt),
   });
 }
 
@@ -68,9 +96,24 @@ export function isTextKind(kind) {
   return kind === 'text' || kind === 'reply';
 }
 
+// Whether nothing of this message may show any more: it has expired (by
+// now, even before a sweep turns it into an 'expired' view) or is history
+// this device deleted.
+export function isGone(message, now = Date.now()) {
+  return GONE_KINDS.has(message.kind) || isPast(message.expiresAtMs, now);
+}
+
+// Whether a conversation panel shows this message as a bubble. A reaction
+// never is one: it changes what its target shows.
+export function isShown(message, now = Date.now()) {
+  return message.kind !== 'reaction' && !isGone(message, now);
+}
+
 // What the sidebar and notifications may show: the text of a text message,
-// a kind label for everything else, never a payload.
-export function previewLabel(message) {
+// a kind label for everything else, never a payload, and nothing at all for
+// a message that is gone.
+export function previewLabel(message, now = Date.now()) {
+  if (isGone(message, now)) return '';
   if (isTextKind(message.kind) || message.kind === 'system') {
     const text = message.displayText;
     return text.length > PREVIEW_MAX_CHARS ? `${text.slice(0, PREVIEW_MAX_CHARS)}…` : text;
@@ -105,11 +148,6 @@ function view(envelope, {
   expiresAtMs = null,
 }) {
   return { ...envelope, kind, displayText, replyTo, media, legacy, reaction, expiresAtMs };
-}
-
-function earliest(...times) {
-  const known = times.filter((time) => Number.isFinite(time));
-  return known.length > 0 ? Math.min(...known) : null;
 }
 
 // The AAD binds a ciphertext to its conversation and sender device, so a

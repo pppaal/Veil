@@ -82,6 +82,7 @@
   "safety.mismatch": "The codes do not match. Do not trust this key.",
   "safety.verified": "@{handle} verified",
   "safety.noKey": "No key pinned for @{handle} yet: exchange a message first.",
+  "safety.notSignedIn": "This device has not signed in yet. Sign in once, then compare safety numbers.",
   "safety.compare": "Compare safety number",
   "legacy.badge": "legacy, not forward-secret, sender not authenticated",
   "legacy.composerFrozen": "This identity uses the old demo format and cannot send",

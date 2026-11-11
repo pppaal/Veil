@@ -18,6 +18,11 @@ runs in polling mode. Playwright starts it; nothing else is needed.
   ratchet work at all, while the relay serves corrupted ciphertext.
 - A relay that swaps Bob's identity and opens a session to Alice as Bob's
   device is refused: Alice sees the key-change banner and cannot send.
+- A message deleted by its sender, and one past the relay's conversation
+  timer, leave both pages and the sidebar, and their rows in the
+  decrypt-once store are retired on both devices, with history polling as
+  the only channel and the relay still serving the expired one. The store
+  also retires expired records nothing is showing.
 - Two tabs write the shared session record in IndexedDB at once, one
   rotating prekeys and one renewing tokens, and neither reverts the other.
 

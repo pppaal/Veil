@@ -6,7 +6,8 @@
 // Compact JSON, all five keys always present, in this order. One optional
 // key may follow them: "r", the id of the message a reply answers. Peers
 // that do not know it ignore it, which the spec's version policy allows for
-// additions, and it keeps the reply link out of the server's view.
+// additions, and it keeps the reply link out of the server's view. Mobile is
+// such a peer today: a web reply reads there as plain text.
 // Receivers also accept the legacy {"body","kind","expiresAt","att"} shape.
 
 import { fromUtf8, utf8 } from './bytes.js';

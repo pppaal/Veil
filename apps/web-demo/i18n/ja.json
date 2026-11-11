@@ -82,6 +82,7 @@
   "safety.mismatch": "コードが一致しません。このキーを信頼しないでください。",
   "safety.verified": "@{handle} を確認しました",
   "safety.noKey": "@{handle} のキーはまだありません: まずメッセージを交換してください。",
+  "safety.notSignedIn": "この端末はまだサインインしていません。一度サインインしてから安全番号を比較してください。",
   "safety.compare": "安全番号を比較",
   "legacy.badge": "旧形式 · 前方秘匿性なし · 送信者未認証",
   "legacy.composerFrozen": "旧デモ形式の ID のため送信できません",

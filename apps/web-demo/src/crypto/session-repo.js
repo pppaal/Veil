@@ -10,7 +10,10 @@
 // and a row that moved on since is refused rather than overwritten, so an
 // operation fails instead of publishing state that is not on disk. `rev`
 // survives a row whose sealed part no longer opens, so even then it only
-// grows.
+// grows. The check and the write are separate transactions, so the swap is
+// atomic only under the conversation lock (src/crypto/locks.js): across tabs
+// that takes navigator.locks, which every browser this demo supports has;
+// the in-tab fallback serializes this tab alone.
 //
 // The storage behind the repository is a key-value store
 // (src/platform/kv.js: IndexedDB or in-memory).

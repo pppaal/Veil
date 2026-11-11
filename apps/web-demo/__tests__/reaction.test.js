@@ -82,4 +82,12 @@ describe('E2E reactions', () => {
       expect(decodeReaction(hostile)).toBeNull();
     }
   });
+
+  it('counts emoji in code points, as mobile does', () => {
+    // 7 code points, 11 UTF-16 units.
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}';
+    expect(decodeReaction(encodeReaction({ target: 'm-1', emoji: family, op: 'add' })))
+      .toEqual({ target: 'm-1', emoji: family, op: 'add' });
+    expect(decodeReaction(encodeReaction({ target: 'm-1', emoji: `${family}\u{1F44D}\u{1F44D}`, op: 'add' }))).toBeNull();
+  });
 });

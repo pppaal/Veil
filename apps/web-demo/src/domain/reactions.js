@@ -1,13 +1,15 @@
 // Reactions are end-to-end encrypted control messages: messageType
 // 'reaction', inner kind 'reaction', body the compact JSON
-//   {"v":1,"target":<messageId>,"emoji":<at most 8 chars>,"op":"add"|"remove"}
+//   {"v":1,"target":<messageId>,"emoji":<at most 8 code points>,"op":"add"|"remove"}
 // The server relays them as ciphertext like any message, so it never learns
 // who reacted to what, and no REST reaction endpoint is ever called. A
 // reaction never renders as a bubble: it changes the reactions its target
 // shows, the last one from each sender winning.
 
 const REACTION_VERSION = 1;
-const MAX_EMOJI_CHARS = 8;
+// Counted in code points, as mobile counts runes: a ZWJ sequence such as a
+// family emoji is 7 code points but 11 UTF-16 units.
+const MAX_EMOJI_CODE_POINTS = 8;
 const OPS = new Set(['add', 'remove']);
 const MESSAGE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -26,7 +28,7 @@ export function decodeReaction(body) {
   if (value === null || typeof value !== 'object' || value.v !== REACTION_VERSION) return null;
   const { target, emoji, op } = value;
   if (typeof target !== 'string' || !MESSAGE_ID_RE.test(target) || !OPS.has(op)) return null;
-  if (typeof emoji !== 'string' || emoji.length === 0 || emoji.length > MAX_EMOJI_CHARS) return null;
+  if (typeof emoji !== 'string' || emoji.length === 0 || [...emoji].length > MAX_EMOJI_CODE_POINTS) return null;
   return { target, emoji, op };
 }
 

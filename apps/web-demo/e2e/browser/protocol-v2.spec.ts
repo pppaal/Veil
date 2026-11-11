@@ -76,6 +76,30 @@ async function send(device: Device, text: string): Promise<void> {
 
 const bubbleTexts = (device: Device) => device.page.locator('.panel-msgs .msg-row .msg-text').allInnerTexts();
 
+async function startChat(from: Device, to: Device): Promise<void> {
+  await from.page.click('#new-chat-btn');
+  await from.page.fill('#new-peer-input', to.handle);
+  await from.page.click('#new-confirm');
+  await expect(from.page.locator('.panel .panel-title .name')).toHaveText(`@${to.handle}`);
+  await openChatWith(to, from);
+}
+
+interface StoredContent {
+  retired: boolean;
+  sealed: boolean;
+}
+
+// What the page's decrypt-once store holds per message id, read through the
+// app's own IndexedDB module.
+const storedContents = (page: Page) =>
+  page.evaluate(async () => {
+    const { createIdb } = await import('./src/platform/idb.js');
+    const idb = createIdb(indexedDB);
+    const rows = (await idb.all('message-contents')) as Array<Record<string, unknown>>;
+    await idb.close();
+    return Object.fromEntries(rows.map((row) => [row.id as string, { retired: row.retired === true, sealed: 'sealed' in row }]));
+  }) as Promise<Record<string, StoredContent>>;
+
 test.describe.configure({ mode: 'serial' });
 
 test.describe('protocol v2 in the browser', () => {
@@ -109,11 +133,7 @@ test.describe('protocol v2 in the browser', () => {
 
   test('Alice and Bob exchange 10 messages with shuffled delivery', async () => {
     await relay('/__test/delivery', { shuffle: true });
-    await alice.page.click('#new-chat-btn');
-    await alice.page.fill('#new-peer-input', bob.handle);
-    await alice.page.click('#new-confirm');
-    await expect(alice.page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
-    await openChatWith(bob, alice);
+    await startChat(alice, bob);
 
     // Neither side waits for the other, so frames cross and arrive out of
     // order: Bob may even start a session of his own before Alice's lands.
@@ -164,6 +184,120 @@ test.describe('protocol v2 in the browser', () => {
     await expect(page.locator('.conv-item', { hasText: `@${bob.handle}` })).toContainText('⚠️');
     // The history from before the swap is untouched.
     expect((await bubbleTexts(alice)).slice(0, texts.length)).toEqual(texts);
+  });
+});
+
+// Contract C4 and deletion on the device: once a message is deleted or its
+// expiry passes, it leaves the panel and the sidebar, and its row in the
+// decrypt-once store is retired, on the sender's device and the
+// recipient's alike, with history polling as the only channel.
+test.describe('deleted and expired messages in the browser', () => {
+  const stamp = Date.now().toString(36).slice(-6);
+  const DELETED = '🚫 삭제된 메시지';
+  let carol: Device;
+  let dave: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    carol = await register(browser, `carol${stamp}`);
+    dave = await register(browser, `dave${stamp}`);
+  });
+
+  test.afterAll(async () => {
+    await relay('/__test/timer', { seconds: null });
+    await carol?.context.close();
+    await dave?.context.close();
+  });
+
+  test('leave the page and the decrypt-once store', async () => {
+    const sweepFailures: string[] = [];
+    for (const device of [carol, dave]) {
+      device.page.on('console', (message) => {
+        if (message.text().includes('expiry sweep failed')) sweepFailures.push(message.text());
+      });
+    }
+    await startChat(carol, dave);
+    await send(carol, 'lasting note');
+    await send(carol, 'regretted note');
+    // The relay's conversation timer: only the last message expires.
+    await relay('/__test/timer', { seconds: 30 });
+    await send(carol, 'vanishing note');
+    await relay('/__test/timer', { seconds: null });
+
+    const sent = ['lasting note', 'regretted note', 'vanishing note'];
+    for (const device of [carol, dave]) await expect.poll(() => bubbleTexts(device), { timeout: 20_000 }).toEqual(sent);
+    const idOf = async (text: string) =>
+      (await dave.page.locator('.panel-msgs .msg-row', { hasText: text }).getAttribute('data-msg-id')) as string;
+    const [lasting, regretted, vanishing] = await Promise.all(sent.map(idOf));
+    for (const device of [carol, dave]) {
+      const stored = await storedContents(device.page);
+      for (const id of [lasting, regretted, vanishing]) expect(stored[id]).toEqual({ retired: false, sealed: true });
+    }
+
+    await carol.page.locator('.panel-msgs .msg-row.me', { hasText: 'regretted note' }).click({ button: 'right' });
+    await carol.page.locator('.msg-action-item.danger').click();
+    await carol.page.locator('#confirm-ok').click();
+    for (const device of [carol, dave]) {
+      await expect.poll(() => bubbleTexts(device), { timeout: 20_000 }).toContain(DELETED);
+      expect(await bubbleTexts(device)).not.toContain('regretted note');
+    }
+
+    for (const device of [carol, dave]) {
+      await expect.poll(() => bubbleTexts(device), { timeout: 45_000 }).toEqual(['lasting note', DELETED]);
+      await expect(device.page.locator('.conv-list')).not.toContainText('vanishing note');
+      const stored = await storedContents(device.page);
+      expect(stored[lasting]).toEqual({ retired: false, sealed: true });
+      for (const id of [regretted, vanishing]) expect(stored[id]).toEqual({ retired: true, sealed: false });
+    }
+
+    // A reload, with the relay still serving the expired message, brings
+    // nothing back.
+    await dave.page.reload();
+    await expect(dave.page.locator('#app')).toBeVisible();
+    await openChatWith(dave, carol);
+    await expect.poll(() => bubbleTexts(dave), { timeout: 15_000 }).toEqual(['lasting note', DELETED]);
+    expect(sweepFailures).toEqual([]);
+  });
+
+  test('the store retires expired records it is not showing', async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto('./s.html');
+    const rows = await page.evaluate(async () => {
+      const { createIdb } = await import('./src/platform/idb.js');
+      const { createIdbKv } = await import('./src/platform/kv.js');
+      const { createContentStore } = await import('./src/platform/content-store.js');
+      const { createLocks } = await import('./src/crypto/locks.js');
+      const idb = createIdb(indexedDB);
+      const store = createContentStore({
+        subtle: crypto.subtle,
+        random: (length: number) => crypto.getRandomValues(new Uint8Array(length)),
+        records: createIdbKv(idb, 'message-contents', { index: 'byConversation', expiryIndex: 'byExpiry' }),
+        keys: createIdbKv(idb, 'content-keys'),
+        locks: createLocks(navigator.locks),
+      });
+      const value = (text: string) => ({ content: { kind: 'text', text }, nonce: 'n' });
+      await store.put('c-1', 'm-past', value('expired'), { expiresAt: 1_000 });
+      await store.put('c-1', 'm-future', value('later'), { expiresAt: 3_000 });
+      await store.put('c-1', 'm-forever', value('kept'));
+      await store.retireExpired(2_000);
+      const stored = (await idb.all('message-contents')) as Array<Record<string, unknown>>;
+      const shown = await Promise.all(['m-past', 'm-future', 'm-forever'].map((id) => store.get('c-1', id)));
+      await idb.close();
+      return {
+        rows: Object.fromEntries(stored.map((row) => [row.id as string, { retired: row.retired === true, sealed: 'sealed' in row }])),
+        shown: shown.map((entry) => (entry as { retired?: boolean; content?: { text: string } }).retired ?? entry.content?.text),
+      };
+    });
+    expect(rows).toEqual({
+      rows: {
+        'm-past': { retired: true, sealed: false },
+        'm-future': { retired: false, sealed: true },
+        'm-forever': { retired: false, sealed: true },
+      },
+      shown: [true, 'later', 'kept'],
+    });
+    await context.close();
   });
 });
 

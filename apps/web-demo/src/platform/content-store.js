@@ -1,24 +1,36 @@
 // Decrypted message contents, kept so that each ciphertext is decrypted
 // exactly once: protocol-v2 message keys are single-use, and rendering reads
 // only from here. Two IndexedDB stores:
-//   message-contents  { key: conversationId/id, conversationId, id, nonce, sealed }
+//   message-contents  { key: conversationId/id, conversationId, id, expiresAt, nonce, sealed }
+//                     or, once retired, { key, conversationId, id, retired: true }
 //   content-keys      { conversationId, key }
 // Each conversation has its own non-extractable AES-256-GCM key, and a
 // record is sealed with AAD "message-contents" || id, so a record copied to
 // another id does not open. Deleting a conversation's key crypto-shreds all
 // of its records at once, whatever copies of the rows survive.
+//
+// A message that was deleted or has expired is retired: its sealed content
+// is overwritten by a marker that only says so. Its message key is spent,
+// so a relay that serves it again gets it hidden rather than shown as a
+// failure, and nothing written later brings the content back. expiresAt
+// (ms, contract C4) stays in the clear, so that expired records can be
+// found and retired without opening any; it says no more than the relay's
+// own expiry for the message.
 
+import { earlierExpiry } from '../core/expiry.js';
 import { concatBytes, fromUtf8, utf8 } from '../crypto/bytes.js';
 import { GCM_NONCE_BYTES, gcmParams, generateStorageKey } from '../crypto/keys.js';
 
 const AAD_LABEL = utf8('message-contents');
+// What get() returns for a retired message.
+const RETIRED = Object.freeze({ retired: true });
 
 const rowKey = (conversationId, id) => `${conversationId}/${id}`;
 const aad = (id) => concatBytes([AAD_LABEL, utf8(id)]);
 
-// records: kv with keyPath 'key' indexed by conversationId; keys: kv with
-// keyPath 'conversationId' (src/platform/kv.js). locks serializes key
-// creation across tabs (src/crypto/locks.js).
+// records: kv with keyPath 'key', indexed by conversationId and by expiresAt
+// (dueBy); keys: kv with keyPath 'conversationId' (src/platform/kv.js).
+// locks serializes key creation across tabs (src/crypto/locks.js).
 export function createContentStore({ subtle, random, records, keys, locks }) {
   async function existingKey(conversationId) {
     return (await keys.get(conversationId))?.key ?? null;
@@ -34,20 +46,32 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
     });
   }
 
-  async function put(conversationId, id, value) {
+  // A record's expiry only ever comes earlier: rewriting it (an edit, a
+  // move) keeps the one it had.
+  async function put(conversationId, id, value, { expiresAt = null } = {}) {
+    const existing = await records.get(rowKey(conversationId, id));
+    if (existing?.retired) return;
     const key = await keyFor(conversationId);
     const nonce = random(GCM_NONCE_BYTES);
     const plain = utf8(JSON.stringify(value));
     const sealed = new Uint8Array(await subtle.encrypt(gcmParams(nonce, aad(id)), key, plain));
     plain.fill(0);
-    await records.put({ key: rowKey(conversationId, id), conversationId, id, nonce, sealed });
+    await records.put({
+      key: rowKey(conversationId, id),
+      conversationId,
+      id,
+      expiresAt: earlierExpiry(existing?.expiresAt, expiresAt),
+      nonce,
+      sealed,
+    });
   }
 
-  // null when nothing is stored, the conversation's key is gone, or the
-  // record does not authenticate under this id.
-  async function get(conversationId, id) {
-    const row = await records.get(rowKey(conversationId, id));
-    const key = row ? await existingKey(conversationId) : null;
+  // RETIRED for a retired message; null when nothing is stored, the
+  // conversation's key is gone, or the record does not authenticate under
+  // this id.
+  async function unseal(conversationId, id, row) {
+    if (row.retired) return RETIRED;
+    const key = await existingKey(conversationId);
     if (!key) return null;
     try {
       const plain = await subtle.decrypt(gcmParams(row.nonce, aad(id)), key, row.sealed);
@@ -57,15 +81,40 @@ export function createContentStore({ subtle, random, records, keys, locks }) {
     }
   }
 
+  async function get(conversationId, id) {
+    const row = await records.get(rowKey(conversationId, id));
+    return row ? unseal(conversationId, id, row) : null;
+  }
+
+  async function retire(conversationId, id) {
+    const key = rowKey(conversationId, id);
+    if ((await records.get(key))?.retired) return;
+    await records.put({ key, conversationId, id, retired: true });
+  }
+
   return {
     put,
     get,
+    retire,
 
-    async move(conversationId, fromId, toId) {
-      const value = await get(conversationId, fromId);
-      if (value === null) return;
-      await put(conversationId, toId, value);
-      await records.delete(rowKey(conversationId, fromId));
+    // Every record whose expiry is at or before `now`, loaded or not.
+    async retireExpired(now) {
+      for (const row of await records.dueBy(now)) await retire(row.conversationId, row.id);
+    },
+
+    // expiresAt: an expiry learned since the record was written (the
+    // relay's, once it has named the message).
+    async move(conversationId, fromId, toId, { expiresAt = null } = {}) {
+      const row = await records.get(rowKey(conversationId, fromId));
+      if (!row) return;
+      if (row.retired) {
+        await retire(conversationId, toId);
+      } else {
+        const value = await unseal(conversationId, fromId, row);
+        if (value === null) return;
+        await put(conversationId, toId, value, { expiresAt: earlierExpiry(row.expiresAt, expiresAt) });
+      }
+      await records.delete(row.key);
     },
 
     delete: (conversationId, id) => records.delete(rowKey(conversationId, id)),

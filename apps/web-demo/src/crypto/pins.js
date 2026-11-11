@@ -10,8 +10,15 @@
 // go through admit(), so a change freezes the conversation whichever way the
 // server tries it, until the user decides. A contact whose safety number was
 // verified must verify the new one; a plain accept is refused.
+//
+// Accepting a new device adds its pin and keeps the user's earlier ones:
+// people use several devices, and one they move away from may come back.
+// So the relay can later route sessions to an earlier accepted device of
+// the same user without a fresh warning. Only keys the user accepted once
+// can come back this way; anything else still stops at admit().
 
 import { encodeBase64Url } from '../core/base64url.js';
+import { createLocks } from './locks.js';
 
 export const PinVerdict = Object.freeze({
   FIRST_USE: 'first-use',
@@ -29,8 +36,13 @@ export class ReverificationRequiredError extends Error {
 }
 
 // kv: src/platform/kv.js over 'identity-pins-v2' (byIndex: by userId).
-export function createPinStore(kv, { now = () => Date.now() } = {}) {
+// Every operation reads a user's pins and then writes one, so operations on
+// the same user run one at a time under locks (src/crypto/locks.js; the app
+// passes its cross-tab locks): two first contacts in different conversations
+// cannot both find no pins and both pin.
+export function createPinStore(kv, { now = () => Date.now(), locks = createLocks(null) } = {}) {
   const forUser = (userId) => kv.byIndex(userId);
+  const serialized = (userId, task) => locks.run(`veil-pins:${userId}`, task);
   const pinOf = (userId, deviceId, identityKey, verifiedAt, firstSeenAt = now()) => ({
     id: `${userId}/${deviceId}`,
     userId,
@@ -43,7 +55,7 @@ export function createPinStore(kv, { now = () => Date.now() } = {}) {
   return {
     // { verdict, verified, pin }. Pins (and reports FIRST_USE) only for a
     // user with no pins at all.
-    async check(userId, deviceId, identityKey) {
+    check: (userId, deviceId, identityKey) => serialized(userId, async () => {
       const pins = await forUser(userId);
       const verified = pins.some((pin) => pin.verifiedAt !== null);
       const pin = pins.find((candidate) => candidate.deviceId === deviceId) ?? null;
@@ -55,20 +67,20 @@ export function createPinStore(kv, { now = () => Date.now() } = {}) {
       const fresh = pinOf(userId, deviceId, identityKey, null);
       await kv.put(fresh);
       return { verdict: PinVerdict.FIRST_USE, verified: false, pin: fresh };
-    },
+    }),
 
-    async accept(userId, deviceId, identityKey) {
+    accept: (userId, deviceId, identityKey) => serialized(userId, async () => {
       const pins = await forUser(userId);
       if (pins.some((pin) => pin.verifiedAt !== null)) throw new ReverificationRequiredError(userId);
       await kv.put(pinOf(userId, deviceId, identityKey, null));
-    },
+    }),
 
     // The user compared safety numbers for this key out of band.
-    async markVerified(userId, deviceId, identityKey) {
+    markVerified: (userId, deviceId, identityKey) => serialized(userId, async () => {
       const existing = (await forUser(userId)).find((pin) => pin.deviceId === deviceId);
       const sameKey = existing?.identityKey === encodeBase64Url(identityKey);
       await kv.put(pinOf(userId, deviceId, identityKey, now(), sameKey ? existing.firstSeenAt : now()));
-    },
+    }),
 
     pinsFor: forUser,
   };

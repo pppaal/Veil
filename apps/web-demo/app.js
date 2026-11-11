@@ -16,6 +16,7 @@ import {
 } from './lib/format.js';
 import { parseKakaoExport } from './lib/kakao-import.js';
 import { decodeBase64Url } from './src/core/base64url.js';
+import { isPast } from './src/core/expiry.js';
 import { encryptAttachment } from './src/crypto/attachment-v2.js';
 import { concatBytes } from './src/crypto/bytes.js';
 import { ENVELOPE_VERSION_V2 } from './src/crypto/frame.js';
@@ -29,7 +30,7 @@ import { formatSafetyNumber, matchesPeerCode, safetyNumber, verificationCode } f
 import { createSessionCipher } from './src/crypto/session-cipher.js';
 import { createSessionRepo } from './src/crypto/session-repo.js';
 import { mediaContent, textContent } from './src/domain/content.js';
-import { ingestMessage, isTextKind, previewLabel } from './src/domain/ingest.js';
+import { ingestMessage, isGone, isShown, isTextKind, previewLabel } from './src/domain/ingest.js';
 import { createAttachmentFetcher } from './src/domain/media.js';
 import { KIND_LABELS } from './src/domain/payload.js';
 import { reactionsByTarget } from './src/domain/reactions.js';
@@ -248,7 +249,7 @@ const kv = (store, options) => createIdbKv({ ...idb, put: identityDb.put, delete
 const oneTimePrekeyKv = kv('one-time-prekeys');
 const PREKEY_MAINTENANCE_MS = 6 * 60 * 60 * 1000;
 
-const pinStore = createPinStore(kv('identity-pins-v2', { index: 'byUser' }));
+const pinStore = createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks });
 const trust = createIdentityTrust({
   pins: pinStore,
   onChange: () => {
@@ -281,7 +282,7 @@ const cipher = createSessionCipher({
 const contentStore = createContentStore({
   subtle: crypto.subtle,
   random: keySource.randomBytes,
-  records: kv('message-contents', { index: 'byConversation' }),
+  records: kv('message-contents', { index: 'byConversation', expiryIndex: 'byExpiry' }),
   keys: kv('content-keys'),
   locks,
 });
@@ -303,6 +304,7 @@ const secure = createSecureMessaging({
   }),
   getSelf: () => state.me,
   getPeer: peerOf,
+  clock: Date.now,
 });
 
 const sender = createSender({ secure, authedApi, queue: { put: (entry) => identityDb.put('outbound', entry) } });
@@ -343,12 +345,14 @@ function startPrekeyMaintenance() {
 
 // The other member of a direct conversation. Without our own userId the
 // "other" member could be ourselves, and an envelope sealed to our own key
-// reaches nobody, so there is no peer until a login has named us.
+// reaches nobody, so there is no peer until a login has named us. A group
+// has no single peer: sealing to, or pinning, any one member would be wrong.
 function peerOf(conversationId) {
   const selfId = state.me?.userId;
   if (!selfId) return null;
   const conv = state.conversations.find((c) => c.id === conversationId);
-  return conv?.members?.find((m) => m.userId !== selfId) ?? null;
+  if (conv?.type !== 'direct') return null;
+  return conv.members?.find((m) => m.userId !== selfId) ?? null;
 }
 
 // ---------- message ingest ----------
@@ -369,7 +373,7 @@ const MEDIA_STATE_FIELDS = ['_imageUrl', '_voiceUrl', '_mediaFailed'];
 // sends, whose content we already hold.
 async function ingest(raw, { previous = null, content } = {}) {
   const open = content === undefined ? (envelope) => secure.open(envelope) : async () => ({ content });
-  const view = await ingestMessage(raw, { open, media: mediaDeps, previous });
+  const view = await ingestMessage(raw, { open, retire: (envelope) => secure.retire(envelope), media: mediaDeps, previous });
   if (previous && view.media !== null && view.media === previous.media) {
     for (const field of MEDIA_STATE_FIELDS) if (previous[field] !== undefined) view[field] = previous[field];
   }
@@ -585,8 +589,8 @@ async function onMessageNew(raw) {
   bumpConversation(convId, view);
   // Phase AF: surface unread count in tab title + OS notification when
   // the tab is hidden. We only count peer messages, not our own echo, and
-  // a reaction is not a message to be told about.
-  if (view.senderDeviceId !== state.me?.deviceId && view.kind !== 'reaction') {
+  // a reaction or an expired message is not one to be told about.
+  if (view.senderDeviceId !== state.me?.deviceId && isShown(view)) {
     bumpUnread();
     maybeShowNotification(view);
   }
@@ -613,7 +617,6 @@ async function markDeleted(messageId, deletedAt) {
   const found = locateMessage(messageId);
   if (!found) return;
   revokeBlobUrlsForMessage(found.message);
-  await secure.forgetMessage(found.convId, messageId);
   await reingestInPlace(messageId, Object.assign(serializeMessageForCache(found.message), { deletedAt }));
 }
 
@@ -703,6 +706,17 @@ function renderMe() {
   );
 }
 
+// The message a conversation row previews: its latest one a panel shows.
+// The relay's last message may be gone (expired, or deleted from this
+// device's history) or a reaction, which is no bubble of its own; then the
+// loaded history stands in, and a reaction's label only when nothing does.
+function previewMessageOf(conv, now) {
+  const last = conv.lastMessage;
+  if (last && isShown(last, now)) return last;
+  const loaded = (state.messagesByConv.get(conv.id) || []).findLast((m) => isShown(m, now));
+  return loaded ?? (last && !isGone(last, now) ? last : null);
+}
+
 function renderSidebar() {
   const list = $('conv-list');
   const q = ($('search-input').value || '').trim().toLowerCase();
@@ -726,13 +740,14 @@ function renderSidebar() {
     return;
   }
 
+  const now = Date.now();
   list.replaceChildren(
     ...filtered.map((c) => {
       const peer = (c.members || []).find((m) => m.handle !== state.me.handle) ?? c.members?.[0];
       const isActive = state.activeConv === c.id || state.secondaryConv === c.id;
-      const last = c.lastMessage?.kind === 'cleared' ? null : c.lastMessage;
-      const preview = last ? previewLabel(last) : '아직 메시지 없음';
-      const time = last ? formatRelTime(last.serverReceivedAt) : '';
+      const last = previewMessageOf(c, now);
+      const preview = last ? previewLabel(last, now) : '아직 메시지 없음';
+      const time = last?.serverReceivedAt ? formatRelTime(last.serverReceivedAt) : '';
       const peerOnline = peer && state.online.has(peer.userId);
       const keyChanged = peer && trust.pendingChange(peer.userId);
       const av = avatarFor(peer?.handle ?? '?', 'md');
@@ -1058,6 +1073,12 @@ async function safetyKeyOf(peer) {
 // keys and never sent anywhere. The user compares the number in person or
 // over a call, or pastes the verification code the peer's screen shows.
 async function openSafetyNumberDialog(peer) {
+  // A safety number binds our user id, which a transferred device learns
+  // only at its first sign-in.
+  if (!state.me.userId) {
+    toast(t('safety.notSignedIn'), 'error');
+    return;
+  }
   const remoteKey = await safetyKeyOf(peer);
   if (!remoteKey) {
     toast(t('safety.noKey', { handle: peer.handle }), 'error');
@@ -1127,8 +1148,6 @@ async function openSafetyNumberDialog(peer) {
   openDialog('safety-dialog', 'safety-their-code');
 }
 
-const HIDDEN_KINDS = new Set(['reaction', 'cleared']);
-
 // Deletes this device's copy of a conversation's history: its content key is
 // destroyed (src/platform/content-store.js), which no copy of the stored
 // records survives, and the cached envelopes go with it.
@@ -1165,9 +1184,9 @@ function renderOnePanel(convId) {
   // Reactions are control messages: they change what their targets show
   // and are never bubbles of their own. Expired messages and history this
   // device deleted are not shown.
-  const reactionsOf = reactionsByTarget(allMsgs);
   const now = Date.now();
-  const msgs = allMsgs.filter((m) => !HIDDEN_KINDS.has(m.kind) && !(m.expiresAtMs && m.expiresAtMs <= now));
+  const reactionsOf = reactionsByTarget(allMsgs.filter((m) => !isGone(m, now)));
+  const msgs = allMsgs.filter((m) => isShown(m, now));
   const keyChanged = Boolean(peer && peer.userId !== state.me.userId && trust.pendingChange(peer.userId));
   const legacyIdentity = isLegacyIdentity(state.me);
   const frozen = keyChanged || legacyIdentity;
@@ -1544,6 +1563,7 @@ async function hydrateFromCache() {
       list.sort((a, b) => a.conversationOrder - b.conversationOrder);
       const views = await Promise.all(list.map((row) => ingest(row, { previous: findMessage(convId, row.id) })));
       setConversationMessages(convId, views);
+      for (const view of views) if (view.kind === 'expired') persistMessage(view);
     }));
   } catch (e) {
     console.warn('hydrate from cache failed', e);
@@ -1576,7 +1596,12 @@ async function persistAllConversations() {
 
 async function persistMessage(msg) {
   if (!msg.id || !msg.conversationId || msg.id.startsWith('__pending__')) return;
-  try { await identityDb.put('messages', messageCacheRecord(msg)); } catch {}
+  const record = messageCacheRecord(msg);
+  // An expired message leaves the device altogether, its envelope included.
+  try {
+    if (msg.kind === 'expired') await identityDb.delete('messages', record._key);
+    else await identityDb.put('messages', record);
+  } catch {}
 }
 
 async function persistMessages(convId) {
@@ -2143,12 +2168,45 @@ function revokeAllBlobUrls() {
   }
 }
 
+// Contract C4 on this device: once a message's expiry passes it leaves
+// every list and what was kept of it is retired, through the same ingest
+// path as everything else. Stored contents of messages that are not loaded
+// expire with them.
+async function expireDueMessages() {
+  const now = Date.now();
+  const due = (message) => isPast(message?.expiresAtMs, now);
+  const expire = (message) => ingest(serializeMessageForCache(message), { previous: message });
+  let changed = false;
+  for (const [convId, list] of state.messagesByConv) {
+    const dueMessages = list.filter(due);
+    if (dueMessages.length === 0) continue;
+    const expired = new Map((await Promise.all(dueMessages.map(expire))).map((view) => [view.id, view]));
+    // Swapped into the list as it is now: a message may have arrived meanwhile.
+    setConversationMessages(convId, (state.messagesByConv.get(convId) || []).map((m) => expired.get(m.id) ?? m));
+    for (const view of expired.values()) persistMessage(view);
+    changed = true;
+  }
+  for (const conv of state.conversations) {
+    if (!due(conv.lastMessage)) continue;
+    const view = await expire(conv.lastMessage);
+    if (conv.lastMessage?.id === view.id) conv.lastMessage = view;
+    changed = true;
+  }
+  await secure.retireExpired();
+  if (changed) {
+    renderSidebar();
+    renderActivePanel();
+  }
+}
+
 function startPolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
   // Polling acts as a safety-net that runs while the WS handshake is pending
-  // and stays at a relaxed cadence after WS connects.
+  // and stays at a relaxed cadence after WS connects. Expiry runs on every
+  // tick, hidden tab or not.
   state.pollTimer = setInterval(async () => {
     if (!state.me) return;
+    await expireDueMessages().catch((error) => console.warn('expiry sweep failed', error));
     if (document.hidden) return;
     await loadConversations();
     if (state.socket?.connected) return; // WS handles per-message updates
@@ -3768,16 +3826,22 @@ function closePanelSearch(convId) {
   renderActivePanel();
 }
 
+// The messages of a conversation whose shown text contains `query`.
+function searchMatches(convId, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const now = Date.now();
+  return (state.messagesByConv.get(convId) || []).filter((m) =>
+    isShown(m, now) && isTextKind(m.kind) && m.displayText.toLowerCase().includes(q));
+}
+
 // Build the search bar DOM. Returns null when search is closed for
 // this conversation.
 function renderPanelSearch(convId) {
   const st = getSearchState(convId);
   if (!st.open) return null;
-  const list = state.messagesByConv.get(convId) || [];
-  const q = st.query.trim().toLowerCase();
-  const matches = q
-    ? list.filter((m) => isTextKind(m.kind) && m.displayText.toLowerCase().includes(q))
-    : [];
+  const q = st.query.trim();
+  const matches = searchMatches(convId, q);
   const total = matches.length;
   if (st.idx >= total && total > 0) st.idx = total - 1;
   const counter = total > 0 ? `${st.idx + 1}/${total}` : (q ? '0/0' : '');
@@ -3865,10 +3929,7 @@ function highlightSearchMatches() {
     if (!q) continue;
     const panel = document.querySelector(`.panel[data-conv="${convId}"]`);
     if (!panel) continue;
-    const list = state.messagesByConv.get(convId) || [];
-    const matches = list.filter((m) =>
-      isTextKind(m.kind) && m.displayText.toLowerCase().includes(q.toLowerCase()),
-    );
+    const matches = searchMatches(convId, q);
     matches.forEach((m, i) => {
       const row = panel.querySelector(`.msg-row[data-msg-id="${m.id}"]`);
       if (!row) return;

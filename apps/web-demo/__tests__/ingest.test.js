@@ -5,7 +5,7 @@ import { encodeBase64Url } from '../src/core/base64url.js';
 import { encryptAttachment } from '../src/crypto/attachment-v2.js';
 import { decodeInnerPayload, encodeInnerPayload } from '../src/crypto/payload-v2.js';
 import { contentFromLegacy, contentFromPayload, mediaContent, textContent } from '../src/domain/content.js';
-import { DELETED_TEXT, ingestMessage, LOCKED_LABELS, previewLabel } from '../src/domain/ingest.js';
+import { DELETED_TEXT, ingestMessage, isShown, LOCKED_LABELS, previewLabel } from '../src/domain/ingest.js';
 import { createAttachmentFetcher, UnsupportedMediaError } from '../src/domain/media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from '../src/domain/payload.js';
 import { serializeMessageForCache } from '../src/platform/persist.js';
@@ -15,6 +15,7 @@ const ATTACHMENT_ID = '3f2b8c1e-5d4a-4c3b-9a8f-1e2d3c4b5a69';
 const KEY = Uint8Array.from({ length: 32 }, (_, i) => 31 - i);
 const NONCE = Uint8Array.from({ length: 12 }, (_, i) => i);
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
+const NOW = Date.parse('2026-11-11T09:00:00.000Z');
 
 // Stand-in for the decrypt-once store: ciphertext strings map to the content
 // of plaintexts in the retired v1-dev wire forms, whose media carry raw keys.
@@ -128,9 +129,15 @@ describe('ingestMessage', () => {
 
   it('maps deletions and failures to fixed labels without decrypting deletions', async () => {
     const open = vi.fn(async () => { throw new Error('boom'); });
-    const deleted = await ingestMessage(serverSummary({ deletedAt: '2026-11-11T10:00:00Z', ciphertext: 'deleted' }), { open, media: {} });
+    const retire = vi.fn();
+    const tombstone = serverSummary({ deletedAt: '2026-11-11T10:00:00Z', ciphertext: 'deleted' });
+    const deleted = await ingestMessage(tombstone, { open, retire, media: {} });
     expect(deleted).toMatchObject({ kind: 'deleted', displayText: DELETED_TEXT, media: null });
     expect(open).not.toHaveBeenCalled();
+    // However the tombstone arrived, what was kept of the message goes, once.
+    expect(retire).toHaveBeenCalledWith(tombstone);
+    await ingestMessage(tombstone, { open, retire, media: {}, previous: deleted });
+    expect(retire).toHaveBeenCalledTimes(1);
     const failed = await ingestMessage(serverSummary({}), { open, media: {} });
     expect(failed).toMatchObject({ kind: 'locked', displayText: LOCKED_LABELS.failed });
     const unsupported = await ingestMessage(serverSummary({ ciphertext: 'ct-junk' }), { open: openTable(PAYLOADS), media: {} });
@@ -235,10 +242,54 @@ describe('ingestMessage', () => {
   it('expires at the earlier of the authenticated and the relayed expiry', async () => {
     const inner = Date.parse('2026-11-12T00:00:00.000Z');
     const open = vi.fn(async () => ({ content: { ...textContent('ephemeral'), expiresAt: inner } }));
-    const later = await ingestMessage(serverSummary({ expiresAt: '2026-11-13T00:00:00.000Z' }), { open, media: {} });
-    const earlier = await ingestMessage(serverSummary({ expiresAt: '2026-11-11T12:00:00.000Z' }), { open, media: {} });
+    const retire = vi.fn();
+    const options = { open, retire, media: {}, now: NOW };
+    const later = await ingestMessage(serverSummary({ expiresAt: '2026-11-13T00:00:00.000Z' }), options);
+    const earlier = await ingestMessage(serverSummary({ expiresAt: '2026-11-11T12:00:00.000Z' }), options);
     expect(later.expiresAtMs).toBe(inner);
     expect(earlier.expiresAtMs).toBe(Date.parse('2026-11-11T12:00:00.000Z'));
+    expect(retire).not.toHaveBeenCalled();
+
+    // A reused view takes an expiry the relay brought forward, never one it
+    // pushed back.
+    const sooner = serverSummary({ expiresAt: '2026-11-11T10:00:00.000Z' });
+    expect((await ingestMessage(sooner, { ...options, previous: later })).expiresAtMs).toBe(Date.parse(sooner.expiresAt));
+    const pushedBack = serverSummary({ expiresAt: '2026-11-20T00:00:00.000Z' });
+    expect((await ingestMessage(pushedBack, { ...options, previous: earlier })).expiresAtMs).toBe(earlier.expiresAtMs);
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  it('turns a message past its expiry into a hidden view and retires it', async () => {
+    const inner = Date.parse('2026-11-11T09:30:00.000Z');
+    const open = vi.fn(async () => ({ content: { ...textContent('self-destructing secret'), expiresAt: inner } }));
+    const retire = vi.fn();
+    const raw = serverSummary({});
+    const shown = await ingestMessage(raw, { open, retire, media: {}, now: NOW });
+    expect(shown).toMatchObject({ kind: 'text', displayText: 'self-destructing secret' });
+
+    // Already expired on arrival, or when the view is next refreshed.
+    for (const previous of [null, shown]) {
+      retire.mockClear();
+      const expired = await ingestMessage(raw, { open, retire, media: {}, previous, now: inner });
+      expect(expired).toMatchObject({ kind: 'expired', displayText: '', media: null, expiresAtMs: null });
+      expect(retire).toHaveBeenCalledWith(raw);
+      expect(isShown(expired, inner)).toBe(false);
+      expect(previewLabel(expired, inner)).toBe('');
+    }
+
+    // The relay's own expiry hides a message nobody could open as well.
+    const unreadable = serverSummary({ expiresAt: '2026-11-11T09:30:00.000Z' });
+    const locked = await ingestMessage(unreadable, { open: async () => ({ failure: 'failed' }), retire, media: {}, now: NOW });
+    expect(locked).toMatchObject({ kind: 'locked', expiresAtMs: inner });
+    expect(isShown(locked, inner)).toBe(false);
+  });
+
+  it('hides a message the device retired instead of showing a failure', async () => {
+    const retire = vi.fn();
+    const view = await ingestMessage(serverSummary({}), { open: async () => ({ failure: 'retired' }), retire, media: {} });
+    expect(view).toMatchObject({ kind: 'expired', displayText: '' });
+    expect(isShown(view)).toBe(false);
+    expect(retire).not.toHaveBeenCalled();
   });
 });
 
@@ -252,5 +303,13 @@ describe('previewLabel', () => {
     expect(previewLabel(await view('ct-file'))).toBe(KIND_LABELS.file);
     expect(previewLabel(await view('ct-voice'))).toBe(KIND_LABELS.voice);
     expect(previewLabel({ kind: 'text', displayText: 'x'.repeat(200) })).toHaveLength(121);
+  });
+
+  it('shows nothing of a message past its expiry, even before it is swept', () => {
+    const message = { kind: 'text', displayText: 'self-destructing secret', expiresAtMs: NOW };
+    expect(previewLabel(message, NOW - 1)).toBe('self-destructing secret');
+    expect(previewLabel(message, NOW)).toBe('');
+    expect(previewLabel({ ...message, kind: 'reaction', expiresAtMs: null }, NOW)).toBe(KIND_LABELS.reaction);
+    expect(previewLabel({ kind: 'cleared', displayText: '', expiresAtMs: null }, NOW)).toBe('');
   });
 });

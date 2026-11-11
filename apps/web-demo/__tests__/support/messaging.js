@@ -9,23 +9,25 @@ import { createIdentityTrust, createPinStore } from '../../src/crypto/pins.js';
 import { createSecureMessaging } from '../../src/features/secure-messaging.js';
 import { createContentStore } from '../../src/platform/content-store.js';
 import { createMemoryKv } from '../../src/platform/kv.js';
-import { CONVERSATION, createDevice, subtle } from './devices.js';
+import { CONVERSATION, createDevice, NOW, subtle } from './devices.js';
 
 const random = (length) => webcrypto.getRandomValues(new Uint8Array(length));
 
 export const contentStores = () => ({
-  records: createMemoryKv('key', { indexField: 'conversationId' }),
+  records: createMemoryKv('key', { indexField: 'conversationId', expiryField: 'expiresAt' }),
   keys: createMemoryKv('conversationId'),
 });
 
 export const openContentStore = (stores) => createContentStore({ subtle, random, ...stores, locks: createLocks(null) });
 
 // directory: Map handle -> async () => { deviceId, identityKey, signedPrekeyBundle, oneTimePrekey }
+// endpoint.now is the time its expiries are judged at; tests move it.
 export async function createEndpoint({ userId, deviceId, handle, directory }) {
   const endpoint = {
     userId,
     deviceId,
     handle,
+    now: NOW,
     peers: new Map(), // conversationId -> { userId, handle }
     stores: contentStores(),
     pinKv: createMemoryKv('id', { indexField: 'userId' }),
@@ -59,6 +61,7 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
       legacyReader: { decrypt: async () => ({ failure: 'no-key' }) },
       getSelf: () => ({ ...endpoint.device.record, deviceId }),
       getPeer: (conversationId) => endpoint.peers.get(conversationId) ?? null,
+      clock: () => endpoint.now,
     });
     return endpoint;
   };

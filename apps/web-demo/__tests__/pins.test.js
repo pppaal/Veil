@@ -47,6 +47,15 @@ describe('identity pins', () => {
     expect((await pins.check('u-carol', 'd-9', key(9))).verdict).toBe(PinVerdict.FIRST_USE);
   });
 
+  it('first contacts racing for one user pin only one of them', async () => {
+    const kv = createMemoryKv('id', { indexField: 'userId' });
+    const pins = createPinStore(kv);
+    // Two handshakes in two conversations, each under its own conversation lock.
+    const verdicts = await Promise.all([pins.check('u-bob', 'd-1', key(1)), pins.check('u-bob', 'd-2', key(2))]);
+    expect(verdicts.map((result) => result.verdict)).toEqual([PinVerdict.FIRST_USE, PinVerdict.NEW_DEVICE]);
+    expect((await pins.pinsFor('u-bob')).map((pin) => pin.deviceId)).toEqual(['d-1']);
+  });
+
   it('changed peer key freezes sending until accepted', async () => {
     const { alice, bob, directory } = await conversation();
     expect((await sendText(alice, bob, 'hello')).opened.content.text).toBe('hello');

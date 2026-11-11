@@ -5,8 +5,8 @@
 //   outbound           encrypted sends awaiting retry (persist.outboundQueueEntry)
 //   crypto-sessions    sealed ratchet records (src/crypto/session-repo.js)
 //   one-time-prekeys   one-time prekey private keys (src/crypto/prekeys.js)
-//   message-contents   decrypted contents, sealed per conversation, index
-//                      byConversation (src/platform/content-store.js)
+//   message-contents   decrypted contents, sealed per conversation, indexes
+//                      byConversation and byExpiry (src/platform/content-store.js)
 //   content-keys       the per-conversation keys those are sealed under
 //   identity-pins-v2   pinned Ed25519 identity keys per (user, device), index
 //                      byUser (src/crypto/pins.js)
@@ -83,6 +83,8 @@ export function createIdb(factory, { onBlocked, onDeletedElsewhere } = {}) {
     get: async (store, key) => (await run(store, 'readonly', (s) => s.get(key))) ?? null,
     allByIndex: async (store, index, value) =>
       (await run(store, 'readonly', (s) => s.index(index).getAll(value))) ?? [],
+    allByIndexUpTo: async (store, index, upper) =>
+      (await run(store, 'readonly', (s) => s.index(index).getAll(IDBKeyRange.upperBound(upper)))) ?? [],
     put: async (store, value) => { await run(store, 'readwrite', (s) => s.put(value)); },
     // Reads, transforms and writes one row in a single transaction, so a
     // writer in another tab lands wholly before or after it and neither
@@ -150,8 +152,10 @@ function upgrade(db, transaction, oldVersion) {
   ensureStore(db, 'crypto-sessions', 'conversationId');
   ensureStore(db, 'one-time-prekeys', 'keyId');
   ensureStore(db, 'content-keys', 'conversationId');
-  ensureStore(db, 'message-contents', 'key', { index: ['byConversation', 'conversationId'] });
-  ensureStore(db, 'identity-pins-v2', 'id', { index: ['byUser', 'userId'] });
+  ensureStore(db, 'message-contents', 'key', {
+    indexes: [['byConversation', 'conversationId'], ['byExpiry', 'expiresAt']],
+  });
+  ensureStore(db, 'identity-pins-v2', 'id', { indexes: [['byUser', 'userId']] });
   if (oldVersion > 0 && oldVersion < 3) scrubVersion2(db, transaction);
 }
 
@@ -164,10 +168,10 @@ function scrubVersion2(db, transaction) {
   forEachRecord(transaction.objectStore('kakao-archives'), (archive) => meta.put(kakaoArchiveMeta(archive)));
 }
 
-function ensureStore(db, name, keyPath, { index = null } = {}) {
+function ensureStore(db, name, keyPath, { indexes = [] } = {}) {
   if (db.objectStoreNames.contains(name)) return;
   const store = db.createObjectStore(name, { keyPath });
-  if (index) store.createIndex(index[0], index[1], { unique: false });
+  for (const [indexName, indexKeyPath] of indexes) store.createIndex(indexName, indexKeyPath, { unique: false });
 }
 
 function rewriteEach(store, transform) {

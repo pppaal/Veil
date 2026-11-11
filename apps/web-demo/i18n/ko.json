@@ -82,6 +82,7 @@
   "safety.mismatch": "코드가 일치하지 않아요. 이 키를 신뢰하지 마세요.",
   "safety.verified": "@{handle} 확인 완료",
   "safety.noKey": "@{handle} 의 키가 아직 없어요: 먼저 메시지를 주고받으세요.",
+  "safety.notSignedIn": "이 기기는 아직 로그인하지 않았어요. 한 번 로그인한 뒤 안전 번호를 비교하세요.",
   "safety.compare": "안전 번호 비교",
   "legacy.badge": "이전 형식 · 전방 비밀성 없음 · 발신자 미인증",
   "legacy.composerFrozen": "이전 데모 형식의 신원이라 보낼 수 없어요",

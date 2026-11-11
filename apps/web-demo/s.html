@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
 <title>VEIL · 일회성 비밀 링크</title>
 <style>
   :root{
@@ -56,7 +58,7 @@
     <h1>한 번 읽히면 사라지는 메시지</h1>
     <label for="secret">비밀 내용</label>
     <textarea id="secret" placeholder="비밀번호, 계좌, 민감한 메모… 받는 사람은 앱 없이 한 번만 열람합니다."></textarea>
-    <label class="opt"><input type="checkbox" id="usePass"> 암호문구 추가 (링크에 키를 넣지 않음 — 더 안전)</label>
+    <label class="opt"><input type="checkbox" id="usePass"> 암호문구 추가 (링크와 암호문구가 둘 다 있어야 열림)</label>
     <div id="passWrap" style="display:none;margin-top:10px;"><input type="password" id="pass" placeholder="상대에게 따로 알려줄 암호문구"></div>
     <button class="btn" id="genBtn">보안 링크 생성</button>
     <div id="out" style="display:none;">
@@ -66,18 +68,20 @@
       <div class="pillrow"><span class="pill">🔒 종단간 암호화</span><span class="pill">🙈 서버는 평문·키 못 봄</span><span class="pill">💨 읽으면 소멸</span></div>
     </div>
     <div class="err" id="cErr" style="display:none;"></div>
-    <div class="hint">암호문만 서버에 잠깐 보관되고, <b>최초 1회 열람 시 즉시 삭제</b>됩니다. 복호화 키는 링크의 <code>#</code> 뒤에만 담겨 서버로 전송되지 않습니다.</div>
+    <div class="hint">암호문만 서버에 잠깐 보관되고, <b>최초 1회 열람 시 즉시 삭제</b>됩니다. 복호화 키는 링크의 <code>#</code> 뒤에만 담겨 서버로 전송되지 않으며, 받는 사람이 직접 열기 전에는 삭제되지 않습니다.</div>
   </div>
 
   <!-- VIEW -->
   <div class="card" id="view" style="display:none;">
     <div class="eyebrow">받은 비밀 메시지</div>
-    <h1 id="viewTitle">메시지를 여는 중…</h1>
-    <div id="loading" class="center" style="padding:24px 0;"><span class="spin" style="border-top-color:var(--brand);border-color:var(--brandSoft);"></span></div>
-    <div id="passPrompt" style="display:none;">
-      <label for="passIn">암호문구 입력</label>
-      <input type="password" id="passIn" placeholder="보낸 사람이 알려준 암호문구">
-      <button class="btn" id="passBtn">복호화</button>
+    <h1 id="viewTitle">비밀 메시지가 도착했어요</h1>
+    <div id="revealPanel">
+      <div class="hint">열어보는 순간 서버에서 삭제되어 다시 열 수 없습니다. 지금 읽을 준비가 되었을 때 여세요.</div>
+      <div id="passPrompt" style="display:none;margin-top:14px;">
+        <label for="passIn">암호문구 입력</label>
+        <input type="password" id="passIn" placeholder="보낸 사람이 알려준 암호문구">
+      </div>
+      <button class="btn" id="revealBtn">메시지 열기</button>
       <div class="err" id="vErr" style="display:none;"></div>
     </div>
     <div id="revealWrap" style="display:none;">
@@ -92,89 +96,6 @@
   </div>
 </div>
 
-<script>
-const enc=new TextEncoder(),dec=new TextDecoder();
-const API='/v1';
-const b64u={e:b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''),
-  d:s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';return Uint8Array.from(atob(s),c=>c.charCodeAt(0));}};
-async function deriveKey(pass,salt){const base=await crypto.subtle.importKey('raw',enc.encode(pass),'PBKDF2',false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:210000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);}
-// Returns { blob, frag } — blob goes to the server (no key!), frag goes in the link.
-async function seal(plain,pass){
-  const iv=crypto.getRandomValues(new Uint8Array(12));let key,frag,salt,blob;
-  if(pass){salt=crypto.getRandomValues(new Uint8Array(16));key=await deriveKey(pass,salt);frag='p';}
-  else{key=await crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt','decrypt']);
-    frag='k.'+b64u.e(await crypto.subtle.exportKey('raw',key));}
-  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(plain));
-  blob = pass ? `v1.${b64u.e(iv)}.${b64u.e(ct)}.${b64u.e(salt)}` : `v1.${b64u.e(iv)}.${b64u.e(ct)}`;
-  return {blob,frag};
-}
-async function open(blob,fragKind,fragKey,passMaybe){
-  const parts=blob.split('.');const iv=b64u.d(parts[1]),ct=b64u.d(parts[2]);let key;
-  if(fragKind==='k'){key=await crypto.subtle.importKey('raw',b64u.d(fragKey),{name:'AES-GCM'},false,['decrypt']);}
-  else{if(!passMaybe){const e=new Error('PASS');e.code='PASS';throw e;}key=await deriveKey(passMaybe,b64u.d(parts[3]));}
-  return dec.decode(await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct));
-}
-window.__veil={seal,open};
-
-const $=id=>document.getElementById(id);
-const hash=location.hash.slice(1);
-
-// ---------- VIEW MODE (fragment present: <id>.<k.<key>|p>) ----------
-if(hash){
-  $('view').style.display='block';
-  const dot=hash.indexOf('.');
-  const id=hash.slice(0,dot), frag=hash.slice(dot+1);
-  const fragKind=frag[0]==='k'?'k':'p';
-  const fragKey=fragKind==='k'?frag.slice(2):'';
-  let blobCache=null;
-  async function fetchBlob(){
-    const r=await fetch(`${API}/s/${id}`);
-    if(r.status!==200){const e=new Error('GONE');e.code='GONE';throw e;}
-    const j=await r.json();return j.ciphertext;
-  }
-  async function run(passMaybe){
-    try{
-      if(!blobCache) blobCache=await fetchBlob();   // GET burns it server-side
-      const text=await open(blobCache,fragKind,fragKey,passMaybe);
-      $('loading').style.display='none';$('passPrompt').style.display='none';
-      $('viewTitle').textContent='비밀 메시지';
-      $('revealText').textContent=text;$('revealWrap').style.display='block';
-    }catch(e){
-      $('loading').style.display='none';
-      if(e.code==='PASS'){$('viewTitle').textContent='암호문구가 필요합니다';$('passPrompt').style.display='block';$('passIn').focus();return;}
-      if(e.code==='GONE'){$('viewTitle').textContent='';$('gone').style.display='block';return;}
-      // blob fetched (burned) but decryption failed → show as decryption error, not gone
-      $('viewTitle').textContent='';$('vErr')&&($('vErr').style.display='block',$('vErr').textContent='복호화 실패 — 잘못된 링크/암호문구입니다.');
-      if($('passPrompt').style.display!=='block'){$('gone').style.display='block';$('goneMsg').textContent='열 수 없는 링크입니다';}
-    }
-  }
-  $('passBtn').onclick=()=>run($('passIn').value);
-  run('');
-}
-// ---------- COMPOSE MODE (no fragment) ----------
-else{
-  $('compose').style.display='block';
-  $('usePass').onchange=e=>$('passWrap').style.display=e.target.checked?'block':'none';
-  let lastLink='';
-  $('genBtn').onclick=async()=>{
-    $('cErr').style.display='none';
-    const secret=$('secret').value.trim();if(!secret){$('secret').focus();return;}
-    const pass=$('usePass').checked?$('pass').value:'';
-    if($('usePass').checked&&!pass){$('pass').focus();return;}
-    const btn=$('genBtn');btn.disabled=true;btn.innerHTML='<span class="spin"></span>';
-    try{
-      const {blob,frag}=await seal(secret,pass);
-      const r=await fetch(`${API}/s`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ciphertext:blob})});
-      if(!r.ok) throw new Error('server');
-      const {id}=await r.json();
-      lastLink=`${location.origin}/demo/s.html#${id}.${frag}`;
-      $('linkText').textContent=lastLink;$('out').style.display='block';$('copied').textContent='';
-    }catch(e){$('cErr').style.display='block';$('cErr').textContent='링크 생성 실패 — 잠시 후 다시 시도하세요.';}
-    finally{btn.disabled=false;btn.textContent='보안 링크 생성';}
-  };
-  $('copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText(lastLink);$('copied').textContent='복사됨 ✓';}catch{$('copied').textContent='수동 복사하세요';}};
-}
-</script>
+<script type="module" src="./s.js"></script>
 </body>
 </html>

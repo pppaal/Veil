@@ -369,5 +369,20 @@ void main() {
       expect(jsonDecode(received[1].body), {'spkId': 2});
       expect(received.last.body, isEmpty);
     });
+
+    test('an empty query leaves no bare "?" on the URL', () async {
+      final received = <Uri>[];
+      final api = VeilApiClient(
+        baseUrl: _baseUrl,
+        client: MockClient((request) async {
+          received.add(request.url);
+          return http.Response('{}', 200);
+        }),
+      );
+
+      await api.getJson('/keys/atlas', accessToken: 't', query: const {});
+
+      expect(received.single.toString(), '$_baseUrl/keys/atlas');
+    });
   });
 }

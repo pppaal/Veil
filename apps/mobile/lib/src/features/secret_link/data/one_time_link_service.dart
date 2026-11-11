@@ -33,13 +33,22 @@ class OneTimeLinkService {
   /// is never sent to the server.
   Future<String> createLink(String secret, {String? passphrase}) async {
     final sealed = await OneTimeLink.seal(secret, passphrase: passphrase);
-    final response = await _client
-        .post(
-          Uri.parse('$_apiBaseUrl/s'),
-          headers: const {'Content-Type': 'application/json'},
-          body: jsonEncode({'ciphertext': sealed.blob}),
-        )
-        .timeout(_requestTimeout);
+    final http.Response response;
+    try {
+      response = await _client
+          .post(
+            Uri.parse('$_apiBaseUrl/s'),
+            headers: const {'Content-Type': 'application/json'},
+            body: jsonEncode({'ciphertext': sealed.blob}),
+          )
+          .timeout(_requestTimeout);
+    } catch (error) {
+      final failure = transportFailure(error);
+      if (failure == null) {
+        rethrow;
+      }
+      throw failure;
+    }
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Link creation failed (${response.statusCode}).');
     }

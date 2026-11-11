@@ -297,6 +297,14 @@ void main() {
       expect(resumesInterruptedLocation(Uri.parse('/settings'), interrupted), isFalse);
     });
 
+    test('a lock over a gate screen does not resume the gate', () {
+      expect(resumesInterruptedLocation(Uri.parse('/lock'), Uri.parse('/splash')), isFalse);
+      expect(
+        resumesInterruptedLocation(Uri.parse('/lock'), Uri.parse('/privacy-consent')),
+        isFalse,
+      );
+    });
+
     test('gates apply in order', () {
       final initializing = RouteGuardState.fromSession(const AppSessionState());
       final noConsent = RouteGuardState.fromSession(

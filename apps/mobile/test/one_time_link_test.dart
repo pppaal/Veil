@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:veil_mobile/src/core/network/veil_api_exception.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link.dart';
 import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.dart';
 
@@ -81,7 +82,30 @@ void main() {
         requestTimeout: const Duration(milliseconds: 50),
       );
 
-      await expectLater(service.createLink('x'), throwsA(isA<TimeoutException>()));
+      await expectLater(
+        service.createLink('x'),
+        throwsA(
+          isA<VeilApiException>()
+              .having((e) => e.code, 'code', 'network_timeout'),
+        ),
+      );
+    });
+
+    test('an unreachable relay is reported as network_unavailable', () async {
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((request) async {
+          throw http.ClientException('Connection refused', request.url);
+        }),
+      );
+
+      await expectLater(
+        service.createLink('x'),
+        throwsA(
+          isA<VeilApiException>()
+              .having((e) => e.code, 'code', 'network_unavailable'),
+        ),
+      );
     });
   });
 }

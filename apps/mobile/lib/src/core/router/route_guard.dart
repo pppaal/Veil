@@ -119,9 +119,11 @@ String? redirectFor(RouteGuardState state, Uri uri) {
 
 /// Whether unlocking at [lockLocation] goes back to [interrupted], the
 /// location the lock replaced, rather than to a destination requested while
-/// locked (say, a notification tap that redirected to the lock).
+/// locked (say, a notification tap that redirected to the lock). A gate
+/// screen (the cold-start splash above all) is never worth going back to:
+/// the redirect would only move past it again.
 bool resumesInterruptedLocation(Uri lockLocation, Uri interrupted) {
-  if (lockLocation.path != _lockPath) {
+  if (lockLocation.path != _lockPath || _gatePaths.contains(interrupted.path)) {
     return false;
   }
   final returnTo = lockLocation.queryParameters[_returnParameter];

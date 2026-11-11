@@ -420,6 +420,9 @@ class VeilApiClient {
     AttachmentUploadCancellationSignal? cancellationSignal,
   }) async {
     final uri = _objectStoragePolicy.checkUploadUrl(uploadUrl);
+    // Built before the guard: malformed VEIL_OBJECT_STORAGE_PINS must fail
+    // here, not leave an idle timer and a half-fed body behind.
+    final client = _objectStorageClient;
     final totalBytes = await file.length();
     final guard = UploadGuard(idleTimeout: _uploadTimeout);
     cancellationSignal?.register(guard.cancel);
@@ -456,7 +459,7 @@ class VeilApiClient {
     final http.Response response;
     try {
       response = await guard.run(
-        _objectStorageClient.send(request).then(http.Response.fromStream),
+        client.send(request).then(http.Response.fromStream),
       );
     } on VeilApiException {
       rethrow;
@@ -631,7 +634,9 @@ class VeilApiClient {
     Map<String, String>? query,
   }) async {
     final base = Uri.parse('$baseUrl$path');
-    final uri = query == null ? base : base.replace(queryParameters: query);
+    final uri = query == null || query.isEmpty
+        ? base
+        : base.replace(queryParameters: query);
     final initial = await _send(method, uri, accessToken: accessToken, body: body);
     final gate = _refreshGate;
     if (initial.statusCode != 401 ||

@@ -251,6 +251,10 @@ model Conversation {
   // keys; when false (the default, and all existing groups) the group stays
   // on the legacy single shared key with no epoch enforcement.
   groupUseSenderKeys Boolean      @default(false) @map("group_use_sender_keys")
+  // Last conversationOrder handed out. Sends increment it under the row lock,
+  // so orders are unique and never reused, even after the newest message is
+  // hard-deleted (view-once consumption, expiry).
+  lastOrder    Int               @default(0) @map("last_order")
   members      ConversationMember[]
   messages     Message[]
   deviceStates DeviceConversationState[]
@@ -320,6 +324,10 @@ model Message {
   senderDeviceId   String        @map("sender_device_id") @db.Uuid
   clientMessageId  String        @map("client_message_id") @db.VarChar(80)
   conversationOrder Int         @map("conversation_order")
+  // Envelope format the sender used (veil-envelope-v1/-v2, veil-group-v1,
+  // libsignal-v1, ...). Receivers select their decryptor from it; rows
+  // written before it was persisted default to the original v1 format.
+  envelopeVersion  String        @default("veil-envelope-v1") @map("envelope_version") @db.VarChar(32)
   ciphertext       String
   nonce            String
   messageType      MessageType   @map("message_type")
@@ -350,10 +358,8 @@ model Message {
   reactions        Reaction[]
 
   @@unique([senderDeviceId, clientMessageId])
-  // Hard guarantee that a conversation's message order has no gaps and no
-  // duplicates even under concurrent inserts. Without this the sender flow
-  // relies on a SERIALIZABLE retry that breaks silently if the isolation
-  // level is ever weakened.
+  // Backstop for the conversations.last_order counter: a conversation can
+  // never hold two messages with the same order.
   @@unique([conversationId, conversationOrder])
   @@index([conversationId, serverReceivedAt])
   @@index([attachmentId])

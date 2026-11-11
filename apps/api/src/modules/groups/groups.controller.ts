@@ -1,12 +1,15 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { TransferGroupOwnershipResponse } from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
+import { UuidParam } from '../../common/pipes/uuid-param.decorator';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { ManageMemberDto } from './dto/manage-member.dto';
 import { KeyDistributeDto } from './dto/key-distribute.dto';
+import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 
 @ApiTags('groups')
 @ApiBearerAuth()
@@ -20,14 +23,14 @@ export class GroupsController {
   }
 
   @Get(':id')
-  getGroup(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  getGroup(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.groupsService.getGroup(request.auth, id);
   }
 
   @Patch(':id')
   updateGroup(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Body() dto: UpdateGroupDto,
   ) {
     return this.groupsService.updateGroup(request.auth, id, dto);
@@ -36,7 +39,7 @@ export class GroupsController {
   @Post(':id/members')
   addMember(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Body() dto: ManageMemberDto,
   ) {
     return this.groupsService.addMember(request.auth, id, dto);
@@ -45,28 +48,37 @@ export class GroupsController {
   @Delete(':id/members/:handle')
   removeMember(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Param('handle') handle: string,
   ) {
     return this.groupsService.removeMember(request.auth, id, handle);
   }
 
+  @Post(':id/owner')
+  transferOwnership(
+    @Req() request: AuthenticatedRequest,
+    @UuidParam('id') id: string,
+    @Body() dto: TransferOwnershipDto,
+  ): Promise<TransferGroupOwnershipResponse> {
+    return this.groupsService.transferOwnership(request.auth, id, dto);
+  }
+
   @Post(':id/leave')
-  leaveGroup(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  leaveGroup(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.groupsService.leaveGroup(request.auth, id);
   }
 
   @Post(':id/key-distribute')
   distributeKeys(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Body() dto: KeyDistributeDto,
   ) {
     return this.groupsService.distributeKeys(request.auth, id, dto);
   }
 
   @Get(':id/key-distributions')
-  getKeyDistributions(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  getKeyDistributions(@Req() request: AuthenticatedRequest, @UuidParam('id') id: string) {
     return this.groupsService.getKeyDistributions(request.auth, id);
   }
 }

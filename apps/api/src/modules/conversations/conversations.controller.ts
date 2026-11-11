@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type {
   CreateDirectConversationResponse,
@@ -9,6 +9,7 @@ import type {
 
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
+import { UuidParam } from '../../common/pipes/uuid-param.decorator';
 import { ConversationsService } from './conversations.service';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 import { SetDisappearingTimerDto } from './dto/set-disappearing-timer.dto';
@@ -36,7 +37,7 @@ export class ConversationsController {
   @Get(':id/messages')
   listMessages(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Query() query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
     return this.conversationsService.listMessagesForUser(request.auth, id, query);
@@ -45,7 +46,7 @@ export class ConversationsController {
   @Post(':id/timer')
   setTimer(
     @Req() request: AuthenticatedRequest,
-    @Param('id') id: string,
+    @UuidParam('id') id: string,
     @Body() dto: SetDisappearingTimerDto,
   ): Promise<SetDisappearingTimerResponse> {
     return this.conversationsService.setDisappearingTimer(request.auth.userId, id, dto.seconds);

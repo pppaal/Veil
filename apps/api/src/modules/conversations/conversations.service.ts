@@ -1,98 +1,61 @@
-import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import type {
-  ConversationMessageSummary,
   ConversationSummary,
   CreateDirectConversationResponse,
   ListMessagesResponse,
   SetDisappearingTimerResponse,
 } from '@veil/contracts';
-import type { EncryptedAttachmentReference } from '@veil/shared';
+import { isUUID } from 'class-validator';
 
-import { PrismaService } from '../../common/prisma.service';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import {
-  ATTACHMENT_STORAGE_GATEWAY,
-  type AttachmentStorageGateway,
-} from '../attachments/attachment-storage.gateway';
+  ConversationAccessService,
+  type ConversationAccess,
+} from '../../common/conversation-access/conversation-access.service';
+import {
+  EMITS_RECEIPTS,
+  historyVisibleSince,
+  isActionAllowed,
+} from '../../common/conversation-access/conversation-policy';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { apiError } from '../../common/errors/api-error';
+import { PrismaService } from '../../common/prisma.service';
+import {
+  MESSAGE_SUMMARY_INCLUDE,
+  notExpiredWhere,
+  toMessageSummary,
+  type MessageSummaryRow,
+} from '../messages/message.mapper';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { SafetyService } from '../safety/safety.service';
 import { CreateDirectConversationDto } from './dto/create-direct-conversation.dto';
 
-type HydratedReceipt = {
-  userId: string;
-  deliveredAt: Date | null;
-  readAt: Date | null;
-};
+// Everything toConversationSummary reads. The latest message is fetched for
+// every conversation type; toConversationSummary hides it from a group
+// member who joined after it was sent.
+const conversationSummaryInclude = (now: Date) =>
+  ({
+    members: { include: { user: { select: { handle: true, displayName: true } } } },
+    messages: {
+      where: notExpiredWhere(now),
+      orderBy: { conversationOrder: 'desc' },
+      take: 1,
+      include: MESSAGE_SUMMARY_INCLUDE,
+    },
+  }) satisfies Prisma.ConversationInclude;
 
-type HydratedReaction = {
-  userId: string;
-  emoji: string;
-};
-
-type HydratedMessage = {
-  id: string;
-  clientMessageId: string;
-  conversationId: string;
-  senderDeviceId: string;
-  conversationOrder: number;
-  ciphertext: string;
-  nonce: string;
-  messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
-  serverReceivedAt: Date;
-  deletedAt: Date | null;
-  expiresAt: Date | null;
-  viewOnce?: boolean;
-  attachmentRef?: unknown;
-  senderDevice: { userId: string };
-  receipts: HydratedReceipt[];
-  reactions: HydratedReaction[];
-};
+type SummarizableConversation = Prisma.ConversationGetPayload<{
+  include: ReturnType<typeof conversationSummaryInclude>;
+}>;
 
 @Injectable()
-export class ConversationsService implements OnModuleInit, OnModuleDestroy {
-  // Sweep interval for hard-deleting globally expired messages. Each
-  // conversation read already prunes lazily via notExpiredFilter(), but idle
-  // conversations never get a read and would otherwise retain rows past
-  // their expiresAt. 10 minutes keeps the retention window tight without
-  // saturating the primary with deletes on a messenger-scale workload.
-  private static readonly GLOBAL_PRUNE_INTERVAL_MS = 10 * 60 * 1000;
-
-  private globalPruneTimer: NodeJS.Timeout | null = null;
-
+export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
-    @Inject(ATTACHMENT_STORAGE_GATEWAY)
-    private readonly attachmentStorageGateway: AttachmentStorageGateway,
     private readonly safetyService: SafetyService,
+    private readonly access: ConversationAccessService,
   ) {}
-
-  onModuleInit(): void {
-    // Run one sweep shortly after boot so a freshly-started process catches
-    // up on whatever expired while it was down, then keep the periodic
-    // cadence. unref() so the timer never keeps the event loop alive during
-    // graceful shutdown.
-    setTimeout(() => void this.pruneAllExpiredMessages(), 5_000).unref();
-    this.globalPruneTimer = setInterval(
-      () => void this.pruneAllExpiredMessages(),
-      ConversationsService.GLOBAL_PRUNE_INTERVAL_MS,
-    );
-    this.globalPruneTimer.unref();
-  }
-
-  onModuleDestroy(): void {
-    if (this.globalPruneTimer) {
-      clearInterval(this.globalPruneTimer);
-      this.globalPruneTimer = null;
-    }
-  }
 
   async createDirect(
     currentUserId: string,
@@ -100,24 +63,19 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
   ): Promise<CreateDirectConversationResponse> {
     const peer = await this.prisma.user.findUnique({
       where: { handle: dto.peerHandle.toLowerCase() },
-      select: { id: true, handle: true, displayName: true },
+      select: { id: true },
     });
 
-    if (!peer) {
-      throw new NotFoundException('Peer handle not found');
+    // Either-direction block answers exactly like an unknown handle, so the
+    // blocked user can't tell "doesn't exist" from "you've been blocked".
+    if (!peer || (await this.safetyService.isBlockedEitherWay(currentUserId, peer.id))) {
+      throw apiError('handle_not_found', 'Peer handle not found');
     }
-
     if (peer.id === currentUserId) {
-      throw new ForbiddenException('Direct conversation requires a second user');
+      throw apiError('cannot_add_self', 'Direct conversation requires a second user');
     }
 
-    // Either-direction block. Returning NotFound keeps the block state
-    // opaque to the blocked user — they can't distinguish between
-    // "handle doesn't exist" and "you've been blocked".
-    if (await this.safetyService.isBlockedEitherWay(currentUserId, peer.id)) {
-      throw new NotFoundException('Peer handle not found');
-    }
-
+    const now = new Date();
     const currentMemberships = await this.prisma.conversationMember.findMany({
       where: { userId: currentUserId },
       select: { conversationId: true },
@@ -129,14 +87,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
           id: { in: currentMemberships.map((membership) => membership.conversationId) },
           type: 'direct',
         },
-        include: {
-          members: {
-            include: {
-              user: true,
-            },
-          },
-          messages: this.latestMessageInclude(),
-        },
+        include: conversationSummaryInclude(now),
       });
 
       const found = existing.find((conversation) => {
@@ -157,7 +108,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     // pick a winner and we just look up the existing row on P2002.
     const directKey = [currentUserId, peer.id].sort().join('|');
 
-    let created;
+    let created: SummarizableConversation;
     try {
       created = await this.prisma.conversation.create({
         data: {
@@ -167,24 +118,13 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
             create: [{ userId: currentUserId }, { userId: peer.id }],
           },
         },
-        include: {
-          members: {
-            include: { user: true },
-          },
-          messages: this.latestMessageInclude(),
-        },
+        include: conversationSummaryInclude(now),
       });
     } catch (error) {
-      // Both the real PrismaClientKnownRequestError and the fake-prisma test
-      // double surface the unique-constraint conflict via `code === 'P2002'`.
-      const code = (error as { code?: string })?.code;
-      if (code === 'P2002') {
+      if ((error as { code?: unknown } | null)?.code === 'P2002') {
         const existing = await this.prisma.conversation.findUnique({
           where: { directKey },
-          include: {
-            members: { include: { user: true } },
-            messages: this.latestMessageInclude(),
-          },
+          include: conversationSummaryInclude(now),
         });
         if (existing) {
           return { conversation: this.toConversationSummary(existing, currentUserId) };
@@ -195,15 +135,12 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
 
     // Wake up the peer's conversation list so they see the new DM without
     // waiting for a polling tick.
-    this.realtimeGateway.emitConversationMembers(
-      created.members.map((member) => ({ userId: member.userId })),
-      'conversation.sync',
-      { conversationId: created.id, reason: 'membership' },
-    );
+    this.realtimeGateway.emitConversationMembers(created.members, 'conversation.sync', {
+      conversationId: created.id,
+      reason: 'membership',
+    });
 
-    return {
-      conversation: this.toConversationSummary(created, currentUserId),
-    };
+    return { conversation: this.toConversationSummary(created, currentUserId) };
   }
 
   async setDisappearingTimer(
@@ -211,39 +148,18 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     conversationId: string,
     seconds: number | null,
   ): Promise<SetDisappearingTimerResponse> {
-    const membership = await this.prisma.conversationMember.findUnique({
-      where: {
-        conversationId_userId: {
-          conversationId,
-          userId: currentUserId,
-        },
-      },
-      select: { id: true },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException('Conversation membership required');
-    }
+    await this.access.requireAccess(currentUserId, conversationId, 'setTimer');
 
     const updated = await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { disappearingTimerSeconds: seconds },
-      include: {
-        members: {
-          include: { user: true },
-        },
-        messages: this.latestMessageInclude(),
-      },
+      include: conversationSummaryInclude(new Date()),
     });
 
-    this.realtimeGateway.emitConversationMembers(
-      updated.members.map((member) => ({ userId: member.userId })),
-      'conversation.timer.changed',
-      {
-        conversationId,
-        disappearingTimerSeconds: seconds,
-      },
-    );
+    this.realtimeGateway.emitConversationMembers(updated.members, 'conversation.timer.changed', {
+      conversationId,
+      disappearingTimerSeconds: seconds,
+    });
 
     return { conversation: this.toConversationSummary(updated, currentUserId) };
   }
@@ -251,16 +167,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
   async listForUser(userId: string): Promise<ConversationSummary[]> {
     const memberships = await this.prisma.conversationMember.findMany({
       where: { userId },
-      include: {
-        conversation: {
-          include: {
-            members: {
-              include: { user: true },
-            },
-            messages: this.latestMessageInclude(),
-          },
-        },
-      },
+      select: { conversation: { include: conversationSummaryInclude(new Date()) } },
     });
 
     return memberships
@@ -277,70 +184,38 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     conversationId: string,
     query: PaginationQueryDto,
   ): Promise<ListMessagesResponse> {
+    const access = await this.access.requireAccess(auth.userId, conversationId, 'readHistory');
+    const { conversation, member } = access;
     const requestedLimit = Number(query.limit ?? 50);
     const limit = Number.isFinite(requestedLimit) ? Math.min(100, Math.max(1, requestedLimit)) : 50;
-    const membership = await this.prisma.conversationMember.findUnique({
-      where: {
-        conversationId_userId: {
-          conversationId,
-          userId: auth.userId,
-        },
-      },
-      select: { id: true },
-    });
 
-    if (!membership) {
-      throw new ForbiddenException('Conversation membership required');
+    const cursorMessage =
+      query.cursor && isUUID(query.cursor)
+        ? await this.prisma.message.findUnique({
+            where: { id: query.cursor },
+            select: { conversationId: true, conversationOrder: true },
+          })
+        : null;
+    if (query.cursor && cursorMessage?.conversationId !== conversationId) {
+      throw apiError('message_not_found', 'Pagination cursor not found');
     }
 
-    const members = await this.prisma.conversationMember.findMany({
-      where: { conversationId },
-      select: { userId: true },
-    });
-
-    const cursorMessage = query.cursor
-      ? await this.prisma.message.findUnique({
-          where: { id: query.cursor },
-          select: {
-            id: true,
-            conversationId: true,
-            conversationOrder: true,
-          },
-        })
-      : null;
-
-    if (query.cursor && (!cursorMessage || cursorMessage.conversationId !== conversationId)) {
-      throw new NotFoundException('Pagination cursor not found');
-    }
-
-    void this.pruneExpiredMessages(conversationId);
-
-    const messages = (await this.prisma.message.findMany({
+    const visibleSince = historyVisibleSince(conversation.type, member.joinedAt);
+    const messages = await this.prisma.message.findMany({
       where: {
         conversationId,
-        ...this.notExpiredFilter(),
-        ...(cursorMessage
-          ? {
-              conversationOrder: {
-                lt: cursorMessage.conversationOrder,
-              },
-            }
-          : {}),
+        ...notExpiredWhere(new Date()),
+        ...(visibleSince ? { serverReceivedAt: { gte: visibleSince } } : {}),
+        ...(cursorMessage ? { conversationOrder: { lt: cursorMessage.conversationOrder } } : {}),
       },
       orderBy: { conversationOrder: 'desc' },
       take: limit,
-      include: {
-        senderDevice: {
-          select: { userId: true },
-        },
-        receipts: true,
-        reactions: {
-          select: { userId: true, emoji: true },
-        },
-      },
-    })) as HydratedMessage[];
+      include: MESSAGE_SUMMARY_INCLUDE,
+    });
 
-    await this.markDeliveredForViewer(messages, members, auth.userId);
+    if (EMITS_RECEIPTS[conversation.type]) {
+      await this.markDeliveredForViewer(messages, access);
+    }
 
     const highestConversationOrder =
       messages.length > 0
@@ -354,196 +229,83 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
     });
 
     return {
-      items: messages.map((message) => this.toMessageSummary(message, auth.userId)).reverse(),
+      items: messages
+        .map((message) => toMessageSummary(message, { viewerUserId: auth.userId }))
+        .reverse(),
       nextCursor: messages.length === limit ? (messages.at(-1)?.id ?? null) : null,
     };
   }
 
+  // Marks the fetched page delivered for the viewer. Only messages the viewer
+  // may list reach here, so pre-join group history is never acknowledged.
+  // Each delivered receipt goes to the sender and the viewer's own devices,
+  // except that a blocked direct peer hears nothing.
   private async markDeliveredForViewer(
-    messages: HydratedMessage[],
-    members: Array<{ userId: string }>,
-    userId: string,
+    messages: MessageSummaryRow[],
+    viewer: ConversationAccess,
   ): Promise<void> {
+    const viewerUserId = viewer.member.userId;
+    const undelivered = messages.filter(
+      (message) =>
+        message.senderDevice.userId !== viewerUserId &&
+        !message.receipts.find((receipt) => receipt.userId === viewerUserId)?.deliveredAt,
+    );
+    if (undelivered.length === 0) {
+      return;
+    }
+    const notifySenders = await this.access.isPeerReachable(viewer);
     const deliveredAt = new Date();
 
-    for (const message of messages) {
-      const existingReceipt = message.receipts.find((receipt) => receipt.userId === userId) ?? null;
-      if (message.senderDevice.userId === userId || existingReceipt?.deliveredAt) {
-        continue;
-      }
+    for (const message of undelivered) {
+      const senderUserId = message.senderDevice.userId;
+      const existingReceipt = message.receipts.find((receipt) => receipt.userId === viewerUserId);
 
       await this.prisma.messageReceipt.upsert({
-        where: {
-          messageId_userId: {
-            messageId: message.id,
-            userId,
-          },
-        },
-        update: {
-          deliveredAt,
-        },
-        create: {
-          messageId: message.id,
-          userId,
-          deliveredAt,
-        },
+        where: { messageId_userId: { messageId: message.id, userId: viewerUserId } },
+        update: { deliveredAt },
+        create: { messageId: message.id, userId: viewerUserId, deliveredAt },
       });
 
       if (existingReceipt) {
         existingReceipt.deliveredAt = deliveredAt;
       } else {
-        message.receipts.push({
-          userId,
-          deliveredAt,
-          readAt: null,
-        });
+        message.receipts.push({ userId: viewerUserId, deliveredAt, readAt: null });
       }
 
-      this.realtimeGateway.emitConversationMembers(members, 'message.delivered', {
-        messageId: message.id,
-        userId,
-        deliveredAt: deliveredAt.toISOString(),
-      });
-    }
-  }
-
-  private latestMessageInclude() {
-    return {
-      where: this.notExpiredFilter(),
-      orderBy: { conversationOrder: 'desc' as const },
-      take: 1,
-      include: {
-        senderDevice: {
-          select: { userId: true },
-        },
-        receipts: true,
-        reactions: {
-          select: { userId: true, emoji: true },
-        },
-      },
-    };
-  }
-
-  private notExpiredFilter() {
-    return {
-      OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-    };
-  }
-
-  private async pruneAllExpiredMessages(): Promise<void> {
-    try {
-      const now = new Date();
-      const expired = await this.prisma.message.findMany({
-        where: { expiresAt: { lte: now } },
-        select: { id: true, attachmentId: true },
-      });
-
-      if (expired.length === 0) {
-        return;
-      }
-
-      const candidateAttachmentIds = Array.from(
-        new Set(
-          expired
-            .map((message) => message.attachmentId)
-            .filter((value): value is string => Boolean(value)),
-        ),
+      this.realtimeGateway.emitConversationMembers(
+        notifySenders
+          ? [{ userId: senderUserId }, { userId: viewerUserId }]
+          : [{ userId: viewerUserId }],
+        'message.delivered',
+        { messageId: message.id, userId: viewerUserId, deliveredAt: deliveredAt.toISOString() },
       );
-
-      await this.prisma.message.deleteMany({
-        where: { id: { in: expired.map((message) => message.id) } },
-      });
-
-      for (const attachmentId of candidateAttachmentIds) {
-        await this.tryDeleteOrphanedAttachment(attachmentId);
-      }
-    } catch {
-      // Best-effort sweep: next interval will retry.
-    }
-  }
-
-  private async pruneExpiredMessages(conversationId: string): Promise<void> {
-    try {
-      const now = new Date();
-      const expired = await this.prisma.message.findMany({
-        where: {
-          conversationId,
-          expiresAt: { lte: now },
-        },
-        select: { id: true, attachmentId: true },
-      });
-
-      if (expired.length === 0) {
-        return;
-      }
-
-      const candidateAttachmentIds = Array.from(
-        new Set(
-          expired
-            .map((message) => message.attachmentId)
-            .filter((value): value is string => Boolean(value)),
-        ),
-      );
-
-      await this.prisma.message.deleteMany({
-        where: { id: { in: expired.map((message) => message.id) } },
-      });
-
-      for (const attachmentId of candidateAttachmentIds) {
-        await this.tryDeleteOrphanedAttachment(attachmentId);
-      }
-    } catch {
-      // Best-effort pruning: ignore failures so reads stay responsive.
-    }
-  }
-
-  private async tryDeleteOrphanedAttachment(attachmentId: string): Promise<void> {
-    try {
-      const stillReferenced = await this.prisma.message.findFirst({
-        where: { attachmentId },
-        select: { id: true },
-      });
-      if (stillReferenced) {
-        return;
-      }
-
-      const attachment = await this.prisma.attachment.findUnique({
-        where: { id: attachmentId },
-        select: { id: true, storageKey: true },
-      });
-      if (!attachment) {
-        return;
-      }
-
-      try {
-        await this.attachmentStorageGateway.deleteObject(attachment.storageKey);
-      } catch {
-        // Storage delete is best-effort; DB cleanup still proceeds so the row
-        // does not live forever as a dangling pointer to a missing blob.
-      }
-
-      await this.prisma.attachment.delete({ where: { id: attachment.id } });
-    } catch {
-      // Best-effort: never let attachment cleanup failures surface to readers.
     }
   }
 
   private toConversationSummary(
-    conversation: {
-      id: string;
-      type: 'direct' | 'group' | 'channel';
-      createdAt: Date;
-      disappearingTimerSeconds: number | null;
-      groupUseSenderKeys?: boolean;
-      currentEpoch?: number;
-      members: Array<{
-        userId: string;
-        user: { handle: string; displayName: string | null };
-      }>;
-      messages: HydratedMessage[];
-    },
+    conversation: SummarizableConversation,
     viewerUserId: string,
   ): ConversationSummary {
+    const viewer = conversation.members.find((member) => member.userId === viewerUserId);
+    // Without readMembers (channel subscribers) the viewer only learns who
+    // runs the conversation, never who else is in it.
+    const canSeeMembers = viewer
+      ? isActionAllowed(conversation.type, viewer.role, 'readMembers')
+      : false;
+    const members = canSeeMembers
+      ? conversation.members
+      : conversation.members.filter(
+          (member) =>
+            member.userId === viewerUserId || member.role === 'owner' || member.role === 'admin',
+        );
+
+    const latest = conversation.messages[0];
+    const visibleSince = viewer ? historyVisibleSince(conversation.type, viewer.joinedAt) : null;
+    const lastMessage =
+      latest && (!visibleSince || latest.serverReceivedAt >= visibleSince)
+        ? toMessageSummary(latest, { viewerUserId })
+        : null;
+
     return {
       id: conversation.id,
       type: conversation.type,
@@ -553,66 +315,23 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
       // and channels never carry it so legacy clients see no new fields.
       ...(conversation.type === 'group'
         ? {
-            useSenderKeys: conversation.groupUseSenderKeys ?? false,
-            currentEpoch: conversation.currentEpoch ?? 0,
+            useSenderKeys: conversation.groupUseSenderKeys,
+            currentEpoch: conversation.currentEpoch,
           }
         : {}),
-      members: conversation.members.map((member) => ({
+      members: members.map((member) => ({
         userId: member.userId,
         handle: member.user.handle,
         displayName: member.user.displayName,
       })),
-      lastMessage: conversation.messages[0]
-        ? this.toMessageSummary(conversation.messages[0], viewerUserId)
-        : null,
+      lastMessage,
     };
-  }
-
-  private toMessageSummary(
-    message: HydratedMessage,
-    viewerUserId: string,
-  ): ConversationMessageSummary {
-    const receipt = this.resolveReceiptForViewer(message, viewerUserId);
-    return {
-      id: message.id,
-      clientMessageId: message.clientMessageId,
-      conversationId: message.conversationId,
-      senderDeviceId: message.senderDeviceId,
-      conversationOrder: message.conversationOrder,
-      ciphertext: message.ciphertext,
-      nonce: message.nonce,
-      messageType: message.messageType,
-      attachment:
-        (message.attachmentRef as EncryptedAttachmentReference | null | undefined) ?? null,
-      expiresAt: message.expiresAt?.toISOString() ?? null,
-      viewOnce: message.viewOnce === true,
-      serverReceivedAt: message.serverReceivedAt.toISOString(),
-      deletedAt: message.deletedAt?.toISOString() ?? null,
-      deliveredAt: receipt?.deliveredAt?.toISOString() ?? null,
-      readAt: receipt?.readAt?.toISOString() ?? null,
-      reactions: message.reactions.map((reaction) => ({
-        userId: reaction.userId,
-        emoji: reaction.emoji,
-      })),
-    };
-  }
-
-  private resolveReceiptForViewer(
-    message: HydratedMessage,
-    viewerUserId: string,
-  ): HydratedReceipt | null {
-    if (message.senderDevice.userId === viewerUserId) {
-      return message.receipts.find((receipt) => receipt.userId !== viewerUserId) ?? null;
-    }
-
-    return message.receipts.find((receipt) => receipt.userId === viewerUserId) ?? null;
   }
 
   private async updateDeviceConversationState(args: {
     deviceId: string;
     conversationId: string;
-    lastSyncedConversationOrder?: number | null;
-    lastReadConversationOrder?: number | null;
+    lastSyncedConversationOrder: number | null;
   }): Promise<void> {
     const current = await this.prisma.deviceConversationState.findUnique({
       where: {
@@ -625,8 +344,7 @@ export class ConversationsService implements OnModuleInit, OnModuleDestroy {
 
     const lastSyncedConversationOrder =
       args.lastSyncedConversationOrder ?? current?.lastSyncedConversationOrder ?? null;
-    const lastReadConversationOrder =
-      args.lastReadConversationOrder ?? current?.lastReadConversationOrder ?? null;
+    const lastReadConversationOrder = current?.lastReadConversationOrder ?? null;
 
     await this.prisma.deviceConversationState.upsert({
       where: {

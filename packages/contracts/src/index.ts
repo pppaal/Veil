@@ -2,16 +2,141 @@ import type {
   AttachmentDownloadTicket,
   AttachmentUploadTicket,
   CryptoEnvelope,
-  EncryptedAttachmentReference,
+  EncryptedAttachmentReference as SharedEncryptedAttachmentReference,
   PublicKeyBundle,
 } from '@veil/shared';
 import type {
   AttachmentUploadStatus,
   ConversationType,
   DevicePlatform,
+  MemberRole,
   MessageType,
   UserStatus,
 } from '@veil/shared';
+
+export type VeilErrorCode =
+  | 'unauthorized'
+  | 'validation_failed'
+  | 'handle_taken'
+  | 'handle_not_found'
+  | 'active_device_not_found'
+  | 'device_not_found'
+  | 'challenge_invalid'
+  | 'device_not_active'
+  | 'invalid_device_signature'
+  | 'device_forbidden'
+  | 'conversation_membership_required'
+  | 'conversation_role_required'
+  | 'envelope_context_mismatch'
+  | 'envelope_version_mismatch'
+  | 'envelope_version_forbidden'
+  | 'direct_peer_mismatch'
+  | 'message_not_found'
+  | 'attachment_not_found'
+  | 'attachment_forbidden'
+  | 'attachment_upload_invalid'
+  | 'transfer_session_not_found'
+  | 'transfer_session_inactive'
+  | 'transfer_token_invalid'
+  | 'transfer_claim_required'
+  | 'transfer_claim_invalid'
+  | 'transfer_approval_required'
+  | 'transfer_completion_invalid'
+  | 'internal_error'
+  | 'profile_not_found'
+  | 'cannot_add_self'
+  | 'contact_already_exists'
+  | 'contact_not_found'
+  | 'story_not_found'
+  | 'story_forbidden'
+  | 'story_already_viewed'
+  | 'refresh_token_invalid'
+  | 'token_revoked'
+  | 'peer_unreachable'
+  | 'call_not_found'
+  | 'call_invalid_state'
+  | 'call_initiator_forbidden'
+  | 'call_not_allowed'
+  | 'message_not_owned'
+  | 'message_deleted'
+  | 'view_once_immutable'
+  | 'edit_window_expired'
+  | 'reply_target_invalid'
+  | 'owner_immutable'
+  | 'group_not_found'
+  | 'group_member_limit'
+  | 'group_epoch_required'
+  | 'group_epoch_stale'
+  | 'group_sender_keys_disabled'
+  | 'sender_keys_irreversible'
+  | 'key_distribution_invalid'
+  | 'channel_not_found'
+  | 'resource_conflict'
+  | 'resource_not_found';
+
+// The single HTTP status of every error code. Clients branch on `code`; the
+// status is derived from this table so one code can never surface with two
+// different statuses depending on which endpoint raised it.
+export const ERROR_CATALOG: Readonly<Record<VeilErrorCode, number>> = Object.freeze({
+  unauthorized: 401,
+  validation_failed: 400,
+  handle_taken: 409,
+  handle_not_found: 404,
+  active_device_not_found: 404,
+  device_not_found: 404,
+  challenge_invalid: 401,
+  device_not_active: 401,
+  invalid_device_signature: 401,
+  device_forbidden: 403,
+  conversation_membership_required: 403,
+  conversation_role_required: 403,
+  envelope_context_mismatch: 403,
+  envelope_version_mismatch: 400,
+  envelope_version_forbidden: 400,
+  direct_peer_mismatch: 403,
+  message_not_found: 404,
+  attachment_not_found: 404,
+  attachment_forbidden: 403,
+  attachment_upload_invalid: 400,
+  transfer_session_not_found: 404,
+  transfer_session_inactive: 403,
+  transfer_token_invalid: 401,
+  transfer_claim_required: 403,
+  transfer_claim_invalid: 401,
+  transfer_approval_required: 403,
+  transfer_completion_invalid: 401,
+  internal_error: 500,
+  profile_not_found: 404,
+  cannot_add_self: 400,
+  contact_already_exists: 409,
+  contact_not_found: 404,
+  story_not_found: 404,
+  story_forbidden: 403,
+  story_already_viewed: 409,
+  refresh_token_invalid: 401,
+  token_revoked: 401,
+  peer_unreachable: 403,
+  call_not_found: 404,
+  call_invalid_state: 409,
+  call_initiator_forbidden: 403,
+  call_not_allowed: 403,
+  message_not_owned: 403,
+  message_deleted: 403,
+  view_once_immutable: 403,
+  edit_window_expired: 403,
+  reply_target_invalid: 400,
+  owner_immutable: 409,
+  group_not_found: 404,
+  group_member_limit: 409,
+  group_epoch_required: 400,
+  group_epoch_stale: 409,
+  group_sender_keys_disabled: 400,
+  sender_keys_irreversible: 400,
+  key_distribution_invalid: 400,
+  channel_not_found: 404,
+  resource_conflict: 409,
+  resource_not_found: 404,
+});
 
 export interface RegisterRequest {
   handle: string;
@@ -164,16 +289,33 @@ export interface MessageReactionSummary {
   emoji: string;
 }
 
+// The only attachment reference the relay stores or returns. Content type,
+// size, digest and the wrapped content key travel inside the authenticated
+// E2E payload; clients must take attachment metadata from there.
+export interface OuterAttachmentPointer {
+  attachmentId: string;
+}
+
+/**
+ * @deprecated Pre-W1 outer attachment metadata. The relay now accepts these
+ * fields only for compatibility and discards everything except
+ * `attachmentId`; use {@link OuterAttachmentPointer}.
+ */
+export type EncryptedAttachmentReference = SharedEncryptedAttachmentReference;
+
 export interface ConversationMessageSummary {
   id: string;
   clientMessageId?: string | null;
   conversationId: string;
   senderDeviceId: string;
   conversationOrder: number;
+  // Envelope format the sender used (e.g. 'veil-group-v1'); receivers pick
+  // their decryptor from it.
+  version: string;
   ciphertext: string;
   nonce: string;
   messageType: MessageType;
-  attachment?: EncryptedAttachmentReference | null;
+  attachment?: OuterAttachmentPointer | null;
   expiresAt?: string | null;
   // True when the message is view-once: the server hard-deletes it as
   // soon as any non-sender member marks it read.
@@ -187,6 +329,8 @@ export interface ConversationMessageSummary {
   // FK to another message in the same conversation when this is a reply.
   // Null when the parent was deleted; the UI shows "원본 삭제됨".
   replyToMessageId?: string | null;
+  // The requesting viewer's own receipt only; never another member's.
+  // Always null in realtime broadcasts.
   deliveredAt?: string | null;
   readAt?: string | null;
   reactions?: MessageReactionSummary[];
@@ -200,6 +344,41 @@ export interface ListMessagesResponse {
 export interface ListConversationsResponse {
   items: ConversationSummary[];
   nextCursor?: string | null;
+}
+
+export interface ChannelAdminSummary {
+  userId: string;
+  handle: string;
+}
+
+export interface ChannelMemberSummary extends ConversationMemberSummary {
+  role: MemberRole;
+}
+
+// GET /conversations/channel/:id. Subscribers never see each other: the full
+// member list is returned only to the owner and admins, and the latest post
+// only to members.
+export interface ChannelSummaryResponse {
+  id: string;
+  name: string;
+  description: string | null;
+  isPublic: boolean;
+  /** Every member of the channel, the owner and admins included. */
+  subscriberCount: number;
+  admins: ChannelAdminSummary[];
+  viewerRole: MemberRole | null;
+  members?: ChannelMemberSummary[];
+  lastMessage?: ConversationMessageSummary | null;
+}
+
+export interface TransferGroupOwnershipRequest {
+  userId: string;
+}
+
+export interface TransferGroupOwnershipResponse {
+  conversationId: string;
+  ownerUserId: string;
+  previousOwnerUserId: string;
 }
 
 export interface SendMessageRequest {
@@ -497,6 +676,10 @@ export interface FileAbuseReportResponse {
 // the server relays and briefly buffers it but can never read the chain key.
 export interface GroupKeyDistributionUpload {
   recipientUserId: string;
+  // Addresses the blob to one of the recipient's devices. Omitted for the
+  // legacy user-scoped path, where any of the recipient's devices may pick
+  // it up.
+  recipientDeviceId?: string | null;
   encryptedChainKey: string;
   nonce: string;
   version: string;
@@ -520,6 +703,7 @@ export interface GroupKeyDistributeResponse {
 export interface GroupKeyDistributionItem {
   fromUserId: string;
   fromDeviceId: string;
+  recipientDeviceId: string | null;
   encryptedChainKey: string;
   nonce: string;
   version: string;

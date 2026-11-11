@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma.service';
 import { notFound } from '../../common/errors/api-error';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RelationshipService } from '../safety/relationship.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class ProfileService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly relationships: RelationshipService,
   ) {}
 
   async getProfile(auth: { userId: string }) {
@@ -117,6 +119,8 @@ export class ProfileService {
     };
   }
 
+  // Strangers get the same 404 as a missing handle, so the route cannot be
+  // used to enumerate accounts or read profiles of people who never engaged.
   async getPublicProfile(auth: { userId: string }, handle: string) {
     const user = await this.prisma.user.findUnique({
       where: { handle: handle.toLowerCase() },
@@ -127,7 +131,7 @@ export class ProfileService {
       },
     });
 
-    if (!user) {
+    if (!user || !(await this.relationships.canSeeProfileOf(auth.userId, user.id))) {
       throw notFound('profile_not_found', 'User not found');
     }
 

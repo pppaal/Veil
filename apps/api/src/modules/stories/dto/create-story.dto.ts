@@ -1,30 +1,26 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { Equals, IsIn, IsOptional, IsString, Length } from 'class-validator';
 
-export enum StoryContentType {
-  TEXT = 'text',
-  IMAGE = 'image',
-  VIDEO = 'video',
-}
+export const TEXT_STORY_CONTENT_URL = 'text://inline';
 
 export class CreateStoryDto {
-  @ApiProperty({ enum: StoryContentType })
-  @IsEnum(StoryContentType)
-  contentType!: StoryContentType;
+  // Media stories are disabled until they ship as encrypted attachments; a
+  // free media URL would let any author plant a tracking pixel that logs the
+  // IP of every viewer.
+  @ApiProperty({ enum: ['text'] })
+  @IsIn(['text'])
+  contentType!: 'text';
 
-  @ApiProperty()
-  @IsString()
-  @MaxLength(2048)
-  // Scheme allowlist: media stories carry an https URL, text stories carry the
-  // `text://inline` sentinel. Requiring one of these bounds the value and
-  // rejects dangerous schemes (javascript:, data:, file:) at the persistence
-  // boundary. New media schemes must be added here deliberately.
-  @Matches(/^(https?|text):\/\/.+/i)
-  contentUrl!: string;
+  @ApiProperty({ required: false, default: TEXT_STORY_CONTENT_URL })
+  @IsOptional()
+  @Equals(TEXT_STORY_CONTENT_URL)
+  contentUrl?: string;
 
-  @ApiProperty({ required: false })
+  // Matches the stories.caption VarChar(300) column, so an over-long caption
+  // is a 400 here instead of a database error.
+  @ApiProperty({ required: false, maxLength: 300 })
   @IsOptional()
   @IsString()
-  @Length(0, 500)
+  @Length(0, 300)
   caption?: string;
 }

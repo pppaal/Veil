@@ -16,6 +16,9 @@ class VeilApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // The same instance for the app's lifetime: session changes re-run its
+    // redirects instead of replacing it, so MaterialApp.router keeps the
+    // current location across token refreshes and lock/unlock.
     final router = ref.watch(appRouterProvider);
     final notificationService = ref.read(localNotificationServiceProvider);
 

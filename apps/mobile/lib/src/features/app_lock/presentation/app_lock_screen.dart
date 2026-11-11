@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
@@ -288,14 +287,12 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       }
 
       if (authenticated) {
+        // The router's lock guard navigates back to the interrupted screen.
         ref.read(appSessionProvider.notifier).unlock();
         setState(() {
           _status = 'Unlocked.';
           _lockoutStatus = null;
         });
-        if (context.mounted) {
-          context.go('/conversations');
-        }
         return;
       }
 
@@ -377,10 +374,8 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
         });
       }
 
+      // The router's lock guard navigates back to the interrupted screen.
       ref.read(appSessionProvider.notifier).unlock();
-      if (context.mounted) {
-        context.go('/conversations');
-      }
     } finally {
       if (mounted) {
         setState(() {

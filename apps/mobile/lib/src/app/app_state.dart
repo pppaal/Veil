@@ -674,10 +674,15 @@ final messengerControllerProvider =
   Future<void> Function()? sessionRestorer;
   GroupSenderKeyCoordinator? groupCrypto;
   if (cryptoAdapter is LibCryptoAdapter) {
-    cryptoAdapter.setSessionPersistence(
-      persister: (conversationId, snapshot) =>
-          secureStorage.writeSessionSnapshot(conversationId, snapshot),
-    );
+    cryptoAdapter
+      ..setSessionPersistence(
+        persister: (conversationId, snapshot) =>
+            secureStorage.writeSessionSnapshot(conversationId, snapshot),
+      )
+      // The responder side of the v2 handshake needs the persisted identity
+      // and the prekey private halves it published.
+      ..setLocalIdentityLoader(() => secureStorage.readIdentityPrivateRef())
+      ..setLocalPrekeyStore(SecureStorageLocalPrekeyStore(secureStorage));
 
     // Group Sender Keys ride on the same identity material as the 1:1
     // ratchet (X25519 prekey for sealing, Ed25519 identity for authorship),

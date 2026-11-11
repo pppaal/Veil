@@ -175,9 +175,12 @@ void main() {
     // appears unpadded or unstructured on the channel.
     final handed = unb64u(encArgs['plaintext'] as String);
     expect(handed.length, MessagePadding.bucketFor(handed.length));
+    // Same inner payload codec as the lib adapter (pv 2).
     final inner = json.decode(utf8.decode(MessagePadding.unpad(handed))) as Map<String, dynamic>;
-    expect(inner['body'], 'hello libsignal');
-    expect(inner['kind'], 'text');
+    expect(inner['pv'], 2);
+    expect(inner['b'], 'hello libsignal');
+    expect(inner['k'], 'text');
+    expect(inner['x'], expires.millisecondsSinceEpoch);
 
     final second = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
@@ -190,6 +193,7 @@ void main() {
     expect(second.nonce, 'signal'); // steady state = SignalMessage
 
     final decrypted = await adapter.messaging.decryptMessage(envelope);
+    expect(decrypted.status, DecryptStatus.ok);
     expect(decrypted.body, 'hello libsignal');
     expect(decrypted.messageKind, MessageKind.text);
     expect(decrypted.expiresAt?.toUtc(), expires);
@@ -216,19 +220,20 @@ void main() {
       nonce: 'signal',
       messageKind: MessageKind.text,
     );
-    expect((await adapter.messaging.decryptMessage(envelope)).body, '[Decryption failed]');
+    final failed = await adapter.messaging.decryptMessage(envelope);
+    expect(failed.body, '[Decryption failed]');
+    expect(failed.status, DecryptStatus.failed);
+    expect(failed.failureReason, 'decryptFailed');
 
     native.nextError = PlatformException(code: 'sessionNotFound');
-    expect(
-      (await adapter.messaging.decryptMessage(envelope)).body,
-      '[Session not established — sync required]',
-    );
+    final missing = await adapter.messaging.decryptMessage(envelope);
+    expect(missing.body, '[Session not established — sync required]');
+    expect(missing.status, DecryptStatus.sessionMissing);
 
     native.nextError = PlatformException(code: 'identityMismatch');
-    expect(
-      (await adapter.messaging.decryptMessage(envelope)).body,
-      '[Identity changed — verify safety number]',
-    );
+    final rejected = await adapter.messaging.decryptMessage(envelope);
+    expect(rejected.body, '[Identity changed — verify safety number]');
+    expect(rejected.status, DecryptStatus.identityRejected);
 
     // Unknown nonce tag = not a libsignal frame.
     const bogus = CryptoEnvelope(
@@ -240,10 +245,9 @@ void main() {
       nonce: 'AAAA',
       messageKind: MessageKind.text,
     );
-    expect(
-      (await adapter.messaging.decryptMessage(bogus)).body,
-      '[Unable to decrypt: invalid envelope]',
-    );
+    final invalid = await adapter.messaging.decryptMessage(bogus);
+    expect(invalid.body, '[Unable to decrypt: invalid envelope]');
+    expect(invalid.status, DecryptStatus.failed);
 
     // Identity generation has no safe fallback: typed exception.
     native.nextError = PlatformException(code: 'keyWipeRequired', message: 'store corrupt');

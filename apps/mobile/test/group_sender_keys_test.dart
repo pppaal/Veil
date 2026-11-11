@@ -14,6 +14,10 @@ class _Member {
   final GroupSenderKeyEngine engine;
 }
 
+/// A distribution as the coordinator hands it to the engine once unsealed.
+GroupKeyDistribution _issued(GroupSenderKey key) =>
+    GroupKeyDistribution(key: key, issuedAtMs: DateTime.now().millisecondsSinceEpoch);
+
 Future<void> _distribute(List<_Member> members, int epoch) async {
   for (final m in members) {
     final key = await m.engine.ensureOwnSenderKey(
@@ -23,7 +27,7 @@ Future<void> _distribute(List<_Member> members, int epoch) async {
     );
     for (final other in members) {
       if (identical(other, m)) continue;
-      await other.engine.ingestSenderKey(key);
+      await other.engine.ingestDistribution(_issued(key));
     }
   }
 }
@@ -195,7 +199,7 @@ void main() {
     expect(leaked.counter, 1);
     final eve = _Member('dev-eve');
     await eve.engine.resetForEpoch(groupId: groupId, epoch: 0);
-    await eve.engine.ingestSenderKey(leaked);
+    await eve.engine.ingestDistribution(_issued(leaked));
     expect(await _code(() => _recv(eve, c1)), 'replayed');
     final c2 = await _send(alice, 'future');
     expect(await _recv(eve, c2), 'future');
@@ -207,8 +211,8 @@ void main() {
       persister: (id, snap) async => persisted[id] = snap,
     );
     final key = await engine.ensureOwnSenderKey(groupId: groupId, epoch: 0, localDeviceId: 'dev-p');
-    await bob.engine.ingestSenderKey(key);
-    await engine.ingestSenderKey(bob.engine.exportOwnSenderKey(groupId)!);
+    await bob.engine.ingestDistribution(_issued(key));
+    await engine.ingestDistribution(_issued(bob.engine.exportOwnSenderKey(groupId)!));
 
     final b1 = await _send(bob, 'b1');
     final b2 = await _send(bob, 'b2');
@@ -235,9 +239,10 @@ void main() {
       chainKey: List<int>.filled(32, 7),
       counter: 0,
       signingPublicKey: List<int>.filled(32, 9),
+      generation: 1,
     );
     await alice.engine.resetForEpoch(groupId: groupId, epoch: 5);
-    expect(await _code(() => alice.engine.ingestSenderKey(stale)), 'epochMismatch');
+    expect(await _code(() => alice.engine.ingestDistribution(_issued(stale))), 'epochMismatch');
     await alice.engine.ensureOwnSenderKey(groupId: groupId, epoch: 5, localDeviceId: alice.deviceId);
     final selfSpoof = GroupSenderKey(
       groupId: groupId,
@@ -246,8 +251,9 @@ void main() {
       chainKey: List<int>.filled(32, 1),
       counter: 0,
       signingPublicKey: List<int>.filled(32, 2),
+      generation: 1,
     );
-    expect(await _code(() => alice.engine.ingestSenderKey(selfSpoof)), 'distributionInvalid');
+    expect(await _code(() => alice.engine.ingestDistribution(_issued(selfSpoof))), 'distributionInvalid');
   });
 
   group('GroupSenderKeySealer', () {
@@ -294,9 +300,15 @@ void main() {
         localIdentityX25519Private: recipientXPriv,
         senderIdentityPublicKey: senderIdPub,
       );
-      expect(groupKeyBytesEqual(opened.chainKey, key.chainKey), isTrue);
-      expect(groupKeyBytesEqual(opened.signingPublicKey, key.signingPublicKey), isTrue);
-      expect(opened.counter, key.counter);
+      expect(opened.isLegacy, isFalse);
+      expect(groupKeyBytesEqual(opened.key.chainKey, key.chainKey), isTrue);
+      expect(groupKeyBytesEqual(opened.key.signingPublicKey, key.signingPublicKey), isTrue);
+      expect(opened.key.counter, key.counter);
+      expect(opened.key.generation, key.generation);
+      expect(
+        opened.issuedAtMs! - DateTime.now().millisecondsSinceEpoch,
+        inInclusiveRange(-60000, 0),
+      );
 
       // Wrong claimed sender identity → signature fails.
       final otherId = await ed25519.newKeyPair();
@@ -316,7 +328,8 @@ void main() {
         'signatureInvalid',
       );
 
-      // Re-addressed to another recipient / epoch → AD mismatch.
+      // Re-addressed to another recipient / epoch → AD mismatch, so the
+      // AEAD fails before the signature is even checked.
       expect(
         await _code(() => sealer.unseal(
               groupId: groupId,
@@ -329,7 +342,7 @@ void main() {
               localIdentityX25519Private: recipientXPriv,
               senderIdentityPublicKey: senderIdPub,
             )),
-        'signatureInvalid',
+        'decryptFailed',
       );
 
       // Wrong recipient private key → AEAD fails.

@@ -4,6 +4,7 @@
 
 import { decodeBase64Url } from '../core/base64url.js';
 import { decryptAttachment } from '../crypto/attachment-v2.js';
+import { isAttachmentId } from './payload.js';
 import { fileExtension, sanitizeAudioMime, sniffImageMime } from './sanitize.js';
 
 export class UnsupportedMediaError extends Error {
@@ -59,6 +60,20 @@ class InlineAudioMedia {
   async materialize() {
     return new Blob([this.#audio], { type: this.mime });
   }
+}
+
+// deps.fetchAttachment for the app: the relay's download ticket, then the
+// sealed blob. Content refuses ids that are not UUIDs (src/domain/content.js);
+// this is checked again where the id becomes part of an authenticated URL,
+// because encoding alone would still let '..' climb out of /attachments/.
+export function createAttachmentFetcher({ authedApi, fetchImpl }) {
+  return async (attachmentId) => {
+    if (!isAttachmentId(attachmentId)) throw new UnsupportedMediaError('attachment id is not a UUID');
+    const { ticket } = await authedApi(`/attachments/${encodeURIComponent(attachmentId)}/download-ticket`);
+    const res = await fetchImpl(ticket.downloadUrl);
+    if (!res.ok) throw new Error('download failed: ' + res.status);
+    return res.arrayBuffer();
+  };
 }
 
 // The media of a content record (src/domain/content.js), or null.

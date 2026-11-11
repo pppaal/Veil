@@ -21,6 +21,7 @@
 import { encodeBase64Url } from '../core/base64url.js';
 import { createIdentityKeys, signBundle } from './bundle.js';
 import { ED25519, generateEd25519, generateStorageKey, generateX25519, X25519 } from './keys.js';
+import { currentSignedPrekey } from './prekeys.js';
 
 const PRIVATE_KEY_SLOTS = [
   {
@@ -63,7 +64,7 @@ export async function generateIdentity(subtle, { nowMs = Date.now() } = {}) {
 // What /auth/register and /device-transfer/claim publish for an identity:
 // its keys and the bundle of its current signed prekey.
 export async function publishedKeys(subtle, identity) {
-  const current = identity.signedPrekeys.find((spk) => spk.supersededAt === null);
+  const current = currentSignedPrekey(identity.signedPrekeys);
   return {
     publicIdentityKey: encodeBase64Url(identity.ik.publicKey),
     signedPrekeyBundle: await signBundle(subtle, identity.ik.privateKey, {

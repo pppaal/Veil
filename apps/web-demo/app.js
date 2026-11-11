@@ -30,6 +30,7 @@ import { createSessionCipher } from './src/crypto/session-cipher.js';
 import { createSessionRepo } from './src/crypto/session-repo.js';
 import { mediaContent, textContent } from './src/domain/content.js';
 import { ingestMessage, isTextKind, previewLabel } from './src/domain/ingest.js';
+import { createAttachmentFetcher } from './src/domain/media.js';
 import { KIND_LABELS } from './src/domain/payload.js';
 import { reactionsByTarget } from './src/domain/reactions.js';
 import { fileExtension, sanitizeFilename } from './src/domain/sanitize.js';
@@ -57,7 +58,7 @@ import {
   serializeConversationForCache,
   serializeMessageForCache,
 } from './src/platform/persist.js';
-import { createSessionStore } from './src/platform/session-store.js';
+import { createIdbSessionRepo, createSessionStore } from './src/platform/session-store.js';
 import { wipeEverything, wipeInPlace } from './src/platform/wipe.js';
 import { createDialogs } from './src/ui/dialogs.js';
 import { toFragment } from './src/ui/markdown-dom.js';
@@ -183,13 +184,7 @@ identityChannel?.addEventListener('message', (ev) => {
 });
 
 const sessionStore = createSessionStore({
-  repo: {
-    async get() {
-      const row = await idb.get('session', 'me');
-      return row?.value ?? migrateLegacySession();
-    },
-    put: (value) => idb.put('session', { id: 'me', value }),
-  },
+  repo: createIdbSessionRepo(idb, { readLegacy: migrateLegacySession }),
   subtle: crypto.subtle,
 });
 
@@ -357,14 +352,10 @@ function peerOf(conversationId) {
 }
 
 // ---------- message ingest ----------
-const mediaDeps = { subtle: crypto.subtle, fetchAttachment };
-
-async function fetchAttachment(attachmentId) {
-  const { ticket } = await authedApi(`/attachments/${attachmentId}/download-ticket`);
-  const res = await fetch(ticket.downloadUrl);
-  if (!res.ok) throw new Error('download failed: ' + res.status);
-  return res.arrayBuffer();
-}
+const mediaDeps = {
+  subtle: crypto.subtle,
+  fetchAttachment: createAttachmentFetcher({ authedApi, fetchImpl: (url) => fetch(url) }),
+};
 
 // Receipts change after delivery and are never cached, so they ride on the
 // in-memory message next to its view.
@@ -571,6 +562,10 @@ async function onMessageNew(raw) {
   const list = state.messagesByConv.get(convId) || [];
   // If we already have this message id, ignore.
   if (list.some((m) => m.id === raw.id)) return;
+  // The first message of a conversation can arrive before the conversation
+  // list names its members, and a session-starting frame is only accepted
+  // for the identity pinned for the member who sent it.
+  if (!state.conversations.some((c) => c.id === convId)) await loadConversations();
   // Server echo of our own send replaces the optimistic entry and reuses
   // its already-decoded content.
   const pendingIndex = raw.clientMessageId

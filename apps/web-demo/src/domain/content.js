@@ -17,7 +17,7 @@
 // 'text' whose payload names the message it answers.
 
 import { encodeBase64Url } from '../core/base64url.js';
-import { decodePayload } from './payload.js';
+import { decodePayload, isAttachmentId } from './payload.js';
 import { decodeReaction, encodeReaction } from './reactions.js';
 import { sanitizeFilename } from './sanitize.js';
 
@@ -45,7 +45,10 @@ export const reactionContent = (reaction) => content({ kind: 'reaction', reactio
 
 // An authenticated inner payload (src/crypto/payload-v2.js) as content. A
 // peer controls every field, so anything that does not fit its kind is
-// unsupported rather than shown raw.
+// unsupported rather than shown raw. That includes an attachment whose id is
+// not a UUID: rendering fetches media by that id from the relay with this
+// device's credentials, and a path like '../keys/<handle>?claim=all#' would
+// otherwise make it call whatever API the peer chose.
 export function contentFromPayload(payload) {
   const expiresAt = payload.expiresAt;
   switch (payload.kind) {
@@ -60,7 +63,7 @@ export function contentFromPayload(payload) {
     case 'image':
     case 'file':
     case 'voice':
-      return payload.attachment
+      return isAttachmentId(payload.attachment?.id)
         ? { ...mediaContent(payload.kind, payload.attachment, payload.body), expiresAt }
         : content({ expiresAt });
     default:

@@ -110,7 +110,7 @@ describe('prekey maintenance', () => {
     expect(h.record().signedPrekeys.map((spk) => spk.id)).toEqual([3, 2]);
   });
 
-  it('stores a successor before publishing it, and draws a new one when publishing failed', async () => {
+  it('stores a successor before publishing it, and keeps it for the grace period when publishing failed', async () => {
     const h = await harness({ available: 100, failRotation: true });
     const due = START + SIGNED_PREKEY_ROTATION_MS;
     await expect(h.run(due)).rejects.toThrow('unavailable');
@@ -125,11 +125,35 @@ describe('prekey maintenance', () => {
       h.directory.bundles.push(body.signedPrekeyBundle);
       return {};
     });
-    await h.run(due + DAY_MS);
+    const publishedAt = due + DAY_MS;
+    await h.run(publishedAt);
     expect(h.authedApi.mock.calls.length).toBeGreaterThan(callsBefore);
-    const published = await verifyBundle(subtle, h.directory.bundles[0], h.record().ik.publicKey, { nowMs: due + DAY_MS });
-    // A fresh key and timestamp under the next id; the unpublished one is gone.
-    expect(published).toMatchObject({ spkId: 3, spkTs: due + DAY_MS });
-    expect(h.record().signedPrekeys.map((spk) => spk.id)).toEqual([3, 1]);
+    const published = await verifyBundle(subtle, h.directory.bundles[0], h.record().ik.publicKey, { nowMs: publishedAt });
+    // A fresh key and timestamp under the next id. The failed PUT may have
+    // reached the directory with only its response lost, so SPK 2 is kept
+    // and, like SPK 1, superseded by SPK 3.
+    expect(published).toMatchObject({ spkId: 3, spkTs: publishedAt });
+    expect(h.record().signedPrekeys.map((spk) => [spk.id, spk.supersededAt]))
+      .toEqual([[3, null], [2, publishedAt], [1, publishedAt]]);
+    const keyring = createLocalKeyring({
+      loadIdentity: async () => h.record(),
+      opkKv: createMemoryKv('keyId'),
+      clock: () => publishedAt + SIGNED_PREKEY_GRACE_MS,
+    });
+    await expect(keyring.claimHandshakePrekeys({ signedPrekeyId: 2, oneTimePrekeyId: NO_ONE_TIME_PREKEY_ID }))
+      .resolves.toBeDefined();
+  });
+
+  it('drops a successor whose publication never succeeded once it is older than the grace period', async () => {
+    const h = await harness({ available: 100, failRotation: true });
+    const due = START + SIGNED_PREKEY_ROTATION_MS;
+    await expect(h.run(due)).rejects.toThrow('unavailable');
+    await expect(h.run(due + SIGNED_PREKEY_GRACE_MS)).rejects.toThrow('unavailable');
+    expect(h.record().signedPrekeys.map((spk) => spk.id)).toEqual([3, 2, 1]);
+
+    // A directory that stays unreachable does not pile up keys without end;
+    // the published SPK 1 stays until a successor is published.
+    await expect(h.run(due + SIGNED_PREKEY_GRACE_MS + 1)).rejects.toThrow('unavailable');
+    expect(h.record().signedPrekeys.map((spk) => spk.id)).toEqual([4, 3, 1]);
   });
 });

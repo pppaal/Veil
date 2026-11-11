@@ -35,7 +35,9 @@ const boundedString = (max) => (value) => typeof value === 'string' && value.len
 // builds sent '' when the browser knew no type, so empty is valid.
 const isMimeHint = (value) => typeof value === 'string' && value.length <= MIME_MAX_CHARS;
 const isCount = (value) => Number.isSafeInteger(value) && value >= 0;
-const isAttachmentId = (value) => typeof value === 'string' && ATTACHMENT_ID_RE.test(value);
+// Every attachment id the relay and both clients create is a UUID, and one
+// names a blob in a relay URL, so nothing else is accepted from a peer.
+export const isAttachmentId = (value) => typeof value === 'string' && ATTACHMENT_ID_RE.test(value);
 const isBase64Url = (length) => (value) => {
   try {
     const bytes = decodeBase64Url(value);

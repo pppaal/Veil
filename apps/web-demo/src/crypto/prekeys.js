@@ -12,7 +12,7 @@
 // non-extractable CryptoKey.
 
 import { decodeBase64Url, encodeBase64Url } from '../core/base64url.js';
-import { signBundle } from './bundle.js';
+import { BundleError, signBundle } from './bundle.js';
 import { NO_ONE_TIME_PREKEY_ID } from './x3dh.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -23,6 +23,20 @@ export const SIGNED_PREKEY_GRACE_MS = 14 * DAY_MS;
 export const ONE_TIME_PREKEY_BATCH = 100;
 const ONE_TIME_PREKEY_LOW_WATER = 20;
 export const PREKEY_LOCK = 'veil-prekeys';
+
+// Whether a signed prekey still answers handshakes. A superseded one does
+// for the grace period after its successor was published, for bundles
+// fetched before that. One whose publication was never confirmed may still
+// have reached the directory (only the response was lost), so it is kept
+// for as long from when it was drawn.
+function isRetained(spk, nowMs) {
+  if (spk.supersededAt !== null) return nowMs - spk.supersededAt <= SIGNED_PREKEY_GRACE_MS;
+  return spk.publishedAt !== null || nowMs - spk.createdAt <= SIGNED_PREKEY_GRACE_MS;
+}
+
+// The signed prekey the directory serves, of an identity's signedPrekeys.
+export const currentSignedPrekey = (signedPrekeys) =>
+  signedPrekeys.find((spk) => spk.publishedAt !== null && spk.supersededAt === null);
 
 export class PrekeyUnavailableError extends Error {
   // reason: 'spk_unavailable' | 'opk_unavailable'
@@ -43,10 +57,8 @@ export function createLocalKeyring({ loadIdentity, opkKv, clock }) {
   const spent = new Set();
 
   function signedPrekey(identity, id) {
-    const nowMs = clock();
     const entry = identity.signedPrekeys?.find((spk) => spk.id === id);
-    const usable = entry && (entry.supersededAt === null || nowMs - entry.supersededAt <= SIGNED_PREKEY_GRACE_MS);
-    if (!usable) throw new PrekeyUnavailableError('spk_unavailable');
+    if (!entry || !isRetained(entry, clock())) throw new PrekeyUnavailableError('spk_unavailable');
     return { privateKey: entry.privateKey, publicKey: entry.publicKey };
   }
 
@@ -103,18 +115,18 @@ export async function maintainPrekeys({ subtle, keys, authedApi, identity, opkKv
 
 async function rotateSignedPrekeyIfDue({ subtle, keys, authedApi, identity, nowMs }) {
   const record = identity.current();
-  const live = record.signedPrekeys.filter(
-    (spk) => spk.publishedAt !== null && (spk.supersededAt === null || nowMs - spk.supersededAt <= SIGNED_PREKEY_GRACE_MS),
-  );
-  const current = live.find((spk) => spk.supersededAt === null);
+  const live = record.signedPrekeys.filter((spk) => isRetained(spk, nowMs));
+  const current = currentSignedPrekey(live);
   if (current && nowMs - current.createdAt < SIGNED_PREKEY_ROTATION_MS) {
     if (live.length !== record.signedPrekeys.length) await identity.update({ signedPrekeys: live });
     return;
   }
   // The successor is stored before it is published, so a frame sent to it
-  // the moment the directory serves it already finds its private key. A
-  // successor whose publication failed is dropped and drawn again: the
-  // directory never saw it and refuses a stale timestamp.
+  // the moment the directory serves it already finds its private key. After
+  // a failed publication the next run draws a fresh successor under a new
+  // id, since the directory refuses a stale timestamp and, should the failed
+  // one have arrived after all, a repeated id. The failed one is kept: it
+  // is superseded like the current one once a successor is published.
   const pair = await keys.x25519();
   const successor = {
     id: Math.max(0, ...record.signedPrekeys.map((spk) => spk.id)) + 1,
@@ -154,12 +166,18 @@ async function uploadOneTimePrekeys({ keys, authedApi, identity, opkKv }) {
   await authedApi('/prekeys', { method: 'POST', body: { prekeys } });
 }
 
-// A one-time prekey the directory handed out, validated before use.
+// A one-time prekey the directory handed out, validated before use. A
+// malformed one rejects the peer's bundle as a whole, as a bad signed
+// prekey does.
 export function claimedOneTimePrekey(raw) {
   if (!raw) return null;
-  const publicKey = decodeBase64Url(raw.publicKey);
-  if (publicKey.length !== 32 || !Number.isInteger(raw.keyId) || raw.keyId < 0 || raw.keyId >= NO_ONE_TIME_PREKEY_ID) {
-    throw new TypeError('claimed one-time prekey is malformed');
+  const validId = Number.isInteger(raw.keyId) && raw.keyId >= 0 && raw.keyId < NO_ONE_TIME_PREKEY_ID;
+  let publicKey = null;
+  try {
+    publicKey = decodeBase64Url(raw.publicKey);
+  } catch {
+    throw new BundleError('malformed');
   }
+  if (!validId || publicKey.length !== 32) throw new BundleError('malformed');
   return { keyId: raw.keyId, publicKey };
 }

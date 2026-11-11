@@ -5,18 +5,12 @@ import { decodeBase64Url } from '../src/core/base64url.js';
 import { generateIdentity } from '../src/crypto/identity.js';
 import { ApiError, AuthError, createApiClient, isAuthRejection } from '../src/platform/api-client.js';
 import { createSessionStore } from '../src/platform/session-store.js';
+import { memorySessionRepo } from './support/session-repo.js';
 
 const { subtle } = webcrypto;
 
-function memoryRepo(initial) {
-  let value = initial;
-  return {
-    get: vi.fn(async () => value),
-    put: vi.fn(async (next) => { value = next; }),
-    delete: vi.fn(async () => { value = null; }),
-    peek: () => value,
-  };
-}
+// delete is there to show that nothing ever deletes the record.
+const memoryRepo = (initial) => ({ ...memorySessionRepo(initial), delete: vi.fn() });
 
 async function signedInStore() {
   const identity = await generateIdentity(subtle);

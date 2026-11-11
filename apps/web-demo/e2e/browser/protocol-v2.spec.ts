@@ -166,3 +166,94 @@ test.describe('protocol v2 in the browser', () => {
     expect((await bubbleTexts(alice)).slice(0, texts.length)).toEqual(texts);
   });
 });
+
+// Two tabs of one browser profile share the session record in IndexedDB,
+// each with its own copy in memory: prekey maintenance in one and token
+// renewals in the other must not revert each other's fields. Each tab runs
+// the app's own session store and IndexedDB repo, published on window.
+interface SharedRecord {
+  nextOneTimePrekeyId: number;
+  signedPrekeys: Array<{ id: number }>;
+  accessToken: string | null;
+}
+interface TabSession {
+  repo: { put(record: unknown): Promise<void> };
+  store: {
+    load(): Promise<unknown>;
+    reload(): Promise<SharedRecord>;
+    update(fields: Partial<SharedRecord>): Promise<void>;
+    saveTokens(tokens: { accessToken: string; refreshToken: string }): Promise<void>;
+    clearTokens(): Promise<void>;
+  };
+}
+
+async function openTab(context: BrowserContext): Promise<Page> {
+  const tab = await context.newPage();
+  // Any page of the origin will do; the secret-link page leaves the
+  // database alone.
+  await tab.goto('./s.html');
+  await tab.evaluate(async () => {
+    const { createIdb } = await import('./src/platform/idb.js');
+    const { createIdbSessionRepo, createSessionStore } = await import('./src/platform/session-store.js');
+    const repo = createIdbSessionRepo(createIdb(indexedDB));
+    const store = createSessionStore({ repo, subtle: crypto.subtle });
+    Object.defineProperty(window, '__session', { value: { repo, store } });
+  });
+  return tab;
+}
+
+test.describe('session record shared by two tabs', () => {
+  test('a token save in one tab keeps the prekey state another tab saved', async ({ browser }) => {
+    const context = await browser.newContext();
+    const [maintainer, renewer] = [await openTab(context), await openTab(context)];
+
+    await maintainer.evaluate(async () => {
+      const { repo } = (window as unknown as { __session: TabSession }).__session;
+      await repo.put({
+        handle: 'alice',
+        edPubB64u: 'alice-auth-key',
+        signedPrekeys: [{ id: 1 }],
+        nextOneTimePrekeyId: 1,
+        accessToken: 'access-0',
+        refreshToken: 'refresh-0',
+      });
+    });
+    for (const tab of [maintainer, renewer]) {
+      await tab.evaluate(async () => {
+        await (window as unknown as { __session: TabSession }).__session.store.load();
+      });
+    }
+
+    // Both tabs write at once, each from the copy it loaded.
+    await Promise.all([
+      maintainer.evaluate(async () => {
+        const { store } = (window as unknown as { __session: TabSession }).__session;
+        for (let round = 1; round <= 20; round += 1) {
+          await store.update({
+            nextOneTimePrekeyId: 1 + round * 100,
+            signedPrekeys: Array.from({ length: round + 1 }, (_, i) => ({ id: round + 1 - i })),
+          });
+        }
+      }),
+      renewer.evaluate(async () => {
+        const { store } = (window as unknown as { __session: TabSession }).__session;
+        for (let round = 1; round <= 20; round += 1) {
+          await store.saveTokens({ accessToken: `access-${round}`, refreshToken: `refresh-${round}` });
+        }
+      }),
+    ]);
+    // And once more after all of the maintainer's writes have landed.
+    await renewer.evaluate(async () => {
+      await (window as unknown as { __session: TabSession }).__session.store.clearTokens();
+    });
+
+    for (const tab of [maintainer, renewer]) {
+      const stored = await tab.evaluate(async () => {
+        const record = await (window as unknown as { __session: TabSession }).__session.store.reload();
+        return { next: record.nextOneTimePrekeyId, spks: record.signedPrekeys.length, token: record.accessToken };
+      });
+      expect(stored).toEqual({ next: 2001, spks: 21, token: null });
+    }
+    await context.close();
+  });
+});

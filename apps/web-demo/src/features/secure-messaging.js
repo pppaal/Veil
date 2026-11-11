@@ -49,16 +49,17 @@ const clientKey = (clientMessageId) => `client:${clientMessageId}`;
 const HISTORY_CLEARED = 'history-cleared';
 
 // lookupPeer(peer) -> { deviceId, identityKey, signedPrekeyBundle, oneTimePrekey }
-// from GET /v1/keys/:handle?claim=active; getPeer(conversationId) -> the
-// other member { userId, handle } or null; getSelf() -> the signed-in
-// identity record (src/crypto/identity.js) with its deviceId.
+// from GET /v1/keys/:handle?claim=active, or a BundleError when the claimed
+// one-time prekey is malformed; getPeer(conversationId) -> the other member
+// { userId, handle } or null; getSelf() -> the signed-in identity record
+// (src/crypto/identity.js) with its deviceId.
 export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore, legacyReader, getSelf, getPeer }) {
   const bootstrapping = new Map(); // conversationId -> Promise
 
   async function bootstrap(conversationId, peer) {
-    const entry = await lookupPeer(peer);
     let started;
     try {
+      const entry = await lookupPeer(peer);
       started = await cipher.bootstrap({
         conversationId,
         remoteDeviceId: entry.deviceId,

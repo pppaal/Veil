@@ -3,9 +3,10 @@ import { webcrypto } from 'node:crypto';
 
 import { encodeBase64Url } from '../src/core/base64url.js';
 import { encryptAttachment } from '../src/crypto/attachment-v2.js';
-import { contentFromLegacy, mediaContent, textContent } from '../src/domain/content.js';
+import { decodeInnerPayload, encodeInnerPayload } from '../src/crypto/payload-v2.js';
+import { contentFromLegacy, contentFromPayload, mediaContent, textContent } from '../src/domain/content.js';
 import { DELETED_TEXT, ingestMessage, LOCKED_LABELS, previewLabel } from '../src/domain/ingest.js';
-import { UnsupportedMediaError } from '../src/domain/media.js';
+import { createAttachmentFetcher, UnsupportedMediaError } from '../src/domain/media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from '../src/domain/payload.js';
 import { serializeMessageForCache } from '../src/platform/persist.js';
 
@@ -197,6 +198,38 @@ describe('ingestMessage', () => {
     swapped[3] ^= 0xff;
     fetchAttachment.mockResolvedValueOnce(swapped.buffer);
     await expect(image.media.materialize()).rejects.toThrow('digest');
+  });
+
+  it('a peer-chosen attachment id never reaches the relay API', async () => {
+    const random = (length) => webcrypto.getRandomValues(new Uint8Array(length));
+    const { pointer } = await encryptAttachment(subtle, random, {
+      attachmentId: ATTACHMENT_ID,
+      contentType: 'image/png',
+      plaintext: PNG,
+    });
+    const authedApi = vi.fn(async () => ({ ticket: { downloadUrl: 'https://blobs.example/1' } }));
+    const fetchImpl = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(0) }));
+    const fetchAttachment = createAttachmentFetcher({ authedApi, fetchImpl });
+    const hostileId = '../keys/victim?claim=all#';
+
+    // As it arrives: authenticated, from a peer that crafted the pointer.
+    const payload = decodeInnerPayload(
+      encodeInnerPayload({ body: '', kind: 'image', attachment: { ...pointer, id: hostileId } }),
+      { fallbackKind: 'image' },
+    );
+    const open = vi.fn(async () => ({ content: contentFromPayload(payload) }));
+    const image = await ingestMessage(serverSummary({ messageType: 'image' }), { open, media: { subtle, fetchAttachment } });
+    expect(image).toMatchObject({ kind: 'unsupported', media: null });
+
+    // Even content stored before ids were checked cannot steer the request.
+    for (const id of [hostileId, '..']) {
+      await expect(fetchAttachment(id)).rejects.toBeInstanceOf(UnsupportedMediaError);
+    }
+    expect(authedApi).not.toHaveBeenCalled();
+
+    await fetchAttachment(ATTACHMENT_ID);
+    expect(authedApi).toHaveBeenCalledWith(`/attachments/${ATTACHMENT_ID}/download-ticket`);
+    expect(fetchImpl).toHaveBeenCalledWith('https://blobs.example/1');
   });
 
   it('expires at the earlier of the authenticated and the relayed expiry', async () => {

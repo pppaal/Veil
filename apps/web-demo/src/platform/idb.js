@@ -84,6 +84,31 @@ export function createIdb(factory, { onBlocked, onDeletedElsewhere } = {}) {
     allByIndex: async (store, index, value) =>
       (await run(store, 'readonly', (s) => s.index(index).getAll(value))) ?? [],
     put: async (store, value) => { await run(store, 'readwrite', (s) => s.put(value)); },
+    // Reads, transforms and writes one row in a single transaction, so a
+    // writer in another tab lands wholly before or after it and neither
+    // reverts the other's fields. transform(row | null) returns the row to
+    // write, or null to leave the store as it is; resolves to that result.
+    async modify(storeName, key, transform) {
+      const db = await connect();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, 'readwrite');
+        const store = transaction.objectStore(storeName);
+        let next = null;
+        let failure = null;
+        const read = store.get(key);
+        read.onsuccess = () => {
+          try {
+            next = transform(read.result ?? null);
+            if (next !== null) store.put(next);
+          } catch (error) {
+            failure = error;
+            transaction.abort();
+          }
+        };
+        transaction.oncomplete = () => resolve(next);
+        transaction.onabort = () => reject(failure ?? transaction.error ?? new Error('transaction aborted'));
+      });
+    },
     delete: async (store, key) => { await run(store, 'readwrite', (s) => s.delete(key)); },
     all: async (store) => (await run(store, 'readonly', (s) => s.getAll())) ?? [],
     // Empties every store but the kept ones, in one transaction. A completed

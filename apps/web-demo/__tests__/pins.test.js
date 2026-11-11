@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { encodeBase64Url } from '../src/core/base64url.js';
 import { DecryptStatus } from '../src/crypto/session-cipher.js';
 import { createPinStore, PinVerdict, ReverificationRequiredError } from '../src/crypto/pins.js';
+import { claimedOneTimePrekey } from '../src/crypto/prekeys.js';
 import { textContent } from '../src/domain/content.js';
 import { PeerKeyChangedError } from '../src/features/secure-messaging.js';
 import { createMemoryKv } from '../src/platform/kv.js';
@@ -158,6 +159,23 @@ describe('identity pins', () => {
       .rejects.toMatchObject({ name: 'PeerUnavailableError', reason: 'not-upgraded' });
     expect(await createPinStore(alice.pinKv).pinsFor('u-bob')).toEqual([]);
     expect(alice.trust.pendingChange('u-bob')).toBeNull();
+  });
+
+  it('rejects a bundle whose claimed one-time prekey is malformed', async () => {
+    const { alice, bob, directory } = await conversation();
+    const serve = directoryEntryOf(bob);
+    const malformed = [
+      { keyId: 1, publicKey: 'not base64url!' },
+      { keyId: -1, publicKey: encodeBase64Url(key(3)) },
+      { keyId: 1, publicKey: encodeBase64Url(new Uint8Array(31)) },
+    ];
+    for (const [index, raw] of malformed.entries()) {
+      // As app.js reads GET /v1/keys/:handle: the claimed prekey is checked there.
+      directory.set('bob', async () => ({ ...(await serve()), oneTimePrekey: claimedOneTimePrekey(raw) }));
+      await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: `c${index}` }))
+        .rejects.toMatchObject({ name: 'PeerUnavailableError', reason: 'bad-bundle' });
+    }
+    expect(await createPinStore(alice.pinKv).pinsFor('u-bob')).toEqual([]);
   });
 
   it('retries an unreachable directory but not a resolved key', async () => {

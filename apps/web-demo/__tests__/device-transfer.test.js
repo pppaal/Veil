@@ -6,6 +6,7 @@ import { storeTransferredIdentity, watchOldDeviceTransfer } from '../src/feature
 import { createApiClient } from '../src/platform/api-client.js';
 import { createSessionStore } from '../src/platform/session-store.js';
 import { wipeInPlace } from '../src/platform/wipe.js';
+import { memorySessionRepo } from './support/session-repo.js';
 
 const { subtle } = webcrypto;
 const SESSION_ID = '3b9f6c1e-2a4d-4e8f-9b0a-1c2d3e4f5a6b';
@@ -73,15 +74,15 @@ function fakeTransferApi() {
 // onSessionRejected asks the transfer first, the way app.js wires it.
 async function oldDevice() {
   const api = fakeTransferApi();
-  let value = {
+  const repo = memorySessionRepo({
     handle: 'alice',
     userId: 'user-1',
     deviceId: 'device-old',
     ...(await generateIdentity(subtle)),
     accessToken: 'access-1',
     refreshToken: 'refresh-1',
-  };
-  const store = createSessionStore({ repo: { get: async () => value, put: async (next) => { value = next; } }, subtle });
+  });
+  const store = createSessionStore({ repo, subtle });
   await store.load();
   const rejections = [];
   let transfer = null;
@@ -100,7 +101,7 @@ async function oldDevice() {
     });
     return transfer;
   };
-  return { ...api, store, rejections, watch, stored: () => value };
+  return { ...api, store, rejections, watch, stored: repo.peek };
 }
 
 describe('watchOldDeviceTransfer', () => {

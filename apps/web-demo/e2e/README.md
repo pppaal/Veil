@@ -18,6 +18,8 @@ runs in polling mode. Playwright starts it; nothing else is needed.
   ratchet work at all, while the relay serves corrupted ciphertext.
 - A relay that swaps Bob's identity and opens a session to Alice as Bob's
   device is refused: Alice sees the key-change banner and cannot send.
+- Two tabs write the shared session record in IndexedDB at once, one
+  rotating prekeys and one renewing tokens, and neither reverts the other.
 
 ```bash
 CHROME_PATH=/usr/bin/google-chrome npx playwright test --project=browser-unit

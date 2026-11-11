@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { IDB_NAME } from '../src/platform/idb.js';
-import { wipeEverything } from '../src/platform/wipe.js';
+import { wipeEverything, wipeInPlace } from '../src/platform/wipe.js';
 
 function memoryStorage(entries) {
   const map = new Map(Object.entries(entries));
@@ -123,5 +123,34 @@ describe('wipeEverything', () => {
       await vi.advanceTimersByTimeAsync(5000);
       expect(onBlocked).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('wipeInPlace', () => {
+  it('empties the database instead of deleting it, and clears every veil- key and Cache Storage', async () => {
+    const clearDatabase = vi.fn(async () => {});
+    const localStorage = memoryStorage({ 'veil-demo-muted-convs-v1': '["c-1"]', 'other-app': 'keep' });
+    const sessionStorage = memoryStorage({ 'veil-demo-tab': '1' });
+    const caches = fakeCaches(['veil-shell-v1']);
+
+    await wipeInPlace({ clearDatabase, localStorage, sessionStorage, caches });
+
+    expect(clearDatabase).toHaveBeenCalledTimes(1);
+    expect(localStorage.keys()).toEqual(['other-app']);
+    expect(sessionStorage.keys()).toEqual([]);
+    expect(caches.remaining.size).toBe(0);
+  });
+
+  it('runs every step and then reports each one that failed', async () => {
+    const clearDatabase = vi.fn(async () => { throw new Error('clear failed'); });
+    // Cache Storage access is refused in some privacy modes.
+    const caches = { keys: async () => { throw new DOMException('access denied', 'SecurityError'); } };
+    const localStorage = memoryStorage({ 'veil-demo-theme': 'dark' });
+
+    const error = await wipeInPlace({ clearDatabase, localStorage, sessionStorage: null, caches }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.errors.map((e) => e.message)).toEqual(['clear failed', 'access denied']);
+    expect(localStorage.keys()).toEqual([]);
   });
 });

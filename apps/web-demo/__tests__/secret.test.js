@@ -157,3 +157,39 @@ describe('legacy v1 links (read-only)', () => {
     await expect(openSecret(webcrypto, blob, link)).rejects.toThrow();
   });
 });
+
+describe('passphrase normalization', () => {
+  // "비밀 café" as precomposed characters (NFC) and decomposed (NFD): the
+  // same text, composed differently by different keyboards and systems.
+  const NFC_PHRASE = '비밀 café';
+  const NFD_PHRASE = NFC_PHRASE.normalize('NFD');
+
+  it('a passphrase opens however its characters are composed', async () => {
+    expect(NFD_PHRASE).not.toBe(NFC_PHRASE);
+    const { blob, link } = await seal('door code 0912', NFD_PHRASE);
+    expect(await openSecret(webcrypto, blob, link, NFC_PHRASE)).toBe('door code 0912');
+    expect(await openSecret(webcrypto, blob, link, NFD_PHRASE)).toBe('door code 0912');
+  });
+
+  it('a link sealed with the passphrase as typed still opens with it', async () => {
+    // A v1 passphrase link as the mobile app seals it: PBKDF2 over the raw
+    // UTF-8 of what was typed, here the decomposed form.
+    const salt = webcrypto.getRandomValues(new Uint8Array(16));
+    const iv = webcrypto.getRandomValues(new Uint8Array(12));
+    const base = await webcrypto.subtle.importKey('raw', new TextEncoder().encode(NFD_PHRASE), 'PBKDF2', false, ['deriveKey']);
+    const key = await webcrypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 210_000, hash: 'SHA-256' },
+      base,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt'],
+    );
+    const sealed = await webcrypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode('typed as is'));
+    const b64u = (bytes) => Buffer.from(bytes).toString('base64url');
+    const blob = ['v1', b64u(iv), b64u(new Uint8Array(sealed)), b64u(salt)].join('.');
+    const link = parseSecretFragment(`${ID}.p`);
+
+    expect(await openSecret(webcrypto, blob, link, NFD_PHRASE)).toBe('typed as is');
+    await expect(openSecret(webcrypto, blob, link, 'wrong')).rejects.toThrow();
+  });
+});

@@ -2,9 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 
 import { generateIdentity } from '../src/crypto/identity.js';
-import { watchOldDeviceTransfer } from '../src/features/device-transfer.js';
+import { storeTransferredIdentity, watchOldDeviceTransfer } from '../src/features/device-transfer.js';
 import { createApiClient } from '../src/platform/api-client.js';
 import { createSessionStore } from '../src/platform/session-store.js';
+import { wipeInPlace } from '../src/platform/wipe.js';
 
 const { subtle } = webcrypto;
 const SESSION_ID = '3b9f6c1e-2a4d-4e8f-9b0a-1c2d3e4f5a6b';
@@ -266,5 +267,120 @@ describe('watchOldDeviceTransfer', () => {
 
       await expect(transfer.outcome).resolves.toBe('completed');
     });
+  });
+});
+
+describe('storeTransferredIdentity', () => {
+  const COMPLETION = { handle: 'bob', newDeviceId: 'device-new', revokedDeviceId: 'device-bob-old' };
+
+  // A browser that already holds another identity: its session record and
+  // the data that identity left in the other stores and in localStorage.
+  async function browserWithIdentity() {
+    const database = new Map([
+      ['session', { handle: 'alice', deviceId: 'device-alice', ...(await generateIdentity(subtle)) }],
+      ['conversations', ['c-1']],
+      ['outbound', ['queued-1']],
+    ]);
+    const repo = {
+      get: async () => database.get('session'),
+      put: vi.fn(async (record) => { database.set('session', record); }),
+    };
+    const sessionStore = createSessionStore({ repo, subtle });
+    await sessionStore.load();
+    const localStorage = new Map([['veil-demo-muted-convs-v1', '["c-1"]']]);
+    // The app's clearReplacedIdentity with this browser's storage behind it.
+    const clearReplacedIdentity = vi.fn(() => wipeInPlace({
+      clearDatabase: async () => {
+        for (const store of database.keys()) if (store !== 'session') database.set(store, []);
+      },
+      localStorage: {
+        get length() { return localStorage.size; },
+        key: (i) => [...localStorage.keys()][i] ?? null,
+        removeItem: (key) => { localStorage.delete(key); },
+      },
+      sessionStorage: null,
+      // Cache Storage access is refused in some privacy modes.
+      caches: { keys: async () => { throw new DOMException('access denied', 'SecurityError'); } },
+    }));
+    return { database, repo, sessionStore, localStorage, clearReplacedIdentity };
+  }
+
+  it('a failing cleanup step still ends with the new keys stored', async () => {
+    const browser = await browserWithIdentity();
+    const keys = await generateIdentity(subtle);
+
+    const { cleanupError } = await storeTransferredIdentity({
+      completion: COMPLETION,
+      keys,
+      sessionStore: browser.sessionStore,
+      clearReplacedIdentity: browser.clearReplacedIdentity,
+    });
+
+    expect(cleanupError).toBeInstanceOf(AggregateError);
+    expect(cleanupError.errors.map((e) => e.name)).toEqual(['SecurityError']);
+    const stored = browser.database.get('session');
+    expect(stored).toMatchObject({ handle: 'bob', deviceId: 'device-new', userId: null, accessToken: null });
+    expect(stored.edPrivKey).toBe(keys.edPrivKey);
+    expect(stored.xPrivKey).toBe(keys.xPrivKey);
+    expect(browser.sessionStore.current()).toBe(stored);
+    // The steps that could run did: nothing of the replaced identity is left.
+    expect(browser.database.get('conversations')).toEqual([]);
+    expect(browser.database.get('outbound')).toEqual([]);
+    expect(browser.localStorage.size).toBe(0);
+  });
+
+  it('stores the keys before cleanup starts, so cleanup that never finishes cannot hold them back', async () => {
+    const browser = await browserWithIdentity();
+    const keys = await generateIdentity(subtle);
+    let storedWhenCleanupStarted = null;
+
+    // As when another tab holds up a database delete: the step never settles.
+    storeTransferredIdentity({
+      completion: COMPLETION,
+      keys,
+      sessionStore: browser.sessionStore,
+      clearReplacedIdentity: () => {
+        storedWhenCleanupStarted = browser.database.get('session');
+        return new Promise(() => {});
+      },
+    });
+
+    await vi.waitFor(() => expect(storedWhenCleanupStarted).not.toBeNull());
+    expect(storedWhenCleanupStarted.handle).toBe('bob');
+    expect(storedWhenCleanupStarted.edPrivKey).toBe(keys.edPrivKey);
+  });
+
+  it('a failed save throws with nothing cleared, and the same keys can be saved again', async () => {
+    const browser = await browserWithIdentity();
+    const replaced = browser.database.get('session');
+    const keys = await generateIdentity(subtle);
+    browser.repo.put.mockRejectedValueOnce(new DOMException('quota exceeded', 'QuotaExceededError'));
+    const store = () => storeTransferredIdentity({
+      completion: COMPLETION,
+      keys,
+      sessionStore: browser.sessionStore,
+      clearReplacedIdentity: browser.clearReplacedIdentity,
+    });
+
+    await expect(store()).rejects.toThrow('quota exceeded');
+    expect(browser.clearReplacedIdentity).not.toHaveBeenCalled();
+    expect(browser.database.get('session')).toBe(replaced);
+    expect(browser.sessionStore.current().handle).toBe('alice');
+    expect(browser.database.get('conversations')).toEqual(['c-1']);
+
+    // The retry the app offers: the keys it kept, saved again.
+    await expect(store()).resolves.toMatchObject({ cleanupError: expect.any(AggregateError) });
+    expect(browser.database.get('session').edPrivKey).toBe(keys.edPrivKey);
+    expect(browser.clearReplacedIdentity).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears nothing when no identity was stored here', async () => {
+    let stored = null;
+    const sessionStore = createSessionStore({ repo: { get: async () => stored, put: async (r) => { stored = r; } }, subtle });
+    const keys = await generateIdentity(subtle);
+
+    await expect(storeTransferredIdentity({ completion: COMPLETION, keys, sessionStore }))
+      .resolves.toEqual({ cleanupError: null });
+    expect(stored).toMatchObject({ handle: 'bob', deviceId: 'device-new' });
   });
 });

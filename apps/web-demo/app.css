@@ -954,6 +954,11 @@ a { color: var(--accent); text-decoration: none; }
   animation: fade-in 0.12s ease-out;
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* A confirmation can be asked from inside another dialog. At the shared
+   z-index the dialogs would stack by DOM order, which would put it behind
+   any dialog that comes later in the page (#transfer-new-dialog, the ones
+   app.js appends), hidden and unclickable while it holds keyboard focus. */
+#confirm-dialog { z-index: 110; }
 .dialog {
   background: var(--bg-elev);
   border: 1px solid var(--line);

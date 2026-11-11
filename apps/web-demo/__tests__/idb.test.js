@@ -86,6 +86,71 @@ describe('createIdb', () => {
   });
 });
 
+// IDBFactory double for a database with the given stores, each holding one
+// row. A readwrite transaction applies its clears when it commits, or none of
+// them when `abort` is set.
+function storesIndexedDb(names, { abort = false } = {}) {
+  const rows = new Map(names.map((name) => [name, new Map([['row', { id: 'row' }]])]));
+  const transactions = [];
+  const db = {
+    objectStoreNames: names,
+    close: vi.fn(),
+    transaction(storeNames, mode) {
+      const cleared = [];
+      const transaction = {
+        storeNames,
+        mode,
+        objectStore: (name) => ({ clear: () => { cleared.push(name); } }),
+      };
+      transactions.push(transaction);
+      queueMicrotask(() => {
+        if (abort) {
+          transaction.error = new DOMException('quota exceeded', 'QuotaExceededError');
+          transaction.onabort();
+          return;
+        }
+        for (const name of cleared) rows.get(name).clear();
+        transaction.oncomplete();
+      });
+      return transaction;
+    },
+  };
+  const factory = {
+    open: vi.fn(() => {
+      const request = {};
+      queueMicrotask(() => {
+        request.result = db;
+        request.onsuccess();
+      });
+      return request;
+    }),
+  };
+  return { factory, rows, transactions };
+}
+
+describe('clearAllExcept', () => {
+  const STORES = ['session', 'conversations', 'messages', 'outbound', 'identity-pins', 'kakao-archives'];
+
+  it('empties every other store in one transaction and keeps the named ones', async () => {
+    const { factory, rows, transactions } = storesIndexedDb(STORES);
+
+    await createIdb(factory).clearAllExcept(['session']);
+
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].mode).toBe('readwrite');
+    expect(transactions[0].storeNames).toEqual(STORES.slice(1));
+    expect(rows.get('session').size).toBe(1);
+    for (const name of STORES.slice(1)) expect(rows.get(name).size).toBe(0);
+  });
+
+  it('rejects, with nothing cleared, when the transaction aborts', async () => {
+    const { factory, rows } = storesIndexedDb(STORES, { abort: true });
+
+    await expect(createIdb(factory).clearAllExcept(['session'])).rejects.toThrow('quota exceeded');
+    for (const name of STORES) expect(rows.get(name).size).toBe(1);
+  });
+});
+
 // A version 2 database as the pre-hardening app.js left it, behind an
 // IDBFactory double that runs the upgrade (stores, cursors, update) and opens
 // once the upgrade's cursor walks have finished.

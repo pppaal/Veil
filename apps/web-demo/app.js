@@ -19,7 +19,7 @@ import { createPeerKeyDirectory, createPinStore } from './src/crypto/pins.js';
 import { ingestMessage, isTextKind, previewLabel } from './src/domain/ingest.js';
 import { encodePayload, KIND_LABELS } from './src/domain/payload.js';
 import { fileExtension, sanitizeFilename } from './src/domain/sanitize.js';
-import { TRANSFER_POLL_MS, watchOldDeviceTransfer } from './src/features/device-transfer.js';
+import { storeTransferredIdentity, TRANSFER_POLL_MS, watchOldDeviceTransfer } from './src/features/device-transfer.js';
 import {
   buildNotification,
   NOTIFICATION_LEVELS,
@@ -36,7 +36,8 @@ import {
   serializeMessageForCache,
 } from './src/platform/persist.js';
 import { createSessionStore } from './src/platform/session-store.js';
-import { wipeEverything } from './src/platform/wipe.js';
+import { wipeEverything, wipeInPlace } from './src/platform/wipe.js';
+import { createDialogs } from './src/ui/dialogs.js';
 import { toFragment } from './src/ui/markdown-dom.js';
 // Initialize translations as early as possible so DOM static strings can be
 // rewritten before the user sees them. Top-level await is supported in
@@ -149,6 +150,16 @@ const idb = createIdb(indexedDB, {
   // Another tab wiped this browser's VEIL data. Reloading drops everything
   // this tab still holds in memory and boots from the now-empty storage.
   onDeletedElsewhere: () => location.reload(),
+});
+
+// A device transfer in another tab replaced the stored identity in place
+// (clearReplacedIdentity), which, unlike a wipe, leaves the database for
+// open tabs to keep writing to. Reloading drops the replaced identity this
+// tab holds in memory before a token update writes it back over the new one.
+let identityChannel = null;
+try { identityChannel = new BroadcastChannel('veil-demo-identity'); } catch {}
+identityChannel?.addEventListener('message', (ev) => {
+  if (ev.data?.kind === 'identity-replaced') location.reload();
 });
 
 const sessionStore = createSessionStore({
@@ -1527,6 +1538,23 @@ async function purgeLocalIdentity() {
   });
 }
 
+// After a completed transfer has written its session record over the one
+// stored here: clears everything else the replaced identity left, in memory,
+// in other tabs and in storage. Unlike purgeLocalIdentity it keeps the
+// database, so it waits on no other tab and leaves the new record in place.
+async function clearReplacedIdentity() {
+  identityChannel?.postMessage({ kind: 'identity-replaced' });
+  resetSessionState();
+  mutedConvIds.clear();
+  kakaoArchiveRows = [];
+  await wipeInPlace({
+    clearDatabase: () => idb.clearAllExcept(['session']),
+    localStorage: safeLocalStorage(),
+    sessionStorage: safeStorage('sessionStorage'),
+    caches: globalThis.caches,
+  });
+}
+
 // Only for an explicit, confirmed wipe or a completed transfer.
 async function destroyIdentity() {
   try {
@@ -1899,21 +1927,9 @@ $('wipe-btn').addEventListener('click', confirmAndDestroyIdentity);
 
 $('search-input').addEventListener('input', renderSidebar);
 
-// Track the element that had focus before a dialog opens so we can restore
-// it on close — important for keyboard users.
-let dialogReturnFocusEl = null;
-function openDialog(dialogId, firstFocusId) {
-  dialogReturnFocusEl = document.activeElement;
-  $(dialogId).classList.remove('hidden');
-  if (firstFocusId) requestAnimationFrame(() => $(firstFocusId)?.focus());
-}
-function closeDialog(dialogId) {
-  $(dialogId).classList.add('hidden');
-  if (dialogReturnFocusEl && document.contains(dialogReturnFocusEl)) {
-    try { dialogReturnFocusEl.focus(); } catch {}
-  }
-  dialogReturnFocusEl = null;
-}
+// Restores focus to what had it before a dialog opened, also when dialogs
+// stack (src/ui/dialogs.js) — important for keyboard users.
+const { open: openDialog, close: closeDialog } = createDialogs(document);
 // Themed replacement for native confirm(). Returns a Promise<boolean>.
 // Uses the same .dialog-backdrop / .dialog markup as the new-chat dialog so
 // it inherits focus trap + Esc + click-outside-to-cancel behavior.
@@ -2185,6 +2201,11 @@ function closeTransferOldDialog() {
 
 let transferNewState = null;
 function openTransferNew() {
+  // A completed transfer whose keys are not saved yet reopens on its retry.
+  if (transferNewState?.completion) {
+    openDialog('transfer-new-dialog', 'transfer-new-claim');
+    return;
+  }
   $('transfer-new-name').value = 'web-' + (navigator.platform || 'browser');
   $('transfer-new-token').value = '';
   $('transfer-new-error').textContent = '';
@@ -2254,27 +2275,41 @@ async function claimTransferNew() {
   }
 }
 async function pollTransferNew() {
-  if (!transferNewState) return;
-  const { keys, replacesIdentity } = transferNewState;
-  const completed = await awaitTransferCompletion(transferNewState);
-  if (!completed) return;
+  const transfer = transferNewState;
+  if (!transfer) return;
+  const completion = await awaitTransferCompletion(transfer);
+  if (!completion) return;
+  // Kept even if the dialog was cancelled while /complete was in flight: the
+  // server has activated these keys and the old device destroys its copy, so
+  // they are the identity's only copy until saveTransferNew stores them.
+  transferNewState = { ...transfer, completion };
+  await saveTransferNew();
+}
+// Runs once the transfer completed, and again from the dialog's button
+// after a failed save: the keys stay in transferNewState until stored.
+async function saveTransferNew() {
+  const { completion, keys, replacesIdentity } = transferNewState;
+  $('transfer-new-claim').disabled = true;
+  $('transfer-new-error').textContent = '';
+  $('transfer-new-status').textContent = '새 키 저장 중…';
+  let cleanupError;
   try {
-    if (replacesIdentity) await purgeLocalIdentity();
-    // The keys are stored as CryptoKeys by structured clone; they are
-    // non-extractable and are never exported. /complete does not name the
-    // user; every login records it (session-store saveTokens).
-    await sessionStore.save({
-      handle: completed.handle,
-      userId: null,
-      deviceId: completed.newDeviceId,
-      ...keys,
-      accessToken: null,
-      refreshToken: null,
-    });
+    ({ cleanupError } = await storeTransferredIdentity({
+      completion,
+      keys,
+      sessionStore,
+      clearReplacedIdentity: replacesIdentity ? clearReplacedIdentity : null,
+    }));
   } catch (e) {
-    failTransferNew(e);
+    $('transfer-new-error').textContent = '새 키를 저장하지 못했어요: ' + e.message;
+    $('transfer-new-status').textContent = '이전은 완료됐고 키는 이 탭에만 있어요. 탭을 닫지 말고 다시 저장하세요.';
+    $('transfer-new-claim').textContent = '다시 저장';
+    $('transfer-new-claim').disabled = false;
+    // The dialog may have been closed while /complete was in flight.
+    if ($('transfer-new-dialog').classList.contains('hidden')) openDialog('transfer-new-dialog', 'transfer-new-claim');
     return;
   }
+  if (cleanupError) toast('이전 신원의 데이터 일부를 지우지 못했어요: ' + cleanupError.message, 'error');
   transferNewState = null;
   closeDialog('transfer-new-dialog');
   try {
@@ -2324,7 +2359,9 @@ function failTransferNew(e) {
   transferNewState = null;
 }
 function cancelTransferNew() {
-  transferNewState = null;
+  // Keys a completed transfer activated are never dropped: the dialog only
+  // closes, and opening it again brings back the retry.
+  if (!transferNewState?.completion) transferNewState = null;
   closeDialog('transfer-new-dialog');
 }
 
@@ -2332,7 +2369,7 @@ $('transfer-old-cancel').addEventListener('click', cancelTransferOld);
 $('transfer-old-approve').addEventListener('click', approveTransferOld);
 $('transfer-new-btn').addEventListener('click', openTransferNew);
 $('transfer-new-cancel').addEventListener('click', cancelTransferNew);
-$('transfer-new-claim').addEventListener('click', claimTransferNew);
+$('transfer-new-claim').addEventListener('click', () => (transferNewState?.completion ? saveTransferNew() : claimTransferNew()));
 
 // ---------- message actions: react / edit / delete ----------
 // Right-click (or long-press on touch) on a .msg-row pops a small menu.
@@ -3259,8 +3296,10 @@ function isTypingTarget(el) {
 document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
 
-  // Esc closes any open dialog or menu, regardless of focus target.
-  if (e.key === 'Escape') {
+  // Esc closes any open dialog or menu, regardless of focus target. A dialog
+  // that handled Esc itself (uiConfirm) has closed; without this check the
+  // dialog it was stacked on would close with it.
+  if (e.key === 'Escape' && !e.defaultPrevented) {
     const openDialog = document.querySelector('.dialog-backdrop:not(.hidden)');
     if (openDialog) {
       e.preventDefault();

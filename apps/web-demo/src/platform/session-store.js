@@ -1,6 +1,8 @@
 // The device's session record: identity keys, handle, device id and the
 // current tokens. Tokens come and go with sessions; the keys leave only when
-// the caller deletes the whole record (explicit wipe or completed transfer).
+// the caller deletes the whole record (explicit wipe, or a completed transfer
+// on the old device) or saves another identity over it (a transfer
+// completing on this device).
 // The record object is kept and mutated in place so the app can hold a
 // reference to it as the signed-in identity.
 

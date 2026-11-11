@@ -52,13 +52,17 @@ export function createIdb(factory, { onBlocked, onDeletedElsewhere } = {}) {
     });
   }
 
-  async function run(storeName, mode, operation) {
+  async function connect() {
     if (deletedElsewhere) throw new Error('database deleted by another tab');
     connection ??= open().catch((error) => {
       connection = null;
       throw error;
     });
-    const db = await connection;
+    return connection;
+  }
+
+  async function run(storeName, mode, operation) {
+    const db = await connect();
     return new Promise((resolve, reject) => {
       const request = operation(db.transaction(storeName, mode).objectStore(storeName));
       request.onsuccess = () => resolve(request.result);
@@ -71,6 +75,23 @@ export function createIdb(factory, { onBlocked, onDeletedElsewhere } = {}) {
     put: async (store, value) => { await run(store, 'readwrite', (s) => s.put(value)); },
     delete: async (store, key) => { await run(store, 'readwrite', (s) => s.delete(key)); },
     all: async (store) => (await run(store, 'readonly', (s) => s.getAll())) ?? [],
+    // Empties every store but the kept ones, in one transaction. A completed
+    // device transfer replaces the stored identity this way: it overwrites
+    // the session record and clears the rest, stores added later included,
+    // as deleting the database would, but without a delete that another tab
+    // can hold up and that would take the new record with it.
+    async clearAllExcept(keptStores) {
+      const db = await connect();
+      const names = Array.from(db.objectStoreNames).filter((name) => !keptStores.includes(name));
+      if (names.length === 0) return;
+      await new Promise((resolve, reject) => {
+        const transaction = db.transaction(names, 'readwrite');
+        for (const name of names) transaction.objectStore(name).clear();
+        transaction.oncomplete = () => resolve();
+        // A failed clear aborts the whole transaction: nothing is half cleared.
+        transaction.onabort = () => reject(transaction.error ?? new Error('clear aborted'));
+      });
+    },
     async close() {
       const pending = connection;
       connection = null;

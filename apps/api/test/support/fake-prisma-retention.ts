@@ -283,11 +283,6 @@ export class RetentionFakePrismaService extends FakePrismaService {
     }),
   });
 
-  callRecord = table<CallRecordRow>({
-    rows: () => this.callRecords,
-    replace: (rows) => (this.callRecords = rows),
-  });
-
   secretBlob = table<SecretBlobRecord>({
     rows: () => this.secretBlobs,
     replace: (rows) => (this.secretBlobs = rows),
@@ -309,6 +304,16 @@ export class RetentionFakePrismaService extends FakePrismaService {
         conversation !== undefined && matchesWhere(conversation, filter, conversationRelations())
       );
     };
+
+    // The base fake models call records for the calls flow; retention only needs
+    // the generic where-matching table, so its queries replace the base ones.
+    Object.assign(
+      this.callRecord,
+      table<CallRecordRow>({
+        rows: () => this.callRecords,
+        replace: (rows) => (this.callRecords = rows),
+      }),
+    );
 
     const messages = table({
       rows: () => this.messages,

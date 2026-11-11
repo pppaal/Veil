@@ -169,12 +169,21 @@ export class FakeAttachmentStorageGateway {
     }
   >();
 
-  async createUploadTarget(storageKey: string, metadata: {
-    attachmentId: string;
-    sha256: string;
-    sizeBytes: number;
+  async createUploadTarget(
+    storageKey: string,
+    metadata: {
+      attachmentId: string;
+      sha256: string;
+      sizeBytes: number;
+      contentType: string;
+    },
+  ): Promise<{
+    url: string;
+    headers: Record<string, string>;
     contentType: string;
-  }): Promise<{ url: string; headers: Record<string, string>; contentType: string; sizeBytes: number; expiresAt: string }> {
+    sizeBytes: number;
+    expiresAt: string;
+  }> {
     return {
       url: `https://signed-upload.invalid/${storageKey}`,
       headers: {

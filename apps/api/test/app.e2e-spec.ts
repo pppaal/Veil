@@ -152,9 +152,7 @@ describe('VEIL API (e2e)', () => {
     });
     const bearer = `Bearer ${verify.body.accessToken}`;
 
-    const initialDevices = await api
-      .get('/v1/devices')
-      .set('Authorization', bearer);
+    const initialDevices = await api.get('/v1/devices').set('Authorization', bearer);
     expect(initialDevices.status).toBe(200);
     expect(initialDevices.body.activeDeviceId).toBe(registerA.body.deviceId);
     expect(initialDevices.body.items).toHaveLength(1);
@@ -178,7 +176,11 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'image/png', sizeBytes: 2048, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'image/png',
+        sizeBytes: 2048,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 2048,
@@ -337,7 +339,9 @@ describe('VEIL API (e2e)', () => {
     expect(
       devicesAfterTransfer.body.items.some(
         (item: { id: string; isActive: boolean; trustState: string }) =>
-          item.id === registerA.body.deviceId && item.isActive === false && item.trustState === 'revoked',
+          item.id === registerA.body.deviceId &&
+          item.isActive === false &&
+          item.trustState === 'revoked',
       ),
     ).toBe(true);
     expect(
@@ -351,9 +355,7 @@ describe('VEIL API (e2e)', () => {
 
     // After Phase U.1 the old device's bearer is rejected by the
     // JwtAuthGuard because device.isActive=false.
-    const oldBearerAfterTransfer = await api
-      .get('/v1/conversations')
-      .set('Authorization', bearer);
+    const oldBearerAfterTransfer = await api.get('/v1/conversations').set('Authorization', bearer);
     expect(oldBearerAfterTransfer.status).toBe(401);
 
     // The new device cannot start a transfer claiming the old device id —
@@ -428,7 +430,11 @@ describe('VEIL API (e2e)', () => {
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearerA)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'application/octet-stream',
+        sizeBytes: 1024,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(upload.status).toBe(201);
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
       sizeBytes: 1024,
@@ -456,9 +462,7 @@ describe('VEIL API (e2e)', () => {
       .send({ deviceId: registerA.body.deviceId });
     expect(revoked.status).toBe(201);
 
-    const revokedBearer = await api
-      .get('/v1/conversations')
-      .set('Authorization', bearerA);
+    const revokedBearer = await api.get('/v1/conversations').set('Authorization', bearerA);
     expect(revokedBearer.status).toBe(401);
     expect(revokedBearer.body.code).toBe('device_not_active');
   });
@@ -494,14 +498,22 @@ describe('VEIL API (e2e)', () => {
     const rejectedMime = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'text/plain', sizeBytes: 128, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'text/plain',
+        sizeBytes: 128,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(rejectedMime.status).toBe(400);
     expect(rejectedMime.body.code).toBe('attachment_upload_invalid');
 
     const upload = await api
       .post('/v1/attachments/upload-ticket')
       .set('Authorization', bearer)
-      .send({ contentType: 'application/octet-stream', sizeBytes: 1024, sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' });
+      .send({
+        contentType: 'application/octet-stream',
+        sizeBytes: 1024,
+        sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      });
     expect(upload.status).toBe(201);
 
     attachmentStorage.recordUploaded(upload.body.upload.storageKey, {
@@ -756,9 +768,7 @@ describe('VEIL API (e2e)', () => {
       .send({});
     expect(markRead.status).toBe(201);
     const emittedReadCountAfterFirstRead = realtime.emitted.filter(
-      (event) =>
-        event.event === 'message.read' &&
-        event.userId === registerA.body.userId,
+      (event) => event.event === 'message.read' && event.userId === registerA.body.userId,
     ).length;
 
     const repeatedMarkRead = await api
@@ -768,9 +778,7 @@ describe('VEIL API (e2e)', () => {
     expect(repeatedMarkRead.status).toBe(201);
     expect(
       realtime.emitted.filter(
-        (event) =>
-          event.event === 'message.read' &&
-          event.userId === registerA.body.userId,
+        (event) => event.event === 'message.read' && event.userId === registerA.body.userId,
       ).length,
     ).toBe(emittedReadCountAfterFirstRead);
 
@@ -800,10 +808,14 @@ describe('VEIL API (e2e)', () => {
     const keyPairA = keyHelper.createKeyPair();
     const keyPairB = keyHelper.createKeyPair();
 
-    const auth = async (handle: string, deviceId: string, kp: {
-      authPublicKey: string;
-      authPrivateKey: string;
-    }): Promise<string> => {
+    const auth = async (
+      handle: string,
+      deviceId: string,
+      kp: {
+        authPublicKey: string;
+        authPrivateKey: string;
+      },
+    ): Promise<string> => {
       const ch = await api.post('/v1/auth/challenge').send({ handle, deviceId });
       const signature = keyHelper.createProof({
         challenge: ch.body.challenge,
@@ -873,14 +885,11 @@ describe('VEIL API (e2e)', () => {
     expect(sent.body.message.editCount ?? 0).toBe(0);
 
     // Edit by the original sender succeeds.
-    const edited = await api
-      .patch(`/v1/messages/${messageId}`)
-      .set('Authorization', bearerA)
-      .send({
-        ciphertext: 'cipher-edited',
-        nonce: 'nonce-edited',
-        version: 'veil-envelope-v1-dev',
-      });
+    const edited = await api.patch(`/v1/messages/${messageId}`).set('Authorization', bearerA).send({
+      ciphertext: 'cipher-edited',
+      nonce: 'nonce-edited',
+      version: 'veil-envelope-v1-dev',
+    });
     expect(edited.status).toBe(200);
     expect(edited.body.message.ciphertext).toBe('cipher-edited');
     expect(edited.body.message.nonce).toBe('nonce-edited');
@@ -908,17 +917,13 @@ describe('VEIL API (e2e)', () => {
     expect(editAsPeer.body.code).toBe('message_not_owned');
 
     // Delete by the sender soft-deletes the row.
-    const deleted = await api
-      .delete(`/v1/messages/${messageId}`)
-      .set('Authorization', bearerA);
+    const deleted = await api.delete(`/v1/messages/${messageId}`).set('Authorization', bearerA);
     expect(deleted.status).toBe(200);
     expect(deleted.body.messageId).toBe(messageId);
     expect(deleted.body.deletedAt).toBeTruthy();
 
     // Idempotent retry: same deletedAt, no errors.
-    const deleted2 = await api
-      .delete(`/v1/messages/${messageId}`)
-      .set('Authorization', bearerA);
+    const deleted2 = await api.delete(`/v1/messages/${messageId}`).set('Authorization', bearerA);
     expect(deleted2.status).toBe(200);
     expect(deleted2.body.deletedAt).toBe(deleted.body.deletedAt);
 
@@ -939,9 +944,7 @@ describe('VEIL API (e2e)', () => {
       .get(`/v1/conversations/${conversationId}/messages?limit=10`)
       .set('Authorization', bearerB);
     expect(listing.status).toBe(200);
-    const tombstone = listing.body.items.find(
-      (item: { id: string }) => item.id === messageId,
-    );
+    const tombstone = listing.body.items.find((item: { id: string }) => item.id === messageId);
     expect(tombstone).toBeDefined();
     expect(tombstone.deletedAt).toBeTruthy();
     expect(tombstone.ciphertext).toBe('deleted');
@@ -960,10 +963,14 @@ describe('VEIL API (e2e)', () => {
     const keyPairA = keyHelper.createKeyPair();
     const keyPairB = keyHelper.createKeyPair();
 
-    const auth = async (handle: string, deviceId: string, kp: {
-      authPublicKey: string;
-      authPrivateKey: string;
-    }): Promise<string> => {
+    const auth = async (
+      handle: string,
+      deviceId: string,
+      kp: {
+        authPublicKey: string;
+        authPrivateKey: string;
+      },
+    ): Promise<string> => {
       const ch = await api.post('/v1/auth/challenge').send({ handle, deviceId });
       const signature = keyHelper.createProof({
         challenge: ch.body.challenge,

@@ -110,7 +110,11 @@ function build() {
   const alice = party('alice', 0x11, '00000000-0000-4000-8000-00000000000a');
   const bob = party('bob', 0x22, '00000000-0000-4000-8000-00000000000b');
   // The alice identity is the bundle-v2 vector's identity (contract C1).
-  assertEq('alice identity key', b64u(alice.identityKey), '0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc');
+  assertEq(
+    'alice identity key',
+    b64u(alice.identityKey),
+    '0EqyMnQrtKs6E2i9RhXk5tAiSrcaAWuvhSCjMsl3hzc',
+  );
 
   const number = safetyNumber(alice.fingerprint, bob.fingerprint);
   const formatted = number.match(/\d{5}/g).join(' ');
@@ -181,7 +185,9 @@ if (CHECK) {
   // The generator string carries the Node version, which legitimately varies.
   const strip = ({ generator, ...rest }) => stableStringify(rest);
   if (strip(JSON.parse(fs.readFileSync(OUT, 'utf8'))) !== strip(generated)) {
-    console.error('safety-number-v2: committed vectors do NOT reproduce. Regenerate and review the diff.');
+    console.error(
+      'safety-number-v2: committed vectors do NOT reproduce. Regenerate and review the diff.',
+    );
     process.exit(1);
   }
   console.log('safety-number-v2: committed vectors reproduce exactly.');

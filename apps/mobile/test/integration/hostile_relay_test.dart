@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/bytes.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
@@ -9,6 +12,7 @@ import 'package:veil_mobile/src/core/crypto/ratchet/session_record.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
 
 import '../support/async_wait.dart';
@@ -553,6 +557,86 @@ void main() {
     expect(restored.previousKey, change.previousKey);
     await bob.controller.declineIdentityChange(conv, reviewed: restored);
     expect(bob.controller.pendingIdentityChangeFor(conv), isNull);
+  });
+
+  // Leaves bob with one declined forged key and, after it, a second forged
+  // key pending in the 1:1; returns both forgers.
+  Future<({InjectedDevice declined, InjectedDevice pending})> declineOneAndHoldAnother() async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final declined = await InjectedDevice.mint(alice.device.deviceId, owner: alice);
+    expect((await openRelayed(bob, await declined.handshake(relay, bob, 'trust me', conversationId: conv))).status,
+        DecryptStatus.identityRejected);
+    await bob.controller.declineIdentityChange(conv, reviewed: bob.controller.pendingIdentityChangeFor(conv)!);
+    final pending = await InjectedDevice.mint(alice.device.deviceId, owner: alice);
+    expect((await openRelayed(bob, await pending.handshake(relay, bob, 'no, me', conversationId: conv))).status,
+        DecryptStatus.identityRejected);
+    expect(bob.controller.pendingIdentityChangeFor(conv)!.presentedKey, pending.identityKey);
+    return (declined: declined, pending: pending);
+  }
+
+  // What every restart must leave: the second key still pending, the
+  // declined one refused without being raised again, replies on alice.
+  Future<void> expectDecisionsKept(({InjectedDevice declined, InjectedDevice pending}) forgers, String label) async {
+    expect(bob.controller.pendingIdentityChangeFor(conv)?.presentedKey, forgers.pending.identityKey,
+        reason: 'the pending change was dropped ($label)');
+    final again = await forgers.declined.send(relay, bob, 'trust me ($label)', conversationId: conv);
+    expect((await openRelayed(bob, again)).status, DecryptStatus.identityRejected);
+    expect(bob.controller.pendingIdentityChangeFor(conv)?.presentedKey, forgers.pending.identityKey,
+        reason: 'the declined key was raised again ($label)');
+    await deliver(bob, alice, 'still you ($label)');
+  }
+
+  // Every sign-in used to delete the stored decisions. They lasted one
+  // restart only because this harness read them back before the delete
+  // landed; the app, whose trust layer prepares once its database opened,
+  // lost them at the first.
+  test('a decline and a pending change outlive every restart', () async {
+    final forgers = await declineOneAndHoldAnother();
+    final store = bob.keystore.scoped(SecureScope.identity);
+
+    for (final label in ['first restart', 'second restart', 'third restart']) {
+      await bob.restart();
+      // The chat shows the restored change without a refusal asking first.
+      await waitFor(() => bob.controller.pendingIdentityChangeFor(conv) != null,
+          reason: 'the pending change was not read back ($label)');
+      expect(await store.read(IdentityTrust.decisionsKey), isNotNull, reason: 'signing in deleted the record');
+      await expectDecisionsKept(forgers, label);
+    }
+  });
+
+  test('decisions outlive restarts when the trust layer prepares only after sign-in, as in the app', () async {
+    final forgers = await declineOneAndHoldAnother();
+
+    for (final label in ['first restart', 'second restart']) {
+      // The trust layer waits for the database, as migrateLegacyTrust does,
+      // until the sign-in has applied the session.
+      final databaseOpened = Completer<void>();
+      bob.trustPreparation = () => databaseOpened.future;
+      final restarting = bob.restart();
+      await settle();
+      databaseOpened.complete();
+      await restarting;
+      await bob.trust.ready;
+      await expectDecisionsKept(forgers, label);
+    }
+  });
+
+  test('signing out forgets the decisions; signing in again does not bring them back', () async {
+    final forgers = await declineOneAndHoldAnother();
+    final store = bob.keystore.scoped(SecureScope.identity);
+
+    await bob.controller.applySession(const AppSessionState(locked: false, initializing: false));
+    expect(await store.read(IdentityTrust.decisionsKey), isNull);
+    expect(bob.controller.pendingIdentityChangeFor(conv), isNull);
+
+    await bob.signIn();
+    await bob.trust.ready;
+    expect(bob.controller.pendingIdentityChangeFor(conv), isNull);
+    // The decline went with them: the key is asked about again.
+    final again = await forgers.declined.send(relay, bob, 'trust me after sign-out', conversationId: conv);
+    expect((await openRelayed(bob, again)).status, DecryptStatus.identityRejected);
+    expect(bob.controller.pendingIdentityChangeFor(conv)?.presentedKey, forgers.declined.identityKey);
   });
 
   test('the identity the session sends to cannot be declined', () async {

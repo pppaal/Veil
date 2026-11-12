@@ -115,6 +115,11 @@ class MessengerParty {
   late VeilMessengerController controller;
   int _tokenGeneration = 0;
 
+  /// What the next boot's trust layer runs before it reads anything back,
+  /// as the app migrates earlier pins once its database opened. A test that
+  /// holds it back sees the trust layer prepare only after sign-in.
+  Future<void> Function()? trustPreparation;
+
   // Bound when the party boots, so a later device move for the same handle
   // leaves this device talking to its own (now silent) socket and client.
   late final FakeRelayClient api = relay.clientFor(device.handle);
@@ -181,7 +186,7 @@ class MessengerParty {
     );
     final api = this.api;
     final keys = KeysApi(api, crypto.keyBundles);
-    trust = IdentityTrust(pins, decisions: keystore.scoped(SecureScope.identity));
+    trust = IdentityTrust(pins, decisions: keystore.scoped(SecureScope.identity), prepare: trustPreparation);
     groupCrypto = GroupSenderKeyCoordinator(
       engine: GroupSenderKeyEngine(),
       sealer: GroupSenderKeySealer(resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519),

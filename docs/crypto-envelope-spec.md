@@ -472,12 +472,17 @@ shown, like an approval. The declined `(userId, deviceId, IKed)` is persisted
 (mobile: the keystore beside the pins; web: IndexedDB) and refused from then
 on, in every conversation, without being raised again until the user accepts
 or verifies that same key. Pending changes are persisted too, so a restart
-neither drops a pending change nor forgets a decline. The identity the
+neither drops a pending change nor forgets a decline. Applying a session
+(each launch, each sign-in) only forgets what the client holds in memory and
+reads the record back; it never deletes the record. A restored pending change
+is shown without waiting for the next refusal. The identity the
 conversation's current session sends to cannot be declined: there would be no
 current key to keep, so the user compares that one instead (or starts a new
 session to the device the directory serves). A declined key's frames stay
 unreadable and are labelled as refused, and sending continues on the admitted
-session identity. Sign-out forgets pending and declined changes.
+session identity. Only sign-out and the device wipe delete the record: they
+forget pending and declined changes, and the record is not read back before
+its deletion completes.
 In a Sender Keys group the refused device is not sealed to and its
 distributions are not installed; the rest of the group proceeds. A chain key
 is sealed once to each trusted device, and the sender records delivery per

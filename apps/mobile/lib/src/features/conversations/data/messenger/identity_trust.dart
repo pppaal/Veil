@@ -110,9 +110,10 @@ final class IdentityChangeResolved extends IdentityTrustEvent {
 /// not even by a plain approval.
 class IdentityTrust {
   /// [prepare] fills the pin table with what earlier builds knew (see
-  /// migrateLegacyTrust); it starts at once. [decisions] keeps pending and
-  /// declined changes across restarts, in the keystore beside the pins;
-  /// without it they last for the process.
+  /// migrateLegacyTrust); it starts at once and runs once. [decisions] keeps
+  /// pending and declined changes across restarts, in the keystore beside
+  /// the pins; without it they last for the process. Only [forgetDecisions]
+  /// (sign-out) and the device wipe remove the stored record.
   IdentityTrust(this.resolver, {Future<void> Function()? prepare, IdentityKeyValueBackend? decisions})
       : _prepare = prepare,
         _decisions = decisions {
@@ -126,7 +127,20 @@ class IdentityTrust {
   final TrustedIdentityResolver resolver;
   final Future<void> Function()? _prepare;
   final IdentityKeyValueBackend? _decisions;
+  // The pin table preparation, shared by every generation: the pins stay
+  // with the device whoever signs in. Forgotten only when it failed.
+  Future<void>? _pinsPrepared;
+  // This generation's preparation: the pins, then the record read back.
   Future<void>? _preparing;
+  // Advanced by [reset]: a record an earlier generation is still reading is
+  // not applied over what this one holds.
+  int _generation = 0;
+  // Whether this generation read the record back, so that memory holds what
+  // is stored and writing it out keeps every decision.
+  bool _loaded = false;
+  // The delete [forgetDecisions] started; nothing reads the record before
+  // it landed, since the keystore does not order a read after a delete.
+  Future<void>? _forgetting;
   final Map<String, PendingIdentityChange> _pending = {};
   // Identities the user declined, by userId/deviceId/key: refused from then
   // on without asking again.
@@ -140,7 +154,14 @@ class IdentityTrust {
   /// fails: deciding without what earlier builds knew would pin whatever key
   /// arrives first. A failed preparation is tried again by the next caller,
   /// so a cache that opens late holds decisions back only until it does.
-  Future<void> get ready => _preparing ??= _attemptPreparation();
+  /// After a [reset] it completes only once the record was read again.
+  Future<void> get ready async {
+    while (true) {
+      final generation = _generation;
+      await (_preparing ??= _attemptPreparation(generation));
+      if (generation == _generation) return;
+    }
+  }
 
   Stream<IdentityTrustEvent> get events => _events.stream;
 
@@ -310,34 +331,72 @@ class IdentityTrust {
     return settled;
   }
 
-  /// Forgets pending and declined changes, kept ones included (sign-out);
-  /// pins stay with the device.
-  Future<void> clearPending() async {
+  /// Forgets what was read for the previous session (a sign-in or another
+  /// identity): pending and declined changes leave memory, and the next
+  /// [ready] reads them back from the keystore. The stored record stays:
+  /// signing in, like a restart, neither drops a pending change nor forgets
+  /// a decline.
+  void reset() {
+    _generation += 1;
+    _preparing = null;
+    _loaded = false;
     _pending.clear();
     _declined.clear();
     _decisionsChanged = false;
-    await _decisions?.delete(decisionsKey);
+  }
+
+  /// Forgets pending and declined changes, the stored record included
+  /// (sign-out); pins stay with the device until it is wiped. Completes once
+  /// the record is gone; the next [ready] reads only after that.
+  Future<void> forgetDecisions() {
+    reset();
+    return _forgetting = Future<void>.sync(() => _decisions?.delete(decisionsKey));
   }
 
   Future<void> dispose() => _events.close();
 
-  Future<void> _attemptPreparation() async {
+  Future<void> _attemptPreparation(int generation) async {
     try {
-      // Through a future, so that even a preparation that throws at once is
-      // forgotten only after [ready] has recorded this attempt.
-      await Future<void>.sync(() => _prepare?.call());
-      await _loadDecisions();
+      await _preparePins();
+      final forgetting = _forgetting;
+      if (forgetting != null) {
+        try {
+          await forgetting;
+        } catch (_) {
+          // [forgetDecisions] reported it; a record it could not delete is
+          // still what is stored, and is read back as such.
+        }
+      }
+      await _loadDecisions(generation);
     } catch (_) {
-      _preparing = null;
+      // Only this generation's attempt is forgotten: a newer one may be in
+      // flight already.
+      if (generation == _generation) _preparing = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _preparePins() async {
+    // Through a future, so that even a preparation that throws at once is
+    // forgotten only after it was recorded as this attempt.
+    final preparing = _pinsPrepared ??= Future<void>.sync(() => _prepare?.call());
+    try {
+      await preparing;
+    } catch (_) {
+      if (identical(_pinsPrepared, preparing)) _pinsPrepared = null;
       rethrow;
     }
   }
 
   // A record that does not read is dropped rather than holding every
   // decision back: a change still pending is raised again by the next
-  // refusal, and a forgotten decline only asks again.
-  Future<void> _loadDecisions() async {
+  // refusal, and a forgotten decline only asks again. A decision made while
+  // the record was being read (one that straddled a [reset]) is kept over
+  // the stored change for its conversation.
+  Future<void> _loadDecisions(int generation) async {
     final raw = await _decisions?.read(decisionsKey);
+    if (generation != _generation) return;
+    _loaded = true;
     if (raw == null) return;
     final List<PendingIdentityChange> pending;
     final List<_DeclinedIdentity> declined;
@@ -363,6 +422,13 @@ class IdentityTrust {
 
   Future<void> _saveDecisionsIfChanged() async {
     if (!_decisionsChanged) return;
+    // A decision that straddled a [reset] was made before this generation
+    // read the record back: writing memory out now would overwrite every
+    // decision stored. It is merged with the record first.
+    if (!_loaded) {
+      await ready;
+      if (!_decisionsChanged) return;
+    }
     _decisionsChanged = false;
     await _decisions?.write(
       decisionsKey,

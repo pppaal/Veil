@@ -251,6 +251,10 @@ class VeilMessengerController extends ChangeNotifier {
         _realtimeService.disconnect();
         _realtimeConnected = false;
         _forgetIdentityCaches();
+        // Signing out forgets the identity changes the user has not decided
+        // and the ones declined, the stored record included. Nothing else
+        // deletes it: a sign-in only reads it back.
+        final forgettingDecisions = _trust.forgetDecisions();
         for (final signal in _activeUploadSignals.values) {
           signal.cancel();
         }
@@ -272,11 +276,13 @@ class VeilMessengerController extends ChangeNotifier {
         _sessionsRestored = false;
         _groupCrypto?.clearInMemory();
         notifyListeners();
+        await forgettingDecisions;
         return;
       case SessionChange.identityChanged:
         _realtimeService.disconnect();
         _realtimeConnected = false;
         _forgetIdentityCaches();
+        unawaited(_readBackIdentityDecisions());
     }
 
     // Rehydrate persisted Double Ratchet state before any encrypt/decrypt
@@ -311,7 +317,8 @@ class VeilMessengerController extends ChangeNotifier {
   void _forgetIdentityCaches() {
     _contents.reset();
     _reactions.clear();
-    unawaited(_trust.clearPending());
+    // What was read for the previous session; the stored record stays.
+    _trust.reset();
     _envelopeVersions.reset();
     _peerBindings.reset();
     _handshakeIdentities.clear();
@@ -319,6 +326,19 @@ class VeilMessengerController extends ChangeNotifier {
     _directoryRecheck.clear();
     _unlistedInboundSessions.clear();
     _lastContents.clear();
+  }
+
+  // Reads the pending and declined identity changes back for the session
+  // just applied, so a chat a restart left with a pending change shows it
+  // without waiting for the next refusal. A trust layer that cannot prepare
+  // yet (the cache opens late) is read by the next decision instead.
+  Future<void> _readBackIdentityDecisions() async {
+    try {
+      await _trust.ready;
+    } catch (_) {
+      return;
+    }
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> handleAppResumed() async {

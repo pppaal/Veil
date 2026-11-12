@@ -181,7 +181,7 @@ class MessengerParty {
     );
     final api = this.api;
     final keys = KeysApi(api, crypto.keyBundles);
-    trust = IdentityTrust(pins);
+    trust = IdentityTrust(pins, decisions: keystore.scoped(SecureScope.identity));
     groupCrypto = GroupSenderKeyCoordinator(
       engine: GroupSenderKeyEngine(),
       sealer: GroupSenderKeySealer(resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519),

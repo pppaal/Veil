@@ -528,5 +528,52 @@ void main() {
     await deliver(bob, alice, 'still you');
     expect((await bob.pins.pinFor(alice.device.userId, alice.device.deviceId))!.identityKey,
         alice.device.identity.identityPublicKey);
+
+    // The decline outlives the app.
+    await bob.restart();
+    final afterRestart = await forger.send(relay, bob, 'trust me after the restart', conversationId: conv);
+    expect((await openRelayed(bob, afterRestart)).status, DecryptStatus.identityRejected);
+    expect(bob.controller.pendingIdentityChangeFor(conv), isNull);
+    await deliver(bob, alice, 'still you after the restart');
+  });
+
+  test('a pending identity change outlives the app', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final forger = await InjectedDevice.mint(alice.device.deviceId, owner: alice);
+    expect((await openRelayed(bob, await forger.handshake(relay, bob, 'trust me', conversationId: conv))).status,
+        DecryptStatus.identityRejected);
+    final change = bob.controller.pendingIdentityChangeFor(conv)!;
+
+    await bob.restart();
+    await bob.trust.ready;
+
+    final restored = bob.controller.pendingIdentityChangeFor(conv)!;
+    expect(restored.presents(change.userId, change.deviceId, change.presentedKey), isTrue);
+    expect(restored.previousKey, change.previousKey);
+    await bob.controller.declineIdentityChange(conv, reviewed: restored);
+    expect(bob.controller.pendingIdentityChangeFor(conv), isNull);
+  });
+
+  test('the identity the session sends to cannot be declined', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    // A device admitted while bob was unverified takes the session; then
+    // alice verifies dev-bob elsewhere, which holds the device back.
+    final ghost = await InjectedDevice.mint('dev-ghost', owner: bob);
+    expect((await openRelayed(alice, await ghost.handshake(relay, alice, 'ghost hello', conversationId: conv))).status,
+        DecryptStatus.ok);
+    relay.bundleOverrides['bob'] = ghost.bundleJson;
+    await alice.controller.sendText(conversationId: conv, body: 'to the ghost while bob is unverified');
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the send was not acked');
+    await alice.pins.markVerified('user-bob', 'dev-bob', bob.device.identity.identityPublicKey);
+    await alice.controller.sendText(conversationId: conv, body: 'held back');
+    await settle();
+    final held = alice.controller.pendingIdentityChangeFor(conv)!;
+    expect(held.deviceId, 'dev-ghost');
+
+    expect(alice.controller.mayDeclineIdentityChange(conv), isFalse);
+    await expectLater(alice.controller.declineIdentityChange(conv, reviewed: held), throwsStateError);
+    expect(alice.controller.pendingIdentityChangeFor(conv), same(held));
   });
 }

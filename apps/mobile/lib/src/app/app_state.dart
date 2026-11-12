@@ -117,7 +117,8 @@ final keysApiProvider = Provider<KeysApi>((ref) {
   return KeysApi(ref.read(apiClientProvider), ref.read(cryptoAdapterProvider).keyBundles);
 });
 
-/// Contact identity pins, kept in the keystore and wiped with the device.
+/// Contact identity pins, and the identity changes the user has not decided
+/// yet or declined, kept in the keystore and wiped with the device.
 /// What earlier builds knew is migrated in before any decision is made,
 /// reading the cache directly: the messenger decrypts and looks keys up as
 /// soon as it applies a session. A cache that cannot be read fails the
@@ -128,6 +129,7 @@ final identityTrustProvider = Provider<IdentityTrust>((ref) {
   final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(storage.scoped(SecureScope.identity)));
   final trust = IdentityTrust(
     resolver,
+    decisions: storage.scoped(SecureScope.identity),
     prepare: () => migrateLegacyTrust(
       storage: storage,
       resolver: resolver,

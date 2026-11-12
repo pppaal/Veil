@@ -144,6 +144,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       number: await numberFor(pin?.identityKey),
       pendingChange: change,
       pendingNumber: await numberFor(change?.presentedKey),
+      mayDecline: change != null && messenger.mayDeclineIdentityChange(conversation.id),
       directory: served == null || pin == null
           ? null
           : served.deviceId != pin.deviceId
@@ -188,7 +189,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<void> _markVerified(_DetailData data) async {
     VeilHaptics.medium();
     final pin = data.pin!;
-    await ref.read(identityTrustProvider).resolver.markVerified(pin.userId, pin.deviceId, pin.identityKey);
+    await ref.read(identityTrustProvider).markVerified(pin.userId, pin.deviceId, pin.identityKey);
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
@@ -598,14 +599,18 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           label: l10n.safetyNumbersAcceptNewKey,
           onPressed: _scanMismatch ? null : () => _acceptChange(change, reverified: false),
         ),
-      const SizedBox(height: VeilSpace.sm),
       // Accepting is never the only way out of a change the relay may have
-      // forged: the user can keep what was pinned.
-      VeilButton(
-        label: l10n.safetyNumbersKeepCurrentKey,
-        tone: VeilButtonTone.secondary,
-        onPressed: () => _declineChange(change),
-      ),
+      // forged: the user can keep what was pinned. Not when the change is
+      // about the identity the session already sends to, though: there is
+      // no current key to keep in its place.
+      if (data.mayDecline) ...[
+        const SizedBox(height: VeilSpace.sm),
+        VeilButton(
+          label: l10n.safetyNumbersKeepCurrentKey,
+          tone: VeilButtonTone.secondary,
+          onPressed: () => _declineChange(change),
+        ),
+      ],
     ];
   }
 
@@ -817,6 +822,7 @@ class _DetailData extends _SafetyNumbersViewData {
     required this.number,
     required this.pendingChange,
     required this.pendingNumber,
+    required this.mayDecline,
     required this.directory,
     required this.isDirect,
   });
@@ -832,6 +838,9 @@ class _DetailData extends _SafetyNumbersViewData {
   /// The identity this conversation is held back on, and its number.
   final PendingIdentityChange? pendingChange;
   final String? pendingNumber;
+
+  /// Whether the user may keep the pinned identity instead of [pendingChange].
+  final bool mayDecline;
 
   /// How the directory's answer compares with [pin]; null when either is
   /// unknown.

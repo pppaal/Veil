@@ -311,7 +311,7 @@ class VeilMessengerController extends ChangeNotifier {
   void _forgetIdentityCaches() {
     _contents.reset();
     _reactions.clear();
-    _trust.clearPending();
+    unawaited(_trust.clearPending());
     _envelopeVersions.reset();
     _peerBindings.reset();
     _handshakeIdentities.clear();
@@ -561,18 +561,44 @@ class VeilMessengerController extends ChangeNotifier {
     await retryPendingMessages(conversationId);
   }
 
+  /// Whether the user may keep the current identity instead of the change
+  /// pending in [conversationId] (see [declineIdentityChange]).
+  bool mayDeclineIdentityChange(String conversationId) {
+    final change = _trust.pendingFor(conversationId);
+    return change != null && !_presentsSessionIdentity(conversationId, change);
+  }
+
   /// Keeps the identity the pins hold instead of the change pending in
   /// [conversationId], [reviewed] being the change the user was shown; its
   /// key is refused from then on without asking again (see
   /// IdentityTrust.decline). Messages it held back go out on the
-  /// conversation's current session.
+  /// conversation's current session. Throws [StateError] when [reviewed]
+  /// presents the identity that session sends to: there is no current key
+  /// to keep in its place.
   Future<void> declineIdentityChange(String conversationId, {required PendingIdentityChange reviewed}) async {
-    for (final settled in _trust.decline(conversationId, reviewed: reviewed)) {
+    if (_presentsSessionIdentity(conversationId, reviewed)) {
+      throw StateError('The safety number this conversation sends to cannot be declined. Verify it instead.');
+    }
+    for (final settled in await _trust.decline(conversationId, reviewed: reviewed)) {
       // The directory may still serve the declined key; asking it again
       // would only refuse every send.
       _directoryRecheck.remove(settled);
       await retryPendingMessages(settled);
     }
+  }
+
+  // Whether [change] presents the identity the session of the 1:1
+  // [conversationId] sends to: the bundle a steady-state send seals to,
+  // which the engine binds its sending state to.
+  bool _presentsSessionIdentity(String conversationId, PendingIdentityChange change) {
+    final conversation = conversationById(conversationId);
+    if (conversation == null ||
+        conversation.type != ConversationType.direct ||
+        !_sessionBootstrapper.hasSessionFor(conversationId)) {
+      return false;
+    }
+    final bundle = conversation.recipientBundle;
+    return bundle.deviceId == change.deviceId && sameIdentityKey(bundle.identityPublicKey, change.presentedKey);
   }
 
   /// Decides whether a peer identity may be used in a 1:1 conversation

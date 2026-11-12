@@ -45,6 +45,16 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     super.initState();
     final session = ref.read(appSessionProvider);
     _mode = session.isAuthenticated ? _TransferMode.oldDevice : _TransferMode.newDevice;
+    // A claim this device made before the app stopped is completed from
+    // where it was, never claimed again: a second claim ends the session.
+    final pending = ref.read(appSessionProvider.notifier).pendingTransfer;
+    if (!session.isAuthenticated && pending != null) {
+      _sessionIdController.text = pending.sessionId;
+      _tokenController.text = pending.transferToken;
+      _claimId = pending.claimId;
+      _claimFingerprint = pending.claimantFingerprint;
+      _claimExpiresAt = pending.expiresAt;
+    }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() {
@@ -314,7 +324,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       });
       return;
     }
-    if (_isExpired(_claimExpiresAt)) {
+    // A transfer the relay already committed only needs its login redone,
+    // however long ago the claim was made.
+    final committed = ref.read(appSessionProvider.notifier).pendingTransfer?.isCompleted ?? false;
+    if (!committed && _isExpired(_claimExpiresAt)) {
       setState(() {
         _completionError = l10n.deviceTransferClaimExpiredRegisterFresh;
         _completionMessage = null;

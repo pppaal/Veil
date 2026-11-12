@@ -781,6 +781,8 @@ void main() {
       await settle();
       expect(alice.controller.messagesFor('conv-ac').any((m) => m.id == moved['id']), isFalse);
       expect(await alice.bodies('conv-ac'), isNot(contains('bob fresh secret')));
+      // Nor does the conversation list show it as carol's latest words.
+      expect(alice.controller.lastMessagePreviewFor('conv-ac'), 'carol here');
 
       // Listed where it belongs, it opens there: nothing was spent on it.
       relay.conversations['conv-ac']!.messages.remove(moved);

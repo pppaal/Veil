@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -6,7 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/veil_config.dart';
 import '../../core/crypto/crypto_engine.dart';
 import '../../core/errors/user_facing_error.dart';
+import '../../core/network/http_transport.dart' show TransportErrorCode;
 import '../../core/network/veil_api_client.dart';
+import '../../core/security/device_step_up.dart';
 import '../../core/storage/conversation_cache_service.dart';
 import '../../core/storage/secure_storage_service.dart';
 import '../../features/attachments/data/attachment_temp_file_store.dart';
@@ -20,9 +23,13 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     ConversationCacheService? cacheService,
     AttachmentTempFileStore? attachmentTempFileStore,
     VoidCallback? onLocalCacheMaterialChanged,
+    Duration transferRetryDelay = const Duration(seconds: 2),
+    Duration transferApprovalWait = const Duration(minutes: 2),
   })  : _cacheService = cacheService,
         _attachmentTempFileStore = attachmentTempFileStore,
         _onLocalCacheMaterialChanged = onLocalCacheMaterialChanged,
+        _transferRetryDelay = transferRetryDelay,
+        _transferApprovalWait = transferApprovalWait,
         super(const AppSessionState());
 
   final SecureStorageService _storage;
@@ -31,11 +38,25 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   final ConversationCacheService? _cacheService;
   final AttachmentTempFileStore? _attachmentTempFileStore;
   final VoidCallback? _onLocalCacheMaterialChanged;
-  DeviceIdentityMaterial? _pendingTransferIdentity;
-  DeviceAuthKeyMaterial? _pendingTransferAuthKey;
-  String? _pendingTransferSessionId;
-  String? _pendingTransferToken;
-  String? _pendingTransferClaimId;
+  final Duration _transferRetryDelay;
+  final Duration _transferApprovalWait;
+  late final DeviceStepUp _stepUp = DeviceStepUp(
+    storage: _storage,
+    signer: _cryptoAdapter.deviceAuth,
+    apiClient: _apiClient,
+  );
+
+  // The transfer this new device claimed, mirrored in the keystore from the
+  // moment the relay accepted the claim until the first login on the new
+  // device succeeded (see PendingTransferRecord).
+  PendingTransferRecord? _pendingTransfer;
+
+  /// The claim this device made and has not finished, also after the app was
+  /// stopped, so the transfer screen can offer to complete it.
+  PendingTransferRecord? get pendingTransfer => _pendingTransfer;
+
+  // Attempts of /device-transfer/complete through network failures and 5xx.
+  static const _maxTransientTransferAttempts = 3;
 
   Future<void> bootstrap() async {
     final runtimeConfigurationError = VeilConfig.runtimeConfigurationError;
@@ -64,6 +85,15 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       locked: session != null,
       initializing: false,
     );
+
+    if (session == null) {
+      _pendingTransfer = await _storage.readPendingTransfer();
+      // The relay already moved the account to this device's keys: finish
+      // the login it was waiting for when the app stopped.
+      if (_pendingTransfer?.isCompleted ?? false) {
+        unawaited(resumeCompletedTransfer().catchError((Object _) {}));
+      }
+    }
   }
 
   Future<void> acceptOnboarding() async {
@@ -173,21 +203,30 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     state = state.copyWith(locked: false);
   }
 
+  /// Revokes this device, signed with its auth key (C-PROOF). Local state
+  /// is wiped only once the relay revoked it (or already had): wiping a
+  /// device the relay still counts as active would leave the account with
+  /// an active device nobody holds, and there is no recovery.
   Future<void> revokeCurrentDevice() async {
     final accessToken = state.accessToken;
     final deviceId = state.deviceId;
-    if (accessToken == null || deviceId == null) {
+    final handle = state.handle;
+    if (accessToken == null || deviceId == null || handle == null) {
       return;
     }
 
-    try {
-      await _apiClient.revokeDevice(accessToken, deviceId);
-    } finally {
-      await _clearLocalState(
-        preserveOnboardingAccepted: true,
-        preservePin: false,
+    await _keepLocalStateUnlessDone(() async {
+      final proof = await _stepUp.proof(
+        handle: handle,
+        deviceId: deviceId,
+        purpose: DeviceStepUpPurpose.deviceRevoke(deviceId),
       );
-    }
+      await _apiClient.revokeDevice(accessToken, deviceId, proof: proof);
+    });
+    await _clearLocalState(
+      preserveOnboardingAccepted: true,
+      preservePin: false,
+    );
   }
 
   Future<void> revokeListedDevice(String deviceId) async {
@@ -205,19 +244,46 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     await _apiClient.revokeDevice(accessToken, deviceId);
   }
 
+  /// Deletes the account, signed with this device's auth key (C-PROOF).
+  /// Local state is wiped only once the relay deleted it: a refused or
+  /// unanswered request leaves the account alive, and this device is the
+  /// only way back into it.
   Future<void> deleteAccount() async {
     final accessToken = state.accessToken;
-    if (accessToken == null) {
+    final deviceId = state.deviceId;
+    final handle = state.handle;
+    if (accessToken == null || deviceId == null || handle == null) {
       return;
     }
 
-    try {
-      await _apiClient.deleteAccount(accessToken);
-    } finally {
-      await _clearLocalState(
-        preserveOnboardingAccepted: false,
-        preservePin: false,
+    await _keepLocalStateUnlessDone(() async {
+      final proof = await _stepUp.proof(
+        handle: handle,
+        deviceId: deviceId,
+        purpose: DeviceStepUpPurpose.accountDelete,
       );
+      await _apiClient.deleteAccount(accessToken, proof: proof);
+    });
+    await _clearLocalState(
+      preserveOnboardingAccepted: false,
+      preservePin: false,
+    );
+  }
+
+  // Runs an irreversible request. When it fails the device keeps its state,
+  // unless the relay says the device is no longer active (which wipes it, as
+  // everywhere), and the error is rethrown for the screen to show.
+  Future<void> _keepLocalStateUnlessDone(
+    Future<void> Function() request,
+  ) async {
+    try {
+      await request();
+    } catch (error) {
+      final handled = await handleSecurityException(error);
+      if (!handled) {
+        state = state.copyWith(errorMessage: formatUserFacingError(error));
+      }
+      rethrow;
     }
   }
 
@@ -284,18 +350,9 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       return true;
     }
 
-    if (code == 'transfer_session_inactive' ||
-        code == 'transfer_token_invalid' ||
-        code == 'transfer_claim_required' ||
-        code == 'transfer_approval_required' ||
-        code == 'transfer_completion_invalid') {
-      _clearPendingTransferClaim();
-      state = state.copyWith(
-        errorMessage: formatUserFacingError(error),
-      );
-      return false;
-    }
-
+    // A transfer refusal never drops the claimed keys: once the relay has
+    // committed the transfer they are the only keys the account trusts. The
+    // next claim replaces them.
     return false;
   }
 
@@ -310,7 +367,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     await _cacheService?.clearAll();
     await _attachmentTempFileStore?.purgeAll();
     _onLocalCacheMaterialChanged?.call();
-    _clearPendingTransferClaim();
+    _pendingTransfer = null;
     state = state.copyWith(
       accessToken: null,
       refreshToken: null,
@@ -364,16 +421,24 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         'authProof': authProof,
       });
 
-      _pendingTransferIdentity = identity;
-      _pendingTransferAuthKey = authKeyMaterial;
-      _pendingTransferSessionId = sessionId;
-      _pendingTransferToken = transferToken;
-      _pendingTransferClaimId = claimed['claimId'] as String;
-
-      return TransferClaimResult(
+      final record = PendingTransferRecord(
+        sessionId: sessionId,
+        transferToken: transferToken,
         claimId: claimed['claimId'] as String,
         claimantFingerprint: claimed['claimantFingerprint'] as String,
         expiresAt: DateTime.parse(claimed['expiresAt'] as String),
+        identity: identity,
+        authKey: authKeyMaterial,
+      );
+      // Kept before anything else can fail: the relay holds this claim now,
+      // and a second claim would end the transfer session.
+      await _storage.persistPendingTransfer(record);
+      _pendingTransfer = record;
+
+      return TransferClaimResult(
+        claimId: record.claimId,
+        claimantFingerprint: record.claimantFingerprint,
+        expiresAt: record.expiresAt,
       );
     } catch (error) {
       final handled = await handleSecurityException(error);
@@ -383,6 +448,13 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     }
   }
 
+  /// Completes the transfer this device claimed and logs in as the new
+  /// device (C-TRANSFER-RETRY). The relay's answer to /complete is kept
+  /// before the login starts, so a failed or interrupted login is redone
+  /// without completing again. /complete itself is retried after a network
+  /// failure or a 5xx (the relay answers an identical retry with the same
+  /// completion), and polled while the old device has not approved yet. Any
+  /// other refusal stops; the claimed keys stay until the next claim.
   Future<void> completeTransferAndAuthenticate({
     required String sessionId,
     required String transferToken,
@@ -395,69 +467,35 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         throw StateError('API mode is required for device transfer.');
       }
 
-      if (_pendingTransferIdentity == null ||
-          _pendingTransferAuthKey == null ||
-          _pendingTransferSessionId != sessionId ||
-          _pendingTransferToken != transferToken ||
-          _pendingTransferClaimId != claimId) {
+      var record = _pendingTransfer ?? await _storage.readPendingTransfer();
+      if (record == null ||
+          record.sessionId != sessionId ||
+          record.transferToken != transferToken ||
+          record.claimId != claimId) {
         throw StateError('Claim this new device before completion.');
       }
+      _pendingTransfer = record;
 
-      final identity = _pendingTransferIdentity!;
-      final authKeyMaterial = _pendingTransferAuthKey!;
-      final completionProof = await _cryptoAdapter.deviceAuth.signChallenge(
-        challenge: 'transfer-complete:$sessionId:$claimId:$transferToken',
-        keyMaterial: authKeyMaterial,
-      );
+      if (!record.isCompleted) {
+        final completionProof = await _cryptoAdapter.deviceAuth.signChallenge(
+          challenge: 'transfer-complete:$sessionId:$claimId:$transferToken',
+          keyMaterial: record.authKey,
+        );
+        final completed = await _completeTransferRequest({
+          'sessionId': sessionId,
+          'transferToken': transferToken,
+          'claimId': claimId,
+          'authProof': completionProof,
+        });
+        record = record.completedAs(
+          newDeviceId: completed['newDeviceId'] as String,
+          handle: completed['handle'] as String,
+        );
+        await _storage.persistPendingTransfer(record);
+        _pendingTransfer = record;
+      }
 
-      final completed = await _apiClient.completeTransfer({
-        'sessionId': sessionId,
-        'transferToken': transferToken,
-        'claimId': claimId,
-        'authProof': completionProof,
-      });
-
-      final newDeviceId = completed['newDeviceId'] as String;
-      final handle = completed['handle'] as String;
-      final challenge = await _apiClient.challenge({
-        'handle': handle,
-        'deviceId': newDeviceId,
-      });
-      final proof = await _cryptoAdapter.deviceAuth.signChallenge(
-        challenge: challenge['challenge'] as String,
-        keyMaterial: authKeyMaterial,
-      );
-      final verified = await _apiClient.verify({
-        'challengeId': challenge['challengeId'],
-        'deviceId': newDeviceId,
-        'signature': proof,
-      });
-
-      await _storage.persistDeviceSecretRefs(
-        identityPrivateRef: identity.identityPrivateKeyRef,
-        authPrivateKey: authKeyMaterial.privateKey,
-        authPublicKey: authKeyMaterial.publicKey,
-      );
-      await _storage.persistSession(
-        accessToken: verified['accessToken'] as String,
-        refreshToken: verified['refreshToken'] as String?,
-        userId: verified['userId'] as String,
-        deviceId: verified['deviceId'] as String,
-        handle: handle,
-      );
-
-      state = state.copyWith(
-        accessToken: verified['accessToken'] as String,
-        refreshToken: verified['refreshToken'] as String?,
-        userId: verified['userId'] as String,
-        deviceId: verified['deviceId'] as String,
-        handle: handle,
-        displayName: null,
-        locked: false,
-        initializing: false,
-        errorMessage: null,
-      );
-      _clearPendingTransferClaim();
+      await _loginAsTransferredDevice(record);
     } catch (error) {
       final handled = await handleSecurityException(error);
       state = state.copyWith(
@@ -466,12 +504,92 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     }
   }
 
-  void _clearPendingTransferClaim() {
-    _pendingTransferIdentity = null;
-    _pendingTransferAuthKey = null;
-    _pendingTransferSessionId = null;
-    _pendingTransferToken = null;
-    _pendingTransferClaimId = null;
+  /// Finishes a transfer the relay already committed, when the app stopped
+  /// between the completion and the first login. Does nothing without one.
+  Future<void> resumeCompletedTransfer() async {
+    final record = _pendingTransfer ?? await _storage.readPendingTransfer();
+    if (record == null || !record.isCompleted || state.isAuthenticated) {
+      return;
+    }
+    await completeTransferAndAuthenticate(
+      sessionId: record.sessionId,
+      transferToken: record.transferToken,
+      claimId: record.claimId,
+    );
+  }
+
+  Future<Map<String, dynamic>> _completeTransferRequest(
+    Map<String, dynamic> body,
+  ) async {
+    final waiting = Stopwatch()..start();
+    var transientFailures = 0;
+    while (true) {
+      try {
+        return await _apiClient.completeTransfer(body);
+      } on VeilApiException catch (error) {
+        if (error.code == 'transfer_approval_required') {
+          if (waiting.elapsed >= _transferApprovalWait) rethrow;
+        } else if (_isTransientTransferFailure(error)) {
+          transientFailures += 1;
+          if (transientFailures >= _maxTransientTransferAttempts) rethrow;
+        } else {
+          rethrow;
+        }
+      }
+      await Future<void>.delayed(_transferRetryDelay);
+    }
+  }
+
+  static bool _isTransientTransferFailure(VeilApiException error) {
+    final status = error.statusCode;
+    if (status != null) return status >= 500;
+    return error.code == TransportErrorCode.unavailable ||
+        error.code == TransportErrorCode.timeout;
+  }
+
+  Future<void> _loginAsTransferredDevice(PendingTransferRecord record) async {
+    final newDeviceId = record.newDeviceId!;
+    final handle = record.handle!;
+    final challenge = await _apiClient.challenge({
+      'handle': handle,
+      'deviceId': newDeviceId,
+    });
+    final proof = await _cryptoAdapter.deviceAuth.signChallenge(
+      challenge: challenge['challenge'] as String,
+      keyMaterial: record.authKey,
+    );
+    final verified = await _apiClient.verify({
+      'challengeId': challenge['challengeId'],
+      'deviceId': newDeviceId,
+      'signature': proof,
+    });
+
+    await _storage.persistDeviceSecretRefs(
+      identityPrivateRef: record.identity.identityPrivateKeyRef,
+      authPrivateKey: record.authKey.privateKey,
+      authPublicKey: record.authKey.publicKey,
+    );
+    await _storage.persistSession(
+      accessToken: verified['accessToken'] as String,
+      refreshToken: verified['refreshToken'] as String?,
+      userId: verified['userId'] as String,
+      deviceId: verified['deviceId'] as String,
+      handle: handle,
+    );
+    await _storage.clearPendingTransfer();
+    _pendingTransfer = null;
+
+    state = state.copyWith(
+      accessToken: verified['accessToken'] as String,
+      refreshToken: verified['refreshToken'] as String?,
+      userId: verified['userId'] as String,
+      deviceId: verified['deviceId'] as String,
+      handle: handle,
+      displayName: null,
+      locked: false,
+      initializing: false,
+      errorMessage: null,
+    );
   }
 }
 

@@ -491,6 +491,18 @@ class VeilApiClient {
     return _post('/device-transfer/approve', body, accessToken: accessToken);
   }
 
+  /// The old device's view of a transfer session, with the pending claim
+  /// and the fingerprint its approval signs.
+  Future<Map<String, dynamic>> getTransferStatus(
+    String accessToken,
+    String sessionId,
+  ) async {
+    return _get(
+      '/device-transfer/sessions/${Uri.encodeComponent(sessionId)}',
+      accessToken: accessToken,
+    );
+  }
+
   Future<Map<String, dynamic>> claimTransfer(Map<String, dynamic> body) async {
     return _post('/device-transfer/claim', body);
   }
@@ -499,13 +511,16 @@ class VeilApiClient {
     return _post('/device-transfer/complete', body);
   }
 
+  /// [proof] is the step-up proof (`challengeId`, `signature`) the relay
+  /// requires when the target is the calling device or the last active one.
   Future<Map<String, dynamic>> revokeDevice(
     String accessToken,
-    String deviceId,
-  ) async {
+    String deviceId, {
+    Map<String, String>? proof,
+  }) async {
     return _post(
       '/devices/revoke',
-      {'deviceId': deviceId},
+      {'deviceId': deviceId, ...?proof},
       accessToken: accessToken,
     );
   }
@@ -529,8 +544,13 @@ class VeilApiClient {
     return _delete('/devices/push-token', accessToken: accessToken);
   }
 
-  Future<Map<String, dynamic>> deleteAccount(String accessToken) async {
-    return _delete('/account', accessToken: accessToken);
+  /// [proof] is the step-up proof (`challengeId`, `signature`) for purpose
+  /// `account-delete`; the relay refuses the request without one.
+  Future<Map<String, dynamic>> deleteAccount(
+    String accessToken, {
+    required Map<String, String> proof,
+  }) async {
+    return _delete('/account', body: proof, accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> _get(

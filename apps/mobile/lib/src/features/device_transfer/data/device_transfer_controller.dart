@@ -4,6 +4,7 @@ import '../../../app/app_session_state.dart';
 import '../../../core/config/veil_config.dart';
 import '../../../core/errors/user_facing_error.dart';
 import '../../../core/network/veil_api_client.dart';
+import '../../../core/security/device_step_up.dart';
 
 /// The old device's half of a device transfer: it opens a transfer session,
 /// shows its token, and approves the claim the new device made with it.
@@ -14,13 +15,17 @@ class DeviceTransferController extends ChangeNotifier {
     required VeilApiClient apiClient,
     required AppSessionState Function() session,
     Future<void> Function(Object error)? onSecurityException,
+    Future<String> Function(String message)? signWithDeviceKey,
   })  : _apiClient = apiClient,
         _session = session,
-        _onSecurityException = onSecurityException;
+        _onSecurityException = onSecurityException,
+        _signWithDeviceKey = signWithDeviceKey;
 
   final VeilApiClient _apiClient;
   final AppSessionState Function() _session;
   final Future<void> Function(Object error)? _onSecurityException;
+  // Signs with the auth key this device logs in with (DeviceStepUp.sign).
+  final Future<String> Function(String message)? _signWithDeviceKey;
 
   bool _isBusy = false;
   bool _disposed = false;
@@ -72,11 +77,33 @@ class DeviceTransferController extends ChangeNotifier {
         return;
       }
 
+      final sign = _signWithDeviceKey;
+      if (sign == null) {
+        throw StateError('This device cannot sign a transfer approval.');
+      }
+
+      // Signed with this device's auth key, so a stolen bearer token cannot
+      // hand the account to other keys (C-PROOF). The signature names the
+      // fingerprint of the claimant's keys as the relay holds them.
+      final sessionId = _transferSessionId!;
+      final status = await _apiClient.getTransferStatus(accessToken, sessionId);
+      final claim = status['pendingClaim'];
+      if (claim is! Map<String, dynamic> || claim['claimId'] != trimmedClaimId) {
+        _transferStatus = 'No claim $trimmedClaimId is waiting on this transfer.';
+        return;
+      }
+      final fingerprint = claim['claimantFingerprint'] as String;
+      final approvalProof = await sign(DeviceStepUpPurpose.transferApproval(
+        sessionId: sessionId,
+        claimId: trimmedClaimId,
+        claimantFingerprint: fingerprint,
+      ));
       await _apiClient.approveTransfer(accessToken, {
-        'sessionId': _transferSessionId,
+        'sessionId': sessionId,
         'claimId': trimmedClaimId,
+        'approvalProof': approvalProof,
       });
-      _transferStatus = 'Approved claim $trimmedClaimId on old device.';
+      _transferStatus = 'Approved claim $trimmedClaimId on old device. Key fingerprint: $fingerprint';
     });
   }
 

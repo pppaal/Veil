@@ -2,7 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 
 import { DirectoryBudget } from './directory-budget';
 import { PrekeysService } from './prekeys.service';
-import { FakeEphemeralStoreService } from '../../../test/support/fake-services';
+import { FakeEphemeralStoreService, FakeSafetyService } from '../../../test/support/fake-services';
 
 // FakePrismaService doesn't model OneTimePrekey, so we hand-roll the handful
 // of prisma methods each path uses.
@@ -36,7 +36,11 @@ function makePrisma(m: Mocks) {
 }
 
 const makeService = (prisma: never) =>
-  new PrekeysService(prisma, new DirectoryBudget(new FakeEphemeralStoreService() as never));
+  new PrekeysService(
+    prisma,
+    new DirectoryBudget(new FakeEphemeralStoreService() as never),
+    new FakeSafetyService() as never,
+  );
 
 const USER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const DEVICE = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';

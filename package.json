@@ -57,7 +57,7 @@
     "demo:logs": "docker compose -f docker-compose.demo.yml logs -f api",
     "demo:down": "docker compose -f docker-compose.demo.yml down",
     "demo:reset": "docker compose -f docker-compose.demo.yml down -v",
-    "demo:tunnel:up": "docker compose -f docker-compose.demo.yml --profile tunnel up -d --build",
+    "demo:tunnel:up": "VEIL_CLIENT_IP_SOURCE=cf-connecting-ip VEIL_API_BIND_ADDRESS=127.0.0.1 docker compose -f docker-compose.demo.yml --profile tunnel up -d --build",
     "demo:tunnel:logs": "docker compose -f docker-compose.demo.yml logs -f cloudflared",
     "demo:tunnel:down": "docker compose -f docker-compose.demo.yml --profile tunnel down",
     "demo:status": "node scripts/demo-status.mjs",

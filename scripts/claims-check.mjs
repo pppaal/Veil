@@ -19,7 +19,9 @@ export const LEDGER_PATH = 'docs/claims.yaml';
 
 // Where public claims are made. Directories are walked for text files.
 // docs/launch and docs/app-store-listing-metadata.md hold store listing drafts
-// that are pasted into the stores; one once advertised "Signed backups".
+// that are pasted into the stores; one once advertised "Signed backups". The
+// two Korean guides are what README sends people to first; one once said a
+// seized server yields only ciphertext.
 export const CLAIM_SOURCES = [
   'README.md',
   'docs/app-store-listing-metadata.md',
@@ -27,6 +29,8 @@ export const CLAIM_SOURCES = [
   'docs/privacy-policy-en.md',
   'docs/privacy-policy-ko.md',
   'docs/security-hardening-roadmap.md',
+  'docs/tester-guide-ko.md',
+  'docs/사용설명서.md',
   'site',
   'store',
 ];
@@ -60,6 +64,12 @@ export const CLAIM_PATTERNS = [
   // while the server kept the contact graph and call records.
   /\bno data collection\b/i,
   /\blists every field\b/i,
+  // What the ids are. The policy once called the server-assigned account and
+  // device ids "anonymous" and "generated on the device".
+  /\banonymous (?:user|account|device) id/i,
+  /generated on the device/i,
+  /익명 식별자/,
+  /기기에서 생성된/,
   /데이터 수집이 없/,
   /종단간/,
   /저장되지 않/,

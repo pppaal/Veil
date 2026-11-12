@@ -34,6 +34,22 @@ export class EphemeralStoreService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * Like setJson, but the key expires at an absolute time (SET .. PXAT,
+   * Redis >= 6.2, already required for GETDEL). Used where a relative TTL
+   * would record the moment of the write in the key's expiry.
+   */
+  async setJsonUntil<T>(key: string, value: T, expiresAtMs: number): Promise<void> {
+    this.purgeExpiredFallbackEntries();
+    const serialized = JSON.stringify(value);
+    if (this.redis) {
+      await this.redis.set(key, serialized, 'PXAT', expiresAtMs);
+      return;
+    }
+
+    this.fallback.set(key, { value: serialized, expiresAt: expiresAtMs });
+  }
+
   async getJson<T>(key: string): Promise<T | null> {
     this.purgeExpiredFallbackEntries();
     if (this.redis) {

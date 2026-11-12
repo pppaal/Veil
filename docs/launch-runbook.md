@@ -67,6 +67,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 
 ## 6. Launch gate — must be green before Submit for Review
 
+- [ ] External crypto audit complete and its findings remediated; the production API boots with `VEIL_ENV=production`, `VEIL_AUDITED_CRYPTO_ATTESTED=true` and `VEIL_AUDIT_REPORT_SHA256` naming the signed report. Before that, only invited testers on internal or closed tracks.
 - [ ] `puro flutter analyze` is clean.
 - [ ] `puro flutter test` is green (78/78 currently).
 - [ ] Privacy policy URL resolves publicly with both KO + EN.

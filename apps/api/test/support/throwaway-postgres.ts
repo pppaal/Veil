@@ -104,8 +104,17 @@ export class ThrowawayPostgres {
     rmSync(this.dir, { recursive: true, force: true });
   }
 
-  /** Runs SQL in one transaction; returns the rows of the last statement, tab-separated. */
-  query(database: string, sql: string): string[][] {
+  /** The cluster's data directory, for tests about what Postgres leaves on disk. */
+  get dataDirectory(): string {
+    return join(this.dir, 'data');
+  }
+
+  /**
+   * Runs SQL in one transaction; returns the rows of the last statement,
+   * tab-separated. `{ transaction: false }` runs each statement on its own,
+   * for commands such as VACUUM that cannot run inside a transaction block.
+   */
+  query(database: string, sql: string, { transaction = true } = {}): string[][] {
     const output = execFileSync(
       join(this.binDir, 'psql'),
       [
@@ -123,7 +132,7 @@ export class ThrowawayPostgres {
         '\t',
         '-v',
         'ON_ERROR_STOP=1',
-        '--single-transaction',
+        ...(transaction ? ['--single-transaction'] : []),
         '-f',
         '-',
       ],

@@ -197,3 +197,55 @@ describeWithPostgres(`migration ${BACKFILL}`, () => {
     ]);
   });
 });
+
+// 0021 points group_metas.created_by_user_id at each group's current owner:
+// ownership transfer did not move it before, and account deletion deletes the
+// groups it names.
+const OWNER_POINTER = '0021_group_owner_pointer';
+
+describeWithPostgres(`migration ${OWNER_POINTER}`, () => {
+  let postgres: ThrowawayPostgres;
+
+  beforeAll(() => {
+    postgres = ThrowawayPostgres.start(postgresBinDir as string);
+  }, 60_000);
+
+  afterAll(() => {
+    postgres?.stop();
+  });
+
+  it('points every group at its current owner', () => {
+    const TRANSFERRED = id(0x4110);
+    const UNCHANGED = id(0x4120);
+    const database = 'owner_pointer';
+    postgres.createDatabase(database);
+    postgres.migrate(database, BACKFILL);
+    postgres.query(
+      database,
+      [
+        users([ALICE, 'alice'], [BOB, 'bob'], [CAROL, 'carol']),
+        conversation(TRANSFERRED, 'group', [BOB, CAROL]),
+        conversation(UNCHANGED, 'group', [ALICE, BOB]),
+        // Alice created TRANSFERRED, handed it to Bob and left: how
+        // transferOwnership and leaveGroup ended before 0021.
+        `UPDATE conversation_members SET role = 'owner' WHERE conversation_id = '${TRANSFERRED}' AND user_id = '${BOB}';`,
+        `UPDATE conversation_members SET role = 'owner' WHERE conversation_id = '${UNCHANGED}' AND user_id = '${ALICE}';`,
+        `INSERT INTO group_metas (id, conversation_id, name, created_by_user_id, updated_at) VALUES
+           (gen_random_uuid(), '${TRANSFERRED}', 'transferred', '${ALICE}', now()),
+           (gen_random_uuid(), '${UNCHANGED}', 'unchanged', '${ALICE}', now());`,
+      ].join('\n'),
+    );
+
+    postgres.applyMigration(database, OWNER_POINTER);
+
+    expect(
+      postgres.query(
+        database,
+        'SELECT conversation_id, created_by_user_id FROM group_metas ORDER BY conversation_id;',
+      ),
+    ).toEqual([
+      [TRANSFERRED, BOB],
+      [UNCHANGED, ALICE],
+    ]);
+  });
+});

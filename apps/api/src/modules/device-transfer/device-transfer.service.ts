@@ -42,6 +42,14 @@ interface PendingTransferClaim {
 const buildClaimChallenge = (sessionId: string, transferToken: string): string =>
   `transfer-claim:${sessionId}:${transferToken}`;
 
+// What the old device signs to approve a claim. It names the claim and the
+// fingerprint of exactly the keys the user compared on both screens.
+export const buildApprovalChallenge = (
+  sessionId: string,
+  claimId: string,
+  claimantFingerprint: string,
+): string => `transfer-approve:${sessionId}:${claimId}:${claimantFingerprint}`;
+
 // 'invalidated' is not yet part of the shared DeviceTransferStatus contract.
 export type TransferSessionStatus = DeviceTransferStatus | 'invalidated';
 export type TransferSessionStatusResponse = Omit<DeviceTransferSessionStatusResponse, 'status'> & {
@@ -175,6 +183,8 @@ export class DeviceTransferService {
       );
     }
 
+    await this.verifyApproval(auth.deviceId, dto, pendingClaim.claimantFingerprint);
+
     await this.ephemeralStore.setJson<PendingTransferClaim>(
       claimKey(dto.sessionId),
       {
@@ -191,6 +201,41 @@ export class DeviceTransferService {
       claimId: dto.claimId,
       approved: true,
     };
+  }
+
+  // The approval moves the account to the claimant's keys for good, so it
+  // must come from the old device itself, not only from whoever holds its
+  // bearer token: the old device signs the claim with the auth key it logs in
+  // with. A production relay requires the proof; a development relay checks
+  // it when present, so clients released before it keep working (see
+  // AuthService.verifyDeviceStepUp).
+  private async verifyApproval(
+    oldDeviceId: string,
+    dto: DeviceTransferApproveDto,
+    claimantFingerprint: string,
+  ): Promise<void> {
+    if (!dto.approvalProof && !this.config.isProduction) {
+      return;
+    }
+    if (!dto.approvalProof) {
+      throw unauthorized('invalid_device_signature', 'The old device must sign the approval');
+    }
+    const oldDevice = await this.prisma.device.findUnique({
+      where: { id: oldDeviceId },
+      select: { authPublicKey: true, isActive: true, revokedAt: true },
+    });
+    if (!oldDevice || !oldDevice.isActive || oldDevice.revokedAt) {
+      throw forbidden('device_forbidden', 'Old device is not part of the trusted device graph');
+    }
+    const valid = await this.deviceAuthVerifier.verifyChallengeResponse({
+      challenge: buildApprovalChallenge(dto.sessionId, dto.claimId, claimantFingerprint),
+      proof: dto.approvalProof,
+      authPublicKey: oldDevice.authPublicKey,
+      deviceId: oldDeviceId,
+    });
+    if (!valid) {
+      throw unauthorized('invalid_device_signature', 'Approval signature is invalid');
+    }
   }
 
   async claim(dto: DeviceTransferClaimDto): Promise<DeviceTransferClaimResponse> {
@@ -346,6 +391,25 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
+    // A retry of a completion that already went through: its first response
+    // may have been lost after the transfer committed, and the new device has
+    // no other way to learn its id, while the old one is already revoked.
+    // The ended-session markers can never equal a token hash, so only a
+    // transfer that really happened is answered.
+    if (
+      session.completedAt &&
+      session.newDeviceId &&
+      hashToken(dto.transferToken) === session.tokenHash
+    ) {
+      return this.replayCompletion(dto, {
+        sessionId: session.id,
+        oldDeviceId: session.oldDeviceId,
+        newDeviceId: session.newDeviceId,
+        handle: session.user.handle,
+        completedAt: session.completedAt,
+      });
+    }
+
     if (await this.closeIfInactive(session.id, session.completedAt, session.expiresAt)) {
       throw forbidden('transfer_session_inactive', 'Transfer session already completed');
     }
@@ -453,7 +517,7 @@ export class DeviceTransferService {
 
         await tx.deviceTransferSession.update({
           where: { id: session.id },
-          data: { completedAt },
+          data: { completedAt, newDeviceId: newDevice.id },
         });
 
         return newDevice;
@@ -481,6 +545,51 @@ export class DeviceTransferService {
       preferredDeviceId: result.id,
       handle: session.user.handle,
       completedAt: completedAt.toISOString(),
+    };
+  }
+
+  // Answers a repeated completion exactly as the first one was answered, and
+  // changes nothing: no device is created, revoked or disconnected again. It
+  // grants nothing new either: the proof needs the new device's auth key,
+  // which can already log in once it knows its id. A proof by any other key,
+  // or a new device that has since been revoked, gets the refusal a finished
+  // session always got.
+  private async replayCompletion(
+    dto: DeviceTransferCompleteDto,
+    completion: {
+      sessionId: string;
+      oldDeviceId: string;
+      newDeviceId: string;
+      handle: string;
+      completedAt: Date;
+    },
+  ): Promise<DeviceTransferCompleteResponse> {
+    const newDevice = await this.prisma.device.findUnique({
+      where: { id: completion.newDeviceId },
+      select: { authPublicKey: true, isActive: true, revokedAt: true },
+    });
+    if (!newDevice || !newDevice.isActive || newDevice.revokedAt) {
+      throw forbidden('transfer_session_inactive', 'Transfer session already completed');
+    }
+
+    const validCompletionProof = await this.deviceAuthVerifier.verifyChallengeResponse({
+      challenge: `transfer-complete:${dto.sessionId}:${dto.claimId}:${dto.transferToken}`,
+      proof: dto.authProof,
+      authPublicKey: newDevice.authPublicKey,
+      deviceId: dto.claimId,
+    });
+    if (!validCompletionProof) {
+      throw unauthorized('transfer_completion_invalid', 'New device completion proof is invalid');
+    }
+
+    return {
+      sessionId: completion.sessionId,
+      claimId: dto.claimId,
+      newDeviceId: completion.newDeviceId,
+      revokedDeviceId: completion.oldDeviceId,
+      preferredDeviceId: completion.newDeviceId,
+      handle: completion.handle,
+      completedAt: completion.completedAt.toISOString(),
     };
   }
 

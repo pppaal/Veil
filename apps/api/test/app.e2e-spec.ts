@@ -281,12 +281,37 @@ describe('VEIL API (e2e)', () => {
     });
     expect(transferClaim.status).toBe(201);
 
+    // The approval is signed by the old device's auth key; the bearer token
+    // alone, or a signature by any other key, does not approve.
+    const approvalChallenge = `transfer-approve:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferClaim.body.claimantFingerprint}`;
+    const forgedApproval = await api
+      .post('/v1/device-transfer/approve')
+      .set('Authorization', bearer)
+      .send({
+        sessionId: transferInit.body.sessionId,
+        claimId: transferClaim.body.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: approvalChallenge,
+          authPrivateKey: transferKeyPair.authPrivateKey,
+        }),
+      });
+    expect(forgedApproval.status).toBe(401);
+    expect(forgedApproval.body.code).toBe('invalid_device_signature');
+    const statusAfterForgery = await api
+      .get(`/v1/device-transfer/sessions/${transferInit.body.sessionId}`)
+      .set('Authorization', bearer);
+    expect(statusAfterForgery.body.status).toBe('claimed');
+
     await api
       .post('/v1/device-transfer/approve')
       .set('Authorization', bearer)
       .send({
         sessionId: transferInit.body.sessionId,
         claimId: transferClaim.body.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: approvalChallenge,
+          authPrivateKey: keyPairA.authPrivateKey,
+        }),
       })
       .expect(201);
 
@@ -312,8 +337,24 @@ describe('VEIL API (e2e)', () => {
         authPrivateKey: transferKeyPair.authPrivateKey,
       }),
     });
-    expect(replayedTransferComplete.status).toBe(403);
-    expect(replayedTransferComplete.body.code).toBe('transfer_session_inactive');
+    // A retry whose first response was lost gets the same answer: the old
+    // device is already revoked, so this is the new device's only way to
+    // learn its id. Nothing is created a second time.
+    expect(replayedTransferComplete.status).toBe(201);
+    expect(replayedTransferComplete.body).toEqual(transferComplete.body);
+
+    const strangerKeyPair = keyHelper.createKeyPair();
+    const strangerReplay = await api.post('/v1/device-transfer/complete').send({
+      sessionId: transferInit.body.sessionId,
+      transferToken: transferInit.body.transferToken,
+      claimId: transferClaim.body.claimId,
+      authProof: keyHelper.createProof({
+        challenge: `transfer-complete:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferInit.body.transferToken}`,
+        authPrivateKey: strangerKeyPair.authPrivateKey,
+      }),
+    });
+    expect(strangerReplay.status).toBe(401);
+    expect(strangerReplay.body.code).toBe('transfer_completion_invalid');
 
     const transferredChallenge = await api.post('/v1/auth/challenge').send({
       handle: 'icarus',

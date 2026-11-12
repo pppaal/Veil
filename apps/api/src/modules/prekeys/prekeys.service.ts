@@ -10,6 +10,7 @@ import { forbidden, notFound } from '../../common/errors/api-error';
 import type { AuthContext } from '../../common/guards/authenticated-request';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
+import { SafetyService } from '../safety/safety.service';
 import { DIRECTORY_BUDGETS, DirectoryBudget } from './directory-budget';
 
 // How many times the atomic claim retries when it loses the race for a
@@ -26,6 +27,7 @@ export class PrekeysService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly budget: DirectoryBudget,
+    private readonly safety: SafetyService,
   ) {}
 
   /**
@@ -71,7 +73,7 @@ export class PrekeysService {
    * same budgets as GET /v1/keys, so neither route can drain a pool faster.
    */
   async claim(requester: DirectoryRequester, handle: string): Promise<ClaimOneTimePrekeyResponse> {
-    const target = await this.resolveActiveDevice(handle);
+    const target = await this.resolveActiveDevice(requester.userId, handle);
     const claimed = await this.claimWithinBudget(requester, target.userId, [target.deviceId]);
     return { deviceId: target.deviceId, prekey: claimed.get(target.deviceId) ?? null };
   }
@@ -178,12 +180,16 @@ export class PrekeysService {
     }
   }
 
-  private async resolveActiveDevice(handle: string): Promise<{ userId: string; deviceId: string }> {
+  // A block in either direction answers like an unknown handle.
+  private async resolveActiveDevice(
+    requesterUserId: string,
+    handle: string,
+  ): Promise<{ userId: string; deviceId: string }> {
     const user = await this.prisma.user.findUnique({
       where: { handle: handle.toLowerCase() },
       select: { id: true, activeDeviceId: true },
     });
-    if (!user) {
+    if (!user || (await this.safety.isBlockedEitherWay(requesterUserId, user.id))) {
       throw notFound('active_device_not_found', 'Active device bundle not found');
     }
 

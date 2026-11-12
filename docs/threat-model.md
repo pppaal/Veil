@@ -7,6 +7,8 @@
 - unauthorized message access through hidden admin tooling
 - account takeover attempts through password recovery or reset flows
 - unsafe device transfer that bypasses possession of the old device
+- a stolen bearer token (access or refresh) used for an irreversible takeover
+  or lockout
 
 ## Defensive product choices
 
@@ -28,15 +30,22 @@
 - device last-seen and last-sync times are stored as the UTC day only, and
   per-conversation sync and read cursors as conversation orders with no
   timestamp
-- device transfer requires explicit action from the active old device
+- device transfer requires explicit action from the active old device: the
+  approval is signed with the old device's auth key over the claim and the
+  fingerprint the user compared, so a stolen bearer token alone cannot hand
+  the account to other keys. Account deletion and revoking the calling or last
+  device likewise need the device to sign a fresh challenge. A production
+  relay requires these proofs; a development relay checks them when sent
+  (`device-transfer-flow.md`). They do not help against malware or same-origin
+  script on the device itself, which can use its key
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
 - single active device model simplifies trust and revocation in v1
-- rate limiting on auth, user lookup, key directory, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening)
+- rate limiting on auth, user lookup, key directory, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening); realtime events (typing, call signals) have their own per-device budget, which reconnecting does not reset, signals are relayed only for ringing or active calls and capped at 64 KiB, and a socket frame over 128 KiB closes the socket
 - key material is served only to signed-in devices (`GET /v1/keys/:handle`, and `GET /v1/keys/group/:conversationId` to current group members); there is no anonymous key lookup
 - Helmet security headers (CSP, HSTS, COEP) in production
 - Swagger disabled by default in production
-- bidirectional user blocks enforced at conversation creation, direct message send, and direct call initiation, with opaque "NotFound" / "unreachable" framing that hides block state from the blocked user
+- bidirectional user blocks enforced at conversation creation, direct message send, and direct call initiation, with opaque "NotFound" / "unreachable" framing that hides block state from the blocked user; handle lookups (`GET /v1/users/:handle`, `GET /v1/keys/:handle`, the legacy prekey claim) answer a block in either direction exactly like an unknown handle and claim no prekey. An existing direct conversation still reveals a block through `peer_unreachable` on send
 - per-conversation mutes suppress push wakes only — realtime + persistence stay consistent across devices
 - abuse reports throttled to 6/min/user so the moderation queue can't be weaponized as DoS
 - disappearing messages: per-conversation TTL + periodic global cron that hard-deletes expired rows even in idle conversations

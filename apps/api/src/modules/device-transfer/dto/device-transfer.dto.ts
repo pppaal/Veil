@@ -1,7 +1,7 @@
 import { MAX_SIGNED_PREKEY_BUNDLE_LENGTH } from '@veil/shared';
 import { ApiProperty } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
-import { IsEnum, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 
 import type {
   DeviceTransferApproveRequest,
@@ -24,6 +24,12 @@ export class DeviceTransferApproveDto implements DeviceTransferApproveRequest {
   @ApiProperty()
   @IsUUID()
   claimId!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1024)
+  approvalProof?: string;
 }
 
 export class DeviceTransferClaimDto implements DeviceTransferClaimRequest {

@@ -1,4 +1,4 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 
 import { REVOKED_DEVICE_NAME } from '../../common/device-revocation';
 import { DevicesService } from './devices.service';
@@ -19,6 +19,10 @@ const pushConfig = (
     ...overrides,
   }) as never;
 
+// Most cases revoke another device of the caller's; the step-up proof is
+// covered on its own below.
+const noStepUp = { verifyDeviceStepUp: async () => undefined } as never;
+
 describe('DevicesService', () => {
   it('lists the device graph ordered by active and recent usage', async () => {
     const prisma = new FakePrismaService();
@@ -26,6 +30,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.users.push({
@@ -96,6 +101,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.users.push({
@@ -155,7 +161,7 @@ describe('DevicesService', () => {
   it('revokes the current preferred device and promotes another trusted device when available', async () => {
     const prisma = new FakePrismaService();
     const realtime = new FakeRealtimeGateway();
-    const service = new DevicesService(prisma as never, realtime as never, pushConfig());
+    const service = new DevicesService(prisma as never, realtime as never, pushConfig(), noStepUp);
 
     prisma.users.push({
       id: 'user-1',
@@ -200,7 +206,7 @@ describe('DevicesService', () => {
       lastSyncAt: new Date(),
     });
 
-    const revoked = await service.revoke('user-1', { deviceId: 'device-1' });
+    const revoked = await service.revoke('user-1', { deviceId: 'device-1' }, 'caller-device');
 
     expect(revoked.deviceId).toBe('device-1');
     expect(prisma.devices[0]!.isActive).toBe(false);
@@ -216,6 +222,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
     const { userId, deviceId: revokedId } = prisma.seedUser('icarus');
     const keptId = prisma.seedDevice(userId);
@@ -237,7 +244,7 @@ describe('DevicesService', () => {
       });
     }
 
-    await service.revoke(userId, { deviceId: revokedId });
+    await service.revoke(userId, { deviceId: revokedId }, 'caller-device');
 
     const revoked = prisma.devices.find((device) => device.id === revokedId)!;
     expect(revoked.revokedAt).not.toBeNull();
@@ -253,6 +260,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.devices.push({
@@ -273,9 +281,9 @@ describe('DevicesService', () => {
       lastSyncAt: null,
     });
 
-    await expect(service.revoke('user-1', { deviceId: 'device-2' })).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(
+      service.revoke('user-1', { deviceId: 'device-2' }, 'caller-device'),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 
   it('fails when the device does not exist', async () => {
@@ -284,11 +292,12 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
-    await expect(service.revoke('user-1', { deviceId: 'missing' })).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(
+      service.revoke('user-1', { deviceId: 'missing' }, 'caller-device'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('updates the push token on an active device', async () => {
@@ -297,6 +306,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.devices.push({
@@ -332,6 +342,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig({ pushProvider: 'unifiedpush', isProduction: true }),
+      noStepUp,
     );
     prisma.devices.push({
       id: 'device-1',
@@ -376,6 +387,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig({ pushProvider: 'fcm', isProduction: true }),
+      noStepUp,
     );
 
     await expect(
@@ -389,6 +401,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.devices.push({
@@ -420,6 +433,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.devices.push({
@@ -451,6 +465,7 @@ describe('DevicesService', () => {
       prisma as never,
       new FakeRealtimeGateway() as never,
       pushConfig(),
+      noStepUp,
     );
 
     prisma.devices.push({
@@ -474,5 +489,69 @@ describe('DevicesService', () => {
     const result = await service.clearPushToken('user-1', 'device-1');
     expect(result.deviceId).toBe('device-1');
     expect(prisma.devices[0]!.pushToken).toBeNull();
+  });
+});
+
+// Revoking the calling device, or the last active one, cannot be undone (no
+// recovery), so it needs the device's signed challenge, not only its token.
+describe('DevicesService.revoke step-up', () => {
+  function setupRevoke(
+    stepUp: (deviceId: string, purpose: string, proof: unknown) => Promise<void>,
+  ) {
+    const prisma = new FakePrismaService();
+    const calls: Array<[string, string]> = [];
+    const service = new DevicesService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      pushConfig(),
+      {
+        verifyDeviceStepUp: async (deviceId: string, purpose: string, proof: unknown) => {
+          calls.push([deviceId, purpose]);
+          await stepUp(deviceId, purpose, proof);
+        },
+      } as never,
+    );
+    const { userId, deviceId: phone } = prisma.seedUser('icarus');
+    const laptop = prisma.seedDevice(userId);
+    return { prisma, service, calls, userId, phone, laptop };
+  }
+
+  it('asks the calling device to sign when it revokes itself', async () => {
+    const { service, calls, userId, phone } = setupRevoke(async () => undefined);
+
+    await service.revoke(userId, { deviceId: phone }, phone);
+
+    expect(calls).toEqual([[phone, `device-revoke:${phone}`]]);
+  });
+
+  it('asks for a signature when the target is the last active device', async () => {
+    const { prisma, service, calls, userId, phone, laptop } = setupRevoke(async () => undefined);
+    prisma.devices.find((device) => device.id === phone)!.isActive = false;
+
+    await service.revoke(userId, { deviceId: laptop }, phone);
+
+    expect(calls).toEqual([[phone, `device-revoke:${laptop}`]]);
+  });
+
+  it('revokes another device while one stays active without asking', async () => {
+    const { service, calls, userId, phone, laptop } = setupRevoke(async () => undefined);
+
+    await service.revoke(userId, { deviceId: laptop }, phone);
+
+    expect(calls).toEqual([]);
+  });
+
+  it('leaves the device active when the signature is refused', async () => {
+    const { prisma, service, userId, phone } = setupRevoke(async () => {
+      throw new UnauthorizedException({ code: 'invalid_device_signature' });
+    });
+
+    await expect(service.revoke(userId, { deviceId: phone }, phone)).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+
+    const device = prisma.devices.find((item) => item.id === phone)!;
+    expect(device.isActive).toBe(true);
+    expect(device.revokedAt).toBeNull();
   });
 });

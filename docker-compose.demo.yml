@@ -15,8 +15,9 @@
 # See docs/phone-access.md for the phone-side setup.
 #
 # This stack uses dev-mode defaults (placeholder JWT secret, dev MinIO admin,
-# Postgres on localhost). Do NOT expose it to the public internet — for
-# beta/private deployment use docker-compose.alpha.yml plus a real env file.
+# Postgres on localhost). Do NOT expose it to the public internet — for a
+# private beta with invited testers use infra/docker/docker-compose.alpha.yml
+# plus a real env file (apps/api/.env.alpha.example).
 
 services:
   postgres:

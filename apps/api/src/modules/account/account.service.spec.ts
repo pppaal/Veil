@@ -1,20 +1,28 @@
 import { createHmac } from 'node:crypto';
 
 import { ConsoleLogger, Logger } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { AppLoggerService } from '../../common/logger/app-logger.service';
+import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { RetentionFakePrismaService } from '../../../test/support/fake-prisma-retention';
 import {
   FakeAttachmentStorageGateway,
+  FakeConfigService,
   FakeRealtimeGateway,
   FakeSafetyService,
 } from '../../../test/support/fake-services';
+import { AuthService } from '../auth/auth.service';
+import { Ed25519DeviceAuthVerifier } from '../auth/device-auth-verifier';
 import { ConversationsService } from '../conversations/conversations.service';
 import { CreateDirectConversationDto } from '../conversations/dto/create-direct-conversation.dto';
 import { RetiredHandlesService } from '../handles/retired-handles.service';
-import { AccountService } from './account.service';
+import { AccountController } from './account.controller';
+import { AccountDeletionResumer } from './account-deletion-resumer';
+import { AccountService, UNFINISHED_DELETION_GRACE_MS } from './account.service';
 
 // Destructive-cascade spec. Phase L split deleteAccount into three phases:
 //
@@ -179,6 +187,7 @@ function buildService(
     storage as never,
     retiredHandles,
     new AppLoggerService(),
+    { forgetDevice: async () => undefined } as never,
   );
 }
 
@@ -397,12 +406,14 @@ describe('AccountService.deleteAccount against stored rows', () => {
       safety as never,
       new ConversationAccessService(prisma as never, safety as never),
     );
+    const logger = new AppLoggerService();
     const account = new AccountService(
       prisma as never,
       { disconnectUser: () => 0 } as never,
       new FakeAttachmentStorageGateway() as never,
       new RetiredHandlesService(prisma as never, { retiredHandlePepper: PEPPER } as never),
-      new AppLoggerService(),
+      logger,
+      { forgetDevice: async () => undefined } as never,
     );
     const addUser = async (handle: string) => {
       const id = await prisma.addUser(handle);
@@ -417,7 +428,7 @@ describe('AccountService.deleteAccount against stored rows', () => {
     // Every stored row of every table the fake holds.
     const storedRows = () =>
       JSON.stringify(Object.values(prisma).filter((value) => Array.isArray(value)));
-    return { prisma, account, addUser, openDirect, storedRows };
+    return { prisma, account, logger, addUser, openDirect, storedRows };
   }
 
   it('leaves no stored row naming the deleted user, while the peers keep their conversations', async () => {
@@ -483,5 +494,294 @@ describe('AccountService.deleteAccount against stored rows', () => {
 
     expect(prisma.conversations).toEqual([]);
     expect(prisma.conversationMembers).toEqual([]);
+  });
+});
+
+// A deletion that stops part-way leaves the account revoked: its tokens no
+// longer authenticate, so the user cannot run DELETE /account again, and the
+// server has to finish the deletion itself.
+describe('AccountService.resumeUnfinishedDeletions', () => {
+  beforeEach(() => {
+    jest.useFakeTimers({ now: new Date('2026-11-12T10:00:00.000Z') });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const passTime = (ms: number) => jest.setSystemTime(Date.now() + ms);
+
+  function setup() {
+    const prisma = new RetentionFakePrismaService();
+    const logger = new AppLoggerService();
+    const account = new AccountService(
+      prisma as never,
+      { disconnectUser: () => 0 } as never,
+      new FakeAttachmentStorageGateway() as never,
+      new RetiredHandlesService(prisma as never, { retiredHandlePepper: PEPPER } as never),
+      logger,
+      { forgetDevice: async () => undefined } as never,
+    );
+    return { prisma, account, logger };
+  }
+
+  const failOnce = (prisma: RetentionFakePrismaService) => {
+    const deleteMany = prisma.message.deleteMany.bind(prisma.message);
+    jest
+      .spyOn(prisma.message, 'deleteMany')
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError('connection reset', {
+          code: 'P1017',
+          clientVersion: Prisma.prismaVersion.client,
+        }),
+      )
+      .mockImplementation(deleteMany);
+  };
+
+  it('finishes a deletion whose earlier attempt failed part-way', async () => {
+    const { prisma, account } = setup();
+    const alice = await prisma.addUser('alice');
+    await prisma.addDevice(alice);
+    failOnce(prisma);
+    jest.spyOn(account['logger'], 'warn').mockImplementation(() => undefined);
+    jest.spyOn(account['logger'], 'error').mockImplementation(() => undefined);
+    await expect(account.deleteAccount(alice)).rejects.toMatchObject({ code: 'P1017' });
+    expect(prisma.users.map((user) => [user.id, user.status])).toEqual([[alice, 'revoked']]);
+
+    passTime(UNFINISHED_DELETION_GRACE_MS + 60_000);
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 1,
+      failed: 0,
+    });
+
+    expect(prisma.users).toEqual([]);
+    expect(prisma.devices).toEqual([]);
+    expect(prisma.retiredHandles).toHaveLength(1);
+  });
+
+  it('leaves a deletion alone while its last attempt may still be running', async () => {
+    const { prisma, account } = setup();
+    const alice = await prisma.addUser('alice');
+    await prisma.addDevice(alice);
+    const bob = await prisma.addUser('bob');
+    // Phase 1 of a deletion running right now; Bob is an ordinary account.
+    await prisma.user.update({ where: { id: alice }, data: { status: 'revoked' } });
+
+    passTime(UNFINISHED_DELETION_GRACE_MS / 2);
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 0,
+      failed: 0,
+    });
+
+    expect(prisma.users.map((user) => [user.id, user.status]).sort()).toEqual(
+      [
+        [alice, 'revoked'],
+        [bob, 'active'],
+      ].sort(),
+    );
+  });
+
+  it('logs a resume that fails again without the user id, and retries it after the grace period', async () => {
+    const { prisma, account, logger } = setup();
+    const alice = await prisma.addUser('alice');
+    await prisma.addDevice(alice);
+    await prisma.user.update({ where: { id: alice }, data: { status: 'revoked' } });
+    const written: unknown[] = [];
+    for (const level of ['info', 'warn', 'error'] as const) {
+      jest.spyOn(logger, level).mockImplementation((...args: unknown[]) => {
+        written.push(args);
+      });
+    }
+    failOnce(prisma);
+
+    passTime(UNFINISHED_DELETION_GRACE_MS + 60_000);
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 0,
+      failed: 1,
+    });
+    expect(written).toContainEqual([
+      'account.delete.resume_failed',
+      { error: { name: 'PrismaClientKnownRequestError', code: 'P1017' } },
+    ]);
+    expect(JSON.stringify(written)).not.toContain(alice);
+    // The failed attempt began just now, so it is not retried straight away.
+    passTime(60_000);
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 0,
+      failed: 0,
+    });
+
+    passTime(UNFINISHED_DELETION_GRACE_MS);
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 1,
+      failed: 0,
+    });
+    expect(prisma.users).toEqual([]);
+  });
+
+  // Every API replica runs the resumer. The claim (moving updatedAt to now,
+  // only while it is still past the cutoff) is what keeps two of them from
+  // running the same deletion at once.
+  it('skips an account another replica claimed after this one listed it', async () => {
+    const { prisma, account } = setup();
+    const alice = await prisma.addUser('alice');
+    await prisma.addDevice(alice);
+    await prisma.user.update({ where: { id: alice }, data: { status: 'revoked' } });
+    passTime(UNFINISHED_DELETION_GRACE_MS + 60_000);
+
+    const list = prisma.user.findMany.bind(prisma.user);
+    jest.spyOn(prisma.user, 'findMany').mockImplementationOnce(async (args: unknown) => {
+      const listed = await list(args);
+      // The other replica claims Alice between this one's listing and claim.
+      await prisma.user.updateMany({ where: { id: alice }, data: { updatedAt: new Date() } });
+      return listed;
+    });
+    const deleteAccount = jest.spyOn(account, 'deleteAccount');
+
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 0,
+      failed: 0,
+    });
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(prisma.users.map((user) => [user.id, user.status])).toEqual([[alice, 'revoked']]);
+  });
+});
+
+describe('AccountDeletionResumer', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('clears both of its timers on module destroy', () => {
+    jest.useFakeTimers();
+    const resumeUnfinishedDeletions = jest.fn(async () => ({ completed: 0, failed: 0 }));
+    const resumer = new AccountDeletionResumer({ resumeUnfinishedDeletions } as never);
+
+    resumer.onModuleInit();
+    expect(jest.getTimerCount()).toBe(2);
+    resumer.onModuleDestroy();
+
+    expect(jest.getTimerCount()).toBe(0);
+    jest.advanceTimersByTime(60 * 60 * 1000);
+    expect(resumeUnfinishedDeletions).not.toHaveBeenCalled();
+  });
+});
+
+// The account's sessions in the ephemeral store go with it: the refresh
+// families, their tokens, the per-device index and login challenges all name
+// the user or the device.
+describe('AccountService.deleteAccount with the real auth store', () => {
+  it('leaves nothing in the ephemeral store that names the deleted user or device', async () => {
+    const prisma = new RetentionFakePrismaService();
+    const config = new FakeConfigService();
+    const store = new EphemeralStoreService(config as never);
+    const retiredHandles = new RetiredHandlesService(
+      prisma as never,
+      { retiredHandlePepper: PEPPER } as never,
+    );
+    const auth = new AuthService(
+      prisma as never,
+      store,
+      new JwtService(),
+      config as never,
+      new Ed25519DeviceAuthVerifier(),
+      { disconnectDevice: () => 0 } as never,
+      retiredHandles,
+    );
+    const account = new AccountService(
+      prisma as never,
+      { disconnectUser: () => 0 } as never,
+      new FakeAttachmentStorageGateway() as never,
+      retiredHandles,
+      new AppLoggerService(),
+      auth,
+    );
+    const keys = new DeviceAuthTestHelper();
+    const keyPair = keys.createKeyPair();
+    const registered = await auth.register({
+      handle: 'leaving',
+      deviceName: 'phone',
+      platform: 'android',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: keyPair.authPublicKey,
+    } as never);
+    const login = async () => {
+      const challenge = await auth.createChallenge({
+        handle: 'leaving',
+        deviceId: registered.deviceId,
+      });
+      return auth.verify({
+        challengeId: challenge.challengeId,
+        deviceId: registered.deviceId,
+        signature: keys.createProof({
+          challenge: challenge.challenge,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
+      });
+    };
+    const verified = await login();
+    await auth.refresh(verified.refreshToken);
+    await login();
+    // A login started and never finished.
+    await auth.createChallenge({ handle: 'leaving', deviceId: registered.deviceId });
+    const storeContents = () =>
+      JSON.stringify([
+        ...(store as unknown as { fallback: Map<string, unknown> }).fallback.entries(),
+      ]);
+    expect(storeContents()).toContain(registered.deviceId);
+
+    await account.deleteAccount(registered.userId);
+
+    expect(prisma.users).toEqual([]);
+    expect(storeContents()).not.toContain(registered.userId);
+    expect(storeContents()).not.toContain(registered.deviceId);
+    expect(storeContents()).not.toMatch(/auth:(refresh|challenge)/);
+  });
+});
+
+// Deletion cannot be undone, so a bearer token alone is not enough: the
+// controller checks the device's signed challenge before anything is erased.
+describe('AccountController', () => {
+  const request = { auth: { userId: 'user-1', deviceId: 'device-1' } } as never;
+
+  it('deletes only after the device step-up verifies', async () => {
+    const calls: string[] = [];
+    const controller = new AccountController(
+      {
+        deleteAccount: async (userId: string) => {
+          calls.push(`delete:${userId}`);
+          return { deleted: true as const };
+        },
+      } as never,
+      {
+        verifyDeviceStepUp: async (deviceId: string, purpose: string, proof: unknown) => {
+          calls.push(`step-up:${deviceId}:${purpose}:${JSON.stringify(proof)}`);
+        },
+      } as never,
+    );
+
+    await expect(
+      controller.deleteAccount(request, { challengeId: 'c-1', signature: 's-1' }),
+    ).resolves.toEqual({ deleted: true });
+    expect(calls).toEqual([
+      'step-up:device-1:account-delete:{"challengeId":"c-1","signature":"s-1"}',
+      'delete:user-1',
+    ]);
+  });
+
+  it('erases nothing when the step-up is refused', async () => {
+    const deleteAccount = jest.fn();
+    const controller = new AccountController(
+      { deleteAccount } as never,
+      {
+        verifyDeviceStepUp: async () => {
+          throw new Error('invalid_device_signature');
+        },
+      } as never,
+    );
+
+    await expect(controller.deleteAccount(request, {})).rejects.toThrow('invalid_device_signature');
+    expect(deleteAccount).not.toHaveBeenCalled();
   });
 });

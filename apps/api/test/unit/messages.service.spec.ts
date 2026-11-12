@@ -1,7 +1,13 @@
 import { ConversationAccessService } from '../../src/common/conversation-access/conversation-access.service';
 import { MessagesService } from '../../src/modules/messages/messages.service';
 import { FakePrismaService } from '../support/fake-prisma.service';
-import { FakePushService, FakeRealtimeGateway, FakeSafetyService } from '../support/fake-services';
+import { AppLoggerService } from '../../src/common/logger/app-logger.service';
+import {
+  FakePushService,
+  FakeRealtimeGateway,
+  FakeSafetyService,
+  settleDetachedWork,
+} from '../support/fake-services';
 
 describe('MessagesService', () => {
   function createFixture() {
@@ -18,6 +24,7 @@ describe('MessagesService', () => {
       metrics as never,
       new ConversationAccessService(prisma as never, safety as never),
       { isProduction: false } as never,
+      new AppLoggerService(),
     );
 
     const atlas = prisma.seedUser('atlas', { pushToken: 'push-a' });
@@ -46,6 +53,7 @@ describe('MessagesService', () => {
 
     const first = await service.send(atlas, dto as never);
     const second = await service.send(atlas, dto as never);
+    await settleDetachedWork();
 
     expect(first.idempotent).toBe(false);
     expect(second.idempotent).toBe(true);
@@ -58,6 +66,7 @@ describe('MessagesService', () => {
     const { push, service, atlas, dto } = createFixture();
 
     await service.send(atlas, dto as never);
+    await settleDetachedWork();
 
     expect(push.sentHints).toHaveLength(1);
     expect(push.sentHints[0]).toEqual({
@@ -77,6 +86,7 @@ describe('MessagesService', () => {
     realtime.connectedDevices.add(selene.deviceId);
 
     await service.send(atlas, dto as never);
+    await settleDetachedWork();
 
     expect(push.sentHints).toHaveLength(0);
   });

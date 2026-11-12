@@ -66,6 +66,23 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
   with `Authorization`, `X-Forwarded-For` and `Cf-Connecting-Ip` named
   explicitly so they stay deleted if the blanket rule is ever narrowed.
 
+## Database server log
+
+- Postgres runs with `log_error_verbosity=terse` (`docker-compose.prod.yml`,
+  pinned by `apps/api/test/unit/prod-compose.spec.ts`). At the default
+  verbosity every error carries a DETAIL line that quotes the values involved:
+  a unique violation from two `createDirect` calls racing for one pair logs
+  `Key (direct_key)=(<userA>|<userB>)`, a racing registration the handle, and
+  the log keeps them after account deletion. Terse drops DETAIL, HINT, CONTEXT
+  and QUERY; statements are still logged, with `$n` placeholders only.
+- A managed or external Postgres must set the same parameter.
+
+## Container logs
+
+- Every production service logs to Docker's `json-file` driver capped at
+  three 10 MB files (`x-logging` in `docker-compose.prod.yml`), so no
+  container log grows until the container is removed.
+
 ## Mobile logging rules
 
 - `print()` and `debugPrint()` are blocked by policy checks inside `apps/mobile/lib`.

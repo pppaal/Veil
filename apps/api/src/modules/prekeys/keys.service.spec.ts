@@ -5,7 +5,7 @@ import { ThrottlerException } from '@nestjs/throttler';
 
 import { IS_PUBLIC_KEY } from '../../common/guards/public.decorator';
 import { RetentionFakePrismaService } from '../../../test/support/fake-prisma-retention';
-import { FakeEphemeralStoreService } from '../../../test/support/fake-services';
+import { FakeEphemeralStoreService, FakeSafetyService } from '../../../test/support/fake-services';
 import { DirectoryBudget } from './directory-budget';
 import { RotateSignedPrekeyDto } from './dto/keys.dto';
 import { KeysController } from './keys.controller';
@@ -143,9 +143,10 @@ describe('signed prekey bundle v2', () => {
 async function setup() {
   const prisma = new RetentionFakePrismaService();
   const budget = new DirectoryBudget(new FakeEphemeralStoreService() as never);
-  const prekeys = new PrekeysService(prisma as never, budget);
+  const safety = new FakeSafetyService();
+  const prekeys = new PrekeysService(prisma as never, budget, safety as never);
   const clock = { now: VECTOR_SPK_TS };
-  const keys = new KeysService(prisma as never, prekeys, budget, () => clock.now);
+  const keys = new KeysService(prisma as never, prekeys, budget, () => clock.now, safety as never);
 
   const aliceId = await prisma.addUser('alice');
   const alicePhone = await prisma.addDevice(aliceId);
@@ -173,6 +174,7 @@ async function setup() {
     prekeys,
     keys,
     clock,
+    safety,
     alice: { userId: aliceId, deviceId: alicePhone },
     bob: { userId: bobId, laptop: bobLaptop, phone: bobPhone },
     seedPrekeys,
@@ -332,6 +334,28 @@ describe('KeysService.getKeys', () => {
     const { keys, alice } = await setup();
     expect(await errorCode(keys.getKeys(alice, 'ghost', 'active'))).toBe('handle_not_found');
   });
+
+  // A block either way answers like an unknown handle, as createDirect does,
+  // and spends none of the blocker's prekeys.
+  it.each(['bob blocked alice', 'alice blocked bob'])(
+    'answers like an unknown handle and claims nothing when %s',
+    async (direction) => {
+      const { keys, prekeys, safety, alice, bob, seedPrekeys, unconsumed } = await setup();
+      seedPrekeys(bob.phone, 3);
+      seedPrekeys(bob.laptop, 3);
+      if (direction === 'bob blocked alice') safety.setBlocked(bob.userId, alice.userId);
+      else safety.setBlocked(alice.userId, bob.userId);
+
+      for (const mode of ['active', 'all', 'none'] as const) {
+        expect(await errorCode(keys.getKeys(alice, 'bob', mode))).toBe('handle_not_found');
+      }
+      expect(await errorCode(prekeys.claim(alice, 'bob'))).toBe(
+        await errorCode(prekeys.claim(alice, 'ghost')),
+      );
+      expect(unconsumed(bob.phone)).toBe(3);
+      expect(unconsumed(bob.laptop)).toBe(3);
+    },
+  );
 });
 
 // Contract C-GROUPKEYS: one request per Sender Keys distribution round

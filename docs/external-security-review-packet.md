@@ -168,9 +168,10 @@ should focus on these in addition to the regular scope.
 
 ### Operational documentation (Phase T)
 
-- `docs/cloudflare-tunnel-deploy.md`: added pg_dump cron snippet (daily,
-  14-day retention) with privacy callout — snapshots include handle
-  metadata even though message bodies remain ciphertext.
+- `docs/cloudflare-tunnel-deploy.md`: once added a daily database dump
+  snippet; it has since been removed, along with the production stack's dump
+  service, because a dump keeps deleted accounts and expired ciphertext past
+  the published retention windows (see `docs/vps-deploy-runbook.md` section 6).
 - `docs/ops/abuse-triage.md`: new runbook. SQL queries omit the
   `messages.ciphertext` column entirely. Suspend uses
   `users.status='suspended'`; the JwtAuthGuard `status==='active'` check

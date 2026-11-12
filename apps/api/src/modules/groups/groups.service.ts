@@ -353,6 +353,9 @@ export class GroupsService {
     }
 
     // The two members swap roles, so the group keeps exactly one owner.
+    // group_metas.created_by_user_id follows the role: account deletion
+    // deletes the groups it names, so it must name the current owner, never a
+    // former one who may since have left.
     await this.prisma.$transaction(async (tx) => {
       await tx.conversationMember.update({
         where: { conversationId_userId: { conversationId, userId: dto.userId } },
@@ -361,6 +364,10 @@ export class GroupsService {
       await tx.conversationMember.update({
         where: { conversationId_userId: { conversationId, userId: auth.userId } },
         data: { role: target.role },
+      });
+      await tx.groupMeta.update({
+        where: { conversationId },
+        data: { createdByUserId: dto.userId },
       });
     });
 

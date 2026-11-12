@@ -5,6 +5,10 @@ export class FakeEphemeralStoreService {
     this.values.set(key, JSON.stringify(value));
   }
 
+  async setJsonUntil<T>(key: string, value: T, _expiresAtMs: number): Promise<void> {
+    this.values.set(key, JSON.stringify(value));
+  }
+
   async getJson<T>(key: string): Promise<T | null> {
     const value = this.values.get(key);
     return value ? (JSON.parse(value) as T) : null;
@@ -115,6 +119,12 @@ export class FakeRealtimeGateway {
     this.disconnectedDevices.add(deviceId);
   }
 }
+
+// Resolves once every promise chain already started has run to its end,
+// such as the push wakes MessagesService.send dispatches after it answers.
+// Enough for the in-memory fakes, which never wait on a timer or I/O.
+export const settleDetachedWork = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
 
 export class FakePushService {
   readonly providerKind = 'none' as const;

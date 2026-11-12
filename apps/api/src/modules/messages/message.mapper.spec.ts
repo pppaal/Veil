@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { AppLoggerService } from '../../common/logger/app-logger.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import {
   FakeEphemeralStoreService,
@@ -30,6 +31,7 @@ function makeServices() {
       { messagesSentTotal: { inc: () => undefined } } as never,
       access,
       { isProduction: false } as never,
+      new AppLoggerService(),
     ),
     conversations: new ConversationsService(
       prisma as never,

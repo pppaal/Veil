@@ -2,10 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
+import { AppLoggerService } from '../../common/logger/app-logger.service';
 import {
   FakePushService,
   FakeRealtimeGateway,
   FakeSafetyService,
+  settleDetachedWork,
 } from '../../../test/support/fake-services';
 import { ConversationsService } from '../conversations/conversations.service';
 import { SendMessageDto } from './dto/send-message.dto';
@@ -13,21 +15,23 @@ import { MessagesService } from './messages.service';
 
 type Actor = { userId: string; deviceId: string };
 
-function makeService(options: { isProduction?: boolean } = {}) {
+function makeService(options: { isProduction?: boolean; push?: unknown } = {}) {
   const prisma = new FakePrismaService();
   const gateway = new FakeRealtimeGateway();
   const push = new FakePushService();
   const safety = new FakeSafetyService();
   const metrics = { messagesSentTotal: { inc: jest.fn() } };
   const access = new ConversationAccessService(prisma as never, safety as never);
+  const logger = new AppLoggerService();
   const service = new MessagesService(
     prisma as never,
-    push as never,
+    (options.push ?? push) as never,
     gateway as never,
     safety as never,
     metrics as never,
     access,
     { isProduction: options.isProduction ?? false } as never,
+    logger,
   );
   const conversations = new ConversationsService(
     prisma as never,
@@ -35,7 +39,7 @@ function makeService(options: { isProduction?: boolean } = {}) {
     safety as never,
     access,
   );
-  return { prisma, gateway, push, safety, metrics, service, conversations };
+  return { prisma, gateway, push, safety, metrics, logger, service, conversations };
 }
 
 function buildSendDto(overrides: {
@@ -206,6 +210,7 @@ describe('MessagesService', () => {
         );
 
       await send();
+      await settleDetachedWork();
       expect(fixture.push.sentHints).toEqual([
         { pushToken: 'bob-device-token', hint: { kind: 'wake' } },
       ]);
@@ -213,7 +218,76 @@ describe('MessagesService', () => {
       fixture.gateway.connectedUsers.add(bob.userId);
       fixture.gateway.connectedDevices.add(bob.deviceId);
       await send();
+      await settleDetachedWork();
       expect(fixture.push.sentHints).toHaveLength(1);
+    });
+
+    it('answers and fans out to every member while a push provider hangs', async () => {
+      // A provider that accepts the wake and never settles, like an APNs
+      // peer that stalls the stream.
+      const hung: string[] = [];
+      const push = {
+        providerKind: 'apns',
+        sendMessageHint: (pushToken: string) => {
+          hung.push(pushToken);
+          return new Promise<void>(() => undefined);
+        },
+      };
+      const fixture = makeService({ push });
+      const alice = fixture.prisma.seedUser('alice');
+      const bob = fixture.prisma.seedUser('bob', { pushToken: 'bob-device-token' });
+      const carol = fixture.prisma.seedUser('carol');
+      const groupId = fixture.prisma.seedConversation(
+        'group',
+        [alice.userId, bob.userId, carol.userId],
+        { groupUseSenderKeys: true },
+      );
+      fixture.gateway.connectedUsers.add(carol.userId);
+      fixture.gateway.connectedDevices.add(carol.deviceId);
+
+      const sent = await fixture.service.send(
+        alice,
+        buildSendDto({
+          conversationId: groupId,
+          sender: alice,
+          version: 'veil-group-v1',
+          groupEpoch: 0,
+        }),
+      );
+      await settleDetachedWork();
+
+      expect(sent.idempotent).toBe(false);
+      expect(hung).toEqual(['bob-device-token']);
+      const eventsFor = (userId: string) =>
+        fixture.gateway.emitted.filter((e) => e.userId === userId).map((e) => e.event);
+      expect(eventsFor(bob.userId)).toEqual(['message.new', 'conversation.sync']);
+      expect(eventsFor(carol.userId)).toEqual(['message.new', 'conversation.sync']);
+      expect(eventsFor(alice.userId)).toEqual(['conversation.sync']);
+    });
+
+    it('logs a wake that fails before reaching the provider and still answers', async () => {
+      const fixture = makeService();
+      const alice = fixture.prisma.seedUser('alice');
+      const bob = fixture.prisma.seedUser('bob', { pushToken: 'bob-device-token' });
+      const conversationId = fixture.prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      jest
+        .spyOn(fixture.safety, 'isConversationMutedForUser')
+        .mockRejectedValue(new Error(`mute lookup failed for ${bob.userId}`));
+      const warn = jest.spyOn(fixture.logger, 'warn').mockImplementation(() => undefined);
+
+      await expect(
+        fixture.service.send(
+          alice,
+          buildSendDto({ conversationId, sender: alice, recipientUserId: bob.userId }),
+        ),
+      ).resolves.toMatchObject({ idempotent: false });
+      await settleDetachedWork();
+
+      expect(fixture.push.sentHints).toEqual([]);
+      expect(warn).toHaveBeenCalledWith('push.wake_dispatch_failed', {
+        error: { name: 'Error', code: null },
+      });
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(bob.userId);
     });
 
     it('malformed conversation id 400 not 500', async () => {
@@ -902,10 +976,12 @@ describe('MessagesService', () => {
     it('reaction envelope accepted and no push sent', async () => {
       const { prisma, gateway, push, bob, sendFromAlice } = offlineRecipientFixture();
       await sendFromAlice();
+      await settleDetachedWork();
       push.sentHints.length = 0;
       gateway.emitted.length = 0;
 
       const reaction = await sendFromAlice({ messageType: 'reaction' });
+      await settleDetachedWork();
 
       expect(reaction.idempotent).toBe(false);
       expect(reaction.message.messageType).toBe('reaction');
@@ -924,6 +1000,7 @@ describe('MessagesService', () => {
       const { push, sendFromAlice } = offlineRecipientFixture();
 
       await sendFromAlice({ messageType: 'text' });
+      await settleDetachedWork();
 
       expect(push.sentHints).toEqual([{ pushToken: 'bob-push-token', hint: { kind: 'wake' } }]);
     });

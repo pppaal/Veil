@@ -27,12 +27,24 @@ interface AccessTokenPayload {
 
 type TypingEvent = 'typing.start' | 'typing.stop';
 
+// SDP offers and answers run to a few KiB and ICE candidates to a few hundred
+// bytes, so this leaves room for any real signal while bounding what one
+// frame can make the server relay.
+export const CALL_SIGNAL_MAX_DATA_LENGTH = 64 * 1024;
+// socket.io closes a connection whose frame exceeds this, before any handler
+// runs. The default (1 MB) would let every frame carry 1 MB.
+export const MAX_INBOUND_FRAME_BYTES = 128 * 1024;
+// Calls that can still be set up or are under way; signals for any other call
+// are dropped.
+const SIGNALLING_CALL_STATUSES = new Set(['ringing', 'active']);
+
 const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 
 @Injectable()
 @WebSocketGateway({
   path: '/v1/realtime',
   cors: false,
+  maxHttpBufferSize: MAX_INBOUND_FRAME_BYTES,
 })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
@@ -42,7 +54,17 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private readonly socketsByDeviceId = new Map<string, Set<string>>();
   private readonly typingRateLimitBySocket = new Map<string, Map<string, number>>();
   private readonly tokenExpiryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly eventBudgetByDevice = new Map<string, { tokens: number; at: number }>();
+  private lastEventBudgetSweepAt = 0;
   private static readonly TYPING_MIN_INTERVAL_MS = 500;
+  // Inbound events (typing, call signals) per device: a burst of 30, then 5 a
+  // second. The HTTP throttler does not run for gateway handlers, and every
+  // event costs database reads and a fan-out. Keyed by device, not socket, so
+  // opening more sockets with the same token does not multiply the budget, and
+  // kept across disconnects until it has refilled, so reconnecting does not
+  // reset it either.
+  private static readonly EVENT_BURST = 30;
+  private static readonly EVENT_REFILL_PER_SECOND = 5;
 
   constructor(
     private readonly jwtService: JwtService,
@@ -203,6 +225,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         deviceSockets.delete(client.id);
         if (deviceSockets.size === 0) {
           this.socketsByDeviceId.delete(deviceId);
+          // Only a refilled budget is dropped. A spent one stays, so a device
+          // that disconnects and reconnects continues from what it spent
+          // rather than getting a fresh burst; the sweep in takeEventToken
+          // drops it once it has refilled.
+          if (this.eventBudgetRefilled(deviceId, Date.now())) {
+            this.eventBudgetByDevice.delete(deviceId);
+          }
         }
       }
     }
@@ -223,6 +252,52 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
     perConversation.set(conversationId, now);
     return false;
+  }
+
+  private refilledEventTokens(budget: { tokens: number; at: number }, now: number): number {
+    return Math.min(
+      RealtimeGateway.EVENT_BURST,
+      budget.tokens + ((now - budget.at) / 1000) * RealtimeGateway.EVENT_REFILL_PER_SECOND,
+    );
+  }
+
+  private eventBudgetRefilled(deviceId: string, now: number): boolean {
+    const budget = this.eventBudgetByDevice.get(deviceId);
+    return !budget || this.refilledEventTokens(budget, now) >= RealtimeGateway.EVENT_BURST;
+  }
+
+  // Drops every refilled bucket, connected device or not, at most once per
+  // refill period (the time a spent bucket takes to fill again, 6 s). A
+  // missing entry counts as a full bucket, so this changes no budget; the map
+  // then holds only devices that sent an event in about the last two refill
+  // periods, however many have disconnected.
+  private sweepRefilledEventBudgets(now: number): void {
+    const refillMs = (RealtimeGateway.EVENT_BURST / RealtimeGateway.EVENT_REFILL_PER_SECOND) * 1000;
+    if (now - this.lastEventBudgetSweepAt < refillMs) return;
+    this.lastEventBudgetSweepAt = now;
+    for (const [deviceId, budget] of this.eventBudgetByDevice) {
+      if (this.refilledEventTokens(budget, now) >= RealtimeGateway.EVENT_BURST) {
+        this.eventBudgetByDevice.delete(deviceId);
+      }
+    }
+  }
+
+  // Token bucket over the device's inbound events. Returns false when the
+  // device has spent its budget, and the event is then dropped.
+  private takeEventToken(deviceId: string): boolean {
+    const now = Date.now();
+    this.sweepRefilledEventBudgets(now);
+    const budget = this.eventBudgetByDevice.get(deviceId) ?? {
+      tokens: RealtimeGateway.EVENT_BURST,
+      at: now,
+    };
+    const refilled = this.refilledEventTokens(budget, now);
+    if (refilled < 1) {
+      this.eventBudgetByDevice.set(deviceId, { tokens: refilled, at: now });
+      return false;
+    }
+    this.eventBudgetByDevice.set(deviceId, { tokens: refilled - 1, at: now });
+    return true;
   }
 
   emitToUser<K extends keyof RealtimeEventMap>(
@@ -352,18 +427,28 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     event: TypingEvent,
   ): Promise<void> {
     const userId = client.data.userId as string | undefined;
+    const deviceId = client.data.deviceId as string | undefined;
     const handle = client.data.handle as string | undefined;
     const conversationId = payload?.conversationId;
-    if (!userId || !handle || typeof conversationId !== 'string' || !isUUID(conversationId)) {
+    if (
+      !userId ||
+      !deviceId ||
+      !handle ||
+      typeof conversationId !== 'string' ||
+      !isUUID(conversationId)
+    ) {
       return;
     }
-    if (this.shouldThrottleTyping(client.id, conversationId)) return;
+    if (!this.takeEventToken(deviceId)) return;
 
     try {
       await this.access.requireAccess(userId, conversationId, 'typing');
     } catch {
       return;
     }
+    // Recorded only for a conversation the caller may type in, so made-up
+    // ids cannot grow the throttle map.
+    if (this.shouldThrottleTyping(client.id, conversationId)) return;
 
     const recipients = await this.prisma.conversationMember.findMany({
       where: { conversationId, userId: { not: userId } },
@@ -375,7 +460,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   /**
    * Relay a WebRTC signaling message (SDP offer/answer or ICE candidate)
    * between the two parties of a 1:1 call. The sender must be allowed to call
-   * in the call's conversation; otherwise the message is dropped silently.
+   * in the call's conversation, the call must still be ringing or active, the
+   * blob must fit CALL_SIGNAL_MAX_DATA_LENGTH and the device must have event
+   * budget left; otherwise the message is dropped silently.
    *
    * IMPORTANT: `payload.data` is an opaque E2E media-setup blob. The server
    * MUST NOT inspect, parse, persist, or otherwise interpret it — WebRTC media
@@ -394,17 +481,21 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       !deviceId ||
       !payload?.callId ||
       typeof payload.data !== 'string' ||
+      payload.data.length > CALL_SIGNAL_MAX_DATA_LENGTH ||
       (payload.kind !== 'offer' && payload.kind !== 'answer' && payload.kind !== 'ice')
     ) {
       return;
     }
 
     if (!isUUID(payload.callId)) return;
+    if (!this.takeEventToken(deviceId)) return;
     const call = await this.prisma.callRecord.findUnique({
       where: { id: payload.callId },
-      select: { conversationId: true },
+      select: { conversationId: true, status: true },
     });
-    if (!call) return;
+    // An ended, declined or missed call is not a relay channel: its record
+    // lives on for up to 30 days.
+    if (!call || !SIGNALLING_CALL_STATUSES.has(call.status)) return;
 
     // Same policy as placing the call: a non-member or a blocked pair is
     // dropped silently.

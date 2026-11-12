@@ -23,7 +23,7 @@ export class DevicesController {
     @Req() request: AuthenticatedRequest,
     @Body() dto: RevokeDeviceDto,
   ): Promise<RevokeDeviceResponse> {
-    return this.devicesService.revoke(request.auth.userId, dto);
+    return this.devicesService.revoke(request.auth.userId, dto, request.auth.deviceId);
   }
 
   @Post('push-token')

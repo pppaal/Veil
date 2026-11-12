@@ -259,14 +259,18 @@ describe('DeviceTransferService', () => {
 });
 
 describe('DeviceTransferService first-claim-wins', () => {
-  async function startTransfer() {
+  async function startTransfer(options: { isProduction?: boolean } = {}) {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const keyHelper = new DeviceAuthTestHelper();
+    const config = Object.assign(new FakeConfigService(), {
+      isProduction: options.isProduction ?? false,
+    });
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
-      new FakeConfigService() as never,
+      config as never,
       new Ed25519DeviceAuthVerifier(),
       new FakeRealtimeGateway() as never,
     );
@@ -286,7 +290,7 @@ describe('DeviceTransferService first-claim-wins', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -332,10 +336,31 @@ describe('DeviceTransferService first-claim-wins', () => {
     const status = () => service.getSessionStatus({ sessionId: init.sessionId, auth: oldDevice });
     const approve = (claimId: string) =>
       service.approve(oldDevice, { sessionId: init.sessionId, claimId });
+    const signApproval = (
+      claimId: string,
+      fingerprint: string,
+      authPrivateKey = oldKeyPair.authPrivateKey,
+    ) =>
+      keyHelper.createProof({
+        challenge: `transfer-approve:${init.sessionId}:${claimId}:${fingerprint}`,
+        authPrivateKey,
+      });
+    const approveSigned = (claimId: string, approvalProof?: string) =>
+      service.approve(oldDevice, { sessionId: init.sessionId, claimId, approvalProof });
 
     const restart = () => service.init(oldDevice, { oldDeviceId: 'device-old' });
 
-    return { prisma, store, init, claimant, status, approve, restart };
+    return {
+      prisma,
+      store,
+      init,
+      claimant,
+      status,
+      approve,
+      approveSigned,
+      signApproval,
+      restart,
+    };
   }
 
   const codeOf = async (promise: Promise<unknown>) =>
@@ -343,6 +368,106 @@ describe('DeviceTransferService first-claim-wins', () => {
       () => 'resolved',
       (error) => (error as { response?: { code?: string } }).response?.code,
     );
+
+  // The completion commits before its response leaves the server. When that
+  // response is lost, the new device must be able to ask again: the old
+  // device is already revoked, and nothing else tells it its device id.
+  it('answers a retried completion exactly as the first and changes nothing', async () => {
+    const { prisma, claimant, approve } = await startTransfer();
+    const newDevice = claimant();
+    const { claimId } = await newDevice.claim();
+    await approve(claimId);
+    const first = await newDevice.complete(claimId);
+    const devicesAfterFirst = JSON.stringify(prisma.devices);
+
+    await expect(newDevice.complete(claimId)).resolves.toEqual(first);
+
+    expect(JSON.stringify(prisma.devices)).toBe(devicesAfterFirst);
+    expect(prisma.devices.filter((device) => device.isActive).map((device) => device.id)).toEqual([
+      first.newDeviceId,
+    ]);
+  });
+
+  it('refuses a retried completion signed by any other key', async () => {
+    const { prisma, claimant, approve } = await startTransfer();
+    const newDevice = claimant();
+    const { claimId } = await newDevice.claim();
+    await approve(claimId);
+    await newDevice.complete(claimId);
+
+    expect(await codeOf(claimant().complete(claimId))).toBe('transfer_completion_invalid');
+    expect(prisma.devices).toHaveLength(2);
+  });
+
+  it('refuses a retried completion once the new device has been revoked', async () => {
+    const { prisma, claimant, approve } = await startTransfer();
+    const newDevice = claimant();
+    const { claimId } = await newDevice.claim();
+    await approve(claimId);
+    const first = await newDevice.complete(claimId);
+    const created = prisma.devices.find((device) => device.id === first.newDeviceId)!;
+    created.isActive = false;
+    created.revokedAt = new Date();
+
+    expect(await codeOf(newDevice.complete(claimId))).toBe('transfer_session_inactive');
+  });
+
+  // A stolen bearer token of the old device must not be enough to hand the
+  // account to the thief's keys: the approval is signed with the old
+  // device's auth key over the claim and the fingerprint the user compared.
+  describe('approval proof on a production relay', () => {
+    it('approves with a signature by the old device over the claim and its fingerprint', async () => {
+      const { claimant, approveSigned, signApproval, status } = await startTransfer({
+        isProduction: true,
+      });
+      const newDevice = claimant();
+      const { claimId, claimantFingerprint } = await newDevice.claim();
+
+      await expect(
+        approveSigned(claimId, signApproval(claimId, claimantFingerprint)),
+      ).resolves.toMatchObject({ approved: true });
+      expect((await status()).status).toBe('approved');
+      await expect(newDevice.complete(claimId)).resolves.toMatchObject({
+        revokedDeviceId: 'device-old',
+      });
+    });
+
+    it('refuses an approval without a proof, by another key or over another fingerprint', async () => {
+      const { claimant, approveSigned, signApproval, status } = await startTransfer({
+        isProduction: true,
+      });
+      const newDevice = claimant();
+      const { claimId, claimantFingerprint } = await newDevice.claim();
+      const thief = claimant();
+
+      for (const approvalProof of [
+        undefined,
+        signApproval(claimId, claimantFingerprint, thief.keyPair.authPrivateKey),
+        signApproval(claimId, '0000 '.repeat(15) + '0000'),
+      ]) {
+        expect(await codeOf(approveSigned(claimId, approvalProof))).toBe(
+          'invalid_device_signature',
+        );
+      }
+      expect((await status()).status).toBe('claimed');
+      expect(await codeOf(newDevice.complete(claimId))).toBe('transfer_approval_required');
+    });
+
+    it('still checks a proof a development relay receives', async () => {
+      const { claimant, approveSigned, signApproval } = await startTransfer();
+      const newDevice = claimant();
+      const { claimId, claimantFingerprint } = await newDevice.claim();
+
+      expect(
+        await codeOf(
+          approveSigned(
+            claimId,
+            signApproval(claimId, claimantFingerprint, newDevice.keyPair.authPrivateKey),
+          ),
+        ),
+      ).toBe('invalid_device_signature');
+    });
+  });
 
   it('second claim returns 409 and invalidates session', async () => {
     const { prisma, store, init, claimant, status } = await startTransfer();

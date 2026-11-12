@@ -167,3 +167,41 @@ describe('docker-compose.prod.yml redis', () => {
     expect(command[save + 1]).toMatch(/^\d+ \d+( \d+ \d+)*$/);
   });
 });
+
+describe('docker-compose.prod.yml postgres', () => {
+  // At the default verbosity a unique violation is logged with its DETAIL
+  // line, which quotes the conflicting key: a createDirect race logs both
+  // user ids, a registration race the handle. terse drops it.
+  it('logs errors without the values that caused them', () => {
+    const command = serviceCommand(read('docker-compose.prod.yml'), 'postgres');
+    expect(command[0]).toBe('postgres');
+    const setting = command.indexOf('log_error_verbosity=terse');
+    expect(setting).toBeGreaterThan(0);
+    expect(command[setting - 1]).toBe('-c');
+  });
+
+  // A dump would keep deleted accounts, burned one-time links and expired
+  // ciphertext past every published retention window.
+  it('runs no database dump', () => {
+    expect(read('docker-compose.prod.yml')).not.toMatch(
+      /\b(pg_dump|pg_dumpall|pg_basebackup|pgbackrest|wal-g)\b/,
+    );
+  });
+
+  it('caps the log of every container', () => {
+    const lines = read('docker-compose.prod.yml').split('\n');
+    const servicesAt = lines.indexOf('services:');
+    const servicesEnd = lines.findIndex((line, index) => index > servicesAt && /^\S/.test(line));
+    const services: Array<{ name: string; logging: boolean }> = [];
+    for (let index = servicesAt + 1; index < servicesEnd; index += 1) {
+      const name = /^ {2}([a-z0-9-]+):$/.exec(lines[index])?.[1];
+      if (name) services.push({ name, logging: false });
+      if (lines[index] === '    logging: *logging') services[services.length - 1].logging = true;
+    }
+    expect(services.map((service) => service.name)).toContain('postgres');
+    expect(services.filter((service) => !service.logging)).toEqual([]);
+    expect(lines.join('\n')).toMatch(
+      /^x-logging: &logging\n {2}driver: json-file\n {2}options: \{ max-size: "10m", max-file: "3" \}$/m,
+    );
+  });
+});

@@ -78,7 +78,10 @@ export class AttachmentsService {
     deviceId: string,
     dto: CompleteAttachmentUploadDto,
   ): Promise<CompleteAttachmentUploadResponse> {
-    await this.cleanupExpiredPendingUploads(deviceId);
+    // The row being confirmed is judged by the HEAD check below, not by its
+    // age: a PUT that started inside the ticket's window may finish long after
+    // the sweep's cutoff, and sweeping it would delete the blob it confirms.
+    await this.cleanupExpiredPendingUploads(deviceId, dto.attachmentId);
 
     const attachment = await this.prisma.attachment.findUnique({
       where: { id: dto.attachmentId },
@@ -305,11 +308,15 @@ export class AttachmentsService {
     }
   }
 
-  private async cleanupExpiredPendingUploads(deviceId: string): Promise<void> {
+  private async cleanupExpiredPendingUploads(
+    deviceId: string,
+    exceptAttachmentId?: string,
+  ): Promise<void> {
     const cutoff = new Date(Date.now() - 15 * 60 * 1000);
     const expiredPending = await this.prisma.attachment.findMany({
       where: {
         uploaderDeviceId: deviceId,
+        ...(exceptAttachmentId ? { id: { not: exceptAttachmentId } } : {}),
         uploadStatus: 'pending',
         createdAt: {
           lt: cutoff,

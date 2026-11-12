@@ -224,6 +224,29 @@ class VeilMessengerController extends ChangeNotifier {
   Future<void> approveIdentityChange(String conversationId, {bool reverified = false, PendingIdentityChange? reviewed}) =>
       _services.identity.approve(conversationId, reverified: reverified, reviewed: reviewed);
 
+  /// Why the 1:1 [conversationId] admits no identity yet, if it is held: it
+  /// is listed under a handle this device knows as another account, or one
+  /// no honest relay issues (see ConversationPeerBindings.holdFor).
+  PeerAccountHold? peerAccountHoldFor(String conversationId) => _services.identity.accountHoldFor(conversationId);
+
+  /// The user chose to talk to the account the held [conversationId] is
+  /// listed with; what it sent and what waited to be sent go through. A
+  /// failure (the keystore refusing the binding, say) is shown like any
+  /// other user action's and leaves the conversation held.
+  Future<void> acknowledgePeerAccount(String conversationId) =>
+      _services.ops.run(() => _services.identity.acknowledgeAccount(conversationId));
+
+  /// Whether every pinned device of the 1:1 [conversationId]'s peer was
+  /// verified out of band (safety number or QR); false for a group.
+  Future<bool> isPeerVerified(String conversationId) async {
+    final conversation = conversationById(conversationId);
+    if (conversation == null || conversation.type != ConversationType.direct) return false;
+    final userId = conversation.recipientBundle.userId;
+    if (userId.isEmpty) return false;
+    final pins = await _services.trust.resolver.pinsForUser(userId);
+    return pins.isNotEmpty && pins.every((pin) => pin.isVerified);
+  }
+
   /// Whether the user may keep the current identity instead of the change
   /// pending in [conversationId] (see [declineIdentityChange]).
   bool mayDeclineIdentityChange(String conversationId) => _services.identity.mayDecline(conversationId);

@@ -1,4 +1,5 @@
 import '../../../../core/errors/user_facing_error.dart';
+import 'conversation_peer_bindings.dart';
 import 'identity_trust.dart';
 
 const _relayInterruptedMessage = 'Relay connection interrupted. Queued sends will retry after reconnect.';
@@ -29,6 +30,8 @@ class MessengerOperationRunner {
       await action();
     } on IdentityChangedException {
       // Shown in its conversation (pendingIdentityChangeFor), not globally.
+    } on PeerAccountHeldException {
+      // Shown in its conversation (peerAccountHoldFor), not globally.
     } catch (error) {
       await handleSecurityException(error);
       _errorMessage = formatUserFacingError(error);

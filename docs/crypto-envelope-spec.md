@@ -213,12 +213,16 @@ A frame refused only because it would stash more than 200 keys is not lost: the
 attempt changed nothing, so it opens once the frames before it have. Clients
 fetch a backlog (up to 2000 messages per refresh) and decrypt it oldest first,
 so each frame stays within the bound of the one before it. The mobile client
-also records such a frame as waiting for key material rather than failed, and
-retries it after each history page it ingests. It pages back to the newest
+also records such a frame as waiting for key material rather than failed,
+handshake (PreKey) frames included: one that arrives before the frame whose
+handshake installs the session opens on that session afterwards. It retries
+such frames after each history page it ingests. It pages back to the newest
 message it got from history, or held opened at start, never to one that only
 arrived live or as the ack of its own send: such a message says nothing about
 the frames before it, and stopping there could leave the older part of a
-backlog unfetched and the newer part too far ahead of its chain to open.
+backlog unfetched and the newer part too far ahead of its chain to open. With
+no such message (a first contact, or a chat whose messages all expired) it
+pages back as far as one refresh may, as the web does.
 
 Both clients store a message's opened content before they commit the step that
 spent its key. A crash, or a content or state write that fails, between the two
@@ -419,7 +423,7 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | `failed`                | malformed, unauthenticated, or prekeys unavailable; `failureReason` says which. `persist_failed`: the frame opened but the caller's content write or the state commit failed; nothing was committed, so it is retried |
 | `replayed`              | `(pub, N)` already consumed or its chain left behind       |
 | `sessionMissing`        | Normal or legacy v1 frame with no matching session         |
-| `awaitingKey`           | group frame whose sender key has not arrived, or (mobile only) a Normal frame more than 200 keys ahead of its chain (`skip_limit`); retried once key material or earlier frames arrive. The web client reports such a Normal frame as `failed` |
+| `awaitingKey`           | group frame whose sender key has not arrived, or (mobile only) a Normal or PreKey frame more than 200 keys ahead of its chain (`skip_limit`); retried once key material or earlier frames arrive. The web client reports such a frame as `failed` |
 | `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed; or a frame on a state whose identity the verifier no longer admits (nothing is committed) |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 
@@ -525,9 +529,12 @@ What a 1:1 conversation encrypts to is always what it shows. Once it has a
 session, a server conversation list never changes whom it is with: a listing
 that names another user, or turns it into a group, updates only its last
 message and timer. Mobile records whom each such conversation is with in the
-keystore before a list can drop it (`ConversationPeerBindings`), so this also
+keystore before a list can drop it (`ConversationPeerBindings`; web: IndexedDB
+`direct-peers`, `apps/web-demo/src/domain/peer-bindings.js`), so this also
 holds when an earlier list left the conversation out and no local preview is
-left. A handshake
+left. Both clients also bind a 1:1 to the peer it is listed with the first
+time the pins admit an identity for it, before anything is installed or
+sealed. A handshake
 the pins admit becomes the engine's sending state, so when it comes from
 another device or proves another identity than the one the conversation
 records, the conversation records that device and key in its place, and
@@ -539,6 +546,34 @@ bound to the identity the caller chose (compared as bytes), and otherwise
 fails with `SessionRecipientChanged` without encrypting, upon which the
 messenger asks the directory and opens a new session. Approving a change
 makes every 1:1 conversation with that contact ask the directory again.
+
+Handles and display names are relayed by the server: a listing can name any
+account with any handle. Pins, verification and safety numbers are about the
+account (its user id), never the name. So a binding also ties the handle it was
+recorded with to its account, and a 1:1 that is not bound yet is held while
+its listed handle is one this device bound to another account (compared
+without case), or one no honest server issues: outside the registration
+grammar of 3 to 32 characters of `a-z`, `0-9`, `.` and `_`, starting and ending
+with a letter or digit, with no two separators in a row. A lookalike with a
+zero-width or a non-Latin character renders like a known handle yet equals
+none, which is why the grammar check does not depend on what the device
+knows. A held conversation admits nothing: its frames are `identityRejected`
+before the pins are asked, nothing is pinned, sending and receiving do not ask
+the directory and nothing is sealed, until the user acknowledges the account
+it is listed with ("Talk to this account"). That binds it, and what waited is
+retried as a first contact. The chat says why it is held (another account
+than the one talked to before under that handle, or a name no server issues).
+Mobile: `ConversationPeerBindings.holdFor`; web: `peer-bindings.js` `hold`.
+The mobile chat also marks a contact verified once every device pinned for
+them is. Its safety-numbers screen, opened on a held chat, still looks the
+listed handle up to show the key the directory serves (claiming no prekey);
+with nothing pinned it has nothing to mark verified.
+
+The web client is deliberately stricter than the table above in two places:
+a new device of a contact never verified is raised for review instead of
+being pinned with an `identity.new_device` notice, and in a 1:1 with no
+session yet a send waits while any identity change is pending for the
+conversation, which spends none of the peer's one-time prekeys.
 
 Approving a change for a contact the user had verified takes a fresh
 comparison: either a scanned code that matches the presented key, or an

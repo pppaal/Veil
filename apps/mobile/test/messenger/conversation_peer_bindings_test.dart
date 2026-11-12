@@ -43,6 +43,26 @@ void main() {
     expect(platform.values[stored.key], '{not json');
   });
 
+  test('a binding the keystore refuses is not kept, so a held 1:1 stays held', () async {
+    final refusing = _RefusingWrites();
+    final bindings = ConversationPeerBindings(store: SecureStorageService(refusing).scoped(SecureScope.conversationPolicy));
+    await bindings.bindAll({'conv-1': const ConversationPeer(userId: 'user-selene', handle: 'selene')});
+    const listed = ConversationPeer(userId: 'user-mallory', handle: 'selene');
+    expect((await bindings.holdFor('conv-2', listed))?.reason, PeerAccountHoldReason.otherAccount);
+
+    refusing.refuse = true;
+    await expectLater(bindings.acknowledge('conv-2', listed), throwsA(isA<StateError>()));
+
+    expect((await bindings.all()).keys, ['conv-1']);
+    expect((await bindings.holdFor('conv-2', listed))?.reason, PeerAccountHoldReason.otherAccount);
+
+    // Once the keystore takes it, the acknowledgement binds as usual.
+    refusing.refuse = false;
+    await bindings.acknowledge('conv-2', listed);
+    expect(await bindings.holdFor('conv-2', listed), isNull);
+    expect(refusing.values.keys.where((key) => key.endsWith('direct_peers.v1')), hasLength(1));
+  });
+
   group('group members', () {
     test('and the count of their changes outlive the instance that recorded them', () async {
       await open().recordGroupMembers({
@@ -76,4 +96,15 @@ void main() {
       expect((await open().groupMembers())['grp']!.members, {'user-a', 'user-b'});
     });
   });
+}
+
+/// A keystore that refuses writes while [refuse] is set.
+class _RefusingWrites extends MemorySecureStore {
+  bool refuse = false;
+
+  @override
+  Future<void> write({required String key, required String? value}) {
+    if (refuse) throw StateError('keystore unavailable');
+    return super.write(key: key, value: value);
+  }
 }

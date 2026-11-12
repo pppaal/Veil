@@ -1,6 +1,7 @@
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/network/keys_api.dart';
 import '../conversation_models.dart';
+import 'conversation_peer_bindings.dart';
 import 'identity_trust.dart';
 import 'messenger_session_context.dart';
 import 'messenger_state_store.dart';
@@ -18,17 +19,20 @@ class PeerSessionResolver {
     required ConversationSessionBootstrapper sessions,
     required KeysApi keys,
     required IdentityTrust trust,
+    required ConversationPeerBindings bindings,
   })  : _store = store,
         _session = session,
         _sessions = sessions,
         _keys = keys,
-        _trust = trust;
+        _trust = trust,
+        _bindings = bindings;
 
   final MessengerStateStore _store;
   final MessengerSessionContext _session;
   final ConversationSessionBootstrapper _sessions;
   final KeysApi _keys;
   final IdentityTrust _trust;
+  final ConversationPeerBindings _bindings;
   final PeerBundleCache _peerBundles = PeerBundleCache();
   // Conversations whose next send must ask the directory first: a rekey was
   // armed, or a frame arrived from a peer device the session is not bound to.
@@ -64,6 +68,7 @@ class PeerSessionResolver {
   // its session encrypts to, otherwise a single refused frame, which the
   // relay can forge at will, would stop the conversation.
   Future<KeyBundle> bundleForSend(ConversationPreview conversation, {bool sessionMoved = false}) async {
+    await _listedPeerNotHeld(conversation);
     var recheck = sessionMoved || _directoryRecheck.contains(conversation.id);
     if (!recheck && _sessions.hasSessionFor(conversation.id)) {
       final bundle = conversation.recipientBundle;
@@ -109,6 +114,18 @@ class PeerSessionResolver {
     await _applyDirectoryAnswer(conversation.id, served, mayBootstrap: false);
   }
 
+  // A conversation listed under a handle this device knows as another
+  // account, or under one no honest relay issues, seals to nobody and asks
+  // the directory nothing until the user acknowledges the account (see
+  // ConversationPeerBindings.holdFor). Returns the peer it is listed with.
+  Future<ConversationPeer> _listedPeerNotHeld(ConversationPreview conversation) async {
+    final listed = ConversationPeer(userId: conversation.recipientBundle.userId, handle: conversation.peerHandle);
+    if (await _bindings.holdFor(conversation.id, listed) case final hold?) {
+      throw PeerAccountHeldException(conversation.id, hold);
+    }
+    return listed;
+  }
+
   Future<DirectoryDevice> _fetchPeerBundle(String handle, KeyClaim claim) async {
     final active = await _activeDeviceOf(handle, claim);
     _peerBundles.remember(handle, active);
@@ -136,11 +153,15 @@ class PeerSessionResolver {
     if (conversation == null || session == null) {
       return bundle;
     }
-    final peerUserId = conversation.recipientBundle.userId;
+    final listed = await _listedPeerNotHeld(conversation);
+    final peerUserId = listed.userId;
     if (bundle.userId != peerUserId) {
       throw StateError('The directory answered @${conversation.peerHandle} with another user.');
     }
     await _trust.require(conversationId, peerUserId, bundle.deviceId, bundle.identityPublicKey);
+    // The first identity the pins admit binds the conversation to the peer
+    // it is listed with (see ConversationPeerBindings).
+    await _bindings.bindAll({conversationId: listed});
     final action = mustBootstrap
         ? SessionAction.bootstrap
         : decideSession(

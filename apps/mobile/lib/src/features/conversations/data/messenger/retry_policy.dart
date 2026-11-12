@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../../../../core/network/veil_api_client.dart';
+import 'conversation_peer_bindings.dart';
 import 'identity_trust.dart';
 
 const maxAutomaticRetryAttempts = 5;
@@ -48,8 +49,9 @@ bool shouldRetryAutomatically(Object error, int retryCount) {
   if (retryCount >= maxAutomaticRetryAttempts) {
     return false;
   }
-  // Waits for the user; approving the change retries the conversation.
-  if (error is IdentityChangedException) {
+  // Waits for the user; approving the change, or acknowledging the
+  // account, retries the conversation.
+  if (error is IdentityChangedException || error is PeerAccountHeldException) {
     return false;
   }
   if (error is! VeilApiException) {

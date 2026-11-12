@@ -82,6 +82,11 @@ class FakeRelay {
   /// active one (a ghost device a hostile server injects, for instance).
   final Map<String, List<Map<String, dynamic>>> extraDevices = {};
 
+  /// Handles the relay lists some accounts under, by the handle of the
+  /// party it lies to: {viewer: {real handle: listed handle}}. The listing
+  /// keeps each member's real user id, as a relay that relabels does.
+  final Map<String, Map<String, String>> listedHandles = {};
+
   /// Signed-prekey bundles devices published with PUT /keys/signed-prekey.
   final Map<String, String> publishedSignedPrekeys = {};
 
@@ -128,6 +133,11 @@ class FakeRelay {
   Duration clockSkew = Duration.zero;
 
   DateTime now() => DateTime.now().toUtc().add(clockSkew);
+
+  /// How far a party's device clock runs ahead of the process clock, by
+  /// handle: the local clock its ServerClock corrects. Unset, a device
+  /// keeps the process clock.
+  final Map<String, Duration> deviceClockSkew = {};
 
   /// Registers [party] as the active device of its handle. A handle that
   /// already had a device moves to the new one, like a device transfer: the
@@ -186,8 +196,9 @@ class FakeRelay {
     );
   }
 
-  Map<String, dynamic> conversationJson(RelayConversation conversation) {
+  Map<String, dynamic> conversationJson(RelayConversation conversation, {String? viewer}) {
     final last = conversation.messages.isEmpty ? null : conversation.messages.last;
+    String listed(String handle) => listedHandles[viewer]?[handle] ?? handle;
     return {
       'id': conversation.id,
       'type': conversation.type,
@@ -196,8 +207,8 @@ class FakeRelay {
         for (final handle in conversation.memberHandles)
           {
             'userId': partiesByHandle[handle]!.userId,
-            'handle': handle,
-            'displayName': handle,
+            'handle': listed(handle),
+            'displayName': listed(handle),
           },
       ],
       'lastMessage': last,
@@ -344,7 +355,13 @@ class FakeRelay {
 }
 
 class FakeRelayClient extends VeilApiClient {
-  FakeRelayClient(this.relay, this.me) : super(baseUrl: 'http://relay.invalid/v1');
+  FakeRelayClient(this.relay, this.me)
+      : super(
+          baseUrl: 'http://relay.invalid/v1',
+          serverClock: ServerClock(
+            localClock: () => DateTime.now().add(relay.deviceClockSkew[me.handle] ?? Duration.zero),
+          ),
+        );
 
   final FakeRelay relay;
   final RelayParty me;
@@ -379,7 +396,7 @@ class FakeRelayClient extends VeilApiClient {
       'items': [
         for (final conversation in relay.conversations.values)
           if (conversation.memberHandles.contains(me.handle))
-            relay.conversationJson(conversation),
+            relay.conversationJson(conversation, viewer: me.handle),
       ],
       'nextCursor': null,
     };

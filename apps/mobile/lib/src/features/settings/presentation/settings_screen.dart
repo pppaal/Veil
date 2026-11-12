@@ -327,11 +327,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     return;
                   }
 
-                  await ref
-                      .read(appSessionProvider.notifier)
-                      .revokeCurrentDevice();
-                  if (context.mounted) {
-                    context.go('/create-account');
+                  try {
+                    await ref
+                        .read(appSessionProvider.notifier)
+                        .revokeCurrentDevice();
+                    if (context.mounted) {
+                      context.go('/create-account');
+                    }
+                  } catch (_) {
+                    // The relay did not revoke it, so this device keeps its
+                    // state; one it already dropped has been signed out.
+                    if (!context.mounted) return;
+                    VeilToast.show(
+                      context,
+                      message: l10n.commonError,
+                      tone: VeilBannerTone.warn,
+                    );
                   }
                 },
               ),

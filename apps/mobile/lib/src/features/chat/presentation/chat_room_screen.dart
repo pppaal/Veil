@@ -14,6 +14,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/messenger/presence_typing_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import '../../reactions/presentation/reaction_picker_widget.dart';
@@ -58,6 +59,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   // hand the flag back when it stops being visible.
   VeilMessengerController? _activeOn;
   bool _appInForeground = true;
+  // Whether every pinned device of the 1:1 peer was verified out of band,
+  // for the mark under the header; read again after the safety numbers.
+  bool _peerVerified = false;
 
   @override
   void initState() {
@@ -271,6 +275,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         : null;
 
     final peerUserId = conversation?.recipientBundle.userId;
+    final accountHold = conversation?.type == ConversationType.direct
+        ? controller.peerAccountHoldFor(widget.conversationId)
+        : null;
     final content = Column(
       children: [
         _PresenceSelector<bool>(
@@ -288,6 +295,13 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
             peerOnline: peerOnline,
           ),
         ),
+        if (_peerVerified && conversation?.type == ConversationType.direct) ...[
+          const SizedBox(height: VeilSpace.xs),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: VeilStatusPill(label: l10n.chatPeerVerified, tone: VeilBannerTone.good),
+          ),
+        ],
         const SizedBox(height: VeilSpace.sm),
         VeilMetricStrip(
           items: [
@@ -339,8 +353,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
-              onPressed: () => context.push('/safety-numbers/${widget.conversationId}'),
+              onPressed: _openSafetyNumbers,
               child: Text(l10n.chatIdentityChangedReview),
+            ),
+          ),
+        ],
+        // Listed under a handle this device knows as another account, or one
+        // no honest relay issues: nothing is sent or opened until the user
+        // says this is the account they want to talk to.
+        if (accountHold != null) ...[
+          const SizedBox(height: VeilSpace.sm),
+          VeilInlineBanner(
+            title: accountHold.reason == PeerAccountHoldReason.otherAccount
+                ? l10n.chatAccountHoldOtherTitle
+                : l10n.chatAccountHoldUnissuedTitle,
+            message: accountHold.reason == PeerAccountHoldReason.otherAccount
+                ? l10n.chatAccountHoldOtherBody(accountHold.known?.handle ?? conversation?.peerHandle ?? '')
+                : l10n.chatAccountHoldUnissuedBody,
+            tone: VeilBannerTone.danger,
+            icon: Icons.person_off_outlined,
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: () => ref.read(messengerControllerProvider).acknowledgePeerAccount(widget.conversationId),
+              child: Text(l10n.chatAccountHoldAcknowledge),
             ),
           ),
         ],
@@ -459,8 +496,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         if (isDirect)
           IconButton(
             tooltip: 'Safety number',
-            onPressed: () =>
-                context.push('/safety-numbers/${widget.conversationId}'),
+            onPressed: _openSafetyNumbers,
             icon: const Icon(Icons.verified_user_outlined),
           ),
         IconButton(
@@ -712,12 +748,26 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Future<void> _loadConversationState() async {
     final controller = ref.read(messengerControllerProvider);
     _syncActiveConversation();
+    unawaited(_loadPeerVerified());
     await controller.loadConversationMessages(widget.conversationId);
     await _markLatestRemoteMessageRead(controller);
     if (_searchController.text.trim().isNotEmpty) {
       await _runSearch();
     }
     await _jumpToNavigationTarget();
+  }
+
+  Future<void> _loadPeerVerified() async {
+    final conversationId = widget.conversationId;
+    final verified = await ref.read(messengerControllerProvider).isPeerVerified(conversationId);
+    if (mounted && conversationId == widget.conversationId && verified != _peerVerified) {
+      setState(() => _peerVerified = verified);
+    }
+  }
+
+  Future<void> _openSafetyNumbers() async {
+    await context.push('/safety-numbers/${widget.conversationId}');
+    if (mounted) await _loadPeerVerified();
   }
 
   Future<void> _markLatestRemoteMessageRead(
@@ -798,8 +848,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       body: body,
       disappearAfter: _messageTtl,
     );
-    // Held back by an identity change: the text stays for after the review.
-    if (controller.pendingIdentityChangeFor(widget.conversationId) == null) {
+    // Held back by an identity change or a held account: the text stays for
+    // after the review.
+    if (controller.pendingIdentityChangeFor(widget.conversationId) == null &&
+        controller.peerAccountHoldFor(widget.conversationId) == null) {
       _messageController.clear();
     }
   }

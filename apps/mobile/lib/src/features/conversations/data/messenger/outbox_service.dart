@@ -9,6 +9,7 @@ import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
 import 'attachment_transfer_service.dart';
 import 'conversation_crypto_router.dart';
+import 'conversation_peer_bindings.dart';
 import 'identity_trust.dart';
 import 'message_content_service.dart';
 import 'message_merge.dart';
@@ -310,8 +311,11 @@ class OutboxService {
           canCancel: false,
         );
       }
-      // An identity change is the conversation's issue, not a global one.
-      if (error is! IdentityChangedException) _ops.showMessage(failed.errorMessage!);
+      // An identity change or a held account is the conversation's issue,
+      // not a global one.
+      if (error is! IdentityChangedException && error is! PeerAccountHeldException) {
+        _ops.showMessage(failed.errorMessage!);
+      }
     }
   }
 

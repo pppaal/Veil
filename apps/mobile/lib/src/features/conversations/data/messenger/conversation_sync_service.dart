@@ -228,6 +228,7 @@ class ConversationSyncService {
     );
     if (overruled == null || !stillCurrent()) return;
     _crypto.recordUnlistedSessions();
+    await _checkAccountHolds(stillCurrent);
     for (final conversationId in overruled) {
       await _notices.write(
         conversationId,
@@ -236,6 +237,19 @@ class ConversationSyncService {
     }
     await _announceMemberChanges(stillCurrent);
     await _disappearing.reconcile();
+  }
+
+  // Finds which listed 1:1 conversations are held for their handle (see
+  // ConversationPeerBindings.holdFor), so a chat says so before anything
+  // was sent or received in it.
+  Future<void> _checkAccountHolds(bool Function() stillCurrent) async {
+    for (final conversation in _store.conversations.toList()) {
+      final peerUserId = conversation.recipientBundle.userId;
+      if (conversation.type != ConversationType.direct || peerUserId.isEmpty) continue;
+      await _peerBindings.holdFor(conversation.id, ConversationPeer(userId: peerUserId, handle: conversation.peerHandle));
+      if (!stillCurrent()) return;
+    }
+    _store.changed();
   }
 
   // The relay decides who is in a group, and the next send seals the group's
@@ -304,7 +318,7 @@ class ConversationSyncService {
       fetched.addAll(items);
       nextCursor = next;
       final reachedKnown = knownUpTo != null && items.any((message) => (message.conversationOrder ?? 0) <= knownUpTo);
-      if (nextCursor == null || reachedKnown || knownUpTo == null) break;
+      if (nextCursor == null || reachedKnown) break;
       cursor = nextCursor;
     }
     final listed = fetched
@@ -407,7 +421,9 @@ class ConversationSyncService {
 
   // Where a refresh of [conversationId] stops paging back. Before any
   // history of it is held, that is the oldest message this device holds;
-  // with none, a refresh reads only the newest page.
+  // with none (a first contact, or a chat whose rows all expired), a refresh
+  // pages back as far as it may, as the web does: the newest page alone may
+  // be too far along a chain to open.
   int? _heldThroughOrOldest(String conversationId) =>
       _heldThrough[conversationId] ??
       _store

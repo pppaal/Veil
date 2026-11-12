@@ -5,6 +5,7 @@ import '../../../../core/realtime/realtime_events.dart';
 import '../../../../core/util/uuid_v4.dart';
 import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
+import 'conversation_peer_bindings.dart';
 import 'envelope_version_policy.dart';
 import 'identity_trust.dart';
 import 'messenger_session_context.dart';
@@ -23,6 +24,7 @@ class ConversationCryptoRouter {
     required MessageCryptoEngine engine,
     required PeerSessionResolver peers,
     required IdentityTrust trust,
+    required ConversationPeerBindings bindings,
     required EnvelopeVersionPolicy envelopeVersions,
     required GroupSenderKeyCoordinator? groupCrypto,
     required Future<void> Function() refreshConversations,
@@ -32,6 +34,7 @@ class ConversationCryptoRouter {
         _engine = engine,
         _peers = peers,
         _trust = trust,
+        _bindings = bindings,
         _envelopeVersions = envelopeVersions,
         _groupCrypto = groupCrypto,
         _refreshConversations = refreshConversations,
@@ -42,6 +45,7 @@ class ConversationCryptoRouter {
   final MessageCryptoEngine _engine;
   final PeerSessionResolver _peers;
   final IdentityTrust _trust;
+  final ConversationPeerBindings _bindings;
   final EnvelopeVersionPolicy _envelopeVersions;
   final GroupSenderKeyCoordinator? _groupCrypto;
   final Future<void> Function() _refreshConversations;
@@ -190,12 +194,18 @@ class ConversationCryptoRouter {
       if (conversation == null || conversation.type != ConversationType.direct) return false;
       final peerUserId = conversation.recipientBundle.userId;
       final key = claim.identityKeyEd25519;
+      // Held for its listed handle (see ConversationPeerBindings.holdFor):
+      // nothing it sent opens, and the pins are not even asked, until the
+      // user acknowledges the account. The frames wait and open then.
+      final listed = ConversationPeer(userId: peerUserId, handle: conversation.peerHandle);
+      if (await _bindings.holdFor(conversation.id, listed) != null) return false;
       if (!claim.installsSession) {
         return await _trust.admitSession(conversation.id, peerUserId, claim.senderDeviceId, key);
       }
       if (!await _trust.admit(conversation.id, peerUserId, claim.senderDeviceId, key)) {
         return false;
       }
+      await _bindings.bindAll({conversation.id: listed});
       _handshakeIdentities[conversation.id] = (deviceId: claim.senderDeviceId, key: key);
       return true;
     } catch (_) {

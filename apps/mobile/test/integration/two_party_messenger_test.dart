@@ -230,8 +230,11 @@ void main() {
       await bob.controller.fetchPeerKeyBundle('alice');
     }
 
+    // Each device has its own clock. The sender's runs 30 s behind the
+    // relay's; the recipient's agrees with the relay.
     test('is stamped on the relay\'s clock by a sender whose clock runs slow', () async {
       relay.clockSkew = const Duration(seconds: 30);
+      relay.deviceClockSkew['bob'] = const Duration(seconds: 30);
       await learnRelayClock();
 
       await alice.controller.sendText(conversationId: conv, body: 'vanish', disappearAfter: const Duration(seconds: 10));
@@ -242,12 +245,27 @@ void main() {
       await waitFor(() async => (await bob.bodies(conv)).contains('vanish'), reason: 'bob never saw it');
     });
 
+    // The recipient's clock runs 30 s ahead of the relay's; the sender's
+    // agrees with the relay. The recipient's is the process clock, so code
+    // that read the device clock directly would retire the message.
     test('is not retired early by a recipient whose clock runs fast', () async {
       relay.clockSkew = const Duration(seconds: -30);
+      relay.deviceClockSkew['alice'] = const Duration(seconds: -30);
       await learnRelayClock();
 
-      await alice.controller.sendText(conversationId: conv, body: 'vanish', disappearAfter: const Duration(seconds: 10));
-      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'not acked');
+      // Alice's 10 s message, sealed with the expiry her correct clock
+      // gives it: 10 s after the relay's now.
+      final sealed = await alice.lib.messaging.encryptMessage(
+        conversationId: conv,
+        senderDeviceId: alice.device.deviceId,
+        recipientUserId: bob.device.userId,
+        body: 'vanish',
+        messageKind: MessageKind.text,
+        recipientBundle: alice.controller.conversationById(conv)!.recipientBundle,
+        expiresAt: relay.now().add(const Duration(seconds: 10)),
+      );
+      relay.inject(senderHandle: 'alice', conversationId: conv, envelope: alice.lib.envelopeCodec.encodeApiEnvelope(sealed));
+      await bob.controller.loadConversationMessages(conv);
       await waitFor(() async => (await bob.bodies(conv)).contains('vanish'), reason: 'bob retired it unseen');
       await settle();
       expect(await bob.bodies(conv), contains('vanish'));
@@ -834,6 +852,39 @@ void main() {
       // held opened: one page, not the 32 messages back to the oldest.
       expect(bob.api.messageFetches - fetchesBefore, 1);
       expect(await backlogRead(), 30);
+    });
+
+    // A first contact: bob holds nothing of the 1:1, and every frame alice
+    // sends until he answers is a handshake frame.
+    Future<void> firstContactBacklog(int count) async {
+      bob.realtime.disconnect();
+      await alice.controller.sendText(conversationId: conv, body: 'first contact');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the first message was not acked');
+      await sealedBacklog(count, sendFirst: false);
+      relay.messagePageSize = 50;
+    }
+
+    test('of 400 in a new 1:1 is read in full when the chat opens, without loading older history', () async {
+      await firstContactBacklog(400);
+
+      await bob.controller.handleAppResumed();
+      await bob.controller.loadConversationMessages(conv);
+
+      await expectBacklogCaughtUp(400, alsoRead: ['first contact']);
+    });
+
+    test('in a new 1:1, a live handshake frame that beats the resync waits for the frames before it', () async {
+      await firstContactBacklog(210);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+      await bob.controller.loadConversationMessages(conv);
+
+      await expectBacklogCaughtUp(210, alsoRead: ['first contact', 'live 0']);
     });
 
     test('of 400 behind a live frame that arrived before a restart is read in full after it', () async {

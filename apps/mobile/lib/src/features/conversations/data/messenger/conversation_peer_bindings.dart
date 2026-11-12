@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../../../../core/identity/issued_handle.dart';
 import '../../../../core/storage/secure_storage_service.dart';
 
 /// The contact a 1:1 conversation is with.
@@ -8,6 +9,39 @@ class ConversationPeer {
 
   final String userId;
   final String handle;
+}
+
+/// Why a 1:1 conversation that is not bound yet admits no identity until
+/// the user says the account it is listed with is the one they want.
+enum PeerAccountHoldReason {
+  /// Listed under a handle this device bound to another account.
+  otherAccount,
+
+  /// Listed under a handle no honest relay issues (see isIssuableHandle).
+  unissuedHandle,
+}
+
+class PeerAccountHold {
+  const PeerAccountHold(this.reason, {this.known});
+
+  final PeerAccountHoldReason reason;
+
+  /// The account this device knows under the same handle, for
+  /// [PeerAccountHoldReason.otherAccount].
+  final ConversationPeer? known;
+}
+
+/// Thrown when a send needs an identity for a conversation held by a
+/// [PeerAccountHold]. Scoped to that conversation: the chat shows it.
+class PeerAccountHeldException implements Exception {
+  const PeerAccountHeldException(this.conversationId, this.hold);
+
+  final String conversationId;
+  final PeerAccountHold hold;
+
+  @override
+  String toString() => 'This chat is listed under a name this device knows as another account. '
+      'Confirm the account before sending.';
 }
 
 /// The members a group was last shown with on this device, and how many
@@ -33,6 +67,13 @@ class GroupMembership {
 /// contact while it reads and writes the other's session. The bindings live
 /// in the keystore, apart from the conversation cache the relay's lists
 /// overwrite.
+///
+/// A binding also ties a handle to the account it was bound with. The user
+/// sees handles, never user ids, and pins and verification are keyed on the
+/// user id: so a conversation that is not bound yet is held ([holdFor])
+/// while its listed handle is one this device bound to another account, or
+/// one no honest relay issues. Until the user acknowledges that account
+/// (which binds it), no identity is pinned, installed or sealed to for it.
 class ConversationPeerBindings {
   ConversationPeerBindings({ScopedSecureStore? store}) : _store = store;
 
@@ -40,6 +81,8 @@ class ConversationPeerBindings {
   static const _groupsKey = 'group_members.v1';
 
   final ScopedSecureStore? _store;
+  // What [holdFor] last found, for the views to read synchronously.
+  final Map<String, PeerAccountHold> _holds = {};
   // Shared by every caller, so a binding recorded while the first read is
   // still in flight is not replaced by a second, older copy of the document.
   Future<Map<String, ConversationPeer>>? _bound;
@@ -82,9 +125,55 @@ class ConversationPeerBindings {
     if (fresh.isEmpty) return;
     bound.addAll(fresh);
     if (_unreadable) return;
-    await _store?.write(_documentKey, json.encode({
-      for (final entry in bound.entries) entry.key: {'userId': entry.value.userId, 'handle': entry.value.handle},
-    }));
+    try {
+      await _store?.write(_documentKey, json.encode({
+        for (final entry in bound.entries) entry.key: {'userId': entry.value.userId, 'handle': entry.value.handle},
+      }));
+    } catch (_) {
+      // Not recorded, so not bound here either: a conversation held for its
+      // handle stays held rather than open only until the next start.
+      for (final MapEntry(:key, :value) in fresh.entries) {
+        if (identical(bound[key], value)) bound.remove(key);
+      }
+      rethrow;
+    }
+  }
+
+  /// Why the 1:1 [conversationId], listed with [listed], admits no identity
+  /// yet: it is not bound, and its handle is one this device bound to
+  /// another account, or one no honest relay issues. Null once it is bound,
+  /// or when nothing about its handle conflicts. Kept for [heldNow].
+  Future<PeerAccountHold?> holdFor(String conversationId, ConversationPeer listed) async {
+    final bound = await _load();
+    PeerAccountHold? hold;
+    if (!bound.containsKey(conversationId)) {
+      if (!isIssuableHandle(listed.handle)) {
+        hold = const PeerAccountHold(PeerAccountHoldReason.unissuedHandle);
+      } else {
+        final handle = listed.handle.toLowerCase();
+        final known = bound.values
+            .where((peer) => peer.handle.toLowerCase() == handle && peer.userId != listed.userId)
+            .firstOrNull;
+        if (known != null) hold = PeerAccountHold(PeerAccountHoldReason.otherAccount, known: known);
+      }
+    }
+    if (hold == null) {
+      _holds.remove(conversationId);
+    } else {
+      _holds[conversationId] = hold;
+    }
+    return hold;
+  }
+
+  /// What [holdFor] last found for [conversationId].
+  PeerAccountHold? heldNow(String conversationId) => _holds[conversationId];
+
+  /// The user chose to talk to the account [conversationId] is listed with,
+  /// although a hold was raised: it is bound to [listed], and so no longer
+  /// held.
+  Future<void> acknowledge(String conversationId, ConversationPeer listed) async {
+    await bindAll({conversationId: listed});
+    _holds.remove(conversationId);
   }
 
   /// Drops what was read for the previous identity; the stored bindings are
@@ -93,6 +182,7 @@ class ConversationPeerBindings {
     _bound = null;
     _unreadable = false;
     _groups = null;
+    _holds.clear();
   }
 
   Future<Map<String, GroupMembership>> _loadGroups() async {

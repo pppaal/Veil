@@ -67,6 +67,11 @@ class SecureStorageService {
   static const _identityKey = 'veil.identity.private_ref';
   static const _authPrivateKey = 'veil.auth.private_key';
   static const _authPublicKey = 'veil.auth.public_key';
+  // A new device's transfer between its claim and its first login: the
+  // keys it claimed with and, once the relay committed the transfer, the
+  // device id it got. Kept so neither a lost response nor an app kill can
+  // throw away the only keys the account now trusts.
+  static const _pendingTransferKey = 'veil.transfer.pending';
   static const _pinKey = 'veil.app_lock.pin_verifier';
   static const _pinFailuresKey = 'veil.app_lock.pin_failures';
   static const _pinLockoutUntilKey = 'veil.app_lock.pin_lockout_until';
@@ -317,6 +322,16 @@ class SecureStorageService {
   Future<void> persistLocalNickname(String? nickname) => nickname == null || nickname.isEmpty
       ? _storage.delete(key: _displayNameKey)
       : _storage.write(key: _displayNameKey, value: nickname);
+
+  Future<void> persistPendingTransfer(PendingTransferRecord record) =>
+      _storage.write(key: _pendingTransferKey, value: jsonEncode(record.toJson()));
+
+  Future<PendingTransferRecord?> readPendingTransfer() async {
+    final json = _decodeJsonObject(await _storage.read(key: _pendingTransferKey));
+    return json == null ? null : PendingTransferRecord.fromJson(json);
+  }
+
+  Future<void> clearPendingTransfer() => _storage.delete(key: _pendingTransferKey);
 
   Future<void> clearSession() async {
     await _storage.delete(key: _accessTokenKey);
@@ -592,6 +607,7 @@ class SecureStorageService {
   }) async {
     await clearSession();
     await clearDeviceSecrets();
+    await clearPendingTransfer();
     await clearCacheKey();
     await clearPinThrottleState();
     await clearSessionSnapshots();
@@ -889,6 +905,85 @@ class StoredSession {
   final String deviceId;
   final String handle;
   final String? displayName;
+}
+
+/// A device transfer this new device claimed and has not finished yet.
+/// [newDeviceId] and [handle] are set once the relay committed the transfer:
+/// from then on the account trusts these keys and no other device.
+class PendingTransferRecord {
+  const PendingTransferRecord({
+    required this.sessionId,
+    required this.transferToken,
+    required this.claimId,
+    required this.claimantFingerprint,
+    required this.expiresAt,
+    required this.identity,
+    required this.authKey,
+    this.newDeviceId,
+    this.handle,
+  });
+
+  factory PendingTransferRecord.fromJson(Map<String, dynamic> json) {
+    return PendingTransferRecord(
+      sessionId: json['sessionId'] as String,
+      transferToken: json['transferToken'] as String,
+      claimId: json['claimId'] as String,
+      claimantFingerprint: json['claimantFingerprint'] as String,
+      expiresAt: DateTime.parse(json['expiresAt'] as String),
+      identity: DeviceIdentityMaterial(
+        identityPublicKey: json['identityPublicKey'] as String,
+        identityPrivateKeyRef: json['identityPrivateKeyRef'] as String,
+        signedPrekeyBundle: json['signedPrekeyBundle'] as String,
+      ),
+      authKey: DeviceAuthKeyMaterial(
+        publicKey: json['authPublicKey'] as String,
+        privateKey: json['authPrivateKey'] as String,
+      ),
+      newDeviceId: json['newDeviceId'] as String?,
+      handle: json['handle'] as String?,
+    );
+  }
+
+  final String sessionId;
+  final String transferToken;
+  final String claimId;
+  final String claimantFingerprint;
+  final DateTime expiresAt;
+  final DeviceIdentityMaterial identity;
+  final DeviceAuthKeyMaterial authKey;
+  final String? newDeviceId;
+  final String? handle;
+
+  bool get isCompleted => newDeviceId != null && handle != null;
+
+  PendingTransferRecord completedAs({required String newDeviceId, required String handle}) {
+    return PendingTransferRecord(
+      sessionId: sessionId,
+      transferToken: transferToken,
+      claimId: claimId,
+      claimantFingerprint: claimantFingerprint,
+      expiresAt: expiresAt,
+      identity: identity,
+      authKey: authKey,
+      newDeviceId: newDeviceId,
+      handle: handle,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'sessionId': sessionId,
+        'transferToken': transferToken,
+        'claimId': claimId,
+        'claimantFingerprint': claimantFingerprint,
+        'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'identityPublicKey': identity.identityPublicKey,
+        'identityPrivateKeyRef': identity.identityPrivateKeyRef,
+        'signedPrekeyBundle': identity.signedPrekeyBundle,
+        'authPublicKey': authKey.publicKey,
+        'authPrivateKey': authKey.privateKey,
+        if (newDeviceId != null) 'newDeviceId': newDeviceId,
+        if (handle != null) 'handle': handle,
+      };
 }
 
 class StoredAuthKeyMaterial {

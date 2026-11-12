@@ -379,7 +379,14 @@ class SessionCipher {
       );
       final opened = await _openV2(state, envelope, frame, nonce);
       final payload = opened.payload;
-      if (payload == null) return _failure(envelope, DecryptStatus.failed, opened.reason);
+      if (payload == null) {
+        // A handshake frame further along its chain than one step may skip
+        // waits, as on an installed session: it opens on the session an
+        // earlier frame of the same handshake installs. Nothing was spent on
+        // it, and its one-time prekey is released below.
+        final status = opened.reason == 'skip_limit' ? DecryptStatus.awaitingKey : DecryptStatus.failed;
+        return _failure(envelope, status, opened.reason);
+      }
       // Decided only once the handshake authenticated, so neither a pinning
       // verifier nor identityRejected ever concerns a claim nobody proved.
       if (!await _identityAccepted(envelope, header, record)) {

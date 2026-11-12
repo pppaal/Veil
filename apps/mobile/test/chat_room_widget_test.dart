@@ -6,15 +6,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
+import 'package:veil_mobile/src/core/identity/identity_key_value_backend.dart';
+import 'package:veil_mobile/src/core/identity/trusted_identity_resolver.dart';
+import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/in_memory_message_content_store.dart';
+import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+
+import 'support/memory_secure_store.dart';
 
 void main() {
   testWidgets('chat room shows delivery badge and local search context', (tester) async {
@@ -241,6 +249,44 @@ void main() {
       expect(find.text('Orbit relay window'), findsNothing);
     });
   });
+
+  // trust-5: what the user sees is a handle; pins and verification are about
+  // an account.
+  testWidgets('a 1:1 listed under a handle this device knows as another account is held until acknowledged',
+      (tester) async {
+    // In the keystore, as in the app: signing in reads the bindings again.
+    final bindings = ConversationPeerBindings(
+      store: SecureStorageService(MemorySecureStore()).scoped(SecureScope.conversationPolicy),
+    );
+    await bindings.bindAll({'conv-earlier': const ConversationPeer(userId: 'user-earlier', handle: 'selene')});
+    final controller = await _pumpExpiringChat(tester, peerBindings: bindings);
+
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
+    expect(find.text('A different account'), findsOneWidget);
+    expect(find.text('Verified'), findsNothing);
+
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+
+    expect(controller.peerAccountHoldFor('conv-1'), isNull);
+    expect(find.text('A different account'), findsNothing);
+  });
+
+  testWidgets('a contact whose every device was verified is marked verified', (tester) async {
+    final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()));
+    await resolver.adoptVerified('user-peer', 'device-peer', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        verifiedAt: DateTime.utc(2026, 4, 1));
+    await _pumpExpiringChat(tester, identityTrust: IdentityTrust(resolver));
+
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('A different account'), findsNothing);
+  });
+
+  testWidgets('a contact never verified carries no mark', (tester) async {
+    await _pumpExpiringChat(tester);
+
+    expect(find.text('Verified'), findsNothing);
+  });
 }
 
 // Opens the chat room over one message of ours, 'Orbit relay window', that
@@ -248,8 +294,10 @@ void main() {
 // the relay's: the relay's Date header said so.
 Future<VeilMessengerController> _pumpExpiringChat(
   WidgetTester tester, {
-  required DateTime expiresAt,
-  required Duration deviceClockAhead,
+  DateTime? expiresAt,
+  Duration deviceClockAhead = Duration.zero,
+  ConversationPeerBindings? peerBindings,
+  IdentityTrust? identityTrust,
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1;
@@ -295,6 +343,8 @@ Future<VeilMessengerController> _pumpExpiringChat(
     sessionBootstrapper: adapter.sessions,
     realtimeService: _FakeRealtimeService(),
     cacheService: cache,
+    peerBindings: peerBindings,
+    identityTrust: identityTrust,
   );
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox.shrink());

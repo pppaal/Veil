@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/core/crypto/ratchet/session_record.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
 
@@ -202,6 +203,83 @@ void main() {
     final view = alice.controller.conversationById('conv-am')!;
     expect(view.peerHandle, 'mallory');
     expect(view.recipientBundle.userId, mallory.device.userId);
+  });
+
+  group('a new 1:1 the relay lists under a name this device knows as another account', () {
+    late MessengerParty mallory;
+
+    // Alice talks to bob and verifies him. Mallory, a relay account, then
+    // opens a 1:1 with alice that the relay lists to alice under bob's
+    // handle, with mallory's own user id (trust-5).
+    setUp(() async {
+      mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mal');
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      await verify(alice, bob);
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await mallory.signIn();
+    });
+
+    tearDown(() => mallory.dispose());
+
+    Future<void> malloryWrites(String body) async {
+      await mallory.controller.sendText(conversationId: 'conv-am', body: body);
+      await waitFor(() => mallory.controller.pendingCountFor('conv-am') == 0, reason: 'not acked');
+      await alice.controller.loadConversationMessages('conv-am');
+      await settle();
+    }
+
+    test('is held: nothing opens, nothing is pinned, nothing is sealed, until the user acknowledges it', () async {
+      await malloryWrites('bob here, new phone, send the code');
+
+      final view = alice.controller.conversationById('conv-am')!;
+      expect(view.peerHandle, 'bob');
+      final hold = alice.controller.peerAccountHoldFor('conv-am');
+      expect(hold?.reason, PeerAccountHoldReason.otherAccount);
+      expect(hold?.known?.userId, bob.device.userId);
+      expect(await alice.bodies('conv-am'), isNot(contains('bob here, new phone, send the code')));
+      expect(await alice.pins.pinsForUser(mallory.device.userId), isEmpty);
+      // The verified 1:1 with the real bob is not held.
+      expect(alice.controller.peerAccountHoldFor(conv), isNull);
+
+      // A reply is refused before anything is sealed or looked up.
+      final lookups = alice.api.directoryLookups['bob'] ?? 0;
+      await alice.controller.sendText(conversationId: 'conv-am', body: 'which code?');
+      await settle();
+      expect(relay.conversations['conv-am']!.messages.where((m) => m['senderDeviceId'] == alice.device.deviceId), isEmpty);
+      expect(alice.api.directoryLookups['bob'] ?? 0, lookups);
+      expect(alice.controller.errorMessage, isNull);
+
+      // Acknowledged, it is a first contact with mallory's account: what it
+      // sent opens, and the held state is gone.
+      await alice.controller.acknowledgePeerAccount('conv-am');
+      await waitFor(() async => (await alice.bodies('conv-am')).contains('bob here, new phone, send the code'),
+          reason: 'the held frame did not open after the acknowledgement');
+      expect(alice.controller.peerAccountHoldFor('conv-am'), isNull);
+      expect(await alice.pins.pinsForUser(mallory.device.userId), hasLength(1));
+      // Bob's verification is untouched.
+      expect((await alice.pins.pinsForUser(bob.device.userId)).every((pin) => pin.isVerified), isTrue);
+    });
+
+    test('is held before anything was sent in it, and stays held across a restart', () async {
+      await alice.controller.refreshConversations();
+      expect(alice.controller.peerAccountHoldFor('conv-am')?.reason, PeerAccountHoldReason.otherAccount);
+
+      await alice.restart();
+      await alice.controller.refreshConversations();
+      expect(alice.controller.peerAccountHoldFor('conv-am')?.reason, PeerAccountHoldReason.otherAccount);
+      expect(alice.controller.peerAccountHoldFor(conv), isNull);
+    });
+
+    test('a name no relay issues is held even without a known account behind it', () async {
+      relay.listedHandles['alice'] = {'mallory': 'bоb'};
+      await malloryWrites('hello from bоb');
+
+      expect(alice.controller.peerAccountHoldFor('conv-am')?.reason, PeerAccountHoldReason.unissuedHandle);
+      expect(await alice.bodies('conv-am'), isNot(contains('hello from bоb')));
+      expect(await alice.pins.pinsForUser(mallory.device.userId), isEmpty);
+    });
   });
 
   group('a 1:1 the relay leaves out of one list and lists again with a verified contact', () {

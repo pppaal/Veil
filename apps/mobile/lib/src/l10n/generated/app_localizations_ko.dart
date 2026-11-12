@@ -786,6 +786,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatIdentityChangedReview => '확인하기';
 
   @override
+  String get chatAccountHoldOtherTitle => '다른 계정입니다';
+
+  @override
+  String chatAccountHoldOtherBody(String handle) {
+    return '이 대화는 @$handle(으)로 표시되지만, 전에 @$handle(으)로 대화한 계정이 아닙니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
+  }
+
+  @override
+  String get chatAccountHoldUnissuedTitle => 'VEIL 서버가 발급하지 않는 이름';
+
+  @override
+  String get chatAccountHoldUnissuedBody =>
+      '이 대화는 VEIL 서버가 발급하지 않는 이름으로 표시되어, 아는 사람처럼 보이기만 할 수 있습니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
+
+  @override
+  String get chatAccountHoldAcknowledge => '이 계정과 대화하기';
+
+  @override
+  String get chatPeerVerified => '확인됨';
+
+  @override
   String get chatRetrySend => '전송 재시도';
 
   @override

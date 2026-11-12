@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../conversation_models.dart';
+import 'conversation_peer_bindings.dart';
 import 'identity_trust.dart';
 import 'local_notice.dart';
 import 'local_notice_writer.dart';
@@ -18,6 +19,7 @@ class IdentityChangeService {
     required MessengerSessionContext session,
     required IdentityTrust trust,
     required PeerSessionResolver peers,
+    required ConversationPeerBindings bindings,
     required MessageContentService contents,
     required LocalNoticeWriter notices,
     required Future<void> Function(String conversationId) retryPendingMessages,
@@ -25,6 +27,7 @@ class IdentityChangeService {
         _session = session,
         _trust = trust,
         _peers = peers,
+        _bindings = bindings,
         _contents = contents,
         _notices = notices,
         _retryPendingMessages = retryPendingMessages;
@@ -33,6 +36,7 @@ class IdentityChangeService {
   final MessengerSessionContext _session;
   final IdentityTrust _trust;
   final PeerSessionResolver _peers;
+  final ConversationPeerBindings _bindings;
   final MessageContentService _contents;
   final LocalNoticeWriter _notices;
   final Future<void> Function(String conversationId) _retryPendingMessages;
@@ -54,6 +58,25 @@ class IdentityChangeService {
       for (final other in _store.conversations)
         if (other.type == ConversationType.direct && other.recipientBundle.userId == accepted.userId) other.id,
     ]);
+    unawaited(_contents.retryPending(conversationId, _store.messagesOf(conversationId)));
+    await _retryPendingMessages(conversationId);
+  }
+
+  /// Why the 1:1 [conversationId] admits no identity until the user
+  /// acknowledges the account it is listed with, if it is held.
+  PeerAccountHold? accountHoldFor(String conversationId) => _bindings.heldNow(conversationId);
+
+  /// The user chose to talk to the account the held 1:1 [conversationId]
+  /// is listed with: it is bound to that account, and what it sent and what
+  /// waited to be sent go through as a first contact.
+  Future<void> acknowledgeAccount(String conversationId) async {
+    final conversation = _store.conversationById(conversationId);
+    if (conversation == null || conversation.type != ConversationType.direct) return;
+    await _bindings.acknowledge(
+      conversationId,
+      ConversationPeer(userId: conversation.recipientBundle.userId, handle: conversation.peerHandle),
+    );
+    _store.changed();
     unawaited(_contents.retryPending(conversationId, _store.messagesOf(conversationId)));
     await _retryPendingMessages(conversationId);
   }

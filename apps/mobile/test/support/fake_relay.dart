@@ -82,6 +82,11 @@ class FakeRelay {
   /// active one (a ghost device a hostile server injects, for instance).
   final Map<String, List<Map<String, dynamic>>> extraDevices = {};
 
+  /// Handles the relay lists some accounts under, by the handle of the
+  /// party it lies to: {viewer: {real handle: listed handle}}. The listing
+  /// keeps each member's real user id, as a relay that relabels does.
+  final Map<String, Map<String, String>> listedHandles = {};
+
   /// Signed-prekey bundles devices published with PUT /keys/signed-prekey.
   final Map<String, String> publishedSignedPrekeys = {};
 
@@ -186,8 +191,9 @@ class FakeRelay {
     );
   }
 
-  Map<String, dynamic> conversationJson(RelayConversation conversation) {
+  Map<String, dynamic> conversationJson(RelayConversation conversation, {String? viewer}) {
     final last = conversation.messages.isEmpty ? null : conversation.messages.last;
+    String listed(String handle) => listedHandles[viewer]?[handle] ?? handle;
     return {
       'id': conversation.id,
       'type': conversation.type,
@@ -196,8 +202,8 @@ class FakeRelay {
         for (final handle in conversation.memberHandles)
           {
             'userId': partiesByHandle[handle]!.userId,
-            'handle': handle,
-            'displayName': handle,
+            'handle': listed(handle),
+            'displayName': listed(handle),
           },
       ],
       'lastMessage': last,
@@ -379,7 +385,7 @@ class FakeRelayClient extends VeilApiClient {
       'items': [
         for (final conversation in relay.conversations.values)
           if (conversation.memberHandles.contains(me.handle))
-            relay.conversationJson(conversation),
+            relay.conversationJson(conversation, viewer: me.handle),
       ],
       'nextCursor': null,
     };

@@ -1562,6 +1562,42 @@ abstract class AppLocalizations {
   /// **'Review'**
   String get chatIdentityChangedReview;
 
+  /// No description provided for @chatAccountHoldOtherTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A different account'**
+  String get chatAccountHoldOtherTitle;
+
+  /// No description provided for @chatAccountHoldOtherBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat is listed as @{handle}, but it is not the account you talked to as @{handle} before. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  String chatAccountHoldOtherBody(String handle);
+
+  /// No description provided for @chatAccountHoldUnissuedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Name no VEIL server gives out'**
+  String get chatAccountHoldUnissuedTitle;
+
+  /// No description provided for @chatAccountHoldUnissuedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat is listed under a name no VEIL server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  String get chatAccountHoldUnissuedBody;
+
+  /// No description provided for @chatAccountHoldAcknowledge.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk to this account'**
+  String get chatAccountHoldAcknowledge;
+
+  /// No description provided for @chatPeerVerified.
+  ///
+  /// In en, this message translates to:
+  /// **'Verified'**
+  String get chatPeerVerified;
+
   /// No description provided for @chatRetrySend.
   ///
   /// In en, this message translates to:

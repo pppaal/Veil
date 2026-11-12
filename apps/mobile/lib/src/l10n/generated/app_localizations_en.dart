@@ -823,6 +823,27 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatIdentityChangedReview => 'Review';
 
   @override
+  String get chatAccountHoldOtherTitle => 'A different account';
+
+  @override
+  String chatAccountHoldOtherBody(String handle) {
+    return 'This chat is listed as @$handle, but it is not the account you talked to as @$handle before. Nothing is sent or opened here until you confirm you want to talk to this account.';
+  }
+
+  @override
+  String get chatAccountHoldUnissuedTitle => 'Name no VEIL server gives out';
+
+  @override
+  String get chatAccountHoldUnissuedBody =>
+      'This chat is listed under a name no VEIL server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.';
+
+  @override
+  String get chatAccountHoldAcknowledge => 'Talk to this account';
+
+  @override
+  String get chatPeerVerified => 'Verified';
+
+  @override
   String get chatRetrySend => 'Retry send';
 
   @override

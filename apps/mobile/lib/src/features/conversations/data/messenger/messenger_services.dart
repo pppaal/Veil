@@ -88,13 +88,21 @@ class MessengerServices {
     );
     latest = DecryptedMessageCache(contents: contents, store: store);
     final notices = LocalNoticeWriter(store: store, contents: contents, session: session, flush: persistence.flush);
-    peers = PeerSessionResolver(store: store, session: session, sessions: sessionBootstrapper, keys: keys, trust: trust);
+    peers = PeerSessionResolver(
+      store: store,
+      session: session,
+      sessions: sessionBootstrapper,
+      keys: keys,
+      trust: trust,
+      bindings: peerBindings,
+    );
     crypto = ConversationCryptoRouter(
       store: store,
       session: session,
       engine: cryptoEngine,
       peers: peers,
       trust: trust,
+      bindings: peerBindings,
       envelopeVersions: envelopeVersions,
       groupCrypto: groupCrypto,
       refreshConversations: () => sync.refreshConversations(),
@@ -137,6 +145,7 @@ class MessengerServices {
       session: session,
       trust: trust,
       peers: peers,
+      bindings: peerBindings,
       contents: contents,
       notices: notices,
       retryPendingMessages: outbox.retry,

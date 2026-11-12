@@ -30,6 +30,18 @@ void main() {
     expect(clock.offset, const Duration(minutes: 47));
   });
 
+  test('moves disappearing expiries by at most an hour, whatever the Date header says', () {
+    final clock = clockAt(() => local)..observe(HttpDate.format(local.add(const Duration(seconds: 30))));
+    expect(clock.boundedNow(), local.add(const Duration(seconds: 30)));
+
+    clock.observe(HttpDate.format(local.add(const Duration(days: 3))));
+    expect(clock.now(), local.add(const Duration(days: 3)));
+    expect(clock.boundedNow(), local.add(ServerClock.maxExpiryCorrection));
+
+    clock.observe(HttpDate.format(local.subtract(const Duration(days: 3))));
+    expect(clock.boundedNow(), local.subtract(ServerClock.maxExpiryCorrection));
+  });
+
   test('the API client learns it from every response, refusals included', () async {
     var serverTime = local.subtract(const Duration(hours: 3));
     final api = VeilApiClient(

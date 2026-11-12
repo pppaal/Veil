@@ -22,10 +22,13 @@ import UIKit
     let registrar = registry.registrar(forPlugin: "PlatformSecurityPlugin")
     PlatformSecurityPlugin.register(with: registrar)
     PlatformSecurityEventBus.shared.register(with: registrar)
-    // libsignal bridge (active only when Dart is built with
-    // --dart-define=VEIL_CRYPTO_ADAPTER=libsignal). Answers
-    // `bridgeUnavailable` until the LibSignalClient package is linked.
-    VeilCryptoBridgePlugin.register(with: registry.registrar(forPlugin: "VeilCryptoBridgePlugin"))
+    // The libsignal bridge (Runner/Crypto/VeilCryptoBridge.swift) is not part
+    // of the Runner target, so default builds neither compile nor register
+    // it, and the Dart libsignal adapter reports it unavailable. To opt in:
+    // add that file and the LibSignalClient package to the Runner target,
+    // then register it here with
+    //   VeilCryptoBridgePlugin.register(with: registry.registrar(forPlugin: "VeilCryptoBridgePlugin"))
+    // and build Dart with --dart-define=VEIL_CRYPTO_ADAPTER=libsignal.
   }
 }
 

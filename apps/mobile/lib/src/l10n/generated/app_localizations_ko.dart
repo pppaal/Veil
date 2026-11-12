@@ -770,6 +770,13 @@ class AppLocalizationsKo extends AppLocalizations {
       '서버가 이 그룹을 그룹 암호화 키 없이 표시했습니다. 이 기기는 계속 그 키를 사용합니다.';
 
   @override
+  String get chatNoticeGroupMemberAdded =>
+      '누군가 이 그룹에 추가되었습니다. 이제부터 보내는 메시지를 읽을 수 있습니다. 안전 번호에서 멤버를 확인하세요.';
+
+  @override
+  String get chatNoticeGroupMemberRemoved => '누군가 이 그룹을 나갔거나 그룹에서 제거되었습니다.';
+
+  @override
   String get chatIdentityChangedTitle => '안전 번호가 바뀌었습니다';
 
   @override
@@ -1353,7 +1360,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deviceTransferHeroBody =>
-      '이전은 신뢰된 기기 간 실시간 연결입니다. 기존 기기가 세션을 발급하고 정확한 새 기기 클레임을 승인합니다. VEIL은 복구 수단을 만들지 않습니다.';
+      '이전은 핸들을 새 기기로 옮깁니다. 기존 기기가 세션을 발급하고 정확한 새 기기 클레임을 승인하며, 이전이 완료되면 기존 기기는 로그아웃됩니다. 대화 기록은 옮겨지지 않습니다. VEIL은 복구 수단을 만들지 않습니다.';
 
   @override
   String get deviceTransferPillTrustedJoin => '신뢰된 기기 연결';
@@ -1453,7 +1460,8 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 새 기기 클레임이 만료되었습니다. 먼저 새 클레임을 등록하세요.';
 
   @override
-  String get deviceTransferComplete => '이전이 완료되었습니다. 이 기기가 신뢰 그래프에 추가되었습니다.';
+  String get deviceTransferComplete =>
+      '이전이 완료되었습니다. 이제 핸들이 이 기기에 있으며 기존 기기는 로그아웃되었습니다.';
 
   @override
   String get deviceTransferFailed => '이전에 실패했습니다.';
@@ -1542,7 +1550,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deviceTransferCompleteOnNewNote =>
-      '새 기기에서 완료하세요. 명시적으로 해제하기 전까지 기존 기기는 계속 신뢰됩니다.';
+      '새 기기에서 완료하세요. 완료되면 이 기기는 로그아웃되고 로컬 기록이 지워집니다. 대화 기록은 새 기기로 옮겨지지 않습니다.';
 
   @override
   String get deviceTransferCopyPayload => '페이로드 복사';

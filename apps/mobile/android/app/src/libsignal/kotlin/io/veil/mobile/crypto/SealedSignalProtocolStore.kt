@@ -5,6 +5,7 @@ import org.signal.libsignal.protocol.IdentityKey
 import org.signal.libsignal.protocol.IdentityKeyPair
 import org.signal.libsignal.protocol.InvalidKeyIdException
 import org.signal.libsignal.protocol.SignalProtocolAddress
+import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.groups.state.SenderKeyRecord
 import org.signal.libsignal.protocol.state.IdentityKeyStore
 import org.signal.libsignal.protocol.state.KyberPreKeyRecord
@@ -130,7 +131,7 @@ internal class SealedSignalProtocolStore(context: Context) : SignalProtocolStore
      * survive being used, so we only record the use; one-time Kyber prekeys
      * are not published by this bridge yet.
      */
-    override fun markKyberPreKeyUsed(kyberPreKeyId: Int) {
+    override fun markKyberPreKeyUsed(kyberPreKeyId: Int, signedPreKeyId: Int, baseKey: ECPublicKey) {
         kyberPreKeys.put("$USED_PREFIX$kyberPreKeyId", byteArrayOf(1))
     }
 

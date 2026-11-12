@@ -147,7 +147,9 @@ class SessionCipher {
         );
       });
 
-  Future<DecryptedMessage> decrypt(CryptoEnvelope envelope) async {
+  /// Opens [envelope]. [beforeCommit] runs once it authenticated and before
+  /// the advanced state is committed; if it throws, nothing is committed.
+  Future<DecryptedMessage> decrypt(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     // The server relays these in clear and the v2 AAD length-prefixes them,
     // so one too long to prefix is malformed. Rejected before the lock so it
     // never reaches a session state.
@@ -173,11 +175,16 @@ class SessionCipher {
     // Any version other than v1 takes the v2 path, where the version string
     // is bound into the AAD: a relabelled envelope fails authentication.
     return envelope.version == envelopeVersionLegacy
-        ? _decryptLegacy(envelope, bytes, nonce)
-        : _decryptV2(envelope, bytes, nonce);
+        ? _decryptLegacy(envelope, bytes, nonce, beforeCommit)
+        : _decryptV2(envelope, bytes, nonce, beforeCommit);
   }
 
-  Future<DecryptedMessage> _decryptV2(CryptoEnvelope envelope, Uint8List bytes, Uint8List nonce) async {
+  Future<DecryptedMessage> _decryptV2(
+    CryptoEnvelope envelope,
+    Uint8List bytes,
+    Uint8List nonce,
+    BeforeCommit? beforeCommit,
+  ) async {
     final FrameV2 frame;
     try {
       frame = FrameV2.decode(bytes);
@@ -190,16 +197,21 @@ class SessionCipher {
       Future<_Opened> open(RatchetState scratch) => _openV2(scratch, envelope, frame, nonce);
       if (preKey != null) {
         final owner = record?.states.where((s) => _hasBaseKey(s, preKey.baseKey)).firstOrNull;
-        if (owner == null) return _acceptInbound(envelope, frame, preKey, nonce, record);
-        return _decryptOnStates(envelope, record!, [owner], open, DecryptStatus.ok);
+        if (owner == null) return _acceptInbound(envelope, frame, preKey, nonce, record, beforeCommit);
+        return _decryptOnStates(envelope, record!, [owner], open, DecryptStatus.ok, beforeCommit);
       }
       final candidates = record?.states.where((s) => s.protocol == protocolV2).toList() ?? const [];
       if (candidates.isEmpty) return _failure(envelope, DecryptStatus.sessionMissing, 'session_missing');
-      return _decryptOnStates(envelope, record!, candidates, open, DecryptStatus.ok);
+      return _decryptOnStates(envelope, record!, candidates, open, DecryptStatus.ok, beforeCommit);
     });
   }
 
-  Future<DecryptedMessage> _decryptLegacy(CryptoEnvelope envelope, Uint8List bytes, Uint8List nonce) async {
+  Future<DecryptedMessage> _decryptLegacy(
+    CryptoEnvelope envelope,
+    Uint8List bytes,
+    Uint8List nonce,
+    BeforeCommit? beforeCommit,
+  ) async {
     final LegacyFrame frame;
     try {
       frame = LegacyFrame.decode(bytes);
@@ -226,7 +238,7 @@ class SessionCipher {
         return _openWithKey(keyResult, nonce, frame.sealed, aad, envelope.messageKind);
       }
 
-      return _decryptOnStates(envelope, record!, candidates, open, DecryptStatus.legacyUnauthenticated);
+      return _decryptOnStates(envelope, record!, candidates, open, DecryptStatus.legacyUnauthenticated, beforeCommit);
     });
   }
 
@@ -241,8 +253,13 @@ class SessionCipher {
     List<RatchetState> candidates,
     Future<_Opened> Function(RatchetState scratch) open,
     DecryptStatus successStatus,
+    BeforeCommit? beforeCommit,
   ) async {
     var replayed = false;
+    // A frame further ahead on its chain than one step may skip (the spec's
+    // per-frame bound) is not lost: it opens once the frames before it have,
+    // so it waits for them instead of ending as failed.
+    var farAhead = false;
     for (final live in candidates) {
       final scratch = live.copy();
       final opened = await open(scratch);
@@ -252,18 +269,29 @@ class SessionCipher {
           scratch.destroy();
           return _failure(envelope, DecryptStatus.identityRejected, 'identity_rejected');
         }
+        final opened = _success(payload, successStatus);
+        // The caller stores the plaintext first: once the commit spends the
+        // message key, a second decrypt only reports a replay.
+        try {
+          await beforeCommit?.call(opened);
+        } catch (_) {
+          scratch.destroy();
+          return _failure(envelope, DecryptStatus.failed, 'persist_failed');
+        }
         try {
           await _commit(envelope.conversationId, record.receiving(live, scratch, now: _clock()), scratch);
         } catch (_) {
           return _failure(envelope, DecryptStatus.failed, 'persist_failed');
         }
-        return _success(payload, successStatus);
+        return opened;
       }
       scratch.destroy();
       replayed = replayed || opened.replayed;
+      farAhead = farAhead || opened.reason == 'skip_limit';
     }
-    return replayed
-        ? _failure(envelope, DecryptStatus.replayed, 'replayed')
+    if (replayed) return _failure(envelope, DecryptStatus.replayed, 'replayed');
+    return farAhead
+        ? _failure(envelope, DecryptStatus.awaitingKey, 'skip_limit')
         : _failure(envelope, DecryptStatus.failed, 'decrypt_failed');
   }
 
@@ -299,6 +327,7 @@ class SessionCipher {
     PreKeyHeader header,
     Uint8List nonce,
     SessionRecord? record,
+    BeforeCommit? beforeCommit,
   ) async {
     final HandshakePrekeys prekeys;
     try {
@@ -356,14 +385,17 @@ class SessionCipher {
       if (!await _identityAccepted(envelope, header, record)) {
         return _failure(envelope, DecryptStatus.identityRejected, 'identity_rejected');
       }
+      final result = _success(payload, DecryptStatus.ok);
       try {
+        // The caller stores the plaintext before the session is installed.
+        await beforeCommit?.call(result);
         await store.commit(envelope.conversationId, SessionRecord.installingInbound(record, state, now: now));
       } catch (_) {
         return _failure(envelope, DecryptStatus.failed, 'persist_failed');
       }
       committed = true;
       if (header.usesOneTimePrekey) await _consumeOneTimePrekey(header.oneTimePrekeyId);
-      return _success(payload, DecryptStatus.ok);
+      return result;
     } finally {
       if (!committed) state?.destroy();
       keyring.releaseOneTimePrekey(header);

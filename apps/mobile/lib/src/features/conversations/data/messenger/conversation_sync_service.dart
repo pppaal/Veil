@@ -63,13 +63,16 @@ class ConversationSyncService {
   static const _syncHintDebounce = Duration(milliseconds: 180);
 
   // A refresh pages the relay's history from the newest message back to the
-  // newest one this device already holds, so a backlog longer than one page
-  // is fetched, and decrypted oldest first, rather than skipped: frames past
-  // it would otherwise wait on skipped keys, of which a chain keeps only so
-  // many. It stops after [_historyPagesPerSync] pages; the paging cursor
-  // then points at what is left, which loading older history picks up.
+  // history this device already holds (see [_heldThrough]), so a backlog
+  // longer than one page is fetched, and decrypted oldest first, rather than
+  // skipped: one frame may skip at most 200 keys of its chain, so a frame
+  // further ahead waits until the ones before it opened. It stops after
+  // [_historyPagesPerSync] pages (2000 messages, as on the web); the paging
+  // cursor then points at what is left, which loading older history picks
+  // up, and every page ingested retries the rows still waiting, so the newer
+  // ones open in order once the older ones did.
   static const _historyPageSize = 50;
-  static const _historyPagesPerSync = 10;
+  static const _historyPagesPerSync = 40;
 
   final MessengerStateStore _store;
   final MessengerSessionContext _session;
@@ -88,6 +91,14 @@ class ConversationSyncService {
   final AttachmentTempFileStore? _tempStore;
   final MessengerOperationRunner _ops;
   final Set<String> _historyLoading = {};
+  // How far each conversation's history is held without a gap: the newest
+  // relayed order a history page brought in, or that the cache held opened
+  // at start. A refresh pages back to it. A frame that arrived any other way
+  // (live, or the ack of this device's own send) says nothing about the
+  // frames before it, so a refresh never stops at one: a live frame or a
+  // reply sent before the resync would otherwise leave an older backlog
+  // unfetched, its frames too far ahead of their chain to open.
+  final Map<String, int> _heldThrough = {};
   final Set<String> _queuedConversationIds = {};
   bool _conversationRefreshQueued = false;
   bool _hintFlushInFlight = false;
@@ -98,6 +109,7 @@ class ConversationSyncService {
   /// Replaces the local state with what the cache holds: conversations and
   /// messages in one read, the content lookups for all of them batched.
   Future<void> hydrate() async {
+    _heldThrough.clear();
     final cached = await _persistence.hydrate();
     if (cached == null) return;
     final snapshot = cached.snapshot;
@@ -136,6 +148,11 @@ class ConversationSyncService {
           when content.kind == MessageKind.reaction && content.status == MessageContentStatus.ok) {
         _reactions.applyOpened(message, content);
       }
+      // A row still waiting for key material may be a live frame whose
+      // history never came; only what reached a final outcome counts. (A
+      // reply of ours acked just before the app stopped, ahead of the resync
+      // it raced, still counts: the cache does not say how a row arrived.)
+      if (contents[message.id]?.status.isFinal ?? false) _markHeld(message);
     }
 
     final keepTempPaths = _outbox.restore(cached.pending);
@@ -186,7 +203,13 @@ class ConversationSyncService {
       return;
     }
 
+    // A list fetched for an identity that signed out (or was replaced)
+    // while it was on its way is dropped: it must reach neither the next
+    // identity's state nor the cache that was wiped for it.
+    final generation = _session.generation;
+    bool stillCurrent() => generation == _session.generation && !_session.isClosed;
     final response = await _apiClient.getConversations(session.accessToken);
+    if (!stillCurrent()) return;
     final fetched = _mapper.conversations(response, localHandle: session.handle);
     // Recorded before this list can drop a conversation together with the
     // only record of whom its session is with.
@@ -195,11 +218,15 @@ class ConversationSyncService {
         if (preview.type == ConversationType.direct && preview.sessionState != null)
           preview.id: ConversationPeer(userId: preview.recipientBundle.userId, handle: preview.peerHandle),
     });
+    final bound = await _peerBindings.all();
+    if (!stillCurrent()) return;
     final overruled = await _store.replaceConversations(
       fetched,
-      bound: await _peerBindings.all(),
+      bound: bound,
       pin: _crypto.keepSenderKeys,
+      stillCurrent: stillCurrent,
     );
+    if (overruled == null || !stillCurrent()) return;
     _crypto.recordUnlistedSessions();
     for (final conversationId in overruled) {
       await _notices.write(
@@ -207,7 +234,51 @@ class ConversationSyncService {
         senderKeysKeptNotice(conversationId, conversationMessages: _store.messagesOf(conversationId), now: DateTime.now()),
       );
     }
+    await _announceMemberChanges(stillCurrent);
     await _disappearing.reconcile();
+  }
+
+  // The relay decides who is in a group, and the next send seals the group's
+  // keys to every member it lists. So each member it adds or removes is
+  // announced in the chat, against the member set this device last showed
+  // (kept in the keystore, so a change made while the app was closed is
+  // announced too). A group's first listing only records its members.
+  // Each change is numbered by this device, never by the relay's epoch: a
+  // relay that removes a member and adds them back without moving the epoch
+  // still gets a notice for each. The number is recorded with the members,
+  // so a change found again after a crash between its notices and that
+  // record reuses its number, and its notices are not written twice.
+  Future<void> _announceMemberChanges(bool Function() stillCurrent) async {
+    final recorded = await _peerBindings.groupMembers();
+    if (!stillCurrent()) return;
+    final localUserId = _session.userId;
+    final shown = <String, GroupMembership>{};
+    for (final group in _store.conversations.where((preview) => preview.type == ConversationType.group)) {
+      final members = {for (final member in group.members) member.userId};
+      final before = recorded[group.id];
+      if (before != null && before.sameMembers(members)) continue;
+      final change = before == null ? 0 : before.changes + 1;
+      shown[group.id] = GroupMembership(members, changes: change);
+      if (before == null) continue;
+      final now = DateTime.now();
+      for (final (added, userIds) in [
+        (true, members.difference(before.members)),
+        (false, before.members.difference(members)),
+      ]) {
+        for (final userId in userIds.where((userId) => userId != localUserId)) {
+          await _notices.write(
+            group.id,
+            memberChangeNotice(group.id,
+                added: added,
+                userId: userId,
+                change: '$change',
+                conversationMessages: _store.messagesOf(group.id),
+                now: now),
+          );
+        }
+      }
+    }
+    if (stillCurrent()) await _peerBindings.recordGroupMembers(shown);
   }
 
   Future<void> syncConversation(String conversationId, {bool loadMore = false}) async {
@@ -217,7 +288,8 @@ class ConversationSyncService {
       return;
     }
 
-    final knownUpTo = loadMore ? null : _newestRelayedOrder(conversationId);
+    final generation = _session.generation;
+    final knownUpTo = loadMore ? null : _heldThroughOrOldest(conversationId);
     final fetched = <ChatMessage>[];
     var cursor = loadMore ? _store.pagingFor(conversationId).nextCursor : null;
     String? nextCursor;
@@ -235,12 +307,24 @@ class ConversationSyncService {
       if (nextCursor == null || reachedKnown || knownUpTo == null) break;
       cursor = nextCursor;
     }
-    final items = await _contents.withoutRetired(
-      fetched.where((message) => !message.isLocalNotice).toList()..sort(compareMessages),
-    );
+    final listed = fetched
+        // A frame names the conversation it was sealed for; listed under
+        // another one, it is the relay moving it, and it opens only there.
+        .where((message) => !message.isLocalNotice && message.envelope.conversationId == conversationId)
+        .toList()
+      ..sort(compareMessages);
+    final items = await _contents.withoutRetired(listed);
+    // History fetched for an identity that is gone is dropped.
+    if (generation != _session.generation || _session.isClosed) return;
+    listed.forEach(_markHeld);
 
     _store.mergeMessages(conversationId, items);
-    unawaited(_contents.ingestAll(items));
+    // Rows waiting on frames before them (a live frame that beat this sync,
+    // or a backlog page whose older frames only arrived now) are retried in
+    // order once this page has been decrypted.
+    unawaited(_contents
+        .ingestAll(items)
+        .then((_) => _contents.retryPending(conversationId, _store.messagesOf(conversationId))));
     _store.setPaging(
       conversationId,
       ConversationPagingState(nextCursor: nextCursor, hasMoreHistory: nextCursor != null, lastSyncedAt: DateTime.now()),
@@ -276,6 +360,9 @@ class ConversationSyncService {
 
   void clearQueuedHints() => _queuedConversationIds.clear();
 
+  /// Forgets how far the previous identity's histories were held.
+  void forgetHistoryMarks() => _heldThrough.clear();
+
   void dispose() => _hintDebounce?.cancel();
 
   Future<void> _flushSyncHints() async {
@@ -310,12 +397,23 @@ class ConversationSyncService {
     }
   }
 
-  // The newest relayed message of [conversationId] this device holds; null
-  // when it holds none, and a refresh then reads only the newest page.
-  int? _newestRelayedOrder(String conversationId) => _store
-      .messagesOf(conversationId)
-      .where((message) => !message.isLocalNotice)
-      .map((message) => message.conversationOrder)
-      .nonNulls
-      .fold<int?>(null, (newest, order) => newest == null || order > newest ? order : newest);
+  void _markHeld(ChatMessage message) {
+    final order = message.conversationOrder;
+    if (order == null || message.isLocalNotice) return;
+    final conversationId = message.envelope.conversationId;
+    final held = _heldThrough[conversationId];
+    if (held == null || order > held) _heldThrough[conversationId] = order;
+  }
+
+  // Where a refresh of [conversationId] stops paging back. Before any
+  // history of it is held, that is the oldest message this device holds;
+  // with none, a refresh reads only the newest page.
+  int? _heldThroughOrOldest(String conversationId) =>
+      _heldThrough[conversationId] ??
+      _store
+          .messagesOf(conversationId)
+          .where((message) => !message.isLocalNotice)
+          .map((message) => message.conversationOrder)
+          .nonNulls
+          .fold<int?>(null, (oldest, order) => oldest == null || order < oldest ? order : oldest);
 }

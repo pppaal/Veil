@@ -20,10 +20,16 @@ const _outerAttachment = AttachmentReference(
   nonce: 'outer-nonce',
 );
 
-CryptoEnvelope _envelope(String ciphertext, {AttachmentReference? attachment}) => CryptoEnvelope(
+CryptoEnvelope _envelope(
+  String ciphertext, {
+  AttachmentReference? attachment,
+  String conversationId = _conversationId,
+  String senderDeviceId = 'dev-peer',
+}) =>
+    CryptoEnvelope(
       version: 'veil-envelope-v1',
-      conversationId: _conversationId,
-      senderDeviceId: 'dev-peer',
+      conversationId: conversationId,
+      senderDeviceId: senderDeviceId,
       recipientUserId: 'user-local',
       ciphertext: ciphertext,
       nonce: 'nonce-$ciphertext',
@@ -55,7 +61,7 @@ class _ScriptedDecrypter {
   final List<DecryptedMessage Function(CryptoEnvelope envelope)> answers;
   int calls = 0;
 
-  Future<DecryptedMessage> call(CryptoEnvelope envelope) async {
+  Future<DecryptedMessage> call(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     final answer = answers[calls.clamp(0, answers.length - 1)];
     calls += 1;
     return answer(envelope);
@@ -76,7 +82,7 @@ DecryptedMessage Function(CryptoEnvelope) _failure(DecryptStatus status) => (env
     );
 
 MessageContentService _service(
-  Future<DecryptedMessage> Function(CryptoEnvelope) decrypt, {
+  EnvelopeDecrypter decrypt, {
   ConversationCacheService? cache,
   List<MessageContentRecord>? stored,
 }) {
@@ -92,9 +98,9 @@ void main() {
     final peer = StrictMockCryptoAdapter();
     final local = StrictMockCryptoAdapter();
     var decrypts = 0;
-    Future<DecryptedMessage> decrypt(CryptoEnvelope envelope) {
+    Future<DecryptedMessage> decrypt(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) {
       decrypts += 1;
-      return local.messaging.decryptMessage(envelope);
+      return local.messaging.decryptMessage(envelope, beforeCommit: beforeCommit);
     }
 
     final envelope = await peer.messaging.encryptMessage(
@@ -131,11 +137,12 @@ void main() {
   test('own messages are shown from stored plaintext and never decrypted', () async {
     final decrypter = _ScriptedDecrypter([_failure(DecryptStatus.failed)]);
     final service = _service(decrypter.call);
-    final envelope = _envelope('own-1');
+    final envelope = _envelope('own-1', senderDeviceId: 'dev-local');
 
     await service.storeOutbound(
       conversationId: _conversationId,
       clientMessageId: 'client-1',
+      senderDeviceId: 'dev-local',
       body: 'my words',
       kind: MessageKind.text,
     );
@@ -150,10 +157,11 @@ void main() {
     await service.storeOutbound(
       conversationId: _conversationId,
       clientMessageId: 'client-2',
+      senderDeviceId: 'dev-local',
       body: 'raced the ack',
       kind: MessageKind.text,
     );
-    final early = _message('srv-2', _envelope('own-2'), clientMessageId: 'client-2', isMine: true);
+    final early = _message('srv-2', _envelope('own-2', senderDeviceId: 'dev-local'), clientMessageId: 'client-2', isMine: true);
     expect((await service.read(early)).body, 'raced the ack');
     expect(decrypter.calls, 0);
   });
@@ -232,11 +240,12 @@ void main() {
 
   test('outbound text that never reached the outbox is discarded', () async {
     final service = _service(_ScriptedDecrypter([_plain('unused')]).call);
-    final echo = _message('local-client-9', _envelope('x'), clientMessageId: 'client-9', isMine: true);
+    final echo = _message('local-client-9', _envelope('x', senderDeviceId: 'dev-local'), clientMessageId: 'client-9', isMine: true);
 
     await service.storeOutbound(
       conversationId: _conversationId,
       clientMessageId: 'client-9',
+      senderDeviceId: 'dev-local',
       body: 'never sent',
       kind: MessageKind.text,
     );
@@ -253,6 +262,7 @@ void main() {
       await service.storeOutbound(
         conversationId: _conversationId,
         clientMessageId: clientMessageId,
+        senderDeviceId: 'dev-local',
         body: 'timed',
         kind: MessageKind.text,
         expiresAt: inner,
@@ -263,7 +273,7 @@ void main() {
     expect(acked!.innerExpiresAt, inner);
 
     // The relay's copy arrived first: the listener applies the expiry.
-    await service.read(_message('srv-echo', _envelope('own'), clientMessageId: 'client-echo', isMine: true));
+    await service.read(_message('srv-echo', _envelope('own', senderDeviceId: 'dev-local'), clientMessageId: 'client-echo', isMine: true));
     expect(bound.single.messageKey, 'srv-echo');
     expect(bound.single.innerExpiresAt, inner);
   });
@@ -291,16 +301,75 @@ void main() {
     await _service(decrypter.call, cache: cache).storeOutbound(
       conversationId: _conversationId,
       clientMessageId: 'client-1',
+      senderDeviceId: 'dev-local',
       body: 'my words',
       kind: MessageKind.text,
     );
     final service = _service(decrypter.call, cache: cache);
-    final echo = _message('srv-1', _envelope('own-1'), isMine: true);
+    final echo = _message('srv-1', _envelope('own-1', senderDeviceId: 'dev-local'), isMine: true);
     expect((await service.read(echo)).status, DecryptStatus.failed);
 
     await service.acknowledge(clientMessageId: 'client-1', serverMessageId: 'srv-1');
 
     expect((await service.read(echo)).body, 'my words');
     expect(decrypter.calls, 1);
+  });
+
+  test('content is shown only under the labels it was stored under', () async {
+    final decrypter = _ScriptedDecrypter([_plain('peer words')]);
+    final service = _service(decrypter.call);
+    final peerMessage = _message('srv-peer', _envelope('peer-frame'));
+    expect((await service.read(peerMessage)).body, 'peer words');
+    await service.storeOutbound(
+      conversationId: _conversationId,
+      clientMessageId: 'client-own',
+      senderDeviceId: 'dev-local',
+      body: 'my words',
+      kind: MessageKind.text,
+    );
+    await service.acknowledge(clientMessageId: 'client-own', serverMessageId: 'srv-own');
+
+    // The relay names another sender, or another conversation, for an id
+    // whose content this device holds.
+    final ownAsPeer = _message('srv-own', _envelope('own-frame'));
+    final peerAsOwn = _message('srv-peer', _envelope('peer-frame', senderDeviceId: 'dev-local'), isMine: true);
+    final peerElsewhere = _message('srv-peer', _envelope('peer-frame', conversationId: 'conv-2'));
+    for (final relabelled in [ownAsPeer, peerAsOwn, peerElsewhere]) {
+      final shown = await service.read(relabelled);
+      expect(shown.status, DecryptStatus.failed, reason: relabelled.id);
+      expect(shown.body, isEmpty);
+      expect(await service.storedFor([relabelled]), isEmpty);
+    }
+
+    // Nothing was decrypted or replaced: the labels it came with still read.
+    expect(decrypter.calls, 1);
+    expect((await service.read(peerMessage)).body, 'peer words');
+    final ownMessage = _message('srv-own', _envelope('own-frame', senderDeviceId: 'dev-local'), isMine: true);
+    expect((await service.read(ownMessage)).body, 'my words');
+    expect((await service.storedFor([peerMessage, ownMessage])).keys, unorderedEquals(['srv-peer', 'srv-own']));
+  });
+
+  test('an ack onto an id holding opened content moves nothing', () async {
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final cache = DriftConversationCacheService(database, envelopeCodec: StrictMockCryptoAdapter().envelopeCodec);
+    final service = _service(_ScriptedDecrypter([_plain('peer words')]).call, cache: cache);
+    final peerMessage = _message('srv-peer', _envelope('peer-frame'));
+    expect((await service.read(peerMessage)).body, 'peer words');
+    await service.storeOutbound(
+      conversationId: _conversationId,
+      clientMessageId: 'client-own',
+      senderDeviceId: 'dev-local',
+      body: 'my words',
+      kind: MessageKind.text,
+    );
+
+    expect(await service.acknowledge(clientMessageId: 'client-own', serverMessageId: 'srv-peer'), isNull);
+
+    final restarted = _service(_ScriptedDecrypter([_plain('never')]).call, cache: cache);
+    expect((await restarted.read(peerMessage)).body, 'peer words');
+    final echo = _message('local-client-own', _envelope('own', senderDeviceId: 'dev-local'),
+        clientMessageId: 'client-own', isMine: true);
+    expect((await restarted.read(echo)).body, 'my words');
   });
 }

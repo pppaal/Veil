@@ -376,6 +376,20 @@ String localMessageContentKey(String clientMessageId) => '$_localMessageContentK
 bool mayReplaceMessageContent(String messageKey, MessageContentStatus existing) =>
     messageKey.startsWith(_localMessageContentKeyPrefix) || !existing.isFinal;
 
+/// Whether an outbound message's content of [conversationId] may move onto
+/// the relayed id that already holds content of [existingConversationId]
+/// with [existingStatus]: only a failed attempt to open our own echo, in the
+/// same conversation, gives way. Content another message opened there is
+/// never deleted for an ack the relay may have forged.
+bool mayRekeyOver({
+  required String conversationId,
+  required String existingConversationId,
+  required MessageContentStatus existingStatus,
+}) =>
+    existingConversationId == conversationId &&
+    existingStatus != MessageContentStatus.ok &&
+    existingStatus != MessageContentStatus.legacyUnauthenticated;
+
 class MessageContentRecord {
   const MessageContentRecord({
     required this.messageKey,
@@ -387,6 +401,7 @@ class MessageContentRecord {
     required this.updatedAt,
     this.clientMessageId,
     this.serverMessageId,
+    this.senderDeviceId,
     this.attachment,
     this.innerExpiresAt,
   });
@@ -395,6 +410,12 @@ class MessageContentRecord {
   final String conversationId;
   final String? clientMessageId;
   final String? serverMessageId;
+  // The device the content is from: this device for outbound text, the
+  // sender the frame's AEAD authenticated for inbound. With conversationId it
+  // binds the content to the labels it was opened under, so a relay that
+  // later relabels the message id cannot show it as someone else's words or
+  // in another chat. Null on rows stored before it was recorded.
+  final String? senderDeviceId;
   final String body;
   final MessageKind kind;
   final AttachmentReference? attachment;
@@ -404,6 +425,18 @@ class MessageContentRecord {
   final MessageContentStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  /// Whether the row holds content that was opened (or is our own text),
+  /// as opposed to the outcome of a decrypt that showed nothing.
+  bool get isOpened => status == MessageContentStatus.ok || status == MessageContentStatus.legacyUnauthenticated;
+
+  /// Whether this content may be shown for a message the relay labels with
+  /// [conversationId] and [senderDeviceId]. Content that never opened holds
+  /// no text, so only opened content is bound to its labels.
+  bool belongsTo({required String conversationId, required String senderDeviceId}) =>
+      !isOpened ||
+      (this.conversationId == conversationId &&
+          (this.senderDeviceId == null || this.senderDeviceId == senderDeviceId));
 
   DecryptedMessage toDecryptedMessage() => DecryptedMessage(
         body: body,
@@ -500,7 +533,8 @@ abstract class ConversationCacheService {
     required String currentDeviceId,
   });
 
-  Future<void> purgeExpiredMessages();
+  /// Drops what expired by [now] (the local clock when not given).
+  Future<void> purgeExpiredMessages({DateTime? now});
 
   Future<void> clearAll();
 }
@@ -1166,7 +1200,8 @@ class DriftConversationCacheService
         continue;
       }
       final senderDeviceId = await _decrypt(row.senderDeviceId);
-      if (senderDeviceId == null) {
+      if (senderDeviceId == null ||
+          !content.belongsTo(conversationId: row.conversationId, senderDeviceId: senderDeviceId)) {
         continue;
       }
       final searchBody = searchableContentText(content);
@@ -1245,26 +1280,26 @@ class DriftConversationCacheService
   }
 
   @override
-  Future<void> purgeExpiredMessages() async {
-    final now = DateTime.now();
+  Future<void> purgeExpiredMessages({DateTime? now}) async {
+    final at = now ?? DateTime.now();
     await _db.transaction(() async {
       // Content goes with its message, including messages that expire while
       // they are not loaded in memory.
       final expiredMessageIds = await (_db.selectOnly(_db.cachedMessages)
             ..addColumns([_db.cachedMessages.id])
-            ..where(_db.cachedMessages.expiresAt.isSmallerThanValue(now)))
+            ..where(_db.cachedMessages.expiresAt.isSmallerThanValue(at)))
           .map((row) => row.read(_db.cachedMessages.id)!)
           .get();
-      await _retireExpiredContent(now, alsoRetire: expiredMessageIds);
+      await _retireExpiredContent(at, alsoRetire: expiredMessageIds);
       await (_db.delete(_db.cachedMessages)
-            ..where((table) => table.expiresAt.isSmallerThanValue(now)))
+            ..where((table) => table.expiresAt.isSmallerThanValue(at)))
           .go();
       await (_db.delete(_db.pendingMessages)
-            ..where((table) => table.expiresAt.isSmallerThanValue(now)))
+            ..where((table) => table.expiresAt.isSmallerThanValue(at)))
           .go();
       await (_db.delete(_db.retiredMessages)
             ..where((table) =>
-                table.retiredAt.isSmallerThanValue(now.subtract(retiredMessageRetention))))
+                table.retiredAt.isSmallerThanValue(at.subtract(retiredMessageRetention))))
           .go();
     });
   }
@@ -1290,6 +1325,7 @@ class DriftConversationCacheService
       conversationId: record.conversationId,
       clientMessageId: Value(record.clientMessageId),
       serverMessageId: Value(record.serverMessageId),
+      senderDeviceId: Value(await _encrypt(record.senderDeviceId)),
       body: await _requireEncryptedValue(record.body),
       attachmentJson: Value(await _encrypt(_encodeAttachment(record.attachment))),
       kind: await _requireEncryptedValue(record.kind.name),
@@ -1370,11 +1406,24 @@ class DriftConversationCacheService
       if (local == null) {
         return;
       }
-      // The sender's own plaintext wins over anything recorded under the
-      // server id, such as a failed attempt to open our own echoed envelope.
-      await (_db.delete(_db.messageContents)
+      final existing = await (_db.select(_db.messageContents)
             ..where((table) => table.messageKey.equals(serverMessageId)))
-          .go();
+          .getSingleOrNull();
+      if (existing != null) {
+        // The sender's own plaintext wins over a failed attempt to open our
+        // own echoed envelope, and over nothing else: content another
+        // message opened under that id cannot be opened again.
+        if (!mayRekeyOver(
+          conversationId: local.conversationId,
+          existingConversationId: existing.conversationId,
+          existingStatus: MessageContentStatus.fromStorageName(existing.status),
+        )) {
+          return;
+        }
+        await (_db.delete(_db.messageContents)
+              ..where((table) => table.messageKey.equals(serverMessageId)))
+            .go();
+      }
       await (_db.update(_db.messageContents)
             ..where((table) => table.messageKey.equals(localKey)))
           .write(
@@ -1458,6 +1507,7 @@ class DriftConversationCacheService
       conversationId: row.conversationId,
       clientMessageId: row.clientMessageId,
       serverMessageId: row.serverMessageId,
+      senderDeviceId: await _decrypt(row.senderDeviceId),
       body: body,
       kind: MessageKind.values.byName(kind),
       attachment: _decodeAttachment(await _decrypt(row.attachmentJson)),

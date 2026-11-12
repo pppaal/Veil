@@ -45,6 +45,23 @@ class RecordingNotifications implements LocalNotificationService {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+/// The encrypted Drift cache, able to refuse content writes on request, as
+/// a full disk or an unavailable keychain would.
+class FlakyContentCache extends DriftConversationCacheService {
+  FlakyContentCache(super.db, {required super.envelopeCodec, super.cipher});
+
+  int failContentPuts = 0;
+
+  @override
+  Future<void> put(MessageContentRecord record) {
+    if (failContentPuts > 0) {
+      failContentPuts -= 1;
+      throw StateError('content write failed');
+    }
+    return super.put(record);
+  }
+}
+
 /// One device on the fake relay: its own LibCryptoAdapter (and therefore its
 /// own identity and ratchet state), an encrypted Drift cache over an
 /// in-memory SQLite database, a keystore holding its identity pins, and a
@@ -107,9 +124,13 @@ class MessengerParty {
   final Map<String, Map<String, dynamic>> _ratchetSnapshots = {};
   final RecordingNotifications notifications = RecordingNotifications();
 
+  /// Ratchet snapshot writes to refuse, as a keychain does once its keys
+  /// are evicted after the device locks.
+  int failSnapshotWrites = 0;
+
   late LibCryptoAdapter lib;
   late CountingCryptoAdapter crypto;
-  late DriftConversationCacheService cache;
+  late FlakyContentCache cache;
   late GroupSenderKeyCoordinator groupCrypto;
   late IdentityTrust trust;
   late VeilMessengerController controller;
@@ -173,13 +194,19 @@ class MessengerParty {
   void _boot(LibCryptoAdapter adapter) {
     lib = adapter
       ..setSessionPersistence(
-        persister: (conversationId, snapshot) async => _ratchetSnapshots[conversationId] = snapshot,
+        persister: (conversationId, snapshot) async {
+          if (failSnapshotWrites > 0) {
+            failSnapshotWrites -= 1;
+            throw StateError('errSecInteractionNotAllowed');
+          }
+          _ratchetSnapshots[conversationId] = snapshot;
+        },
       )
       ..setLocalPrekeyStore(prekeyStore)
       ..setLocalIdentityLoader(() async => device.identity.identityPrivateKeyRef)
       ..setRemoteIdentityVerifier((claim) => controller.verifyRemoteIdentity(claim));
     crypto = CountingCryptoAdapter(lib);
-    cache = DriftConversationCacheService(
+    cache = FlakyContentCache(
       database,
       envelopeCodec: crypto.envelopeCodec,
       cipher: LocalDataCipher.forTesting(_testCacheKey),

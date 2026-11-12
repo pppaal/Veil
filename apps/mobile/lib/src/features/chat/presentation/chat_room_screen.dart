@@ -246,7 +246,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
           : Duration(seconds: conversationTimer);
     }
     final messages = controller.messagesFor(widget.conversationId);
-    final filteredMessages = _filteredMessages(messages);
+    final filteredMessages = _filteredMessages(messages, now: controller.expiryNow());
     final hasMoreHistory = controller.hasMoreHistoryFor(widget.conversationId);
     final isLoadingHistory =
         controller.isLoadingHistoryFor(widget.conversationId);
@@ -665,6 +665,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       transferSnapshot: message.clientMessageId == null
           ? null
           : controller.attachmentTransferForMessage(message.clientMessageId!),
+      expiryNow: controller.expiryNow,
       onRetryMessage: message.hasFailed
           ? () => ref
               .read(messengerControllerProvider)
@@ -694,8 +695,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     );
   }
 
-  List<ChatMessage> _filteredMessages(List<ChatMessage> messages) {
-    final now = DateTime.now();
+  // Hidden once expired on the messenger's expiry clock, as the messenger
+  // retires them, never on the device clock.
+  List<ChatMessage> _filteredMessages(List<ChatMessage> messages, {required DateTime now}) {
     final visible = messages
         .where((message) => !isMessageExpired(message.expiresAt, now: now))
         .toList();
@@ -1283,6 +1285,7 @@ class _MessageBubble extends StatelessWidget {
     required this.attachmentDownloadError,
     required this.transferSnapshot,
     required this.onReplyGesture,
+    required this.expiryNow,
     this.onRetryMessage,
   });
 
@@ -1296,6 +1299,7 @@ class _MessageBubble extends StatelessWidget {
   final String? Function(String attachmentId) attachmentDownloadError;
   final AttachmentTransferSnapshot? transferSnapshot;
   final VoidCallback onReplyGesture;
+  final DateTime Function() expiryNow;
   final VoidCallback? onRetryMessage;
 
   @override
@@ -1503,6 +1507,7 @@ class _MessageBubble extends StatelessWidget {
                             Flexible(
                               child: MessageExpiryLabel(
                                 expiresAt: message.expiresAt!,
+                                now: expiryNow,
                                 style: Theme.of(context).textTheme.bodyMedium,
                               ),
                             ),

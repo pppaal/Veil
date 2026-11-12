@@ -413,6 +413,96 @@ void main() {
       );
     });
   });
+
+  group('a frame whose plaintext or chain could not be stored', () {
+    test('stays decryptable when storing its plaintext fails', () async {
+      final skip = await _send(alice, 'skipped');
+      final ct = await _send(alice, 'kept');
+      expect(
+        await _code(() => bob.engine.decrypt(
+              groupId: groupId,
+              payload: ct.payload,
+              nonce: ct.nonce,
+              beforeCommit: (_) async => throw StateError('disk full'),
+            )),
+        'persistFailed',
+      );
+      // Nothing was committed: the frame, and the one it skipped, still open.
+      expect(await _recv(bob, ct), 'kept');
+      expect(await _recv(bob, skip), 'skipped');
+    });
+
+    test('stays decryptable, in memory and on disk, when persisting the chain fails', () async {
+      final saved = <String, Map<String, dynamic>?>{};
+      var failures = 1;
+      bob.engine.setPersistence(persister: (group, state) async {
+        if (failures > 0) {
+          failures -= 1;
+          throw StateError('errSecInteractionNotAllowed');
+        }
+        saved[group] = state;
+      });
+      final skip = await _send(alice, 'skipped');
+      final ct = await _send(alice, 'kept');
+      final stored = <String>[];
+
+      expect(
+        await _code(() => bob.engine.decrypt(
+              groupId: groupId,
+              payload: ct.payload,
+              nonce: ct.nonce,
+              beforeCommit: (plaintext) async => stored.add(utf8.decode(plaintext)),
+            )),
+        'persistFailed',
+      );
+      // The plaintext reached the caller before the commit was attempted.
+      expect(stored, ['kept']);
+      expect(await _recv(bob, ct), 'kept');
+      expect(await _recv(bob, skip), 'skipped');
+      expect(await _code(() => _recv(bob, ct)), 'replayed');
+    });
+
+    test('keeps every key it skipped when the failed frame overran the skipped-key cap', () async {
+      // A frame far enough ahead evicts the oldest skipped keys, including
+      // some it skipped itself. Undoing that commit puts back only the keys
+      // that were there before; the ones it added go, and are not left
+      // behind wiped at counters the restored chain has yet to reach.
+      const early = 50;
+      const far = early + 1 + kMaxSkippedKeysPerSender + 50;
+      final saved = <String, Map<String, dynamic>?>{};
+      var failNext = false;
+      bob.engine.setPersistence(persister: (group, state) async {
+        if (failNext) {
+          failNext = false;
+          throw StateError('errSecInteractionNotAllowed');
+        }
+        saved[group] = state;
+      });
+      final frames = [for (var i = 0; i <= far; i++) await _send(alice, 'm$i')];
+      expect(await _recv(bob, frames[early]), 'm$early');
+
+      failNext = true;
+      expect(await _code(() => _recv(bob, frames[far])), 'persistFailed');
+
+      // Another sender's frame persists the group: what reaches disk is the
+      // chain exactly as it was before the failed frame.
+      expect(await _recv(bob, await _send(carol, 'from carol')), 'from carol');
+      final chain = ((saved[groupId]!['senders'] as Map)[alice.deviceId] as Map)['chain'] as Map;
+      final onDisk = (chain['skipped'] as Map).cast<String, dynamic>();
+      final wiped = base64Url.encode(List<int>.filled(32, 0)).replaceAll('=', '');
+      expect(chain['counter'], early + 1);
+      expect(onDisk.keys.map(int.parse).toSet(), {for (var i = 0; i < early; i++) i});
+      expect(onDisk.values.map((e) => (e as Map)['k']), isNot(contains(wiped)));
+
+      // In memory too: the keys skipped before it, and the frames it skipped
+      // and evicted, all still open.
+      expect(await _recv(bob, frames[0]), 'm0');
+      expect(await _recv(bob, frames[early + 1]), 'm${early + 1}');
+      expect(await _recv(bob, frames[far]), 'm$far');
+      expect(await _recv(bob, frames[far - 1]), 'm${far - 1}');
+      expect(await _code(() => _recv(bob, frames[far])), 'replayed');
+    });
+  });
 }
 
 String _pad(String b64u) => b64u.padRight(b64u.length + ((4 - b64u.length % 4) % 4), '=');

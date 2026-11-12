@@ -34,7 +34,16 @@ List<ChatMessage> mergeMessageCollections(
 ChatMessage mergeServerMessage(ChatMessage current, ChatMessage incoming) {
   final deliveredAt = laterOf(current.deliveredAt, incoming.deliveredAt);
   final readAt = laterOf(current.readAt, incoming.readAt);
+  // Who sent a message, and where, is fixed once it is known: a later copy
+  // that names another sender or conversation for the same id is the relay
+  // relabelling it, and keeps the labels (and frame) it was first seen with.
+  final relabelled = incoming.senderDeviceId != current.senderDeviceId ||
+      incoming.envelope.senderDeviceId != current.envelope.senderDeviceId ||
+      incoming.envelope.conversationId != current.envelope.conversationId;
   return incoming.copyWith(
+    senderDeviceId: relabelled ? current.senderDeviceId : incoming.senderDeviceId,
+    isMine: relabelled ? current.isMine : incoming.isMine,
+    envelope: relabelled ? current.envelope : incoming.envelope,
     clientMessageId: incoming.clientMessageId ?? current.clientMessageId,
     conversationOrder: incoming.conversationOrder ?? current.conversationOrder,
     searchableBody: incoming.searchableBody ?? current.searchableBody,

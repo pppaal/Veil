@@ -660,4 +660,279 @@ void main() {
     await expectLater(alice.controller.declineIdentityChange(conv, reviewed: held), throwsStateError);
     expect(alice.controller.pendingIdentityChangeFor(conv), same(held));
   });
+
+  group('a handshake the relay sends under this device\'s own id', () {
+    test('opens nothing, pins nothing and shows nothing as the user\'s words', () async {
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      final forger = await InjectedDevice.mint(alice.device.deviceId, owner: bob);
+      final forged = await forger.handshake(relay, alice, 'I agree to transfer everything', conversationId: conv);
+
+      final opened = await openRelayed(alice, forged);
+      expect(opened.status, isNot(DecryptStatus.ok));
+      expect(opened.body, isEmpty);
+      final second = await openRelayed(alice, await forger.send(relay, alice, 'second forged', conversationId: conv));
+      expect(second.status, isNot(DecryptStatus.ok));
+      expect(await alice.bodies(conv), isNot(contains('I agree to transfer everything')));
+      expect(await alice.bodies(conv), isNot(contains('second forged')));
+      expect(noticesIn(alice, conv), 0);
+      expect(await alice.pins.pinFor(bob.device.userId, alice.device.deviceId), isNull);
+      expect(alice.controller.pendingIdentityChangeFor(conv), isNull);
+      expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, bob.device.deviceId);
+
+      // The 1:1 keeps working, and its replies still go to bob only.
+      await deliver(alice, bob, 'still for bob');
+      expect((await forger.open(lastRelayed(conv))).isOk, isFalse);
+    });
+
+    test('raises no identity change when the contact is verified', () async {
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      await verify(alice, bob);
+      final forger = await InjectedDevice.mint(alice.device.deviceId, owner: bob);
+
+      final opened = await openRelayed(
+        alice,
+        await forger.handshake(relay, alice, 'I agree to transfer everything', conversationId: conv),
+      );
+      expect(opened.status, isNot(DecryptStatus.ok));
+      expect(alice.controller.pendingIdentityChangeFor(conv), isNull);
+      expect(noticesIn(alice, conv), 0);
+      expect(await alice.pins.pinFor(bob.device.userId, alice.device.deviceId), isNull);
+    });
+  });
+
+  group('a message id the relay relabels', () {
+    Future<DecryptedMessage> openListed(MessengerParty party, String conversationId, String id) async {
+      await party.controller.loadConversationMessages(conversationId);
+      await settle();
+      final row = party.controller.messagesFor(conversationId).firstWhere((m) => m.id == id);
+      return party.controller.decryptMessage(row);
+    }
+
+    test('keeps our own message ours when a later copy names the peer as its sender', () async {
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'hi');
+      await deliver(alice, bob, 'I owe you 500');
+      final stored = lastRelayed(conv);
+      stored['senderDeviceId'] = bob.device.deviceId;
+
+      final opened = await openListed(alice, conv, stored['id'] as String);
+      final row = alice.controller.messagesFor(conv).firstWhere((m) => m.id == stored['id']);
+      expect(row.isMine, isTrue);
+      expect(row.senderDeviceId, alice.device.deviceId);
+      expect(opened.body, 'I owe you 500');
+
+      // After a restart the cached copy still names alice, and the relay's
+      // relabelled copy changes nothing.
+      await alice.restart();
+      final reopened = await openListed(alice, conv, stored['id'] as String);
+      expect(alice.controller.messagesFor(conv).firstWhere((m) => m.id == stored['id']).isMine, isTrue);
+      expect(reopened.body, 'I owe you 500');
+    });
+
+    test('does not show one contact\'s words in another chat as someone else\'s', () async {
+      final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+      addTearDown(carol.dispose);
+      relay.addDirect('conv-ac', 'alice', 'carol');
+      await carol.signIn();
+      await alice.controller.refreshConversations();
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'hi');
+      await deliver(carol, alice, 'carol secret', conversationId: 'conv-ac');
+      final carolMessage = relay.conversations['conv-ac']!.messages.last;
+      // The relay lists a copy of carol's message in the alice-bob chat,
+      // from bob, frame and id unchanged.
+      final forged = Map<String, dynamic>.of(carolMessage)
+        ..['conversationId'] = conv
+        ..['senderDeviceId'] = bob.device.deviceId
+        ..['clientMessageId'] = 'forged-1'
+        ..['conversationOrder'] = relay.conversations[conv]!.messages.length + 1;
+      relay.conversations[conv]!.messages.add(forged);
+
+      final shown = await openListed(alice, conv, forged['id'] as String);
+      expect(shown.status, isNot(DecryptStatus.ok));
+      expect(shown.body, isEmpty);
+      expect(await alice.bodies(conv), isNot(contains('carol secret')));
+      // Carol's message still reads, in its own chat.
+      expect(await alice.bodies('conv-ac'), contains('carol secret'));
+    });
+
+    test('opens a frame only in the chat it was sealed for', () async {
+      final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+      addTearDown(carol.dispose);
+      relay.addDirect('conv-ac', 'alice', 'carol');
+      await carol.signIn();
+      await alice.controller.refreshConversations();
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'hi');
+      await deliver(carol, alice, 'carol here', conversationId: 'conv-ac');
+      await settle();
+      // Alice's socket goes quiet, so nothing reaches her but history.
+      relay.realtimeFor('alice').disconnect();
+      await bob.controller.sendText(conversationId: conv, body: 'bob fresh secret');
+      await waitFor(() => bob.controller.pendingCountFor(conv) == 0, reason: 'not acked');
+      // The relay moves the stored row, untouched, into the alice-carol chat.
+      final moved = relay.conversations[conv]!.messages.removeLast();
+      moved['conversationOrder'] = relay.conversations['conv-ac']!.messages.length + 1;
+      relay.conversations['conv-ac']!.messages.add(moved);
+
+      await alice.controller.loadConversationMessages('conv-ac');
+      await settle();
+      expect(alice.controller.messagesFor('conv-ac').any((m) => m.id == moved['id']), isFalse);
+      expect(await alice.bodies('conv-ac'), isNot(contains('bob fresh secret')));
+
+      // Listed where it belongs, it opens there: nothing was spent on it.
+      relay.conversations['conv-ac']!.messages.remove(moved);
+      moved['conversationOrder'] = relay.conversations[conv]!.messages.length + 1;
+      relay.conversations[conv]!.messages.add(moved);
+      await alice.controller.loadConversationMessages(conv);
+      await waitFor(() async => (await alice.bodies(conv)).contains('bob fresh secret'),
+          reason: 'the frame did not open in its own chat');
+    });
+
+    test('an ack naming a message we already opened leaves its content alone', () async {
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'bob words');
+      final bobMessage = lastRelayed(conv);
+      // The relay answers alice's next send with the id of bob's message.
+      relay.rewriteAck = (stored) => stored..['id'] = bobMessage['id'];
+      await alice.controller.sendText(conversationId: conv, body: 'alice words');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'not acked');
+      relay.rewriteAck = null;
+      await settle();
+
+      final row = alice.controller.messagesFor(conv).firstWhere((m) => m.id == bobMessage['id']);
+      expect(row.isMine, isFalse);
+      expect((await alice.controller.decryptMessage(row)).body, 'bob words');
+      await alice.restart();
+      expect(await alice.bodies(conv), contains('bob words'));
+    });
+
+    test('an ack for another message is not taken for ours', () async {
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'hi');
+      relay.rewriteAck = (stored) => stored..['clientMessageId'] = 'someone-else';
+      await alice.controller.sendText(conversationId: conv, body: 'mine');
+      await settle();
+
+      expect(alice.controller.pendingCountFor(conv), 1);
+      expect(alice.controller.messagesFor(conv).where((m) => m.isMine && !m.isPending).length, 1);
+      relay.rewriteAck = null;
+    });
+  });
+
+  group('a member the relay adds to a Sender Keys group', () {
+    Future<List<String>> memberNotices(MessengerParty party) async => [
+          for (final row in party.controller.messagesFor('grp').where((m) => m.isLocalNotice))
+            (await party.controller.decryptMessage(row)).body,
+        ];
+
+    test('is announced in the chat once, across refreshes and a restart, and so is its removal', () async {
+      final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
+      addTearDown(mallory.dispose);
+      await mallory.signIn();
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      await bob.controller.refreshConversations();
+      await deliver(alice, bob, 'group hello', conversationId: 'grp');
+      expect(await memberNotices(alice), isEmpty, reason: 'a group\'s first listing announces nobody');
+
+      relay.conversations['grp']!
+        ..memberHandles.add('mallory')
+        ..epoch += 1;
+      await alice.controller.refreshConversations();
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+      await bob.controller.refreshConversations();
+      expect(await memberNotices(bob), [LocalNoticeCodes.groupMemberAdded]);
+
+      await alice.restart();
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+
+      relay.conversations['grp']!
+        ..memberHandles.remove('mallory')
+        ..epoch += 1;
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded, LocalNoticeCodes.groupMemberRemoved]);
+    });
+
+    test('removed and added back at the same epoch is announced each time', () async {
+      final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
+      addTearDown(mallory.dispose);
+      await mallory.signIn();
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      await bob.controller.refreshConversations();
+      await deliver(alice, bob, 'group hello', conversationId: 'grp');
+      const added = LocalNoticeCodes.groupMemberAdded;
+      const removed = LocalNoticeCodes.groupMemberRemoved;
+
+      relay.conversations['grp']!
+        ..memberHandles.add('mallory')
+        ..epoch += 1;
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added]);
+      // The relay takes mallory out and puts her back without moving the
+      // epoch, so the last change alice was shown would be the removal.
+      relay.conversations['grp']!.memberHandles.remove('mallory');
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added, removed]);
+      relay.conversations['grp']!.memberHandles.add('mallory');
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added, removed, added]);
+
+      // Mallory reads what alice sends next, and alice's chat says she is in.
+      await mallory.controller.refreshConversations();
+      await deliver(alice, mallory, 'after the re-add', conversationId: 'grp');
+      final rows = alice.controller.messagesFor('grp');
+      final lastNotice = rows.lastWhere((m) => m.isLocalNotice);
+      expect((await alice.controller.decryptMessage(lastNotice)).body, added);
+
+      // Each change is announced once: refreshes and a restart add nothing.
+      await alice.controller.refreshConversations();
+      await alice.restart();
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added, removed, added]);
+    });
+
+    test('found again after the app stopped before recording it is announced once', () async {
+      final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
+      addTearDown(mallory.dispose);
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      final record = alice.keystore.scoped(SecureScope.conversationPolicy);
+      final recordedBefore = (await record.read('group_members.v1'))!;
+
+      relay.conversations['grp']!
+        ..memberHandles.add('mallory')
+        ..epoch += 1;
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+      // The app stops after the notice was written, before the member record
+      // was: the next start finds the same change and numbers it the same.
+      await record.write('group_members.v1', recordedBefore);
+      await alice.restart();
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+    });
+
+    test('while the app was closed is announced when it starts', () async {
+      final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
+      addTearDown(mallory.dispose);
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), isEmpty);
+
+      // Changed while alice's app is closed: nothing reaches her until the
+      // next start.
+      relay.conversations['grp']!
+        ..memberHandles.add('mallory')
+        ..epoch += 1;
+      await alice.restart();
+      await waitFor(() async => (await memberNotices(alice)).isNotEmpty, reason: 'the change was not announced');
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+    });
+  });
 }

@@ -62,7 +62,7 @@ class DisappearingMessagesService implements MessengerStateObserver {
     final (:expired, :changed) = _store.removeExpired(now);
     if (changed) {
       if (expired.isNotEmpty) await _contents.deleteExpired(now, expired);
-      await _persistence.purgeExpired();
+      await _persistence.purgeExpired(now);
     }
     _rearm();
   }

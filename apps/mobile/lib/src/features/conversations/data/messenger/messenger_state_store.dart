@@ -75,13 +75,17 @@ class MessengerStateStore {
 
   /// Applies a fresh relay list over the local previews (see
   /// mergeConversationPreviews), then lets [pin] hold each preview to what
-  /// this device pinned for it. Returns the ids [pin] overruled.
-  Future<List<String>> replaceConversations(
+  /// this device pinned for it. Returns the ids [pin] overruled, or null
+  /// when [stillCurrent] says the list no longer belongs to the session
+  /// once [pin] is done, and nothing was applied.
+  Future<List<String>?> replaceConversations(
     List<ConversationPreview> fetched, {
     required Map<String, ConversationPeer> bound,
     required Future<(List<ConversationPreview>, List<String>)> Function(List<ConversationPreview> merged) pin,
+    bool Function()? stillCurrent,
   }) async {
     final (listed, overruled) = await pin(mergeConversationPreviews(_conversations, fetched, bound: bound));
+    if (stillCurrent != null && !stillCurrent()) return null;
     _conversations = listed..sort(_byRecency);
     _conversationsChanged();
     return overruled;

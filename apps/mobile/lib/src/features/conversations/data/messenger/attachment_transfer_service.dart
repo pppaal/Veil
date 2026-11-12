@@ -242,6 +242,7 @@ class AttachmentTransferService {
     await _contents.storeOutbound(
       conversationId: conversation.id,
       clientMessageId: pending.clientMessageId,
+      senderDeviceId: pending.senderDeviceId,
       body: attachmentMessageBody,
       kind: MessageKind.file,
       attachment: attachment,

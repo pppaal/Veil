@@ -48,6 +48,14 @@ class VeilApiClient {
   // 401, _authedRequest asks the gate for a fresh access token and replays
   // the original call once.
   final TokenRefreshGate? _refreshGate;
+
+  /// A fresh access token to replace [staleToken], through the same
+  /// single-flight gate a 401 uses (a second concurrent refresh would replay
+  /// the single-use refresh token); null when the session cannot be
+  /// refreshed or no refresher is configured.
+  Future<String?> refreshAccessToken(String staleToken) =>
+      _refreshGate?.replacementFor(staleToken) ?? Future<String?>.value(null);
+
   final Duration _requestTimeout;
   final Duration _uploadTimeout;
   final http.Client? _injectedObjectStorageClient;

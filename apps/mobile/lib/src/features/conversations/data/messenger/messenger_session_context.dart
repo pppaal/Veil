@@ -9,6 +9,12 @@ typedef AuthedSession = ({String accessToken, String userId, String deviceId, St
 class MessengerSessionContext {
   AppSessionState _current = const AppSessionState();
   bool _closed = false;
+  int _generation = 0;
+
+  /// Bumped whenever the identity goes away or changes. Relay work started
+  /// under an earlier generation belongs to an identity that is gone, and
+  /// must not change the state once it completes.
+  int get generation => _generation;
 
   AppSessionState get current => _current;
 
@@ -29,6 +35,7 @@ class MessengerSessionContext {
   SessionChange diff(AppSessionState next) {
     final change = classifySessionChange(_current, next);
     _current = next;
+    if (change == SessionChange.signedOut || change == SessionChange.identityChanged) _generation += 1;
     return change;
   }
 

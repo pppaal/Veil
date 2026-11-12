@@ -1532,6 +1532,18 @@ abstract class AppLocalizations {
   /// **'The server listed this group without its group encryption keys. This device keeps using them.'**
   String get chatNoticeSenderKeysKept;
 
+  /// No description provided for @chatNoticeGroupMemberAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone was added to this group. They can read messages sent from now on. Check the members in Safety number.'**
+  String get chatNoticeGroupMemberAdded;
+
+  /// No description provided for @chatNoticeGroupMemberRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'Someone left this group or was removed from it.'**
+  String get chatNoticeGroupMemberRemoved;
+
   /// No description provided for @chatIdentityChangedTitle.
   ///
   /// In en, this message translates to:
@@ -2573,7 +2585,7 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferHeroBody.
   ///
   /// In en, this message translates to:
-  /// **'Transfer is a live trusted-device join. The old device issues the session and approves the exact new-device claim. VEIL does not create recovery.'**
+  /// **'Transfer moves your handle to a new device. The old device issues the session and approves the exact new-device claim, and is signed out when the transfer completes. Conversation history is not transferred. VEIL does not create recovery.'**
   String get deviceTransferHeroBody;
 
   /// No description provided for @deviceTransferPillTrustedJoin.
@@ -2759,7 +2771,7 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferComplete.
   ///
   /// In en, this message translates to:
-  /// **'Transfer complete. This device joined the trusted graph.'**
+  /// **'Transfer complete. Your handle is now on this device and the old device has been signed out.'**
   String get deviceTransferComplete;
 
   /// No description provided for @deviceTransferFailed.
@@ -2921,7 +2933,7 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferCompleteOnNewNote.
   ///
   /// In en, this message translates to:
-  /// **'Complete on the new device. The old device remains trusted until you revoke it explicitly.'**
+  /// **'Complete on the new device. When it completes, this device is signed out and its local history is erased. Conversation history does not move to the new device.'**
   String get deviceTransferCompleteOnNewNote;
 
   /// No description provided for @deviceTransferCopyPayload.

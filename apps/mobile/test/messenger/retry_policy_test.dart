@@ -39,23 +39,39 @@ void main() {
 
   test('gives up after the attempt budget and backs off up to 30 seconds', () {
     expect(
+      shouldRetryAutomatically(VeilApiException('down', statusCode: 503), maxAutomaticRetryAttempts),
+      isFalse,
+    );
+    expect(
+      shouldRetryAutomatically(VeilApiException('dropped', code: 'attachment_upload_failed'), maxAutomaticRetryAttempts),
+      isFalse,
+    );
+    expect(shouldRetryAutomatically(StateError('local failure'), 1), isTrue);
+    expect(shouldRetryAutomatically(StateError('local failure'), maxAutomaticRetryAttempts), isFalse);
+    expect(retryDelayForAttempt(1), const Duration(seconds: 1));
+    expect(retryDelayForAttempt(3), const Duration(seconds: 4));
+    expect(retryDelayForAttempt(5), const Duration(seconds: 16));
+    expect(retryDelayForAttempt(9), const Duration(seconds: 30));
+  });
+
+  test('a send no response came back for is retried for as long as the device is offline', () {
+    for (final attempts in [maxAutomaticRetryAttempts, maxAutomaticRetryAttempts + 1, 100]) {
+      expect(shouldRetryAutomatically(VeilApiException('timed out', code: 'network_timeout'), attempts), isTrue);
+      expect(shouldRetryAutomatically(VeilApiException('offline', code: 'network_unavailable'), attempts), isTrue);
+    }
+    // A relay that answered is not offline, whatever code it sent.
+    expect(
       shouldRetryAutomatically(
-        VeilApiException('timed out', code: 'network_timeout'),
+        VeilApiException('gateway', statusCode: 504, code: 'network_timeout'),
         maxAutomaticRetryAttempts,
       ),
       isFalse,
     );
-    expect(shouldRetryAutomatically(StateError('local failure'), 1), isTrue);
-    expect(retryDelayForAttempt(1), const Duration(seconds: 1));
-    expect(retryDelayForAttempt(3), const Duration(seconds: 4));
-    expect(retryDelayForAttempt(9), const Duration(seconds: 16));
   });
 
   group('statusCode/code table', () {
-    // (statusCode, code, retried)
+    // (statusCode, code, retried); the offline codes are in the table below.
     const table = <(int?, String?, bool)>[
-      (null, 'network_timeout', true),
-      (null, 'network_unavailable', true),
       (null, 'attachment_upload_failed', true),
       (null, null, false),
       (null, 'unexpected_code', false),
@@ -87,7 +103,20 @@ void main() {
         final error = VeilApiException('failure', statusCode: statusCode, code: code);
         expect(shouldRetryAutomatically(error, 1), retried);
         expect(shouldRetryAutomatically(error, maxAutomaticRetryAttempts), isFalse,
-            reason: 'nothing is retried once the attempt budget is spent');
+            reason: 'nothing the relay answered is retried once the attempt budget is spent');
+      });
+    }
+
+    // No response at all: retried within and past the budget.
+    const offline = <(int?, String?)>[
+      (null, 'network_timeout'),
+      (null, 'network_unavailable'),
+    ];
+    for (final (statusCode, code) in offline) {
+      test('status $statusCode, code $code -> retried, past the budget too', () {
+        final error = VeilApiException('failure', statusCode: statusCode, code: code);
+        expect(shouldRetryAutomatically(error, 1), isTrue);
+        expect(shouldRetryAutomatically(error, maxAutomaticRetryAttempts), isTrue);
       });
     }
   });

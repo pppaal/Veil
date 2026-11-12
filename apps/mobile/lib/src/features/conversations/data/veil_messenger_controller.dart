@@ -125,6 +125,13 @@ class VeilMessengerController extends ChangeNotifier {
   int pendingCountFor(String conversationId) => _services.store.pendingCountFor(conversationId);
   DateTime? nextRetryAtForConversation(String conversationId) => _services.outbox.nextRetryAt(conversationId);
 
+  /// Now, on the clock disappearing messages expire by: the relay's, as its
+  /// responses report it, corrected by at most an hour. Whatever shows or
+  /// hides a message by its expiry reads this, never the device clock, so a
+  /// device whose clock runs fast does not hide a message the relay still
+  /// keeps.
+  DateTime expiryNow() => _services.expiryNow();
+
   /// The conversation with [conversationId] in the current list, if any.
   ConversationPreview? conversationById(String conversationId) => _services.store.conversationById(conversationId);
 

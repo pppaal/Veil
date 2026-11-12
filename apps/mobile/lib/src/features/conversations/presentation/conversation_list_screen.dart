@@ -106,7 +106,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       return 'No messages yet';
     }
 
-    if (isMessageExpired(envelope.expiresAt)) {
+    if (isMessageExpired(envelope.expiresAt, now: controller.expiryNow())) {
       return 'Expired locally';
     }
 
@@ -952,7 +952,7 @@ class _ConversationListPane extends StatelessWidget {
                     ),
                     expiryLabel: item.lastEnvelope?.expiresAt == null
                         ? null
-                        : formatMessageExpiry(item.lastEnvelope!.expiresAt!),
+                        : formatMessageExpiry(item.lastEnvelope!.expiresAt!, now: controller.expiryNow()),
                     onTap: () => onSelectConversation(item.id),
                   ),
                 ),

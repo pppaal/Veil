@@ -42,4 +42,38 @@ void main() {
 
     expect(platform.values[stored.key], '{not json');
   });
+
+  group('group members', () {
+    test('and the count of their changes outlive the instance that recorded them', () async {
+      await open().recordGroupMembers({
+        'grp': const GroupMembership({'user-a', 'user-b'}, changes: 3),
+      });
+
+      final reopened = (await open().groupMembers())['grp']!;
+      expect(reopened.members, {'user-a', 'user-b'});
+      expect(reopened.changes, 3);
+    });
+
+    test('recorded by the first version of the record read back with no changes counted', () async {
+      await open().recordGroupMembers({'grp': const GroupMembership({'user-a'})});
+      final stored = platform.values.entries.singleWhere((entry) => entry.key.endsWith('group_members.v1'));
+      platform.values[stored.key] = '{"grp":["user-a","user-b"]}';
+
+      final read = (await open().groupMembers())['grp']!;
+      expect(read.members, {'user-a', 'user-b'});
+      expect(read.changes, 0);
+    });
+
+    test('an unreadable record is replaced, so later starts tell changes apart again', () async {
+      await open().recordGroupMembers({'grp': const GroupMembership({'user-a'})});
+      final stored = platform.values.entries.singleWhere((entry) => entry.key.endsWith('group_members.v1'));
+      platform.values[stored.key] = '{not json';
+
+      final bindings = open();
+      expect(await bindings.groupMembers(), isEmpty);
+      await bindings.recordGroupMembers({'grp': const GroupMembership({'user-a', 'user-b'}, changes: 1)});
+
+      expect((await open().groupMembers())['grp']!.members, {'user-a', 'user-b'});
+    });
+  });
 }

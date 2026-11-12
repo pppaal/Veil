@@ -35,6 +35,7 @@ class RealtimeEventRouter {
     required ConversationCryptoRouter crypto,
     required OutboxService outbox,
     required LocalNotificationService? notifications,
+    required Future<String?> Function(String staleToken) refreshAccessToken,
   })  : _realtime = realtime,
         _session = session,
         _store = store,
@@ -47,7 +48,13 @@ class RealtimeEventRouter {
         _disappearing = disappearing,
         _crypto = crypto,
         _outbox = outbox,
-        _notifications = notifications;
+        _notifications = notifications,
+        _refreshAccessToken = refreshAccessToken {
+    _realtime.onServerDisconnect = _onServerDisconnect;
+  }
+
+  static const _firstRecoveryDelay = Duration(seconds: 1);
+  static const _maxRecoveryDelay = Duration(seconds: 60);
 
   final RealtimeService _realtime;
   final MessengerSessionContext _session;
@@ -62,25 +69,68 @@ class RealtimeEventRouter {
   final ConversationCryptoRouter _crypto;
   final OutboxService _outbox;
   final LocalNotificationService? _notifications;
+  final Future<String?> Function(String staleToken) _refreshAccessToken;
   bool _connected = false;
+  Timer? _recovery;
+  Duration _recoveryDelay = _firstRecoveryDelay;
   bool _refreshConversationsOnConnect = true;
+
+  // Bumped whenever this side disconnects, so a recovery started before it
+  // does not connect again.
+  int _epoch = 0;
 
   bool get connected => _connected;
 
   Future<void> connect() async {
     final session = _session.authed;
     if (_connected || session == null) return;
+    _connectWith(session.accessToken);
+  }
+
+  void _connectWith(String accessToken) {
     _realtime.connect(
       baseUrl: VeilConfig.realtimeUrl,
-      accessToken: session.accessToken,
+      accessToken: accessToken,
       onConnectionChanged: _onConnectionChanged,
       onEvent: (name, payload) => unawaited(_dispatch(name, payload)),
     );
   }
 
   void disconnect() {
+    _epoch += 1;
+    _cancelRecovery();
     _realtime.disconnect();
     _connected = false;
+  }
+
+  // The relay closed the socket, as it does when the token it authenticated
+  // with expires, and socket.io will not reconnect on its own. Reconnect with
+  // a fresh token, backing off while the relay keeps closing it.
+  void _onServerDisconnect() {
+    _connected = false;
+    if (_session.isClosed || _session.authed == null || _recovery != null) return;
+    final epoch = _epoch;
+    _recovery = Timer(_recoveryDelay, () => unawaited(_recover(epoch)));
+    final doubled = _recoveryDelay * 2;
+    _recoveryDelay = doubled > _maxRecoveryDelay ? _maxRecoveryDelay : doubled;
+  }
+
+  Future<void> _recover(int epoch) async {
+    _recovery = null;
+    final session = _session.authed;
+    if (epoch != _epoch || _session.isClosed || session == null || _connected) return;
+    final fresh = await _refreshAccessToken(session.accessToken);
+    // Null: the session cannot be refreshed, which the sign-out path owns.
+    if (fresh == null || epoch != _epoch || _session.isClosed || _session.authed == null || _connected) return;
+    // The refreshed session also reaches applyToken; connecting here does
+    // not wait for it.
+    _connectWith(fresh);
+  }
+
+  void _cancelRecovery() {
+    _recovery?.cancel();
+    _recovery = null;
+    _recoveryDelay = _firstRecoveryDelay;
   }
 
   /// Reconnects; with [refreshConversations] false the resync after it
@@ -106,6 +156,7 @@ class RealtimeEventRouter {
   void _onConnectionChanged(bool connected) {
     _connected = connected;
     if (connected) {
+      _recoveryDelay = _firstRecoveryDelay;
       _ops.clearRelayInterruption();
     } else {
       _ops.noteRelayInterrupted(hasQueuedSends: _outbox.hasPendingWork);

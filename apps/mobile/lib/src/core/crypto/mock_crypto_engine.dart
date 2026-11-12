@@ -259,9 +259,19 @@ class _MockMessageCryptoEngine implements MessageCryptoEngine {
   }
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     final cached = _plaintextRegistry[envelope.ciphertext];
     if (cached != null) {
+      try {
+        await beforeCommit?.call(cached);
+      } catch (_) {
+        return DecryptedMessage(
+          status: DecryptStatus.failed,
+          failureReason: 'persist_failed',
+          body: '',
+          messageKind: envelope.messageKind,
+        );
+      }
       return cached;
     }
 

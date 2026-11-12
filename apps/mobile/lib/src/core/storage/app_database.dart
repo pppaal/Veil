@@ -94,6 +94,9 @@ class MessageContents extends Table {
   TextColumn get conversationId => text()();
   TextColumn get clientMessageId => text().nullable()();
   TextColumn get serverMessageId => text().nullable()();
+  // Field-encrypted. The device the content is from: this device for
+  // outbound text, the authenticated sender for inbound.
+  TextColumn get senderDeviceId => text().nullable()();
   TextColumn get body => text()();
   TextColumn get attachmentJson => text().nullable()();
   TextColumn get kind => text()();
@@ -132,7 +135,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -216,6 +219,11 @@ class AppDatabase extends _$AppDatabase {
             // copies of decrypted text instead of leaving them unread.
             await customStatement('UPDATE cached_messages SET search_body = NULL');
             await _createRetirementGuard();
+          }
+          if (from >= 9 && from < 11) {
+            // Schema 9 created message_contents without the sender column;
+            // a database created at 9 or later by createAll above has it.
+            await migrator.addColumn(messageContents, messageContents.senderDeviceId);
           }
           if (from == 9) {
             // Schema 9 flagged identity changes per conversation; the pin

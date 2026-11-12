@@ -76,10 +76,18 @@ class MessengerServices {
     );
     ops = MessengerOperationRunner(onChanged: store.changed, onSecurityException: onSecurityException);
     final mapper = MessengerApiMapper(envelopeCodec);
-    persistence = MessengerPersistence(cache: cache, store: store);
-    contents = MessageContentService(cache: cache, decrypt: (envelope) => crypto.decrypt(envelope), onContentStored: _onContentStored);
+    // Disappearing expiries are stamped and checked on the relay's clock,
+    // corrected by at most an hour (see ServerClock.boundedNow).
+    final expiryClock = expiryNow = apiClient.serverClock.boundedNow;
+    persistence = MessengerPersistence(cache: cache, store: store, now: expiryClock);
+    contents = MessageContentService(
+      cache: cache,
+      decrypt: (envelope, {beforeCommit}) => crypto.decrypt(envelope, beforeCommit: beforeCommit),
+      onContentStored: _onContentStored,
+      now: expiryClock,
+    );
     latest = DecryptedMessageCache(contents: contents, store: store);
-    final notices = LocalNoticeWriter(store: store, contents: contents, session: session);
+    final notices = LocalNoticeWriter(store: store, contents: contents, session: session, flush: persistence.flush);
     peers = PeerSessionResolver(store: store, session: session, sessions: sessionBootstrapper, keys: keys, trust: trust);
     crypto = ConversationCryptoRouter(
       store: store,
@@ -121,6 +129,7 @@ class MessengerServices {
       pending: pending,
       attachments: attachments,
       ops: ops,
+      expiryClock: expiryClock,
     );
     reactions = ReactionService(store: store, session: session, send: outbox.send);
     identity = IdentityChangeService(
@@ -140,6 +149,7 @@ class MessengerServices {
       apiClient: apiClient,
       mapper: mapper,
       ops: ops,
+      now: expiryClock,
     );
     sync = ConversationSyncService(
       store: store,
@@ -178,6 +188,7 @@ class MessengerServices {
       crypto: crypto,
       outbox: outbox,
       notifications: notificationService,
+      refreshAccessToken: apiClient.refreshAccessToken,
     );
     search = MessageSearchService(store: store, contents: contents, cache: cache, session: session);
     store
@@ -210,6 +221,10 @@ class MessengerServices {
   late final PresenceTypingService presence;
   late final RealtimeEventRouter realtime;
   late final MessageSearchService search;
+
+  /// The clock disappearing-message expiries are stamped and checked on:
+  /// the relay's, corrected by at most an hour (ServerClock.boundedNow).
+  late final DateTime Function() expiryNow;
   bool _sessionsRestored = false;
 
   /// Whether this device can run Sender Keys groups.
@@ -235,6 +250,10 @@ class MessengerServices {
       case SessionChange.identityChanged:
         realtime.disconnect();
         _forgetIdentity();
+        // Only a new identity starts the writer over: after a sign-out it
+        // stays wiped, so nothing still in flight for the identity that
+        // left can write into the cache the next one opens.
+        persistence.reset();
         unawaited(identity.readBackDecisions());
     }
 
@@ -311,7 +330,7 @@ class MessengerServices {
     crypto.clear();
     peers.clear();
     latest.clear();
-    persistence.reset();
+    sync.forgetHistoryMarks();
   }
 
   // Runs whenever content becomes bound to a relayed message (the ack path

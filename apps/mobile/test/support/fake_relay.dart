@@ -113,6 +113,10 @@ class FakeRelay {
   /// Simulates a server that drops the outer expiresAt on relay.
   bool stripOuterExpiresAt = false;
 
+  /// Rewrites the message a send is acknowledged with, as a lying relay
+  /// would; the stored row is unchanged.
+  Map<String, dynamic> Function(Map<String, dynamic> stored)? rewriteAck;
+
   /// Messages per history page; null serves the whole history at once.
   int? messagePageSize;
 
@@ -348,9 +352,25 @@ class FakeRelayClient extends VeilApiClient {
   int conversationFetches = 0;
   int messageFetches = 0;
   int groupKeyRequests = 0;
+  // While set, every send fails as an unreachable network makes it: no
+  // response at all.
+  bool unreachable = false;
+  // While set, history fetches wait for it to complete.
+  Completer<void>? messageFetchGate;
   final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
   final List<String> signedPrekeyUploads = [];
+
+  /// The stale tokens a refresh was asked for, and what it answers with:
+  /// null, as without a refresher, unless a test sets [refreshTo].
+  final List<String> tokenRefreshes = [];
+  String? Function(String staleToken)? refreshTo;
+
+  @override
+  Future<String?> refreshAccessToken(String staleToken) async {
+    tokenRefreshes.add(staleToken);
+    return refreshTo?.call(staleToken);
+  }
 
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
@@ -378,6 +398,7 @@ class FakeRelayClient extends VeilApiClient {
     int limit = 50,
   }) async {
     messageFetches += 1;
+    await messageFetchGate?.future;
     final messages = relay.conversations[conversationId]!.messages;
     final pageSize = relay.messagePageSize;
     if (pageSize == null) {
@@ -479,7 +500,9 @@ class FakeRelayClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    return {'message': relay._accept(me, body), 'idempotent': false};
+    if (unreachable) throw VeilApiException('The VEIL relay is unreachable.', code: 'network_unavailable');
+    final stored = relay._accept(me, body);
+    return {'message': relay.rewriteAck?.call(Map<String, dynamic>.of(stored)) ?? stored, 'idempotent': false};
   }
 
   @override
@@ -661,6 +684,13 @@ class FakeRelayRealtime extends RealtimeService {
     final onConnectionChanged = _onConnectionChanged;
     disconnect();
     connect(baseUrl: '', accessToken: token, onEvent: onEvent, onConnectionChanged: onConnectionChanged);
+  }
+
+  /// What the relay does when the socket's access token expires: it closes
+  /// the socket itself, and socket.io does not reconnect after that.
+  void serverDisconnect() {
+    disconnect();
+    onServerDisconnect?.call();
   }
 
   /// Server-to-client push. Dropped while disconnected, like a real socket.

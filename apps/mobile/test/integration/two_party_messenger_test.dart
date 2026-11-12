@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -218,6 +219,39 @@ void main() {
     expect((await bob.controller.decryptMessage(messages.first)).body, 'm0');
     expect((await bob.controller.decryptMessage(messages.last)).body, 'm699');
     expect(bob.crypto.counts.decrypt, 699);
+  });
+
+  group('a disappearing message between devices whose clocks are off', () {
+    // Both devices learn the relay's clock from a response first.
+    Future<void> learnRelayClock() async {
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'hi');
+      await alice.controller.fetchPeerKeyBundle('bob');
+      await bob.controller.fetchPeerKeyBundle('alice');
+    }
+
+    test('is stamped on the relay\'s clock by a sender whose clock runs slow', () async {
+      relay.clockSkew = const Duration(seconds: 30);
+      await learnRelayClock();
+
+      await alice.controller.sendText(conversationId: conv, body: 'vanish', disappearAfter: const Duration(seconds: 10));
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'not acked');
+      final stamped = DateTime.parse(relay.conversations[conv]!.messages.last['expiresAt'] as String);
+      final expected = relay.now().add(const Duration(seconds: 10));
+      expect(stamped.difference(expected).inSeconds.abs(), lessThan(3), reason: 'stamped $stamped, relay expects $expected');
+      await waitFor(() async => (await bob.bodies(conv)).contains('vanish'), reason: 'bob never saw it');
+    });
+
+    test('is not retired early by a recipient whose clock runs fast', () async {
+      relay.clockSkew = const Duration(seconds: -30);
+      await learnRelayClock();
+
+      await alice.controller.sendText(conversationId: conv, body: 'vanish', disappearAfter: const Duration(seconds: 10));
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'not acked');
+      await waitFor(() async => (await bob.bodies(conv)).contains('vanish'), reason: 'bob retired it unseen');
+      await settle();
+      expect(await bob.bodies(conv), contains('vanish'));
+    });
   });
 
   test('expiry removes content row at inner time when outer expiresAt is removed', () async {
@@ -590,6 +624,59 @@ void main() {
     return (reference, plaintext);
   }
 
+  group('a message whose plaintext could not be stored at once', () {
+    test('is not lost when the ratchet snapshot cannot be written', () async {
+      await deliver(alice, bob, 'm1');
+      bob.failSnapshotWrites = 1;
+      await deliver(alice, bob, 'm2');
+      expect(bob.failSnapshotWrites, 0, reason: 'the failing write was never attempted');
+      await deliver(alice, bob, 'm3');
+
+      expect(await bob.bodies(conv), containsAllInOrder(['m1', 'm2', 'm3']));
+      await bob.restart();
+      expect(await bob.bodies(conv), containsAllInOrder(['m1', 'm2', 'm3']));
+    });
+
+    test('is decrypted again when its content could not be written', () async {
+      await deliver(alice, bob, 'm1');
+      bob.cache.failContentPuts = 1;
+      await alice.controller.sendText(conversationId: conv, body: 'm2');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'm2 was not acked');
+      await waitFor(() => bob.cache.failContentPuts == 0, reason: 'bob never tried to store m2');
+
+      // The next read decrypts it again: nothing was committed.
+      await waitFor(() async => (await bob.bodies(conv)).contains('m2'), reason: 'm2 stayed unreadable');
+      await deliver(alice, bob, 'm3');
+      await bob.restart();
+      expect(await bob.bodies(conv), containsAllInOrder(['m1', 'm2', 'm3']));
+    });
+
+    test('that opened the session is decrypted again when its content could not be written', () async {
+      bob.cache.failContentPuts = 1;
+      await alice.controller.sendText(conversationId: conv, body: 'first');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'first was not acked');
+      await waitFor(() => bob.cache.failContentPuts == 0, reason: 'bob never tried to store the first message');
+
+      await waitFor(() async => (await bob.bodies(conv)).contains('first'), reason: 'the handshake message was lost');
+      await deliver(bob, alice, 'reply on the same session');
+    });
+
+    test('in a Sender Keys group is decrypted again when its content could not be written', () async {
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      await bob.controller.refreshConversations();
+      await deliver(alice, bob, 'g1', conversationId: 'grp');
+      bob.cache.failContentPuts = 1;
+      await alice.controller.sendText(conversationId: 'grp', body: 'g2');
+      await waitFor(() => alice.controller.pendingCountFor('grp') == 0, reason: 'g2 was not acked');
+      await waitFor(() => bob.cache.failContentPuts == 0, reason: 'bob never tried to store g2');
+
+      await waitFor(() async => (await bob.bodies('grp')).contains('g2'), reason: 'g2 stayed unreadable');
+      await bob.restart();
+      expect(await bob.bodies('grp'), containsAllInOrder(['g1', 'g2']));
+    });
+  });
+
   group('a backlog longer than one history page', () {
     // bob is offline while alice writes [count] messages; the relay serves
     // its history five messages a page.
@@ -608,6 +695,29 @@ void main() {
 
     Future<int> backlogRead() async => (await bob.bodies(conv)).where((body) => body.startsWith('backlog ')).length;
 
+    // The same backlog sealed by alice's engine and handed to the relay
+    // directly, which keeps long ones cheap.
+    Future<int> sealedBacklog(int count, {String prefix = 'backlog', bool sendFirst = true}) async {
+      if (sendFirst) {
+        await deliver(alice, bob, 'before the backlog');
+        await settle();
+        bob.realtime.disconnect();
+      }
+      final recipient = alice.controller.conversationById(conv)!.recipientBundle;
+      for (var i = 0; i < count; i++) {
+        final envelope = await alice.lib.messaging.encryptMessage(
+          conversationId: conv,
+          senderDeviceId: alice.device.deviceId,
+          recipientUserId: bob.device.userId,
+          body: '$prefix $i',
+          messageKind: MessageKind.text,
+          recipientBundle: recipient,
+        );
+        relay.inject(senderHandle: 'alice', conversationId: conv, envelope: alice.lib.envelopeCodec.encodeApiEnvelope(envelope));
+      }
+      return bob.api.messageFetches;
+    }
+
     test('is fetched back to the newest message the device holds', () async {
       final fetchesBefore = await backlog(23);
 
@@ -618,16 +728,136 @@ void main() {
     });
 
     test('beyond the pages one refresh fetches is left to loading older history', () async {
-      final fetchesBefore = await backlog(60);
+      final fetchesBefore = await sealedBacklog(210);
+      relay.messagePageSize = 5;
 
       await bob.controller.loadConversationMessages(conv);
-      await waitFor(() async => await backlogRead() == 50, reason: 'the newest ten pages were not read');
-      expect(bob.api.messageFetches - fetchesBefore, 10);
+      await waitFor(() async => await backlogRead() == 200,
+          timeout: const Duration(seconds: 20), reason: 'the newest forty pages were not read');
+      expect(bob.api.messageFetches - fetchesBefore, 40);
       expect(bob.controller.hasMoreHistoryFor(conv), isTrue);
 
       await bob.controller.loadOlderConversationMessages(conv);
       await bob.controller.loadOlderConversationMessages(conv);
-      await waitFor(() async => await backlogRead() == 60, reason: 'the rest of the backlog was not read');
+      await waitFor(() async => await backlogRead() == 210, reason: 'the rest of the backlog was not read');
+    });
+
+    test('of more than 700 messages on one chain is read in full after one resume', () async {
+      await sealedBacklog(720);
+      relay.messagePageSize = 50;
+
+      await bob.controller.handleAppResumed();
+      await waitFor(() async => await backlogRead() == 720,
+          timeout: const Duration(seconds: 60), reason: 'part of the backlog stayed unreadable');
+      // The chain is caught up, so what alice sends next reads too.
+      await deliver(alice, bob, 'after the backlog');
+    });
+
+    test('a live frame that beats the resync opens once the backlog before it has', () async {
+      await sealedBacklog(210);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      // The live frame reaches the fresh socket before the debounced resync
+      // has fetched the 210 frames sealed before it.
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+
+      await waitFor(() async => (await bob.bodies(conv)).contains('live 0'),
+          timeout: const Duration(seconds: 20), reason: 'the live frame stayed unreadable');
+      // The resync does not stop at the live frame: it pages back to the
+      // history it already held, so the whole backlog opens without loading
+      // older history.
+      await waitFor(() async => await backlogRead() == 210,
+          timeout: const Duration(seconds: 20), reason: 'part of the backlog stayed unreadable');
+    });
+
+    // What the backlog test above needs from bob after one resume: every
+    // frame alice sealed opened, without loading older history, and the
+    // chain caught up for what she sends next.
+    Future<void> expectBacklogCaughtUp(int count, {List<String> alsoRead = const []}) async {
+      await waitFor(
+        () async {
+          final bodies = await bob.bodies(conv);
+          return bodies.where((body) => body.startsWith('backlog ')).length == count && bodies.toSet().containsAll(alsoRead);
+        },
+        timeout: const Duration(seconds: 20),
+        reason: 'part of the backlog stayed unreadable',
+      );
+      await deliver(alice, bob, 'fresh after the backlog');
+    }
+
+    test('of 400 behind a live frame that beats the resync is read in full after one resume', () async {
+      await sealedBacklog(400);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+
+      await expectBacklogCaughtUp(400, alsoRead: ['live 0']);
+    });
+
+    test('of 400 behind a reply bob wrote offline, sent before the resync, is read in full after one resume', () async {
+      await sealedBacklog(400);
+      relay.messagePageSize = 50;
+      bob.api.unreachable = true;
+      await bob.controller.sendText(conversationId: conv, body: 'written offline');
+      expect(bob.controller.pendingCountFor(conv), 1);
+
+      // Back online: the outbox sends the reply as the socket connects, so
+      // the relay has acked it, newest of all, before the resync runs.
+      bob.api.unreachable = false;
+      await bob.controller.handleAppResumed();
+      await waitFor(() => bob.controller.pendingCountFor(conv) == 0, reason: 'the reply was not sent');
+
+      await expectBacklogCaughtUp(400, alsoRead: ['written offline']);
+    });
+
+    test('already read is not paged through again after a restart', () async {
+      await sealedBacklog(30);
+      relay.messagePageSize = 5;
+      await bob.controller.handleAppResumed();
+      await waitFor(() async => await backlogRead() == 30, reason: 'the backlog was not read');
+      await settle();
+
+      final fetchesBefore = bob.api.messageFetches;
+      await bob.restart();
+      await settle();
+      // The resync after the start stops at the newest message the cache
+      // held opened: one page, not the 32 messages back to the oldest.
+      expect(bob.api.messageFetches - fetchesBefore, 1);
+      expect(await backlogRead(), 30);
+    });
+
+    test('of 400 behind a live frame that arrived before a restart is read in full after it', () async {
+      await sealedBacklog(400);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      // The live frame lands, too far ahead to open, and the app stops
+      // before any resync fetched history.
+      final gate = bob.api.messageFetchGate = Completer<void>();
+      await bob.controller.handleAppResumed();
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await waitFor(() async {
+        final row = bob.controller.messagesFor(conv).where((m) => m.id == live['id']).firstOrNull;
+        return row != null && (await bob.controller.decryptMessage(row)).status == DecryptStatus.awaitingKey;
+      }, reason: 'the live frame was not ingested');
+      // Lets the cache write the row before the app stops.
+      await settle();
+      await bob.restart();
+      bob.api.messageFetchGate = null;
+      gate.complete();
+
+      await expectBacklogCaughtUp(400, alsoRead: ['live 0']);
     });
   });
 

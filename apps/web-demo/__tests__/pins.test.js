@@ -599,21 +599,69 @@ describe('declining a key change', () => {
       .resolves.toMatchObject({ verdict: PinVerdict.UNVERIFIED_DEVICE });
   });
 
-  // With no session there is no identity to go on sending to: declining
-  // would leave a conversation that can never send, with nothing to review.
-  it('nothing can be declined in a conversation without a session', async () => {
-    const { alice, directory } = await established({ verified: true });
+  // C-DECLINE: only the identity the conversation's session sends to cannot
+  // be declined. Without a session there is no such identity, so the key the
+  // directory presented may be declined: nothing stays pending, a send is
+  // refused outright while the directory serves that key (the app shows
+  // keyChange.sendRefused, not a banner), and sending resumes once it serves
+  // a key the pins admit.
+  it('a key presented to a conversation without a session can be declined', async () => {
+    const { alice, bob, directory } = await established({ verified: true });
     await bobReplacement(directory, { deviceId: 'd-bob-2' });
     alice.peers.set(OTHER_CONVERSATION, { userId: 'u-bob', handle: 'bob' });
-    await expect(alice.secure.seal(OTHER_CONVERSATION, textContent('x'), { clientMessageId: 'c1' }))
+    bob.peers.set(OTHER_CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+    const refused = (label) => expect(alice.secure.seal(OTHER_CONVERSATION, textContent(label), { clientMessageId: label }))
       .rejects.toBeInstanceOf(PeerKeyChangedError);
+    await refused('c1');
     const reviewed = alice.trust.pendingChange('u-bob');
     expect(reviewed).toMatchObject({ deviceId: 'd-bob-2', verdict: PinVerdict.NEW_DEVICE });
+    expect(await alice.device.cipher.sessionIdentity(OTHER_CONVERSATION)).toBeNull();
 
-    expect(await alice.secure.declineChange(OTHER_CONVERSATION, reviewed)).toBe('no-session');
-    expect(alice.trust.pendingChange('u-bob')).toBe(reviewed);
+    expect(await alice.secure.declineChange(OTHER_CONVERSATION, reviewed)).toBe('declined');
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
     await expect(createPinStore(alice.pinKv).inspect('u-bob', 'd-bob-2', reviewed.identityKey))
-      .resolves.toMatchObject({ verdict: PinVerdict.NEW_DEVICE });
+      .resolves.toMatchObject({ verdict: PinVerdict.REFUSED });
+    // The directory still serves the declined key: refused, with nothing to
+    // review, and the same after a reload.
+    await refused('c2');
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    await alice.restart();
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    await refused('c3');
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    expect(await alice.pendingKv.all()).toEqual([]);
+
+    // Served the pinned key again, the conversation starts its session and
+    // sends, before and after the next reload.
+    directory.set('bob', directoryEntryOf(bob));
+    expect((await sendText(alice, bob, 'to bob', OTHER_CONVERSATION)).opened.content.text).toBe('to bob');
+    await alice.restart();
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    expect((await sendText(alice, bob, 'after reload', OTHER_CONVERSATION)).opened.content.text).toBe('after reload');
+  });
+
+  // The re-review's case: Alice holds Bob's real pin but no session, the
+  // relay serves a device of its own once, and then Bob's real entry again.
+  // A decline she could not make would keep the conversation frozen across
+  // reloads, with only accepting or verifying the forged key as ways out.
+  it('a forged key served once, with a pin but no session, can be declined and sending resumes', async () => {
+    const { alice, bob, directory } = await conversation();
+    const real = await directoryEntryOf(bob)();
+    expect(await alice.trust.admit('u-bob', real.deviceId, real.identityKey)).toBe(true);
+    expect(await alice.device.cipher.hasSession(CONVERSATION)).toBe(false);
+
+    const relay = await createEndpoint({ userId: 'u-bob', deviceId: 'd-relay', handle: 'bob', directory: new Map() });
+    directory.set('bob', directoryEntryOf(relay));
+    await frozen(alice, 'forged once');
+    const reviewed = alice.trust.pendingChange('u-bob');
+    expect(reviewed).toMatchObject({ deviceId: 'd-relay', verdict: PinVerdict.NEW_DEVICE });
+    expect(await alice.secure.declineChange(CONVERSATION, reviewed)).toBe('declined');
+
+    directory.set('bob', directoryEntryOf(bob));
+    await alice.restart();
+    expect(alice.trust.pendingChange('u-bob')).toBeNull();
+    expect((await sendText(alice, bob, 'relay behaves')).opened.content.text).toBe('relay behaves');
+    expect((await createPinStore(alice.pinKv).pinsFor('u-bob')).map((pin) => pin.deviceId)).toEqual(['d-bob']);
   });
 
   it('a pending change survives a reload without the frame that raised it', async () => {

@@ -75,7 +75,6 @@
   "keyChange.declineTitle": "Decline this key for @{handle}?",
   "keyChange.declineBody": "Messages from it stay locked and you will not be asked about it again. This chat goes on sending to the key you already have for @{handle}. If they really use this device, its messages will stay unreadable here.",
   "keyChange.declineSessionKey": "This chat sends to that key, so it cannot be declined. Compare safety numbers with @{handle} instead.",
-  "keyChange.declineNoSession": "This chat has no other key to send to, so this one cannot be declined. Compare safety numbers with @{handle} instead.",
   "keyChange.sendRefused": "The key this chat would send to is one you declined, or a device of another contact. Nothing was sent.",
   "safety.unverifiedDevice": "This device was accepted before you verified @{handle}, but never verified. Only mark it verified after comparing this number with them.",
   "safety.verifyFailed": "Could not save the verification: {error}",

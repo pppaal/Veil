@@ -1061,8 +1061,6 @@ async function declinePeerKeyChange(convId, peer) {
   const outcome = await secure.declineChange(convId, reviewed);
   if (outcome === 'session-key') {
     toast(t('keyChange.declineSessionKey', { handle: peer.handle }), 'error');
-  } else if (outcome === 'no-session') {
-    toast(t('keyChange.declineNoSession', { handle: peer.handle }), 'error');
   } else if (outcome === 'superseded' && trust.pendingChange(peer.userId)) {
     toast(t('keyChange.superseded', { handle: peer.handle }), 'error');
   }

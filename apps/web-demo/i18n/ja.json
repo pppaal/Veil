@@ -75,7 +75,6 @@
   "keyChange.declineTitle": "@{handle} のこのキーを拒否しますか？",
   "keyChange.declineBody": "このキーからのメッセージはロックされたままになり、このキーについて再び確認されることはありません。このチャットは @{handle} の既存のキーに送信し続けます。相手が本当にこのデバイスを使っている場合、そのデバイスのメッセージはここでは読めません。",
   "keyChange.declineSessionKey": "このチャットの送信先のキーなので拒否できません。代わりに @{handle} と安全番号を比較してください。",
-  "keyChange.declineNoSession": "このチャットには代わりに送信できる別のキーがないため、このキーは拒否できません。代わりに @{handle} と安全番号を比較してください。",
   "keyChange.sendRefused": "このチャットの送信先は、拒否したキーか別の連絡先のデバイスです。何も送信していません。",
   "safety.unverifiedDevice": "@{handle} を確認する前に受け入れたものの、確認したことのないデバイスです。相手とこの番号を比較してから確認済みにしてください。",
   "safety.verifyFailed": "確認結果を保存できませんでした: {error}",

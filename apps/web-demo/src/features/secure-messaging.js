@@ -277,16 +277,18 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     // Declines `reviewed`, the change pending for this conversation's peer
     // (src/crypto/pins.js reject), so that sending goes on to the identity
     // the session sends to. Resolves to 'declined'; 'superseded' when it is
-    // no longer the pending change; 'session-key' when it is that very
-    // identity, which only a comparison can settle; or 'no-session' when
-    // there is no session: either way, declined, it would leave the
-    // conversation nobody to send to.
+    // no longer the pending change; or 'session-key' when it is that very
+    // identity, which only a comparison can settle (C-DECLINE: only the
+    // session identity cannot be declined). A conversation without a session
+    // has no session identity, so any presented key may be declined there:
+    // its next send asks the directory again and starts a session to a key
+    // the pins admit, or is refused while the directory serves the declined
+    // one (the app says so: keyChange.sendRefused).
     async declineChange(conversationId, reviewed) {
       const peer = getPeer(conversationId);
       if (!peer) return 'superseded';
       const session = await cipher.sessionIdentity(conversationId);
-      if (!session) return 'no-session';
-      if (session.remoteDeviceId === reviewed.deviceId
+      if (session && session.remoteDeviceId === reviewed.deviceId
         && constantTimeEqual(session.remoteIdentityKey, reviewed.identityKey)) return 'session-key';
       return (await trust.reject(peer.userId, reviewed)) ? 'declined' : 'superseded';
     },

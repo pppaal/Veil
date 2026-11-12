@@ -48,6 +48,12 @@ export const CLAIM_PATTERNS = [
   /\b(?:no|never|not)\b.*\bplaintext\b/i,
   /\bplaintext\b.*\b(?:never|not)\b/i,
   /readable form/i,
+  // Blanket statements about what is collected. "No data collection" and
+  // "the consent screen lists every field" once sat in the store listing
+  // while the server kept the contact graph and call records.
+  /\bno data collection\b/i,
+  /\blists every field\b/i,
+  /데이터 수집이 없/,
   /종단간/,
   /저장되지 않/,
   /복구/,

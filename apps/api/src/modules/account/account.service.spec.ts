@@ -1,6 +1,10 @@
 import { createHmac } from 'node:crypto';
 
+import { ConsoleLogger, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { AppLoggerService } from '../../common/logger/app-logger.service';
 import { RetentionFakePrismaService } from '../../../test/support/fake-prisma-retention';
 import {
   FakeAttachmentStorageGateway,
@@ -164,7 +168,13 @@ function buildService(
     prismaMock as never,
     { retiredHandlePepper: PEPPER } as never,
   );
-  return new AccountService(prismaMock as never, realtimeGateway, storage as never, retiredHandles);
+  return new AccountService(
+    prismaMock as never,
+    realtimeGateway,
+    storage as never,
+    retiredHandles,
+    new AppLoggerService(),
+  );
 }
 
 const userId = 'user-victim';
@@ -281,6 +291,64 @@ describe('AccountService.deleteAccount', () => {
   });
 });
 
+// Logs outlive the account, so a failed deletion must not write down whose it
+// was or the database's error text (Prisma messages can quote query
+// arguments). Captures everything any Nest logger writes during the call.
+describe('AccountService.deleteAccount logging', () => {
+  const victim = '7d3f2a10-1111-4222-8333-944455556666';
+  const device = 'aa11bb22-cccc-4ddd-8eee-666677778888';
+  let written: string[];
+
+  beforeEach(() => {
+    written = [];
+    const capture = (message: unknown) => {
+      written.push(String(message));
+    };
+    Logger.overrideLogger({
+      log: capture,
+      error: capture,
+      warn: capture,
+      debug: capture,
+      verbose: capture,
+      fatal: capture,
+    });
+  });
+
+  afterEach(() => {
+    Logger.overrideLogger(new ConsoleLogger());
+  });
+
+  it('logs the failed step, error class and Prisma code, never the user id, device id or error text', async () => {
+    const { prisma } = buildPrismaMock({ deviceIds: [device], uploadedStorageKeys: ['k/1'] });
+    const failure = new Prisma.PrismaClientKnownRequestError(
+      `Foreign key constraint violated: messages for user ${victim} device ${device}`,
+      { code: 'P2003', clientVersion: Prisma.prismaVersion.client },
+    );
+    prisma.message.deleteMany = jest.fn().mockRejectedValue(failure);
+
+    await expect(buildService(prisma).deleteAccount(victim)).rejects.toBe(failure);
+
+    const output = written.join('\n');
+    expect(output).not.toContain(victim);
+    expect(output).not.toContain(device);
+    expect(output).not.toContain('Foreign key constraint');
+    const events = written.map((line) => JSON.parse(line) as Record<string, unknown>);
+    const prismaError = { name: 'PrismaClientKnownRequestError', code: 'P2003' };
+    expect(events).toContainEqual({
+      level: 'warn',
+      event: 'account.delete.step_failed',
+      step: 'messages',
+      error: prismaError,
+    });
+    expect(events).toContainEqual({
+      level: 'error',
+      event: 'account.delete.incomplete',
+      failedSteps: ['messages'],
+      firstFailure: { step: 'messages', error: prismaError },
+    });
+  });
+});
+
 // The same deletion against stored rows, with direct conversations opened by
 // the real ConversationsService, so the key format is the one it writes.
 describe('AccountService.deleteAccount against stored rows', () => {
@@ -298,6 +366,7 @@ describe('AccountService.deleteAccount against stored rows', () => {
       { disconnectUser: () => 0 } as never,
       new FakeAttachmentStorageGateway() as never,
       new RetiredHandlesService(prisma as never, { retiredHandlePepper: PEPPER } as never),
+      new AppLoggerService(),
     );
     const addUser = async (handle: string) => {
       const id = await prisma.addUser(handle);

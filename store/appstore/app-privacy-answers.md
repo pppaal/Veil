@@ -8,7 +8,16 @@ Use these answers when filling out the App Store "App Privacy" section.
 Yes — only the minimum operational data described below. No data is used for tracking.
 
 ### Contact Info
-- Collected: **No**
+- Collected: **No** (no name, email address, phone number or physical address)
+
+### Contacts
+- **Contacts**: collected. The in-app contact list records which accounts the
+  user added, which is a social graph in Apple's definition. (The phone's
+  address book is never read; the names the user gives contacts stay on the
+  device.)
+  - Linked to user: Yes
+  - Used for: App Functionality
+  - Tracking: No
 
 ### Identifiers
 - **User ID**: collected
@@ -26,6 +35,10 @@ Yes — only the minimum operational data described below. No data is used for t
   - Used for: App Functionality
   - Tracking: No
 - Messages, media, photos, and audio are encrypted end-to-end. Apple's classification still requires declaring the transport of user content; we declare it as unlinked because the server cannot decrypt it.
+- **Other User Content** (group and channel names and descriptions, device labels, and the metadata needed to deliver messages: who is in which conversation, message and receipt times, call records): collected
+  - Linked to user: Yes. The names, descriptions and labels are stored in readable form, and all of it is tied to the account.
+  - Used for: App Functionality
+  - Tracking: No
 
 ### Diagnostics
 - **Crash Data**: not collected (the app ships no crash-reporting SDK)
@@ -37,7 +50,6 @@ Yes — only the minimum operational data described below. No data is used for t
 - Financial Info
 - Location
 - Sensitive Info
-- Contacts
 - Browsing History
 - Search History
 - Purchases

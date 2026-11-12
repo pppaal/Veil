@@ -77,6 +77,20 @@ reviewer should look first.
    the server controls, is never used. Nor does the outer `messageKind`
    decide rendering: a frame with an unknown inner kind, and the placeholder
    for a frame that does not decrypt, both render as text.
+9. **The server does not decide the mode once a device has seen it.** The
+   `useSenderKeys` flag is set at creation and the server refuses to clear
+   it (`sender_keys_irreversible`), but a lying relay could still list the
+   group without it. A device therefore pins Sender Keys mode in its
+   keystore the first time the group is listed with it or a `veil-group-v1`
+   frame authenticates in it; from then on a listing without it is
+   overruled with a local notice, sends never reach the pairwise engine and
+   pairwise frames in the group are `downgrade_rejected`
+   (`crypto-envelope-spec.md`, version pinning). A device that has never
+   seen the group in Sender Keys mode still follows the listing.
+10. **One directory request per distribution round.**
+   `GET /v1/keys/group/:conversationId` returns every other member's
+   directory entry with the epoch they belong to, so a round no longer costs
+   one `GET /v1/keys/:handle` per member (see "Protocol additions").
 
 **Phase AB.1 (server-side epoch bookkeeping) has shipped.** The server now
 maintains `conversations.current_epoch`, records the epoch at which each
@@ -389,6 +403,16 @@ GET /v1/conversations/group/:id/key-distributions ✅ SHIPPED:
   the caller for the group's current epoch. Non-consuming; blobs
   disappear on TTL expiry or epoch bump, after which the recipient
   asks senders to redistribute.
+GET /v1/keys/group/:conversationId ✅ SHIPPED:
+  The key directory of the group for one distribution round:
+  { conversationId, epoch, members: KeysResponse[] }, one entry per
+  current member other than the caller, devices as GET /v1/keys/:handle
+  serves them. Members and epoch are read in one snapshot. Nothing is
+  claimed (oneTimePrekey is always null) and no directory budget is
+  spent, so a round costs one request instead of one handle lookup per
+  member, which the 10/min handle limit could not sustain. 20 requests
+  per minute per device; anything but a current member of a group gets
+  404 group_not_found.
 ```
 
 The key-distribution payload is itself a 1:1 ciphertext under the

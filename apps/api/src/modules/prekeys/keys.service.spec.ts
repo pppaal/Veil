@@ -1,6 +1,6 @@
-import { createPrivateKey, randomBytes, sign } from 'node:crypto';
+import { createPrivateKey, randomBytes, randomUUID, sign } from 'node:crypto';
 
-import { BadRequestException, HttpStatus, ValidationPipe } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus, ValidationPipe } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
 
 import { IS_PUBLIC_KEY } from '../../common/guards/public.decorator';
@@ -334,10 +334,115 @@ describe('KeysService.getKeys', () => {
   });
 });
 
+// Contract C-GROUPKEYS: one request per Sender Keys distribution round
+// instead of one GET /keys/:handle per member.
+describe('KeysService.getGroupMemberKeys', () => {
+  async function setupGroup() {
+    const context = await setup();
+    const { prisma, alice, bob } = context;
+    const carolId = await prisma.addUser('carol');
+    const carolPhone = await prisma.addDevice(carolId);
+    const daveId = await prisma.addUser('dave');
+    await prisma.addDevice(daveId);
+    const groupId = await prisma.addConversation('group', [alice.userId, bob.userId, carolId]);
+    prisma.conversations.find((conversation) => conversation.id === groupId)!.currentEpoch = 4;
+    return {
+      ...context,
+      groupId,
+      carol: { userId: carolId, deviceId: carolPhone },
+      dave: { userId: daveId },
+    };
+  }
+
+  const status = async (promise: Promise<unknown>) =>
+    promise.then(
+      () => 'resolved',
+      (error: unknown) =>
+        error instanceof HttpException
+          ? `${error.getStatus()} ${(error.getResponse() as { code?: string }).code}`
+          : String(error),
+    );
+
+  it("gives a member every other member's directory entry with the group's epoch", async () => {
+    const { keys, alice, bob, carol, groupId, seedPrekeys, unconsumed } = await setupGroup();
+    seedPrekeys(bob.phone, 3);
+    seedPrekeys(carol.deviceId, 3);
+
+    const result = await keys.getGroupMemberKeys(alice, groupId);
+
+    expect(result.conversationId).toBe(groupId);
+    expect(result.epoch).toBe(4);
+    // The same entries GET /keys/:handle?claim=none serves, caller excluded.
+    expect(result.members).toEqual([
+      await keys.getKeys(alice, 'bob', 'none'),
+      await keys.getKeys(alice, 'carol', 'none'),
+    ]);
+    expect(result.members[0].devices.map((device) => device.deviceId)).toEqual([
+      bob.phone,
+      bob.laptop,
+    ]);
+    expect(
+      result.members.flatMap((member) => member.devices).map((device) => device.oneTimePrekey),
+    ).toEqual([null, null, null]);
+    expect(unconsumed(bob.phone)).toBe(3);
+    expect(unconsumed(carol.deviceId)).toBe(3);
+  });
+
+  it('spends no directory budget, so later handle lookups still claim prekeys', async () => {
+    const { keys, alice, bob, groupId, seedPrekeys } = await setupGroup();
+    seedPrekeys(bob.phone, 30);
+
+    for (let round = 0; round < 25; round += 1) {
+      await keys.getGroupMemberKeys(alice, groupId);
+    }
+
+    expect((await keys.getKeys(alice, 'bob', 'active')).devices[0].oneTimePrekey).not.toBeNull();
+  });
+
+  it('leaves out revoked devices and members with no trusted device', async () => {
+    const { prisma, keys, alice, bob, carol, groupId } = await setupGroup();
+    prisma.devices.find((device) => device.id === bob.laptop)!.revokedAt = new Date();
+    prisma.devices.find((device) => device.id === carol.deviceId)!.isActive = false;
+
+    const result = await keys.getGroupMemberKeys(alice, groupId);
+
+    expect(result.members.map((member) => member.user.handle)).toEqual(['bob']);
+    expect(result.members[0].devices.map((device) => device.deviceId)).toEqual([bob.phone]);
+  });
+
+  it('answers group_not_found to anyone but a current member of a group', async () => {
+    const { prisma, keys, alice, bob, dave, groupId } = await setupGroup();
+    const direct = await prisma.addConversation('direct', [alice.userId, bob.userId]);
+    const channel = await prisma.addConversation('channel', [alice.userId]);
+    const outsider = { userId: dave.userId, deviceId: 'dave-device' };
+
+    for (const [requester, conversationId] of [
+      [outsider, groupId],
+      [alice, direct],
+      [alice, channel],
+      [alice, randomUUID()],
+      [alice, 'not-a-uuid'],
+    ] as const) {
+      expect(await status(keys.getGroupMemberKeys(requester, conversationId))).toBe(
+        '404 group_not_found',
+      );
+    }
+
+    await prisma.conversationMember.delete({
+      where: { conversationId_userId: { conversationId: groupId, userId: bob.userId } },
+    });
+    const formerMember = { userId: bob.userId, deviceId: bob.phone };
+    expect(await status(keys.getGroupMemberKeys(formerMember, groupId))).toBe(
+      '404 group_not_found',
+    );
+  });
+});
+
 describe('key directory routes', () => {
   it('claim routes are not @Public', () => {
     for (const handler of [
       KeysController.prototype.getKeys,
+      KeysController.prototype.getGroupMemberKeys,
       KeysController.prototype.rotateSignedPrekey,
       PrekeysController.prototype.claim,
     ]) {
@@ -353,6 +458,7 @@ describe('key directory routes', () => {
     ];
 
     expect(perMinuteLimit(KeysController.prototype.getKeys)).toEqual([60_000, 10]);
+    expect(perMinuteLimit(KeysController.prototype.getGroupMemberKeys)).toEqual([60_000, 20]);
     expect(perMinuteLimit(PrekeysController.prototype.claim)).toEqual([60_000, 30]);
   });
 
@@ -457,16 +563,45 @@ describe('KeysService.rotateSignedPrekey', () => {
     expect(device.signedPrekeyBundle).toBe(upgrade);
   });
 
-  it('rejects a signed prekey timestamp more than 10 minutes from now', async () => {
-    const { keys, alice, clock } = await setupRotation();
-    clock.now = VECTOR_SPK_TS + 10 * 60 * 1000 + 1;
+  // Contract C-SPK: spkTs in [server now - 1 h, server now + 10 min].
+  describe('signed prekey timestamp window', () => {
+    const MINUTE = 60 * 1000;
 
-    expect(await errorCode(keys.rotateSignedPrekey(alice, VECTOR_BUNDLE))).toBe(
-      'validation_failed',
-    );
+    it.each([
+      ['just under an hour old', VECTOR_SPK_TS + 60 * MINUTE],
+      ['up to 10 minutes ahead of the server', VECTOR_SPK_TS - 10 * MINUTE],
+      ['stamped now', VECTOR_SPK_TS],
+    ])('accepts a bundle %s', async (_label, serverNow) => {
+      const { keys, alice, clock, device } = await setupRotation();
+      clock.now = serverNow;
 
-    clock.now = VECTOR_SPK_TS - 10 * 60 * 1000;
-    await expect(keys.rotateSignedPrekey(alice, VECTOR_BUNDLE)).resolves.toBeDefined();
+      await expect(keys.rotateSignedPrekey(alice, VECTOR_BUNDLE)).resolves.toEqual({
+        deviceId: alice.deviceId,
+        spkId: 1,
+      });
+      expect(device.signedPrekeyBundle).toBe(VECTOR_BUNDLE);
+    });
+
+    it.each([
+      // A bundle drawn 30-60 minutes before publishing was refused by the
+      // old symmetric 10-minute window, so a client could never re-send one.
+      ['more than an hour old', VECTOR_SPK_TS + 60 * MINUTE + 1],
+      ['more than 10 minutes ahead of the server', VECTOR_SPK_TS - 10 * MINUTE - 1],
+    ])('rejects a bundle %s with its own error code', async (_label, serverNow) => {
+      const { keys, alice, clock, device } = await setupRotation();
+      clock.now = serverNow;
+
+      const rejection = await keys
+        .rotateSignedPrekey(alice, VECTOR_BUNDLE)
+        .catch((error: unknown) => error);
+
+      expect(rejection).toBeInstanceOf(HttpException);
+      expect((rejection as HttpException).getStatus()).toBe(HttpStatus.BAD_REQUEST);
+      expect((rejection as HttpException).getResponse()).toMatchObject({
+        code: 'signed_prekey_timestamp_out_of_window',
+      });
+      expect(device.signedPrekeyBundle).not.toBe(VECTOR_BUNDLE);
+    });
   });
 
   it('rotation served on next GET /v1/keys', async () => {

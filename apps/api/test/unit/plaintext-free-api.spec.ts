@@ -254,6 +254,13 @@ describe('plaintext-free API', () => {
       as(alice).post('/conversations/group', { name: 'Hikers', memberHandles: ['bob'] }),
     );
     await record('GET /conversations/group/:id', as(bob).get(`/conversations/group/${group.id}`));
+    const groupKeys = await record(
+      'GET /keys/group/:conversationId',
+      as(bob).get(`/keys/group/${group.id}`),
+    );
+    expect(
+      groupKeys.members.map((member: { user: { handle: string } }) => member.user.handle),
+    ).toEqual(['alice']);
     const channel = await record(
       'POST /conversations/channel',
       as(alice).post('/conversations/channel', { name: 'News' }),

@@ -40,6 +40,12 @@ VEIL treats observability as a privacy boundary, not a convenience layer.
 - Prisma errors are logged as class name and error code only; their messages
   can embed query arguments.
 - All backend metadata flows through the redaction layer in [app-logger.service.ts](apps/api/src/common/logger/app-logger.service.ts).
+  It is the only place that writes logs: `scripts/policy-check.mjs`
+  (`logging-through-app-logger`) rejects a raw Nest `Logger` or `console`
+  call anywhere else in `apps/api/src`. Callers log an event name with
+  chosen fields; an `Error` object passed as a field keeps its message, so
+  failure paths log `{ name, code }` instead (see `AccountService`, whose
+  deletion failures once logged the account id and raw Prisma error text).
 
 ## Metrics rules
 

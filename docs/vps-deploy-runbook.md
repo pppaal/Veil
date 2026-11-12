@@ -217,9 +217,13 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
    sed -i "s|^VEIL_RETIRED_HANDLE_PEPPER=$|VEIL_RETIRED_HANDLE_PEPPER=$(openssl rand -base64 32)|" .env.prod
    ```
 
-2. **마이그레이션 0018 은 되돌릴 수 없습니다.** `reactions`, `user_profiles`,
-   `recovery_blobs` 테이블과 표시 이름·아바타·연락처 별명·신고 메모 컬럼을
-   지우고, 모든 스토리를 삭제합니다. 이전 이미지는 마이그레이션된 스키마에서
+2. **마이그레이션 0018–0020 은 되돌릴 수 없습니다.** 0018 은 `reactions`,
+   `user_profiles`, `recovery_blobs` 테이블과 표시 이름·아바타·연락처 별명·신고
+   메모 컬럼을 지우고, 모든 스토리를 삭제합니다. 0019 와 0020 은 서버가 필요
+   없이 들고 있던 메타데이터를 지웁니다: 대화별 마지막 활동 시각, 나간 멤버의
+   에포크·동기화 커서·음소거 행, 해제된 기기의 이름과 one-time prekey, 그리고
+   이미 삭제된 계정의 id 가 남아 있던 1:1 대화 키 (`direct_key`, 아무도 남지
+   않은 1:1 대화는 통째로 삭제). 이전 이미지는 마이그레이션된 스키마에서
    돌지 않으므로, 롤백은 덤프 복원뿐입니다. 업그레이드 직전에 덤프를 하나
    뜨고 (`postgres-backup` 의 마지막 덤프가 하루 전일 수 있음):
 
@@ -229,8 +233,8 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
    chmod 600 ./veil-pre-upgrade-*.dump
    ```
 
-   이 덤프와 `veil_prod_backups` 의 업그레이드 이전 덤프에는 0018 이 지우는
-   평문이 남아 있습니다. 업그레이드가 확인되면 이 덤프를 지우세요. 볼륨의
+   이 덤프와 `veil_prod_backups` 의 업그레이드 이전 덤프에는 0018–0020 이
+   지우는 평문과 메타데이터가 남아 있습니다. 업그레이드가 확인되면 이 덤프를 지우세요. 볼륨의
    이전 덤프는 `BACKUP_RETENTION_DAYS` 가 지나면 정리됩니다.
 
 3. **Redis append-only 파일 끄기.** 이 릴리스의 compose 는 Redis 를

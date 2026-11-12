@@ -128,6 +128,21 @@ test('denying plaintext or disclosing readable data is a claim, mentioning plain
   ]);
 });
 
+test('a blanket statement about collection is a claim', () => {
+  const copy = [
+    'People who want a messenger with no ads and no data collection.',
+    'Minimal data collection. The in-app consent screen lists every field.',
+    '광고와 데이터 수집이 없는 메신저를 원하는 분.',
+    'Minimal data collection.',
+  ].join('\n\n');
+  const failures = checkClaims(tree({ 'README.md': `${README}\n${copy}\n` }));
+  assert.deepEqual(failures, [
+    'README.md: unledgered claim "People who want a messenger with no ads and no data collection."',
+    'README.md: unledgered claim "The in-app consent screen lists every field."',
+    'README.md: unledgered claim "광고와 데이터 수집이 없는 메신저를 원하는 분."',
+  ]);
+});
+
 test('claims in HTML text attributes are scanned without splitting the element text', () => {
   const html = [
     '<meta name="description" content="Messages are never stored.">',

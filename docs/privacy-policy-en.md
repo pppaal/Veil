@@ -1,7 +1,7 @@
 # VEIL Privacy Policy
 
 Effective: 2026-04-20
-Last updated: 2026-11-11
+Last updated: 2026-11-12
 
 VEIL ("the service") collects the absolute minimum data required to operate an end-to-end encrypted messenger. This policy describes what we collect, why, how long we keep it, and the rights users hold. It is written to satisfy Korea's Personal Information Protection Act (PIPA) alongside general privacy expectations.
 
@@ -13,6 +13,10 @@ The service collects only:
 - A user-chosen handle.
 - End-to-end encrypted message payloads that the server cannot decrypt.
 - The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
+- Your in-app contact list: which accounts you added. The names you give them stay on your device.
+- Call records: the conversation, the device that started the call, voice or video, and when it started and ended. They are deleted after 30 days.
+- A push token for each device, used only for wake-ups that carry no message content.
+- The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.
 - Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.
 
 Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form. Every field the server stores, how long it is kept and who can see it is listed in [What a seized VEIL server reveals](server-data-inventory.md), which is generated from the database schema and checked on every change.
@@ -20,7 +24,7 @@ Display names, profile text, reactions, story content and the names you give you
 The service does **not** collect:
 
 - Phone numbers, email addresses, or real names.
-- National ID numbers, address books, or location data.
+- National ID numbers, your phone's address book or call log, or location data.
 - Payment information or purchase history.
 - Advertising identifiers (IDFA/AAID) or third-party analytics identifiers.
 

@@ -95,6 +95,11 @@ The key directory follows the same minimisation:
   atomically in one transaction, at most 20 per hour per (requester device,
   target user) and 50 per hour per target device. Over budget, the lookup still succeeds but
   returns no one-time prekey and consumes nothing.
+- `GET /v1/keys/group/:conversationId` serves the same entries for every other
+  member of a group, only to a current member of that group (anyone else gets
+  404), at 20 requests per minute per device. It claims nothing, so it spends
+  no budget and cannot drain a pool; it reveals nothing a member cannot
+  already learn from the member list and per-handle lookups.
 - `GET /v1/users/:handle` needs a signed-in device and returns only id, handle
   and status. Profiles hold no text until encrypted profiles ship, so
   `GET /v1/profile/:handle` answers 410 `profile_e2e_pending`.

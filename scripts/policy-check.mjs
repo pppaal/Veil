@@ -20,6 +20,7 @@ const APP_MODULE = 'apps/api/src/app.module.ts';
 const ENV_SCHEMA = 'apps/api/src/common/config/env.schema.ts';
 const LOGGING_INTERCEPTOR = 'apps/api/src/common/interceptors/logging.interceptor.ts';
 const EXCEPTION_FILTER = 'apps/api/src/common/filters/api-exception.filter.ts';
+const APP_LOGGER = 'apps/api/src/common/logger/app-logger.service.ts';
 const CADDYFILE = 'infra/caddy/Caddyfile';
 
 // Rule ids prefix every failure so the self-test can tell that a seeded
@@ -33,6 +34,7 @@ const RULES = {
   noPasswordReset: 'no-password-reset',
   strictEnvBooleans: 'strict-env-booleans',
   noRawUrlLogging: 'no-raw-url-logging',
+  loggingThroughAppLogger: 'logging-through-app-logger',
   authBeforeThrottle: 'auth-before-throttle',
   caddyStripsClientIp: 'caddy-strips-client-ip',
 };
@@ -148,11 +150,7 @@ export function runPolicyChecks(rootDir) {
     'API bootstrap must register the structured API exception filter',
   );
 
-  assertMatch(
-    'apps/api/src/common/logger/app-logger.service.ts',
-    /redactSensitiveFields/,
-    'Logger must route metadata through redaction',
-  );
+  assertMatch(APP_LOGGER, /redactSensitiveFields/, 'Logger must route metadata through redaction');
 
   assertMatch(
     'apps/api/src/modules/device-transfer/device-transfer.service.ts',
@@ -236,6 +234,26 @@ export function runPolicyChecks(rootDir) {
     `[${RULES.strictEnvBooleans}] Environment booleans must use envBoolean, not boolean coercion`,
   );
 
+  // AppLoggerService is the one place that writes logs: it takes an event name
+  // and chosen fields and redacts them. A raw Nest Logger or console call
+  // writes whatever string it is handed, which is how a deleted account's id
+  // and raw Prisma error text once reached the logs.
+  for (const file of collectFiles(API_SRC)) {
+    const path = display(file);
+    if (path === APP_LOGGER || path.endsWith('.spec.ts')) {
+      continue;
+    }
+    if (
+      /\bnew\s+Logger\s*\(|\bLogger\.(?:log|warn|error|debug|verbose|fatal)\s*\(|\bconsole\.\w+\s*\(/.test(
+        readFileSync(file, 'utf8'),
+      )
+    ) {
+      failures.push(
+        `[${RULES.loggingThroughAppLogger}] API code must log through AppLoggerService: ${path}`,
+      );
+    }
+  }
+
   for (const target of [LOGGING_INTERCEPTOR, EXCEPTION_FILTER]) {
     assertNoMatch(
       target,
@@ -297,7 +315,7 @@ export const CLEAN_FIXTURE = {
   ].join('\n'),
   'apps/api/src/main.ts':
     'app.use(helmet());\napp.useGlobalFilters(new ApiExceptionFilter(logger));\n',
-  'apps/api/src/common/logger/app-logger.service.ts': 'redactSensitiveFields(meta);\n',
+  [APP_LOGGER]: "const logger = new Logger('VEIL');\nredactSensitiveFields(meta);\n",
   'apps/api/src/modules/device-transfer/device-transfer.service.ts':
     "const proof = 'transfer-complete:';\n",
   'apps/api/src/modules/attachments/attachments.service.ts': 'await storage.headObject(key);\n',
@@ -393,6 +411,17 @@ const SEEDED_VIOLATIONS = [
   {
     rule: RULES.noRawUrlLogging,
     files: { [EXCEPTION_FILTER]: "logger.warn('request.rejected', { path: req.url });\n" },
+  },
+  {
+    rule: RULES.loggingThroughAppLogger,
+    files: {
+      'apps/api/src/modules/account/account.service.ts':
+        'private readonly logger = new Logger(AccountService.name);\n',
+    },
+  },
+  {
+    rule: RULES.loggingThroughAppLogger,
+    files: { 'apps/api/src/modules/push/push.provider.ts': 'console.error(error.message);\n' },
   },
   {
     rule: RULES.authBeforeThrottle,

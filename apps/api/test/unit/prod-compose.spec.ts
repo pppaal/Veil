@@ -73,8 +73,9 @@ const apiEnvironment = (compose: string): Map<string, string> => {
 };
 
 // docker compose interpolation of ${VAR}, ${VAR:-default} and ${VAR:?error}.
-// `:?` makes compose refuse to create any container, which is the only check
-// that runs before the entrypoint's `prisma migrate deploy`.
+// `:?` makes compose refuse to create any container at all; inside the
+// container, the entrypoint's preflight runs the boot gate before
+// `prisma migrate deploy` (see preflight.spec.ts).
 const interpolate = (value: string, dotenv: ReadonlyMap<string, string>): string =>
   value.replace(
     /\$\{([A-Z0-9_]+)(?::([-?])([^}]*))?\}/g,

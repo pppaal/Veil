@@ -1,7 +1,11 @@
 import { Body, Controller, Get, Param, Put, Query, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { KeysResponse, RotateSignedPrekeyResponse } from '@veil/contracts';
+import type {
+  GroupMemberKeysResponse,
+  KeysResponse,
+  RotateSignedPrekeyResponse,
+} from '@veil/contracts';
 
 import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { KeyDirectoryQueryDto, RotateSignedPrekeyDto } from './dto/keys.dto';
@@ -26,6 +30,18 @@ export class KeysController {
     @Query() query: KeyDirectoryQueryDto,
   ): Promise<KeysResponse> {
     return this.keysService.getKeys(request.auth, handle, query.claim ?? 'active');
+  }
+
+  // Every other member's keys for one Sender Keys distribution round. Two path
+  // segments, so it never matches :handle. Nothing is claimed, but it still
+  // lists a group's members and their devices, so it is rate limited too.
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @Get('group/:conversationId')
+  getGroupMemberKeys(
+    @Req() request: AuthenticatedRequest,
+    @Param('conversationId') conversationId: string,
+  ): Promise<GroupMemberKeysResponse> {
+    return this.keysService.getGroupMemberKeys(request.auth, conversationId);
   }
 
   @Put('signed-prekey')

@@ -1,6 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 
+import { AppLoggerService } from '../../common/logger/app-logger.service';
 import { PrismaService } from '../../common/prisma.service';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
@@ -27,16 +28,21 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 // resumed), and only put the small final user/device cleanup back inside a
 // transaction. That final transaction also quarantines the handle, so it is
 // never free for someone else to register in between.
+//
+// Failures are logged with the step, the error class and the Prisma code,
+// never the user id or the error message (Prisma messages can quote query
+// arguments): a log line must not outlive the account it is about. The
+// rethrown error reaches ApiExceptionFilter, which logs it against the request,
+// and operators find unfinished deletions by users.status = 'revoked'.
 @Injectable()
 export class AccountService {
-  private readonly logger = new Logger(AccountService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly storageGateway: AttachmentStorageGateway,
     private readonly retiredHandles: RetiredHandlesService,
+    private readonly logger: AppLoggerService,
   ) {}
 
   async deleteAccount(userId: string): Promise<{ deleted: true }> {
@@ -88,12 +94,16 @@ export class AccountService {
     // Phase 1, and a later retry of deleteAccount picks up wherever this
     // run stopped. Errors are collected per chunk so a single transient
     // failure doesn't mask the rest.
-    const phase2Errors: Array<{ label: string; error: Error }> = [];
+    const phase2Errors: Array<{ label: string; error: unknown }> = [];
     const tryStep = async (label: string, fn: () => Promise<{ count: number }>) => {
       try {
-        await this.runDelete(label, fn);
-      } catch (e) {
-        phase2Errors.push({ label, error: e as Error });
+        await fn();
+      } catch (error) {
+        this.logger.warn('account.delete.step_failed', {
+          step: label,
+          error: describeFailure(error),
+        });
+        phase2Errors.push({ label, error });
       }
     };
 
@@ -144,10 +154,12 @@ export class AccountService {
       // purge their data. Surface this loudly so an operator can retry —
       // every step is idempotent so re-running deleteAccount picks up
       // exactly where this attempt stopped.
-      this.logger.error(
-        `deleteAccount(${userId}): phase 2 failed on ${phase2Errors.length} step(s); user is locked but cleanup is incomplete. Safe to retry. First failure: ${phase2Errors[0].label}: ${phase2Errors[0].error.message}`,
-      );
-      throw phase2Errors[0].error;
+      const [first] = phase2Errors;
+      this.logger.error('account.delete.incomplete', {
+        failedSteps: phase2Errors.map((failure) => failure.label),
+        firstFailure: { step: first.label, error: describeFailure(first.error) },
+      });
+      throw first.error;
     }
 
     // Phase 3 (small tx): finish the metadata + the user/device rows
@@ -228,22 +240,17 @@ export class AccountService {
       }
     }
     if (attachments.length > 0) {
-      this.logger.log(
-        `deleteAccount: deleted ${attachments.length - failed} of ${attachments.length} attachment blobs`,
-      );
-    }
-  }
-
-  private async runDelete(label: string, run: () => Promise<{ count: number }>): Promise<number> {
-    try {
-      const { count } = await run();
-      if (count > 0) {
-        this.logger.debug(`deleteAccount: ${label} removed ${count} rows`);
-      }
-      return count;
-    } catch (e) {
-      this.logger.warn(`deleteAccount: ${label} failed: ${(e as Error).message}`);
-      throw e;
+      this.logger.info('account.delete.blobs', {
+        deleted: attachments.length - failed,
+        total: attachments.length,
+      });
     }
   }
 }
+
+// What a log line may say about a failure: its class and, for Prisma errors,
+// the error code, in the shape ApiExceptionFilter logs them.
+const describeFailure = (error: unknown): { name: string; code: unknown } =>
+  error instanceof Error
+    ? { name: error.name, code: (error as { code?: unknown }).code ?? null }
+    : { name: 'unknown', code: null };

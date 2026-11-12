@@ -121,6 +121,8 @@ claims:
         quote: "Unlike message content, these are stored in readable form."
       - file: site/index.html
         quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
+      - file: store/appstore/app-privacy-answers.md
+        quote: "The names, descriptions and labels are stored in readable form, and all of it is tied to the account."
     evidence:
       - gate: scripts/schema-privacy-check.mjs
       - test: scripts/__tests__/schema-privacy-check.test.mjs

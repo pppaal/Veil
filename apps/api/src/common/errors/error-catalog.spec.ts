@@ -41,6 +41,7 @@ describe('ERROR_CATALOG', () => {
     ['call_not_allowed', 403],
     ['group_epoch_stale', 409],
     ['attachment_id_conflict', 409],
+    ['signed_prekey_timestamp_out_of_window', 400],
   ] as const)('maps %s to %i', (code, status) => {
     expect(ERROR_CATALOG[code]).toBe(status);
   });

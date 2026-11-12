@@ -226,7 +226,8 @@ class MessengerServices {
       case SessionChange.none:
         return;
       case SessionChange.tokenOnly:
-        await realtime.applyToken(next.accessToken!);
+        // Only an authenticated session can change just its token.
+        if (session.signedIn case final signedIn?) await realtime.applyToken(signedIn.accessToken);
         return;
       case SessionChange.signedOut:
         await _signOut();

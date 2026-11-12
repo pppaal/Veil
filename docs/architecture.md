@@ -29,6 +29,24 @@ The backend must never become a plaintext message processor.
 - local cache definitions via Drift/SQLite
 - feature-oriented screens: onboarding, chat, contacts, transfer, settings, reactions, and profile
 
+### Layers (`apps/mobile/lib/src`)
+
+- `core/`: platform, crypto, network, storage and the shared domain models (`core/domain`: conversations, messages, search). Core imports nothing from `features/` or `app/`; `scripts/crypto-architecture-check.mjs` enforces it. The old `core/router` paths remain only as re-exports of `app/router`.
+- `core/di/core_providers.dart`: providers for storage, crypto (bootstrapped through the adapter registry), realtime, notifications and app lock.
+- `features/`: one directory per feature, each with its own data providers (messenger, device transfer, attachments, privacy preferences).
+- `app/`: composition: the session controller and its providers (`app/session`), the router (`app/router`) and the theme provider. `app/app_state.dart` is a re-export barrel and declares nothing.
+
+### Messenger
+
+`VeilMessengerController` is a facade of at most 400 lines with the public API the screens use. It delegates to the services under `features/conversations/data/messenger/` (each at most 450 lines), which `MessengerServices` wires together:
+
+- `MessengerStateStore` holds conversations, loaded messages and paging, and asks for one listener notification per microtask however many changes a step makes.
+- `MessengerPersistence` writes that state to the encrypted cache through one serialized queue: changes only mark what changed, and a flush 100 ms after the last change (at most 1 s), on app pause or on dispose writes the rows that differ from what it last wrote. Outbox records are written at once. The cache is read back at start in one joined query.
+- `ConversationCryptoRouter` and `PeerSessionResolver` route every encrypt and decrypt (Sender Keys groups through the group engine, everything else pairwise under the identity pins); `IdentityChangeService` handles approving and declining identity changes.
+- `OutboxService`, `AttachmentTransferService`, `ConversationSyncService`, `RealtimeEventRouter` (typed dispatch over `RealtimeEvent.tryParse`), `ReceiptService`, `ReactionService` and `MessageSearchService` each own one concern.
+- `PresenceTypingService` is a notifier of its own with a clear timer per conversation, so typing in one chat does not rebuild another.
+- `DisappearingMessagesService` arms one one-shot timer for the next expiry; nothing ticks while nothing is due.
+
 ## API architecture
 
 - NestJS modules by domain: `AuthModule`, `UsersModule`, `DevicesModule`, `ConversationsModule`, `MessagesModule`, `AttachmentsModule`, `RealtimeModule`, `DeviceTransferModule`, `GroupsModule`, `ContactsModule`, `ProfileModule`, `CallsModule`, `StoriesModule`, `ChannelsModule`, `SafetyModule`
@@ -70,9 +88,9 @@ The server must not handle:
 - **Conversation mutes**: `ConversationMute` row suppresses push wake while leaving realtime + persistence untouched, so other devices stay in sync. Optional `mutedUntil` auto-unmutes.
 - **Abuse reports**: reporter files to `AbuseReport` table with a tight throttle (6/min) so the moderation queue can't be weaponized as a DoS against a target.
 
-## Mobile backup primitive
+## No backup
 
-- `BackupEnvelope` seals a plaintext payload under a user passphrase. PBKDF2-SHA256 (600k iterations, OWASP 2023 floor) derives a 256-bit key that feeds AES-256-GCM with fresh salt/nonce per seal. Pure-dart so every Flutter target works without a native Argon2 dependency; version marker preserved so a future revision can upgrade to Argon2id without a format bump.
+The app has no backup and no recovery path: message history lives only on the device that received it, and a lost device is unrecoverable by design (see `docs/no-recovery.md`). `scripts/crypto-architecture-check.mjs` fails if a `core/backup` module appears.
 
 ## Crypto seam
 

@@ -590,6 +590,47 @@ void main() {
     return (reference, plaintext);
   }
 
+  group('a backlog longer than one history page', () {
+    // bob is offline while alice writes [count] messages; the relay serves
+    // its history five messages a page.
+    Future<int> backlog(int count) async {
+      await deliver(alice, bob, 'before the backlog');
+      // Lets the sync that message hinted finish before bob goes offline.
+      await settle();
+      bob.realtime.disconnect();
+      for (var i = 0; i < count; i++) {
+        await alice.controller.sendText(conversationId: conv, body: 'backlog $i');
+      }
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the backlog was not acked');
+      relay.messagePageSize = 5;
+      return bob.api.messageFetches;
+    }
+
+    Future<int> backlogRead() async => (await bob.bodies(conv)).where((body) => body.startsWith('backlog ')).length;
+
+    test('is fetched back to the newest message the device holds', () async {
+      final fetchesBefore = await backlog(23);
+
+      await bob.controller.loadConversationMessages(conv);
+
+      await waitFor(() async => await backlogRead() == 23, reason: 'part of the backlog was skipped');
+      expect(bob.api.messageFetches - fetchesBefore, 5, reason: 'pages down to "before the backlog", no further');
+    });
+
+    test('beyond the pages one refresh fetches is left to loading older history', () async {
+      final fetchesBefore = await backlog(60);
+
+      await bob.controller.loadConversationMessages(conv);
+      await waitFor(() async => await backlogRead() == 50, reason: 'the newest ten pages were not read');
+      expect(bob.api.messageFetches - fetchesBefore, 10);
+      expect(bob.controller.hasMoreHistoryFor(conv), isTrue);
+
+      await bob.controller.loadOlderConversationMessages(conv);
+      await bob.controller.loadOlderConversationMessages(conv);
+      await waitFor(() async => await backlogRead() == 60, reason: 'the rest of the backlog was not read');
+    });
+  });
+
   test('attachment upload carries ciphertext the peer can decrypt', () async {
     await deliver(alice, bob, 'file incoming');
 

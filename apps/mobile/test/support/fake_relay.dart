@@ -113,6 +113,9 @@ class FakeRelay {
   /// Simulates a server that drops the outer expiresAt on relay.
   bool stripOuterExpiresAt = false;
 
+  /// Messages per history page; null serves the whole history at once.
+  int? messagePageSize;
+
   int _messageCounter = 0;
   final DateTime _clockBase = DateTime.utc(2026, 4, 1, 9);
 
@@ -362,8 +365,11 @@ class FakeRelayClient extends VeilApiClient {
     };
   }
 
-  // One page holds the whole history: the relay's page size is its own
-  // choice, and it keeps long-history tests delivering in send order.
+  // One page holds the whole history unless the relay sets a page size: its
+  // page size is its own choice, and one page keeps long-history tests
+  // delivering in send order. With [FakeRelay.messagePageSize], pages are
+  // cut as ConversationsService.listMessagesForUser cuts them: newest first,
+  // the cursor naming the oldest message of the page before.
   @override
   Future<Map<String, dynamic>> getMessages(
     String accessToken,
@@ -372,12 +378,19 @@ class FakeRelayClient extends VeilApiClient {
     int limit = 50,
   }) async {
     messageFetches += 1;
-    final conversation = relay.conversations[conversationId]!;
+    final messages = relay.conversations[conversationId]!.messages;
+    final pageSize = relay.messagePageSize;
+    if (pageSize == null) {
+      return {
+        'items': [for (final message in messages) Map<String, dynamic>.of(message)],
+        'nextCursor': null,
+      };
+    }
+    final before = cursor == null ? messages.length : messages.indexWhere((message) => message['id'] == cursor);
+    final page = messages.sublist(before - pageSize < 0 ? 0 : before - pageSize, before).reversed.toList();
     return {
-      'items': [
-        for (final message in conversation.messages) Map<String, dynamic>.of(message),
-      ],
-      'nextCursor': null,
+      'items': [for (final message in page) Map<String, dynamic>.of(message)],
+      'nextCursor': page.length == pageSize ? page.last['id'] : null,
     };
   }
 

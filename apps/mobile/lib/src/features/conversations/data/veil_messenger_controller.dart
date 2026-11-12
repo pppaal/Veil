@@ -1204,6 +1204,15 @@ class VeilMessengerController extends ChangeNotifier {
     return (kept, overruled);
   }
 
+  // A refresh pages the relay's history from the newest message back to the
+  // newest one this device already holds, so a backlog longer than one page
+  // is fetched, and decrypted oldest first, rather than skipped: frames past
+  // it would otherwise wait on skipped keys, of which a chain keeps only so
+  // many. It stops after [_historyPagesPerSync] pages; the paging cursor
+  // then points at what is left, which loading older history picks up.
+  static const _historyPageSize = 50;
+  static const _historyPagesPerSync = 10;
+
   Future<void> _syncConversation(
     String conversationId, {
     bool loadMore = false,
@@ -1214,25 +1223,31 @@ class VeilMessengerController extends ChangeNotifier {
     }
 
     final pagingState = _pagingStateByConversation[conversationId] ?? const ConversationPagingState();
-    final response = await _apiClient.getMessages(
-      _session.accessToken!,
-      conversationId,
-      cursor: loadMore ? pagingState.nextCursor : null,
-      limit: 50,
-    );
+    final knownUpTo = loadMore ? null : _newestRelayedOrder(conversationId);
+    final fetched = <ChatMessage>[];
+    var cursor = loadMore ? pagingState.nextCursor : null;
+    String? nextCursor;
+    for (var page = 0; page < (loadMore ? 1 : _historyPagesPerSync); page++) {
+      final response = await _apiClient.getMessages(
+        _session.accessToken!,
+        conversationId,
+        cursor: cursor,
+        limit: _historyPageSize,
+      );
+      final items = (response['items'] as List<dynamic>? ?? const []).cast<Map<String, dynamic>>().map(_messageFromApi);
+      fetched.addAll(items);
+      nextCursor = response['nextCursor'] as String?;
+      final reachedKnown = knownUpTo != null && items.any((message) => (message.conversationOrder ?? 0) <= knownUpTo);
+      if (nextCursor == null || reachedKnown || knownUpTo == null) break;
+      cursor = nextCursor;
+    }
     final items = await _contents.withoutRetired(
-      (response['items'] as List<dynamic>? ?? const [])
-          .cast<Map<String, dynamic>>()
-          .map(_messageFromApi)
-          .where((message) => !message.isLocalNotice)
-          .toList()
-        ..sort(compareMessages),
+      fetched.where((message) => !message.isLocalNotice).toList()..sort(compareMessages),
     );
 
     _mergeServerMessages(conversationId, items);
     unawaited(_contents.ingestAll(items));
 
-    final nextCursor = response['nextCursor'] as String?;
     final newPagingState = ConversationPagingState(
       nextCursor: nextCursor,
       hasMoreHistory: nextCursor != null,
@@ -1250,6 +1265,14 @@ class VeilMessengerController extends ChangeNotifier {
     await _persistConversationState(conversationId);
     notifyListeners();
   }
+
+  // The newest relayed message of [conversationId] this device holds; null
+  // when it holds none, and a refresh then reads only the newest page.
+  int? _newestRelayedOrder(String conversationId) => (_messagesByConversation[conversationId] ?? const <ChatMessage>[])
+      .where((message) => !message.isLocalNotice)
+      .map((message) => message.conversationOrder)
+      .nonNulls
+      .fold<int?>(null, (newest, order) => newest == null || order > newest ? order : newest);
 
   Future<void> _enqueuePendingMessage({
     required ConversationPreview conversation,

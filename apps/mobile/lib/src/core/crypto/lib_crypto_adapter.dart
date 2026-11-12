@@ -126,14 +126,6 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   /// suspend the process and before logout/wipe.
   Future<void> flushPendingSnapshotWrites() => _store.flush();
 
-  /// Forces the next outbound message on this conversation to perform a DH
-  /// ratchet step (the "rotate keys" UX) and drops the current state's
-  /// skipped keys so pre-rotation stragglers no longer decrypt. Returns false
-  /// when no session exists or the peer has not yet replied to our handshake.
-  /// Known limitation (docs/crypto-envelope-spec.md): if the peer has a reply
-  /// in flight, the forced step desynchronises the session.
-  Future<bool> forceRekeyNextSend(String conversationId) => _cipher.forceRekey(conversationId);
-
   void setLocalPrekeyStore(LocalPrekeyStore store) {
     _keyring.store = store;
   }
@@ -152,7 +144,8 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100}) => _keyring.generateOneTimePrekeys(count);
 
   @override
-  Future<SignedPrekeyRotation> rotateSignedPrekey() => _keyring.rotateSignedPrekey();
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt}) =>
+      _keyring.rotateSignedPrekey(createdAt: createdAt);
 
   @override
   Future<SignedPrekeyRotation?> currentSignedPrekey() => _keyring.currentSignedPrekey();
@@ -260,6 +253,7 @@ class _LibCryptoEnvelopeCodec implements CryptoEnvelopeCodec, InboundEnvelopeIns
       messageKind: _parseMessageKind(json['messageType'] as String?),
       expiresAt: _parseOptionalDateTime(json['expiresAt']),
       attachment: decodeAttachmentReference(json['attachment'] as Map<String, dynamic>?),
+      transmittedMessageType: json['messageType'] as String? ?? '',
     );
   }
 
@@ -350,9 +344,6 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
 
   @override
   bool hasSessionFor(String conversationId) => _store.contains(conversationId);
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) => _cipher.forceRekey(conversationId);
 }
 
 class _LibMessageCryptoEngine implements MessageCryptoEngine {

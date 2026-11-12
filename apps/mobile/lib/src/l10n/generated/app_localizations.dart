@@ -413,20 +413,44 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentCollectItem1.
   ///
   /// In en, this message translates to:
-  /// **'User handle (unique identifier)'**
+  /// **'User handle, and the random account and device IDs linked to it'**
   String get privacyConsentCollectItem1;
 
   /// No description provided for @privacyConsentCollectItem2.
   ///
   /// In en, this message translates to:
-  /// **'Device info (platform, device name)'**
+  /// **'Device info (platform, device label) and push token; push wake-ups carry no message content'**
   String get privacyConsentCollectItem2;
 
   /// No description provided for @privacyConsentCollectItem3.
   ///
   /// In en, this message translates to:
-  /// **'Public key (for encrypted communication)'**
+  /// **'Public identity key and prekeys (for encrypted communication)'**
   String get privacyConsentCollectItem3;
+
+  /// No description provided for @privacyConsentCollectItem4.
+  ///
+  /// In en, this message translates to:
+  /// **'Your in-app contact list: which accounts you added (the names you give them stay on this device)'**
+  String get privacyConsentCollectItem4;
+
+  /// No description provided for @privacyConsentCollectItem5.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversation membership and delivery metadata: when messages arrived, delivery and read-receipt times, the day a device was last seen'**
+  String get privacyConsentCollectItem5;
+
+  /// No description provided for @privacyConsentCollectItem6.
+  ///
+  /// In en, this message translates to:
+  /// **'Call records: conversation, who started the call, call type, start and end time, duration (kept 30 days)'**
+  String get privacyConsentCollectItem6;
+
+  /// No description provided for @privacyConsentCollectItem7.
+  ///
+  /// In en, this message translates to:
+  /// **'Group and channel names and descriptions (stored readable), and the blocks, mutes and abuse reports you make (reports kept 90 days)'**
+  String get privacyConsentCollectItem7;
 
   /// No description provided for @privacyConsentPurposeTitle.
   ///
@@ -467,7 +491,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentRetentionItem2.
   ///
   /// In en, this message translates to:
-  /// **'Device data removed when device is unpaired'**
+  /// **'Device data is removed when the device is unpaired, and its device record within about 30 days'**
   String get privacyConsentRetentionItem2;
 
   /// No description provided for @privacyConsentRetentionItem3.
@@ -521,7 +545,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentNotCollectedItem3.
   ///
   /// In en, this message translates to:
-  /// **'Contacts, call logs, or other device personal data'**
+  /// **'Your phone\'s address book, its call log, or other personal data stored on your device'**
   String get privacyConsentNotCollectedItem3;
 
   /// No description provided for @privacyConsentThirdPartyTitle.
@@ -1502,6 +1526,12 @@ abstract class AppLocalizations {
   /// **'This contact started using a new device.'**
   String get chatNoticeIdentityNewDevice;
 
+  /// No description provided for @chatNoticeSenderKeysKept.
+  ///
+  /// In en, this message translates to:
+  /// **'The server listed this group without its group encryption keys. This device keeps using them.'**
+  String get chatNoticeSenderKeysKept;
+
   /// No description provided for @chatIdentityChangedTitle.
   ///
   /// In en, this message translates to:
@@ -1511,7 +1541,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatIdentityChangedBody.
   ///
   /// In en, this message translates to:
-  /// **'Sending is paused until you review the new safety number.'**
+  /// **'Nothing is sent to the new key until you review it.'**
   String get chatIdentityChangedBody;
 
   /// No description provided for @chatIdentityChangedReview.
@@ -2117,13 +2147,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotateDialogTitle.
   ///
   /// In en, this message translates to:
-  /// **'Rotate session keys?'**
+  /// **'Start a new session?'**
   String get safetyNumbersRotateDialogTitle;
 
   /// No description provided for @safetyNumbersRotateDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'This forces a fresh Diffie-Hellman ratchet step on your next message. Old skipped message keys for this chat are dropped immediately. Use this if you suspect this device or your peer\'s device was briefly exposed — past messages stay readable, but any stolen session state stops being useful.'**
+  /// **'This runs a fresh key agreement with your contact\'s current keys, and your next message starts the new session. Messages already on their way still open. Use this if you suspect this device or your contact\'s device was briefly exposed: a stolen copy of the old session cannot read what the new one carries.'**
   String get safetyNumbersRotateDialogBody;
 
   /// No description provided for @safetyNumbersCancel.
@@ -2135,13 +2165,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotate.
   ///
   /// In en, this message translates to:
-  /// **'Rotate'**
+  /// **'Start'**
   String get safetyNumbersRotate;
 
   /// No description provided for @safetyNumbersSessionRotated.
   ///
   /// In en, this message translates to:
-  /// **'Session keys rotated'**
+  /// **'New session ready. Your next message starts it.'**
   String get safetyNumbersSessionRotated;
 
   /// No description provided for @safetyNumbersNoSessionYet.
@@ -2153,7 +2183,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotationFailed.
   ///
   /// In en, this message translates to:
-  /// **'Rotation failed: {error}'**
+  /// **'Could not start a new session: {error}'**
   String safetyNumbersRotationFailed(String error);
 
   /// No description provided for @safetyNumbersErrorTitle.
@@ -2203,30 +2233,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tap a member to see their 60-digit safety number. Compare it on a channel you trust — read it aloud over a call or scan the QR. A mismatch means that specific member\'s device may be compromised.'**
   String get safetyNumbersGroupBody;
-
-  /// No description provided for @safetyNumbersGroupRotateEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'ROTATE GROUP SESSION KEYS'**
-  String get safetyNumbersGroupRotateEyebrow;
-
-  /// No description provided for @safetyNumbersGroupRotateBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Forces a fresh DH ratchet step on the next group message and drops stashed skipped keys for this group. Affects every member — use if any participant\'s device was briefly exposed.'**
-  String get safetyNumbersGroupRotateBody;
-
-  /// No description provided for @safetyNumbersRotatingGroup.
-  ///
-  /// In en, this message translates to:
-  /// **'Rotating…'**
-  String get safetyNumbersRotatingGroup;
-
-  /// No description provided for @safetyNumbersRotateGroupButton.
-  ///
-  /// In en, this message translates to:
-  /// **'Rotate group session keys'**
-  String get safetyNumbersRotateGroupButton;
 
   /// No description provided for @safetyNumbersUnverified.
   ///
@@ -2297,25 +2303,25 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotateEyebrow.
   ///
   /// In en, this message translates to:
-  /// **'ROTATE SESSION KEYS'**
+  /// **'NEW SESSION'**
   String get safetyNumbersRotateEyebrow;
 
   /// No description provided for @safetyNumbersRotateBody.
   ///
   /// In en, this message translates to:
-  /// **'Forces a fresh DH ratchet step on your next message and drops any stashed skipped keys. Use if this device or your peer\'s was briefly exposed.'**
+  /// **'Runs a fresh key agreement with your contact\'s current keys; your next message starts the new session, and messages already on their way still open. Use if this device or your contact\'s was briefly exposed.'**
   String get safetyNumbersRotateBody;
 
   /// No description provided for @safetyNumbersRotating.
   ///
   /// In en, this message translates to:
-  /// **'Rotating…'**
+  /// **'Starting…'**
   String get safetyNumbersRotating;
 
   /// No description provided for @safetyNumbersRotateButton.
   ///
   /// In en, this message translates to:
-  /// **'Rotate session keys'**
+  /// **'Start a new session'**
   String get safetyNumbersRotateButton;
 
   /// No description provided for @safetyNumbersCardLabel.
@@ -2383,6 +2389,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Accept the new key'**
   String get safetyNumbersAcceptNewKey;
+
+  /// No description provided for @safetyNumbersKeepCurrentKey.
+  ///
+  /// In en, this message translates to:
+  /// **'Keep the current key'**
+  String get safetyNumbersKeepCurrentKey;
 
   /// No description provided for @safetyNumbersScanAction.
   ///

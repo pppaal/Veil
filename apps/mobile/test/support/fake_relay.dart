@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 
@@ -46,7 +47,8 @@ class RelayConversation {
   final String type;
   final List<String> memberHandles;
   final DateTime createdAt;
-  final bool useSenderKeys;
+  // Settable so a test can play a relay that lies about it.
+  bool useSenderKeys;
   int epoch = 0;
   final List<Map<String, dynamic>> messages = [];
 }
@@ -99,6 +101,9 @@ class FakeRelay {
   final Map<String, RelayAttachment> attachments = {};
   final List<String> uploadTickets = [];
 
+  /// The content type each upload-ticket request declared.
+  final List<Object?> uploadTicketContentTypes = [];
+
   Duration uploadTicketLifetime = const Duration(minutes: 10);
 
   /// Upload completions to answer with a transient failure, which leaves the
@@ -108,8 +113,17 @@ class FakeRelay {
   /// Simulates a server that drops the outer expiresAt on relay.
   bool stripOuterExpiresAt = false;
 
+  /// Messages per history page; null serves the whole history at once.
+  int? messagePageSize;
+
   int _messageCounter = 0;
   final DateTime _clockBase = DateTime.utc(2026, 4, 1, 9);
+
+  /// How far the relay's clock runs ahead of the devices' clocks; its time
+  /// reaches each client as the HTTP Date header of the key routes.
+  Duration clockSkew = Duration.zero;
+
+  DateTime now() => DateTime.now().toUtc().add(clockSkew);
 
   /// Registers [party] as the active device of its handle. A handle that
   /// already had a device moves to the new one, like a device transfer: the
@@ -245,7 +259,7 @@ class FakeRelay {
   Map<String, dynamic> _lookup(RelayParty requester, String handle, String claim) {
     final party = partiesByHandle[handle];
     if (party == null) {
-      throw VeilApiException('not found', statusCode: 404, code: 'active_device_not_found');
+      throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
     }
     final active = bundleOverrides[handle] ??
         {
@@ -272,6 +286,24 @@ class FakeRelay {
       'devices': [
         device(active, isActive: true),
         for (final extra in extraDevices[handle] ?? const <Map<String, dynamic>>[]) device(extra, isActive: false),
+      ],
+    };
+  }
+
+  /// GET /keys/group/:conversationId, like KeysService.getGroupMemberKeys:
+  /// every other member's entry as GET /keys/:handle lists it, nothing
+  /// claimed, and group_not_found for anyone but a member of a group.
+  Map<String, dynamic> _groupKeys(RelayParty requester, String conversationId) {
+    final conversation = conversations[conversationId];
+    if (conversation == null || conversation.type != 'group' || !conversation.memberHandles.contains(requester.handle)) {
+      throw VeilApiException('Group not found', statusCode: 404, code: 'group_not_found');
+    }
+    return {
+      'conversationId': conversationId,
+      'epoch': conversation.epoch,
+      'members': [
+        for (final handle in conversation.memberHandles)
+          if (handle != requester.handle && partiesByHandle.containsKey(handle)) _lookup(requester, handle, 'none'),
       ],
     };
   }
@@ -315,6 +347,7 @@ class FakeRelayClient extends VeilApiClient {
 
   int conversationFetches = 0;
   int messageFetches = 0;
+  int groupKeyRequests = 0;
   final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
   final List<String> signedPrekeyUploads = [];
@@ -332,8 +365,11 @@ class FakeRelayClient extends VeilApiClient {
     };
   }
 
-  // One page holds the whole history: the relay's page size is its own
-  // choice, and it keeps long-history tests delivering in send order.
+  // One page holds the whole history unless the relay sets a page size: its
+  // page size is its own choice, and one page keeps long-history tests
+  // delivering in send order. With [FakeRelay.messagePageSize], pages are
+  // cut as ConversationsService.listMessagesForUser cuts them: newest first,
+  // the cursor naming the oldest message of the page before.
   @override
   Future<Map<String, dynamic>> getMessages(
     String accessToken,
@@ -342,12 +378,19 @@ class FakeRelayClient extends VeilApiClient {
     int limit = 50,
   }) async {
     messageFetches += 1;
-    final conversation = relay.conversations[conversationId]!;
+    final messages = relay.conversations[conversationId]!.messages;
+    final pageSize = relay.messagePageSize;
+    if (pageSize == null) {
+      return {
+        'items': [for (final message in messages) Map<String, dynamic>.of(message)],
+        'nextCursor': null,
+      };
+    }
+    final before = cursor == null ? messages.length : messages.indexWhere((message) => message['id'] == cursor);
+    final page = messages.sublist(before - pageSize < 0 ? 0 : before - pageSize, before).reversed.toList();
     return {
-      'items': [
-        for (final message in conversation.messages) Map<String, dynamic>.of(message),
-      ],
-      'nextCursor': null,
+      'items': [for (final message in page) Map<String, dynamic>.of(message)],
+      'nextCursor': page.length == pageSize ? page.last['id'] : null,
     };
   }
 
@@ -359,6 +402,11 @@ class FakeRelayClient extends VeilApiClient {
     required String? accessToken,
     Map<String, String>? query,
   }) async {
+    _stampDate();
+    if (path.startsWith('/keys/group/')) {
+      groupKeyRequests += 1;
+      return relay._groupKeys(me, Uri.decodeComponent(path.substring('/keys/group/'.length)));
+    }
     if (path.startsWith('/keys/')) {
       final handle = Uri.decodeComponent(path.substring('/keys/'.length));
       directoryLookups[handle] = (directoryLookups[handle] ?? 0) + 1;
@@ -372,6 +420,7 @@ class FakeRelayClient extends VeilApiClient {
 
   @override
   Future<Map<String, dynamic>> postJson(String path, {required String? accessToken, Object? body}) async {
+    _stampDate();
     if (path != '/prekeys') throw UnimplementedError('POST $path');
     final pool = relay.oneTimePrekeys.putIfAbsent(me.deviceId, () => []);
     final uploaded = [
@@ -382,14 +431,48 @@ class FakeRelayClient extends VeilApiClient {
     return {'uploaded': uploaded.length, 'available': pool.length};
   }
 
+  // KeysService.rotateSignedPrekey: a v2 bundle signed by the device
+  // identity, its timestamp within the last hour and at most ten minutes
+  // ahead of the relay's clock, the same IKx, and a higher spkId than the
+  // bundle served now.
   @override
   Future<Map<String, dynamic>> putJson(String path, {required String? accessToken, Object? body}) async {
+    _stampDate();
     if (path != '/keys/signed-prekey') throw UnimplementedError('PUT $path');
     final bundle = (body as Map<String, dynamic>)['signedPrekeyBundle'] as String;
+    final now = relay.now();
+    final RemotePrekeyBundle next;
+    try {
+      next = await verifyRemoteBundle(bundle, me.identity.identityPublicKey);
+    } catch (_) {
+      throw VeilApiException('not signed by the device', statusCode: 400, code: 'invalid_device_signature');
+    }
+    if (next is! PrekeyBundleV2) {
+      throw VeilApiException('not a v2 bundle', statusCode: 400, code: 'validation_failed');
+    }
+    final spkTs = next.spkTimestampMs;
+    final nowMs = now.millisecondsSinceEpoch;
+    if (spkTs < nowMs - const Duration(hours: 1).inMilliseconds ||
+        spkTs > nowMs + const Duration(minutes: 10).inMilliseconds) {
+      throw VeilApiException('stale timestamp', statusCode: 400, code: 'signed_prekey_timestamp_out_of_window');
+    }
+    final served = await verifyRemoteBundle(
+      relay.publishedSignedPrekeys[me.deviceId] ?? me.identity.signedPrekeyBundle,
+      me.identity.identityPublicKey,
+    );
+    if (served is PrekeyBundleV2 && (!_sameBytes(next.ikx, served.ikx) || next.spkId <= served.spkId)) {
+      throw VeilApiException('spkId must increase', statusCode: 400, code: 'validation_failed');
+    }
     relay.publishedSignedPrekeys[me.deviceId] = bundle;
     signedPrekeyUploads.add(bundle);
-    return {'deviceId': me.deviceId, 'spkId': signedPrekeyUploads.length};
+    return {'deviceId': me.deviceId, 'spkId': next.spkId};
   }
+
+  // The relay's time, as the HTTP Date header of each response carries it.
+  void _stampDate() => serverClock.observe(HttpDate.format(relay.now()));
+
+  static bool _sameBytes(List<int> a, List<int> b) =>
+      a.length == b.length && Iterable<int>.generate(a.length).every((i) => a[i] == b[i]);
 
   @override
   Future<Map<String, dynamic>> sendMessage(
@@ -433,6 +516,7 @@ class FakeRelayClient extends VeilApiClient {
       sizeBytes: body['sizeBytes'] as int,
     );
     relay.uploadTickets.add(attachmentId);
+    relay.uploadTicketContentTypes.add(body['contentType']);
     return {
       'attachmentId': attachmentId,
       'upload': {

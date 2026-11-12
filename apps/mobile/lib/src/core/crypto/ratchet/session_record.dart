@@ -64,7 +64,7 @@ class SessionRecord {
   /// (Signal's promoteState): each side ends up sending on the state its
   /// peer last used, which converges whatever order frames arrive in.
   RecordUpdate receiving(RatchetState live, RatchetState replacement, {required DateTime now}) {
-    if (identical(live, current) || !_mayDisplaceCurrent(replacement)) {
+    if (identical(live, current) || !(_mayDisplaceCurrent(replacement) || _peerAbandonedOurs(live))) {
       return replacing(live, replacement, now: now);
     }
     return _pruned(replacement, [ArchivedState(current, now), ..._archivedExcept(live)], [live], now);
@@ -102,6 +102,29 @@ class SessionRecord {
         candidatePeer != null &&
         compareBytes(currentPeer, candidatePeer) == 0 &&
         !_handshakeHolds(current, candidate);
+  }
+
+  /// Our initiation is still unanswered while the peer sends a further frame
+  /// on a handshake of its own that we never answered. A peer that holds our
+  /// handshake would not keep sending on its own, so it did not take ours,
+  /// typically because it could not open it (the one-time or signed prekey
+  /// it names is gone): holding on to ours would leave every message we send
+  /// unreadable for good. The first competing frame ([live] has received
+  /// nothing yet) still loses glare as specified, so true glare settles as
+  /// before, and a state we already sent on never qualifies.
+  bool _peerAbandonedOurs(RatchetState live) {
+    final ours = current.remoteIdentityKey;
+    final theirs = live.remoteIdentityKey;
+    return current.protocol == protocolV2 &&
+        current.initiatedLocally &&
+        current.awaitingFirstReply &&
+        live.protocol == protocolV2 &&
+        !live.initiatedLocally &&
+        live.handshakePending &&
+        live.receiveCounter > 0 &&
+        ours != null &&
+        theirs != null &&
+        compareBytes(ours, theirs) == 0;
   }
 
   /// Glare tie-break. While [current]'s handshake is pending (our initiation

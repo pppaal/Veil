@@ -30,6 +30,7 @@ import '../core/storage/database_provider.dart';
 import '../core/storage/secure_storage_service.dart';
 import '../features/attachments/data/attachment_temp_file_store.dart';
 import '../features/conversations/data/group_sender_key_coordinator.dart';
+import '../features/conversations/data/messenger/conversation_peer_bindings.dart';
 import '../features/conversations/data/messenger/envelope_version_policy.dart';
 import '../features/conversations/data/messenger/identity_trust.dart';
 import '../features/conversations/data/messenger/legacy_trust_migration.dart';
@@ -107,16 +108,33 @@ final Provider<VeilApiClient> apiClientProvider = Provider<VeilApiClient>((ref) 
 final cacheHandleProvider = Provider<CacheHandle?>((ref) {
   if (!VeilConfig.enableLocalCache) return null;
   return CacheHandle(() async {
-    final cache = await ref.read(conversationCacheProvider.future);
+    final cache = await _openConversationCache(ref);
     return cache!;
   });
 });
+
+/// Opens the conversation cache for a caller that tries again after a
+/// failure (CacheHandle, the trust migration). A FutureProvider keeps a
+/// failed open as its value until it is invalidated, so the failure is
+/// forgotten here and the next call opens the database again, as on an iOS
+/// launch before first unlock. An open database is never invalidated: that
+/// would close it under its other users.
+Future<DriftConversationCacheService?> _openConversationCache(Ref ref) async {
+  try {
+    return await ref.read(conversationCacheProvider.future);
+  } catch (_) {
+    if (ref.read(appDatabaseFutureProvider).hasError) ref.invalidate(appDatabaseFutureProvider);
+    ref.invalidate(conversationCacheProvider);
+    rethrow;
+  }
+}
 
 final keysApiProvider = Provider<KeysApi>((ref) {
   return KeysApi(ref.read(apiClientProvider), ref.read(cryptoAdapterProvider).keyBundles);
 });
 
-/// Contact identity pins, kept in the keystore and wiped with the device.
+/// Contact identity pins, and the identity changes the user has not decided
+/// yet or declined, kept in the keystore and wiped with the device.
 /// What earlier builds knew is migrated in before any decision is made,
 /// reading the cache directly: the messenger decrypts and looks keys up as
 /// soon as it applies a session. A cache that cannot be read fails the
@@ -127,11 +145,12 @@ final identityTrustProvider = Provider<IdentityTrust>((ref) {
   final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(storage.scoped(SecureScope.identity)));
   final trust = IdentityTrust(
     resolver,
+    decisions: storage.scoped(SecureScope.identity),
     prepare: () => migrateLegacyTrust(
       storage: storage,
       resolver: resolver,
       readConversations: () async {
-        final cache = await ref.read(conversationCacheProvider.future);
+        final cache = await _openConversationCache(ref);
         return cache == null ? const [] : cache.readConversations();
       },
     ),
@@ -810,7 +829,6 @@ final messengerControllerProvider =
           .read(appSessionProvider.notifier)
           .handleSecurityException(error);
     },
-    identityPrivateRefLoader: () => secureStorage.readIdentityPrivateRef(),
     sessionSnapshotRestorer: sessionRestorer,
     groupCrypto: groupCrypto,
     readReceiptsEnabled: () => privacy.sendReadReceipts,
@@ -818,6 +836,7 @@ final messengerControllerProvider =
     keysApi: keys,
     identityTrust: trust,
     envelopeVersions: EnvelopeVersionPolicy(store: secureStorage.scoped(SecureScope.conversationPolicy)),
+    peerBindings: ConversationPeerBindings(store: secureStorage.scoped(SecureScope.conversationPolicy)),
     prekeyMaintenance: prekeyMaintenance,
   );
 

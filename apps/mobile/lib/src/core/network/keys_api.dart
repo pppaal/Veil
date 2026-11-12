@@ -48,6 +48,17 @@ class KeyDirectoryEntry {
       devices.where((candidate) => candidate.bundle.deviceId == deviceId).firstOrNull;
 }
 
+/// The other members of a group in the key directory, as of [epoch].
+class GroupMemberKeys {
+  const GroupMemberKeys({required this.conversationId, required this.epoch, required this.members});
+
+  final String conversationId;
+  final int epoch;
+
+  /// By user id. A member without a trusted active device is not listed.
+  final Map<String, KeyDirectoryEntry> members;
+}
+
 /// Authenticated key directory and this device's prekey uploads
 /// (GET /keys/:handle, POST /prekeys, GET /prekeys/count,
 /// PUT /keys/signed-prekey). Every call is tied to the device's session, so
@@ -57,6 +68,9 @@ class KeysApi {
 
   final VeilApiClient _client;
   final KeyBundleCodec _codec;
+
+  /// The directory's time, as its responses report it.
+  ServerClock get serverClock => _client.serverClock;
 
   /// Looks [handle] up. Throws [FormatException] when the answer does not
   /// have the directory's shape: it is relayed by the server and decides
@@ -71,6 +85,44 @@ class KeysApi {
       accessToken: accessToken,
       query: {'claim': claim.name},
     );
+    return _entry(response);
+  }
+
+  /// Every other member's entry for the group [conversationId] in one
+  /// request (GET /keys/group/:conversationId), as of the epoch it names.
+  /// Nothing is claimed. A member without a trusted active device is left
+  /// out, and so is one whose entry is malformed: it vouches for none of
+  /// that member's devices, and must not cost the others theirs. Throws
+  /// [FormatException] for an answer of the wrong shape or about another
+  /// conversation.
+  Future<GroupMemberKeys> groupMemberKeys(String conversationId, {required String? accessToken}) async {
+    final response = await _client.getJson(
+      '/keys/group/${Uri.encodeComponent(conversationId)}',
+      accessToken: accessToken,
+    );
+    if (response['conversationId'] != conversationId) {
+      throw const FormatException('group keys: answer is about another conversation');
+    }
+    final epoch = response['epoch'];
+    final members = response['members'];
+    if (epoch is! int || epoch < 0) throw const FormatException('group keys: bad epoch');
+    if (members is! List) throw const FormatException('group keys: members is not a list');
+    final entries = <KeyDirectoryEntry>[];
+    for (final raw in members) {
+      try {
+        entries.add(_entry(_object(raw, 'member')));
+      } on FormatException {
+        continue;
+      }
+    }
+    return GroupMemberKeys(
+      conversationId: conversationId,
+      epoch: epoch,
+      members: {for (final entry in entries) entry.userId: entry},
+    );
+  }
+
+  KeyDirectoryEntry _entry(Map<String, dynamic> response) {
     final user = _object(response['user'], 'user');
     final userId = _text(user, 'id');
     final userHandle = _text(user, 'handle');

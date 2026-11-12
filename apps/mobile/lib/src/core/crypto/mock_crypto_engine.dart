@@ -38,12 +38,12 @@ class MockCryptoAdapter implements CryptoAdapter, PrekeyManager {
   }
 
   @override
-  Future<SignedPrekeyRotation> rotateSignedPrekey() async {
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt}) async {
     _signedPrekeyId += 1;
     return _signedPrekey = SignedPrekeyRotation(
       signedPrekeyBundle: _opaqueToken(_random, 32),
       spkId: _signedPrekeyId,
-      createdAt: DateTime.now().toUtc(),
+      createdAt: createdAt ?? DateTime.now().toUtc(),
     );
   }
 
@@ -358,9 +358,6 @@ class _MockConversationSessionBootstrapper
 
   @override
   bool hasSessionFor(String conversationId) => true;
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 
   @override
   Future<SessionBootstrapMaterial> bootstrapSessionFromInbound(

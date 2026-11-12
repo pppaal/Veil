@@ -130,4 +130,32 @@ void main() {
     expect(client.lastBody, {'signedPrekeyBundle': 'bundle-v2'});
     expect(client.calls, ['POST /prekeys', 'GET /prekeys/count {} token', 'PUT /keys/signed-prekey']);
   });
+
+  group('groupMemberKeys', () {
+    test('reads every listed member in one request, skipping a malformed entry', () async {
+      final client = _Recorder({
+        'conversationId': 'grp-1',
+        'epoch': 4,
+        'members': [
+          _entry(),
+          {'user': 'not an entry'},
+        ],
+      });
+
+      final keys = await KeysApi(client, codec).groupMemberKeys('grp-1', accessToken: 'token');
+
+      expect(client.calls, ['GET /keys/group/grp-1 {} token']);
+      expect(keys.epoch, 4);
+      expect(keys.members.keys, ['user-selene']);
+      expect(keys.members['user-selene']!.activeDevice!.bundle.identityPublicKey, 'ik-2');
+    });
+
+    test('refuses an answer about another group or of the wrong shape', () async {
+      final keys = KeysApi(_Recorder({'conversationId': 'grp-2', 'epoch': 0, 'members': []}), codec);
+      await expectLater(keys.groupMemberKeys('grp-1', accessToken: 'token'), throwsFormatException);
+
+      final shapeless = KeysApi(_Recorder({'conversationId': 'grp-1', 'epoch': 0, 'members': 'all'}), codec);
+      await expectLater(shapeless.groupMemberKeys('grp-1', accessToken: 'token'), throwsFormatException);
+    });
+  });
 }

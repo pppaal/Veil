@@ -43,7 +43,7 @@ class SafetyNumbersScreen extends ConsumerStatefulWidget {
 
 class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<_SafetyNumbersViewData>? _loader;
-  bool _rekeying = false;
+  bool _renewing = false;
   // A scanned code that did not match; the screen stays failed until left.
   bool _scanMismatch = false;
   late final StreamSubscription<PendingIdentityChange> _changes;
@@ -87,9 +87,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     final session = ref.read(appSessionProvider);
     // You can't verify your own identity number against yourself.
     final members = conversation.members.where((m) => m.userId != session.userId).toList(growable: false);
+    // Verified only when every device of theirs is: any pinned device of a
+    // member may hold this group's chain keys, not just the one compared.
     final verified = <String>{
       for (final member in members)
-        if ((await resolver.pinsForUser(member.userId)).any((pin) => pin.isVerified)) member.userId,
+        if (await resolver.pinsForUser(member.userId) case final pins
+            when pins.isNotEmpty && pins.every((pin) => pin.isVerified))
+          member.userId,
     };
     return _GroupListData(groupName: conversation.groupMeta?.name, members: members, verifiedUserIds: verified);
   }
@@ -140,6 +144,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       number: await numberFor(pin?.identityKey),
       pendingChange: change,
       pendingNumber: await numberFor(change?.presentedKey),
+      mayDecline: change != null && messenger.mayDeclineIdentityChange(conversation.id),
       directory: served == null || pin == null
           ? null
           : served.deviceId != pin.deviceId
@@ -184,7 +189,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<void> _markVerified(_DetailData data) async {
     VeilHaptics.medium();
     final pin = data.pin!;
-    await ref.read(identityTrustProvider).resolver.markVerified(pin.userId, pin.deviceId, pin.identityKey);
+    await ref.read(identityTrustProvider).markVerified(pin.userId, pin.deviceId, pin.identityKey);
     if (!mounted) return;
     await _reload();
     if (!mounted) return;
@@ -200,6 +205,24 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       await ref
           .read(messengerControllerProvider)
           .approveIdentityChange(widget.conversationId, reverified: reverified, reviewed: change);
+    } on StateError {
+      if (!mounted) return;
+      VeilToast.show(
+        context,
+        message: AppLocalizations.of(context).safetyNumbersChangeReplaced,
+        tone: VeilBannerTone.warn,
+      );
+    }
+    if (!mounted) return;
+    await _reload();
+  }
+
+  // Keeps the pinned identity in place of exactly [change]; a newer change
+  // that replaced it meanwhile stays pending and is shown instead.
+  Future<void> _declineChange(PendingIdentityChange change) async {
+    VeilHaptics.medium();
+    try {
+      await ref.read(messengerControllerProvider).declineIdentityChange(widget.conversationId, reviewed: change);
     } on StateError {
       if (!mounted) return;
       VeilToast.show(
@@ -253,8 +276,8 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     }
   }
 
-  Future<void> _rotateSessionKeys() async {
-    if (_rekeying) return;
+  Future<void> _renewSession() async {
+    if (_renewing) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -278,16 +301,16 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     if (confirmed != true) return;
     if (!mounted) return;
 
-    setState(() => _rekeying = true);
+    setState(() => _renewing = true);
     VeilHaptics.medium();
     try {
       final messenger = ref.read(messengerControllerProvider);
-      final armed = await messenger.rekeyConversation(widget.conversationId);
+      final renewed = await messenger.renewSession(widget.conversationId);
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
       VeilToast.show(
         context,
-        message: armed
+        message: renewed
             ? l10n.safetyNumbersSessionRotated
             : l10n.safetyNumbersNoSessionYet,
       );
@@ -300,7 +323,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _rekeying = false);
+        setState(() => _renewing = false);
       }
     }
   }
@@ -352,7 +375,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   Widget _buildGroupList(BuildContext context, _GroupListData data) {
-    final palette = VeilPalette.dark;
     final l10n = AppLocalizations.of(context);
     if (data.members.isEmpty) {
       return Padding(
@@ -396,36 +418,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               },
             ),
           ),
-        const SizedBox(height: VeilSpace.md),
-        VeilSurfaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                l10n.safetyNumbersGroupRotateEyebrow,
-                style: TextStyle(
-                  color: palette.textSubtle,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
-                ),
-              ),
-              const SizedBox(height: VeilSpace.xs),
-              Text(
-                l10n.safetyNumbersGroupRotateBody,
-                style: TextStyle(color: palette.textSubtle, fontSize: 13),
-              ),
-              const SizedBox(height: VeilSpace.md),
-              VeilButton(
-                label: _rekeying
-                    ? l10n.safetyNumbersRotatingGroup
-                    : l10n.safetyNumbersRotateGroupButton,
-                tone: VeilButtonTone.secondary,
-                onPressed: _rekeying ? null : _rotateSessionKeys,
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -562,11 +554,11 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
                 ),
                 const SizedBox(height: VeilSpace.md),
                 VeilButton(
-                  label: _rekeying
+                  label: _renewing
                       ? l10n.safetyNumbersRotating
                       : l10n.safetyNumbersRotateButton,
                   tone: VeilButtonTone.secondary,
-                  onPressed: _rekeying ? null : _rotateSessionKeys,
+                  onPressed: _renewing ? null : _renewSession,
                 ),
               ],
             ),
@@ -607,6 +599,18 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           label: l10n.safetyNumbersAcceptNewKey,
           onPressed: _scanMismatch ? null : () => _acceptChange(change, reverified: false),
         ),
+      // Accepting is never the only way out of a change the relay may have
+      // forged: the user can keep what was pinned. Not when the change is
+      // about the identity the session already sends to, though: there is
+      // no current key to keep in its place.
+      if (data.mayDecline) ...[
+        const SizedBox(height: VeilSpace.sm),
+        VeilButton(
+          label: l10n.safetyNumbersKeepCurrentKey,
+          tone: VeilButtonTone.secondary,
+          onPressed: () => _declineChange(change),
+        ),
+      ],
     ];
   }
 
@@ -818,6 +822,7 @@ class _DetailData extends _SafetyNumbersViewData {
     required this.number,
     required this.pendingChange,
     required this.pendingNumber,
+    required this.mayDecline,
     required this.directory,
     required this.isDirect,
   });
@@ -833,6 +838,9 @@ class _DetailData extends _SafetyNumbersViewData {
   /// The identity this conversation is held back on, and its number.
   final PendingIdentityChange? pendingChange;
   final String? pendingNumber;
+
+  /// Whether the user may keep the pinned identity instead of [pendingChange].
+  final bool mayDecline;
 
   /// How the directory's answer compares with [pin]; null when either is
   /// unknown.

@@ -14,9 +14,10 @@ The adapter speaks two protocols:
   every header, AEAD-bound routing fields and attachments carried inside the
   ratchet. Normative section below.
 - **Legacy protocol v1** (`veil-envelope-v1`): spoken only with peers that still
-  publish v1 bundles. Its handshake authenticates only the responder, so
-  everything decrypted on it is reported as `legacyUnauthenticated`. Kept
-  byte-compatible; documented after the v2 section.
+  publish v1 bundles, and only as the initiator. Its handshake authenticates
+  only the responder, so everything decrypted on it is reported as
+  `legacyUnauthenticated`. Kept byte-compatible; documented after the v2
+  section.
 
 The reference implementation lives under
 [apps/mobile/lib/src/core/crypto/](../apps/mobile/lib/src/core/crypto/)
@@ -98,17 +99,33 @@ The device-local identity private ref (never transmitted) is
 A fresh identity uses spkId 1. Rotating draws a new SPK with id `max + 1`; a
 v1 ref (no `spk`) is upgraded by promoting its X25519 key to IKx.
 
+The directory (`PUT /keys/signed-prekey`) accepts a bundle only while its
+`spkTs` lies within `[serverNow - 1 hour, serverNow + 10 minutes]`, besides
+the device signature, the IKx pin and a strictly increasing `spkId`; a bundle
+outside that window is refused with HTTP 400
+`signed_prekey_timestamp_out_of_window`. So every client keeps a server clock
+offset, `serverDate - localNow` at receipt, taken from the HTTP `Date` header
+of every API response that carries a parsable one (refusals included), and
+stamps every newly drawn SPK with `spkTs = localNow + offset`. Peers checking a
+bundle's 60-day age keep using their own clock.
+
 A device records which SPK the directory last accepted (registration publishes
 a fresh identity's spkId 1). Maintenance publishes until the newest SPK is that
-one: a newest SPK younger than 7 days whose publish failed is published again
-as it is (Ed25519 is deterministic, so the bundle is the same), an older one is
-rotated first. When the directory refuses such a publish but serves exactly
-that bundle for the device (the first publish succeeded and its answer was
-lost), the SPK is recorded as published. SPKs older than the published one are
-deleted 14 days after it was published; while no publication is recorded,
-none is deleted. One-time prekeys whose upload failed are uploaded again as
-they are by the next run (the directory skips ids it holds), never replaced by
-fresh ones.
+one. A newest SPK that was never accepted is published again as it is (Ed25519
+is deterministic, so the bundle is the same) only while its `spkTs` is less
+than 30 minutes old by the corrected clock; otherwise, or once the directory
+answered `signed_prekey_timestamp_out_of_window` for it (which also refreshes
+the offset), a successor is drawn: a new SPK with id `max + 1`, a fresh
+`spkTs`, signed again. An SPK older than 7 days is rotated the same way. When
+the directory refuses a publish but serves exactly that bundle for the device
+(the first publish succeeded and its answer was lost), the SPK is recorded as
+published. SPKs older than the published one are deleted 14 days after it was
+published; while no publication is recorded, none is deleted. A failed SPK
+publish never stops the one-time prekey top-up of the same run (mobile tops up
+first and stops early only when the directory cannot be reached at all, so no
+SPK is drawn while offline). One-time prekeys whose upload failed are uploaded
+again as they are by the next run (the directory skips ids it holds), never
+replaced by fresh ones.
 
 ### X3DH
 
@@ -197,14 +214,16 @@ attempt may do one DH step and derive up to 200 keys before the AEAD rejects
 it. A forged frame therefore costs the receiver a bounded few thousand HKDF
 calls; this is the protocol's CPU amplification ceiling.
 
-A manual rekey (forcing a send step without a receive) is refused while the
-state still awaits the peer's first reply: until then the peer can only reach
-later chains through the ratchet key in the handshake frames, so a second step
-would strand every later frame if those were lost. Known limitation: a forced
-step is only sound when the peer has not sent since our last send. If a reply
-is still in flight, the forced step builds on a root key the peer has already
-ratcheted past and the session desynchronises until it is re-bootstrapped.
-The manual rekey must be redesigned or removed before it is exposed further.
+No client forces a send step without a receive. Such a step is sound only when
+the peer has not sent since our last send; with a reply in flight it builds on
+a root key the peer has already ratcheted past, and neither side decrypts the
+other again. The Double Ratchet already steps the DH ratchet on every turn.
+What the user can ask for instead ("Start a new session", 1:1 only) is a fresh
+X3DH handshake against the peer's current directory entry, after the identity
+pins accept it: the new state becomes current and the old one is archived, never
+destroyed (see "Session records and glare"), so frames already in flight on it
+still open, and the next message sent carries the handshake. The renewal sends
+no message of its own.
 
 ### Frame
 
@@ -226,8 +245,11 @@ aad = utf8("veil-frame-aad-v4") || lp(version) || lp(conversationId)
       || lp(senderDeviceId) || lp(messageType) || header || AD
 ```
 
-All values are the envelope's transmitted fields. Re-labelling a frame (another
-conversation, sender, kind or version) breaks the tag. `expiresAt` is
+All values are the envelope's transmitted fields, as strings exactly as the
+relay delivered them: a `messageType` the receiver cannot parse is bound as
+received, and a missing one as the empty string, never as the kind it falls
+back to. Re-labelling a frame (another conversation, sender, kind or version)
+breaks the tag. `expiresAt` is
 deliberately **not** bound (contract C4): the server may clamp the outer value,
 the authenticated expiry travels in the payload, and receivers expire at
 `min(inner, outer)`. A receiver treats any envelope whose version is not
@@ -240,7 +262,11 @@ the authenticated expiry travels in the payload, and receivers expire at
  "att":null | {"id","ck","n","d","ct","sz","alg"}}
 ```
 
-Compact JSON, all five keys always present, in this order. It is ISO/IEC 7816-4
+Compact JSON, all five keys always present, in this order. One optional key
+may follow them: `"r"`, the id of the message a reply answers (written by the
+web client; the reply link stays out of the server's view). A receiver that
+does not know a key ignores it, as the version policy allows for additions;
+mobile reads such a reply as plain text. It is ISO/IEC 7816-4
 padded (append `0x80`, then `0x00`) to the smallest bucket of 256, 512, ...,
 65536, then multiples of 65536, that fits `len + 1`. Receivers also accept the
 legacy shapes `{"body","kind","expiresAt"(RFC 3339),"att"}` with short
@@ -316,6 +342,25 @@ chose (libsignal's `promoteState`). There are two exceptions:
    frame was then sent before the peer saw the pending handshake, or the peer
    is holding on to a handshake that wins the same comparison.
 
+Abandoned-handshake promotion. Every client MUST apply exception 2 with this
+one carve-out, and no other: the archived state that receives the frame is
+promoted anyway when all of the following hold.
+
+- The current state is v2, was initiated locally, and is still awaiting its
+  first reply (no frame from the peer has decrypted on it).
+- The receiving archived state is v2, was initiated by the peer, has never
+  been sent on, already has a receive counter above zero (it had received a
+  frame before this one), and is bound to the same remote `IKed` as the
+  current state.
+
+A peer that took our handshake would not keep sending on its own, so it did
+not take ours, typically because it cannot open it (the one-time or signed
+prekey it names is gone): holding on to ours would leave everything we send
+unreadable for good. The first competing frame still loses the tie-break as
+above, so true glare settles as before, and frames we sent before the peer's
+second frame stay unreadable to it. (Mobile: `SessionRecord._peerAbandonedOurs`;
+web: `session-record.js`.)
+
 Both peers rank any two handshakes the same way, so the outcome does not depend
 on arrival order. Once messages alternate (each side sends only after it has
 received), both sides send on one state within two round trips, stop repeating
@@ -326,7 +371,15 @@ stepping its own ratchet.
 Identity binding: when an identity verifier is configured (the trust store), it
 decides whether an authenticated PreKey frame may install its state, including
 an identity change in an established conversation, so it MUST pin identities
-itself. Without one, the conversation is bound to the remote `IKed` of its most
+itself. It is also asked, with the state's remote device and `IKed`, before
+every frame sealed to or opened on a v2 state, not only when the state was
+installed (see "Identity trust"): a frame on a state it refuses is
+`identityRejected` and nothing is committed, so the frame opens once the pins
+admit that identity again, and a send on such a state fails without encrypting
+(mobile: `SessionRecipientChanged`; web: `RecipientNotAdmittedError`), upon
+which the messenger asks the directory. A state is reached only by naming its
+identity: a caller that names none cannot seal on a v2 state. Without a
+verifier, the conversation is bound to the remote `IKed` of its most
 recent v2 state (the current state if it is v2, otherwise the most recently
 used archived v2 state): a PreKey frame from any other identity yields
 `identityRejected`, stores nothing and consumes no OPK. Without this rule, any
@@ -343,9 +396,9 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | `ok`                    | authenticated v2 message                                   |
 | `failed`                | malformed, unauthenticated, or prekeys unavailable; `failureReason` says which |
 | `replayed`              | `(pub, N)` already consumed or its chain left behind       |
-| `sessionMissing`        | Normal frame with no matching session                      |
+| `sessionMissing`        | Normal or legacy v1 frame with no matching session         |
 | `awaitingKey`           | group frame whose sender key has not arrived               |
-| `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed |
+| `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed; or a frame on a state whose identity the verifier no longer admits (nothing is committed) |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 
 Non-`ok` results carry an empty body. Callers branch on the status, never on
@@ -357,21 +410,28 @@ Hostile input is a result, never an exception, and leaves session state
 untouched: an envelope whose version, conversationId or senderDeviceId exceeds
 65535 UTF-8 bytes (so `lp` cannot encode it) is an invalid envelope, and an
 authenticated payload whose `x` lies outside ±8.64e15 ms or whose size is not a
-non-negative integer is a malformed payload; both are `failed`.
+non-negative integer is a malformed payload; both are `failed`. A `messageType`
+too long to prefix counts with those routing fields.
 
-### Identity trust (mobile)
+### Identity trust
+
+These rules bind both clients; where their names differ, the mobile name comes
+first and the web name follows.
 
 The directory is relayed by the server, so a client never takes an identity
 key from it on trust alone. Each device keeps a pin table, one entry per
 contact device: `(userId, deviceId) -> IKed`, with `firstSeenAt`, an optional
 `verifiedAt` (the user compared safety numbers or a QR code) and an optional
-`approvedAt`. It lives in the device keystore and is wiped with the device.
+`approvedAt`. It lives in the device keystore (web: IndexedDB) and is wiped
+with the device.
 
 Every identity a conversation is about to use is evaluated against it: before
 any outbound bootstrap (the directory's answer for the peer's active device),
 for every inbound PreKey handshake (the verifier receives the `IKed` the
-handshake proved, after AEAD success and before anything is stored), and for
-every device a group chain key is sealed to or accepted from.
+handshake proved, after AEAD success and before anything is stored), for every
+frame sealed to or opened on a 1:1 state already installed (with that state's
+device and `IKed`; see "Session records and glare"), and for every device a
+group chain key is sealed to or accepted from.
 
 | Verdict | Outcome |
 | ------- | ------- |
@@ -379,23 +439,73 @@ every device a group chain key is sealed to or accepted from.
 | pin matches | proceed |
 | new device, contact never verified | pinned in the same step as the decision, proceed, the conversation gets an `identity.new_device` notice |
 | new device, contact verified | refused until the user approves after re-verifying |
-| different key for a pinned device | refused until the user approves; if the pin was verified, approval requires re-verification |
+| device pinned unverified, another device of the contact verified since (`NewDeviceForKnownUser(verified)`; web `UNVERIFIED_DEVICE`) | refused until the user approves after re-verifying: verifying a contact never vouches for a device that was not compared, also when that device already holds the session |
+| different key for a pinned device | refused until the user approves; if the contact has any verified device, approval requires re-verification |
 | device id already pinned under another user | refused; there is nothing to approve (group chains are keyed by device id) |
+| a key the user declined for that device | refused without asking again |
 
-A refusal is never resolved automatically. In a 1:1 conversation it blocks
-sending (no bootstrap, no encryption) and inbound handshakes from that
-identity yield `identityRejected`, which is retried once the user approves.
-The conversation gets an `identity.changed` notice once per presented key.
+Because the check runs on every frame, an identity the pins stopped admitting
+loses the session it holds at once: a device admitted while its contact was
+unverified, which then held the 1:1 when the user verified another device of
+the contact, neither receives the next reply nor has its frames shown, and is
+held for review like a new device. A frame on a state whose key the pins
+replaced (the user accepted a successor) is refused without raising a change:
+the user already chose.
+
+A refusal is never accepted automatically. In a 1:1 conversation nothing is
+ever sealed to the refused identity: a steady-state send goes ahead only while
+the pins, as they stand at that send, accept the identity its session encrypts
+to; otherwise it asks the directory fresh, and a send that needs the directory
+goes ahead only once the pins accept what it serves. A refused frame, which a
+relay can forge at will, therefore never stops a conversation by itself.
+Inbound frames from a refused identity yield `identityRejected`, which is
+retried once the user approves. A directory answer that serves the pinned key
+again withdraws a change about that device; a frame on the session in use
+withdraws nothing. The conversation gets an `identity.changed` notice once per
+presented key. A new device of an unverified contact is announced in the
+conversation where it first appeared and in every 1:1 with its owner, since
+its pin lets it pass silently everywhere from then on.
+
+Declining. The user either approves a pending change or declines it ("Keep the
+current key"; web "Not their key"). A decline binds to the change the user was
+shown, like an approval. The declined `(userId, deviceId, IKed)` is persisted
+(mobile: the keystore beside the pins; web: IndexedDB) and refused from then
+on, in every conversation, without being raised again until the user accepts
+or verifies that same key. Pending changes are persisted too, so a restart
+neither drops a pending change nor forgets a decline. Applying a session
+(each launch, each sign-in) only forgets what the client holds in memory and
+reads the record back; it never deletes the record. A restored pending change
+is shown without waiting for the next refusal. The identity the
+conversation's current session sends to cannot be declined: there would be no
+current key to keep, so the user compares that one instead (or starts a new
+session to the device the directory serves). A declined key's frames stay
+unreadable and are labelled as refused, and sending continues on the admitted
+session identity. Only sign-out and the device wipe delete the record: they
+forget pending and declined changes, and the record is not read back before
+its deletion completes.
 In a Sender Keys group the refused device is not sealed to and its
 distributions are not installed; the rest of the group proceeds. A chain key
 is sealed once to each trusted device, and the sender records delivery per
 device, so a device approved later, or one a member adds later, gets its own
-copy on a later send (a member's directory entry is reused for at most ten
-minutes), while a device that holds the chain is never sent it again. Notices are
+copy on a later send, while a device that holds the chain is never sent it
+again. The members' devices come from one `GET /keys/group/:conversationId` per
+distribution round, never from one handle lookup per member (the directory
+allows ten of those a minute per device, a group up to 25 members); the answer
+is reused for sending and for checking distribution signers while it is about
+the needed epoch or a later one and at most ten minutes old, and asked once
+more when it lacks a member or device a round needs. A pickup of buffered
+distributions counts as done for its epoch only once every distribution it
+found was installed or refused for good. Notices are
 rows the client inserts itself under the id prefix `notice:`; relayed rows
 carrying that prefix are dropped, and only local rows are rendered as notices.
 
-What a 1:1 conversation encrypts to is always what it shows. A handshake
+What a 1:1 conversation encrypts to is always what it shows. Once it has a
+session, a server conversation list never changes whom it is with: a listing
+that names another user, or turns it into a group, updates only its last
+message and timer. Mobile records whom each such conversation is with in the
+keystore before a list can drop it (`ConversationPeerBindings`), so this also
+holds when an earlier list left the conversation out and no local preview is
+left. A handshake
 the pins admit becomes the engine's sending state, so when it comes from
 another device or proves another identity than the one the conversation
 records, the conversation records that device and key in its place, and
@@ -428,10 +538,13 @@ for the device its session talks to unless the session recorded a different
 key.
 
 Safety numbers (v2) are computed from the pinned `IKed` and the two user ids,
-never from the directory. In a 1:1 conversation the screen shows the device
-the conversation's session is bound to, the one every reply is encrypted to,
-and marking it verified verifies that device; for a group member it shows the
-device the directory calls active. The screen warns when the directory serves
+never from the directory. In a 1:1 conversation the key they are about is the
+session identity: the screen shows the device and key the conversation's
+session is bound to, the one every reply is encrypted to (a pending change
+shows the presented key next to it), and marking it verified verifies that
+device; for a group member it shows the
+device the directory calls active, and the member list marks a member verified
+only when every device pinned for them is. The screen warns when the directory serves
 another key for that device, or another device. A scanned QR payload that does
 not match is a hard failure: nothing is verified or approved. Safety numbers
 never leave the device.
@@ -441,7 +554,17 @@ conversation, that conversation accepts only v2; `veil-envelope-v1` and
 `veil-envelope-v1-dev` frames are refused before decryption with `failed` /
 `downgrade_rejected`. The pin is kept in the keystore apart from session
 state. A Sender Keys group never routes anything but `veil-group-v1` frames to
-the group engine, and never opens a 1:1 session.
+the group engine, and never opens a 1:1 session. Sender Keys mode is pinned the
+same way, the first time a group is listed with it or a `veil-group-v1` frame
+authenticates in it: a later listing that reports it without Sender Keys (an
+honest relay never turns them off) is overruled and the group gets a
+`group.sender_keys_kept` notice once, its sends never reach the pairwise
+engine, and every pairwise frame in it is `failed` / `downgrade_rejected`.
+A `veil-envelope-v1` frame never opens a session: a client that publishes v2
+bundles cannot be the responder of an honest v1 handshake, and the v1
+responder derives its root only from its own identity key and an ephemeral the
+sender chose, so whoever relayed such a frame could read the reply. With no
+legacy state to open it on, it is `sessionMissing`.
 
 Reactions travel end to end: a message of inner kind `reaction` whose body is
 compact JSON `{"v":1,"target":<message id>,"emoji":<1-8 code points>,"op":"add"|"remove"}`.
@@ -626,6 +749,12 @@ padding.
 
 ### Inbound (responder)
 
+Clients that publish v2 bundles never perform this bootstrap (see Version
+pinning above): a v1 frame in a conversation without a legacy state is
+`sessionMissing`. Legacy states exist only when restored from pre-v2 snapshots
+or bootstrapped outbound to a v1 bundle that verifies. The steps are kept for
+byte compatibility.
+
 1. Extract `peerRatchetPub` from the first 32 bytes of the incoming frame's
    decoded ciphertext (`InboundEnvelopeInspector`; it returns null for v2
    frames, which establish their own session).
@@ -714,7 +843,9 @@ without running the code:
   device.
 - Plaintext body and attachment metadata (key, digest, size, type) are encrypted
   inside the GCM payload; the envelope JSON exposes only routing fields, an
-  opaque attachment id and the opaque ciphertext blob.
+  opaque attachment id and the opaque ciphertext blob. The upload ticket
+  carries only the ciphertext's size, its SHA-256 and the constant content
+  type `application/octet-stream`.
 - Mutual authentication (v2): a session can only be opened by a party holding
   the claimed identity's IKx private key (DH1), and the responder's SPK/IKx are
   certified by its Ed25519 identity key.

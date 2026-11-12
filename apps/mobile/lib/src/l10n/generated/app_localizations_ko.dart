@@ -170,13 +170,30 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentCollectTitle => '수집하는 개인정보';
 
   @override
-  String get privacyConsentCollectItem1 => '사용자 핸들 (고유 식별자)';
+  String get privacyConsentCollectItem1 => '사용자 핸들과 이에 연결된 무작위 계정 ID 및 디바이스 ID';
 
   @override
-  String get privacyConsentCollectItem2 => '디바이스 정보 (플랫폼, 디바이스명)';
+  String get privacyConsentCollectItem2 =>
+      '디바이스 정보 (플랫폼, 디바이스 이름)와 푸시 토큰 (푸시 알림에는 메시지 내용이 포함되지 않음)';
 
   @override
-  String get privacyConsentCollectItem3 => '공개키 (암호화 통신용)';
+  String get privacyConsentCollectItem3 => '공개 신원 키와 프리키 (암호화 통신용)';
+
+  @override
+  String get privacyConsentCollectItem4 =>
+      '앱 내 연락처 목록: 추가한 계정 (연락처에 붙인 이름은 이 기기에만 저장)';
+
+  @override
+  String get privacyConsentCollectItem5 =>
+      '대화 참여 정보와 전송 메타데이터: 메시지 도착 시각, 전달·읽음 확인 시각, 디바이스의 마지막 접속일';
+
+  @override
+  String get privacyConsentCollectItem6 =>
+      '통화 기록: 대화, 통화를 건 사람, 통화 유형, 시작·종료 시각, 통화 시간 (30일 보관)';
+
+  @override
+  String get privacyConsentCollectItem7 =>
+      '그룹·채널 이름과 설명 (읽을 수 있는 형태로 저장), 직접 설정한 차단·알림 끔·신고 내역 (신고는 90일 보관)';
 
   @override
   String get privacyConsentPurposeTitle => '수집 목적';
@@ -197,7 +214,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentRetentionItem1 => '계정 삭제 요청 시 즉시 파기';
 
   @override
-  String get privacyConsentRetentionItem2 => '디바이스 해제 시 해당 디바이스 정보 삭제';
+  String get privacyConsentRetentionItem2 =>
+      '디바이스 해제 시 해당 디바이스 정보 삭제, 디바이스 기록은 약 30일 이내 삭제';
 
   @override
   String get privacyConsentRetentionItem3 => '만료된 메시지는 자동 삭제';
@@ -224,7 +242,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentNotCollectedItem2 => '위치 정보';
 
   @override
-  String get privacyConsentNotCollectedItem3 => '연락처, 통화 기록 등 디바이스 개인정보';
+  String get privacyConsentNotCollectedItem3 => '휴대폰 주소록, 통화 기록 등 기기에 저장된 개인정보';
 
   @override
   String get privacyConsentThirdPartyTitle => '제3자 제공';
@@ -748,10 +766,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatNoticeIdentityNewDevice => '이 연락처가 새 기기를 사용하기 시작했습니다.';
 
   @override
+  String get chatNoticeSenderKeysKept =>
+      '서버가 이 그룹을 그룹 암호화 키 없이 표시했습니다. 이 기기는 계속 그 키를 사용합니다.';
+
+  @override
   String get chatIdentityChangedTitle => '안전 번호가 바뀌었습니다';
 
   @override
-  String get chatIdentityChangedBody => '새 안전 번호를 확인할 때까지 전송이 중지됩니다.';
+  String get chatIdentityChangedBody => '확인하기 전에는 새 키로 아무것도 전송되지 않습니다.';
 
   @override
   String get chatIdentityChangedReview => '확인하기';
@@ -1090,27 +1112,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersMarkedVerified => '확인됨으로 표시했습니다';
 
   @override
-  String get safetyNumbersRotateDialogTitle => '세션 키를 교체할까요?';
+  String get safetyNumbersRotateDialogTitle => '새 세션을 시작할까요?';
 
   @override
   String get safetyNumbersRotateDialogBody =>
-      '다음 메시지에서 새로운 Diffie-Hellman 래칫 단계가 강제로 수행됩니다. 이 대화에 저장된 건너뛴 메시지 키는 즉시 폐기됩니다. 이 기기나 상대방 기기가 잠시 노출되었다고 의심되면 사용하세요 — 지난 메시지는 계속 읽을 수 있지만, 탈취된 세션 상태는 더 이상 쓸모가 없어집니다.';
+      '상대방의 현재 키로 키 합의를 새로 수행하고, 다음 메시지부터 새 세션을 사용합니다. 이미 전송 중인 메시지는 계속 열립니다. 이 기기나 상대방 기기가 잠시 노출되었다고 의심되면 사용하세요. 탈취된 이전 세션 사본으로는 새 세션의 내용을 읽을 수 없습니다.';
 
   @override
   String get safetyNumbersCancel => '취소';
 
   @override
-  String get safetyNumbersRotate => '교체';
+  String get safetyNumbersRotate => '시작';
 
   @override
-  String get safetyNumbersSessionRotated => '세션 키를 교체했습니다';
+  String get safetyNumbersSessionRotated => '새 세션이 준비되었습니다. 다음 메시지부터 사용됩니다.';
 
   @override
   String get safetyNumbersNoSessionYet => '아직 세션이 없습니다 — 먼저 메시지를 보내세요';
 
   @override
   String safetyNumbersRotationFailed(String error) {
-    return '교체 실패: $error';
+    return '새 세션을 시작하지 못했습니다: $error';
   }
 
   @override
@@ -1140,19 +1162,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get safetyNumbersGroupBody =>
       '멤버를 탭하면 60자리 안전 번호가 표시됩니다. 신뢰할 수 있는 채널로 비교하세요 — 통화로 읽어주거나 QR을 스캔하세요. 번호가 일치하지 않으면 해당 멤버의 기기가 위협받았을 수 있습니다.';
-
-  @override
-  String get safetyNumbersGroupRotateEyebrow => '그룹 세션 키 교체';
-
-  @override
-  String get safetyNumbersGroupRotateBody =>
-      '다음 그룹 메시지에서 새로운 DH 래칫 단계를 강제하고 이 그룹에 저장된 건너뛴 키를 폐기합니다. 모든 멤버에게 영향을 줍니다 — 참여자 중 누군가의 기기가 잠시 노출되었다면 사용하세요.';
-
-  @override
-  String get safetyNumbersRotatingGroup => '교체 중…';
-
-  @override
-  String get safetyNumbersRotateGroupButton => '그룹 세션 키 교체';
 
   @override
   String get safetyNumbersUnverified => '미확인';
@@ -1196,17 +1205,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersMarkVerified => '확인됨으로 표시';
 
   @override
-  String get safetyNumbersRotateEyebrow => '세션 키 교체';
+  String get safetyNumbersRotateEyebrow => '새 세션';
 
   @override
   String get safetyNumbersRotateBody =>
-      '다음 메시지에서 새로운 DH 래칫 단계를 강제하고 저장된 건너뛴 키를 폐기합니다. 이 기기나 상대방 기기가 잠시 노출되었다면 사용하세요.';
+      '상대방의 현재 키로 키 합의를 새로 수행합니다. 다음 메시지부터 새 세션을 사용하며, 이미 전송 중인 메시지는 계속 열립니다. 이 기기나 상대방 기기가 잠시 노출되었다면 사용하세요.';
 
   @override
-  String get safetyNumbersRotating => '교체 중…';
+  String get safetyNumbersRotating => '시작 중…';
 
   @override
-  String get safetyNumbersRotateButton => '세션 키 교체';
+  String get safetyNumbersRotateButton => '새 세션 시작';
 
   @override
   String get safetyNumbersCardLabel => '안전 번호';
@@ -1244,6 +1253,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get safetyNumbersAcceptNewKey => '새 키 수락';
+
+  @override
+  String get safetyNumbersKeepCurrentKey => '현재 키 유지';
 
   @override
   String get safetyNumbersScanAction => '스캔한 코드 비교';

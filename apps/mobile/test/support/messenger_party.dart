@@ -16,6 +16,7 @@ import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/group_sender_key_coordinator.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/envelope_version_policy.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
@@ -114,6 +115,11 @@ class MessengerParty {
   late VeilMessengerController controller;
   int _tokenGeneration = 0;
 
+  /// What the next boot's trust layer runs before it reads anything back,
+  /// as the app migrates earlier pins once its database opened. A test that
+  /// holds it back sees the trust layer prepare only after sign-in.
+  Future<void> Function()? trustPreparation;
+
   // Bound when the party boots, so a later device move for the same handle
   // leaves this device talking to its own (now silent) socket and client.
   late final FakeRelayClient api = relay.clientFor(device.handle);
@@ -180,7 +186,7 @@ class MessengerParty {
     );
     final api = this.api;
     final keys = KeysApi(api, crypto.keyBundles);
-    trust = IdentityTrust(pins);
+    trust = IdentityTrust(pins, decisions: keystore.scoped(SecureScope.identity), prepare: trustPreparation);
     groupCrypto = GroupSenderKeyCoordinator(
       engine: GroupSenderKeyEngine(),
       sealer: GroupSenderKeySealer(resolveRecipientPrekey: LibIdentityKeys.resolveRemoteX25519),
@@ -205,7 +211,6 @@ class MessengerParty {
         rootDirectoryFactory: () => attachmentDirectory,
       ),
       notificationService: notifications,
-      identityPrivateRefLoader: () async => device.identity.identityPrivateKeyRef,
       sessionSnapshotRestorer: () => lib.restoreSessionsFromSnapshots(
         Map<String, Map<String, dynamic>>.of(_ratchetSnapshots),
       ),
@@ -213,6 +218,7 @@ class MessengerParty {
       keysApi: keys,
       identityTrust: trust,
       envelopeVersions: EnvelopeVersionPolicy(store: keystore.scoped(SecureScope.conversationPolicy)),
+      peerBindings: ConversationPeerBindings(store: keystore.scoped(SecureScope.conversationPolicy)),
       prekeyMaintenance: maintainPrekeys
           ? PrekeyMaintenance(prekeys: lib, keys: keys, persistIdentityRef: (_) async {})
           : null,

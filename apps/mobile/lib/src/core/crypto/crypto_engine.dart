@@ -79,7 +79,10 @@ class SignedPrekeyRotation {
 abstract class PrekeyManager {
   Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100});
 
-  Future<SignedPrekeyRotation> rotateSignedPrekey();
+  /// Draws a new signed prekey under the next id and signs it with
+  /// [createdAt] as its timestamp: the directory's time, which it checks
+  /// the timestamp against (the device clock when omitted).
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt});
 
   /// The newest signed prekey as a bundle to publish, or null when the
   /// identity has none of its own (a v1 identity). Signing is
@@ -111,36 +114,48 @@ class SignedPrekeyPublication {
   final DateTime publishedAt;
 }
 
-/// The identity a session initiator proved in its handshake. Keys are
-/// base64url.
+/// A peer identity a 1:1 session is about to use. Keys are base64url.
+///
+/// [installsSession] claims come from an inbound handshake that proved the
+/// identity and would install a new session for it. The others name the
+/// identity of a session already installed, before a frame is sealed to it
+/// or opened on it: what the pins admitted then may no longer pass.
 class RemoteIdentityClaim {
   const RemoteIdentityClaim({
     required this.conversationId,
     required this.senderDeviceId,
     required this.identityKeyEd25519,
-    required this.identityKeyX25519,
+    this.identityKeyX25519,
+    this.installsSession = true,
   });
 
   final String conversationId;
   final String senderDeviceId;
   final String identityKeyEd25519;
-  final String identityKeyX25519;
+
+  /// Set for an inbound handshake, which proves both identity keys.
+  final String? identityKeyX25519;
+  final bool installsSession;
 }
 
-/// Decides whether an authenticated initiator identity may open a session
-/// (identity pinning). Returning false stores nothing.
+/// Decides whether a peer identity may be used (identity pinning): asked
+/// before an inbound handshake installs a session, and before every frame
+/// sealed to or opened on a session bound to an identity. Returning false
+/// stores and seals nothing.
 typedef RemoteIdentityVerifier = Future<bool> Function(RemoteIdentityClaim claim);
 
 /// Thrown by an engine asked to encrypt to an identity its sending state no
 /// longer reaches: a peer's handshake moved the session after the caller
-/// chose the recipient. Nothing was encrypted; choose the recipient again.
+/// chose the recipient, the caller named no identity, or the pins no longer
+/// admit the one the session is bound to. Nothing was encrypted; choose the
+/// recipient again.
 class SessionRecipientChanged implements Exception {
   const SessionRecipientChanged(this.conversationId);
 
   final String conversationId;
 
   @override
-  String toString() => 'The session of $conversationId moved to another identity before this message was sealed.';
+  String toString() => 'The session of $conversationId no longer reaches the identity this message was meant for.';
 }
 
 /// Private half of a published signed prekey, kept so PreKey frames that
@@ -365,6 +380,7 @@ class CryptoEnvelope {
     required this.messageKind,
     this.expiresAt,
     this.attachment,
+    this.transmittedMessageType,
   });
 
   final String version;
@@ -376,6 +392,12 @@ class CryptoEnvelope {
   final MessageKind messageKind;
   final DateTime? expiresAt;
   final AttachmentReference? attachment;
+
+  /// The messageType string as the relay delivered it ('' when it sent
+  /// none), which the v2 AAD binds: [messageKind] maps an unknown or
+  /// missing value to text, and a relabelled frame must fail its tag. Null
+  /// for an envelope built on this device.
+  final String? transmittedMessageType;
 }
 
 enum DecryptStatus {
@@ -522,13 +544,6 @@ abstract class ConversationSessionBootstrapper {
   // inbound-bootstrap on an incoming envelope. Mock/stub adapters may always
   // return true to short-circuit the bootstrap path in tests.
   bool hasSessionFor(String conversationId) => true;
-
-  // Arms a manual DH ratchet rotation on the next outbound message for this
-  // conversation. Implementations that support forward-secret session state
-  // should also drop any pre-rotation skipped keys. Returns true if an
-  // existing session was armed, false if there's no session yet. Stub/mock
-  // adapters without session state may safely return false.
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 }
 
 abstract class InboundEnvelopeInspector {

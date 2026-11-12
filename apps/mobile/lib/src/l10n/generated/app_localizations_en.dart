@@ -175,15 +175,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get privacyConsentCollectTitle => 'Information we collect';
 
   @override
-  String get privacyConsentCollectItem1 => 'User handle (unique identifier)';
+  String get privacyConsentCollectItem1 =>
+      'User handle, and the random account and device IDs linked to it';
 
   @override
   String get privacyConsentCollectItem2 =>
-      'Device info (platform, device name)';
+      'Device info (platform, device label) and push token; push wake-ups carry no message content';
 
   @override
   String get privacyConsentCollectItem3 =>
-      'Public key (for encrypted communication)';
+      'Public identity key and prekeys (for encrypted communication)';
+
+  @override
+  String get privacyConsentCollectItem4 =>
+      'Your in-app contact list: which accounts you added (the names you give them stay on this device)';
+
+  @override
+  String get privacyConsentCollectItem5 =>
+      'Conversation membership and delivery metadata: when messages arrived, delivery and read-receipt times, the day a device was last seen';
+
+  @override
+  String get privacyConsentCollectItem6 =>
+      'Call records: conversation, who started the call, call type, start and end time, duration (kept 30 days)';
+
+  @override
+  String get privacyConsentCollectItem7 =>
+      'Group and channel names and descriptions (stored readable), and the blocks, mutes and abuse reports you make (reports kept 90 days)';
 
   @override
   String get privacyConsentPurposeTitle => 'Purpose of collection';
@@ -209,7 +226,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentRetentionItem2 =>
-      'Device data removed when device is unpaired';
+      'Device data is removed when the device is unpaired, and its device record within about 30 days';
 
   @override
   String get privacyConsentRetentionItem3 =>
@@ -242,7 +259,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentNotCollectedItem3 =>
-      'Contacts, call logs, or other device personal data';
+      'Your phone\'s address book, its call log, or other personal data stored on your device';
 
   @override
   String get privacyConsentThirdPartyTitle => 'Third-party disclosure';
@@ -784,11 +801,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'This contact started using a new device.';
 
   @override
+  String get chatNoticeSenderKeysKept =>
+      'The server listed this group without its group encryption keys. This device keeps using them.';
+
+  @override
   String get chatIdentityChangedTitle => 'Safety number changed';
 
   @override
   String get chatIdentityChangedBody =>
-      'Sending is paused until you review the new safety number.';
+      'Nothing is sent to the new key until you review it.';
 
   @override
   String get chatIdentityChangedReview => 'Review';
@@ -1135,20 +1156,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersMarkedVerified => 'Marked as verified';
 
   @override
-  String get safetyNumbersRotateDialogTitle => 'Rotate session keys?';
+  String get safetyNumbersRotateDialogTitle => 'Start a new session?';
 
   @override
   String get safetyNumbersRotateDialogBody =>
-      'This forces a fresh Diffie-Hellman ratchet step on your next message. Old skipped message keys for this chat are dropped immediately. Use this if you suspect this device or your peer\'s device was briefly exposed — past messages stay readable, but any stolen session state stops being useful.';
+      'This runs a fresh key agreement with your contact\'s current keys, and your next message starts the new session. Messages already on their way still open. Use this if you suspect this device or your contact\'s device was briefly exposed: a stolen copy of the old session cannot read what the new one carries.';
 
   @override
   String get safetyNumbersCancel => 'Cancel';
 
   @override
-  String get safetyNumbersRotate => 'Rotate';
+  String get safetyNumbersRotate => 'Start';
 
   @override
-  String get safetyNumbersSessionRotated => 'Session keys rotated';
+  String get safetyNumbersSessionRotated =>
+      'New session ready. Your next message starts it.';
 
   @override
   String get safetyNumbersNoSessionYet =>
@@ -1156,7 +1178,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String safetyNumbersRotationFailed(String error) {
-    return 'Rotation failed: $error';
+    return 'Could not start a new session: $error';
   }
 
   @override
@@ -1187,19 +1209,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get safetyNumbersGroupBody =>
       'Tap a member to see their 60-digit safety number. Compare it on a channel you trust — read it aloud over a call or scan the QR. A mismatch means that specific member\'s device may be compromised.';
-
-  @override
-  String get safetyNumbersGroupRotateEyebrow => 'ROTATE GROUP SESSION KEYS';
-
-  @override
-  String get safetyNumbersGroupRotateBody =>
-      'Forces a fresh DH ratchet step on the next group message and drops stashed skipped keys for this group. Affects every member — use if any participant\'s device was briefly exposed.';
-
-  @override
-  String get safetyNumbersRotatingGroup => 'Rotating…';
-
-  @override
-  String get safetyNumbersRotateGroupButton => 'Rotate group session keys';
 
   @override
   String get safetyNumbersUnverified => 'Unverified';
@@ -1243,17 +1252,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersMarkVerified => 'Mark as verified';
 
   @override
-  String get safetyNumbersRotateEyebrow => 'ROTATE SESSION KEYS';
+  String get safetyNumbersRotateEyebrow => 'NEW SESSION';
 
   @override
   String get safetyNumbersRotateBody =>
-      'Forces a fresh DH ratchet step on your next message and drops any stashed skipped keys. Use if this device or your peer\'s was briefly exposed.';
+      'Runs a fresh key agreement with your contact\'s current keys; your next message starts the new session, and messages already on their way still open. Use if this device or your contact\'s was briefly exposed.';
 
   @override
-  String get safetyNumbersRotating => 'Rotating…';
+  String get safetyNumbersRotating => 'Starting…';
 
   @override
-  String get safetyNumbersRotateButton => 'Rotate session keys';
+  String get safetyNumbersRotateButton => 'Start a new session';
 
   @override
   String get safetyNumbersCardLabel => 'SAFETY NUMBER';
@@ -1294,6 +1303,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersAcceptNewKey => 'Accept the new key';
+
+  @override
+  String get safetyNumbersKeepCurrentKey => 'Keep the current key';
 
   @override
   String get safetyNumbersScanAction => 'Compare a scanned code';

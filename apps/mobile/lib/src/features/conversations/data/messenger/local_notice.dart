@@ -8,6 +8,7 @@ import 'identity_trust.dart';
 abstract final class LocalNoticeCodes {
   static const identityChanged = 'identity.changed';
   static const identityNewDevice = 'identity.new_device';
+  static const senderKeysKept = 'group.sender_keys_kept';
 }
 
 /// A notice row and the code it shows.
@@ -35,10 +36,29 @@ LocalNotice? localNoticeFor(
     IdentityChangeResolved() => (null, ''),
   };
   if (code == null) return null;
+  return _notice(event.conversationId, code, subject, conversationMessages, now);
+}
+
+/// The notice that the relay reported a Sender Keys group without Sender
+/// Keys and this device kept them; once per conversation.
+LocalNotice senderKeysKeptNotice(
+  String conversationId, {
+  required List<ChatMessage> conversationMessages,
+  required DateTime now,
+}) =>
+    _notice(conversationId, LocalNoticeCodes.senderKeysKept, '', conversationMessages, now);
+
+LocalNotice _notice(
+  String conversationId,
+  String code,
+  String subject,
+  List<ChatMessage> conversationMessages,
+  DateTime now,
+) {
   final latestOrder = conversationMessages.map((message) => message.conversationOrder).nonNulls.lastOrNull;
   return LocalNotice(
     ChatMessage(
-      id: '$localNoticeIdPrefix$code:${event.conversationId}:$subject',
+      id: '$localNoticeIdPrefix$code:$conversationId:$subject',
       senderDeviceId: '',
       sentAt: now,
       // Sorts right after the newest relayed message it was raised against,
@@ -46,7 +66,7 @@ LocalNotice? localNoticeFor(
       conversationOrder: latestOrder ?? 0,
       envelope: CryptoEnvelope(
         version: '',
-        conversationId: event.conversationId,
+        conversationId: conversationId,
         senderDeviceId: '',
         recipientUserId: '',
         ciphertext: '',

@@ -41,6 +41,27 @@ void main() {
     expect(genuine.messageKind, MessageKind.text);
   });
 
+  test('a messageType the relay relabels to a value this build cannot parse, or drops, fails AEAD', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    await bootstrap(alice, bob, conversationId: conversationId);
+    final codec = bob.adapter.envelopeCodec;
+    final relayed = codec.encodeApiEnvelope(await send(alice, bob, 'text frame', conversationId: conversationId));
+
+    for (final relabel in ['bogus', 'TEXT', null]) {
+      final json = Map<String, dynamic>.of(relayed);
+      if (relabel == null) {
+        json.remove('messageType');
+      } else {
+        json['messageType'] = relabel;
+      }
+      final result = await receive(bob, codec.decodeApiEnvelope(json));
+      expect(result.isOk, isFalse, reason: 'messageType $relabel');
+      expect(result.failureReason, 'aead_failed');
+    }
+    expect((await receive(bob, codec.decodeApiEnvelope(relayed))).body, 'text frame');
+  });
+
   test('outer expiresAt change does not fail and inner expiresAt returned', () async {
     final alice = await createParty('alice');
     final bob = await createParty('bob');

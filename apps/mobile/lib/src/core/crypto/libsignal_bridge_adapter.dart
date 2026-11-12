@@ -366,13 +366,6 @@ class _BridgeSessionBootstrapper implements ConversationSessionBootstrapper {
       auditHint: 'libsignal:inbound-implicit',
     );
   }
-
-  /// libsignal performs a DH ratchet step on every send/receive turn, and a
-  /// full re-key means fetching a fresh prekey bundle — the app layer's
-  /// `_ensureConversationSession` already does that after `wipeCryptoState`
-  /// for a single conversation. No manual arming needed here.
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 }
 
 // ---- messaging ----------------------------------------------------------------

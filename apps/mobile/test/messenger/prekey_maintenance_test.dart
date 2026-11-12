@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show HttpDate;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_session_state.dart';
@@ -15,25 +16,48 @@ import '../support/fake_relay.dart';
 import '../support/mock_relay_parties.dart';
 import '../support/strict_mock_crypto_adapter.dart';
 
-/// This device's side of the directory: the prekey routes it calls.
+/// This device's side of the directory: the prekey routes it calls, with
+/// KeysService's rules for a signed prekey. Its clock is the device's
+/// [deviceNow] plus [skew]; every answer reports it, as the HTTP Date
+/// header would.
 class _Directory extends VeilApiClient {
-  _Directory() : super(baseUrl: 'http://relay.invalid/v1');
+  _Directory(this.deviceNow)
+      : super(baseUrl: 'http://relay.invalid/v1', serverClock: ServerClock(localClock: deviceNow));
+
+  final DateTime Function() deviceNow;
+  Duration skew = Duration.zero;
+  DateTime get now => deviceNow().add(skew);
+
+  /// The device identity a signed prekey must be signed with, once known.
+  String? identityKey;
 
   int available = 0;
   int countRequests = 0;
   final List<List<Map<String, dynamic>>> uploads = [];
   final List<String> signedPrekeyBundles = [];
+  final List<String> refusedSignedPrekeyBundles = [];
   final Set<int> storedOneTimePrekeyIds = {};
 
-  /// How many signed prekey publishes still fail, as when offline.
+  /// How many signed prekey publishes still fail, as when the directory is
+  /// down.
   int failingSignedPrekeyPuts = 0;
+
+  /// How many one-time prekey uploads the directory still refuses.
+  int refusedPrekeyUploads = 0;
+
+  /// Refuses the next signed prekey's timestamp whatever it is, as a
+  /// directory whose clock jumped would.
+  bool refuseNextTimestamp = false;
 
   /// How many requests are carried out but answered with an error, as when
   /// the connection drops before the response arrives.
   int lostAnswers = 0;
 
+  void _stampDate() => serverClock.observe(HttpDate.format(now));
+
   @override
   Future<Map<String, dynamic>> getJson(String path, {required String? accessToken, Map<String, String>? query}) async {
+    _stampDate();
     if (path == '/keys/me') {
       return {
         'user': {'id': 'user-me', 'handle': 'me', 'activeDeviceId': 'dev-me'},
@@ -55,7 +79,12 @@ class _Directory extends VeilApiClient {
 
   @override
   Future<Map<String, dynamic>> postJson(String path, {required String? accessToken, Object? body}) async {
+    _stampDate();
     expect(path, '/prekeys');
+    if (refusedPrekeyUploads > 0) {
+      refusedPrekeyUploads -= 1;
+      throw VeilApiException('Too many prekeys', code: 'validation_failed', statusCode: 400);
+    }
     final prekeys = ((body as Map<String, dynamic>)['prekeys'] as List).cast<Map<String, dynamic>>();
     uploads.add(prekeys);
     // Like the server, keys it already holds are skipped.
@@ -66,12 +95,30 @@ class _Directory extends VeilApiClient {
 
   @override
   Future<Map<String, dynamic>> putJson(String path, {required String? accessToken, Object? body}) async {
+    _stampDate();
     expect(path, '/keys/signed-prekey');
     if (failingSignedPrekeyPuts > 0) {
       failingSignedPrekeyPuts -= 1;
       throw VeilApiException('Service unavailable', statusCode: 503);
     }
     final bundle = (body as Map<String, dynamic>)['signedPrekeyBundle'] as String;
+    final identity = identityKey;
+    if (identity != null) {
+      try {
+        await verifyRemoteBundle(bundle, identity);
+      } catch (_) {
+        throw VeilApiException('Not signed by the device', code: 'invalid_device_signature', statusCode: 400);
+      }
+    }
+    final spkTs = _fieldOf(bundle, 'spkTs');
+    final nowMs = now.millisecondsSinceEpoch;
+    if (refuseNextTimestamp ||
+        spkTs < nowMs - const Duration(hours: 1).inMilliseconds ||
+        spkTs > nowMs + const Duration(minutes: 10).inMilliseconds) {
+      refuseNextTimestamp = false;
+      refusedSignedPrekeyBundles.add(bundle);
+      throw VeilApiException('Stale timestamp', code: 'signed_prekey_timestamp_out_of_window', statusCode: 400);
+    }
     final served = signedPrekeyBundles.lastOrNull;
     if (served != null && _spkIdOf(bundle) <= _spkIdOf(served)) {
       throw VeilApiException('spkId must increase with every rotation', code: 'validation_failed', statusCode: 400);
@@ -87,8 +134,10 @@ class _Directory extends VeilApiClient {
     throw VeilApiException('Connection reset', code: 'network_unavailable');
   }
 
-  static int _spkIdOf(String bundle) =>
-      (json.decode(utf8.decode(b64uDecode(bundle))) as Map<String, dynamic>)['spkId'] as int;
+  static int _spkIdOf(String bundle) => _fieldOf(bundle, 'spkId');
+
+  static int _fieldOf(String bundle, String field) =>
+      (json.decode(utf8.decode(b64uDecode(bundle))) as Map<String, dynamic>)[field] as int;
 }
 
 const _session = AppSessionState(accessToken: 'token', userId: 'user-me', deviceId: 'dev-me', handle: 'me');
@@ -112,9 +161,6 @@ class _RecordingSessions implements ConversationSessionBootstrapper {
 
   @override
   bool hasSessionFor(String conversationId) => _inner.hasSessionFor(conversationId);
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) => _inner.forceRekeyNextSend(conversationId);
 }
 
 void main() {
@@ -129,11 +175,12 @@ void main() {
 
   Future<void> setUpDevice({String? withRef}) async {
     now = start;
-    directory = _Directory();
+    directory = _Directory(() => now);
     prekeyStore = InMemoryLocalPrekeyStore();
     adapter = LibCryptoAdapter(clock: () => now)..setLocalPrekeyStore(prekeyStore);
     identityRef = withRef ?? (await adapter.identity.generateDeviceIdentity('dev-me')).identityPrivateKeyRef;
     adapter.setLocalIdentityLoader(() async => identityRef);
+    directory.identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(identityRef);
     persistedRefs = [];
     maintenance = PrekeyMaintenance(
       prekeys: adapter,
@@ -197,30 +244,138 @@ void main() {
     expect(await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now), isA<PrekeyBundleV2>());
   });
 
-  test('a signed prekey publish that failed is retried by the next run', () async {
-    final v1Ref = _v1IdentityRef();
-    await setUpDevice(withRef: v1Ref);
-    directory.available = 100;
-    directory.failingSignedPrekeyPuts = 1;
+  group('a signed prekey publish that failed', () {
+    test('is sent again unchanged while the directory still takes its timestamp', () async {
+      final v1Ref = _v1IdentityRef();
+      await setUpDevice(withRef: v1Ref);
+      directory.available = 100;
+      directory.failingSignedPrekeyPuts = 1;
 
+      await maintenance.run(_session);
+      expect(directory.signedPrekeyBundles, isEmpty);
+      // The keyring already holds the v2 signed prekey and the upgraded ref.
+      expect(LocalIdentity.tryParse(identityRef)!.version, 2);
+
+      now = now.add(const Duration(minutes: 5));
+      await maintenance.run(_session);
+
+      final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(v1Ref);
+      final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now);
+      expect(published, isA<PrekeyBundleV2>());
+      expect((published as PrekeyBundleV2).spkId, 1, reason: 'the signed prekey that failed to publish, not another');
+      expect(persistedRefs, hasLength(1));
+
+      // Published now: later runs leave it alone until it is a week old.
+      now = now.add(PrekeyMaintenance.resumeInterval);
+      await maintenance.run(_session);
+      expect(directory.signedPrekeyBundles, hasLength(1));
+    });
+
+    test('is replaced by a successor once it is too old to send again', () async {
+      final v1Ref = _v1IdentityRef();
+      await setUpDevice(withRef: v1Ref);
+      directory.available = 100;
+      directory.failingSignedPrekeyPuts = 1;
+      await maintenance.run(_session);
+
+      now = now.add(PrekeyMaintenance.resumeInterval);
+      await maintenance.run(_session);
+
+      final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(v1Ref);
+      final published =
+          await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now) as PrekeyBundleV2;
+      expect(published.spkId, 2);
+      expect(DateTime.fromMillisecondsSinceEpoch(published.spkTimestampMs, isUtc: true), now);
+      expect(directory.refusedSignedPrekeyBundles, isEmpty, reason: 'nothing stale was sent');
+      expect(await adapter.publishedSignedPrekeyId(), 2);
+      expect(persistedRefs, hasLength(1), reason: 'the ref was upgraded once');
+    });
+
+    test('in a weekly rotation is published by the next run, six hours later', () async {
+      await setUpDevice();
+      directory.available = 100;
+      directory.failingSignedPrekeyPuts = 1;
+      now = start.add(const Duration(days: 8));
+      await maintenance.run(_session, force: true);
+      expect(directory.signedPrekeyBundles, isEmpty);
+
+      now = now.add(PrekeyMaintenance.resumeInterval);
+      await maintenance.run(_session);
+
+      expect(directory.refusedSignedPrekeyBundles, isEmpty);
+      expect(await adapter.publishedSignedPrekeyId(), 3);
+    });
+  });
+
+  test('a device whose clock is off signs with the directory time and still publishes', () async {
+    for (final skew in [const Duration(minutes: 15), const Duration(hours: -2)]) {
+      await setUpDevice();
+      directory
+        ..available = 100
+        ..skew = skew;
+      now = start.add(const Duration(days: 8));
+
+      await maintenance.run(_session, force: true);
+
+      final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, directory.identityKey!)
+          as PrekeyBundleV2;
+      expect(DateTime.fromMillisecondsSinceEpoch(published.spkTimestampMs, isUtc: true), now.add(skew));
+      expect(await adapter.publishedSignedPrekeyId(), 2);
+    }
+  });
+
+  test('a refused timestamp draws a successor on the next attempt, however young it is', () async {
+    await setUpDevice();
+    directory
+      ..available = 100
+      ..refuseNextTimestamp = true;
+    now = start.add(const Duration(days: 8));
+    await maintenance.run(_session, force: true);
+    expect(directory.refusedSignedPrekeyBundles, hasLength(1));
+
+    now = now.add(const Duration(minutes: 1));
     await maintenance.run(_session);
+
+    final published =
+        await verifyRemoteBundle(directory.signedPrekeyBundles.single, directory.identityKey!) as PrekeyBundleV2;
+    expect(published.spkId, 3);
+    expect(await adapter.publishedSignedPrekeyId(), 3);
+  });
+
+  test('a refused signed prekey never stops the one-time prekey top-up, nor the other way round', () async {
+    await setUpDevice();
+    directory
+      ..available = 0
+      ..refuseNextTimestamp = true;
+    now = start.add(const Duration(days: 8));
+    await maintenance.run(_session, force: true);
+    expect(directory.uploads, hasLength(1));
     expect(directory.signedPrekeyBundles, isEmpty);
-    // The keyring already holds the v2 signed prekey and the upgraded ref.
-    expect(LocalIdentity.tryParse(identityRef)!.version, 2);
 
-    now = now.add(PrekeyMaintenance.resumeInterval);
-    await maintenance.run(_session);
+    await setUpDevice();
+    directory.refusedPrekeyUploads = 1;
+    now = start.add(const Duration(days: 8));
+    await maintenance.run(_session, force: true);
+    expect(directory.uploads, isEmpty);
+    expect(await adapter.publishedSignedPrekeyId(), 2);
+  });
 
-    final identityKey = await adapter.identity.extractIdentityPublicKeyFromPrivateRef(v1Ref);
-    final published = await verifyRemoteBundle(directory.signedPrekeyBundles.single, identityKey, now: now);
-    expect(published, isA<PrekeyBundleV2>());
-    expect((published as PrekeyBundleV2).spkId, 1, reason: 'the signed prekey that failed to publish, not another');
-    expect(persistedRefs, hasLength(1));
+  test('an unreachable directory draws no signed prekey', () async {
+    await setUpDevice();
+    now = start.add(const Duration(days: 8));
+    final offline = PrekeyMaintenance(
+      prekeys: adapter,
+      keys: KeysApi(_Unreachable(), adapter.keyBundles),
+      persistIdentityRef: (_) async {},
+      clock: () => now,
+    );
 
-    // Published now: later runs leave it alone until it is a week old.
-    now = now.add(PrekeyMaintenance.resumeInterval);
-    await maintenance.run(_session);
-    expect(directory.signedPrekeyBundles, hasLength(1));
+    for (var attempt = 0; attempt < 3; attempt++) {
+      now = now.add(const Duration(hours: 1));
+      await offline.run(_session);
+    }
+
+    expect(await prekeyStore.loadSignedPrekeys(), isEmpty, reason: 'only the registration signed prekey exists');
   });
 
   test('the signed prekey the directory serves is kept until a successor is published', () async {

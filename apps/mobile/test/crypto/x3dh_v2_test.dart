@@ -240,6 +240,60 @@ void main() {
     expect((await receive(mallory, sealed)).body, 'for mallory');
   });
 
+  test('a session bound to an identity is reached only by naming it', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    await bootstrap(alice, bob, conversationId: _conversationId);
+
+    final anonymous = KeyBundle(
+      userId: bob.userId,
+      deviceId: '',
+      handle: bob.name,
+      identityPublicKey: '',
+      signedPrekeyBundle: '',
+    );
+    await expectLater(
+      alice.adapter.messaging.encryptMessage(
+        conversationId: _conversationId,
+        senderDeviceId: alice.deviceId,
+        recipientUserId: bob.userId,
+        body: 'for whoever holds it',
+        messageKind: MessageKind.text,
+        recipientBundle: anonymous,
+      ),
+      throwsA(isA<SessionRecipientChanged>()),
+    );
+    expect((await receive(bob, await send(alice, bob, 'for bob', conversationId: _conversationId))).body, 'for bob');
+  });
+
+  test('the verifier decides every frame sealed or opened, not only the handshake', () async {
+    final alice = await createParty('alice');
+    final bob = await createParty('bob');
+    await bootstrap(alice, bob, conversationId: _conversationId);
+    expect((await receive(bob, await send(alice, bob, 'hello', conversationId: _conversationId))).body, 'hello');
+    final pending = await send(alice, bob, 'held back', conversationId: _conversationId);
+
+    // The pins stop admitting the identity of the session already installed.
+    final claims = <RemoteIdentityClaim>[];
+    var admitted = false;
+    bob.adapter.setRemoteIdentityVerifier((claim) async {
+      claims.add(claim);
+      return admitted;
+    });
+    final refused = await receive(bob, pending);
+    expect(refused.status, DecryptStatus.identityRejected);
+    expect(refused.body, isEmpty);
+    expect(claims.single.installsSession, isFalse);
+    expect(claims.single.identityKeyEd25519, alice.identity.identityPublicKey);
+    expect(claims.single.senderDeviceId, alice.deviceId);
+    await expectLater(send(bob, alice, 'reply', conversationId: _conversationId), throwsA(isA<SessionRecipientChanged>()));
+
+    // Nothing was committed: once admitted, the same frame opens.
+    admitted = true;
+    expect((await receive(bob, pending)).body, 'held back');
+    expect((await receive(alice, await send(bob, alice, 'reply', conversationId: _conversationId))).body, 'reply');
+  });
+
   test('verifier rejection yields identityRejected and stores nothing', () async {
     final alice = await createParty('alice');
     final bob = await createParty('bob');

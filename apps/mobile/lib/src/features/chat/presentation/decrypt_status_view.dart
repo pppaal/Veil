@@ -62,6 +62,7 @@ String systemNoticeText(AppLocalizations l10n, ChatMessage message, String body)
   return switch (body) {
     LocalNoticeCodes.identityChanged => l10n.chatNoticeIdentityChanged,
     LocalNoticeCodes.identityNewDevice => l10n.chatNoticeIdentityNewDevice,
+    LocalNoticeCodes.senderKeysKept => l10n.chatNoticeSenderKeysKept,
     _ => body,
   };
 }

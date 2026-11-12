@@ -39,7 +39,13 @@ const RULES = {
   authBeforeThrottle: 'auth-before-throttle',
   caddyStripsClientIp: 'caddy-strips-client-ip',
   corsThroughSharedOptions: 'cors-through-shared-options',
+  noDatabaseDumps: 'no-database-dumps',
 };
+
+// Deployment files: every root docker-compose*.yml and everything under
+// infra/.
+const INFRA_DIR = 'infra';
+const DATABASE_DUMP_TOOLS = /\b(pg_dump|pg_dumpall|pg_basebackup|pgbackrest|wal-g)\b/;
 
 // The body of every reverse_proxy directive (empty when it has no block).
 // Brace-balanced, because placeholders such as {remote_host} nest inside it.
@@ -302,6 +308,23 @@ export function runPolicyChecks(rootDir) {
     }
   }
 
+  // No database dumps or base backups in the deployment: a dump keeps deleted
+  // accounts, burned one-time links and expired ciphertext past every window
+  // docs/metadata-retention.md publishes (the same reason Redis keeps no AOF).
+  const composeFiles = readdirSync(rootDir).filter((name) =>
+    /^docker-compose.*\.ya?ml$/.test(name),
+  );
+  for (const file of [
+    ...composeFiles.map((name) => join(rootDir, name)),
+    ...collectFiles(INFRA_DIR),
+  ]) {
+    if (DATABASE_DUMP_TOOLS.test(readFileSync(file, 'utf8'))) {
+      failures.push(
+        `[${RULES.noDatabaseDumps}] Deployment files must not dump or back up the database: ${display(file)}`,
+      );
+    }
+  }
+
   // Caddy must overwrite client-supplied forwarding headers on every proxied
   // request and keep client addresses out of its access log.
   const caddyfile = readTarget(CADDYFILE);
@@ -357,6 +380,7 @@ export const CLEAN_FIXTURE = {
   [LOGGING_INTERCEPTOR]: "logger.info('request.completed', { route: routeTemplate(request) });\n",
   [EXCEPTION_FILTER]: "logger.warn('request.rejected', { route: routeTemplate(request) });\n",
   [ENV_SCHEMA]: 'VEIL_ENABLE_SWAGGER: envBoolean(false),\n',
+  'docker-compose.prod.yml': 'services:\n  postgres:\n    image: postgres:16-alpine\n',
   [CADDYFILE]: [
     'site {',
     '\treverse_proxy api:3000 {',
@@ -376,6 +400,12 @@ export const CLEAN_FIXTURE = {
 };
 
 const SEEDED_VIOLATIONS = [
+  {
+    rule: RULES.noDatabaseDumps,
+    files: {
+      'docker-compose.prod.yml': `${CLEAN_FIXTURE['docker-compose.prod.yml']}  backup:\n    command: ["sh", "-c", "pg_dump -F c -f /backups/db.dump"]\n`,
+    },
+  },
   {
     rule: RULES.noRecoveryRoutes,
     files: {

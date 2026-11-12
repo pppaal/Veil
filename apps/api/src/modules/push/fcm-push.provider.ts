@@ -3,7 +3,7 @@ import { createPrivateKey, createSign } from 'node:crypto';
 import { badRequest } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 
-import type { MessagePushHint, PushProvider } from './push.types';
+import { PUSH_DELIVERY_TIMEOUT_MS, type MessagePushHint, type PushProvider } from './push.types';
 
 type FcmRequestShape = {
   endpoint: string;
@@ -85,6 +85,7 @@ export class FcmMetadataPushProvider implements PushProvider {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(PUSH_DELIVERY_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw Object.assign(
@@ -122,6 +123,7 @@ export class FcmMetadataPushProvider implements PushProvider {
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         assertion,
       }),
+      signal: AbortSignal.timeout(PUSH_DELIVERY_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw Object.assign(

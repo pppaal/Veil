@@ -1,6 +1,7 @@
 # Claims-as-code ledger. Every privacy or security claim VEIL makes in public
 # copy (README, privacy policies, site/, store/, the store listing drafts in
-# docs/launch/ and docs/app-store-listing-metadata.md, the security roadmap) is
+# docs/launch/ and docs/app-store-listing-metadata.md, the security roadmap,
+# the Korean guides docs/사용설명서.md and docs/tester-guide-ko.md) is
 # listed here with the sentences that make it and the tests or CI gates that
 # back it.
 # scripts/claims-check.mjs fails CI when a claim loses its evidence, a quoted
@@ -143,6 +144,12 @@ claims:
         quote: "The names, descriptions and labels are stored in readable form, and all of it is tied to the account."
       - file: docs/app-store-listing-metadata.md
         quote: "Privacy Policy URL: https://… (required — must state no-plaintext-on-server, metadata retention windows, no third-party sharing)"
+      - file: docs/사용설명서.md
+        quote: "그룹·채널의 이름과 설명, 기기 이름은 아직 읽을 수 있는 형태로 저장되고, 핸들·연락처 목록·대화 멤버·통화 기록 같은 메타데이터도 서버가 봅니다 (서버 데이터 목록)."
+      - file: docs/사용설명서.md
+        quote: "서버에 메시지 평문 저장 | ❌ 안 함 (그룹·채널 이름·설명, 기기 이름은 읽을 수 있는 형태) | ✅ 함"
+      - file: docs/사용설명서.md
+        quote: "압수수색 시 | 메시지 내용은 암호문, 핸들·연락처·멤버·통화 기록·그룹 이름은 읽힘 (목록) | 평문 제공 가능"
     evidence:
       - gate: scripts/schema-privacy-check.mjs
       - test: scripts/__tests__/schema-privacy-check.test.mjs
@@ -282,6 +289,20 @@ claims:
         quote: "Misleading \"restore/backup\" framing risks App Review rejection and contradicts the metadata."
       - file: store/appstore/screenshot-spec.md
         quote: "[ ] Device-transfer shot does not imply backup/recovery."
+      - file: docs/사용설명서.md
+        quote: "백업 없음 · 복구 없음 을 핵심 가치로 하는 종단간 암호화 메신저입니다."
+      - file: docs/사용설명서.md
+        quote: "백업·복구·비밀번호 재설정이 없습니다."
+      - file: docs/사용설명서.md
+        quote: "이 원칙들은 문서로만 적힌 게 아니라 scripts/policy-check.mjs 가 CI 에서 강제합니다 — 누가 복구 기능을 코드에 추가하면 빌드가 빨강이 됩니다."
+      - file: docs/사용설명서.md
+        quote: "백업/복구 | ❌ 없음 | ✅ 톡서랍"
+      - file: docs/사용설명서.md
+        quote: "복구 없음 철학: docs/no-recovery.md"
+      - file: docs/tester-guide-ko.md
+        quote: "백업 없음, 복구 없음"
+      - file: docs/tester-guide-ko.md
+        quote: "서버에 키가 없어서 우리가 복구해줄 수가 없어요."
     evidence:
       - gate: scripts/policy-check.mjs
       - test: scripts/__tests__/policy-check.test.mjs
@@ -387,6 +408,8 @@ claims:
     sources:
       - file: docs/security-hardening-roadmap.md
         quote: "Crypto-heavy items (C, D, post-quantum, sealed sender) stay behind the external audit; build/padding work (A, B) can proceed in parallel now."
+      - file: docs/tester-guide-ko.md
+        quote: "종단간 암호화는 동작하지만 외부 보안 감사가 아직 안 끝났어요"
     evidence:
       - test: apps/api/test/unit/app-config.service.spec.ts
         name: "production requires VEIL_AUDIT_REPORT_SHA256"

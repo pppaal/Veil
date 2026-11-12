@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeSafetyService } from '../../../test/support/fake-services';
-import { RealtimeGateway } from './realtime.gateway';
+import { CALL_SIGNAL_MAX_DATA_LENGTH, RealtimeGateway } from './realtime.gateway';
 
 type Emitted = { userId: string; event: string; payload: unknown };
 
@@ -154,6 +154,20 @@ describe('RealtimeGateway typing relay', () => {
     expect(findUnique).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
     expect(emitted).toEqual([]);
+  });
+
+  it('records the typing throttle only for conversations the caller may type in', async () => {
+    const { gw, alice, typingFrom } = directChat();
+    const throttled = (
+      gw as unknown as { typingRateLimitBySocket: Map<string, Map<string, number>> }
+    ).typingRateLimitBySocket;
+    const client = typingFrom(alice, 'alice') as { id: string };
+
+    for (let i = 0; i < 10; i += 1) {
+      await gw.handleTypingStart(client as never, { conversationId: randomUUID() });
+    }
+
+    expect(throttled.get(client.id)?.size ?? 0).toBe(0);
   });
 });
 
@@ -374,6 +388,89 @@ describe('RealtimeGateway call.signal relay', () => {
     });
 
     expect(emitted).toEqual([]);
+  });
+
+  it.each(['ended', 'declined', 'missed'])(
+    'drops a signal for a call that is %s',
+    async (status) => {
+      const { gw, prisma, emitted, alice, callId } = callFixture();
+      prisma.callRecords[0].status = status as never;
+
+      await gw.handleCallSignal(socket({ userId: alice.userId, deviceId: alice.deviceId }), {
+        callId,
+        kind: 'ice',
+        data: 'opaque-ice',
+      });
+
+      expect(emitted).toEqual([]);
+    },
+  );
+
+  it('relays a signal for an active call', async () => {
+    const { gw, prisma, emitted, alice, bob, callId } = callFixture();
+    prisma.callRecords[0].status = 'active' as never;
+
+    await gw.handleCallSignal(socket({ userId: alice.userId, deviceId: alice.deviceId }), {
+      callId,
+      kind: 'ice',
+      data: 'opaque-ice',
+    });
+
+    expect(emitted.map((event) => event.userId)).toEqual([bob.userId]);
+  });
+
+  it('drops an oversized signal without touching prisma', async () => {
+    const { gw, prisma, emitted, alice, callId } = callFixture();
+    const findCall = jest.spyOn(prisma.callRecord, 'findUnique');
+
+    await gw.handleCallSignal(socket({ userId: alice.userId, deviceId: alice.deviceId }), {
+      callId,
+      kind: 'offer',
+      data: 'x'.repeat(CALL_SIGNAL_MAX_DATA_LENGTH + 1),
+    });
+
+    expect(findCall).not.toHaveBeenCalled();
+    expect(emitted).toEqual([]);
+  });
+
+  it('limits each device to a burst of events, refilled over time', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-12T10:00:00.000Z') });
+    try {
+      const { gw, prisma, emitted, alice, bob, callId } = callFixture();
+      const findCall = jest.spyOn(prisma.callRecord, 'findUnique');
+      const signal = (client: unknown) =>
+        gw.handleCallSignal(client as never, { callId, kind: 'ice', data: 'opaque-ice' });
+      // Two sockets of one device share the budget.
+      const first = socket({ userId: alice.userId, deviceId: alice.deviceId });
+      const second = socket({ userId: alice.userId, deviceId: alice.deviceId });
+
+      for (let i = 0; i < 20; i += 1) await signal(first);
+      for (let i = 0; i < 10; i += 1) await signal(second);
+      expect(emitted).toHaveLength(30);
+      expect(findCall).toHaveBeenCalledTimes(30);
+
+      await signal(first);
+      await gw.handleTypingStart(
+        socket({ userId: alice.userId, deviceId: alice.deviceId, handle: 'alice' }),
+        { conversationId: prisma.callRecords[0].conversationId },
+      );
+      expect(emitted).toHaveLength(30);
+      expect(findCall).toHaveBeenCalledTimes(30);
+
+      // Another device has its own budget.
+      await gw.handleCallSignal(socket({ userId: bob.userId, deviceId: bob.deviceId }), {
+        callId,
+        kind: 'ice',
+        data: 'opaque-ice',
+      });
+      expect(emitted).toHaveLength(31);
+
+      jest.advanceTimersByTime(1000);
+      for (let i = 0; i < 6; i += 1) await signal(first);
+      expect(emitted).toHaveLength(36);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('drops a signal with an unknown kind without touching prisma', async () => {

@@ -11,7 +11,7 @@ Device join is allowed only when an already trusted old device is still availabl
 3. New device receives the session payload via QR or equivalent local handoff.
 4. New device calls `POST /v1/device-transfer/claim` with its own public material and an auth proof over `transfer-claim:<sessionId>:<transferToken>`.
 5. Both devices show the claimant fingerprint; the user compares them group by group.
-6. Old device calls `POST /v1/device-transfer/approve` for that specific `claimId`.
+6. Old device calls `POST /v1/device-transfer/approve` for that specific `claimId`, with `approvalProof`: its auth key's signature over `transfer-approve:<sessionId>:<claimId>:<claimantFingerprint>` (the fingerprint exactly as the claim and status responses give it).
 7. New device calls `POST /v1/device-transfer/complete` with the approved `claimId` and a fresh proof over `transfer-complete:<sessionId>:<claimId>:<transferToken>` from the same new-device auth key used during claim.
 8. API verifies token, session freshness, claim approval, old-device activity, and final new-device possession proof.
 9. API creates the new trusted device, links it to the approving old device, moves preferred routing to the new device, and revokes the old device in the same transaction.
@@ -64,6 +64,47 @@ It binds both keys the new device will be trusted with. The earlier 6+4
 character preview of the auth key alone was cheap to collide. The auth key has
 been verified as a 32-byte Ed25519 key before the fingerprint is computed, so
 the concatenation is unambiguous.
+
+## Approval needs the old device's key, not only its token
+
+Approving hands the account to the claimant's keys for good, so a bearer
+token is not enough: a stolen access or refresh token of the old device would
+otherwise let a thief run init, claim with keys of their own, approve and
+complete, revoke the real device and take the handle (there is no recovery).
+The approval therefore carries `approvalProof`, the old device's signature
+with the auth key it logs in with over
+`transfer-approve:<sessionId>:<claimId>:<claimantFingerprint>`. Binding the
+fingerprint means the signature covers exactly the keys the user compared on
+both screens; the `transfer-approve:` prefix keeps it apart from a login
+proof. A missing or wrong proof answers `401 invalid_device_signature` and
+leaves the claim unapproved, so `complete` keeps answering
+`403 transfer_approval_required`.
+
+A production relay requires the proof. A development relay checks a proof it
+receives and accepts an approval without one, so clients released before the
+proof keep working until they sign; the production boot gate means no public
+relay runs that way. This does not help against malware or same-origin script
+on the old device itself, which can use its key.
+
+The same step-up guards the other requests a stolen token could use to lock
+the owner out for good: `DELETE /v1/account` and `POST /v1/devices/revoke`
+for the calling device or the account's last active device carry
+`{challengeId, signature}`, a challenge from `POST /v1/auth/challenge` for the
+calling device signed over `account-delete:<challengeId>:<challenge>` or
+`device-revoke:<deviceId>:<challengeId>:<challenge>`.
+
+## Retrying `complete`
+
+`complete` commits (the new device created, the old one revoked) before its
+answer leaves the server, and the old device then logs itself out. If that
+answer is lost, the new device sends the same request again: a completed
+session whose token matches answers with the original completion (same
+`newDeviceId`, `handle` and `completedAt`) when the proof verifies against the
+new device's stored auth key, and changes nothing. A proof by any other key
+answers `401 transfer_completion_invalid`; once the new device has been
+revoked, `403 transfer_session_inactive`. Clients keep the new device's keys
+until they have its id and a session, and retry `complete` on a network error
+or 5xx instead of discarding them.
 
 ## Explicit failure condition
 

@@ -84,7 +84,7 @@ The server must not handle:
 
 - **Disappearing messages**: per-conversation default TTL (seconds) stored on `Conversation.disappearingTimerSeconds`. Client stamps `expiresAt` on each outgoing message; server enforces as an upper bound and lazily prunes on read. A global cron sweeps idle conversations every 10 minutes. `conversation.timer.changed` fans out to every member so multi-device stays in sync.
 - **View-once messages**: `Message.viewOnce` flag. When any non-sender member marks read, server hard-deletes the row and broadcasts `message.consumed` so every member drops the ciphertext from local cache.
-- **User blocks**: bidirectional check on `createDirect` (returns `NotFound` — opaque to blocked user) and on `sendMessage` (returns `peer_unreachable`). Block state applies to direct conversations; groups expect block-by-removal.
+- **User blocks**: bidirectional check on `createDirect` (returns `NotFound` — opaque to blocked user), on the handle lookups `GET /users/:handle`, `GET /keys/:handle` and the legacy prekey claim (answered exactly like an unknown handle, with no prekey claimed), and on `sendMessage` (returns `peer_unreachable`, which does reveal the block inside an existing direct conversation). Block state applies to direct conversations; groups expect block-by-removal.
 - **Conversation mutes**: `ConversationMute` row suppresses push wake while leaving realtime + persistence untouched, so other devices stay in sync. Optional `mutedUntil` auto-unmutes.
 - **Abuse reports**: reporter files to `AbuseReport` table with a tight throttle (6/min) so the moderation queue can't be weaponized as a DoS against a target.
 

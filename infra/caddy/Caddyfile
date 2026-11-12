@@ -36,9 +36,11 @@
 		-Server
 	}
 
-	# Web demo lives at /demo. It loads its own JS so we just proxy the
-	# static assets that the API container serves at /demo/*.
-	handle_path /demo* {
+	# The API serves /demo/* itself, under that prefix: in production only the
+	# one-time link viewer (/demo/s.html and the modules it loads), the whole
+	# web demo otherwise. `handle`, not `handle_path`: stripping /demo would
+	# turn every viewer request into a 404.
+	handle /demo* {
 		reverse_proxy api:3000 {
 			header_up X-Forwarded-Proto https
 			header_up -CF-Connecting-IP

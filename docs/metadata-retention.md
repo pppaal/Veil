@@ -56,11 +56,11 @@ that schedules sweeps. It runs shortly after boot and then every 10 minutes.
 | `abuse_reports` | Reporter, reported user, reason | 90 days. There is no note column: a free-text note from an older client is accepted and dropped. | `RetentionService` (`abuseReports`); `SafetyService` |
 | `one_time_prekeys` | Public X3DH one-time prekeys | Unconsumed: until claimed or the device is deleted. Consumed: `VEIL_PREKEY_CONSUMED_RETENTION_DAYS` (default 30; 0 keeps them) so a keyId is never reused mid-flight. | `RetentionService` (`consumedPrekeys`) |
 | `secret_blobs` | One-time link ciphertext | Deleted on first read; unopened links are deleted at `expiresAt`. | `SecretService`; `RetentionService` (`secretBlobs`) |
-| `device_transfer_sessions` | Transfer token hash, old device, expiry | Closed after the transfer TTL (default 300 s); deleted with their old device (below) or with the account. | `DeviceTransferService`; `RetentionService` (`revokedDevices`); `AccountService` |
+| `device_transfer_sessions` | Transfer token hash, old device, expiry, and the new device a completed transfer created (so a retried completion whose first answer was lost gets the same answer) | Closed after the transfer TTL (default 300 s); deleted with their old device (below) or with the account. | `DeviceTransferService`; `RetentionService` (`revokedDevices`); `AccountService` |
 | `devices` | Public identity, prekey and auth keys, push token, label, last-seen and last-sync days | Active devices: until revoked or the account is deleted. Revoking a device (or transferring away from it) replaces its label with "Removed device" and deletes its push token, unclaimed one-time prekeys and sync cursors at once; the row itself is deleted once it has been revoked for 30 days and no message, attachment or call record references it any more. `lastSeenAt` and `lastSyncAt` hold the start of the UTC day only and are written at most once a day, so they do not form an activity timeline. | `revokeDevice` (`DevicesService`, `DeviceTransferService`); `RetentionService` (`revokedDevices`); `AccountService` |
-| `users`, `user_contacts`, `user_blocks`, `conversation_mutes` | Handle and social graph (no display names, profile text or contact nicknames) | Account lifetime. | `AccountService` |
+| `users`, `user_contacts`, `user_blocks`, `conversation_mutes` | Handle and social graph (no display names, profile text or contact nicknames) | Account lifetime. A deletion that stops part-way leaves the account revoked; the server finishes it within about an hour (`AccountDeletionResumer`), since the user's tokens no longer authenticate. | `AccountService` |
 | `retired_handles` | Peppered HMAC of a deleted account's handle | 90 days after the account is deleted; until then the handle cannot be registered again. | `AccountService` (insert); `RetentionService` (`retiredHandles`) |
-| `conversations`, `conversation_members`, `device_conversation_states`, `group_metas`, `channel_metas`, `group_member_epochs` | Current membership, the epoch each group member joined at, and per-device sync and read cursors (conversation orders, no timestamps) | Conversation or account lifetime. Leaving a group or channel, or being removed, deletes the member's membership, epoch row, sync cursors and mute for that conversation, so former members are not kept. A direct conversation's dedupe key names both members; it is cleared when either deletes their account, and a direct conversation left with no members is deleted. | `GroupsService`, `ChannelsService`, `AccountService`, conversation deletion |
+| `conversations`, `conversation_members`, `device_conversation_states`, `group_metas`, `channel_metas`, `group_member_epochs` | Current membership, the epoch each group member joined at, and per-device sync and read cursors (conversation orders, no timestamps) | Conversation or account lifetime. Leaving a group or channel, or being removed, deletes the member's membership, epoch row, sync cursors and mute for that conversation, so former members are not kept. `group_metas.created_by_user_id` names the group's current owner (ownership transfer moves it), so it never names a former member, and deleting an account deletes the groups and channels it currently owns, not ones it once created. A direct conversation's dedupe key names both members; it is cleared when either deletes their account, and a direct conversation left with no members is deleted. | `GroupsService`, `ChannelsService`, `AccountService`, conversation deletion |
 
 ### Short-lived keys in the ephemeral store (Redis)
 
@@ -74,12 +74,35 @@ the keys that were alive at the last snapshot, not a history of expired ones.
 On a server that has gone idle, the last snapshot stays until the next write
 replaces it, so a key in it can outlive its TTL until then.
 
+### No database backups
+
+The production stack runs no database dump, base backup or snapshot of the
+Postgres volume, and the deployment guides set none up: a dump would keep
+deleted accounts and handles, burned one-time links, expired and view-once
+ciphertext, receipts and the social graph past every window in this document,
+on the host and wherever it is copied. `scripts/policy-check.mjs`
+(`no-database-dumps`) fails CI when a compose file or anything under `infra/`
+runs a dump tool. The only dump the runbook mentions is the one taken right
+before an upgrade that cannot be rolled back otherwise, which the operator
+deletes as soon as the upgrade is verified (`vps-deploy-runbook.md` 8.1).
+
+### Database and container logs
+
+Postgres runs with `log_error_verbosity=terse`, so a logged error carries no
+DETAIL line: a unique violation does not log the conflicting key (both user
+ids of a direct conversation, a handle), and statements are logged with their
+`$n` placeholders only. Every production container logs to Docker's
+`json-file` driver capped at three 10 MB files, so a container log is
+overwritten as it grows rather than kept until the container is removed. See
+`observability-hygiene.md`.
+
 | Key | Kept for | What it links |
 | --- | --- | --- |
 | `veil:thr:*` (and `…:blocked`) | The rate-limit window, 60 seconds | A request count per route and client. The key is an unkeyed SHA-256 of the route and the client: `ip:<address>` on routes that need no sign-in, `dev:<deviceId>` on the others. Hashing every IPv4 address recovers the client's address in roughly 80 to 100 minutes on one CPU core. |
 | `budget:*` | 1 hour | Key-directory budgets. The key holds a SHA-256 digest of who looked up whom instead of the ids. The digest is unkeyed, so someone who also holds the database ids can test a guessed pair; the one-hour expiry, with the snapshot caveat above, is what limits it. |
-| `auth:challenge:*`, `auth:challenge-index:*` | `VEIL_AUTH_CHALLENGE_TTL_SECONDS` (default 120 seconds) | A pending sign-in challenge and the device it was issued to. Taken on use. |
-| `auth:refresh:*`, `auth:refresh-family:*`, `auth:refresh-families:*`, `auth:rotated:*` | 30 days | The SHA-256 of a refresh token (never the token), with the user id, device id and token family it belongs to. Removed on rotation, logout and reuse detection; otherwise, account deletion included, they expire on their TTL (the device they name no longer exists, so they no longer authenticate). |
+| `auth:challenge:*`, `auth:challenge-index:*` | `VEIL_AUTH_CHALLENGE_TTL_SECONDS` (default 120 seconds) | A pending sign-in or step-up challenge and the device it was issued to. Taken on use; removed on account deletion. |
+| `auth:refresh:*`, `auth:refresh-family:*`, `auth:refresh-families:*` | Until a UTC midnight 31 days after the day of the last refresh (at least 30 days) | The SHA-256 of a refresh token (never the token), with the user id, device id and token family it belongs to. Removed on rotation, logout, reuse detection and account deletion. The expiry is set to a UTC midnight, not to "now + 30 days", so it records the day of the last refresh and not its time, like `devices.lastSeenAt`. A refresh token carries its family id, so a replayed old token is recognised without a record per rotation. |
+| `auth:rotated:*` | Until a UTC midnight, at most 31 days | Only for refresh tokens issued before tokens carried their family id: the family a rotated one belonged to, so its replay is still caught. One per pre-upgrade session at most; none is written for a newer token, so the last expires 31 days after the upgrade. It names no user or device. |
 | `auth:blacklist:*` | Until the access token would expire (at most 1 hour) | The id of a logged-out access token, with its user and device ids. |
 | `group:keydist:*` | 30 minutes | A sealed Sender Keys chain-key distribution, addressed by conversation, epoch and the sending and receiving user and device. The server cannot open it; see `group-sender-keys-design.md`. |
 | `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session: the new device's label, platform and public keys. See `device-transfer-flow.md`. |

@@ -23,6 +23,8 @@ import {
 } from '../../common/conversation-access/conversation-policy';
 import { recordDeviceSynced } from '../../common/device-activity';
 import { apiError } from '../../common/errors/api-error';
+import { AppLoggerService } from '../../common/logger/app-logger.service';
+import { describeFailure } from '../../common/logger/describe-failure';
 import { PrismaService } from '../../common/prisma.service';
 import { MetricsService } from '../metrics/metrics.service';
 import { wakesRecipient } from '../push/push-policy';
@@ -66,6 +68,9 @@ type NewMessageFields = {
   receiptUserIds: string[];
 };
 
+// Recipients whose push wakes are dispatched at the same time.
+const PUSH_WAKE_CONCURRENCY = 8;
+
 @Injectable()
 export class MessagesService {
   constructor(
@@ -76,6 +81,7 @@ export class MessagesService {
     private readonly metrics: MetricsService,
     private readonly access: ConversationAccessService,
     private readonly config: AppConfigService,
+    private readonly logger: AppLoggerService,
   ) {}
 
   async send(auth: Actor, dto: SendMessageDto): Promise<SendMessageResponse> {
@@ -160,18 +166,20 @@ export class MessagesService {
     });
 
     const broadcastSummary = toMessageSummary(created.message, { broadcast: true });
-    const wakeRecipients = wakesRecipient(dto.envelope.messageType);
     for (const recipientUserId of recipientUserIds) {
       this.realtimeGateway.emitToUser(recipientUserId, 'message.new', broadcastSummary);
-      if (wakeRecipients) {
-        await this.dispatchPushFallbackIfNeeded(recipientUserId, dto.conversationId);
-      }
     }
     this.realtimeGateway.emitConversationMembers(
       memberUserIds.map((userId) => ({ userId })),
       'conversation.sync',
       { conversationId: dto.conversationId, reason: 'message' },
     );
+    // Push is a fallback and must never hold up the relay: every realtime
+    // event is out first, and the wakes run after the response, so a slow or
+    // hung push provider delays neither the sender's answer nor any member.
+    if (wakesRecipient(dto.envelope.messageType)) {
+      void this.dispatchPushFallbacks(recipientUserIds, dto.conversationId);
+    }
 
     return {
       message: toMessageSummary(created.message, { viewerUserId: auth.userId }),
@@ -558,6 +566,28 @@ export class MessagesService {
     await recordDeviceSynced(this.prisma, deviceId);
   }
 
+  // Never rejects: it runs detached from the request. A few recipients at a
+  // time, so a large group neither waits on one slow wake after another nor
+  // takes every database connection at once.
+  private async dispatchPushFallbacks(
+    recipientUserIds: readonly string[],
+    conversationId: string,
+  ): Promise<void> {
+    const queue = [...recipientUserIds];
+    const worker = async () => {
+      for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+        try {
+          await this.dispatchPushFallbackIfNeeded(next, conversationId);
+        } catch (error) {
+          this.logger.warn('push.wake_dispatch_failed', { error: describeFailure(error) });
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(PUSH_WAKE_CONCURRENCY, queue.length) }, worker),
+    );
+  }
+
   private async dispatchPushFallbackIfNeeded(
     recipientUserId: string,
     conversationId: string,
@@ -582,11 +612,12 @@ export class MessagesService {
       select: { id: true, pushToken: true },
     });
 
-    for (const device of recipientDevices) {
-      if (!device.pushToken || connectedDeviceIds.has(device.id)) {
-        continue;
-      }
-      await this.pushService.sendMessageHint(device.pushToken, { kind: 'wake' });
-    }
+    // PushService.sendMessageHint never rejects (it logs and counts
+    // failures); the devices are woken in parallel.
+    await Promise.all(
+      recipientDevices
+        .filter((device) => device.pushToken && !connectedDeviceIds.has(device.id))
+        .map((device) => this.pushService.sendMessageHint(device.pushToken!, { kind: 'wake' })),
+    );
   }
 }

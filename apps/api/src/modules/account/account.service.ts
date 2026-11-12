@@ -8,8 +8,15 @@ import {
   ATTACHMENT_STORAGE_GATEWAY,
   type AttachmentStorageGateway,
 } from '../attachments/attachment-storage.gateway';
+import { AuthService } from '../auth/auth.service';
 import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+
+// A deletion still 'revoked' this long after its last attempt began has
+// stopped (a failed step, a restart, a crash), and resumeUnfinishedDeletions
+// finishes it. Long enough not to race a deletion still running in a request.
+export const UNFINISHED_DELETION_GRACE_MS = 60 * 60 * 1000;
+const RESUME_BATCH_SIZE = 20;
 
 // Right-to-erasure cascade for a full account wipe. Order matters — several
 // FKs in schema.prisma are `onDelete: Restrict` (Message.senderDevice,
@@ -17,9 +24,11 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 // DeviceTransferSession.oldDevice, GroupMeta.createdBy, ChannelMeta.createdBy),
 // so we must remove those rows before deleting the devices or the user they
 // point at. Product intent: when a user deletes their account, their outbound
-// messages and any conversations they created go too — this is a
+// messages and the groups and channels they currently own go too — this is a
 // privacy-first messenger and sender→user linkage is still identifying
-// metadata even when content is E2E encrypted.
+// metadata even when content is E2E encrypted. GroupMeta.createdByUserId
+// names a group's current owner (ownership transfer moves it), so a group
+// the user handed over survives them.
 //
 // Earlier implementation wrapped the entire cascade in a single transaction.
 // For an account with hundreds of thousands of messages that produced lock
@@ -33,8 +42,12 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 // Failures are logged with the step, the error class and the Prisma code,
 // never the user id or the error message (Prisma messages can quote query
 // arguments): a log line must not outlive the account it is about. The
-// rethrown error reaches ApiExceptionFilter, which logs it against the request,
-// and operators find unfinished deletions by users.status = 'revoked'.
+// rethrown error reaches ApiExceptionFilter, which logs it against the request.
+// The user cannot retry: Phase 1 has already revoked every token and device.
+// So the server finishes unfinished deletions itself: users.status =
+// 'revoked' means a deletion in progress, and AccountDeletionResumer calls
+// resumeUnfinishedDeletions, which re-runs deleteAccount for any such account
+// whose last attempt began more than an hour ago.
 @Injectable()
 export class AccountService {
   constructor(
@@ -44,15 +57,18 @@ export class AccountService {
     private readonly storageGateway: AttachmentStorageGateway,
     private readonly retiredHandles: RetiredHandlesService,
     private readonly logger: AppLoggerService,
+    private readonly authService: AuthService,
   ) {}
 
   async deleteAccount(userId: string): Promise<{ deleted: true }> {
     // Phase 1 (small tx): immediately revoke auth so any in-flight tokens
     // can't be reused and no new sessions can come in mid-cascade.
+    // updatedAt marks when this attempt began; resumeUnfinishedDeletions
+    // leaves the account alone for an hour after it.
     const { handle } = await this.prisma.$transaction(async (tx) => {
       const revoked = await tx.user.update({
         where: { id: userId },
-        data: { status: 'revoked', activeDeviceId: null },
+        data: { status: 'revoked', activeDeviceId: null, updatedAt: new Date() },
         select: { handle: true },
       });
       await tx.device.updateMany({
@@ -92,9 +108,9 @@ export class AccountService {
     // Phase 2 (no enclosing tx): each deleteMany is its own statement.
     // Each step is *idempotent* — running them twice is a no-op — so
     // partial failure is recoverable: the user is already locked out by
-    // Phase 1, and a later retry of deleteAccount picks up wherever this
-    // run stopped. Errors are collected per chunk so a single transient
-    // failure doesn't mask the rest.
+    // Phase 1, and resumeUnfinishedDeletions later re-runs deleteAccount,
+    // which picks up wherever this run stopped. Errors are collected per
+    // chunk so a single transient failure doesn't mask the rest.
     const phase2Errors: Array<{ label: string; error: unknown }> = [];
     const tryStep = async (label: string, fn: () => Promise<{ count: number }>) => {
       try {
@@ -109,6 +125,14 @@ export class AccountService {
     };
 
     for (const deviceId of deviceIds) {
+      // The device's sessions in the ephemeral store (refresh families,
+      // their tokens, the family index, login challenges) name the user and
+      // the device. Phase 1 has revoked the device, so no refresh can write
+      // them again.
+      await tryStep('refreshSessions', async () => {
+        await this.authService.forgetDevice(deviceId);
+        return { count: 0 };
+      });
       await tryStep('messages', () =>
         this.prisma.message.deleteMany({ where: { senderDeviceId: deviceId } }),
       );
@@ -152,9 +176,9 @@ export class AccountService {
 
     if (phase2Errors.length > 0) {
       // The user is already locked out by Phase 1, but we couldn't fully
-      // purge their data. Surface this loudly so an operator can retry —
-      // every step is idempotent so re-running deleteAccount picks up
-      // exactly where this attempt stopped.
+      // purge their data. Surface this loudly; resumeUnfinishedDeletions
+      // retries, and every step is idempotent so re-running deleteAccount
+      // picks up exactly where this attempt stopped.
       const [first] = phase2Errors;
       this.logger.error('account.delete.incomplete', {
         failedSteps: phase2Errors.map((failure) => failure.label),
@@ -198,6 +222,54 @@ export class AccountService {
     });
 
     return { deleted: true };
+  }
+
+  /**
+   * Finishes deletions that stopped part-way: accounts still 'revoked' more
+   * than UNFINISHED_DELETION_GRACE_MS after their last attempt began. Each is
+   * claimed by moving its updatedAt forward first, so two API instances never
+   * resume the same account at once and a deletion that keeps failing is
+   * retried at most once per grace period. Never throws; logs counts and
+   * error classes only, never a user id.
+   */
+  async resumeUnfinishedDeletions(
+    now = new Date(),
+  ): Promise<{ completed: number; failed: number }> {
+    const cutoff = new Date(now.getTime() - UNFINISHED_DELETION_GRACE_MS);
+    const outcome = { completed: 0, failed: 0 };
+    let candidates: Array<{ id: string }>;
+    try {
+      candidates = await this.prisma.user.findMany({
+        where: { status: 'revoked', updatedAt: { lt: cutoff } },
+        select: { id: true },
+        orderBy: { updatedAt: 'asc' },
+        take: RESUME_BATCH_SIZE,
+      });
+    } catch (error) {
+      this.logger.warn('account.delete.resume_failed', { error: describeFailure(error) });
+      return outcome;
+    }
+
+    for (const { id } of candidates) {
+      try {
+        const claimed = await this.prisma.user.updateMany({
+          where: { id, status: 'revoked', updatedAt: { lt: cutoff } },
+          data: { updatedAt: now },
+        });
+        if (claimed.count === 0) {
+          continue;
+        }
+        await this.deleteAccount(id);
+        outcome.completed += 1;
+      } catch (error) {
+        outcome.failed += 1;
+        this.logger.warn('account.delete.resume_failed', { error: describeFailure(error) });
+      }
+    }
+    if (outcome.completed > 0 || outcome.failed > 0) {
+      this.logger.info('account.delete.resumed', outcome);
+    }
+    return outcome;
   }
 
   // A direct conversation's dedupe key is its two members' ids

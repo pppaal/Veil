@@ -126,6 +126,15 @@ Nothing in this review changes that recommendation.
    Postgres (accounts, device graph, conversation metadata) still needs durable
    backups for continuity.
 
+   **Reversed.** The service was removed again: a 14-day nightly dump kept
+   deleted accounts and handles, burned one-time links, expired and view-once
+   ciphertext, receipts and the social graph well past every window
+   `docs/metadata-retention.md`, the privacy policies and the in-app consent
+   publish, on the host and on any off-site copy. The production stack now
+   runs no dump (the `no-database-dumps` policy rule guards compose and
+   `infra/`), and losing the Postgres volume means users register again. See
+   `docs/vps-deploy-runbook.md` section 6.
+
 5. **No image publishing / single API replica.** CI builds the API image but
    doesn't push it to a registry; deploys build on the host via compose, and the
    stack runs one `api` container. That's fine for the ~$5 VPS beta target, but
@@ -143,8 +152,9 @@ Nothing in this review changes that recommendation.
 - **Private beta over TLS (VPS or Cloudflare Tunnel): ready now.** The gates are
   green and the boot-time guardrails are strong.
 - **Public production: gated on the external crypto audit** — the project's own
-  hard blocker — plus the small operational cleanups above (backups automation,
-  README refresh, startup-ordering and readiness-endpoint polish).
+  hard blocker — plus the small operational cleanups above (README refresh,
+  startup-ordering and readiness-endpoint polish; the backup service of item 4
+  was removed again).
 
 None of the non-blocking items are correctness bugs; they are launch-hygiene
 polish. The dominant remaining work is external review, exactly as the repo

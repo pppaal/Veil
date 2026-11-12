@@ -354,6 +354,66 @@ describe('AttachmentsService', () => {
       expect(metrics.attachmentsBytesTotal.inc).toHaveBeenCalledWith(1024);
     });
 
+    it('confirms an upload that finishes after the pending-upload sweep cutoff', async () => {
+      // A slow link: the PUT started inside the ticket's window and the blob
+      // landed 17 minutes after the ticket. The device's other stale pending
+      // uploads are still swept.
+      jest.useFakeTimers({ now: new Date('2026-11-12T10:00:00.000Z') });
+      try {
+        const { service, prisma, storage } = makeService();
+        const { deviceId } = seedDeviceAndUser(prisma);
+        const ticket = await service.createUploadTicket(deviceId, {
+          contentType: 'application/octet-stream',
+          sizeBytes: 1024,
+          sha256: 'a'.repeat(64),
+        });
+        const storageKey = prisma.attachments[0].storageKey;
+        const staleKey = `attachments/${deviceId}/${randomUUID()}`;
+        prisma.attachments.push({
+          id: randomUUID(),
+          uploaderDeviceId: deviceId,
+          storageKey: staleKey,
+          contentType: 'application/octet-stream',
+          sizeBytes: 10,
+          sha256: 'b'.repeat(64),
+          uploadStatus: 'pending',
+          createdAt: new Date('2026-11-12T09:40:00.000Z'),
+        });
+        storage.recordUploaded(staleKey, {
+          sizeBytes: 10,
+          contentType: 'application/octet-stream',
+          metadata: {},
+        });
+
+        jest.setSystemTime(new Date('2026-11-12T10:17:00.000Z'));
+        storage.recordUploaded(storageKey, {
+          sizeBytes: 1024,
+          contentType: 'application/octet-stream',
+          metadata: {
+            encrypted: 'true',
+            sha256: 'a'.repeat(64),
+            'attachment-id': ticket.attachmentId,
+          },
+        });
+        const deleteObject = jest.spyOn(storage, 'deleteObject');
+
+        await expect(
+          service.completeUpload(deviceId, {
+            attachmentId: ticket.attachmentId,
+            uploadStatus: 'uploaded',
+          }),
+        ).resolves.toMatchObject({ uploadStatus: 'uploaded' });
+
+        expect(deleteObject.mock.calls).toEqual([[staleKey]]);
+        expect(storage.uploaded.has(storageKey)).toBe(true);
+        expect(prisma.attachments.find((a) => a.storageKey === staleKey)?.uploadStatus).toBe(
+          'failed',
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('rejects completion if the blob is missing from storage', async () => {
       const { service, prisma } = makeService();
       const { deviceId } = seedDeviceAndUser(prisma);

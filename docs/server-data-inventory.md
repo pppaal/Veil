@@ -8,23 +8,25 @@ This is every field the VEIL server stores in its database, what kind of
 data it is, how long it is kept and who the API shows it to. It is what
 someone who seizes or breaches the database gets. Message, story and
 one-time-link content is ciphertext the server cannot read; everything
-else below is metadata the server needs to deliver it.
+else below is metadata the server needs to deliver it. The production stack
+keeps no database dumps or snapshots, so a seized server holds these fields
+as they are now, not as they were before a deletion or a retention sweep.
 
 Retention is counted from the event that starts the clock (a message reaching
 the server, a prekey being consumed, an account being deleted); the sweeps
 that enforce it are described in [metadata-retention.md](metadata-retention.md).
-Short-lived Redis keys (rate-limit counters keyed by client address or
-device, key-directory budgets, auth challenges, refresh-token hashes with
-their user and device ids, sealed group key distributions) and encrypted
-attachment blobs in object storage are not database fields and are covered
-there too.
+Redis keys (rate-limit counters keyed by client address or device,
+key-directory budgets, auth challenges, refresh-token hashes with their user
+and device ids and a day-rounded expiry of up to 31 days, sealed group key
+distributions) and encrypted attachment blobs in object storage are not
+database fields and are covered there too.
 
 ## Classes
 
 | Class | Meaning | Fields |
 | --- | --- | --- |
 | `ciphertext` | encrypted on the client; the server cannot read it | 4 |
-| `routing` | identifiers the server needs to route, authorize and link rows | 65 |
+| `routing` | identifiers the server needs to route, authorize and link rows | 66 |
 | `operational` | timestamps, flags, counters and states the service runs on | 69 |
 | `public` | meant to be seen by other users: handles, public keys, channel names | 10 |
 | `secret-hash` | a hash or keyed hash of a secret; the secret itself is not stored | 2 |
@@ -227,6 +229,7 @@ such field fails CI.
 | `tokenHash` | `token_hash` | secret-hash | account lifetime | server |
 | `expiresAt` | `expires_at` | operational | account lifetime | self |
 | `completedAt` | `completed_at` | operational | account lifetime | self |
+| `newDeviceId` | `new_device_id` | routing | account lifetime | self |
 | `createdAt` | `created_at` | operational | account lifetime | server |
 
 ### `group_metas` (GroupMeta)

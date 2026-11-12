@@ -1,10 +1,17 @@
+import { ConversationAccessService } from '../../src/common/conversation-access/conversation-access.service';
 import { AppLoggerService } from '../../src/common/logger/app-logger.service';
 import { PrismaService } from '../../src/common/prisma.service';
 import { AccountService } from '../../src/modules/account/account.service';
 import { ConversationsService } from '../../src/modules/conversations/conversations.service';
 import { CreateDirectConversationDto } from '../../src/modules/conversations/dto/create-direct-conversation.dto';
+import { GroupsService } from '../../src/modules/groups/groups.service';
 import { RetiredHandlesService } from '../../src/modules/handles/retired-handles.service';
-import { FakeAttachmentStorageGateway } from '../support/fake-services';
+import {
+  FakeAttachmentStorageGateway,
+  FakeEphemeralStoreService,
+  FakeRealtimeGateway,
+  FakeSafetyService,
+} from '../support/fake-services';
 import { conversation, device, directKey, id, users } from '../support/sql-rows';
 import { ThrowawayPostgres, findPostgresBinDir } from '../support/throwaway-postgres';
 
@@ -95,6 +102,7 @@ describeWithPostgres('AccountService.deleteAccount on Postgres', () => {
       new FakeAttachmentStorageGateway() as never,
       new RetiredHandlesService(prisma, { retiredHandlePepper: 'postgres-spec-pepper' } as never),
       new AppLoggerService(),
+      { forgetDevice: async () => undefined } as never,
     );
     const conversations = () =>
       postgres.query(
@@ -109,8 +117,78 @@ describeWithPostgres('AccountService.deleteAccount on Postgres', () => {
       { isBlockedEitherWay: async () => false } as never,
       {} as never,
     );
-    return { account, conversations, directConversations };
+    const safety = new FakeSafetyService();
+    const groups = new GroupsService(
+      prisma,
+      new FakeRealtimeGateway() as never,
+      new FakeEphemeralStoreService() as never,
+      new ConversationAccessService(prisma, safety as never),
+      safety as never,
+    );
+    return { account, conversations, directConversations, groups };
   };
+
+  const groupState = (database: string) =>
+    postgres.query(
+      database,
+      `SELECT c.id, gm.created_by_user_id,
+              string_agg(m.user_id::text || ':' || m.role, ',' ORDER BY m.user_id),
+              (SELECT count(*) FROM messages msg WHERE msg.conversation_id = c.id)
+         FROM conversations c
+         JOIN group_metas gm ON gm.conversation_id = c.id
+         LEFT JOIN conversation_members m ON m.conversation_id = c.id
+        WHERE c.type = 'group'
+        GROUP BY c.id, gm.created_by_user_id ORDER BY c.id;`,
+    );
+
+  const groupSeed = [
+    users([ALICE, 'alice'], [BOB, 'bob'], [CAROL, 'carol']),
+    device(ALICE_PHONE, ALICE),
+    device(BOB_PHONE, BOB),
+    device(CAROL_PHONE, CAROL),
+  ].join('\n');
+
+  const sendFromBob = (database: string, conversationId: string) =>
+    postgres.query(
+      database,
+      `INSERT INTO messages (id, conversation_id, sender_device_id, client_message_id, conversation_order, ciphertext, nonce, message_type)
+       VALUES (gen_random_uuid(), '${conversationId}', '${BOB_PHONE}', 'bob-1', 1, 'ct', 'n', 'text');`,
+    );
+
+  it('keeps a group its creator handed over and left when the creator deletes their account', async () => {
+    const { account, groups } = setup('transferred_group', groupSeed);
+    const auth = (userId: string, deviceId: string) => ({ userId, deviceId, handle: 'caller' });
+    const { id: groupId } = await groups.createGroup(auth(ALICE, ALICE_PHONE), {
+      name: 'book club',
+      memberHandles: ['bob', 'carol'],
+    });
+    await groups.transferOwnership(auth(ALICE, ALICE_PHONE), groupId, { userId: BOB });
+    await groups.leaveGroup(auth(ALICE, ALICE_PHONE), groupId);
+    sendFromBob('transferred_group', groupId);
+
+    await expect(account.deleteAccount(ALICE)).resolves.toEqual({ deleted: true });
+
+    expect(groupState('transferred_group')).toEqual([
+      [groupId, BOB, [`${BOB}:owner`, `${CAROL}:member`].join(','), '1'],
+    ]);
+  });
+
+  it("deletes a group with its current owner's account, not with its creator's", async () => {
+    const { account, groups } = setup('owner_deleted', groupSeed);
+    const auth = (userId: string, deviceId: string) => ({ userId, deviceId, handle: 'caller' });
+    const { id: groupId } = await groups.createGroup(auth(ALICE, ALICE_PHONE), {
+      name: 'book club',
+      memberHandles: ['bob', 'carol'],
+    });
+    await groups.transferOwnership(auth(ALICE, ALICE_PHONE), groupId, { userId: BOB });
+    sendFromBob('owner_deleted', groupId);
+
+    await expect(account.deleteAccount(BOB)).resolves.toEqual({ deleted: true });
+
+    // The same outcome as an owner who never handed the group over: no group
+    // is left behind without an owner.
+    expect(groupState('owner_deleted')).toEqual([]);
+  });
 
   const seed = [
     users([ALICE, 'alice'], [BOB, 'bob'], [CAROL, 'carol'], [DAVE, 'dave']),

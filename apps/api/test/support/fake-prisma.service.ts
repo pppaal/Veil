@@ -180,6 +180,7 @@ type DeviceTransferSessionRecord = {
   tokenHash: string;
   expiresAt: Date;
   completedAt: Date | null;
+  newDeviceId?: string | null;
   createdAt: Date;
 };
 
@@ -273,6 +274,11 @@ export class FakePrismaService {
       this.findRows('user', args).map((row) => this.project('user', row, args)),
     create: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
+    updateMany: async ({ where, data }: any) => {
+      const rows = this.findRows('user', { where });
+      for (const row of rows) this.applyData(row, data);
+      return { count: rows.length };
+    },
     delete: async ({ where }: any) => {
       const row = this.requireRow('user', where);
       this.removeRows('user', [row]);

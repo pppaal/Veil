@@ -11,8 +11,10 @@ import { utcDayStart } from '../../common/device-activity';
 import { revokeDevice } from '../../common/device-revocation';
 import { forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
+import { AuthService } from '../auth/auth.service';
 import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RevokeDeviceDto } from './dto/revoke-device.dto';
 
 const STALE_DEVICE_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 
@@ -22,6 +24,7 @@ export class DevicesService {
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly config: AppConfigService,
+    private readonly authService: AuthService,
   ) {}
 
   async list(userId: string, currentDeviceId?: string): Promise<ListDevicesResponse> {
@@ -126,7 +129,11 @@ export class DevicesService {
     };
   }
 
-  async revoke(userId: string, dto: { deviceId: string }): Promise<RevokeDeviceResponse> {
+  async revoke(
+    userId: string,
+    dto: RevokeDeviceDto,
+    callerDeviceId: string,
+  ): Promise<RevokeDeviceResponse> {
     const device = await this.prisma.device.findUnique({
       where: { id: dto.deviceId },
     });
@@ -137,6 +144,21 @@ export class DevicesService {
 
     if (device.userId !== userId) {
       throw forbidden('device_forbidden', 'Device does not belong to actor');
+    }
+
+    // Revoking the calling device, or the last active one, locks the owner
+    // out for good (there is no recovery), so a bearer token alone is not
+    // enough: the calling device signs a fresh challenge.
+    const othersActive = await this.prisma.device.findMany({
+      where: { userId, isActive: true, revokedAt: null, id: { notIn: [dto.deviceId] } },
+      select: { id: true },
+    });
+    if (dto.deviceId === callerDeviceId || othersActive.length === 0) {
+      await this.authService.verifyDeviceStepUp(
+        callerDeviceId,
+        `device-revoke:${dto.deviceId}`,
+        dto,
+      );
     }
 
     const revokedAt = new Date();

@@ -513,6 +513,10 @@ model DeviceTransferSession {
   expiresAt   DateTime  @map("expires_at")
   /// @privacy(class=operational, retention=account, visibleTo=self)
   completedAt DateTime? @map("completed_at")
+  // The device a completed transfer created, so a retried /complete whose
+  // first response was lost gets the same answer instead of a lockout.
+  /// @privacy(class=routing, retention=account, visibleTo=self)
+  newDeviceId String?   @map("new_device_id") @db.Uuid
   /// @privacy(class=operational, retention=account, visibleTo=server)
   createdAt   DateTime  @default(now()) @map("created_at")
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -532,6 +536,8 @@ model GroupMeta {
   name            String       @db.VarChar(120)
   /// @privacy(class=public, retention=account, visibleTo=members)
   description     String?      @db.VarChar(500)
+  // The group's current owner, despite the name: ownership transfer moves it
+  // with the owner role, and account deletion deletes the groups it names.
   /// @privacy(class=routing, retention=account, visibleTo=server)
   createdByUserId String       @map("created_by_user_id") @db.Uuid
   /// @privacy(class=operational, retention=account, visibleTo=members)

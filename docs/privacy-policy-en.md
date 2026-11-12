@@ -9,13 +9,14 @@ VEIL ("the service") collects the absolute minimum data required to operate an e
 
 The service collects only:
 
-- An anonymous user ID and device ID generated on the device.
+- A random account ID and device ID that the server assigns when you register, linked to your handle.
 - A user-chosen handle.
 - End-to-end encrypted message payloads that the server cannot decrypt.
 - The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
 - Your in-app contact list: which accounts you added. The names you give them stay on your device.
 - Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.
 - A push token for each device, used only for wake-ups that carry no message content.
+- Your IP address, processed transiently to rate-limit requests made before sign-in: held as an unkeyed hash for at most two minutes and never written to the database. A hash of an address can be reversed by brute force, so treat it as your address for that time ([details](metadata-retention.md)).
 - The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.
 - Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.
 

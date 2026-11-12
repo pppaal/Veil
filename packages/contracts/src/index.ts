@@ -560,6 +560,14 @@ export interface DeviceTransferInitResponse {
 export interface DeviceTransferApproveRequest {
   sessionId: string;
   claimId: string;
+  /**
+   * The old device's Ed25519 signature, with the auth key it logs in with,
+   * over `transfer-approve:<sessionId>:<claimId>:<claimantFingerprint>`
+   * (the fingerprint exactly as the claim and status responses give it). A
+   * stolen bearer token alone cannot approve a transfer. Required by a
+   * production relay; a development relay checks it when it is present.
+   */
+  approvalProof?: string;
 }
 
 export interface DeviceTransferApproveResponse {
@@ -621,9 +629,29 @@ export interface DeviceTransferSessionStatusResponse {
 
 export type DeviceTrustState = 'current' | 'preferred' | 'trusted' | 'stale' | 'revoked';
 
-export interface RevokeDeviceRequest {
+/**
+ * Proof that a request comes from the device itself, not only from someone
+ * holding its bearer token: a challenge from POST /auth/challenge for the
+ * calling device, signed with its auth key over `<purpose>:<challengeId>:<challenge>`.
+ * The challenge is single-use and consumed whether or not the signature
+ * holds. Required by a production relay for the irreversible requests that
+ * name it; a development relay checks it when it is present.
+ */
+export interface DeviceStepUpProof {
+  challengeId?: string;
+  signature?: string;
+}
+
+/**
+ * Revoking the calling device, or the account's last active device, needs a
+ * step-up proof with purpose `device-revoke:<deviceId>`.
+ */
+export interface RevokeDeviceRequest extends DeviceStepUpProof {
   deviceId: string;
 }
+
+/** DELETE /account body: a step-up proof with purpose `account-delete`. */
+export type DeleteAccountRequest = DeviceStepUpProof;
 
 export interface DeviceSummary {
   id: string;

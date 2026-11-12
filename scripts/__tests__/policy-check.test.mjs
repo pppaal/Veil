@@ -63,6 +63,16 @@ test('a mobile backup module fails', () => {
   assert.match(failures.join('\n'), /\[no-mobile-backup\]/);
 });
 
+test('a database dump anywhere in the deployment fails', () => {
+  for (const files of [
+    { 'docker-compose.backup.yml': 'services:\n  backup:\n    command: pg_dumpall -U veil\n' },
+    { 'infra/cron/nightly.sh': 'pg_dump -h postgres veil > /backups/veil.sql\n' },
+    { 'infra/docker/compose.yml': 'command: ["wal-g", "backup-push", "/data"]\n' },
+  ]) {
+    assert.match(failuresFor(files).join('\n'), /\[no-database-dumps\]/, Object.keys(files)[0]);
+  }
+});
+
 test('CORS configured anywhere but corsOptions() fails', () => {
   const MAIN = 'apps/api/src/main.ts';
   for (const files of [

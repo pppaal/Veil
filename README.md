@@ -87,12 +87,12 @@ those checks fails the build:
 │ Local LAN           │  pnpm demo:up                               │
 │ (laptop + phone)    │  http://<laptop-LAN-IP>:3000/demo/          │
 ├─────────────────────┼─────────────────────────────────────────────┤
-│ Public over Tunnel  │  pnpm demo:tunnel:up                        │
-│ (laptop + Cloudflare│  Browse a real https://… URL anywhere       │
+│ Invited testers     │  pnpm demo:tunnel:up                        │
+│ (laptop + Cloudflare│  https://… URL for testers you invite       │
 │  Zero Trust token)  │  See docs/cloudflare-tunnel-deploy.md       │
 ├─────────────────────┼─────────────────────────────────────────────┤
-│ Production VPS      │  pnpm demo:prod:up                          │
-│ (Hetzner / DO,      │  Caddy + TLS + Prometheus + Grafana         │
+│ Production VPS      │  pnpm demo:prod:up (boots only after the    │
+│ (Hetzner / DO,      │  external crypto audit is attested)         │
 │  ~$5/month)         │  See docs/vps-deploy-runbook.md             │
 └─────────────────────┴─────────────────────────────────────────────┘
 ```
@@ -176,7 +176,7 @@ those checks fails the build:
 
 ### Operations
 - `pnpm demo:status` host + container health probe
-- pg_dump cron snippet (daily, 14-day retention) in tunnel runbook
+- No database dumps anywhere in the deployment (`no-database-dumps` policy rule; [runbook §6](docs/vps-deploy-runbook.md))
 - [`docs/ops/abuse-triage.md`](docs/ops/abuse-triage.md) operator runbook
 - [`docs/tester-guide-ko.md`](docs/tester-guide-ko.md) tester FAQ
 - [`docs/ops/data-subject-request.md`](docs/ops/data-subject-request.md)
@@ -229,7 +229,7 @@ Mobile `--dart-define` runtime flags:
 - `pnpm demo:tunnel:up` / `demo:tunnel:logs` / `demo:tunnel:down`
 - `pnpm demo:status` — host + container health probe
 
-### Production VPS
+### Production VPS (boots only after the external audit is attested)
 - `pnpm demo:prod:up` — full stack with Caddy TLS
 - `pnpm demo:prod:obs` — add Prometheus + Grafana
 - `pnpm demo:prod:logs` / `demo:prod:down`
@@ -300,8 +300,8 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 
 ### Deploy runbooks
 - [MVP Demo Runbook](docs/mvp-demo-runbook.md)
-- [Cloudflare Tunnel Deploy](docs/cloudflare-tunnel-deploy.md) — laptop + Cloudflare
-- [VPS Deploy Runbook](docs/vps-deploy-runbook.md) — public-beta-ready VPS
+- [Cloudflare Tunnel Deploy](docs/cloudflare-tunnel-deploy.md) — laptop + Cloudflare, invited testers only before the audit
+- [VPS Deploy Runbook](docs/vps-deploy-runbook.md) — production VPS; refuses to boot until the external audit is attested
 - [Production Deployment Checklist](docs/production-deployment.md)
 - [Internal Alpha Deployment / Runbook / Test Checklist / Desktop QA](docs/internal-alpha-runbook.md)
 - [Launch Runbook](docs/launch-runbook.md)

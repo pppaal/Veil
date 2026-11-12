@@ -143,6 +143,20 @@ test('a blanket statement about collection is a claim', () => {
   ]);
 });
 
+test('calling the server-assigned ids anonymous or device-generated is a claim', () => {
+  const copy = [
+    'An anonymous user ID and device ID generated on the device.',
+    '기기에서 생성된 익명 식별자(User ID, Device ID)',
+    'A random account ID and device ID that the server assigns when you register, linked to your handle.',
+    'An anonymous secure messenger.',
+  ].join('\n\n');
+  const failures = checkClaims(tree({ 'README.md': `${README}\n${copy}\n` }));
+  assert.deepEqual(failures, [
+    'README.md: unledgered claim "An anonymous user ID and device ID generated on the device."',
+    'README.md: unledgered claim "기기에서 생성된 익명 식별자(User ID, Device ID)"',
+  ]);
+});
+
 test('a store listing draft that advertises a backup is an unledgered claim', () => {
   // The App Store listing draft once offered "Signed backups" while VEIL has
   // none; the drafts in docs/launch are pasted into the stores.

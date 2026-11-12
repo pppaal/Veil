@@ -1,8 +1,9 @@
 # VEIL — Go-live today (Google Play internal testing)
 
-A copy-paste path to get the app into testers' hands **today** via Play's
-**Internal testing** track. Public/production launch is gated separately —
-see the note at the bottom.
+A copy-paste path to get the app into the hands of testers you invite
+**today** via Play's **Internal testing** track. Internal and closed testing
+are for invited testers only. A public/production launch waits for the
+external crypto audit — see the note at the bottom.
 
 All commands run from `apps/mobile/` unless stated. Replace `puro flutter`
 with plain `flutter` if you don't use puro.
@@ -93,6 +94,9 @@ Output: `apps/mobile/build/app/outputs/bundle/release/app-release.aab`
 | Invited testers install & use it | ✅ Yes | Internal testing track, near-instant |
 | Anyone searches Play and installs | ❌ No | New personal dev accounts must run **closed testing with ≥12 testers for 14 days** before production access, plus first-app review (a few days) |
 
-So: ship to internal testers today; the public production listing follows
-after the 14-day closed-testing gate. Use the same AAB and listing for both —
-nothing here is throwaway.
+So: ship to invited internal testers today. The public production listing
+waits for **both** Play's 14-day closed-testing gate **and** the external
+crypto audit: the backend refuses to boot with `VEIL_ENV=production` until
+`VEIL_AUDITED_CRYPTO_ATTESTED=true` and `VEIL_AUDIT_REPORT_SHA256` name the
+signed report, and a public audience must not be served by a development-mode
+backend. Use the same AAB and listing for both — nothing here is throwaway.

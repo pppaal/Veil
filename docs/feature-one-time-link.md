@@ -58,6 +58,13 @@ Model B fits VEIL's existing stack: the `apps/api` envelope/attachment
 storage already does encrypted-blob handling, and `veil://` deep links can
 carry the fragment into the app when it *is* installed.
 
+The app shares links as `<relay>/demo/s.html#<id>.<key>`. The relay serves that
+viewer page in production too: `apps/api/src/web-assets.ts` serves exactly
+`s.html`, `s.js` and the two modules it imports under `/demo`, with the page's
+own CSP, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`; the rest
+of the web demo is served only outside production. Caddy forwards `/demo/*`
+unstripped (`handle`, not `handle_path`).
+
 ## Threat model / limits (be honest in the UI)
 
 - A malicious recipient can screenshot or copy before "burn" — one-time

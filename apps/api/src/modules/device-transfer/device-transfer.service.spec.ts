@@ -295,7 +295,7 @@ describe('DeviceTransferService', () => {
     ).rejects.toThrow('Transfer must be initiated from the trusted old device');
   });
 
-  it('rejects replaying completion after the join already succeeded', async () => {
+  it('answers a replayed completion with the original result and joins no second device', async () => {
     const prisma = new FakePrismaService();
     const store = new FakeEphemeralStoreService();
     const config = new FakeConfigService();
@@ -368,13 +368,16 @@ describe('DeviceTransferService', () => {
       authPrivateKey: keyPair.authPrivateKey,
     });
 
-    await service.complete({
+    const first = await service.complete({
       sessionId: init.sessionId,
       transferToken: init.transferToken,
       claimId: claim.claimId,
       authProof: proof,
     });
 
+    // The first response can be lost after the transfer committed; the new
+    // device asks again and must learn the same device id, while nothing is
+    // created or revoked a second time.
     await expect(
       service.complete({
         sessionId: init.sessionId,
@@ -382,7 +385,9 @@ describe('DeviceTransferService', () => {
         claimId: claim.claimId,
         authProof: proof,
       }),
-    ).rejects.toThrow('Transfer session already completed');
+    ).resolves.toEqual(first);
+    expect(prisma.devices).toHaveLength(2);
+    expect(prisma.users[0]!.activeDeviceId).toBe(first.newDeviceId);
   });
 
   it('rejects completion when the old device is revoked concurrently (TOCTOU)', async () => {

@@ -409,7 +409,7 @@ describe('GroupsService', () => {
     });
 
     it('owner transfer then leave works', async () => {
-      const { service, owner, admin, groupId, auth, roleOf } = groupFixture();
+      const { service, prisma, owner, admin, groupId, auth, roleOf } = groupFixture();
 
       const transfer = await service.transferOwnership(auth(owner), groupId, {
         userId: admin.userId,
@@ -421,6 +421,11 @@ describe('GroupsService', () => {
       });
       expect(roleOf(admin)).toBe('owner');
       expect(roleOf(owner)).toBe('admin');
+      // Account deletion picks the groups to delete by this column, so it
+      // follows the owner role.
+      expect(prisma.groupMetas.find((meta) => meta.conversationId === groupId)).toMatchObject({
+        createdByUserId: admin.userId,
+      });
 
       await expect(service.leaveGroup(auth(owner), groupId)).resolves.toEqual({
         conversationId: groupId,

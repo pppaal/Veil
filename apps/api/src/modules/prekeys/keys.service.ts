@@ -14,6 +14,7 @@ import { isActionAllowed } from '../../common/conversation-access/conversation-p
 import { apiError, badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
+import { SafetyService } from '../safety/safety.service';
 import { DIRECTORY_BUDGETS, DirectoryBudget } from './directory-budget';
 import { PrekeysService, type DirectoryRequester } from './prekeys.service';
 import { decodeSignedPrekeyBundleV2, verifySignedPrekeyBundleV2 } from './signed-prekey-bundle';
@@ -78,6 +79,7 @@ export class KeysService {
     private readonly prekeys: PrekeysService,
     private readonly budget: DirectoryBudget,
     @Inject(KEYS_CLOCK) private readonly clock: Clock,
+    private readonly safety: SafetyService,
   ) {}
 
   /**
@@ -93,7 +95,9 @@ export class KeysService {
       where: { handle: handle.toLowerCase() },
       select: { id: true, handle: true, activeDeviceId: true },
     });
-    if (!user) {
+    // A block in either direction answers like an unknown handle (as
+    // createDirect does) and claims no prekey.
+    if (!user || (await this.safety.isBlockedEitherWay(requester.userId, user.id))) {
       throw notFound('handle_not_found', 'User not found');
     }
 

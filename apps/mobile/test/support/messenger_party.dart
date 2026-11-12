@@ -16,6 +16,7 @@ import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/group_sender_key_coordinator.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/envelope_version_policy.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
@@ -212,6 +213,7 @@ class MessengerParty {
       keysApi: keys,
       identityTrust: trust,
       envelopeVersions: EnvelopeVersionPolicy(store: keystore.scoped(SecureScope.conversationPolicy)),
+      peerBindings: ConversationPeerBindings(store: keystore.scoped(SecureScope.conversationPolicy)),
       prekeyMaintenance: maintainPrekeys
           ? PrekeyMaintenance(prekeys: lib, keys: keys, persistIdentityRef: (_) async {})
           : null,

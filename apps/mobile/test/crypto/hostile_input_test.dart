@@ -200,5 +200,6 @@ class _ModifiedPeer {
         senderDeviceId: _deviceId,
         recipientUserId: _to.userId,
         payload: payload,
+        recipientIdentityKey: _to.identity.identityPublicKey,
       );
 }

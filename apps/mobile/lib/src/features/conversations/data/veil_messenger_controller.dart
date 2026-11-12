@@ -20,6 +20,7 @@ import '../../attachments/data/attachment_temp_file_store.dart';
 import 'conversation_models.dart';
 import 'group_sender_key_coordinator.dart';
 import 'messenger/conversation_merge.dart';
+import 'messenger/conversation_peer_bindings.dart';
 import 'messenger/envelope_version_policy.dart';
 import 'messenger/identity_trust.dart';
 import 'messenger/local_notice.dart';
@@ -56,6 +57,7 @@ class VeilMessengerController extends ChangeNotifier {
     KeysApi? keysApi,
     IdentityTrust? identityTrust,
     EnvelopeVersionPolicy? envelopeVersions,
+    ConversationPeerBindings? peerBindings,
     PrekeyMaintenance? prekeyMaintenance,
   })  : _readReceiptsEnabled = readReceiptsEnabled ?? _always,
         _typingIndicatorsEnabled = typingIndicatorsEnabled ?? _always,
@@ -75,6 +77,7 @@ class VeilMessengerController extends ChangeNotifier {
         _trust = identityTrust ??
             IdentityTrust(TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()))),
         _envelopeVersions = envelopeVersions ?? EnvelopeVersionPolicy(),
+        _peerBindings = peerBindings ?? ConversationPeerBindings(),
         _prekeys = prekeyMaintenance {
     _trustEvents = _trust.events.listen((event) => unawaited(_onTrustEvent(event)));
     _expirationTicker = Timer.periodic(
@@ -101,6 +104,7 @@ class VeilMessengerController extends ChangeNotifier {
   final KeysApi _keys;
   final IdentityTrust _trust;
   final EnvelopeVersionPolicy _envelopeVersions;
+  final ConversationPeerBindings _peerBindings;
   final PrekeyMaintenance? _prekeys;
   late final StreamSubscription<IdentityTrustEvent> _trustEvents;
   final ReactionLedger _reactions = ReactionLedger();
@@ -309,6 +313,7 @@ class VeilMessengerController extends ChangeNotifier {
     _reactions.clear();
     _trust.clearPending();
     _envelopeVersions.reset();
+    _peerBindings.reset();
     _handshakeIdentities.clear();
     _peerBundles.clear();
     _directoryRecheck.clear();
@@ -566,17 +571,24 @@ class VeilMessengerController extends ChangeNotifier {
     }
   }
 
-  /// Decides whether an inbound handshake may open a session (adapters that
-  /// authenticate the initiator call it, see
-  /// LibCryptoAdapter.setRemoteIdentityVerifier): the same pin policy as an
-  /// outbound bootstrap, applied to the conversation's peer.
+  /// Decides whether a peer identity may be used in a 1:1 conversation
+  /// (adapters that authenticate their peers call it, see
+  /// LibCryptoAdapter.setRemoteIdentityVerifier): before an inbound
+  /// handshake installs a session, with the same pin policy as an outbound
+  /// bootstrap, and before every frame sealed to or opened on an installed
+  /// session, so that one the pins stopped admitting is neither written to
+  /// nor shown as the conversation's peer.
   Future<bool> verifyRemoteIdentity(RemoteIdentityClaim claim) async {
     try {
       if (conversationById(claim.conversationId) == null) await _refreshConversationsCore();
       final conversation = conversationById(claim.conversationId);
       if (conversation == null || conversation.type != ConversationType.direct) return false;
+      final peerUserId = conversation.recipientBundle.userId;
       final key = claim.identityKeyEd25519;
-      if (!await _trust.admit(conversation.id, conversation.recipientBundle.userId, claim.senderDeviceId, key)) {
+      if (!claim.installsSession) {
+        return await _trust.admitSession(conversation.id, peerUserId, claim.senderDeviceId, key);
+      }
+      if (!await _trust.admit(conversation.id, peerUserId, claim.senderDeviceId, key)) {
         return false;
       }
       _handshakeIdentities[conversation.id] = (deviceId: claim.senderDeviceId, key: key);
@@ -1114,9 +1126,17 @@ class VeilMessengerController extends ChangeNotifier {
     final response = await _apiClient.getConversations(_session.accessToken!);
     final items = (response['items'] as List<dynamic>? ?? const [])
         .cast<Map<String, dynamic>>();
+    // Recorded before this list can drop a conversation together with the
+    // only record of whom its session is with.
+    await _peerBindings.bindAll({
+      for (final preview in _conversations)
+        if (preview.type == ConversationType.direct && preview.sessionState != null)
+          preview.id: ConversationPeer(userId: preview.recipientBundle.userId, handle: preview.peerHandle),
+    });
     final (listed, keptSenderKeys) = await _keepSenderKeys(mergeConversationPreviews(
       _conversations,
       items.map(_conversationFromApi).toList(),
+      bound: await _peerBindings.all(),
     ));
     _conversations = listed..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     final unlisted = Map.of(_unlistedInboundSessions);
@@ -2327,24 +2347,26 @@ class VeilMessengerController extends ChangeNotifier {
   Future<KeyBundle> fetchPeerKeyBundle(String handle) async => (await _activeDeviceOf(handle, KeyClaim.none)).bundle;
 
   // Steady-state sends on an established session use the stored bundle and
-  // never touch the directory. A pending recheck asks it fresh and is only
-  // cleared once that answer has been applied. A session the engine reports
-  // [sessionMoved] reaches nobody this conversation chose, so it is replaced.
+  // never touch the directory, as long as the pins accept it as they stand
+  // now: the user may since have verified another device of the contact,
+  // and a conversation that lost what it knew names no identity at all.
+  // Anything else asks the directory, whose answer must pass the pins
+  // before anything is sealed to it. A pending recheck, and a stored bundle
+  // the pins stopped accepting, ask it fresh rather than repeat a cached
+  // answer; the recheck is only cleared once that answer has been applied.
+  // A session the engine reports [sessionMoved] reaches nobody this
+  // conversation chose, so it is replaced.
   //
-  // A pending identity change holds back only what would need it. Every
-  // directory answer passes the pins before anything is sealed to it, and a
+  // So a pending identity change holds back only what would need it: a
   // steady-state send goes ahead while the pins still accept the identity
-  // its session encrypts to: otherwise a single refused frame, which the
+  // its session encrypts to, otherwise a single refused frame, which the
   // relay can forge at will, would stop the conversation.
   Future<KeyBundle> _bundleForSend(ConversationPreview conversation, {bool sessionMoved = false}) async {
-    final recheck = sessionMoved || _directoryRecheck.contains(conversation.id);
+    var recheck = sessionMoved || _directoryRecheck.contains(conversation.id);
     if (!recheck && _sessionBootstrapper.hasSessionFor(conversation.id)) {
       final bundle = conversation.recipientBundle;
-      final pending = _trust.pendingFor(conversation.id);
-      if (pending != null && !await _trust.trusts(bundle.userId, bundle.deviceId, bundle.identityPublicKey)) {
-        throw IdentityChangedException(pending);
-      }
-      return bundle;
+      if (await _trust.trusts(bundle.userId, bundle.deviceId, bundle.identityPublicKey)) return bundle;
+      recheck = true;
     }
     final handle = conversation.peerHandle;
     final served = (recheck ? null : _peerBundles.fresh(handle)) ?? await _fetchPeerBundle(handle, KeyClaim.active);

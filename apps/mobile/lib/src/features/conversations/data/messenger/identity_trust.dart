@@ -118,9 +118,32 @@ class IdentityTrust {
   Future<bool> admit(String conversationId, String userId, String deviceId, String identityKey) async {
     await ready;
     final verdict = await resolver.evaluate(userId, deviceId, identityKey, admitNewDeviceOfUnverifiedUser: true);
+    // A directory or handshake that presents the pinned key again withdrew
+    // any change pending for the device.
+    if (verdict is FirstUse || verdict is PinMatch) _resolveIfAbout(conversationId, userId, deviceId);
+    return _decide(conversationId, userId, deviceId, identityKey, verdict);
+  }
+
+  /// Whether [conversationId] may still seal to, or open frames on, a
+  /// session installed for [identityKey]. Asked for every frame, because
+  /// what the pins admitted when the session was installed may no longer
+  /// pass: a device pinned before the user verified another of the
+  /// contact's devices is held for review, as [admit] holds it. A key the
+  /// pins hold a successor for is refused without asking again: the user
+  /// already accepted that successor, so a late frame from the session it
+  /// replaced is no new change to review. A frame on the session in use
+  /// says nothing about what the directory now presents, so it settles no
+  /// pending change.
+  Future<bool> admitSession(String conversationId, String userId, String deviceId, String identityKey) async {
+    await ready;
+    final verdict = await resolver.evaluate(userId, deviceId, identityKey, admitNewDeviceOfUnverifiedUser: true);
+    if (verdict is KeyChanged || verdict is KeyChangedVerified) return false;
+    return _decide(conversationId, userId, deviceId, identityKey, verdict);
+  }
+
+  bool _decide(String conversationId, String userId, String deviceId, String identityKey, IdentityVerdict verdict) {
     switch (verdict) {
       case FirstUse() || PinMatch():
-        _resolveIfAbout(conversationId, userId, deviceId);
         return true;
       case NewDeviceForKnownUser(knownUserVerified: false):
         _events.add(NewDeviceAdmitted(conversationId, userId: userId, deviceId: deviceId));

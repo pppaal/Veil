@@ -90,7 +90,8 @@ class SessionCipher {
   /// (base64url, empty when the caller knows none) is the identity the caller
   /// chose to reach: an inbound handshake can install a state bound to
   /// another one in the meantime, and a message is never sealed to an
-  /// identity the caller did not choose ([SessionRecipientChanged]).
+  /// identity the caller did not choose, nor to one the pins no longer admit
+  /// ([SessionRecipientChanged]).
   Future<CryptoEnvelope> encrypt({
     required String conversationId,
     required String senderDeviceId,
@@ -104,7 +105,9 @@ class SessionCipher {
           throw StateError('No session for conversation $conversationId. Bootstrap a session before sending.');
         }
         final live = record.current;
-        if (!_reaches(live, recipientIdentityKey)) throw SessionRecipientChanged(conversationId);
+        if (!_reaches(live, recipientIdentityKey) || !await _stillAdmitted(conversationId, live)) {
+          throw SessionRecipientChanged(conversationId);
+        }
         final scratch = live.copy();
         final String version;
         final Uint8List frame;
@@ -239,7 +242,8 @@ class SessionCipher {
   /// Tries each candidate on its own copy and commits the first that
   /// authenticates, promoting it to the sending state when the record says
   /// so. The archived states make re-bootstrap and glare lossless; the
-  /// copies make a failed attempt side-effect free.
+  /// copies make a failed attempt side-effect free, and so is a frame whose
+  /// state the pins no longer admit: it stays unread until they do.
   Future<DecryptedMessage> _decryptOnStates(
     CryptoEnvelope envelope,
     SessionRecord record,
@@ -253,6 +257,10 @@ class SessionCipher {
       final opened = await open(scratch);
       final payload = opened.payload;
       if (payload != null) {
+        if (!await _stillAdmitted(envelope.conversationId, live)) {
+          scratch.destroy();
+          return _failure(envelope, DecryptStatus.identityRejected, 'identity_rejected');
+        }
         try {
           await _commit(envelope.conversationId, record.receiving(live, scratch, now: _clock()), scratch);
         } catch (_) {
@@ -392,6 +400,23 @@ class SessionCipher {
     return pinned != null && constantTimeEquals(pinned, header.identityEd25519);
   }
 
+  /// Asked for every frame sealed to or opened on [state], not only when it
+  /// was installed: the user may since have verified another device of the
+  /// contact, or accepted a successor for this one, and what the pins
+  /// admitted then no longer passes. Legacy states never learned their
+  /// peer's identity, and without a verifier only installs are decided.
+  Future<bool> _stillAdmitted(String conversationId, RatchetState state) async {
+    final verifier = identityVerifier;
+    final identity = state.remoteIdentityKey;
+    if (verifier == null || identity == null) return true;
+    return verifier(RemoteIdentityClaim(
+      conversationId: conversationId,
+      senderDeviceId: state.remoteDeviceId,
+      identityKeyEd25519: b64uEncode(identity),
+      installsSession: false,
+    ));
+  }
+
   /// The session is already durable, so its plaintext must be returned even
   /// if the delete fails: a retry would only report a replay. The keyring
   /// marks the prekey spent before deleting it, so it cannot open a second
@@ -506,10 +531,13 @@ class SessionCipher {
   }
 
   // Legacy states never learned their peer's identity, so only the caller's
-  // choice of session binds them.
+  // choice of session binds them. A bound state is reached only by naming
+  // its identity: a caller that names none (a conversation that lost what
+  // it knew) must choose again instead of sealing to whoever the state holds.
   static bool _reaches(RatchetState state, String identityKey) {
     final bound = state.remoteIdentityKey;
-    if (bound == null || identityKey.isEmpty) return true;
+    if (bound == null) return true;
+    if (identityKey.isEmpty) return false;
     try {
       return constantTimeEquals(bound, b64uDecode(identityKey));
     } on FormatException {

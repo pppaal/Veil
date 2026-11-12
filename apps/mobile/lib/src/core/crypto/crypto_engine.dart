@@ -111,36 +111,48 @@ class SignedPrekeyPublication {
   final DateTime publishedAt;
 }
 
-/// The identity a session initiator proved in its handshake. Keys are
-/// base64url.
+/// A peer identity a 1:1 session is about to use. Keys are base64url.
+///
+/// [installsSession] claims come from an inbound handshake that proved the
+/// identity and would install a new session for it. The others name the
+/// identity of a session already installed, before a frame is sealed to it
+/// or opened on it: what the pins admitted then may no longer pass.
 class RemoteIdentityClaim {
   const RemoteIdentityClaim({
     required this.conversationId,
     required this.senderDeviceId,
     required this.identityKeyEd25519,
-    required this.identityKeyX25519,
+    this.identityKeyX25519,
+    this.installsSession = true,
   });
 
   final String conversationId;
   final String senderDeviceId;
   final String identityKeyEd25519;
-  final String identityKeyX25519;
+
+  /// Set for an inbound handshake, which proves both identity keys.
+  final String? identityKeyX25519;
+  final bool installsSession;
 }
 
-/// Decides whether an authenticated initiator identity may open a session
-/// (identity pinning). Returning false stores nothing.
+/// Decides whether a peer identity may be used (identity pinning): asked
+/// before an inbound handshake installs a session, and before every frame
+/// sealed to or opened on a session bound to an identity. Returning false
+/// stores and seals nothing.
 typedef RemoteIdentityVerifier = Future<bool> Function(RemoteIdentityClaim claim);
 
 /// Thrown by an engine asked to encrypt to an identity its sending state no
 /// longer reaches: a peer's handshake moved the session after the caller
-/// chose the recipient. Nothing was encrypted; choose the recipient again.
+/// chose the recipient, the caller named no identity, or the pins no longer
+/// admit the one the session is bound to. Nothing was encrypted; choose the
+/// recipient again.
 class SessionRecipientChanged implements Exception {
   const SessionRecipientChanged(this.conversationId);
 
   final String conversationId;
 
   @override
-  String toString() => 'The session of $conversationId moved to another identity before this message was sealed.';
+  String toString() => 'The session of $conversationId no longer reaches the identity this message was meant for.';
 }
 
 /// Private half of a published signed prekey, kept so PreKey frames that

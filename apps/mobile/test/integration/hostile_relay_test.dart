@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' show BooleanExpressionOperators;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/bytes.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
@@ -8,6 +9,7 @@ import 'package:veil_mobile/src/core/crypto/ratchet/legacy_session.dart';
 import 'package:veil_mobile/src/core/crypto/ratchet/session_record.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/curve25519.dart';
 import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
+import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
 
 import '../support/async_wait.dart';
@@ -199,7 +201,132 @@ void main() {
     expect(view.recipientBundle.userId, mallory.device.userId);
   });
 
+  group('a 1:1 the relay leaves out of one list and lists again with a verified contact', () {
+    late MessengerParty carol;
+    late MessengerParty mallory;
+
+    // Alice has verified carol. mallory, a relay account, writes 'hey' in
+    // conv-am and alice never answers. The relay then leaves conv-am out of
+    // one list, so alice keeps no preview of it, only its session.
+    setUp(() async {
+      carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+      mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mal');
+      relay.addDirect('conv-ac', 'alice', 'carol');
+      await carol.signIn();
+      await alice.controller.refreshConversations();
+      await deliver(alice, carol, 'hi carol', conversationId: 'conv-ac');
+      await verify(alice, carol);
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await mallory.signIn();
+      await deliver(mallory, alice, 'hey', conversationId: 'conv-am');
+
+      final hidden = relay.conversations.remove('conv-am')!;
+      await alice.controller.refreshConversations();
+      expect(alice.controller.conversationById('conv-am'), isNull);
+      expect(alice.lib.sessions.hasSessionFor('conv-am'), isTrue);
+      relay.conversations['conv-am'] = RelayConversation(
+        id: 'conv-am',
+        type: 'direct',
+        memberHandles: ['alice', 'carol', 'mallory'],
+        createdAt: hidden.createdAt,
+      )..messages.addAll(hidden.messages);
+    });
+
+    tearDown(() async {
+      await carol.dispose();
+      await mallory.dispose();
+    });
+
+    // Lists conv-am as alice and carol; the relay keeps mallory on it
+    // behind alice's back, so mallory gets every frame sent there.
+    Future<void> relistWithCarol() async {
+      relay.conversations['conv-am']!.memberHandles.remove('mallory');
+      await alice.controller.refreshConversations();
+      relay.conversations['conv-am']!.memberHandles.add('mallory');
+    }
+
+    test('comes back as the stranger it is with', () async {
+      await relistWithCarol();
+
+      final view = alice.controller.conversationById('conv-am')!;
+      expect(view.peerHandle, 'mallory');
+      expect(view.recipientBundle.userId, mallory.device.userId);
+      expect(await alice.bodies('conv-am'), contains('hey'));
+      // What it shows is what it encrypts to, also across a restart.
+      await alice.restart();
+      await settle();
+      expect(alice.controller.conversationById('conv-am')!.peerHandle, 'mallory');
+      await deliver(alice, mallory, 'who are you?', conversationId: 'conv-am');
+    });
+
+    test('without its binding, sends to the contact it shows and refuses the old peer', () async {
+      // As if the binding was never recorded (an install from before it was)
+      // and the cached preview was lost: only the session is left.
+      await alice.keystore.scoped(SecureScope.conversationPolicy).delete('direct_peers.v1');
+      await (alice.database.delete(alice.database.cachedConversations)..where((row) => row.id.equals('conv-am'))).go();
+      await alice.restart();
+      await relistWithCarol();
+      expect(alice.controller.conversationById('conv-am')!.peerHandle, 'carol');
+
+      await alice.controller.sendText(conversationId: 'conv-am', body: 'carol: the door code is 1234');
+      await waitFor(() => alice.controller.pendingCountFor('conv-am') == 0, reason: 'the send was not acked');
+      expect(lastRelayed('conv-am')['version'], envelopeVersionV2);
+      await mallory.controller.loadConversationMessages('conv-am');
+      await settle();
+      expect(await mallory.bodies('conv-am'), isNot(contains('carol: the door code is 1234')));
+      await carol.controller.refreshConversations();
+      await carol.controller.loadConversationMessages('conv-am');
+      await waitFor(
+        () async => (await carol.bodies('conv-am')).contains('carol: the door code is 1234'),
+        reason: 'carol cannot read what alice sent her',
+      );
+
+      // mallory's session no longer speaks for this conversation.
+      await mallory.controller.sendText(conversationId: 'conv-am', body: 'it is carol, really');
+      await waitFor(() => mallory.controller.pendingCountFor('conv-am') == 0, reason: 'mallory was not acked');
+      final forged = await openRelayed(alice, lastRelayed('conv-am'), conversationId: 'conv-am');
+      expect(forged.status, DecryptStatus.identityRejected);
+      expect(forged.body, isEmpty);
+    });
+  });
+
   group('a device admitted before its contact was verified', () {
+    test('that holds the 1:1 when the contact is verified elsewhere takes no reply, and its frames are refused',
+        () async {
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      final ghost = await InjectedDevice.mint('dev-ghost', owner: bob);
+      expect((await openRelayed(alice, await ghost.handshake(relay, alice, 'ghost hello', conversationId: conv))).status,
+          DecryptStatus.ok);
+      expect(noticesIn(alice, conv), 1);
+      // The directory names the ghost, and the reply goes to it: trust on
+      // first use while bob is unverified.
+      relay.bundleOverrides['bob'] = ghost.bundleJson;
+      await alice.controller.sendText(conversationId: conv, body: 'to the ghost while bob is unverified');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the send was not acked');
+      expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-ghost');
+
+      // Alice verifies dev-bob somewhere other than this chat. The directory
+      // keeps naming the ghost.
+      await alice.pins.markVerified('user-bob', 'dev-bob', bob.device.identity.identityPublicKey);
+      final before = relay.conversations[conv]!.messages.length;
+      await alice.controller.sendText(conversationId: conv, body: 'after verifying bob');
+      await settle();
+
+      expect(relay.conversations[conv]!.messages, hasLength(before));
+      final held = alice.controller.pendingIdentityChangeFor(conv)!;
+      expect(held.deviceId, 'dev-ghost');
+      expect(held.requiresReverification, isTrue);
+      expect(noticesIn(alice, conv), 2);
+      final frame = await ghost.send(relay, alice, 'ghost after verification', conversationId: conv);
+      expect((await openRelayed(alice, frame)).status, DecryptStatus.identityRejected);
+
+      // Once the directory names dev-bob again, the next reply goes to bob.
+      relay.bundleOverrides.remove('bob');
+      await deliver(alice, bob, 'to the bob I verified');
+      expect((await ghost.open(lastRelayed(conv))).isOk, isFalse);
+    });
+
     test('takes no reply after it, through a new handshake', () async {
       await deliver(alice, bob, 'hello bob');
       await deliver(bob, alice, 'hi alice');

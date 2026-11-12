@@ -30,6 +30,7 @@ import '../core/storage/database_provider.dart';
 import '../core/storage/secure_storage_service.dart';
 import '../features/attachments/data/attachment_temp_file_store.dart';
 import '../features/conversations/data/group_sender_key_coordinator.dart';
+import '../features/conversations/data/messenger/conversation_peer_bindings.dart';
 import '../features/conversations/data/messenger/envelope_version_policy.dart';
 import '../features/conversations/data/messenger/identity_trust.dart';
 import '../features/conversations/data/messenger/legacy_trust_migration.dart';
@@ -817,6 +818,7 @@ final messengerControllerProvider =
     keysApi: keys,
     identityTrust: trust,
     envelopeVersions: EnvelopeVersionPolicy(store: secureStorage.scoped(SecureScope.conversationPolicy)),
+    peerBindings: ConversationPeerBindings(store: secureStorage.scoped(SecureScope.conversationPolicy)),
     prekeyMaintenance: prekeyMaintenance,
   );
 

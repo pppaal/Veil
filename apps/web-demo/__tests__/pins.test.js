@@ -70,6 +70,17 @@ async function relayPinnedFirst() {
   return { alice, bob, relayDevice };
 }
 
+// A change waiting for review stops no conversation whose session sends to
+// an identity the pins admit (docs/crypto-envelope-spec.md, "Identity
+// trust": a refused frame never stops a conversation by itself). The send
+// reaches `to`, and the other device, which raised the change, cannot open
+// it.
+async function sendsOnlyTo(from, to, other, text) {
+  const sent = await sendText(from, to, text);
+  expect(sent.opened.content.text).toBe(text);
+  expect((await other.secure.open(sent.message)).content).toBeUndefined();
+}
+
 // The user compares the safety number the dialog shows and marks it verified.
 async function verifyShownKey(alice) {
   const shown = await alice.secure.safetyKey(CONVERSATION);
@@ -192,7 +203,7 @@ describe('identity pins', () => {
     expect((await pins.pinsFor('u-bob')).map((pin) => pin.deviceId)).toEqual(['d-1']);
   });
 
-  it('changed peer key freezes sending until accepted', async () => {
+  it('a changed peer key stops a new session until accepted, never the established one', async () => {
     const { alice, bob, directory } = await conversation();
     expect((await sendText(alice, bob, 'hello')).opened.content.text).toBe('hello');
 
@@ -205,9 +216,10 @@ describe('identity pins', () => {
       .rejects.toBeInstanceOf(PeerKeyChangedError);
     expect(alice.keyChanges).toEqual(['u-bob']);
     expect(alice.trust.pendingChange('u-bob')).toMatchObject({ verdict: PinVerdict.CHANGED, deviceId: 'd-bob' });
-    // Frozen everywhere with Bob, the established conversation included.
-    await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: 'c2' }))
-      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    // The established conversation goes on to the key it was opened with,
+    // which the pins still admit; the new key reads none of it.
+    await sendsOnlyTo(alice, bob, impostor, 'still to the pinned key');
+    expect(alice.trust.pendingChange('u-bob')).toMatchObject({ verdict: PinVerdict.CHANGED, deviceId: 'd-bob' });
     expect((await createPinStore(alice.pinKv).pinsFor('u-bob'))[0].identityKey)
       .toBe(encodeBase64Url(bob.device.record.ik.publicKey));
 
@@ -236,8 +248,8 @@ describe('identity pins', () => {
     expect(await alice.device.stores.sessions.get(CONVERSATION)).toEqual(before);
     expect((await alice.device.stores.oneTimePrekeys.all()).length).toBe(opkCount);
     expect(await alice.contentStore.get(CONVERSATION, message.id)).toBeNull();
-    await expect(alice.secure.seal(CONVERSATION, textContent('reply'), { clientMessageId: 'r' }))
-      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    // A reply goes to the identity the session sends to, not the new one.
+    await sendsOnlyTo(alice, bob, impostor, 'reply');
 
     // Once the user accepts the change, the same frame opens.
     await acceptPending(alice, 'u-bob');
@@ -310,19 +322,18 @@ describe('identity pins', () => {
     await expect(acceptPending(alice, 'u-bob')).rejects.toBeInstanceOf(ReverificationRequiredError);
     expect(await alice.device.stores.sessions.get(CONVERSATION)).toEqual(before);
     expect((await alice.device.stores.oneTimePrekeys.all()).length).toBe(opkCount);
-    await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: 'frozen' }))
-      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    // The conversation keeps sending to the verified device.
+    await sendsOnlyTo(alice, bob, relayDevice, 'to the verified device');
 
-    // The pending change survives a reload: sending stays frozen and the
-    // dialog shows that key until the user decides. Declined, the
-    // conversation goes on with the verified device.
+    // The pending change survives a reload: the dialog shows that key until
+    // the user decides, and sending goes on to the verified device. Declined,
+    // the change is gone.
     await alice.restart();
     expect(alice.trust.pendingChange('u-bob'))
       .toMatchObject({ verdict: PinVerdict.UNVERIFIED_DEVICE, deviceId: 'd-relay', verified: true });
     await expect(alice.secure.safetyKey(CONVERSATION))
       .resolves.toMatchObject({ deviceId: 'd-relay', pendingVerdict: PinVerdict.UNVERIFIED_DEVICE });
-    await expect(alice.secure.seal(CONVERSATION, textContent('x'), { clientMessageId: 'frozen-after-reload' }))
-      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    await sendsOnlyTo(alice, bob, relayDevice, 'after the reload');
     expect(await alice.secure.declineChange(CONVERSATION, alice.trust.pendingChange('u-bob'))).toBe('declined');
     await expect(alice.secure.safetyKey(CONVERSATION)).resolves.toMatchObject({ deviceId: 'd-bob', verified: true });
     expect((await sendText(alice, bob, 'still bob')).opened.content.text).toBe('still bob');
@@ -518,7 +529,8 @@ describe('declining a key change', () => {
       expect(await alice.secure.open(forged)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
       const reviewed = alice.trust.pendingChange('u-bob');
       expect(reviewed).toMatchObject({ deviceId: 'd-relay', verdict: PinVerdict.NEW_DEVICE, verified });
-      await frozen(alice, 'frozen');
+      // The forged frame stops nothing: Alice goes on writing to Bob.
+      await sendsOnlyTo(alice, bob, relay, 'while it waits');
 
       expect(await alice.secure.declineChange(CONVERSATION, reviewed)).toBe('declined');
       expect(alice.trust.pendingChange('u-bob')).toBeNull();
@@ -547,8 +559,26 @@ describe('declining a key change', () => {
     });
   }
 
+  // Each forged handshake comes from a fresh device id, so each raises a
+  // change of its own; none of them stops the conversation, before or after
+  // a reload.
+  for (const verified of [true, false]) {
+    it(`forged new devices never stop an established conversation, ${verified ? 'verified' : 'unverified'} contact`, async () => {
+      const { alice, bob } = await established({ verified });
+      for (const round of [1, 2, 3]) {
+        const relay = await relayDevice(alice, `d-ghost-${round}`);
+        expect(await alice.secure.open(await frame(relay, `ghost ${round}`))).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+        expect(alice.trust.pendingChange('u-bob')).toMatchObject({ deviceId: `d-ghost-${round}`, verified });
+        await sendsOnlyTo(alice, bob, relay, `round ${round}`);
+        await alice.restart();
+        await sendsOnlyTo(alice, bob, relay, `round ${round}, reloaded`);
+      }
+      expect((await createPinStore(alice.pinKv).pinsFor('u-bob')).map((pin) => pin.deviceId)).toEqual(['d-bob']);
+    });
+  }
+
   it('a new key from a declined device is raised again', async () => {
-    const { alice } = await established({ verified: true });
+    const { alice, bob } = await established({ verified: true });
     const first = await relayDevice(alice);
     await alice.secure.open(await frame(first, 'first key'));
     expect(await alice.secure.declineChange(CONVERSATION, alice.trust.pendingChange('u-bob'))).toBe('declined');
@@ -557,7 +587,7 @@ describe('declining a key change', () => {
     expect(await alice.secure.open(await frame(second, 'second key'))).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
     expect(encodeBase64Url(alice.trust.pendingChange('u-bob').identityKey))
       .toBe(encodeBase64Url(second.device.record.ik.publicKey));
-    await frozen(alice, 'frozen again');
+    await sendsOnlyTo(alice, bob, second, 'raised again, still to bob');
   });
 
   it('a device Bob moved away from can be declined once the new one is verified', async () => {
@@ -578,7 +608,8 @@ describe('declining a key change', () => {
     await alice.trust.markVerified('u-bob', 'd-bob-c', deviceC.device.record.ik.publicKey);
     expect((await alice.secure.open(fromC)).content.text).toBe('from C');
     expect(await alice.secure.open(fromB)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
-    await frozen(alice, 'frozen by B');
+    // B's pending change does not stop the conversation, now on C.
+    await sendsOnlyTo(alice, deviceC, deviceB, 'to C while B waits');
 
     expect(await alice.secure.declineChange(CONVERSATION, alice.trust.pendingChange('u-bob'))).toBe('declined');
     expect((await sendText(alice, deviceC, 'to C')).opened.content.text).toBe('to C');
@@ -665,14 +696,14 @@ describe('declining a key change', () => {
   });
 
   it('a pending change survives a reload without the frame that raised it', async () => {
-    const { alice } = await established({ verified: false });
+    const { alice, bob } = await established({ verified: false });
     const relay = await relayDevice(alice);
     expect(await alice.secure.open(await frame(relay, 'relay says hi'))).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
     const raised = alice.trust.pendingChange('u-bob');
 
     await alice.restart();
     expect(alice.trust.pendingChange('u-bob')).toEqual(raised);
-    await frozen(alice, 'still frozen');
+    await sendsOnlyTo(alice, bob, relay, 'after the reload, to bob');
     // Declined after the reload, it stays declined after the next one.
     expect(await alice.secure.declineChange(CONVERSATION, alice.trust.pendingChange('u-bob'))).toBe('declined');
     await alice.restart();
@@ -709,13 +740,17 @@ describe('a device pinned under another user', () => {
 
   // The relay relabels the conversation's other member: Bob's device would
   // be pinned, unannounced, as Carol's, and Alice's words for Carol would
-  // reach Bob.
+  // reach Bob. A conversation bound to Bob ignores the relabel (see 'a
+  // direct conversation bound to its peer'); this is the pins' own defence,
+  // for a session from before bindings existed.
   for (const carolKnown of [false, true]) {
     it(`a relabelled conversation seals and opens nothing (${carolKnown ? 'Carol already pinned' : 'Carol unknown'})`, async () => {
       const { alice, bob } = await conversation();
       await sendText(alice, bob, 'hello');
       await verifyShownKey(alice);
       if (carolKnown) expect(await alice.trust.admit('u-carol', 'd-carol', key(9))).toBe(true);
+      alice.bindingKv.rows.clear();
+      await alice.restart();
 
       alice.peers.set(CONVERSATION, { userId: 'u-carol', handle: 'carol' });
       await expect(alice.secure.seal(CONVERSATION, textContent('for carol only'), { clientMessageId: 'carol-1' }))
@@ -732,4 +767,90 @@ describe('a device pinned under another user', () => {
       expect((await sendText(alice, bob, 'for bob')).opened.content.text).toBe('for bob');
     });
   }
+});
+
+// docs/crypto-envelope-spec.md, "Identity trust": what a 1:1 conversation
+// encrypts to is always what it shows. Once its crypto admitted an identity,
+// the conversation is bound to that peer (src/domain/peer-bindings.js), and
+// a relay listing that names another user changes nothing about it.
+describe('a direct conversation bound to its peer', () => {
+  // The relay lists Alice's conversation with Bob as one with Mallory, an
+  // account it holds, under Mallory's handle or under Bob's, and Mallory
+  // opens a session in it from Alice's signed prekey.
+  for (const verified of [false, true]) {
+    for (const listedHandle of ['mallory', 'bob']) {
+      it(`a relisting under another account takes nothing over (${verified ? 'verified' : 'unverified'}, listed as @${listedHandle})`, async () => {
+        const { alice, bob } = await conversation();
+        await sendText(alice, bob, 'hello bob');
+        await sendText(bob, alice, 'hi alice');
+        if (verified) await verifyShownKey(alice);
+        expect(alice.bindings.get(CONVERSATION)).toEqual({ userId: 'u-bob', handle: 'bob' });
+
+        alice.peers.set(CONVERSATION, { userId: 'u-mallory', handle: listedHandle });
+        expect(alice.peerOf(CONVERSATION)).toEqual({ userId: 'u-bob', handle: 'bob' });
+        const mallory = await createEndpoint({ userId: 'u-mallory', deviceId: 'd-mallory', handle: 'mallory', directory: new Map() });
+        mallory.peers.set(CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+        await mallory.device.cipher.bootstrap({
+          conversationId: CONVERSATION,
+          ...(await alice.device.directoryEntry({ oneTimePrekey: false })),
+        });
+        const envelope = await mallory.secure.seal(CONVERSATION, textContent('it is me, keep talking'), { clientMessageId: 'mallory-1' });
+        const fromMallory = serverMessage(envelope, { clientMessageId: 'mallory-1' });
+
+        // Judged as a device of Bob's: a change to review, nothing pinned
+        // for Mallory, and for a verified Bob no plain accept.
+        expect(await alice.secure.open(fromMallory)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+        expect(alice.trust.pendingChange('u-mallory')).toBeNull();
+        expect(await createPinStore(alice.pinKv).pinsFor('u-mallory')).toEqual([]);
+        expect(alice.trust.pendingChange('u-bob'))
+          .toMatchObject({ verdict: PinVerdict.NEW_DEVICE, deviceId: 'd-mallory', verified });
+        if (verified) await expect(acceptPending(alice, 'u-bob')).rejects.toBeInstanceOf(ReverificationRequiredError);
+
+        // Alice's words keep going to Bob, and Bob's keep opening, also
+        // after a reload.
+        await sendsOnlyTo(alice, bob, mallory, 'secret for bob');
+        expect((await sendText(bob, alice, 'bob again')).opened.content.text).toBe('bob again');
+        await alice.restart();
+        expect(alice.peerOf(CONVERSATION)).toEqual({ userId: 'u-bob', handle: 'bob' });
+        await sendsOnlyTo(alice, bob, mallory, 'after the reload');
+        expect(await createPinStore(alice.pinKv).pinsFor('u-mallory')).toEqual([]);
+      });
+    }
+  }
+
+  // The user sees handles, never user ids: a new conversation listing
+  // another account under the handle of a contact this device is bound to
+  // gets nothing pinned, opened or sealed until the user says it is a
+  // different account.
+  it('a new conversation under a known handle but another account is held until the user acknowledges it', async () => {
+    const { alice, bob, directory } = await conversation();
+    await sendText(alice, bob, 'hello bob');
+    await verifyShownKey(alice);
+    const mallory = await createEndpoint({ userId: 'u-mallory', deviceId: 'd-mallory', handle: 'mallory', directory });
+    alice.peers.set(OTHER_CONVERSATION, { userId: 'u-mallory', handle: 'bob' });
+    mallory.peers.set(OTHER_CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+    expect(alice.bindings.handleConflict(OTHER_CONVERSATION, alice.peerOf(OTHER_CONVERSATION)))
+      .toEqual({ userId: 'u-bob', handle: 'bob' });
+
+    const fromMallory = await sendText(mallory, alice, 'bob here, new phone, send the code', OTHER_CONVERSATION);
+    expect(fromMallory.opened).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+    directory.set('bob', directoryEntryOf(mallory));
+    await expect(alice.secure.seal(OTHER_CONVERSATION, textContent('the code'), { clientMessageId: 'code' }))
+      .rejects.toBeInstanceOf(PeerKeyChangedError);
+    expect(await createPinStore(alice.pinKv).pinsFor('u-mallory')).toEqual([]);
+    expect(alice.trust.pendingChange('u-mallory')).toBeNull();
+    expect(alice.bindings.get(OTHER_CONVERSATION)).toBeNull();
+    expect(await alice.device.cipher.hasSession(OTHER_CONVERSATION)).toBe(false);
+    // The same after a reload.
+    await alice.restart();
+    expect(await alice.secure.open(fromMallory.message)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+
+    // Acknowledged as another account, it is a first contact like any other,
+    // and the conversation with Bob is untouched.
+    await alice.bindings.bind(OTHER_CONVERSATION, alice.peerOf(OTHER_CONVERSATION));
+    expect((await alice.secure.open(fromMallory.message)).content.text).toBe('bob here, new phone, send the code');
+    expect(alice.bindings.get(CONVERSATION)).toEqual({ userId: 'u-bob', handle: 'bob' });
+    directory.set('bob', directoryEntryOf(bob));
+    expect((await sendText(alice, bob, 'still bob')).opened.content.text).toBe('still bob');
+  });
 });

@@ -6,6 +6,7 @@
 import { ENVELOPE_VERSION_V2 } from '../../crypto/frame.js';
 import { isPermanentRefusal, retryDelayMs } from '../../domain/delivery.js';
 import { AuthError } from '../../platform/api-client.js';
+import { outboundQueueEntry } from '../../platform/persist.js';
 
 const LEAD_MS = 2000;
 
@@ -81,8 +82,9 @@ export function createOutbox({ store, stack, messages, toast }) {
         await stack.identityDb.put('outbound', { ...item, attempts, nextRetryAt: Date.now() + retryDelayMs(attempts) });
         if (isPermanentRefusal(error)) {
           await stack.identityDb.delete('outbound', item.clientMessageId);
+          // The bubble keeps the sealed envelope, in memory only, for Retry.
           const index = findOwn(item.conversationId, item.clientMessageId);
-          if (index >= 0) store.messagesOf(item.conversationId)[index]._status = 'failed';
+          if (index >= 0) Object.assign(store.messagesOf(item.conversationId)[index], { _status: 'failed', _envelope: item.envelope });
           toast('전송 실패: ' + error.message, 'error');
           store.notify('panels');
         }
@@ -93,14 +95,26 @@ export function createOutbox({ store, stack, messages, toast }) {
   return {
     drain,
 
-    // Puts a failed send back in the queue to go out on the next drain.
+    // Puts a failed send back in the queue, its sealed envelope as it was,
+    // to go out on the next drain: the queued entry, or the envelope a
+    // refused send left with its bubble. A send that was never sealed (its
+    // upload or seal failed) has nothing to send again and stays failed.
     async retry(convId, clientMessageId) {
       if (!clientMessageId) return;
       const index = findOwn(convId, clientMessageId);
       if (index < 0) return;
-      store.messagesOf(convId)[index]._status = 'pending';
+      const message = store.messagesOf(convId)[index];
       const queued = await stack.idb.get('outbound', clientMessageId);
-      if (queued) await stack.identityDb.put('outbound', { ...queued, attempts: 0, nextRetryAt: 0 });
+      const envelope = queued?.envelope ?? message._envelope;
+      if (!envelope) {
+        toast('다시 보낼 내용이 없어요. 새로 보내주세요.', 'error');
+        return;
+      }
+      await stack.identityDb.put('outbound', queued
+        ? { ...queued, attempts: 0, nextRetryAt: 0 }
+        : outboundQueueEntry({ clientMessageId, conversationId: convId, envelope }));
+      delete message._envelope;
+      message._status = 'pending';
       store.notify('panels');
       drain();
     },

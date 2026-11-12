@@ -77,7 +77,7 @@ allowlisting serializers in `src/platform/persist.js`.
 | module | role |
 | ------ | ---- |
 | `app.js` | loads translations, builds everything below, subscribes views to topics, mounts listeners, signs the stored identity in |
-| `src/app/messaging-stack.js` | IndexedDB, the session record, the REST client, pins and trust, the session cipher, the decrypt-once content store, secure messaging, the sender, prekey maintenance |
+| `src/app/messaging-stack.js` | IndexedDB, the session record, the REST client, pins and trust, the direct conversations' peer bindings, the session cipher, the decrypt-once content store, secure messaging, the sender, prekey maintenance |
 
 ### Services (`src/app/services/`)
 
@@ -88,10 +88,10 @@ allowlisting serializers in `src/platform/persist.js`.
 | `history-sync.js` | cache hydration, the conversation list, history paging, the expiry sweep, polling |
 | `realtime.js` | the Socket.IO channel, its events, typing indicators sent |
 | `inbound.js` | pushed messages, receipts, edits and deletions into the store |
-| `outbox.js` | the sealed outbound queue: one leader tab, backoff, permanent refusals |
+| `outbox.js` | the sealed outbound queue: one leader tab, backoff, permanent refusals, retry of a refused send |
 | `send.js` | text, reactions, edits and deletions; what a refused send tells the user |
 | `attachments.js` | encrypt, upload and send images, voice notes and files |
-| `identity-trust.js` | accepting or declining a changed key, safety numbers, verification |
+| `identity-trust.js` | accepting or declining a changed key, safety numbers, verification, another account under a known handle |
 | `device-transfer.js` | both sides of a device transfer |
 | `notifications.js` | the unread count in the title, OS notifications by privacy level |
 | `safety.js` | block, unblock, mute, report |
@@ -117,7 +117,8 @@ focus trap), `dialogs.js` (stacked dialogs), `markdown-dom.js`, `time.js`,
 
 ### Pure logic added for the views (`src/domain/`)
 
-`conversations.js` (peer, preview, ordering), `message-groups.js` (day and
+`conversations.js` (peer, preview, ordering), `peer-bindings.js` (whom a
+direct conversation is with, once bound), `message-groups.js` (day and
 sender runs, delivery state), `composer-text.js` (message cap, handle rule,
 mentions), `search.js`, `delivery.js` (outbound backoff), `mute.js`,
 `local-messages.js` (ids of sends the server has not named). Each has a
@@ -134,11 +135,18 @@ unit test in `__tests__/`.
    is put in the decrypt-once store before anything is encrypted.
 3. The composer clears and the optimistic view (`__pending__` id) is put in
    the store from the content we hold; `panels` redraws.
-4. `sender.deliver` POSTs the envelope only. On success the store's content
-   is filed under the server's id and the delivered view replaces the
-   pending one; on a passing failure (network, 5xx, 429, ended session) the
-   sealed envelope waits in the outbound queue, which `services/outbox.js`
-   drains on reconnect, on every conversation-list load and on retry.
+4. `sender.deliver` puts the sealed envelope (never the plaintext) in the
+   outbound queue, not due while the request is in flight, then POSTs the
+   envelope only. On success the store's content is filed under the
+   server's id, the queue entry goes and the delivered view replaces the
+   pending one. On a passing failure (network, 5xx, 429, ended session) the
+   entry stays, and `services/outbox.js` drains it on reconnect and on every
+   conversation-list load; so does a page that opens after one closed with
+   the request in flight (the server takes a repeated client message id as
+   the same message). A permanent refusal (another 4xx) drops the entry and
+   marks the bubble failed; the bubble keeps the sealed envelope in memory,
+   and its Retry queues that envelope again. A send that was never sealed
+   (its upload or seal failed) has nothing to retry.
 5. Attachments (`services/attachments.js`) first check the session can
    send, show a local bubble, seal the bytes under a fresh key
    (`crypto/attachment-v2.js`) and upload only the blob; the key and digest
@@ -149,7 +157,11 @@ unit test in `__tests__/`.
 1. A push (`services/realtime.js` `message.new` -> `services/inbound.js`)
    or a history fetch (`services/history-sync.js`, paged back to what this
    device has, oldest first so each ratchet chain moves forward in order)
-   hands the envelope to `messages.ingest`.
+   hands the envelope to `messages.ingest`. A push is filed under the
+   conversation id its envelope carries; a history page, and a listed last
+   message, keep only the envelopes that carry the conversation they were
+   fetched for, since a frame authenticates under its own conversation id
+   and would otherwise show under another conversation's peer.
 2. `domain/ingest.js` asks `secure.open`, which returns the content from
    the decrypt-once store or decrypts exactly once and stores the result
    before the session commits. Deleted and expired messages are retired
@@ -164,10 +176,22 @@ unit test in `__tests__/`.
 ## Where trust decisions happen
 
 - Admission is in the crypto layer, never in the UI: the session cipher
-  asks the pins (`crypto/pins.js`, wired in `messaging-stack.js`
-  `verifyIdentity`) before installing a session and for every frame it
-  seals or opens. A key the pins do not admit records a pending change and
-  freezes sending for that peer.
+  asks the pins (`crypto/pins.js`, through `domain/peer-bindings.js`
+  `createConversationVerifier`, wired in `messaging-stack.js`) before
+  installing a session, before starting one from the directory, and for
+  every frame it seals or opens. A key the pins do not admit records a
+  pending change, and nothing is installed, opened or sealed for it; a
+  conversation whose session sends to an identity the pins still admit
+  goes on sending, so a forged frame stops nothing. Without a session, a
+  send waits until no change is pending.
+- Whom a direct conversation is with is bound the first time its crypto
+  admits an identity (`domain/peer-bindings.js`, IndexedDB `direct-peers`),
+  and sessions from before bindings existed are bound on the next list
+  load. From then on the pins judge that conversation for the bound peer,
+  and a list that names another user, or turns it into a group, changes
+  only its last message and timer (`history-sync.js` `adoptConversations`).
+  A conversation not bound yet whose listed handle is bound to another
+  account admits nothing until the user chooses to talk to that account.
 - The user's decisions are carried out in `services/identity-trust.js`,
   each bound to the change or key the user was shown: `accept` (refused
   with 'reverify' for a contact who was verified, or a device of theirs
@@ -176,10 +200,13 @@ unit test in `__tests__/`.
   was computed from. After an accept or a verification, messages locked by
   the change are opened again.
 - The UI only asks and shows: `views/key-change-banner.js` (what changed,
-  decline / review / compare), `views/safety-dialog.js` (the number, the
-  verification codes, mark verified), `views/chat-view.js` and
-  `views/composer.js` (the frozen composer and why), `views/sidebar.js`
-  (the changed-key marker).
+  decline / review / compare; another account under a known handle, and
+  talking to it after a confirmation), `views/safety-dialog.js` (the
+  number, the verification codes, mark verified), `views/chat-view.js`
+  (the verified mark in the header) and `views/composer.js` (the frozen
+  composer and why: a group, a legacy identity, another account under a
+  known handle), `views/sidebar.js` (the changed-key and other-account
+  markers).
 - Device transfer trust: both screens show the fingerprint the server
   computes over the new device's auth and identity keys; the old device
   approves only after the user compared them, and the new device asks
@@ -198,6 +225,8 @@ unit test in `__tests__/`.
   and language, messaging with replies, reactions, edits, deletes,
   search, forwarding, tabs, receipts and typing, history paging,
   attachments, safety numbers, identity changes, device transfer, secret
-  links and the KakaoTalk import, each with no app errors in the console.
+  links and the KakaoTalk import, each with no app errors in the console;
+  also what a relay that rewrites its lists cannot change, Retry of a
+  refused send, and a send in flight when its page closes.
   It was written against the monolithic `app.js` and passed there before
   the split.

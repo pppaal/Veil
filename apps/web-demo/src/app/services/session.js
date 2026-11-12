@@ -36,8 +36,10 @@ export function createSession({ store, stack, messages, history, realtime, archi
     state.me = sessionStore.current();
     // Without them the app still works: a pending key change is raised again
     // by the next frame or lookup that presents it, and history is fetched
-    // back from the start.
-    await Promise.all([stack.trust.load(), stack.historyMarks.load()]).catch((error) => console.warn('local state load failed', error));
+    // back from the start. Peer bindings are read before any list is shown;
+    // until they can be, the crypto admits nothing (src/domain/peer-bindings.js).
+    await Promise.all([stack.trust.load(), stack.historyMarks.load(), stack.bindings.load()])
+      .catch((error) => console.warn('local state load failed', error));
     await history.hydrateFromCache();
     await archives.load();
     ui.showApp();
@@ -51,6 +53,7 @@ export function createSession({ store, stack, messages, history, realtime, archi
     messages.revokeAllBlobUrls();
     store.resetSession();
     stack.historyMarks.reset();
+    stack.bindings.reset();
     stack.trust.reset();
     stack.prekeys.stop();
     realtime.disconnect();

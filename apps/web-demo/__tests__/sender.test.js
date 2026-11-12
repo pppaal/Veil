@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { disappearingExpiry, mediaContent, payloadFromContent, reactionContent, textContent } from '../src/domain/content.js';
 import { createSender, newClientMessageId } from '../src/features/sender.js';
+import { createMemoryKv } from '../src/platform/kv.js';
 import { CONVERSATION } from './support/devices.js';
 import { conversation, serverMessage } from './support/messaging.js';
 
@@ -56,7 +57,7 @@ describe('the sealed expiry', () => {
       server.stored.push(message);
       return { message };
     });
-    const queue = { put: vi.fn() };
+    const queue = createMemoryKv('clientMessageId');
     const aliceSender = createSender({ secure: alice.secure, authedApi, queue });
     const bobSender = createSender({ secure: bob.secure, authedApi, queue });
 
@@ -84,5 +85,84 @@ describe('the sealed expiry', () => {
       await endpoint.secure.retireExpired();
       for (const sent of [message, reaction]) expect(await endpoint.secure.open(sent)).toEqual({ failure: 'retired' });
     }
+  });
+});
+
+// The envelope is queued before POST /messages goes out, so a page closed,
+// reloaded or crashed while the request is in flight loses nothing: the next
+// drain (src/app/services/outbox.js) sends it.
+describe('the outbound queue', () => {
+  const NOW = Date.parse('2026-11-12T09:00:00Z');
+  const SEALED_FIELDS = ['version', 'conversationId', 'senderDeviceId', 'recipientUserId', 'ciphertext', 'nonce', 'messageType'];
+
+  async function sealed(endpoint, text) {
+    const clientMessageId = newClientMessageId();
+    const sender = createSender({ secure: endpoint.secure, authedApi: async () => ({}), queue: createMemoryKv('clientMessageId') });
+    return { clientMessageId, envelope: await sender.seal(CONVERSATION, textContent(text), { clientMessageId }) };
+  }
+
+  it('holds the sealed envelope, and nothing else, while the request is in flight, and sends it after a reload', async () => {
+    const { alice, bob } = await conversation();
+    const queue = createMemoryKv('clientMessageId');
+    const { clientMessageId, envelope } = await sealed(alice, 'first, in flight');
+    // The page unloads mid-request: the POST never settles.
+    const posts = [];
+    const stalled = createSender({
+      secure: alice.secure,
+      authedApi: (path, init) => { posts.push(init.body); return new Promise(() => {}); },
+      queue,
+      clock: () => NOW,
+    });
+    stalled.deliver({ conversationId: CONVERSATION, clientMessageId, envelope });
+    await vi.waitFor(() => expect(posts).toHaveLength(1));
+
+    const [entry] = await queue.all();
+    expect(Object.keys(entry).sort()).toEqual(['attempts', 'clientMessageId', 'conversationId', 'envelope', 'nextRetryAt']);
+    expect(entry).toMatchObject({ clientMessageId, conversationId: CONVERSATION, attempts: 0 });
+    expect(Object.keys(entry.envelope).sort()).toEqual([...SEALED_FIELDS].sort());
+    expect(JSON.stringify(entry)).not.toContain('first, in flight');
+    // Not due while the request may still be in flight, due soon after.
+    expect(entry.nextRetryAt).toBeGreaterThan(NOW);
+    expect(entry.nextRetryAt).toBeLessThanOrEqual(NOW + 30_000);
+
+    // After the reload, what the drain sends from the queue reaches Bob.
+    await alice.restart();
+    const stored = serverMessage(entry.envelope, { clientMessageId });
+    await alice.secure.acknowledge(stored);
+    expect((await bob.secure.open(stored)).content.text).toBe('first, in flight');
+    expect((await alice.secure.open(stored)).content.text).toBe('first, in flight');
+  });
+
+  it('is empty once the server has the message', async () => {
+    const { alice } = await conversation();
+    const queue = createMemoryKv('clientMessageId');
+    const { clientMessageId, envelope } = await sealed(alice, 'delivered');
+    const sender = createSender({
+      secure: alice.secure,
+      authedApi: async (path, { body }) => ({ message: serverMessage(body.envelope, { clientMessageId: body.clientMessageId }) }),
+      queue,
+    });
+    const { message } = await sender.deliver({ conversationId: CONVERSATION, clientMessageId, envelope });
+    expect(message.clientMessageId).toBe(clientMessageId);
+    expect(await queue.all()).toEqual([]);
+  });
+
+  it('keeps a send that can pass for the next drain, and drops one refused for good', async () => {
+    const { alice } = await conversation();
+    const queue = createMemoryKv('clientMessageId');
+    const failing = (status) => createSender({
+      secure: alice.secure,
+      authedApi: async () => { throw Object.assign(new Error(`status ${status}`), { status }); },
+      queue,
+    });
+
+    const passing = await sealed(alice, 'try again');
+    expect(await failing(503).deliver({ conversationId: CONVERSATION, ...passing }))
+      .toEqual({ queued: true, sessionEnded: false });
+    expect(await queue.all()).toMatchObject([{ clientMessageId: passing.clientMessageId, attempts: 0, nextRetryAt: 0 }]);
+
+    const refused = await sealed(alice, 'refused');
+    await expect(failing(403).deliver({ conversationId: CONVERSATION, ...refused })).rejects.toMatchObject({ status: 403 });
+    expect((await queue.all()).map((row) => row.clientMessageId)).toEqual([passing.clientMessageId]);
   });
 });

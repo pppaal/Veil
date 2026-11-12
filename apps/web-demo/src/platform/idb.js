@@ -16,6 +16,9 @@
 //                      read that era's history (src/crypto/legacy-v1dev.js)
 //   history-marks      per conversation, the conversationOrder its history
 //                      has been fetched through (src/domain/history.js)
+//   direct-peers       per direct conversation, the peer it was bound to
+//                      once its crypto first admitted an identity for it
+//                      (src/domain/peer-bindings.js)
 //   kakao-archives     imported KakaoTalk archives with their messages
 //   kakao-archive-meta archive rows for the sidebar, without the messages
 
@@ -30,8 +33,9 @@ export const IDB_NAME = 'veil-demo';
 // v3 adds the pin and archive-meta stores and scrubs what v2 let reach disk:
 // draft text, plaintext copies in the outbound queue, and decrypted fields
 // (attachment keys included) spread into cached messages. v4 adds the
-// protocol-v2 stores, v5 the pending identity changes and history marks.
-export const IDB_VERSION = 5;
+// protocol-v2 stores, v5 the pending identity changes and history marks, v6
+// the direct conversations' peer bindings.
+export const IDB_VERSION = 6;
 
 // onBlocked: a tab on an older build holds the database open, and this
 // upgrade waits until that tab closes. onDeletedElsewhere: another tab wiped
@@ -162,6 +166,7 @@ function upgrade(db, transaction, oldVersion) {
   ensureStore(db, 'identity-pins-v2', 'id', { indexes: [['byUser', 'userId']] });
   ensureStore(db, 'identity-pending', 'userId');
   ensureStore(db, 'history-marks', 'conversationId');
+  ensureStore(db, 'direct-peers', 'conversationId');
   if (oldVersion > 0 && oldVersion < 3) scrubVersion2(db, transaction);
 }
 

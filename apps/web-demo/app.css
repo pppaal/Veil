@@ -683,6 +683,13 @@ a { color: var(--accent); text-decoration: none; }
 }
 .panel-title .sub.online { color: var(--good); }
 .panel-title .sub.typing { color: var(--accent-strong); }
+.verified-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--good);
+  white-space: nowrap;
+}
+.verified-badge[hidden] { display: none; }
 
 .panel-msgs {
   flex: 1;

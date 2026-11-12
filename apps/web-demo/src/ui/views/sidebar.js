@@ -19,6 +19,8 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
     const preview = last ? previewLabel(last, now) : '아직 메시지 없음';
     const time = last?.serverReceivedAt ? relativeTime(last.serverReceivedAt) : '';
     const keyChanged = peer && stack.trust.pendingChange(peer.userId);
+    const directPeer = stack.peerOf(conv.id);
+    const otherAccount = directPeer && stack.bindings.handleConflict(conv.id, directPeer);
     const avatar = avatarFor(peer?.handle ?? '?', 'md');
     avatar.appendChild(el('span', { class: 'presence-dot' }));
     if (peer && state.online.has(peer.userId)) avatar.classList.add('online');
@@ -32,7 +34,7 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
           el('span', { class: 'conv-name' }, ['@' + (peer?.handle ?? '?')]),
           time ? el('span', { class: 'conv-time' }, [time]) : null,
         ]),
-        el('div', { class: 'conv-preview' }, [keyChanged ? t('keyChange.sidebar') : preview]),
+        el('div', { class: 'conv-preview' }, [otherAccount ? t('accountConflict.sidebar') : keyChanged ? t('keyChange.sidebar') : preview]),
       ]),
     ]);
   }

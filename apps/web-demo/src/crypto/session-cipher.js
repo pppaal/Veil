@@ -298,11 +298,18 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
 
     // The identity this conversation sends to: { remoteDeviceId,
     // remoteIdentityKey } of its current state, or null without a session.
-    // A safety number is about this key, whichever keys are pinned.
-    sessionIdentity(conversationId) {
-      return withRecord(conversationId, async ({ record }) => (record
-        ? { remoteDeviceId: record.current.remoteDeviceId, remoteIdentityKey: record.current.remoteIdentityKey.slice() }
-        : null));
+    // A safety number is about this key, whichever keys are pinned. A read
+    // only, so like hasSession it takes no lock: a record is written whole,
+    // and the panel header asks on every redraw.
+    async sessionIdentity(conversationId) {
+      const { record } = await repo.load(conversationId);
+      try {
+        return record
+          ? { remoteDeviceId: record.current.remoteDeviceId, remoteIdentityKey: record.current.remoteIdentityKey.slice() }
+          : null;
+      } finally {
+        for (const state of record?.states ?? []) state.destroy();
+      }
     },
 
     // Starts a session from a directory entry. The bundle is authenticated

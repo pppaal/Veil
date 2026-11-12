@@ -5,9 +5,11 @@
 //   open   returns a message's content from that store, or decrypts it
 //          exactly once and stores the result before the session moves on
 //   retire drops what was kept of a message that was deleted or expired
-// A peer whose identity changed is frozen here for sending until the user
-// reviews the change (accepts, verifies or declines it); nothing in this
-// module ever refetches keys because a message failed to decrypt.
+// Nothing is ever sealed to an identity the pins do not admit, and a change
+// waiting for the user's review (accept, verify or decline) never stops a
+// conversation whose session still sends to an admitted identity: a refused
+// frame, which a relay can forge at will, stops nothing by itself. Nothing
+// in this module ever refetches keys because a message failed to decrypt.
 
 import { effectiveExpiry, isPast } from '../core/expiry.js';
 import { BundleError } from '../crypto/bundle.js';
@@ -68,7 +70,11 @@ export const IDENTITY_REFUSED = 'identityRefused';
 // one-time prekey is malformed; getPeer(conversationId) -> the other member
 // { userId, handle } or null; getSelf() -> the signed-in identity record
 // (src/crypto/identity.js) with its deviceId; clock() -> ms, for expiries.
-export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore, legacyReader, getSelf, getPeer, clock }) {
+// admitIdentity({ conversationId, remoteDeviceId, identityKey }) -> boolean
+// decides about the key the directory serves before a session is started
+// from it, as the cipher's verifier does for every frame (the app passes
+// that verifier); without one, the pins decide for getPeer's user.
+export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore, legacyReader, getSelf, getPeer, admitIdentity = null, clock }) {
   const bootstrapping = new Map(); // conversationId -> Promise
 
   const isOwn = (raw) => raw.senderDeviceId === getSelf()?.deviceId && !isLegacyV1DevEnvelope(raw);
@@ -83,7 +89,9 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
         remoteIdentityKey: entry.identityKey,
         signedPrekeyBundle: entry.signedPrekeyBundle,
         oneTimePrekey: entry.oneTimePrekey,
-        admit: () => trust.admit(peer.userId, entry.deviceId, entry.identityKey),
+        admit: () => (admitIdentity
+          ? admitIdentity({ conversationId, remoteDeviceId: entry.deviceId, identityKey: entry.identityKey })
+          : trust.admit(peer.userId, entry.deviceId, entry.identityKey)),
       });
     } catch (error) {
       if (error instanceof BundleError) {
@@ -94,14 +102,18 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     if (!started) throw new PeerKeyChangedError(peer.userId);
   }
 
-  // Resolves to the peer once a session exists. Concurrent sends share one
-  // bootstrap, so they do not each claim a one-time prekey.
+  // Resolves to the peer once a session exists. A conversation with a
+  // session sends while the pins admit the identity it sends to, which
+  // encrypt asks for every frame, whatever change waits for review. One
+  // without a session asks the directory only once no change waits: that
+  // lookup would claim a one-time prekey for a key the pins refuse.
+  // Concurrent sends share one bootstrap, so they do not each claim one.
   async function prepare(conversationId) {
     if (isLegacyIdentity(getSelf())) throw new LegacyIdentityError();
     const peer = getPeer(conversationId);
     if (!peer) throw new PeerUnavailableError('no-peer');
-    if (trust.pendingChange(peer.userId)) throw new PeerKeyChangedError(peer.userId);
     if (await cipher.hasSession(conversationId)) return peer;
+    if (trust.pendingChange(peer.userId)) throw new PeerKeyChangedError(peer.userId);
     if (!bootstrapping.has(conversationId)) {
       const run = bootstrap(conversationId, peer).finally(() => bootstrapping.delete(conversationId));
       bootstrapping.set(conversationId, run);
@@ -112,7 +124,8 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
   // The session may be bound to an identity the pins no longer admit (the
   // user verified another of the peer's devices since): then the cipher
-  // seals nothing, and the change it recorded freezes the conversation.
+  // seals nothing and records the change, and sending stays refused until
+  // the user settles it.
   async function encrypt(conversationId, peer, content) {
     try {
       return await cipher.encrypt({

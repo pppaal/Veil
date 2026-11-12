@@ -81,6 +81,9 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
     try {
       delivered = await stack.sender.deliver({ conversationId: conv.id, clientMessageId, envelope });
     } catch (error) {
+      // Refused for good: the sealed envelope stays with the bubble, in
+      // memory only, for Retry to queue again (src/app/services/outbox.js).
+      optimistic._envelope = envelope;
       markFailed(optimistic);
       toast(`${failureLabel}: ${error.message}`, 'error');
       return null;

@@ -22,6 +22,10 @@ export function createChatView({ store, stack, messages, messageList, composer, 
   const { state } = store;
   const readMarked = new Set(); // message ids this session marked read
   const observers = new Map(); // convId -> IntersectionObserver
+  // convId -> whether the key its safety number is about was verified, as
+  // last read: a redraw shows it at once, and the read that follows
+  // corrects it.
+  const verifiedKeys = new Map();
 
   async function markRead(messageId) {
     if (readMarked.has(messageId)) return;
@@ -96,6 +100,20 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     return { text: `대화 ${conv.id.slice(0, 8)}`, className: 'sub' };
   }
 
+  // Whether the user compared this conversation's safety number, so that a
+  // contact they verified looks different from one under the same handle
+  // they did not (src/features/secure-messaging.js safetyKey: false while
+  // a change waits for review).
+  function verifiedBadge(convId) {
+    const badge = el('span', { class: 'verified-badge', title: t('safety.verifiedBadgeTitle') }, [t('safety.verifiedBadge')]);
+    badge.hidden = !verifiedKeys.get(convId);
+    stack.secure.safetyKey(convId).then((key) => {
+      verifiedKeys.set(convId, Boolean(key?.verified));
+      badge.hidden = !key?.verified;
+    }).catch(() => {});
+    return badge;
+  }
+
   function header(conv, peer, directPeer, legacyIdentity) {
     const avatar = avatarFor(peer?.handle ?? '?', 'md');
     avatar.appendChild(el('span', { class: 'presence-dot' }));
@@ -104,6 +122,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     return el('div', { class: 'panel-header' }, [
       avatar,
       el('div', { class: 'panel-title' }, [el('div', { class: 'name' }, ['@' + (peer?.handle ?? '?')]), el('div', { class: sub.className }, [sub.text])]),
+      directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
       headerButton('대화에서 찾기 (Ctrl/Cmd+F)', '🔍', () => panelSearch.open(conv.id), '대화에서 찾기'),
       directPeer && !legacyIdentity ? headerButton(t('safety.open'), '🛡', () => safetyDialog.open(conv.id, directPeer)) : null,
       headerButton(t('history.delete'), '🗑', () => deleteLocalHistory(conv.id)),
@@ -129,12 +148,18 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     const shown = all.filter((message) => isShown(message, now));
     // Sessions, pins and safety numbers exist only in direct conversations:
     // the web demo cannot encrypt to a group, so it does not offer to send.
+    // A key change waiting for review raises its banner but does not stop
+    // sending: the cipher seals only to an identity the pins admit, and a
+    // send it refuses says why (src/app/services/send.js). A conversation
+    // listed under a handle this device knows under another account opens
+    // and sends nothing until the user chooses to talk to that account.
     const directPeer = stack.peerOf(conv.id);
     const keyChanged = Boolean(directPeer && stack.trust.pendingChange(directPeer.userId));
+    const otherAccount = Boolean(directPeer && stack.bindings.handleConflict(conv.id, directPeer));
     const legacyIdentity = isLegacyIdentity(state.me);
     let placeholder = '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
     if (!directPeer) placeholder = t('group.composerFrozen');
-    if (keyChanged) placeholder = t('keyChange.composerFrozen');
+    if (otherAccount) placeholder = t('accountConflict.composerFrozen');
     if (legacyIdentity) placeholder = t('legacy.composerFrozen');
 
     // Scroll position from the previous drawing of this conversation.
@@ -148,12 +173,13 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     const list = messageList.render(convId, { shown, reactions, peerHandle: peer?.handle });
     list.addEventListener('scroll', () => state.scrollTops.set(convId, list.scrollTop));
     const { node: composerNode, textarea } = composer.render(convId, {
-      frozen: keyChanged || legacyIdentity || !directPeer,
+      frozen: legacyIdentity || !directPeer || otherAccount,
       placeholder,
       peerHandle: peer?.handle,
     });
     const panel = el('div', { class: 'panel', dataset: { conv: convId } }, [
       header(conv, peer, directPeer, legacyIdentity),
+      otherAccount ? keyChangeBanner.renderAccountConflict(convId, directPeer) : null,
       keyChanged ? keyChangeBanner.render(convId, directPeer) : null,
       panelSearch.render(convId),
       list,

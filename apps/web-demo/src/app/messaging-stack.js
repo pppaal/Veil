@@ -17,6 +17,7 @@ import { createSessionRepo } from '../crypto/session-repo.js';
 import { directPeer } from '../domain/conversations.js';
 import { createHistoryMarks } from '../domain/history.js';
 import { createAttachmentFetcher } from '../domain/media.js';
+import { createConversationVerifier, createPeerBindings } from '../domain/peer-bindings.js';
 import { createSecureMessaging } from '../features/secure-messaging.js';
 import { createSender } from '../features/sender.js';
 import { createApiClient } from '../platform/api-client.js';
@@ -88,13 +89,23 @@ export function createMessagingStack({ store, hooks }) {
   const keySource = createKeySource(crypto);
   const kv = (storeName, options) => createIdbKv({ ...idb, put: identityDb.put, delete: identityDb.delete }, storeName, options);
   const oneTimePrekeyKv = kv('one-time-prekeys');
-  const peerOf = (conversationId) => directPeer(store.conversation(conversationId), store.state.me?.userId);
+  // Whom each direct conversation is with once its crypto has admitted an
+  // identity for it (src/domain/peer-bindings.js): the peer sessions, pins,
+  // safety numbers and the panel are about is the bound one, and only a
+  // conversation not bound yet follows the relay's listing.
+  const bindings = createPeerBindings(kv('direct-peers'));
+  const peerOf = (conversationId) =>
+    bindings.get(conversationId) ?? directPeer(store.conversation(conversationId), store.state.me?.userId);
 
   const trust = createIdentityTrust({
     pins: createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks }),
     pendingKv: kv('identity-pending'),
     onChange: () => hooks.onTrustChange(),
   });
+  // A session is installed by an authenticated handshake, started from the
+  // directory, and a frame is sealed or opened, only for an identity the
+  // pins admit for the conversation's bound peer and that device.
+  const verifyIdentity = createConversationVerifier({ bindings, trust, peerOf });
 
   const cipher = createSessionCipher({
     subtle: crypto.subtle,
@@ -111,13 +122,7 @@ export function createMessagingStack({ store, hooks }) {
     // C-SPK); the clock of everything else stays local.
     keyring: createLocalKeyring({ loadIdentity: () => sessionStore.reload(), opkKv: oneTimePrekeyKv, clock: apiClient.serverNow }),
     clock: Date.now,
-    // A session is installed by an authenticated handshake, and a frame is
-    // sealed or opened, only for an identity the pins admit for that peer
-    // and device.
-    verifyIdentity: ({ conversationId, remoteDeviceId, identityKey }) => {
-      const peer = peerOf(conversationId);
-      return peer ? trust.admit(peer.userId, remoteDeviceId, identityKey) : false;
-    },
+    verifyIdentity,
   });
 
   const contentStore = createContentStore({
@@ -161,6 +166,7 @@ export function createMessagingStack({ store, hooks }) {
     }),
     getSelf,
     getPeer: peerOf,
+    admitIdentity: verifyIdentity,
     clock: Date.now,
   });
 
@@ -201,8 +207,22 @@ export function createMessagingStack({ store, hooks }) {
     // How far back each conversation's history has been fetched
     // (src/domain/history.js).
     historyMarks: createHistoryMarks(kv('history-marks')),
+    bindings,
+    // Binds the listed direct conversations whose sessions predate their
+    // binding (src/domain/peer-bindings.js bindSessions).
+    bindSessions: (conversations) => bindings.bindSessions(conversations, {
+      selfUserId: store.state.me?.userId,
+      hasSession: (conversationId) => cipher.hasSession(conversationId),
+    }),
     secure,
-    sender: createSender({ secure, authedApi, queue: { put: (entry) => identityDb.put('outbound', entry) } }),
+    sender: createSender({
+      secure,
+      authedApi,
+      queue: {
+        put: (entry) => identityDb.put('outbound', entry),
+        delete: (clientMessageId) => identityDb.delete('outbound', clientMessageId),
+      },
+    }),
     peerOf,
     media: { subtle: crypto.subtle, fetchAttachment: createAttachmentFetcher({ authedApi, fetchImpl: (url) => fetch(url) }) },
     prekeys,

@@ -11,8 +11,10 @@
 // change: it never replaces a pin by itself. The directory path (before a
 // session is started), the inbound path (an authenticated PreKey frame) and
 // every frame a session seals or opens go through admit()
-// (src/crypto/session-cipher.js), so a change freezes the conversation
-// whichever way the server tries it, until the user decides.
+// (src/crypto/session-cipher.js), so nothing is installed, opened or sealed
+// for a changed identity, whichever way the server tries it, until the user
+// decides. A conversation whose session still sends to an admitted identity
+// goes on sending meanwhile (src/features/secure-messaging.js prepare).
 //
 // A device id pinned under one user is refused under every other: the server
 // assigns device ids, so a legitimate one never belongs to two users, and a
@@ -33,8 +35,8 @@
 // are refused from then on without asking again, and the conversation goes
 // on with the identity its session already sends to. Without this, anyone
 // able to complete a handshake against our published prekeys (the relay, with
-// an identity of its own) could freeze a conversation for good: a frame
-// refused while a change is pending is opened again on every history
+// an identity of its own) could keep a change in front of the user for good:
+// a frame refused while a change is pending is opened again on every history
 // refresh and reload, and raises the change again each time. Declining adds
 // no trust, so it is open to verified contacts too; only accepting or
 // verifying that key undoes it.

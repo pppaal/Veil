@@ -14,10 +14,12 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
+import '../../conversations/data/messenger/presence_typing_service.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import '../../reactions/presentation/reaction_picker_widget.dart';
 import 'decrypt_status_view.dart';
 import 'message_expiration.dart';
+import 'message_expiry_label.dart';
 
 class ChatRoomScreen extends ConsumerStatefulWidget {
   const ChatRoomScreen({
@@ -45,7 +47,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   final Map<String, GlobalKey> _messageKeys = <String, GlobalKey>{};
   Timer? _searchDebounce;
   Timer? _highlightClearTimer;
-  Timer? _expirationTicker;
   StreamSubscription<PlatformSecurityEvent>? _securityEventSub;
   Duration? _messageTtl;
   int? _observedConversationTimer;
@@ -153,25 +154,12 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     _releaseActiveConversation(widget.conversationId);
     _searchDebounce?.cancel();
     _highlightClearTimer?.cancel();
-    _expirationTicker?.cancel();
     _securityEventSub?.cancel();
     _messageController.dispose();
     _searchController.dispose();
     _composerFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _ensureExpirationTicker(bool hasExpiringMessages) {
-    if (hasExpiringMessages) {
-      _expirationTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (!mounted) return;
-        setState(() {});
-      });
-    } else {
-      _expirationTicker?.cancel();
-      _expirationTicker = null;
-    }
   }
 
   Future<void> _pickDisappearTtl() async {
@@ -282,19 +270,23 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
           )
         : null;
 
+    final peerUserId = conversation?.recipientBundle.userId;
     final content = Column(
       children: [
-        _ChatHeader(
-          embedded: widget.embedded,
-          title: conversation?.peerDisplayName ??
-              '@${conversation?.peerHandle ?? 'unknown'}',
-          searchController: _searchController,
-          searching: _isSearchingMessages,
-          ttlLabel: _ttlLabel(l10n),
-          ttlActive: _messageTtl != null,
-          onTapTtl: _pickDisappearTtl,
-          peerOnline: conversation != null &&
-              controller.isUserOnline(conversation.recipientBundle.userId),
+        _PresenceSelector<bool>(
+          presence: controller.presenceTyping,
+          select: (presence) => peerUserId != null && presence.isUserOnline(peerUserId),
+          builder: (context, peerOnline) => _ChatHeader(
+            embedded: widget.embedded,
+            title: conversation?.peerDisplayName ??
+                '@${conversation?.peerHandle ?? 'unknown'}',
+            searchController: _searchController,
+            searching: _isSearchingMessages,
+            ttlLabel: _ttlLabel(l10n),
+            ttlActive: _messageTtl != null,
+            onTapTtl: _pickDisappearTtl,
+            peerOnline: peerOnline,
+          ),
         ),
         const SizedBox(height: VeilSpace.sm),
         VeilMetricStrip(
@@ -427,8 +419,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
             hasSearchQuery: hasSearchQuery,
           ),
         ),
-        _TypingIndicator(
-          handle: controller.typingHandleFor(widget.conversationId),
+        _PresenceSelector<String?>(
+          presence: controller.presenceTyping,
+          select: (presence) => presence.typingHandleFor(widget.conversationId),
+          builder: (context, handle) => _TypingIndicator(handle: handle),
         ),
         const SizedBox(height: VeilSpace.md),
         VeilComposer(
@@ -705,8 +699,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final visible = messages
         .where((message) => !isMessageExpired(message.expiresAt, now: now))
         .toList();
-    final hasExpiring = visible.any((message) => message.expiresAt != null);
-    scheduleMicrotask(() => _ensureExpirationTicker(hasExpiring));
     if (_searchController.text.trim().isEmpty) {
       return visible;
     }
@@ -1509,10 +1501,9 @@ class _MessageBubble extends StatelessWidget {
                           if (message.expiresAt != null) ...[
                             const SizedBox(width: VeilSpace.xs),
                             Flexible(
-                              child: Text(
-                                formatMessageExpiry(message.expiresAt!),
+                              child: MessageExpiryLabel(
+                                expiresAt: message.expiresAt!,
                                 style: Theme.of(context).textTheme.bodyMedium,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -1724,6 +1715,55 @@ class _AttachmentTransferPanel extends StatelessWidget {
       AttachmentTransferPhase.canceled => l10n.chatPhaseDescCanceled,
     };
   }
+}
+
+/// Rebuilds [builder] when [select] of the presence signals changes, and
+/// only then: a peer typing in another conversation rebuilds nothing here,
+/// and nothing of the screen around it.
+class _PresenceSelector<T> extends StatefulWidget {
+  const _PresenceSelector({required this.presence, required this.select, required this.builder});
+
+  final PresenceTypingService presence;
+  final T Function(PresenceTypingService presence) select;
+  final Widget Function(BuildContext context, T value) builder;
+
+  @override
+  State<_PresenceSelector<T>> createState() => _PresenceSelectorState<T>();
+}
+
+class _PresenceSelectorState<T> extends State<_PresenceSelector<T>> {
+  late T _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _value = widget.select(widget.presence);
+    widget.presence.addListener(_onPresenceChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _PresenceSelector<T> oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.presence, widget.presence)) {
+      oldWidget.presence.removeListener(_onPresenceChanged);
+      widget.presence.addListener(_onPresenceChanged);
+    }
+    _value = widget.select(widget.presence);
+  }
+
+  @override
+  void dispose() {
+    widget.presence.removeListener(_onPresenceChanged);
+    super.dispose();
+  }
+
+  void _onPresenceChanged() {
+    final next = widget.select(widget.presence);
+    if (next != _value) setState(() => _value = next);
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _value);
 }
 
 class _TypingIndicator extends StatelessWidget {

@@ -50,4 +50,45 @@ void main() {
     expect(retryDelayForAttempt(3), const Duration(seconds: 4));
     expect(retryDelayForAttempt(9), const Duration(seconds: 16));
   });
+
+  group('statusCode/code table', () {
+    // (statusCode, code, retried)
+    const table = <(int?, String?, bool)>[
+      (null, 'network_timeout', true),
+      (null, 'network_unavailable', true),
+      (null, 'attachment_upload_failed', true),
+      (null, null, false),
+      (null, 'unexpected_code', false),
+      (500, null, true),
+      (502, 'upstream_failed', true),
+      (503, null, true),
+      (408, null, true),
+      (409, null, true),
+      (429, 'rate_limited', true),
+      (400, null, false),
+      (401, null, false),
+      (403, null, false),
+      (404, null, false),
+      (422, null, false),
+      (403, 'device_not_active', false),
+      (404, 'attachment_not_found', false),
+      (400, 'attachment_upload_invalid', false),
+      (null, 'attachment_upload_canceled', false),
+      (409, 'attachment_id_conflict', false),
+      (403, 'conversation_membership_required', false),
+      (403, 'direct_peer_mismatch', false),
+      (409, 'group_epoch_stale', false),
+      (400, 'group_epoch_required', false),
+      (400, 'key_distribution_invalid', false),
+      (503, 'device_not_active', false),
+    ];
+    for (final (statusCode, code, retried) in table) {
+      test('status $statusCode, code $code -> ${retried ? 'retried' : 'not retried'}', () {
+        final error = VeilApiException('failure', statusCode: statusCode, code: code);
+        expect(shouldRetryAutomatically(error, 1), retried);
+        expect(shouldRetryAutomatically(error, maxAutomaticRetryAttempts), isFalse,
+            reason: 'nothing is retried once the attempt budget is spent');
+      });
+    }
+  });
 }

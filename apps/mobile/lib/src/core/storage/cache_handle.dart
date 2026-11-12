@@ -16,7 +16,7 @@ import 'in_memory_message_content_store.dart';
 /// A database that cannot be opened leaves the app as it runs without a
 /// local cache: nothing is kept beyond the process, but messaging, sign-out
 /// and wipe keep working. Each call tries the database again.
-class CacheHandle implements ConversationCacheService, MessageContentStore {
+class CacheHandle implements ConversationCacheService, MessageContentStore, IncrementalConversationCache {
   CacheHandle(this._resolve);
 
   /// Returns the cache that is current at the time of the call; throws when
@@ -106,6 +106,13 @@ class CacheHandle implements ConversationCacheService, MessageContentStore {
   }) async =>
       await (await _cache())?.searchMessageArchive(query: query, currentDeviceId: currentDeviceId) ??
       const MessageSearchPage(items: <MessageSearchResult>[]);
+
+  @override
+  Future<ConversationCacheSnapshot> readSnapshot() async =>
+      await (await _cache())?.readSnapshot() ?? const ConversationCacheSnapshot();
+
+  @override
+  Future<void> writeChanges(ConversationCacheChanges changes) async => (await _cache())?.writeChanges(changes);
 
   @override
   Future<void> purgeExpiredMessages() async => (await _cache())?.purgeExpiredMessages();

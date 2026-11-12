@@ -79,7 +79,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 - [ ] TLS pinning or at minimum strict certificate validation confirmed on iOS and Android.
 - [ ] App Store export-compliance self-classification filed.
 - [ ] Play Data safety form matches [`store/play/data-safety-answers.md`](../store/play/data-safety-answers.md) and App Store Connect App Privacy matches [`store/appstore/app-privacy-answers.md`](../store/appstore/app-privacy-answers.md).
-- [ ] `apps/mobile/ios/Runner/PrivacyInfo.xcprivacy` declares the same collected data types as `store/appstore/app-privacy-answers.md` (Contacts, User ID, Device ID, Other User Content linked and unlinked; no Crash Data). The manifest is not checked by `store-label-check`, so compare it by hand: as of 2026-11-12 it still lacks Contacts and the linked Other User Content and lists Crash Data, so it must be updated before submission.
+- [ ] `apps/mobile/ios/Runner/PrivacyInfo.xcprivacy` declares the same collected data types as `store/appstore/app-privacy-answers.md` (Contacts, User ID, Device ID, Other User Content linked and unlinked; no Crash Data). The manifest is not checked by `store-label-check`, so compare it by hand whenever either file changes. App Store Connect asks one linked/unlinked question per type, so the manifest declares Other User Content as linked, the stricter of the two answers.
 
 ## 7. Post-submission
 

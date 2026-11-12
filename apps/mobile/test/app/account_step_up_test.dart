@@ -249,6 +249,25 @@ void main() {
       expect(await claimed.newDevice.storage.hasDeviceSecretRefs(), isTrue);
     });
 
+    test('a committed transfer whose login has not finished is not replaced by a new claim', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      await claimed.transfers.approveTransfer(claimed.claimId);
+      relay.failChallenges = 1;
+      await expectLater(_complete(claimed.newDevice, claimed.transfers, claimed.claimId), throwsA(isA<VeilApiException>()));
+      final committed = await claimed.newDevice.storage.readPendingTransfer();
+
+      await expectLater(
+        claimed.newDevice.session.claimTransfer(sessionId: 'another-session', transferToken: 'another-token'),
+        throwsA(isA<StateError>()),
+      );
+
+      final kept = await claimed.newDevice.storage.readPendingTransfer();
+      expect(kept?.newDeviceId, committed?.newDeviceId);
+      expect(kept?.authKey.privateKey, committed?.authKey.privateKey);
+      expect(relay.callsTo('POST /device-transfer/claim'), 1);
+    });
+
     test('a claim survives an app restart and is completed, not claimed again', () async {
       final relay = FakeAccountRelay();
       final claimed = await _claimed(relay);

@@ -396,6 +396,12 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       if (!VeilConfig.hasApi) {
         throw StateError('API mode is required for device transfer.');
       }
+      // The relay already moved an account to the keys of a transfer whose
+      // login has not finished; a new claim must not replace them.
+      final pending = _pendingTransfer ?? await _storage.readPendingTransfer();
+      if (pending != null && pending.isCompleted) {
+        throw StateError('Finish the transfer this device already completed before claiming another.');
+      }
 
       final materialSeed =
           'device-transfer-${DateTime.now().microsecondsSinceEpoch}';

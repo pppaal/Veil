@@ -3,7 +3,10 @@
 // claim lands, and approves. The new device asks before replacing an
 // identity stored here, shows its own fingerprint, and waits for the
 // approval; until its keys are saved they are the identity's only copy, so
-// they are kept in memory through any failure until a save succeeds.
+// they are kept in memory through any failure until a save succeeds. A
+// claim whose completion the relay refused keeps its keys too, until the
+// next claim (contract C-TRANSFER-RETRY): the dialog offers to try the same
+// code again.
 
 import { parseTransferCode } from '../../features/device-transfer.js';
 import { isAuthRejection } from '../../platform/api-client.js';
@@ -11,13 +14,15 @@ import { $ } from '../dom.js';
 import { toast } from '../toast.js';
 
 const WAITING_FOR_APPROVAL = '이전 기기에서 승인 대기 중…';
+const RETRYING = '서버 응답이 없어요 — 같은 요청으로 다시 시도 중…';
 
 // transfer: src/app/services/device-transfer.js; session:
 // src/app/services/session.js; auth: src/ui/views/auth-view.js;
 // dialogs: src/ui/dialogs.js; confirm: src/ui/confirm.js.
 export function createTransferDialogs({ store, transfer, session, auth, dialogs, confirm }) {
   // The new device's transfer in progress: the parsed code, claimId, keys,
-  // whether it replaces a stored identity, and once done its completion.
+  // whether it replaces a stored identity, once done its completion, and
+  // `stopped` once the relay refused to complete it.
   let incoming = null;
 
   const setText = (id, text) => {
@@ -104,8 +109,9 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
   }
 
   function openNew() {
-    // A completed transfer whose keys are not saved yet reopens on its retry.
-    if (incoming?.completion) {
+    // A completed transfer whose keys are not saved yet, or a claim whose
+    // completion was refused, reopens on its retry.
+    if (incoming?.completion || incoming?.stopped) {
       dialogs.open('transfer-new-dialog', 'transfer-new-claim');
       return;
     }
@@ -120,11 +126,31 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     dialogs.open('transfer-new-dialog', 'transfer-new-token');
   }
 
-  function failNew(error) {
+  // The relay refused to complete `started`. Its keys stay until the next
+  // claim, unless a newer claim already replaced it.
+  function stopNew(started, error) {
+    if (incoming !== null && incoming !== started) return;
+    incoming = { ...started, stopped: true };
     setText('transfer-new-error', error.message);
-    setText('transfer-new-status', '실패. 다시 시도하세요.');
+    setText('transfer-new-status', '이전을 완료하지 못했어요. 같은 코드로 다시 시도하거나, 새 코드를 붙여넣어 다시 클레임하세요.');
+    setText('transfer-new-claim', '다시 시도');
     $('transfer-new-claim').disabled = false;
-    incoming = null;
+  }
+
+  // The stopped claim again, with the keys it was made with.
+  function retryNew() {
+    incoming = { ...incoming, stopped: false };
+    $('transfer-new-claim').disabled = true;
+    setText('transfer-new-error', '');
+    setText('transfer-new-status', WAITING_FOR_APPROVAL);
+    awaitNew();
+  }
+
+  // The code in the field is the one the stopped claim was made with.
+  function isStoppedCode() {
+    const parsed = parseTransferCode($('transfer-new-token').value.trim());
+    return Boolean(incoming?.stopped && parsed
+      && parsed.sessionId === incoming.sessionId && parsed.transferToken === incoming.transferToken);
   }
 
   // Runs once the transfer completed, and again from the dialog's button
@@ -169,17 +195,19 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     let completion;
     try {
       completion = await transfer.awaitCompletion(started, {
-        waiting: () => Boolean(incoming),
+        waiting: () => incoming === started,
         onWaiting: () => setText('transfer-new-status', WAITING_FOR_APPROVAL),
+        onRetrying: () => setText('transfer-new-status', RETRYING),
       });
     } catch (error) {
-      failNew(error);
+      stopNew(started, error);
       return;
     }
     if (!completion) return;
-    // Kept even if the dialog was cancelled while /complete was in flight:
-    // the server has activated these keys and the old device destroys its
-    // copy, so they are the identity's only copy until saveNew stores them.
+    // Kept even if the dialog was cancelled while /complete was in flight or
+    // being retried: the server has activated these keys and the old device
+    // destroys its copy, so they are the identity's only copy until saveNew
+    // stores them.
     incoming = { ...started, completion };
     await saveNew();
   }
@@ -226,11 +254,19 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     }
   }
 
-  // Keys a completed transfer activated are never dropped: the dialog only
-  // closes, and opening it again brings back the retry.
+  // Keys a completed transfer activated are never dropped, nor those of a
+  // claim whose completion was refused: the dialog only closes, and opening
+  // it again brings back the retry. A claim still waiting for the approval
+  // stops waiting.
   function cancelNew() {
-    if (!incoming?.completion) incoming = null;
+    if (!incoming?.completion && !incoming?.stopped) incoming = null;
     dialogs.close('transfer-new-dialog');
+  }
+
+  function primaryNew() {
+    if (incoming?.completion) saveNew();
+    else if (isStoppedCode()) retryNew();
+    else claimNew();
   }
 
   return {
@@ -242,7 +278,11 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
       $('transfer-old-approve').addEventListener('click', approveOld);
       $('transfer-new-btn').addEventListener('click', openNew);
       $('transfer-new-cancel').addEventListener('click', cancelNew);
-      $('transfer-new-claim').addEventListener('click', () => (incoming?.completion ? saveNew() : claimNew()));
+      $('transfer-new-claim').addEventListener('click', primaryNew);
+      // Another code in the field makes the button a new claim again.
+      $('transfer-new-token').addEventListener('input', () => {
+        if (incoming?.stopped) setText('transfer-new-claim', isStoppedCode() ? '다시 시도' : '클레임');
+      });
     },
   };
 }

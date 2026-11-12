@@ -1,10 +1,11 @@
 // Device transfer, both sides (src/features/device-transfer.js). The OLD
 // device opens a transfer session, watches it for the new device's claim and
-// approves it once the user has compared fingerprints; the server revoking
-// this device is how the completion arrives here. The NEW device, which has
-// no session yet, generates a fresh identity, claims the session with a
-// proof signed by it, and retries /device-transfer/complete with one
-// completion proof until the old device has approved.
+// approves it, signed with its auth key, once the user has compared
+// fingerprints; the server revoking this device is how the completion
+// arrives here. The NEW device, which has no session yet, generates a fresh
+// identity, claims the session with a proof signed by it, and sends
+// /device-transfer/complete with one completion proof until the old device
+// has approved (contract C-TRANSFER-RETRY, awaitCompletion).
 
 import { generateIdentity, publishedKeys, signChallenge } from '../../crypto/identity.js';
 import {
@@ -14,11 +15,17 @@ import {
   TRANSFER_POLL_MS,
   watchOldDeviceTransfer,
 } from '../../features/device-transfer.js';
+import { ApiError } from '../../platform/api-client.js';
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// session: src/app/services/session.js.
-export function createDeviceTransfer({ store, stack, session }) {
+// A /complete that failed with no answer from the relay (the network) or
+// with the relay failing (5xx) may have gone through. The relay answers an
+// identical retry of a completion that went through with that completion.
+const outcomeUnknown = (error) => !(error instanceof ApiError) || error.status >= 500;
+
+// session: src/app/services/session.js; sleep(ms) waits between attempts.
+export function createDeviceTransfer({ store, stack, session, sleep = delay }) {
   let watched = null;
 
   return {
@@ -27,7 +34,17 @@ export function createDeviceTransfer({ store, stack, session }) {
     // the new device and the watch (outcome, approve(), cancel(), approved).
     async start({ onClaim, onPollError }) {
       const init = await stack.authedApi('/device-transfer/init', { method: 'POST', body: { oldDeviceId: store.state.me.deviceId } });
-      const transfer = watchOldDeviceTransfer({ sessionId: init.sessionId, authedApi: stack.authedApi, onClaim, onPollError });
+      const transfer = watchOldDeviceTransfer({
+        sessionId: init.sessionId,
+        authedApi: stack.authedApi,
+        signApproval: async (challenge) => {
+          const credentials = await stack.sessionStore.getDeviceCredentials();
+          if (!credentials) throw new Error('no device key to sign the approval with');
+          return credentials.sign(challenge);
+        },
+        onClaim,
+        onPollError,
+      });
       watched = transfer;
       return { code: encodeTransferCode(init), transfer };
     },
@@ -66,19 +83,34 @@ export function createDeviceTransfer({ store, stack, session }) {
       return claim.claimId;
     },
 
-    // Retries /complete with one proof until the old device has approved.
-    // Resolves to the completion, or to null once waiting() turns false;
-    // throws on any refusal other than "not approved yet".
-    async awaitCompletion({ sessionId, transferToken, claimId, keys }, { waiting, onWaiting }) {
+    // Sends /complete, the same request with one proof each time, until it
+    // answers. Polls while the old device has not approved
+    // (transfer_approval_required) and waiting() holds. After a network
+    // failure or a 5xx it sends the same request again whatever waiting()
+    // says: that completion may have gone through, and then these keys are
+    // the identity's only copy. Resolves to the completion, or to null once
+    // waiting() turns false while the relay says it is not approved yet;
+    // throws on any other refusal (transfer_session_inactive, any other
+    // 4xx), which leaves the keys with the caller.
+    async awaitCompletion({ sessionId, transferToken, claimId, keys }, { waiting, onWaiting, onRetrying = () => {} }) {
       const authProof = await signChallenge(crypto.subtle, keys.edPrivKey, `transfer-complete:${sessionId}:${claimId}:${transferToken}`);
-      while (waiting()) {
+      let unanswered = false;
+      while (unanswered || waiting()) {
         try {
           return await stack.api('/device-transfer/complete', { method: 'POST', body: { sessionId, transferToken, claimId, authProof } });
         } catch (error) {
-          if (error.code !== 'transfer_approval_required' && error.status !== 403) throw error;
-          onWaiting();
-          await delay(TRANSFER_POLL_MS);
+          if (error?.code === 'transfer_approval_required') {
+            unanswered = false;
+            if (!waiting()) return null;
+            onWaiting();
+          } else if (outcomeUnknown(error)) {
+            unanswered = true;
+            onRetrying(error);
+          } else {
+            throw error;
+          }
         }
+        await sleep(TRANSFER_POLL_MS);
       }
       return null;
     },

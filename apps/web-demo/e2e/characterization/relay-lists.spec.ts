@@ -21,9 +21,9 @@ import {
 // messages, a direct conversation keeps the peer it was bound to, a
 // conversation is shown under the peer its crypto is about whatever the list
 // calls our own entry in it, and a handle shown for another account than the
-// one this device knows under it, or one no honest server issues (a
-// lookalike of a known one), is held until the user chooses to talk to that
-// account.
+// one this device knows under it, our own handle shown for another account,
+// or one no honest server issues (a lookalike of a known one), is held until
+// the user chooses to talk to that account.
 
 test.describe.configure({ mode: 'serial' });
 
@@ -421,5 +421,69 @@ test.describe('another account under a lookalike of a handle this device knows',
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
     await expect(page.locator('.panel-header .verified-badge')).toBeVisible();
     expectNoErrors(alice, bob, mallory);
+  });
+});
+
+test.describe('another account under our own handle', () => {
+  const id = stamp();
+  let alice: Device;
+  let mallory: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    alice = await register(browser, `walice${id}`);
+    mallory = await register(browser, `wmal${id}`);
+  });
+
+  test.afterAll(async () => {
+    await closeAll(alice, mallory);
+  });
+
+  test('is held until the user chooses to talk to it', async () => {
+    const { page } = alice;
+    // The relay lists Mallory's new conversation with Alice under Alice's
+    // own handle: no other account can have it.
+    await rewriteList(page, (items) => {
+      for (const conv of items) {
+        for (const member of conv.members) if (member.handle === mallory.handle) member.handle = alice.handle;
+      }
+    });
+    await mallory.page.click('#new-chat-btn');
+    await mallory.page.fill('#new-peer-input', alice.handle);
+    await mallory.page.click('#new-confirm');
+    await expect(mallory.page.locator('.panel .panel-title .name')).toHaveText(`@${alice.handle}`);
+    await send(mallory, 'it is me, from my other phone');
+
+    const held = page.locator('.conv-item', { hasText: '⚠️ 내 이름을 단 다른 계정' });
+    await expect(held).toHaveCount(1, { timeout: 15_000 });
+    await expect(held.locator('.conv-name')).toHaveText(`@${alice.handle}`);
+    await held.click();
+    const banner = page.locator('.account-conflict-banner.own-handle');
+    await expect(banner).toBeVisible();
+    await expect(banner.locator('.key-change-text')).toHaveText(
+      `이 대화는 내 이름 @${alice.handle} (으)로 표시되지만 다른 계정이에요. 다른 사람은 내 이름을 가질 수 없어요: 이 기기가 받은 목록이 바뀐 것이고, 누군가를 나처럼 보이게 하려는 것일 수 있어요. 이 계정과 대화하기로 하기 전까지 여기서는 아무것도 열거나 보내지 않아요.`,
+    );
+    await expect(page.locator('.panel-input textarea')).toBeDisabled();
+    await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
+    await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+
+    // A reload changes nothing.
+    await reload(alice);
+    await page.locator('.conv-item', { hasText: '⚠️ 내 이름을 단 다른 계정' }).click();
+    await expect(page.locator('.account-conflict-banner.own-handle')).toBeVisible();
+    await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
+
+    // Chosen as a different account after a confirmation, it is a first
+    // contact like any other, still unverified.
+    await page.locator('.account-conflict-banner button').click();
+    await expect(page.locator('#confirm-title')).toHaveText(`다른 @${alice.handle} 계정과 대화할까요?`);
+    await page.click('#confirm-ok');
+    await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
+    await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.locator('.panel-input textarea')).toBeEnabled();
+    await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
+    await page.unroute('**/v1/conversations');
+    expectNoErrors(alice, mallory);
   });
 });

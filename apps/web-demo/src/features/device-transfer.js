@@ -21,6 +21,11 @@
 // no further than before (it could always answer 'completed'), and with no
 // approval given a rejected session stays a rejected session that keeps the
 // identity.
+//
+// The approval itself is signed: the server takes it only with the old
+// device's signature, by the auth key it logs in with, over the claim and
+// the fingerprint the user compared (approvalChallenge), so a stolen bearer
+// token alone cannot hand the account to someone else's keys.
 
 import { decodeBase64Url } from '../core/base64url.js';
 import { concatBytes, toHex } from '../crypto/bytes.js';
@@ -54,11 +59,20 @@ export async function transferFingerprint(subtle, { authPublicKey, publicIdentit
   return toHex(digest).replace(/(.{4})(?!$)/g, '$1 ');
 }
 
+// What the old device signs to approve a claim, as the API's
+// buildApprovalChallenge: the session, the claim and the fingerprint exactly
+// as the status response gave it.
+export const approvalChallenge = (sessionId, { claimId, claimantFingerprint }) =>
+  `transfer-approve:${sessionId}:${claimId}:${claimantFingerprint}`;
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// signApproval(challenge) -> the base64url Ed25519 signature of challenge by
+// this device's auth key.
 export function watchOldDeviceTransfer({
   sessionId,
   authedApi,
+  signApproval,
   onClaim,
   onPollError,
   sleep = delay,
@@ -137,10 +151,15 @@ export function watchOldDeviceTransfer({
 
     approve() {
       if (!claim) return Promise.reject(new Error('no claim to approve'));
-      const request = authedApi('/device-transfer/approve', {
-        method: 'POST',
-        body: { sessionId, claimId: claim.claimId },
-      }).then(() => true);
+      const approved = claim;
+      const request = (async () => {
+        const approvalProof = await signApproval(approvalChallenge(sessionId, approved));
+        await authedApi('/device-transfer/approve', {
+          method: 'POST',
+          body: { sessionId, claimId: approved.claimId, approvalProof },
+        });
+        return true;
+      })();
       approval = request;
       request.catch(() => {
         if (approval === request) approval = null;

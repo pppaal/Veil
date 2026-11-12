@@ -3,7 +3,7 @@
 // (src/domain/history.js), the expiry sweep, and the polling that runs it
 // all while the push channel is down or slow.
 
-import { isPast } from '../../core/expiry.js';
+import { expiryNow, isPast } from '../../core/expiry.js';
 import { fetchHistory, mergeHistory } from '../../domain/history.js';
 import { adoptedConversation } from '../../domain/peer-bindings.js';
 import { AuthError } from '../../platform/api-client.js';
@@ -97,7 +97,7 @@ export function createHistorySync({ store, stack, messages, outbox, isRealtimeCo
   // path as everything else. Stored contents of messages that are not
   // loaded expire with them.
   async function expireDueMessages() {
-    const now = Date.now();
+    const now = expiryNow();
     const due = (message) => isPast(message?.expiresAtMs, now);
     const expire = (message) => messages.ingest(serializeMessageForCache(message), { previous: message });
     let changed = false;

@@ -200,9 +200,21 @@ describe('the mock relay refuses what the API refuses', () => {
       },
     });
     expect(await complete()).toMatchObject({ status: 403, body: { code: 'transfer_approval_required' } });
-    const approve = (claimId) => call('/v1/device-transfer/approve', { method: 'POST', body: { sessionId, claimId } });
-    expect(await approve(webcrypto.randomUUID())).toMatchObject({ status: 403, body: { code: 'transfer_claim_required' } });
-    expect(await approve(claimed.claimId)).toMatchObject({ status: 200, body: { approved: true } });
+    // The old device signs the approval with its auth key, over the claim
+    // and the fingerprint the user compared.
+    const approvalProof = (signer = identity, fingerprint = claimed.claimantFingerprint) =>
+      signChallenge(subtle, signer.edPrivKey, `transfer-approve:${sessionId}:${claimed.claimId}:${fingerprint}`);
+    const approve = (claimId, proof) => call('/v1/device-transfer/approve', {
+      method: 'POST',
+      body: { sessionId, claimId, ...(proof === undefined ? {} : { approvalProof: proof }) },
+    });
+    expect(await approve(webcrypto.randomUUID(), await approvalProof())).toMatchObject({ status: 403, body: { code: 'transfer_claim_required' } });
+    expect(await approve(claimed.claimId)).toMatchObject({ status: 401, body: { code: 'invalid_device_signature' } });
+    expect(await approve(claimed.claimId, await approvalProof(fresh))).toMatchObject({ status: 401, body: { code: 'invalid_device_signature' } });
+    expect(await approve(claimed.claimId, await approvalProof(identity, 'ab12 cd34'))).toMatchObject({ status: 401, body: { code: 'invalid_device_signature' } });
+    expect(await approve(claimed.claimId, 'x'.repeat(1025))).toMatchObject({ status: 400, body: { code: 'validation_failed' } });
+    expect(await status()).toMatchObject({ status: 'claimed', pendingClaim: { approvedAt: null } });
+    expect(await approve(claimed.claimId, await approvalProof())).toMatchObject({ status: 200, body: { approved: true } });
     expect(await complete(identity)).toMatchObject({ status: 401, body: { code: 'transfer_completion_invalid' } });
     const { status: completedStatus, body: completion } = await complete();
     expect(completedStatus).toBe(200);
@@ -214,6 +226,14 @@ describe('the mock relay refuses what the API refuses', () => {
     const signedIn = await signIn(handle, completion.newDeviceId, fresh);
     expect(signedIn).toMatchObject({ status: 200, body: { deviceId: completion.newDeviceId } });
     token = signedIn.body.accessToken;
+
+    // An identical retry, as after a lost answer, gets the same completion
+    // and changes nothing; only the new device's key can ask.
+    expect(await complete()).toMatchObject({ status: 200, body: completion });
+    expect(await complete(identity)).toMatchObject({ status: 401, body: { code: 'transfer_completion_invalid' } });
+    expect(await call('/v1/prekeys/count')).toMatchObject({ status: 200 });
+    // Once the device the transfer created is revoked, the session is over.
+    await call('/__test/revoke', { method: 'POST', auth: false, body: { handle } });
     expect(await complete()).toMatchObject({ status: 403, body: { code: 'transfer_session_inactive' } });
   });
 });

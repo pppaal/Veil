@@ -3,7 +3,7 @@ import { webcrypto } from 'node:crypto';
 
 import { decodeBase64Url } from '../src/core/base64url.js';
 import { generateIdentity } from '../src/crypto/identity.js';
-import { ApiError, AuthError, createApiClient, isAuthRejection } from '../src/platform/api-client.js';
+import { ApiError, AuthError, createApiClient, isAuthRejection, MAX_EXPIRY_CORRECTION_MS } from '../src/platform/api-client.js';
 import { createSessionStore } from '../src/platform/session-store.js';
 import { memorySessionRepo } from './support/session-repo.js';
 
@@ -227,6 +227,22 @@ describe('createApiClient session lifecycle', () => {
     expect(http.count('/auth/refresh')).toBe(0);
   });
 
+  // A transfer approval or step-up signature the API refuses comes back as a
+  // 401 too, but it is about the proof in the request, not the token.
+  it.each(['invalid_device_signature', 'challenge_invalid'])('a 401 %s refusing a proof keeps the session', async (code) => {
+    const { store } = await signedInStore();
+    const http = fakeFetch({ '*': () => [401, { code, message: 'Approval signature is invalid' }] });
+    const onSessionRejected = vi.fn();
+    const client = createApiClient({ fetchImpl: http.fetchImpl, baseUrl: '/v1', tokenStore: store, onSessionRejected });
+
+    const error = await client.authedApi('/device-transfer/approve', { method: 'POST', body: {} }).catch((e) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 401, code });
+    expect(http.calls.map((call) => call.path)).toEqual(['/device-transfer/approve']);
+    expect(onSessionRejected).not.toHaveBeenCalled();
+    expect(store.getAccessToken()).toBe('access-old');
+  });
+
   it('classifies auth rejections', () => {
     expect(isAuthRejection(new ApiError(404, 'device gone'))).toBe(true);
     expect(isAuthRejection(new ApiError(401, 'bad signature'))).toBe(true);
@@ -267,5 +283,27 @@ describe('createApiClient server clock', () => {
     // An unreadable header leaves the last offset in place.
     await client.api('/health');
     expect(client.serverNow()).toBe(LOCAL - 60 * 60 * 1000);
+  });
+
+  // Disappearing-message expiries follow the relay's clock too, but a Date
+  // header can move them by an hour at most.
+  it('corrects the expiry clock by at most an hour', async () => {
+    const fetchImpl = responding([
+      [200, null],
+      [200, 'Thu, 12 Nov 2026 08:59:30 GMT'],
+      [200, 'Thu, 12 Nov 2026 14:00:00 GMT'],
+      [200, 'Wed, 11 Nov 2026 09:00:00 GMT'],
+    ]);
+    const client = createApiClient({ fetchImpl, baseUrl: '/v1', tokenStore: {}, now: () => LOCAL });
+    await client.api('/health');
+    expect(client.expiryNow()).toBe(LOCAL);
+    await client.api('/health');
+    expect(client.expiryNow()).toBe(LOCAL - 30 * 1000);
+    await client.api('/health');
+    expect(client.serverNow()).toBe(LOCAL + 5 * 60 * 60 * 1000);
+    expect(client.expiryNow()).toBe(LOCAL + MAX_EXPIRY_CORRECTION_MS);
+    await client.api('/health');
+    expect(client.expiryNow()).toBe(LOCAL - MAX_EXPIRY_CORRECTION_MS);
+    expect(MAX_EXPIRY_CORRECTION_MS).toBe(60 * 60 * 1000);
   });
 });

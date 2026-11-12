@@ -28,6 +28,13 @@ const HOLD_TEXT = {
     composerFrozen: 'unissuedHandle.composerFrozen',
     sidebar: 'unissuedHandle.sidebar',
   },
+  [HoldReason.OWN_HANDLE]: {
+    banner: 'ownHandle.banner',
+    confirmTitle: 'ownHandle.confirmTitle',
+    confirmBody: 'ownHandle.confirmBody',
+    composerFrozen: 'ownHandle.composerFrozen',
+    sidebar: 'ownHandle.sidebar',
+  },
 };
 
 // The i18n key of `part` ('banner', 'confirmTitle', 'confirmBody',
@@ -94,9 +101,9 @@ export function createKeyChangeBanner({ identityTrust, safetyDialog, confirm }) 
   return {
     // Over a conversation held for the handle it is listed under
     // (src/domain/peer-bindings.js hold): one this device knows under
-    // another account, or one no honest server issues. Nothing is opened or
-    // sent there until the user chooses to talk to this account
-    // (src/app/services/identity-trust.js acknowledgeAccount).
+    // another account, our own on another account, or one no honest server
+    // issues. Nothing is opened or sent there until the user chooses to talk
+    // to this account (src/app/services/identity-trust.js acknowledgeAccount).
     renderHold(convId, peer, hold) {
       return el('div', { class: `key-change-banner account-conflict-banner ${hold.reason}`, role: 'alert' }, [
         el('div', { class: 'key-change-text' }, [t(holdTextKey(hold, 'banner'), { handle: shownHandle(peer.handle) })]),

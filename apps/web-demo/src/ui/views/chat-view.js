@@ -3,6 +3,7 @@
 // carried across redraws, and the peer messages it shows are marked read.
 
 import { t } from '../../../i18n/i18n.js';
+import { expiryNow } from '../../core/expiry.js';
 import { isLegacyIdentity } from '../../crypto/identity.js';
 import { shownHandle } from '../../domain/handles.js';
 import { isGone, isShown } from '../../domain/ingest.js';
@@ -147,7 +148,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     // Reactions change what their targets show and are never bubbles of
     // their own; expired messages and history this device deleted are not
     // shown.
-    const now = Date.now();
+    const now = expiryNow();
     const reactions = reactionsByTarget(all.filter((message) => !isGone(message, now)));
     const shown = all.filter((message) => isShown(message, now));
     // Sessions, pins and safety numbers exist only in direct conversations:

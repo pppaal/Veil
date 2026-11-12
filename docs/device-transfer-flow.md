@@ -114,11 +114,32 @@ has the new device's keys. The client contract (C-TRANSFER-RETRY):
 - stop on `403 transfer_session_inactive` or any other 4xx, without
   discarding keys it has not stored yet.
 
-Today's clients do not do this yet. The web client
-drops the keys when `complete` fails with a network error, and the mobile
-client does not keep a pending completion across an app restart, so on either
-a lost answer still leaves the new device without a session; that client work
-is an open follow-up.
+What the clients do:
+
+- **Mobile** (`AppSessionController`) keeps the claim (its keys, session,
+  token and claim id) in the keystore from the moment the relay accepts it,
+  records that a `complete` went out before sending one, and stores the
+  completion before signing in, so all of it survives an app restart. It
+  sends `complete` up to three times through network failures and 5xx, polls
+  while the old device has not approved, and stops on any other refusal
+  without dropping the keys. A claim whose completion went unanswered (the
+  relay may have committed it) or whose sign-in did not finish is resumed on
+  the next start and stays completable on the transfer screen however long
+  ago the claim window closed; the relay decides, answering a committed
+  transfer with the same completion, and only its
+  `403 transfer_session_inactive` ends the claim and shows it as expired.
+  Such a claim is never replaced by a new one. The window alone expires only
+  a claim with no `complete` left unanswered.
+- **Web** (`awaitCompletion` in `app/services/device-transfer.js`) sends the
+  same request again after a network failure or a 5xx for as long as the tab
+  is open, even if the dialog was closed, polls while the old device has not
+  approved, and stops on any other refusal, offering the same claim again
+  until a new code is claimed. Once `complete` answers, it saves the keys
+  before the first sign-in and keeps them in memory until a save succeeds.
+  Limitation: until that save, the keys exist only in the tab's memory, so
+  closing or reloading the tab while `complete` is unanswered, or before the
+  save, loses them; if the relay had committed, the account is lost, as there
+  is no recovery. The dialog says to keep the tab open when a save fails.
 
 ## Explicit failure condition
 

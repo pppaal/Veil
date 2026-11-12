@@ -358,25 +358,31 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
             ),
           ),
         ],
-        // Listed under a handle this device knows as another account, or one
-        // no honest relay issues: nothing is sent or opened until the user
-        // says this is the account they want to talk to.
+        // Listed under a handle this device knows as another account, under
+        // the user's own handle as another account, or under one no honest
+        // relay issues: nothing is sent or opened until the user says this is
+        // the account they want to talk to.
         if (accountHold != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilInlineBanner(
-            title: accountHold.reason == PeerAccountHoldReason.otherAccount
-                ? l10n.chatAccountHoldOtherTitle
-                : l10n.chatAccountHoldUnissuedTitle,
-            message: accountHold.reason == PeerAccountHoldReason.otherAccount
-                ? l10n.chatAccountHoldOtherBody(accountHold.known?.handle ?? conversation?.peerHandle ?? '')
-                : l10n.chatAccountHoldUnissuedBody,
+            title: switch (accountHold.reason) {
+              PeerAccountHoldReason.otherAccount => l10n.chatAccountHoldOtherTitle,
+              PeerAccountHoldReason.unissuedHandle => l10n.chatAccountHoldUnissuedTitle,
+              PeerAccountHoldReason.ownHandle => l10n.chatAccountHoldOwnTitle,
+            },
+            message: switch (accountHold.reason) {
+              PeerAccountHoldReason.otherAccount =>
+                l10n.chatAccountHoldOtherBody(accountHold.known?.handle ?? conversation?.peerHandle ?? ''),
+              PeerAccountHoldReason.unissuedHandle => l10n.chatAccountHoldUnissuedBody,
+              PeerAccountHoldReason.ownHandle => l10n.chatAccountHoldOwnBody(conversation?.peerHandle ?? ''),
+            },
             tone: VeilBannerTone.danger,
             icon: Icons.person_off_outlined,
           ),
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
-              onPressed: () => ref.read(messengerControllerProvider).acknowledgePeerAccount(widget.conversationId),
+              onPressed: () => _acknowledgePeerAccount(accountHold, conversation?.peerHandle ?? ''),
               child: Text(l10n.chatAccountHoldAcknowledge),
             ),
           ),
@@ -854,6 +860,34 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         controller.peerAccountHoldFor(widget.conversationId) == null) {
       _messageController.clear();
     }
+  }
+
+  // Binds the held 1:1 to the account it is listed with. Another account
+  // under the user's own handle is something no honest relay lists, so that
+  // one is confirmed first, as the web client confirms every hold.
+  Future<void> _acknowledgePeerAccount(PeerAccountHold hold, String handle) async {
+    if (hold.reason == PeerAccountHoldReason.ownHandle) {
+      final l10n = AppLocalizations.of(context);
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(l10n.chatAccountHoldOwnConfirmTitle(handle)),
+          content: Text(l10n.chatAccountHoldOwnConfirmBody),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(l10n.commonCancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text(l10n.chatAccountHoldAcknowledge),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    await ref.read(messengerControllerProvider).acknowledgePeerAccount(widget.conversationId);
   }
 
   Future<void> _showAttachmentTicket(String attachmentId) async {

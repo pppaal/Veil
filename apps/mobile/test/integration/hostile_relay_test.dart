@@ -280,6 +280,79 @@ void main() {
       expect(await alice.bodies('conv-am'), isNot(contains('hello from bоb')));
       expect(await alice.pins.pinsForUser(mallory.device.userId), isEmpty);
     });
+
+    // closing F4, as the web's HoldReason.OWN_HANDLE.
+    test('alice\'s own name is held: nothing opens, is pinned or sealed, until she acknowledges it', () async {
+      relay.listedHandles['alice'] = {'mallory': 'alice'};
+      await malloryWrites('it is me, alice, on my new phone');
+
+      final view = alice.controller.conversationById('conv-am')!;
+      expect(view.peerHandle, 'alice');
+      expect(view.recipientBundle.userId, mallory.device.userId);
+      expect(alice.controller.peerAccountHoldFor('conv-am')?.reason, PeerAccountHoldReason.ownHandle);
+      expect(await alice.bodies('conv-am'), isNot(contains('it is me, alice, on my new phone')));
+      expect(await alice.pins.pinsForUser(mallory.device.userId), isEmpty);
+      expect(alice.controller.peerAccountHoldFor(conv), isNull);
+
+      final lookups = alice.api.directoryLookups['alice'] ?? 0;
+      await alice.controller.sendText(conversationId: 'conv-am', body: 'who is this?');
+      await settle();
+      expect(relay.conversations['conv-am']!.messages.where((m) => m['senderDeviceId'] == alice.device.deviceId), isEmpty);
+      expect(alice.api.directoryLookups['alice'] ?? 0, lookups);
+
+      await alice.controller.acknowledgePeerAccount('conv-am');
+      await waitFor(() async => (await alice.bodies('conv-am')).contains('it is me, alice, on my new phone'),
+          reason: 'the held frame did not open after the acknowledgement');
+      expect(alice.controller.peerAccountHoldFor('conv-am'), isNull);
+      expect(await alice.pins.pinsForUser(mallory.device.userId), hasLength(1));
+    });
+  });
+
+  // closing F4: sessions recorded before bindings existed are bound to the
+  // peer they are listed with at the next list, except under this device's
+  // own handle as another account or under a name no relay issues, which
+  // are left for the user to settle (as the web's bindSessions).
+  group('a session with no binding yet, listed with bob relabelled', () {
+    Future<void> relabelAndForgetBinding(String shownAs) async {
+      await deliver(alice, bob, 'hello bob');
+      await deliver(bob, alice, 'hi alice');
+      // The relay then lists bob's account under [shownAs], and the device
+      // keeps that preview with its session.
+      relay.listedHandles['alice'] = {'bob': shownAs};
+      await alice.controller.refreshConversations();
+      expect(alice.controller.conversationById(conv)!.peerHandle, shownAs);
+      await alice.controller.flushPendingWrites();
+      // As before bindings existed: the session is kept, the binding is not.
+      await alice.keystore.scoped(SecureScope.conversationPolicy).delete('direct_peers.v1');
+
+      await alice.restart();
+      await alice.controller.refreshConversations();
+    }
+
+    Future<Map<String, ConversationPeer>> bindings() =>
+        ConversationPeerBindings(store: alice.keystore.scoped(SecureScope.conversationPolicy)).all();
+
+    test('under this device\'s own name is left unbound, and held', () async {
+      await relabelAndForgetBinding('alice');
+
+      expect(alice.controller.conversationById(conv)!.recipientBundle.userId, bob.device.userId);
+      expect(alice.controller.peerAccountHoldFor(conv)?.reason, PeerAccountHoldReason.ownHandle);
+      expect((await bindings()).containsKey(conv), isFalse);
+    });
+
+    test('under a name no relay issues is left unbound, and held', () async {
+      await relabelAndForgetBinding('bоb');
+
+      expect(alice.controller.peerAccountHoldFor(conv)?.reason, PeerAccountHoldReason.unissuedHandle);
+      expect((await bindings()).containsKey(conv), isFalse);
+    });
+
+    test('under another name an honest relay could issue is bound to it, as before', () async {
+      await relabelAndForgetBinding('robert');
+
+      expect(alice.controller.peerAccountHoldFor(conv), isNull);
+      expect((await bindings())[conv]?.userId, bob.device.userId);
+    });
   });
 
   group('two new 1:1s one list shows under the same name', () {

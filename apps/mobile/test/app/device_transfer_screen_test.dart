@@ -18,9 +18,12 @@ import '../support/memory_secure_store.dart';
 // C-TRANSFER-RETRY on the transfer screen. Once the relay committed a
 // transfer, the old device is revoked and the claimed keys are the only ones
 // the account trusts, so the login that follows must stay reachable from the
-// screen however long ago the claim was made. The claim window
-// (VEIL_TRANSFER_TOKEN_TTL_SECONDS) bounds only the claim and the completion
-// the relay has not committed yet.
+// screen however long ago the claim was made. The same holds while the relay
+// may have committed it (a /complete went out and its answer was lost): the
+// relay answers a retry of a committed transfer at any age, and only its
+// transfer_session_inactive ends such a claim. The claim window
+// (VEIL_TRANSFER_TOKEN_TTL_SECONDS) bounds only a claim with no /complete
+// left unanswered.
 
 AppSessionController _controller(SecureStorageService storage, FakeAccountRelay relay) => AppSessionController(
       storage,
@@ -30,13 +33,25 @@ AppSessionController _controller(SecureStorageService storage, FakeAccountRelay 
       transferApprovalWait: const Duration(seconds: 2),
     );
 
+// How far the new device got after the old device approved its claim.
+enum _Completion {
+  // It never sent /complete.
+  none,
+  // The relay committed the transfer and the login that followed failed.
+  loginFailed,
+  // The relay committed the transfer and the answer was lost (the
+  // connection dropped); both retries then got a 503.
+  answerLost,
+  // All three attempts got a 503 before the relay committed anything.
+  relayDown,
+}
+
 // The new device's keystore after it claimed a transfer the old device
-// approved, with the claim window ([PendingTransferRecord.expiresAt]) moved
-// [age] into the past. With [commit], the relay then committed the transfer
-// and the login that followed failed.
+// approved and got as far as [completion], with the claim window
+// ([PendingTransferRecord.expiresAt]) moved [age] into the past.
 Future<SecureStorageService> _newDeviceKeystore(
   FakeAccountRelay relay, {
-  required bool commit,
+  required _Completion completion,
   required Duration age,
 }) async {
   final oldStorage = SecureStorageService(MemorySecureStore());
@@ -67,20 +82,43 @@ Future<SecureStorageService> _newDeviceKeystore(
   await transfers.approveTransfer(claim.claimId);
   expect(transfers.errorMessage, isNull);
 
-  if (commit) {
-    relay.failChallenges = 1;
-    await expectLater(
-      newSession.completeTransferAndAuthenticate(
-        sessionId: transfers.transferSessionId!,
-        transferToken: transfers.transferToken!,
-        claimId: claim.claimId,
-      ),
-      throwsA(anything),
-    );
-    expect(relay.callsTo('POST /device-transfer/complete'), 1);
+  Future<void> completeFails() => expectLater(
+        newSession.completeTransferAndAuthenticate(
+          sessionId: transfers.transferSessionId!,
+          transferToken: transfers.transferToken!,
+          claimId: claim.claimId,
+        ),
+        throwsA(anything),
+      );
+  switch (completion) {
+    case _Completion.none:
+      break;
+    case _Completion.loginFailed:
+      relay.failChallenges = 1;
+      await completeFails();
+      expect(relay.callsTo('POST /device-transfer/complete'), 1);
+    case _Completion.answerLost:
+      relay.dropCompletionResponses = 1;
+      relay.onComplete = () {
+        if (relay.callsTo('POST /device-transfer/complete') == 2) relay.failCompletions = 2;
+      };
+      await completeFails();
+      relay.onComplete = null;
+      expect(relay.callsTo('POST /device-transfer/complete'), 3);
+      expect(relay.transfers.values.single.newDeviceId, isNotNull);
+      expect(relay.devices[oldSession.state.deviceId]!.active, isFalse);
+    case _Completion.relayDown:
+      relay.failCompletions = 3;
+      await completeFails();
+      expect(relay.callsTo('POST /device-transfer/complete'), 3);
+      expect(relay.transfers.values.single.newDeviceId, isNull);
   }
   final pending = (await storage.readPendingTransfer())!;
-  expect(pending.isCompleted, commit);
+  expect(pending.isCompleted, completion == _Completion.loginFailed);
+  expect(
+    pending.completionOutcomeUnknown,
+    completion == _Completion.answerLost || completion == _Completion.relayDown,
+  );
 
   await storage.persistPendingTransfer(PendingTransferRecord(
     sessionId: pending.sessionId,
@@ -92,6 +130,8 @@ Future<SecureStorageService> _newDeviceKeystore(
     authKey: pending.authKey,
     newDeviceId: pending.newDeviceId,
     handle: pending.handle,
+    completionOutcomeUnknown: pending.completionOutcomeUnknown,
+    ended: pending.ended,
   ));
   return storage;
 }
@@ -152,7 +192,7 @@ void main() {
     late SecureStorageService storage;
     late AppSessionController session;
     await tester.runAsync(() async {
-      storage = await _newDeviceKeystore(relay, commit: true, age: const Duration(minutes: 6));
+      storage = await _newDeviceKeystore(relay, completion: _Completion.loginFailed, age: const Duration(minutes: 6));
       // The app restarts and the login it resumes at boot fails too.
       relay.failChallenges = 1;
       session = _controller(storage, relay);
@@ -197,7 +237,7 @@ void main() {
     late SecureStorageService storage;
     late AppSessionController session;
     await tester.runAsync(() async {
-      storage = await _newDeviceKeystore(relay, commit: false, age: const Duration(minutes: 6));
+      storage = await _newDeviceKeystore(relay, completion: _Completion.none, age: const Duration(minutes: 6));
       session = _controller(storage, relay);
       await session.bootstrap();
     });
@@ -213,5 +253,161 @@ void main() {
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isFalse);
     expect(relay.callsTo('POST /device-transfer/complete'), 0);
+  });
+
+  // closing F1: the relay committed, the answer was lost and the retries
+  // failed, the app restarted past the claim window and the completion it
+  // asks again at start failed as well. Only the relay can say the transfer
+  // went through, and it answers the same completion at any age.
+  testWidgets('a completion whose answer was lost finishes from the screen however long ago the window closed',
+      (tester) async {
+    final relay = FakeAccountRelay();
+    late SecureStorageService storage;
+    late AppSessionController session;
+    await tester.runAsync(() async {
+      storage = await _newDeviceKeystore(relay, completion: _Completion.answerLost, age: const Duration(minutes: 6));
+      relay.failCompletions = 3;
+      session = _controller(storage, relay);
+      await session.bootstrap();
+      await waitFor(() => relay.failCompletions == 0 && session.state.errorMessage != null);
+    });
+    expect(relay.callsTo('POST /device-transfer/complete'), 6);
+    expect(session.pendingTransfer?.isCompleted, isFalse);
+    expect(session.pendingTransfer?.completionOutcomeUnknown, isTrue);
+    expect(session.state.isAuthenticated, isFalse);
+
+    _tallView(tester);
+    await tester.pumpWidget(_app(session, relay, storage));
+    await tester.pump();
+
+    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
+    expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
+    expect(find.text(_en.deviceTransferClaimExpired), findsNothing);
+    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+    await tester.ensureVisible(_completeButton);
+    expect(_enabled(tester), isTrue);
+
+    await tester.tap(_completeButton);
+    await _pumpUntil(tester, () => session.state.isAuthenticated);
+    await tester.pumpAndSettle();
+
+    final transfer = relay.transfers.values.single;
+    expect(session.state.deviceId, transfer.newDeviceId);
+    expect(relay.devices, hasLength(2), reason: 'one commit: the old device and the new one');
+    expect(relay.callsTo('POST /device-transfer/complete'), 7);
+    expect(await tester.runAsync(storage.readPendingTransfer), isNull);
+    expect(find.text('conversations'), findsOneWidget);
+  });
+
+  testWidgets('an unanswered completion the relay never committed shows as expired once the relay says so',
+      (tester) async {
+    final relay = FakeAccountRelay();
+    late SecureStorageService storage;
+    late AppSessionController session;
+    await tester.runAsync(() async {
+      storage = await _newDeviceKeystore(relay, completion: _Completion.relayDown, age: const Duration(minutes: 6));
+      relay.failCompletions = 3;
+      session = _controller(storage, relay);
+      await session.bootstrap();
+      await waitFor(() => relay.failCompletions == 0 && session.state.errorMessage != null);
+    });
+    expect(session.pendingTransfer?.completionOutcomeUnknown, isTrue);
+    expect(session.pendingTransfer?.ended, isFalse);
+
+    _tallView(tester);
+    await tester.pumpWidget(_app(session, relay, storage));
+    await tester.pump();
+
+    // The relay has not answered yet: completing stays possible.
+    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
+    await tester.ensureVisible(_completeButton);
+    expect(_enabled(tester), isTrue);
+
+    // Its session ran out as well; it ends the claim.
+    relay.transfers.values.single.expiresAt = DateTime.now().subtract(const Duration(minutes: 1));
+    await tester.tap(_completeButton);
+    await _pumpUntil(tester, () => session.pendingTransfer?.ended ?? false);
+    await tester.pump();
+
+    expect(relay.callsTo('POST /device-transfer/complete'), 7);
+    expect(session.state.isAuthenticated, isFalse);
+    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsOneWidget);
+    expect(find.text(_en.deviceTransferClaimExpiredPill), findsOneWidget);
+    await tester.ensureVisible(_completeButton);
+    expect(_enabled(tester), isFalse);
+    expect((await tester.runAsync(storage.readPendingTransfer))?.ended, isTrue);
+  });
+
+  // closing F2: importing again the payload of the session this device
+  // already claimed keeps that claim, so it can still be completed.
+  testWidgets('re-importing the payload of the claimed session keeps the claim completable', (tester) async {
+    final relay = FakeAccountRelay();
+    late SecureStorageService storage;
+    late AppSessionController session;
+    await tester.runAsync(() async {
+      storage = await _newDeviceKeystore(relay, completion: _Completion.none, age: const Duration(minutes: -4));
+      session = _controller(storage, relay);
+      await session.bootstrap();
+    });
+    final transfer = relay.transfers.values.single;
+    final claimId = session.pendingTransfer!.claimId;
+
+    _tallView(tester);
+    await tester.pumpWidget(_app(session, relay, storage));
+    await tester.pump();
+    expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
+      'VEIL_TRANSFER::${transfer.id}::${transfer.transferToken}',
+    );
+    await tester.tap(find.text(_en.deviceTransferImportPayload));
+    await tester.pump();
+
+    expect(find.text(_en.deviceTransferPayloadImported), findsOneWidget);
+    expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
+    await tester.ensureVisible(_completeButton);
+    expect(_enabled(tester), isTrue);
+
+    await tester.tap(_completeButton);
+    await _pumpUntil(tester, () => session.state.isAuthenticated);
+    await tester.pumpAndSettle();
+    expect(session.state.deviceId, transfer.newDeviceId);
+    expect(relay.callsTo('POST /device-transfer/claim'), 1);
+  });
+
+  testWidgets('another payload does not replace a claim the relay may have committed', (tester) async {
+    final relay = FakeAccountRelay();
+    late SecureStorageService storage;
+    late AppSessionController session;
+    await tester.runAsync(() async {
+      storage = await _newDeviceKeystore(relay, completion: _Completion.answerLost, age: const Duration(minutes: 6));
+      relay.failCompletions = 3;
+      session = _controller(storage, relay);
+      await session.bootstrap();
+      await waitFor(() => relay.failCompletions == 0 && session.state.errorMessage != null);
+    });
+    final claimId = session.pendingTransfer!.claimId;
+
+    _tallView(tester);
+    await tester.pumpWidget(_app(session, relay, storage));
+    await tester.pump();
+
+    await tester.enterText(
+      find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
+      'VEIL_TRANSFER::another-session::another-token',
+    );
+    await tester.tap(find.text(_en.deviceTransferImportPayload));
+    await tester.pump();
+
+    expect(find.text(_en.deviceTransferFinishStartedFirst), findsOneWidget);
+    expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
+    await tester.ensureVisible(_completeButton);
+    expect(_enabled(tester), isTrue);
+    await tester.tap(_completeButton);
+    await _pumpUntil(tester, () => session.state.isAuthenticated);
+    expect(session.state.deviceId, relay.transfers.values.single.newDeviceId);
+    expect(relay.callsTo('POST /device-transfer/claim'), 1);
+    await tester.pumpAndSettle();
   });
 }

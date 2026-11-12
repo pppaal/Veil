@@ -88,16 +88,25 @@ class MessengerApiMapper {
     );
   }
 
-  /// The conversation list; malformed items are left out. [localHandle]
-  /// tells the peer of a 1:1 apart from this user.
-  List<ConversationPreview> conversations(Map<String, dynamic> response, {required String? localHandle}) => [
+  /// The conversation list; malformed items are left out. [localUserId], or
+  /// without it [localHandle], tells the peer of a 1:1 apart from this user.
+  List<ConversationPreview> conversations(
+    Map<String, dynamic> response, {
+    required String? localHandle,
+    String? localUserId,
+  }) =>
+      [
         for (final raw in _list(response['items']))
-          if (conversation(raw, localHandle: localHandle) case final conversation?) conversation,
+          if (conversation(raw, localHandle: localHandle, localUserId: localUserId) case final conversation?)
+            conversation,
       ];
 
   /// A relay conversation as a preview with no session and an empty
-  /// bundle: the relay knows neither.
-  ConversationPreview? conversation(Object? raw, {required String? localHandle}) {
+  /// bundle: the relay knows neither. The peer of a 1:1 is the member that
+  /// is not this user's account: a listing can put another account under
+  /// this user's own handle, and picking by handle would then take either
+  /// for the peer, depending on the order the relay lists them in.
+  ConversationPreview? conversation(Object? raw, {required String? localHandle, String? localUserId}) {
     if (raw
         case {
           'id': final String id,
@@ -105,7 +114,10 @@ class MessengerApiMapper {
         }) {
       final members = [for (final member in rawMembers) _member(member)];
       if (members.isEmpty || members.contains(null)) return null;
-      final peer = members.firstWhere((member) => member!.handle != localHandle, orElse: () => members.first)!;
+      final peer = members.firstWhere(
+        (member) => localUserId != null ? member!.userId != localUserId : member!.handle != localHandle,
+        orElse: () => members.first,
+      )!;
       final type = switch (raw['type']) {
         'group' => ConversationType.group,
         'channel' => ConversationType.channel,

@@ -120,7 +120,7 @@ class PeerSessionResolver {
   // ConversationPeerBindings.holdFor). Returns the peer it is listed with.
   Future<ConversationPeer> _listedPeerNotHeld(ConversationPreview conversation) async {
     final listed = ConversationPeer(userId: conversation.recipientBundle.userId, handle: conversation.peerHandle);
-    if (await _bindings.holdFor(conversation.id, listed) case final hold?) {
+    if (await _bindings.holdFor(conversation.id, listed, self: _session.selfPeer) case final hold?) {
       throw PeerAccountHeldException(conversation.id, hold);
     }
     return listed;

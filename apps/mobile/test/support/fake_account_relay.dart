@@ -64,7 +64,8 @@ class FakeTransferSession {
   final String userId;
   final String oldDeviceId;
   final String transferToken;
-  final DateTime expiresAt;
+  // Settable, so a test can let the session run out.
+  DateTime expiresAt;
   FakeTransferClaim? claim;
   bool invalidated = false;
   DateTime? completedAt;

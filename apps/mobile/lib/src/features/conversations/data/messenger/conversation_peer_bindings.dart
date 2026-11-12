@@ -19,6 +19,11 @@ enum PeerAccountHoldReason {
 
   /// Listed under a handle no honest relay issues (see isIssuableHandle).
   unissuedHandle,
+
+  /// Listed under this device's own handle, as another account: that handle
+  /// names one account, the user's own, so no honest relay lists another
+  /// under it.
+  ownHandle,
 }
 
 class PeerAccountHold {
@@ -71,9 +76,10 @@ class GroupMembership {
 /// A binding also ties a handle to the account it was bound with. The user
 /// sees handles, never user ids, and pins and verification are keyed on the
 /// user id: so a conversation that is not bound yet is held ([holdFor])
-/// while its listed handle is one this device bound to another account, or
-/// one no honest relay issues. Until the user acknowledges that account
-/// (which binds it), no identity is pinned, installed or sealed to for it.
+/// while its listed handle is one this device bound to another account, this
+/// device's own handle on another account, or one no honest relay issues.
+/// Until the user acknowledges that account (which binds it), no identity is
+/// pinned, installed or sealed to for it.
 class ConversationPeerBindings {
   ConversationPeerBindings({ScopedSecureStore? store}) : _store = store;
 
@@ -140,15 +146,22 @@ class ConversationPeerBindings {
   }
 
   /// Why the 1:1 [conversationId], listed with [listed], admits no identity
-  /// yet: it is not bound, and its handle is one this device bound to
-  /// another account, or one no honest relay issues. Null once it is bound,
-  /// or when nothing about its handle conflicts. Kept for [heldNow].
-  Future<PeerAccountHold?> holdFor(String conversationId, ConversationPeer listed) async {
+  /// yet: it is not bound, and its handle is one no honest relay issues, the
+  /// handle of [self] (the signed-in user; null when signed out) on another
+  /// account, or one this device bound to another account. Null once it is
+  /// bound, or when nothing about its handle conflicts. Kept for [heldNow].
+  Future<PeerAccountHold?> holdFor(
+    String conversationId,
+    ConversationPeer listed, {
+    required ConversationPeer? self,
+  }) async {
     final bound = await _load();
     PeerAccountHold? hold;
     if (!bound.containsKey(conversationId)) {
       if (!isIssuableHandle(listed.handle)) {
         hold = const PeerAccountHold(PeerAccountHoldReason.unissuedHandle);
+      } else if (isOwnHandleOfAnother(listed, self)) {
+        hold = const PeerAccountHold(PeerAccountHoldReason.ownHandle);
       } else {
         final handle = listed.handle.toLowerCase();
         final known = bound.values
@@ -167,6 +180,22 @@ class ConversationPeerBindings {
 
   /// What [holdFor] last found for [conversationId].
   PeerAccountHold? heldNow(String conversationId) => _holds[conversationId];
+
+  /// Whether [listed] is another account under the handle of [self], the
+  /// signed-in user (compared without case).
+  static bool isOwnHandleOfAnother(ConversationPeer listed, ConversationPeer? self) =>
+      self != null &&
+      self.userId.isNotEmpty &&
+      self.handle.toLowerCase() == listed.handle.toLowerCase() &&
+      listed.userId != self.userId;
+
+  /// Whether a 1:1 listed with [listed] may be bound without asking the user
+  /// (a session recorded before bindings existed, say): not under a handle
+  /// no honest relay issues, nor under [self]'s own handle as another
+  /// account. Those are left unbound, and so held, for the user to settle,
+  /// as the web's bindSessions leaves them.
+  static bool mayBindUnasked(ConversationPeer listed, ConversationPeer? self) =>
+      isIssuableHandle(listed.handle) && !isOwnHandleOfAnother(listed, self);
 
   /// The user chose to talk to the account [conversationId] is listed with,
   /// although a hold was raised: it is bound to [listed], and so no longer

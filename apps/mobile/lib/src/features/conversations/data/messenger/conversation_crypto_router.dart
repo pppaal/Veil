@@ -198,7 +198,7 @@ class ConversationCryptoRouter {
       // nothing it sent opens, and the pins are not even asked, until the
       // user acknowledges the account. The frames wait and open then.
       final listed = ConversationPeer(userId: peerUserId, handle: conversation.peerHandle);
-      if (await _bindings.holdFor(conversation.id, listed) != null) return false;
+      if (await _bindings.holdFor(conversation.id, listed, self: _session.selfPeer) != null) return false;
       if (!claim.installsSession) {
         return await _trust.admitSession(conversation.id, peerUserId, claim.senderDeviceId, key);
       }

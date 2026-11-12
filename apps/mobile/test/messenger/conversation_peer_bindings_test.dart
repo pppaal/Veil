@@ -4,6 +4,9 @@ import 'package:veil_mobile/src/features/conversations/data/messenger/conversati
 
 import '../support/memory_secure_store.dart';
 
+// The signed-in user.
+const _self = ConversationPeer(userId: 'user-atlas', handle: 'atlas');
+
 void main() {
   late MemorySecureStore platform;
   late SecureStorageService keystore;
@@ -48,19 +51,76 @@ void main() {
     final bindings = ConversationPeerBindings(store: SecureStorageService(refusing).scoped(SecureScope.conversationPolicy));
     await bindings.bindAll({'conv-1': const ConversationPeer(userId: 'user-selene', handle: 'selene')});
     const listed = ConversationPeer(userId: 'user-mallory', handle: 'selene');
-    expect((await bindings.holdFor('conv-2', listed))?.reason, PeerAccountHoldReason.otherAccount);
+    expect((await bindings.holdFor('conv-2', listed, self: _self))?.reason, PeerAccountHoldReason.otherAccount);
 
     refusing.refuse = true;
     await expectLater(bindings.acknowledge('conv-2', listed), throwsA(isA<StateError>()));
 
     expect((await bindings.all()).keys, ['conv-1']);
-    expect((await bindings.holdFor('conv-2', listed))?.reason, PeerAccountHoldReason.otherAccount);
+    expect((await bindings.holdFor('conv-2', listed, self: _self))?.reason, PeerAccountHoldReason.otherAccount);
 
     // Once the keystore takes it, the acknowledgement binds as usual.
     refusing.refuse = false;
     await bindings.acknowledge('conv-2', listed);
-    expect(await bindings.holdFor('conv-2', listed), isNull);
+    expect(await bindings.holdFor('conv-2', listed, self: _self), isNull);
     expect(refusing.values.keys.where((key) => key.endsWith('direct_peers.v1')), hasLength(1));
+  });
+
+  // closing F4, as the web's HoldReason.OWN_HANDLE: this device's own handle
+  // names one account, the user's.
+  group('a new 1:1 listed under this device\'s own handle', () {
+    test('as another account is held, and a copy in capitals as a name no relay issues', () async {
+      final bindings = open();
+
+      final hold = await bindings.holdFor('conv-1', const ConversationPeer(userId: 'user-mallory', handle: 'atlas'), self: _self);
+      expect(hold?.reason, PeerAccountHoldReason.ownHandle);
+      expect(bindings.heldNow('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
+      expect(
+        (await bindings.holdFor('conv-1', const ConversationPeer(userId: 'user-mallory', handle: 'ATLAS'), self: _self))
+            ?.reason,
+        // Outside the registration grammar, which the check reaches first.
+        PeerAccountHoldReason.unissuedHandle,
+      );
+      expect(await bindings.all(), isEmpty);
+    });
+
+    test('is not held for the user\'s own account, nor while signed out', () async {
+      final bindings = open();
+
+      expect(await bindings.holdFor('conv-1', _self, self: _self), isNull);
+      expect(
+        await bindings.holdFor('conv-2', const ConversationPeer(userId: 'user-mallory', handle: 'atlas'), self: null),
+        isNull,
+      );
+    });
+
+    test('is held ahead of another account known under that handle, and no longer once acknowledged', () async {
+      final bindings = open();
+      await bindings.bindAll({'conv-earlier': const ConversationPeer(userId: 'user-old', handle: 'atlas')});
+      const listed = ConversationPeer(userId: 'user-mallory', handle: 'atlas');
+
+      expect((await bindings.holdFor('conv-1', listed, self: _self))?.reason, PeerAccountHoldReason.ownHandle);
+
+      await bindings.acknowledge('conv-1', listed);
+      expect(await bindings.holdFor('conv-1', listed, self: _self), isNull);
+      expect((await bindings.all())['conv-1']?.userId, 'user-mallory');
+    });
+
+    test('isOwnHandleOfAnother compares handles without case and needs a signed-in user', () {
+      expect(
+        ConversationPeerBindings.isOwnHandleOfAnother(const ConversationPeer(userId: 'u', handle: 'Atlas'), _self),
+        isTrue,
+      );
+      expect(ConversationPeerBindings.isOwnHandleOfAnother(_self, _self), isFalse);
+      expect(
+        ConversationPeerBindings.isOwnHandleOfAnother(const ConversationPeer(userId: 'u', handle: 'atlas'), null),
+        isFalse,
+      );
+      expect(
+        ConversationPeerBindings.isOwnHandleOfAnother(const ConversationPeer(userId: 'u', handle: 'selene'), _self),
+        isFalse,
+      );
+    });
   });
 
   group('group members', () {

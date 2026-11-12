@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/domain/chat_message.dart';
 import 'package:veil_mobile/src/features/chat/presentation/decrypt_status_view.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -35,5 +36,21 @@ void main() {
 
     expect(added('2').message.id, added('2').message.id);
     expect(added('2').message.id, isNot(added('4').message.id));
+  });
+
+  test('a change is never mistaken for a notice an earlier build keyed on the relay epoch', () {
+    // What a build that named member changes by the relay's epoch wrote for
+    // mallory added at epoch 2.
+    const epochKeyed = '${localNoticeIdPrefix}group.member_added:grp:user-mallory:2';
+    final second = memberChangeNotice(
+      'grp',
+      added: true,
+      userId: 'user-mallory',
+      change: '2',
+      conversationMessages: const [],
+      now: DateTime.utc(2026, 11, 12),
+    );
+
+    expect(second.message.id, isNot(epochKeyed));
   });
 }

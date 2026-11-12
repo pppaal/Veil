@@ -100,6 +100,29 @@ void main() {
       api.gate!.complete();
     });
 
+    // refactor-mobile-3: the writer stays wiped from sign-out until a new
+    // identity starts it over, so an ack that lands in between writes
+    // nothing.
+    test('a send acked after sign-out writes nothing into the wiped cache', () async {
+      final (drift, handle, api, controller) = await signedInAtlas();
+
+      api.sendGate = Completer<void>();
+      final sending = controller.sendText(conversationId: 'conv-1', body: 'in flight at sign-out');
+      await waitFor(() => api.sentPayloads.isEmpty && controller.pendingCountFor('conv-1') == 1,
+          reason: 'the send did not start');
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await handle.clearAll();
+      await controller.applySession(signedOut);
+      api.sendGate!.complete();
+      await sending;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await controller.flushPendingWrites();
+
+      expect(await drift.readMessages('conv-1'), isEmpty, reason: 'the ack reached the wiped cache');
+      expect(await drift.readPendingMessages(), isEmpty);
+      expect(await drift.readConversations(), isEmpty);
+    });
+
     test('does not land under the identity that signs in next', () async {
       final (drift, handle, api, controller) = await signedInAtlas();
 
@@ -1595,6 +1618,14 @@ class _FakeVeilApiClient extends VeilApiClient {
 /// [listFor] when it has an entry.
 class _GatedListApi extends _FakeVeilApiClient {
   Completer<void>? gate;
+  // While set, sends wait for it before the relay answers.
+  Completer<void>? sendGate;
+
+  @override
+  Future<Map<String, dynamic>> sendMessage(String accessToken, Map<String, dynamic> body) async {
+    await sendGate?.future;
+    return super.sendMessage(accessToken, body);
+  }
   final Map<String, List<Map<String, dynamic>>> listFor = {};
   final List<Completer<void>> _held = [];
 

@@ -318,7 +318,7 @@ class ConversationSyncService {
       fetched.addAll(items);
       nextCursor = next;
       final reachedKnown = knownUpTo != null && items.any((message) => (message.conversationOrder ?? 0) <= knownUpTo);
-      if (nextCursor == null || reachedKnown || knownUpTo == null) break;
+      if (nextCursor == null || reachedKnown) break;
       cursor = nextCursor;
     }
     final listed = fetched
@@ -421,7 +421,9 @@ class ConversationSyncService {
 
   // Where a refresh of [conversationId] stops paging back. Before any
   // history of it is held, that is the oldest message this device holds;
-  // with none, a refresh reads only the newest page.
+  // with none (a first contact, or a chat whose rows all expired), a refresh
+  // pages back as far as it may, as the web does: the newest page alone may
+  // be too far along a chain to open.
   int? _heldThroughOrOldest(String conversationId) =>
       _heldThrough[conversationId] ??
       _store

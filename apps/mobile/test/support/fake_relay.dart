@@ -134,6 +134,11 @@ class FakeRelay {
 
   DateTime now() => DateTime.now().toUtc().add(clockSkew);
 
+  /// How far a party's device clock runs ahead of the process clock, by
+  /// handle: the local clock its ServerClock corrects. Unset, a device
+  /// keeps the process clock.
+  final Map<String, Duration> deviceClockSkew = {};
+
   /// Registers [party] as the active device of its handle. A handle that
   /// already had a device moves to the new one, like a device transfer: the
   /// directory serves the new bundle and the old device's socket and client
@@ -350,7 +355,13 @@ class FakeRelay {
 }
 
 class FakeRelayClient extends VeilApiClient {
-  FakeRelayClient(this.relay, this.me) : super(baseUrl: 'http://relay.invalid/v1');
+  FakeRelayClient(this.relay, this.me)
+      : super(
+          baseUrl: 'http://relay.invalid/v1',
+          serverClock: ServerClock(
+            localClock: () => DateTime.now().add(relay.deviceClockSkew[me.handle] ?? Duration.zero),
+          ),
+        );
 
   final FakeRelay relay;
   final RelayParty me;

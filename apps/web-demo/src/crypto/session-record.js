@@ -39,7 +39,7 @@ export class SessionRecord {
   // (libsignal's promoteState): each side ends up sending on the state its
   // peer last used, whatever order frames arrive in.
   receiving(live, replacement, nowMs) {
-    if (live === this.current || !this.#mayDisplaceCurrent(replacement)) {
+    if (live === this.current || !(this.#mayDisplaceCurrent(replacement) || this.#peerAbandonedOurs(live))) {
       return this.replacing(live, replacement, nowMs);
     }
     return this.#pruned(replacement, [{ state: this.current, lastUsedAt: nowMs }, ...this.#archivedExcept(live)], nowMs);
@@ -72,6 +72,25 @@ export class SessionRecord {
   #mayDisplaceCurrent(candidate) {
     return compareBytes(this.current.remoteIdentityKey, candidate.remoteIdentityKey) === 0
       && !handshakeHolds(this.current, candidate);
+  }
+
+  // Our initiation is still unanswered while the peer sends a further frame
+  // on a handshake of its own that we never answered. A peer that holds our
+  // handshake would not keep sending on its own, so it did not take ours,
+  // typically because it could not open it (the one-time or signed prekey it
+  // names is gone): holding on to ours would leave every message we send
+  // unreadable for good. The first competing frame (`live` has received
+  // nothing yet) still loses glare as specified, so true glare settles as
+  // before, and a state we already sent on never qualifies. The mobile
+  // reference applies the same rule (session_record.dart _peerAbandonedOurs).
+  #peerAbandonedOurs(live) {
+    const { current } = this;
+    return current.initiatedLocally
+      && current.awaitingFirstReply
+      && !live.initiatedLocally
+      && live.handshakePending
+      && live.receiveCounter > 0
+      && compareBytes(current.remoteIdentityKey, live.remoteIdentityKey) === 0;
   }
 
   #archivedExcept(state) {

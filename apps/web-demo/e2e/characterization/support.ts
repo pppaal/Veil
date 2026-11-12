@@ -26,6 +26,12 @@ export async function relay(path: string, body: unknown = {}): Promise<void> {
   expect(response.ok).toBe(true);
 }
 
+export async function relayState<T>(path: string): Promise<T> {
+  const response = await fetch(RELAY + path);
+  expect(response.ok).toBe(true);
+  return (await response.json()) as T;
+}
+
 // Chrome itself logs a refused request, the realtime upgrade a relay
 // without a gateway turns down, and that index.html's meta CSP cannot carry
 // frame-ancestors (the serving layer's header does); none is the app's error.

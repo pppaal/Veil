@@ -57,3 +57,16 @@ export function reactionsByTarget(messages) {
   }
   return shown;
 }
+
+// One target's reactions per emoji, in first-seen order:
+// Map<emoji, { count, mine }>, mine when this device is among the senders.
+export function reactionTally(reactions = [], selfDeviceId) {
+  const tally = new Map();
+  for (const { emoji, senderDeviceId } of reactions) {
+    const entry = tally.get(emoji) || { count: 0, mine: false };
+    entry.count += 1;
+    if (senderDeviceId === selfDeviceId) entry.mine = true;
+    tally.set(emoji, entry);
+  }
+  return tally;
+}

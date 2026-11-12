@@ -8,6 +8,7 @@ import {
   openChatWith,
   register,
   relay,
+  relayState,
   reload,
   rowOf,
   send,
@@ -139,6 +140,47 @@ test.describe('a direct conversation', () => {
     await expect(peers.locator('.msg-action-item', { hasText: '수정' })).toHaveCount(0);
     await alice.page.keyboard.press('Escape');
     await alice.page.locator('#sidebar-me').click();
+    expectNoErrors(alice, bob);
+  });
+
+  // Added with the split, which fixed this: the monolith added these items
+  // to an open menu from the row right-clicked before, so the first
+  // right-click had none and a report could name the previous message.
+  test('a peer message offers forward, block and report about itself on the first right-click', async () => {
+    const { page } = alice;
+    const row = rowOf(alice, 'replying to you');
+    const messageId = await row.getAttribute('data-msg-id');
+    // Every menu that opens is kept, so what it offered can be read even
+    // after a redraw (which scrolls the panel) has closed it.
+    await page.evaluate(() => {
+      const opened: Element[] = [];
+      Object.defineProperty(window, '__openedMenus', { value: opened });
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) if ((node as Element).classList?.contains('msg-action-menu')) opened.push(node as Element);
+        }
+      }).observe(document.body, { childList: true });
+    });
+    await rowOf(alice, 'hello bob').click({ button: 'right' });
+    await page.locator('#sidebar-me').click();
+    await row.click({ button: 'right' });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __openedMenus: Element[] }).__openedMenus.length)).toBe(2);
+    expect(await page.evaluate(() => {
+      const [, menu] = (window as unknown as { __openedMenus: Element[] }).__openedMenus;
+      return [...menu.querySelectorAll('.msg-action-item')].map((item) => item.textContent);
+    })).toEqual(['↩  답장', '📋  복사', '🔁  전달', '🚫  차단', '🚨  신고']);
+
+    const menu = page.locator('.msg-action-menu');
+    await expect(async () => {
+      if (!(await menu.isVisible())) await row.click({ button: 'right' });
+      await menu.locator('.msg-action-item', { hasText: '신고' }).click({ timeout: 1_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.locator('#report-dialog input[value="harassment"]').check();
+    await page.locator('#report-submit').click();
+    await expect(toast(alice, '신고 접수됨')).toBeVisible();
+    type Report = { reportedHandle: string; body: { messageId: string; reason: string } };
+    const reports = await relayState<Report[]>('/__test/reports');
+    expect(reports.at(-1)).toMatchObject({ reportedHandle: bob.handle, body: { messageId, reason: 'harassment' } });
     expectNoErrors(alice, bob);
   });
 

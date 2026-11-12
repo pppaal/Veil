@@ -1,21 +1,22 @@
 import 'dart:math';
 
-bool isMessageExpired(DateTime? expiresAt, {DateTime? now}) {
+// [now] is the messenger's expiry clock (VeilMessengerController.expiryNow),
+// not the device clock: a device whose clock runs fast would otherwise hide a
+// message the relay still keeps.
+bool isMessageExpired(DateTime? expiresAt, {required DateTime now}) {
   if (expiresAt == null) {
     return false;
   }
 
-  final current = now ?? DateTime.now();
-  return !expiresAt.isAfter(current);
+  return !expiresAt.isAfter(now);
 }
 
-String formatMessageExpiry(DateTime expiresAt, {DateTime? now}) {
-  final current = now ?? DateTime.now();
-  if (isMessageExpired(expiresAt, now: current)) {
+String formatMessageExpiry(DateTime expiresAt, {required DateTime now}) {
+  if (isMessageExpired(expiresAt, now: now)) {
     return 'Expired';
   }
 
-  final remaining = expiresAt.difference(current);
+  final remaining = expiresAt.difference(now);
   if (remaining.inSeconds < 60) {
     return 'Expires in ${max(1, remaining.inSeconds)}s';
   }

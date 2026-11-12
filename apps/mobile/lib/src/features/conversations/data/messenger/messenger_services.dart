@@ -78,7 +78,7 @@ class MessengerServices {
     final mapper = MessengerApiMapper(envelopeCodec);
     // Disappearing expiries are stamped and checked on the relay's clock,
     // corrected by at most an hour (see ServerClock.boundedNow).
-    final expiryClock = apiClient.serverClock.boundedNow;
+    final expiryClock = expiryNow = apiClient.serverClock.boundedNow;
     persistence = MessengerPersistence(cache: cache, store: store, now: expiryClock);
     contents = MessageContentService(
       cache: cache,
@@ -221,6 +221,10 @@ class MessengerServices {
   late final PresenceTypingService presence;
   late final RealtimeEventRouter realtime;
   late final MessageSearchService search;
+
+  /// The clock disappearing-message expiries are stamped and checked on:
+  /// the relay's, corrected by at most an hour (ServerClock.boundedNow).
+  late final DateTime Function() expiryNow;
   bool _sessionsRestored = false;
 
   /// Whether this device can run Sender Keys groups.
@@ -326,6 +330,7 @@ class MessengerServices {
     crypto.clear();
     peers.clear();
     latest.clear();
+    sync.forgetHistoryMarks();
   }
 
   // Runs whenever content becomes bound to a relayed message (the ack path

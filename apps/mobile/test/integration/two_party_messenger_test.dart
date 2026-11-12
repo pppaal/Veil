@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -767,13 +768,96 @@ void main() {
 
       await waitFor(() async => (await bob.bodies(conv)).contains('live 0'),
           timeout: const Duration(seconds: 20), reason: 'the live frame stayed unreadable');
-      // The resync stopped at the live frame it already held; what is older
-      // comes with loading older history, and opens from the skipped keys.
-      while (bob.controller.hasMoreHistoryFor(conv)) {
-        await bob.controller.loadOlderConversationMessages(conv);
-      }
+      // The resync does not stop at the live frame: it pages back to the
+      // history it already held, so the whole backlog opens without loading
+      // older history.
       await waitFor(() async => await backlogRead() == 210,
           timeout: const Duration(seconds: 20), reason: 'part of the backlog stayed unreadable');
+    });
+
+    // What the backlog test above needs from bob after one resume: every
+    // frame alice sealed opened, without loading older history, and the
+    // chain caught up for what she sends next.
+    Future<void> expectBacklogCaughtUp(int count, {List<String> alsoRead = const []}) async {
+      await waitFor(
+        () async {
+          final bodies = await bob.bodies(conv);
+          return bodies.where((body) => body.startsWith('backlog ')).length == count && bodies.toSet().containsAll(alsoRead);
+        },
+        timeout: const Duration(seconds: 20),
+        reason: 'part of the backlog stayed unreadable',
+      );
+      await deliver(alice, bob, 'fresh after the backlog');
+    }
+
+    test('of 400 behind a live frame that beats the resync is read in full after one resume', () async {
+      await sealedBacklog(400);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+
+      await expectBacklogCaughtUp(400, alsoRead: ['live 0']);
+    });
+
+    test('of 400 behind a reply bob wrote offline, sent before the resync, is read in full after one resume', () async {
+      await sealedBacklog(400);
+      relay.messagePageSize = 50;
+      bob.api.unreachable = true;
+      await bob.controller.sendText(conversationId: conv, body: 'written offline');
+      expect(bob.controller.pendingCountFor(conv), 1);
+
+      // Back online: the outbox sends the reply as the socket connects, so
+      // the relay has acked it, newest of all, before the resync runs.
+      bob.api.unreachable = false;
+      await bob.controller.handleAppResumed();
+      await waitFor(() => bob.controller.pendingCountFor(conv) == 0, reason: 'the reply was not sent');
+
+      await expectBacklogCaughtUp(400, alsoRead: ['written offline']);
+    });
+
+    test('already read is not paged through again after a restart', () async {
+      await sealedBacklog(30);
+      relay.messagePageSize = 5;
+      await bob.controller.handleAppResumed();
+      await waitFor(() async => await backlogRead() == 30, reason: 'the backlog was not read');
+      await settle();
+
+      final fetchesBefore = bob.api.messageFetches;
+      await bob.restart();
+      await settle();
+      // The resync after the start stops at the newest message the cache
+      // held opened: one page, not the 32 messages back to the oldest.
+      expect(bob.api.messageFetches - fetchesBefore, 1);
+      expect(await backlogRead(), 30);
+    });
+
+    test('of 400 behind a live frame that arrived before a restart is read in full after it', () async {
+      await sealedBacklog(400);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      // The live frame lands, too far ahead to open, and the app stops
+      // before any resync fetched history.
+      final gate = bob.api.messageFetchGate = Completer<void>();
+      await bob.controller.handleAppResumed();
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await waitFor(() async {
+        final row = bob.controller.messagesFor(conv).where((m) => m.id == live['id']).firstOrNull;
+        return row != null && (await bob.controller.decryptMessage(row)).status == DecryptStatus.awaitingKey;
+      }, reason: 'the live frame was not ingested');
+      // Lets the cache write the row before the app stops.
+      await settle();
+      await bob.restart();
+      bob.api.messageFetchGate = null;
+      gate.complete();
+
+      await expectBacklogCaughtUp(400, alsoRead: ['live 0']);
     });
   });
 

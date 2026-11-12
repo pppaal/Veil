@@ -73,10 +73,10 @@ class RealtimeEventRouter {
   bool _connected = false;
   Timer? _recovery;
   Duration _recoveryDelay = _firstRecoveryDelay;
-  // Bumped whenever this side disconnects, so a recovery started before it
-  // does not connect again.
   bool _refreshConversationsOnConnect = true;
 
+  // Bumped whenever this side disconnects, so a recovery started before it
+  // does not connect again.
   int _epoch = 0;
 
   bool get connected => _connected;

@@ -352,6 +352,11 @@ class FakeRelayClient extends VeilApiClient {
   int conversationFetches = 0;
   int messageFetches = 0;
   int groupKeyRequests = 0;
+  // While set, every send fails as an unreachable network makes it: no
+  // response at all.
+  bool unreachable = false;
+  // While set, history fetches wait for it to complete.
+  Completer<void>? messageFetchGate;
   final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
   final List<String> signedPrekeyUploads = [];
@@ -393,6 +398,7 @@ class FakeRelayClient extends VeilApiClient {
     int limit = 50,
   }) async {
     messageFetches += 1;
+    await messageFetchGate?.future;
     final messages = relay.conversations[conversationId]!.messages;
     final pageSize = relay.messagePageSize;
     if (pageSize == null) {
@@ -494,6 +500,7 @@ class FakeRelayClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
+    if (unreachable) throw VeilApiException('The VEIL relay is unreachable.', code: 'network_unavailable');
     final stored = relay._accept(me, body);
     return {'message': relay.rewriteAck?.call(Map<String, dynamic>.of(stored)) ?? stored, 'idempotent': false};
   }

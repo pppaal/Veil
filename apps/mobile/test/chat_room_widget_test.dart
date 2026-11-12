@@ -1,3 +1,5 @@
+import 'dart:io' show HttpDate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -212,6 +214,120 @@ void main() {
     expect(find.text('Complete'), findsOneWidget);
     expect(find.text('Conversation window complete'), findsOneWidget);
   });
+
+  group('a disappearing message on a device whose clock runs 15 minutes fast', () {
+    const deviceClockAhead = Duration(minutes: 15);
+
+    testWidgets('is shown, with the time the relay leaves it, while the relay keeps it', (tester) async {
+      // Past by the device clock; ten minutes left by the relay's.
+      final controller = await _pumpExpiringChat(
+        tester,
+        expiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 5)),
+        deviceClockAhead: deviceClockAhead,
+      );
+
+      expect(controller.messagesFor('conv-1'), hasLength(1));
+      expect(find.text('Orbit relay window'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^Expires in (9|10)m$')), findsOneWidget);
+    });
+
+    testWidgets('is hidden once the relay counts it expired too', (tester) async {
+      await _pumpExpiringChat(
+        tester,
+        expiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 20)),
+        deviceClockAhead: deviceClockAhead,
+      );
+
+      expect(find.text('Orbit relay window'), findsNothing);
+    });
+  });
+}
+
+// Opens the chat room over one message of ours, 'Orbit relay window', that
+// expires at [expiresAt], on a device whose clock runs [deviceClockAhead] of
+// the relay's: the relay's Date header said so.
+Future<VeilMessengerController> _pumpExpiringChat(
+  WidgetTester tester, {
+  required DateTime expiresAt,
+  required Duration deviceClockAhead,
+}) async {
+  tester.view.physicalSize = const Size(1400, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+  final adapter = createDefaultCryptoAdapter();
+  final envelope = await adapter.messaging.encryptMessage(
+    conversationId: 'conv-1',
+    senderDeviceId: 'device-local',
+    recipientUserId: 'user-peer',
+    body: 'Orbit relay window',
+    messageKind: MessageKind.text,
+    recipientBundle: const KeyBundle(
+      userId: 'user-peer',
+      deviceId: 'device-peer',
+      handle: 'selene',
+      identityPublicKey: 'pub-peer',
+      signedPrekeyBundle: 'bundle-peer',
+    ),
+  );
+  final api = _FakeChatApiClient(envelope, expiresAt: expiresAt);
+  api.serverClock.observe(HttpDate.format(DateTime.now().toUtc().subtract(deviceClockAhead)));
+  final cache = _MemoryConversationCache();
+  final storedAt = DateTime.utc(2026, 4, 7, 9, 29);
+  await cache.put(MessageContentRecord(
+    messageKey: 'msg-1',
+    conversationId: 'conv-1',
+    serverMessageId: 'msg-1',
+    senderDeviceId: 'device-local',
+    body: 'Orbit relay window',
+    kind: MessageKind.text,
+    status: MessageContentStatus.ok,
+    createdAt: storedAt,
+    updatedAt: storedAt,
+  ));
+  final controller = VeilMessengerController(
+    apiClient: api,
+    cryptoEngine: adapter.messaging,
+    keyBundleCodec: adapter.keyBundles,
+    envelopeCodec: adapter.envelopeCodec,
+    sessionBootstrapper: adapter.sessions,
+    realtimeService: _FakeRealtimeService(),
+    cacheService: cache,
+  );
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+  await controller.applySession(
+    const AppSessionState(
+      accessToken: 'token',
+      userId: 'user-local',
+      deviceId: 'device-local',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    ),
+  );
+  await controller.loadConversationMessages('conv-1');
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        messengerControllerProvider.overrideWith((ref) => controller),
+      ],
+      child: const _TestApp(
+        child: ChatRoomScreen(
+          conversationId: 'conv-1',
+          embedded: true,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return controller;
 }
 
 class _TestApp extends StatelessWidget {
@@ -345,9 +461,10 @@ class _MemoryConversationCache implements ConversationCacheService, MessageConte
 }
 
 class _FakeChatApiClient extends VeilApiClient {
-  _FakeChatApiClient(this._envelope) : super(baseUrl: 'http://localhost:3000/v1');
+  _FakeChatApiClient(this._envelope, {this.expiresAt}) : super(baseUrl: 'http://localhost:3000/v1');
 
   final CryptoEnvelope _envelope;
+  final DateTime? expiresAt;
 
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
@@ -383,6 +500,7 @@ class _FakeChatApiClient extends VeilApiClient {
             'conversationOrder': 1,
             'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
             'readAt': null,
+            if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
           },
         },
       ],
@@ -413,6 +531,7 @@ class _FakeChatApiClient extends VeilApiClient {
           'conversationOrder': 1,
           'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
           'readAt': null,
+          if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
         },
       ],
       'nextCursor': null,

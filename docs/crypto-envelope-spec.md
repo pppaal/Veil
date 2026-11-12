@@ -214,7 +214,11 @@ attempt changed nothing, so it opens once the frames before it have. Clients
 fetch a backlog (up to 2000 messages per refresh) and decrypt it oldest first,
 so each frame stays within the bound of the one before it. The mobile client
 also records such a frame as waiting for key material rather than failed, and
-retries it after each history page it ingests.
+retries it after each history page it ingests. It pages back to the newest
+message it got from history, or held opened at start, never to one that only
+arrived live or as the ack of its own send: such a message says nothing about
+the frames before it, and stopping there could leave the older part of a
+backlog unfetched and the newer part too far ahead of its chain to open.
 
 Both clients store a message's opened content before they commit the step that
 spent its key. A crash, or a content or state write that fails, between the two
@@ -267,8 +271,9 @@ the authenticated expiry travels in the payload, and receivers expire at
 `min(inner, outer)`. The mobile client stamps the expiry, and checks it, on the
 relay's clock as the HTTP `Date` header reports it, corrected by at most one
 hour, so a device clock that is off neither seals an expiry the relay already
-counts as past nor retires a message early, while a lying `Date` header moves a
-sealed expiry by an hour at most; the web client still uses its local clock.
+counts as past nor retires or hides a message early (the screens check expiry
+on the same clock), while a lying `Date` header moves a sealed expiry by an
+hour at most; the web client still uses its local clock.
 A receiver treats any envelope whose version is not
 `veil-envelope-v1` as v2, so relabelled versions fail authentication.
 

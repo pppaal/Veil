@@ -54,7 +54,8 @@ LocalNotice senderKeysKeptNotice(
 /// from, the group [conversationId]. Membership is the server's to decide,
 /// and an added member's devices receive the group's keys for what is sent
 /// next, so every change is shown in the chat. [change] tells this change
-/// apart from an earlier one of the same member (the group's epoch).
+/// apart from an earlier one of the same member: the device's own count of
+/// the group's member changes, never anything the relay names.
 LocalNotice memberChangeNotice(
   String conversationId, {
   required bool added,

@@ -858,6 +858,66 @@ void main() {
       expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded, LocalNoticeCodes.groupMemberRemoved]);
     });
 
+    test('removed and added back at the same epoch is announced each time', () async {
+      final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
+      addTearDown(mallory.dispose);
+      await mallory.signIn();
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      await bob.controller.refreshConversations();
+      await deliver(alice, bob, 'group hello', conversationId: 'grp');
+      const added = LocalNoticeCodes.groupMemberAdded;
+      const removed = LocalNoticeCodes.groupMemberRemoved;
+
+      relay.conversations['grp']!
+        ..memberHandles.add('mallory')
+        ..epoch += 1;
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added]);
+      // The relay takes mallory out and puts her back without moving the
+      // epoch, so the last change alice was shown would be the removal.
+      relay.conversations['grp']!.memberHandles.remove('mallory');
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added, removed]);
+      relay.conversations['grp']!.memberHandles.add('mallory');
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added, removed, added]);
+
+      // Mallory reads what alice sends next, and alice's chat says she is in.
+      await mallory.controller.refreshConversations();
+      await deliver(alice, mallory, 'after the re-add', conversationId: 'grp');
+      final rows = alice.controller.messagesFor('grp');
+      final lastNotice = rows.lastWhere((m) => m.isLocalNotice);
+      expect((await alice.controller.decryptMessage(lastNotice)).body, added);
+
+      // Each change is announced once: refreshes and a restart add nothing.
+      await alice.controller.refreshConversations();
+      await alice.restart();
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [added, removed, added]);
+    });
+
+    test('found again after the app stopped before recording it is announced once', () async {
+      final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
+      addTearDown(mallory.dispose);
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      final record = alice.keystore.scoped(SecureScope.conversationPolicy);
+      final recordedBefore = (await record.read('group_members.v1'))!;
+
+      relay.conversations['grp']!
+        ..memberHandles.add('mallory')
+        ..epoch += 1;
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+      // The app stops after the notice was written, before the member record
+      // was: the next start finds the same change and numbers it the same.
+      await record.write('group_members.v1', recordedBefore);
+      await alice.restart();
+      await alice.controller.refreshConversations();
+      expect(await memberNotices(alice), [LocalNoticeCodes.groupMemberAdded]);
+    });
+
     test('while the app was closed is announced when it starts', () async {
       final mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mallory');
       addTearDown(mallory.dispose);

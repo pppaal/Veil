@@ -7,9 +7,12 @@ import 'message_expiration.dart';
 /// "Expires in …" for one message, kept current by a one-shot timer armed
 /// for the moment its text next changes, so only this label rebuilds.
 class MessageExpiryLabel extends StatefulWidget {
-  const MessageExpiryLabel({super.key, required this.expiresAt, this.style});
+  const MessageExpiryLabel({super.key, required this.expiresAt, required this.now, this.style});
 
   final DateTime expiresAt;
+
+  /// The messenger's expiry clock (VeilMessengerController.expiryNow).
+  final DateTime Function() now;
   final TextStyle? style;
 
   @override
@@ -39,7 +42,7 @@ class _MessageExpiryLabelState extends State<MessageExpiryLabel> {
 
   void _armNextChange() {
     _nextChange?.cancel();
-    final remaining = widget.expiresAt.difference(DateTime.now());
+    final remaining = widget.expiresAt.difference(widget.now());
     if (remaining <= Duration.zero) return;
     // The text counts whole seconds, minutes, hours or days, and changes
     // just after the remaining time drops below its current whole count.
@@ -60,7 +63,7 @@ class _MessageExpiryLabelState extends State<MessageExpiryLabel> {
   @override
   Widget build(BuildContext context) {
     return Text(
-      formatMessageExpiry(widget.expiresAt),
+      formatMessageExpiry(widget.expiresAt, now: widget.now()),
       style: widget.style,
       overflow: TextOverflow.ellipsis,
     );

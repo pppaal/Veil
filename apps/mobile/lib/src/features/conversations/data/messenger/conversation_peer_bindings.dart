@@ -10,6 +10,19 @@ class ConversationPeer {
   final String handle;
 }
 
+/// The members a group was last shown with on this device, and how many
+/// changes to them it has announced. The count is this device's own: the
+/// relay's epoch cannot tell a member removed and added back from one never
+/// removed, so it does not name a change.
+class GroupMembership {
+  const GroupMembership(this.members, {this.changes = 0});
+
+  final Set<String> members;
+  final int changes;
+
+  bool sameMembers(Set<String> other) => members.length == other.length && members.containsAll(other);
+}
+
 /// Whom each 1:1 conversation is with, recorded once it has a session and
 /// never changed after that.
 ///
@@ -33,23 +46,25 @@ class ConversationPeerBindings {
   // Set when the stored document cannot be read. Nothing is written over it
   // then: that would drop every binding it holds.
   bool _unreadable = false;
-  Future<Map<String, Set<String>>>? _groups;
-  bool _groupsUnreadable = false;
+  Future<Map<String, GroupMembership>>? _groups;
 
-  /// The member user ids each group was last shown with on this device, by
-  /// conversation id. Kept with the bindings, apart from the conversation
-  /// cache, so a change the relay made while the app was closed is still
-  /// told apart from the first listing of a group.
-  Future<Map<String, Set<String>>> groupMembers() async => Map.unmodifiable(await _loadGroups());
+  /// What each group was last shown with on this device, by conversation id.
+  /// Kept with the bindings, apart from the conversation cache, so a change
+  /// the relay made while the app was closed is still told apart from the
+  /// first listing of a group.
+  Future<Map<String, GroupMembership>> groupMembers() async => Map.unmodifiable(await _loadGroups());
 
-  /// Records [members] as what each of those groups is shown with now.
-  Future<void> recordGroupMembers(Map<String, Set<String>> members) async {
-    if (members.isEmpty) return;
+  /// Records [memberships] as what each of those groups is shown with now.
+  /// A record that could not be read is replaced: it holds nothing the
+  /// device can still use, and keeping it would make every later start take
+  /// each group for a first listing and announce nothing.
+  Future<void> recordGroupMembers(Map<String, GroupMembership> memberships) async {
+    if (memberships.isEmpty) return;
     final recorded = await _loadGroups();
-    recorded.addAll({for (final entry in members.entries) entry.key: Set.of(entry.value)});
-    if (_groupsUnreadable) return;
+    recorded.addAll(memberships);
     await _store?.write(_groupsKey, json.encode({
-      for (final entry in recorded.entries) entry.key: (entry.value.toList()..sort()),
+      for (final MapEntry(key: conversationId, value: membership) in recorded.entries)
+        conversationId: {'members': membership.members.toList()..sort(), 'changes': membership.changes},
     }));
   }
 
@@ -78,10 +93,9 @@ class ConversationPeerBindings {
     _bound = null;
     _unreadable = false;
     _groups = null;
-    _groupsUnreadable = false;
   }
 
-  Future<Map<String, Set<String>>> _loadGroups() async {
+  Future<Map<String, GroupMembership>> _loadGroups() async {
     final loading = _groups ??= _readGroups();
     try {
       return await loading;
@@ -91,16 +105,23 @@ class ConversationPeerBindings {
     }
   }
 
-  Future<Map<String, Set<String>>> _readGroups() async {
+  Future<Map<String, GroupMembership>> _readGroups() async {
     final raw = await _store?.read(_groupsKey);
     if (raw == null) return {};
     try {
       final decoded = json.decode(raw) as Map<String, dynamic>;
       return {
-        for (final entry in decoded.entries) entry.key: {for (final id in entry.value as List<dynamic>) id as String},
+        for (final MapEntry(:key, :value) in decoded.entries)
+          key: switch (value) {
+            // Members only, as the first version of this record kept them.
+            List<dynamic>() => GroupMembership(value.cast<String>().toSet()),
+            _ => GroupMembership(
+                ((value as Map<String, dynamic>)['members'] as List<dynamic>).cast<String>().toSet(),
+                changes: value['changes'] as int,
+              ),
+          },
       };
     } on Object {
-      _groupsUnreadable = true;
       return {};
     }
   }

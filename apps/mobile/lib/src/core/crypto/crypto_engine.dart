@@ -491,6 +491,13 @@ class AttachmentCipher {
   final List<int> ciphertext;
 }
 
+/// Runs once a frame has authenticated, with the result decrypt is about to
+/// return, and before the receiver commits the state the frame advanced.
+/// Whatever it stores is durable before the message key is spent; if it
+/// throws, nothing is committed, decrypt reports `persist_failed`, and the
+/// frame can be decrypted again.
+typedef BeforeCommit = Future<void> Function(DecryptedMessage opened);
+
 abstract class MessageCryptoEngine {
   Future<CryptoEnvelope> encryptMessage({
     required String conversationId,
@@ -503,7 +510,10 @@ abstract class MessageCryptoEngine {
     AttachmentReference? attachment,
   });
 
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope);
+  /// Opens [envelope]. An engine that can calls [beforeCommit] with an ok
+  /// result before it commits (see [BeforeCommit]); one that commits inside
+  /// a call it cannot split calls it afterwards.
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit});
 
   // Encrypts an attachment blob end-to-end under a one-shot content key and
   // returns the reference (to embed in the encrypted message payload) plus

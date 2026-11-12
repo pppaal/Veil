@@ -209,6 +209,18 @@ One frame may stash at most 200 keys in total; a session keeps at most 1000
 (oldest evicted) for at most 7 days. Superseded root, chain and ratchet-private
 buffers are overwritten after every commit.
 
+A frame refused only because it would stash more than 200 keys is not lost: the
+attempt changed nothing, so it opens once the frames before it have. Clients
+fetch a backlog (up to 2000 messages per refresh) and decrypt it oldest first,
+so each frame stays within the bound of the one before it. The mobile client
+also records such a frame as waiting for key material rather than failed, and
+retries it after each history page it ingests.
+
+Both clients store a message's opened content before they commit the step that
+spent its key. A crash, or a content or state write that fails, between the two
+loses nothing: until the commit the frame can be decrypted again, and a commit
+that fails leaves the previous state in place (`persist_failed`, retried).
+
 A Normal frame is tried on up to six states (current plus archived), and each
 attempt may do one DH step and derive up to 200 keys before the AEAD rejects
 it. A forged frame therefore costs the receiver a bounded few thousand HKDF
@@ -252,7 +264,12 @@ back to. Re-labelling a frame (another conversation, sender, kind or version)
 breaks the tag. `expiresAt` is
 deliberately **not** bound (contract C4): the server may clamp the outer value,
 the authenticated expiry travels in the payload, and receivers expire at
-`min(inner, outer)`. A receiver treats any envelope whose version is not
+`min(inner, outer)`. The mobile client stamps the expiry, and checks it, on the
+relay's clock as the HTTP `Date` header reports it, corrected by at most one
+hour, so a device clock that is off neither seals an expiry the relay already
+counts as past nor retires a message early, while a lying `Date` header moves a
+sealed expiry by an hour at most; the web client still uses its local clock.
+A receiver treats any envelope whose version is not
 `veil-envelope-v1` as v2, so relabelled versions fail authentication.
 
 ### Inner payload
@@ -394,10 +411,10 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | Status                  | Meaning                                                    |
 | ----------------------- | ---------------------------------------------------------- |
 | `ok`                    | authenticated v2 message                                   |
-| `failed`                | malformed, unauthenticated, or prekeys unavailable; `failureReason` says which |
+| `failed`                | malformed, unauthenticated, or prekeys unavailable; `failureReason` says which. `persist_failed`: the frame opened but the caller's content write or the state commit failed; nothing was committed, so it is retried |
 | `replayed`              | `(pub, N)` already consumed or its chain left behind       |
 | `sessionMissing`        | Normal or legacy v1 frame with no matching session         |
-| `awaitingKey`           | group frame whose sender key has not arrived               |
+| `awaitingKey`           | group frame whose sender key has not arrived, or a Normal frame more than 200 keys ahead of its chain (`skip_limit`); retried once key material or earlier frames arrive |
 | `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed; or a frame on a state whose identity the verifier no longer admits (nothing is committed) |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 

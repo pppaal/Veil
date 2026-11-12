@@ -805,6 +805,14 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server listed this group without its group encryption keys. This device keeps using them.';
 
   @override
+  String get chatNoticeGroupMemberAdded =>
+      'Someone was added to this group. They can read messages sent from now on. Check the members in Safety number.';
+
+  @override
+  String get chatNoticeGroupMemberRemoved =>
+      'Someone left this group or was removed from it.';
+
+  @override
   String get chatIdentityChangedTitle => 'Safety number changed';
 
   @override
@@ -1406,7 +1414,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferHeroBody =>
-      'Transfer is a live trusted-device join. The old device issues the session and approves the exact new-device claim. VEIL does not create recovery.';
+      'Transfer moves your handle to a new device. The old device issues the session and approves the exact new-device claim, and is signed out when the transfer completes. Conversation history is not transferred. VEIL does not create recovery.';
 
   @override
   String get deviceTransferPillTrustedJoin => 'Trusted-device join';
@@ -1509,7 +1517,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferComplete =>
-      'Transfer complete. This device joined the trusted graph.';
+      'Transfer complete. Your handle is now on this device and the old device has been signed out.';
 
   @override
   String get deviceTransferFailed => 'Transfer failed.';
@@ -1601,7 +1609,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferCompleteOnNewNote =>
-      'Complete on the new device. The old device remains trusted until you revoke it explicitly.';
+      'Complete on the new device. When it completes, this device is signed out and its local history is erased. Conversation history does not move to the new device.';
 
   @override
   String get deviceTransferCopyPayload => 'Copy payload';

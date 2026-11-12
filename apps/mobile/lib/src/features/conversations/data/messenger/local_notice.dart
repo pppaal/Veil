@@ -9,6 +9,8 @@ abstract final class LocalNoticeCodes {
   static const identityChanged = 'identity.changed';
   static const identityNewDevice = 'identity.new_device';
   static const senderKeysKept = 'group.sender_keys_kept';
+  static const groupMemberAdded = 'group.member_added';
+  static const groupMemberRemoved = 'group.member_removed';
 }
 
 /// A notice row and the code it shows.
@@ -47,6 +49,27 @@ LocalNotice senderKeysKeptNotice(
   required DateTime now,
 }) =>
     _notice(conversationId, LocalNoticeCodes.senderKeysKept, '', conversationMessages, now);
+
+/// The notice that the relay's list added [userId] to, or removed them
+/// from, the group [conversationId]. Membership is the server's to decide,
+/// and an added member's devices receive the group's keys for what is sent
+/// next, so every change is shown in the chat. [change] tells this change
+/// apart from an earlier one of the same member (the group's epoch).
+LocalNotice memberChangeNotice(
+  String conversationId, {
+  required bool added,
+  required String userId,
+  required String change,
+  required List<ChatMessage> conversationMessages,
+  required DateTime now,
+}) =>
+    _notice(
+      conversationId,
+      added ? LocalNoticeCodes.groupMemberAdded : LocalNoticeCodes.groupMemberRemoved,
+      '$userId:$change',
+      conversationMessages,
+      now,
+    );
 
 LocalNotice _notice(
   String conversationId,

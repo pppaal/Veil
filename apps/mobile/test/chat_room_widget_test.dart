@@ -7,6 +7,7 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/core/storage/in_memory_message_content_store.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -38,6 +39,21 @@ void main() {
       ),
     );
     final api = _FakeChatApiClient(envelope);
+    // This device cannot open what it sealed: its own messages render from
+    // the content it stored before sending, which the ack moved under the
+    // relay's id.
+    final cache = _MemoryConversationCache();
+    final storedAt = DateTime.utc(2026, 4, 7, 9, 29);
+    await cache.put(MessageContentRecord(
+      messageKey: 'msg-1',
+      conversationId: 'conv-1',
+      serverMessageId: 'msg-1',
+      body: 'Orbit relay window',
+      kind: MessageKind.text,
+      status: MessageContentStatus.ok,
+      createdAt: storedAt,
+      updatedAt: storedAt,
+    ));
     final controller = VeilMessengerController(
       apiClient: api,
       cryptoEngine: adapter.messaging,
@@ -45,7 +61,7 @@ void main() {
       envelopeCodec: adapter.envelopeCodec,
       sessionBootstrapper: adapter.sessions,
       realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(),
+      cacheService: cache,
     );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -108,8 +124,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final newerEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Newest relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -122,8 +138,8 @@ void main() {
     );
     final olderEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Older relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -237,12 +253,41 @@ class _FakeRealtimeService extends RealtimeService {
   }
 }
 
-class _MemoryConversationCache implements ConversationCacheService {
+// Durable content, as the Drift cache keeps it: a sign-in does not wipe it.
+class _MemoryConversationCache implements ConversationCacheService, MessageContentStore {
+  final InMemoryMessageContentStore _contents = InMemoryMessageContentStore();
+
+  @override
+  Future<void> put(MessageContentRecord record) => _contents.put(record);
+
+  @override
+  Future<MessageContentRecord?> get(String messageKey) => _contents.get(messageKey);
+
+  @override
+  Future<Map<String, MessageContentRecord>> getMany(Iterable<String> messageKeys) => _contents.getMany(messageKeys);
+
+  @override
+  Future<Map<String, DateTime>> innerExpiries(Iterable<String> messageKeys) => _contents.innerExpiries(messageKeys);
+
+  @override
+  Future<void> rekeyLocalToServer({required String clientMessageId, required String serverMessageId}) =>
+      _contents.rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: serverMessageId);
+
+  @override
+  Future<void> deleteConversation(String conversationId) => _contents.deleteConversation(conversationId);
+
+  @override
+  Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys = const []}) =>
+      _contents.deleteExpired(now, messageKeys: messageKeys);
+
+  @override
+  Future<Set<String>> retiredAmong(Iterable<String> messageKeys) => _contents.retiredAmong(messageKeys);
+
   @override
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -415,8 +460,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
             'id': 'msg-2',
             'clientMessageId': null,
             'conversationId': 'conv-1',
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': latestEnvelope.senderDeviceId,
+            'recipientUserId': latestEnvelope.recipientUserId,
             'ciphertext': latestEnvelope.ciphertext,
             'nonce': latestEnvelope.nonce,
             'version': latestEnvelope.version,
@@ -448,8 +493,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
             'id': 'msg-1',
             'clientMessageId': null,
             'conversationId': 'conv-1',
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': olderEnvelope.senderDeviceId,
+            'recipientUserId': olderEnvelope.recipientUserId,
             'ciphertext': olderEnvelope.ciphertext,
             'nonce': olderEnvelope.nonce,
             'version': olderEnvelope.version,
@@ -470,8 +515,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
           'id': 'msg-2',
           'clientMessageId': null,
           'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
+          'senderDeviceId': latestEnvelope.senderDeviceId,
+          'recipientUserId': latestEnvelope.recipientUserId,
           'ciphertext': latestEnvelope.ciphertext,
           'nonce': latestEnvelope.nonce,
           'version': latestEnvelope.version,

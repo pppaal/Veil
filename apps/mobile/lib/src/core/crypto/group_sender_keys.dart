@@ -453,15 +453,21 @@ class _GroupState {
 
   /// Evicts the oldest stashed keys beyond [kMaxSkippedKeysPerSender] per
   /// chain and [kMaxSkippedKeysPerGroup] across the group.
-  void enforceSkippedKeyCaps() {
+  /// Evicts the oldest skipped keys beyond the caps and wipes them, or, with
+  /// [evicted], hands them over unwiped so a failed commit can put them back.
+  void enforceSkippedKeyCaps({List<({_PeerChain chain, int counter, _SkippedKey key})>? evicted}) {
     for (final chain in _chains) {
-      _evictOldest([chain], chain.skipped.length - kMaxSkippedKeysPerSender);
+      _evictOldest([chain], chain.skipped.length - kMaxSkippedKeysPerSender, evicted);
     }
     final total = _chains.fold<int>(0, (n, chain) => n + chain.skipped.length);
-    _evictOldest(_chains.toList(growable: false), total - kMaxSkippedKeysPerGroup);
+    _evictOldest(_chains.toList(growable: false), total - kMaxSkippedKeysPerGroup, evicted);
   }
 
-  static void _evictOldest(List<_PeerChain> chains, int excess) {
+  static void _evictOldest(
+    List<_PeerChain> chains,
+    int excess,
+    List<({_PeerChain chain, int counter, _SkippedKey key})>? evicted,
+  ) {
     if (excess <= 0) return;
     final entries = [
       for (final chain in chains)
@@ -471,7 +477,9 @@ class _GroupState {
         return byAge != 0 ? byAge : a.counter.compareTo(b.counter);
       });
     for (final victim in entries.take(excess)) {
-      victim.chain.skipped.remove(victim.counter)?.wipe();
+      final key = victim.chain.skipped.remove(victim.counter);
+      if (key == null) continue;
+      evicted == null ? key.wipe() : evicted.add((chain: victim.chain, counter: victim.counter, key: key));
     }
   }
 
@@ -850,10 +858,15 @@ class GroupSenderKeyEngine {
     }
   }
 
+  /// Opens a frame. [beforeCommit] runs with the authenticated plaintext
+  /// before the advanced chain is committed; if it throws, or persisting the
+  /// chain fails, nothing is committed and a 'persistFailed' exception
+  /// leaves the frame decryptable again.
   Future<GroupPlaintext> decrypt({
     required String groupId,
     required String payload,
     required String nonce,
+    Future<void> Function(List<int> plaintext)? beforeCommit,
   }) async {
     final _Frame frame;
     final Uint8List nonceBytes;
@@ -866,10 +879,15 @@ class GroupSenderKeyEngine {
     if (nonceBytes.length != _kNonceLength) {
       throw const GroupCryptoException('malformed', 'bad nonce length');
     }
-    return _lock.synchronized(groupId, () => _decryptFrame(groupId, frame, nonceBytes));
+    return _lock.synchronized(groupId, () => _decryptFrame(groupId, frame, nonceBytes, beforeCommit));
   }
 
-  Future<GroupPlaintext> _decryptFrame(String groupId, _Frame frame, Uint8List nonceBytes) async {
+  Future<GroupPlaintext> _decryptFrame(
+    String groupId,
+    _Frame frame,
+    Uint8List nonceBytes,
+    Future<void> Function(List<int> plaintext)? beforeCommit,
+  ) async {
     final header = frame.header;
     final state = _groups[groupId];
     if (state == null) {
@@ -952,18 +970,62 @@ class GroupSenderKeyEngine {
     }
     messageKey.fillRange(0, messageKey.length, 0);
 
-    // Authenticated — commit.
+    void dropScratch() {
+      scratchChain.fillRange(0, scratchChain.length, 0);
+      for (final k in newlySkipped.values) {
+        k.fillRange(0, k.length, 0);
+      }
+    }
+
+    // Authenticated. The caller stores the plaintext before the key is spent.
+    try {
+      await beforeCommit?.call(plaintext);
+    } catch (_) {
+      dropScratch();
+      throw const GroupCryptoException('persistFailed', 'content not stored');
+    }
+
+    // Commit, keeping what it replaces until the chain is persisted, so a
+    // failed persist leaves memory as it was and the frame decryptable.
+    final previousChainKey = peer.chainKey;
+    final previousCounter = peer.counter;
+    final previousHighWater = sender.highWaterConsumed;
+    _SkippedKey? spent;
+    final evicted = <({_PeerChain chain, int counter, _SkippedKey key})>[];
     if (stashed != null) {
-      peer.skipped.remove(header.counter)?.wipe();
+      spent = peer.skipped.remove(header.counter);
     } else {
-      peer.chainKey.fillRange(0, peer.chainKey.length, 0);
       peer.chainKey = scratchChain;
       peer.counter = scratchCounter;
       newlySkipped.forEach((counter, key) => peer.skipped[counter] = _SkippedKey(key, nowMs));
       sender.highWaterConsumed = scratchCounter - 1;
-      state.enforceSkippedKeyCaps();
+      state.enforceSkippedKeyCaps(evicted: evicted);
     }
-    await _persist(groupId);
+    try {
+      await _persist(groupId);
+    } catch (_) {
+      if (stashed != null) {
+        peer.skipped[header.counter] = spent!;
+      } else {
+        newlySkipped.keys.forEach(peer.skipped.remove);
+        for (final entry in evicted) {
+          entry.chain.skipped[entry.counter] = entry.key;
+        }
+        peer.chainKey = previousChainKey;
+        peer.counter = previousCounter;
+        sender.highWaterConsumed = previousHighWater;
+        dropScratch();
+      }
+      throw const GroupCryptoException('persistFailed', 'chain not persisted');
+    }
+    if (stashed != null) {
+      spent?.wipe();
+    } else {
+      previousChainKey.fillRange(0, previousChainKey.length, 0);
+      for (final entry in evicted) {
+        entry.key.wipe();
+      }
+    }
 
     return GroupPlaintext(
       plaintext: plaintext,

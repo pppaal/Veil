@@ -13,7 +13,7 @@ import org.signal.libsignal.protocol.SessionBuilder
 import org.signal.libsignal.protocol.SessionCipher
 import org.signal.libsignal.protocol.SignalProtocolAddress
 import org.signal.libsignal.protocol.UntrustedIdentityException
-import org.signal.libsignal.protocol.ecc.Curve
+import org.signal.libsignal.protocol.ecc.ECKeyPair
 import org.signal.libsignal.protocol.ecc.ECPublicKey
 import org.signal.libsignal.protocol.kdf.HKDF
 import org.signal.libsignal.protocol.kem.KEMKeyPair
@@ -104,17 +104,17 @@ class VeilCryptoBridge(context: Context) : MethodChannel.MethodCallHandler {
         store.installIdentity(identityPair, registrationId)
 
         val signedPreKeyId = random.nextInt(Medium.MAX_VALUE)
-        val signedPair = Curve.generateKeyPair()
-        val signedSig = Curve.calculateSignature(identityPair.privateKey, signedPair.publicKey.serialize())
+        val signedPair = ECKeyPair.generate()
+        val signedSig = identityPair.privateKey.calculateSignature(signedPair.publicKey.serialize())
         store.storeSignedPreKey(signedPreKeyId, SignedPreKeyRecord(signedPreKeyId, now(), signedPair, signedSig))
 
         val kyberPreKeyId = random.nextInt(Medium.MAX_VALUE)
         val kyberPair = KEMKeyPair.generate(KEMKeyType.KYBER_1024)
-        val kyberSig = Curve.calculateSignature(identityPair.privateKey, kyberPair.publicKey.serialize())
+        val kyberSig = identityPair.privateKey.calculateSignature(kyberPair.publicKey.serialize())
         store.storeKyberPreKey(kyberPreKeyId, KyberPreKeyRecord(kyberPreKeyId, now(), kyberPair, kyberSig))
 
         val preKeyId = random.nextInt(Medium.MAX_VALUE)
-        val preKeyPair = Curve.generateKeyPair()
+        val preKeyPair = ECKeyPair.generate()
         store.storePreKey(preKeyId, PreKeyRecord(preKeyId, preKeyPair))
 
         val bundle = JSONObject()
@@ -202,7 +202,7 @@ class VeilCryptoBridge(context: Context) : MethodChannel.MethodCallHandler {
     private fun encryptAttachmentKey(call: MethodCall): Map<String, Any> {
         val recipientIdentity = parseIdentity(requireString(call, "recipientIdentityPublicKey"))
         val bundleJson = parseBundleJson(requireString(call, "recipientSignedPrekeyBundle"))
-        val signedPreKey = Curve.decodePoint(unb64(bundleJson.getString("signedPreKey")), 0)
+        val signedPreKey = ECPublicKey(unb64(bundleJson.getString("signedPreKey")), 0)
         val signature = unb64(bundleJson.getString("signedPreKeySignature"))
         if (!recipientIdentity.publicKey.verifySignature(signedPreKey.serialize(), signature)) {
             throw BundleException("signed prekey signature invalid")
@@ -210,8 +210,8 @@ class VeilCryptoBridge(context: Context) : MethodChannel.MethodCallHandler {
         val attachmentKey = unb64(requireString(call, "attachmentKey"))
         if (attachmentKey.size != 32) throw ArgumentException("attachmentKey")
 
-        val eph = Curve.generateKeyPair()
-        val shared = Curve.calculateAgreement(signedPreKey, eph.privateKey)
+        val eph = ECKeyPair.generate()
+        val shared = eph.privateKey.calculateAgreement(signedPreKey)
         val wrapKey = HKDF.deriveSecrets(shared, eph.publicKey.serialize(), ATTACHMENT_WRAP_INFO, 32)
         shared.fill(0)
         val nonce = ByteArray(12).also(random::nextBytes)
@@ -229,7 +229,7 @@ class VeilCryptoBridge(context: Context) : MethodChannel.MethodCallHandler {
         val wrapped = unb64(requireString(call, "wrappedKey"))
         val nonce = unb64(requireString(call, "wrapNonce"))
         if (wrapped.size < EC_PUBLIC_LENGTH + 16 || nonce.size != 12) throw ArgumentException("wrappedKey")
-        val ephPub: ECPublicKey = Curve.decodePoint(wrapped, 0)
+        val ephPub: ECPublicKey = ECPublicKey(wrapped, 0)
         val body = wrapped.copyOfRange(EC_PUBLIC_LENGTH, wrapped.size)
 
         // Our side of the agreement is the *current signed prekey* (the key the
@@ -238,7 +238,7 @@ class VeilCryptoBridge(context: Context) : MethodChannel.MethodCallHandler {
         var lastError: Exception? = null
         for (record in store.loadSignedPreKeys().sortedByDescending { it.timestamp }) {
             try {
-                val shared = Curve.calculateAgreement(ephPub, record.keyPair.privateKey)
+                val shared = record.keyPair.privateKey.calculateAgreement(ephPub)
                 val wrapKey = HKDF.deriveSecrets(shared, ephPub.serialize(), ATTACHMENT_WRAP_INFO, 32)
                 shared.fill(0)
                 val key = aesGcm(Cipher.DECRYPT_MODE, wrapKey, nonce, body)
@@ -278,12 +278,12 @@ class VeilCryptoBridge(context: Context) : MethodChannel.MethodCallHandler {
         val json = parseBundleJson(encoded)
         if (json.optInt("v", 0) != 2) throw BundleException("unsupported bundle version")
         try {
-            val signedPreKey = Curve.decodePoint(unb64(json.getString("signedPreKey")), 0)
+            val signedPreKey = ECPublicKey(unb64(json.getString("signedPreKey")), 0)
             val signedSig = unb64(json.getString("signedPreKeySignature"))
             val kyberPreKey = KEMPublicKey(unb64(json.getString("kyberPreKey")))
             val kyberSig = unb64(json.getString("kyberPreKeySignature"))
             val preKeyId = if (json.has("preKey")) json.getInt("preKeyId") else -1
-            val preKey = if (json.has("preKey")) Curve.decodePoint(unb64(json.getString("preKey")), 0) else null
+            val preKey = if (json.has("preKey")) ECPublicKey(unb64(json.getString("preKey")), 0) else null
             // VERIFY(0.86.5): PreKeyBundle(registrationId, deviceId, preKeyId, preKey,
             //   signedPreKeyId, signedPreKey, signedPreKeySignature, identityKey,
             //   kyberPreKeyId, kyberPreKey, kyberPreKeySignature). libsignal itself

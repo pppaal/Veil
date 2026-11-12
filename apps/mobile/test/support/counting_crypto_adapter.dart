@@ -84,9 +84,9 @@ class _CountingMessaging implements MessageCryptoEngine {
   }
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) {
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) {
     _counts.decrypt += 1;
-    return _inner.decryptMessage(envelope);
+    return _inner.decryptMessage(envelope, beforeCommit: beforeCommit);
   }
 
   @override

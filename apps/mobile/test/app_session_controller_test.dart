@@ -223,7 +223,7 @@ class _MemoryConversationCache implements ConversationCacheService {
   }
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];

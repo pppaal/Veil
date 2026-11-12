@@ -86,7 +86,7 @@ class _StrictMessaging implements MessageCryptoEngine {
   }
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     // What the production ratchet reports for a sender's own frame, which it
     // cannot open, and for a message key that was already used.
     if (_ownDeviceIds.contains(envelope.senderDeviceId)) {
@@ -96,7 +96,7 @@ class _StrictMessaging implements MessageCryptoEngine {
       return DecryptedMessage(body: '', messageKind: envelope.messageKind, status: DecryptStatus.replayed);
     }
     onOpened?.call(envelope.conversationId);
-    return _inner.decryptMessage(envelope);
+    return _inner.decryptMessage(envelope, beforeCommit: beforeCommit);
   }
 
   @override

@@ -11,6 +11,7 @@ class _FakeSocket implements RealtimeSocket {
   final Map<String, void Function(dynamic payload)> handlers = {};
   final List<Map<String, dynamic>> authHistory = [];
   void Function(bool connected)? connectionListener;
+  void Function()? serverDisconnectListener;
   int connectCount = 0;
   int disconnectCount = 0;
   bool disposed = false;
@@ -29,6 +30,11 @@ class _FakeSocket implements RealtimeSocket {
   @override
   void onConnectionChanged(void Function(bool connected) listener) {
     connectionListener = listener;
+  }
+
+  @override
+  void onServerDisconnect(void Function() listener) {
+    serverDisconnectListener = listener;
   }
 
   @override
@@ -120,6 +126,27 @@ void main() {
     expect(harness.socketUrls.single, 'https://api.veil.test');
     expect(harness.socketOptions.single['auth'], {'token': 'token-1'});
     expect(harness.socketOptions.single['path'], '/v1/realtime');
+  });
+
+  test('reports a disconnect the server asked for, from the live socket only', () {
+    final sockets = <_FakeSocket>[];
+    final service = RealtimeService(
+      httpClientFactory: () => null,
+      socketFactory: (url, options) => (sockets..add(_FakeSocket())).last,
+    );
+    var serverDisconnects = 0;
+    service.onServerDisconnect = () => serverDisconnects += 1;
+    void connect() => service.connect(baseUrl: 'https://api.veil.test', accessToken: 't', onEvent: (_, __) {});
+
+    connect();
+    sockets.single.serverDisconnectListener!();
+    expect(serverDisconnects, 1);
+
+    connect();
+    sockets.first.serverDisconnectListener!();
+    expect(serverDisconnects, 1, reason: 'a socket already replaced reports nothing');
+    sockets.last.serverDisconnectListener!();
+    expect(serverDisconnects, 2);
   });
 
   test('malformed group.key.distribution dropped without throwing', () {

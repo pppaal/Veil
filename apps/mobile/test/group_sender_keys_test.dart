@@ -413,6 +413,55 @@ void main() {
       );
     });
   });
+
+  group('a frame whose plaintext or chain could not be stored', () {
+    test('stays decryptable when storing its plaintext fails', () async {
+      final skip = await _send(alice, 'skipped');
+      final ct = await _send(alice, 'kept');
+      expect(
+        await _code(() => bob.engine.decrypt(
+              groupId: groupId,
+              payload: ct.payload,
+              nonce: ct.nonce,
+              beforeCommit: (_) async => throw StateError('disk full'),
+            )),
+        'persistFailed',
+      );
+      // Nothing was committed: the frame, and the one it skipped, still open.
+      expect(await _recv(bob, ct), 'kept');
+      expect(await _recv(bob, skip), 'skipped');
+    });
+
+    test('stays decryptable, in memory and on disk, when persisting the chain fails', () async {
+      final saved = <String, Map<String, dynamic>?>{};
+      var failures = 1;
+      bob.engine.setPersistence(persister: (group, state) async {
+        if (failures > 0) {
+          failures -= 1;
+          throw StateError('errSecInteractionNotAllowed');
+        }
+        saved[group] = state;
+      });
+      final skip = await _send(alice, 'skipped');
+      final ct = await _send(alice, 'kept');
+      final stored = <String>[];
+
+      expect(
+        await _code(() => bob.engine.decrypt(
+              groupId: groupId,
+              payload: ct.payload,
+              nonce: ct.nonce,
+              beforeCommit: (plaintext) async => stored.add(utf8.decode(plaintext)),
+            )),
+        'persistFailed',
+      );
+      // The plaintext reached the caller before the commit was attempted.
+      expect(stored, ['kept']);
+      expect(await _recv(bob, ct), 'kept');
+      expect(await _recv(bob, skip), 'skipped');
+      expect(await _code(() => _recv(bob, ct)), 'replayed');
+    });
+  });
 }
 
 String _pad(String b64u) => b64u.padRight(b64u.length + ((4 - b64u.length % 4) % 4), '=');

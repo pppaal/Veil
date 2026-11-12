@@ -148,7 +148,8 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
       _write(() async => (await _requireCache()).writeChanges(changes));
 
   @override
-  Future<void> purgeExpiredMessages() => _write(() async => (await _cache())?.purgeExpiredMessages());
+  Future<void> purgeExpiredMessages({DateTime? now}) =>
+      _write(() async => (await _cache())?.purgeExpiredMessages(now: now));
 
   @override
   Future<void> clearAll() async {

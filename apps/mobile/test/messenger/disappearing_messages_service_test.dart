@@ -41,7 +41,7 @@ ChatMessage _message(String id, {DateTime? expiresAt}) => ChatMessage(
     store: store,
     contents: MessageContentService(
       cache: null,
-      decrypt: (_) => throw StateError('nothing is decrypted here'),
+      decrypt: (_, {beforeCommit}) => throw StateError('nothing is decrypted here'),
       onContentStored: (_, __) {},
     ),
     persistence: MessengerPersistence(cache: null, store: store),

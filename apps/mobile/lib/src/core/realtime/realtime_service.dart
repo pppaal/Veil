@@ -26,6 +26,11 @@ class RealtimeService {
 
   bool get isConnected => _socket?.connected ?? false;
 
+  /// Called when the relay closes the socket itself, which it does once the
+  /// socket's access token expires. socket.io does not reconnect after
+  /// that; the listener has to, with a fresh token.
+  void Function()? onServerDisconnect;
+
   /// Connects and subscribes to every contract event. Payloads of typed
   /// events are validated first: malformed ones are dropped here so handlers
   /// never see them, valid ones reach [onEvent] unchanged.
@@ -60,6 +65,9 @@ class RealtimeService {
     if (onConnectionChanged != null) {
       socket.onConnectionChanged(onConnectionChanged);
     }
+    socket.onServerDisconnect(() {
+      if (identical(_socket, socket)) onServerDisconnect?.call();
+    });
     for (final event in kRealtimeEventNames) {
       socket.on(event, (payload) {
         if (RealtimeEvent.tryParse(event, payload) != null) {

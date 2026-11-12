@@ -424,8 +424,11 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
     );
   }
 
+  // The native store commits inside decryptMessage, so [beforeCommit] can
+  // only run after it: content this hook fails to store is not recoverable
+  // here, as before the hook existed.
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     final int messageType;
     switch (envelope.nonce) {
       case _kNoncePreKey:
@@ -447,12 +450,18 @@ class _BridgeMessageCryptoEngine implements MessageCryptoEngine {
       final padded = _b64Decode(_requireString(r, 'plaintext'));
       final payload = InnerPayload.decode(MessagePadding.unpad(padded), fallbackKind: envelope.messageKind);
       _sessions.noteSession(envelope.conversationId, remoteDeviceId: envelope.senderDeviceId);
-      return DecryptedMessage(
+      final opened = DecryptedMessage(
         body: payload.body,
         messageKind: payload.kind,
         expiresAt: payload.expiresAt,
         attachment: payload.attachment,
       );
+      try {
+        await beforeCommit?.call(opened);
+      } catch (_) {
+        return _failure(envelope, DecryptStatus.failed, 'persist_failed');
+      }
+      return opened;
     } on CryptoBridgeException catch (e) {
       // Same typed outcomes as the lib adapter so the UI needs no
       // adapter-specific branching. Never a plaintext fallback.

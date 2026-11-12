@@ -20,7 +20,7 @@ class _OpensEverything implements MessageCryptoEngine {
   final List<String> opened = [];
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     opened.add(envelope.version);
     return const DecryptedMessage(body: 'opened', messageKind: MessageKind.text);
   }

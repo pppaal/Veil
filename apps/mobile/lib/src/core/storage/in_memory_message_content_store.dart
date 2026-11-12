@@ -41,15 +41,27 @@ class InMemoryMessageContentStore implements MessageContentStore {
     required String clientMessageId,
     required String serverMessageId,
   }) async {
-    final local = _records.remove(localMessageContentKey(clientMessageId));
+    final localKey = localMessageContentKey(clientMessageId);
+    final local = _records[localKey];
     if (local == null) {
       return;
     }
+    final existing = _records[serverMessageId];
+    if (existing != null &&
+        !mayRekeyOver(
+          conversationId: local.conversationId,
+          existingConversationId: existing.conversationId,
+          existingStatus: existing.status,
+        )) {
+      return;
+    }
+    _records.remove(localKey);
     _records[serverMessageId] = MessageContentRecord(
       messageKey: serverMessageId,
       conversationId: local.conversationId,
       clientMessageId: local.clientMessageId,
       serverMessageId: serverMessageId,
+      senderDeviceId: local.senderDeviceId,
       body: local.body,
       kind: local.kind,
       attachment: local.attachment,

@@ -202,6 +202,54 @@ for (const file of dartFiles(messengerServicesDir)) {
   }
 }
 
+// The libsignal bridge is opt-in on both platforms: a default store build must
+// neither compile it nor link Signal's native libraries (it has never been
+// built into an app on a real toolchain, and one wrong symbol broke the
+// default Android build).
+const kotlinFiles = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return kotlinFiles(path);
+    return entry.name.endsWith('.kt') ? [path] : [];
+  });
+const androidApp = 'apps/mobile/android/app';
+for (const dir of [`${androidApp}/src/main`, `${androidApp}/src/nolibsignal`]) {
+  for (const file of kotlinFiles(dir)) {
+    assertNoMatch(
+      file,
+      /org\.signal\.libsignal|\bVeilCryptoBridge\b/,
+      'Default Android builds must not compile the libsignal bridge (it lives in src/libsignal)',
+    );
+  }
+}
+const androidBuild = read(`${androidApp}/build.gradle.kts`);
+const libsignalDependencies =
+  androidBuild.match(/implementation\("org\.signal:libsignal-android:/g) ?? [];
+const guardedDependencies =
+  androidBuild.match(
+    /if \(veilLibsignal\) \{(?:\s*\/\/[^\n]*)*\s*implementation\("org\.signal:libsignal-android:/g,
+  ) ?? [];
+if (
+  libsignalDependencies.length !== guardedDependencies.length ||
+  !/srcDir\(if \(veilLibsignal\) "src\/libsignal\/kotlin" else "src\/nolibsignal\/kotlin"\)/.test(
+    androidBuild,
+  )
+) {
+  failures.push(
+    `The libsignal dependency and bridge sources must sit behind the veil.libsignal opt-in: ${androidApp}/build.gradle.kts`,
+  );
+}
+const appDelegate = 'apps/mobile/ios/Runner/AppDelegate.swift';
+if (
+  read(appDelegate)
+    .split('\n')
+    .some((line) => /VeilCryptoBridgePlugin/.test(line) && !/^\s*\/\//.test(line))
+) {
+  failures.push(
+    `Default iOS builds must not register the libsignal bridge, which is not in the Runner target: ${appDelegate}`,
+  );
+}
+
 // No backup exists, and there is to be no place for one.
 if (existsSync(`${mobileSrc}/core/backup`)) {
   failures.push(`Mobile must not ship a backup module: ${mobileSrc}/core/backup`);

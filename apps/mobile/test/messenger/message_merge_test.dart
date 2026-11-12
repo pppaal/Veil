@@ -103,4 +103,34 @@ void main() {
 
     expect(merged.map((message) => message.id), ['srv-1', 'srv-2', 'local-c9']);
   });
+
+  test('a later copy cannot change who sent a message or where', () {
+    final known = _message('srv-1', order: 1);
+    final relabelled = ChatMessage(
+      id: 'srv-1',
+      senderDeviceId: 'dev-selene',
+      sentAt: known.sentAt,
+      conversationOrder: 1,
+      deliveredAt: _base.add(const Duration(minutes: 2)),
+      isMine: false,
+      envelope: CryptoEnvelope(
+        version: 'veil-envelope-v2',
+        conversationId: 'conv-2',
+        senderDeviceId: 'dev-selene',
+        recipientUserId: 'user-atlas',
+        ciphertext: 'ct-other',
+        nonce: 'n-other',
+        messageKind: MessageKind.text,
+      ),
+    );
+
+    final merged = mergeServerMessage(known, relabelled);
+
+    expect(merged.senderDeviceId, 'dev-atlas');
+    expect(merged.isMine, isTrue);
+    expect(merged.envelope, same(known.envelope));
+    // Receipts still move forward.
+    expect(merged.deliveredAt, relabelled.deliveredAt);
+    expect(merged.deliveryState, MessageDeliveryState.delivered);
+  });
 }

@@ -126,16 +126,31 @@ class ConversationCryptoRouter {
     );
   }
 
-  Future<DecryptedMessage> decrypt(CryptoEnvelope envelope) async {
+  /// Opens [envelope]; [beforeCommit] stores its content before the engine
+  /// commits (see [BeforeCommit]).
+  Future<DecryptedMessage> decrypt(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     final groupCrypto = _groupCrypto;
     if (groupCrypto != null && GroupSenderKeyCoordinator.isGroupEnvelope(envelope)) {
       final opened = await groupCrypto.decryptMessage(
         envelope,
         accessToken: _session.current.accessToken ?? '',
         localUserId: _session.userId ?? '',
+        beforeCommit: beforeCommit,
       );
       if (opened.isOk) await _envelopeVersions.pinSenderKeys(envelope.conversationId);
       return opened;
+    }
+    // This device's own messages are shown from the content it stored before
+    // sealing them, never by opening a frame: it cannot open what it sealed.
+    // A pairwise frame under its own device id was made by someone else, the
+    // relay included, and opening it would show their words as the user's.
+    if (_isOwnDevice(envelope.senderDeviceId)) {
+      return const DecryptedMessage(
+        body: '',
+        messageKind: MessageKind.text,
+        status: DecryptStatus.failed,
+        failureReason: 'own_device_frame',
+      );
     }
     if (await _refusesPairwise(envelope)) {
       return DecryptedMessage(
@@ -152,7 +167,7 @@ class ConversationCryptoRouter {
     // from our identity key and an ephemeral the sender chose, so a frame
     // with no session to open on can only come from whoever chose that
     // ephemeral, the relay included. It ends as sessionMissing.
-    final decrypted = await _engine.decryptMessage(envelope);
+    final decrypted = await _engine.decryptMessage(envelope, beforeCommit: beforeCommit);
     if (decrypted.isOk) {
       await _envelopeVersions.noteAuthenticated(envelope.conversationId, envelope.version);
     }
@@ -166,6 +181,9 @@ class ConversationCryptoRouter {
   /// opened on an installed session, so that one the pins stopped admitting
   /// is neither written to nor shown as the conversation's peer.
   Future<bool> verifyRemoteIdentity(RemoteIdentityClaim claim) async {
+    // No peer may claim this device's id: admitting it would pin the local
+    // device under someone else's account.
+    if (_isOwnDevice(claim.senderDeviceId)) return false;
     try {
       if (_store.conversationById(claim.conversationId) == null) await _refreshConversations();
       final conversation = _store.conversationById(claim.conversationId);
@@ -252,6 +270,11 @@ class ConversationCryptoRouter {
   void clear() {
     _handshakeIdentities.clear();
     _unlistedInboundSessions.clear();
+  }
+
+  bool _isOwnDevice(String deviceId) {
+    final localDeviceId = _session.deviceId;
+    return localDeviceId != null && localDeviceId.isNotEmpty && deviceId == localDeviceId;
   }
 
   bool _usesSenderKeys(ConversationPreview conversation) =>

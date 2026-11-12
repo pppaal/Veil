@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,10 +14,114 @@ import 'package:veil_mobile/src/features/attachments/data/attachment_temp_file_s
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
+import 'package:veil_mobile/src/core/security/local_data_cipher.dart';
+import 'package:veil_mobile/src/core/storage/app_database.dart';
+import 'package:veil_mobile/src/core/storage/cache_handle.dart';
+
 import 'support/async_wait.dart';
 import 'support/strict_mock_crypto_adapter.dart';
 
 void main() {
+  group('a conversation list still on its way when the identity leaves', () {
+    const atlas = AppSessionState(
+      accessToken: 'token',
+      userId: 'user-local',
+      deviceId: 'device-local',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+    const orion = AppSessionState(
+      accessToken: 'token-orion',
+      userId: 'user-other',
+      deviceId: 'device-other',
+      handle: 'orion',
+      displayName: 'Orion',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+    const signedOut = AppSessionState(onboardingAccepted: true, initializing: false, locked: true);
+
+    // The production wiring: CacheHandle over the encrypted Drift cache.
+    Future<(DriftConversationCacheService, CacheHandle, _GatedListApi, VeilMessengerController)> signedInAtlas() async {
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final crypto = createDefaultCryptoAdapter();
+      final drift = DriftConversationCacheService(
+        AppDatabase(NativeDatabase.memory()),
+        envelopeCodec: crypto.envelopeCodec,
+        cipher: LocalDataCipher.forTesting('AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'),
+      );
+      final handle = CacheHandle(() async => drift);
+      final api = _GatedListApi();
+      final controller = VeilMessengerController(
+        apiClient: api,
+        cryptoEngine: crypto.messaging,
+        keyBundleCodec: crypto.keyBundles,
+        envelopeCodec: crypto.envelopeCodec,
+        sessionBootstrapper: crypto.sessions,
+        realtimeService: _FakeRealtimeService(),
+        cacheService: handle,
+      );
+      addTearDown(controller.dispose);
+      await controller.applySession(atlas);
+      await controller.flushPendingWrites();
+      expect((await drift.readConversations()).map((c) => c.id), ['conv-1']);
+      return (drift, handle, api, controller);
+    }
+
+    test('writes nothing into the cache wiped at sign-out', () async {
+      final (drift, handle, api, controller) = await signedInAtlas();
+
+      api.gate = Completer<void>();
+      final inflight = controller.refreshConversations();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      // What AppSessionController does on sign-out: wipe through the same
+      // handle, then publish the signed-out state.
+      await handle.clearAll();
+      await controller.applySession(signedOut);
+      api.gate!.complete();
+      await inflight;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await controller.flushPendingWrites();
+
+      expect(controller.conversations, isEmpty);
+      expect(await drift.readConversations(), isEmpty, reason: 'the signed-out identity wrote its list into the wiped cache');
+
+      // The next identity finds nothing of the last one.
+      api.gate = Completer<void>();
+      unawaited(controller.applySession(orion));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(controller.conversations, isEmpty);
+      api.gate!.complete();
+    });
+
+    test('does not land under the identity that signs in next', () async {
+      final (drift, handle, api, controller) = await signedInAtlas();
+
+      api.gate = Completer<void>();
+      final inflight = controller.refreshConversations();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await handle.clearAll();
+      await controller.applySession(signedOut);
+      api.gate = null;
+      api.listFor['token-orion'] = const [];
+      await controller.applySession(orion);
+      // atlas's list arrives only now.
+      api.releaseHeld();
+      await inflight;
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await controller.flushPendingWrites();
+
+      expect(controller.conversations, isEmpty, reason: 'atlas\'s list reached orion');
+      expect(await drift.readConversations(), isEmpty);
+    });
+  });
+
   test('sendText drains outbox and replaces optimistic message with server ack',
       () async {
     final api = _FakeVeilApiClient();
@@ -1486,6 +1591,34 @@ class _FakeVeilApiClient extends VeilApiClient {
   }
 }
 
+/// Holds getConversations while [gate] is set, and answers per token from
+/// [listFor] when it has an entry.
+class _GatedListApi extends _FakeVeilApiClient {
+  Completer<void>? gate;
+  final Map<String, List<Map<String, dynamic>>> listFor = {};
+  final List<Completer<void>> _held = [];
+
+  void releaseHeld() {
+    for (final held in _held) {
+      held.complete();
+    }
+    _held.clear();
+  }
+
+  @override
+  Future<Map<String, dynamic>> getConversations(String accessToken) async {
+    final pending = gate;
+    if (pending != null) {
+      final held = Completer<void>();
+      _held.add(held);
+      await Future.any([pending.future, held.future]);
+    }
+    final own = listFor[accessToken];
+    if (own != null) return {'items': own, 'nextCursor': null};
+    return super.getConversations(accessToken);
+  }
+}
+
 class _FakeRealtimeService extends RealtimeService {
   void Function(String event, dynamic payload)? _onEvent;
   void Function(bool connected)? _onConnectionChanged;
@@ -1596,7 +1729,7 @@ class _MemoryConversationCache implements ConversationCacheService {
   final Map<String, Map<String, String>> _searchIndex = {};
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<void> clearAll() async {

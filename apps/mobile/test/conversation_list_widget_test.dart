@@ -26,8 +26,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final envelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Orbit relay window',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -234,8 +234,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final firstEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
       body: 'Selene relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -248,8 +248,8 @@ void main() {
     );
     final secondEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-2',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
       body: 'Rowan relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -351,8 +351,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final firstEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
       body: 'Selene relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -365,8 +365,8 @@ void main() {
     );
     final secondEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-2',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
       body: 'Anchor handoff note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -553,7 +553,7 @@ class _ConversationListCache implements ConversationCacheService {
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -682,8 +682,8 @@ class _FakeConversationApiClient extends VeilApiClient {
           'id': 'msg-1',
           'clientMessageId': null,
           'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
+          'senderDeviceId': envelope.senderDeviceId,
+          'recipientUserId': envelope.recipientUserId,
           'ciphertext': envelope.ciphertext,
           'nonce': envelope.nonce,
           'version': envelope.version,
@@ -734,8 +734,8 @@ Map<String, dynamic> _conversationMap({
             'id': 'msg-1',
             'clientMessageId': null,
             'conversationId': id,
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': envelope.senderDeviceId,
+            'recipientUserId': envelope.recipientUserId,
             'ciphertext': envelope.ciphertext,
             'nonce': envelope.nonce,
             'version': envelope.version,
@@ -759,8 +759,8 @@ Map<String, dynamic> _messageMap({
     'id': id,
     'clientMessageId': null,
     'conversationId': conversationId,
-    'senderDeviceId': 'device-local',
-    'recipientUserId': 'user-peer',
+    'senderDeviceId': envelope.senderDeviceId,
+    'recipientUserId': envelope.recipientUserId,
     'ciphertext': envelope.ciphertext,
     'nonce': envelope.nonce,
     'version': envelope.version,

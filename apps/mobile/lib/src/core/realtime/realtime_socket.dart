@@ -14,6 +14,11 @@ abstract interface class RealtimeSocket {
   /// including reconnection attempts and errors.
   void onConnectionChanged(void Function(bool connected) listener);
 
+  /// Reports a disconnect the server asked for. socket.io never reconnects
+  /// after one on its own; the relay does it when the access token the
+  /// socket authenticated with expires.
+  void onServerDisconnect(void Function() listener);
+
   void emit(String event, Map<String, dynamic> payload);
 
   void connect();
@@ -63,6 +68,13 @@ class SocketIoRealtimeSocket implements RealtimeSocket {
       ..onReconnectFailed((_) => listener(false))
       ..onConnectError((_) => listener(false))
       ..onError((_) => listener(false));
+  }
+
+  @override
+  void onServerDisconnect(void Function() listener) {
+    _socket.onDisconnect((reason) {
+      if (reason == 'io server disconnect') listener();
+    });
   }
 
   @override

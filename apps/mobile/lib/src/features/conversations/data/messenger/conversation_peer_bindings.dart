@@ -24,6 +24,7 @@ class ConversationPeerBindings {
   ConversationPeerBindings({ScopedSecureStore? store}) : _store = store;
 
   static const _documentKey = 'direct_peers.v1';
+  static const _groupsKey = 'group_members.v1';
 
   final ScopedSecureStore? _store;
   // Shared by every caller, so a binding recorded while the first read is
@@ -32,6 +33,25 @@ class ConversationPeerBindings {
   // Set when the stored document cannot be read. Nothing is written over it
   // then: that would drop every binding it holds.
   bool _unreadable = false;
+  Future<Map<String, Set<String>>>? _groups;
+  bool _groupsUnreadable = false;
+
+  /// The member user ids each group was last shown with on this device, by
+  /// conversation id. Kept with the bindings, apart from the conversation
+  /// cache, so a change the relay made while the app was closed is still
+  /// told apart from the first listing of a group.
+  Future<Map<String, Set<String>>> groupMembers() async => Map.unmodifiable(await _loadGroups());
+
+  /// Records [members] as what each of those groups is shown with now.
+  Future<void> recordGroupMembers(Map<String, Set<String>> members) async {
+    if (members.isEmpty) return;
+    final recorded = await _loadGroups();
+    recorded.addAll({for (final entry in members.entries) entry.key: Set.of(entry.value)});
+    if (_groupsUnreadable) return;
+    await _store?.write(_groupsKey, json.encode({
+      for (final entry in recorded.entries) entry.key: (entry.value.toList()..sort()),
+    }));
+  }
 
   /// Every binding recorded so far, by conversation id.
   Future<Map<String, ConversationPeer>> all() async => Map.unmodifiable(await _load());
@@ -57,6 +77,32 @@ class ConversationPeerBindings {
   void reset() {
     _bound = null;
     _unreadable = false;
+    _groups = null;
+    _groupsUnreadable = false;
+  }
+
+  Future<Map<String, Set<String>>> _loadGroups() async {
+    final loading = _groups ??= _readGroups();
+    try {
+      return await loading;
+    } catch (_) {
+      if (identical(_groups, loading)) _groups = null;
+      rethrow;
+    }
+  }
+
+  Future<Map<String, Set<String>>> _readGroups() async {
+    final raw = await _store?.read(_groupsKey);
+    if (raw == null) return {};
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      return {
+        for (final entry in decoded.entries) entry.key: {for (final id in entry.value as List<dynamic>) id as String},
+      };
+    } on Object {
+      _groupsUnreadable = true;
+      return {};
+    }
   }
 
   Future<Map<String, ConversationPeer>> _load() async {

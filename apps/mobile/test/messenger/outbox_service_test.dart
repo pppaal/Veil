@@ -8,6 +8,7 @@ import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_services.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/retry_policy.dart';
 
 import '../support/messenger_services_fixture.dart';
 
@@ -28,6 +29,8 @@ class _RelayApi extends VeilApiClient {
   final List<String> sent = [];
   final Map<String, Object> failures = {};
   final Set<String> stalled = {};
+  // While set, every send fails as an unreachable network makes it.
+  bool offline = false;
   Completer<void>? gate;
   int _order = 0;
 
@@ -35,6 +38,7 @@ class _RelayApi extends VeilApiClient {
   Future<Map<String, dynamic>> sendMessage(String accessToken, Map<String, dynamic> body) async {
     final clientMessageId = body['clientMessageId'] as String;
     sent.add(clientMessageId);
+    if (offline) throw VeilApiException('The VEIL relay is unreachable.', code: 'network_unavailable');
     if (stalled.remove(clientMessageId)) return super.sendMessage(accessToken, body);
     await gate?.future;
     final failure = failures.remove(clientMessageId);
@@ -133,6 +137,26 @@ void main() {
     await services.outbox.retry('conv-1');
     expect(api.sent, ['c-slow', 'c-next', 'c-slow']);
     expect(services.outbox.hasPendingWork, isFalse);
+  });
+
+  test('an outage longer than the attempt budget leaves the message queued, and it goes out once back online',
+      () async {
+    services.outbox.restore([_pending('c-offline', second: 1)]);
+    api.offline = true;
+
+    for (var attempt = 0; attempt < maxAutomaticRetryAttempts + 2; attempt++) {
+      await services.outbox.drain(ignoreRetrySchedule: true);
+    }
+    expect(api.sent, hasLength(maxAutomaticRetryAttempts + 2));
+    final queued = services.store.messagesOf('conv-1').single;
+    expect(queued.deliveryState, MessageDeliveryState.pending, reason: 'still queued, not failed');
+    expect(services.outbox.nextRetryAt('conv-1'), isNotNull);
+
+    // The network returns: the reconnect drain sends it, no tap needed.
+    api.offline = false;
+    await services.outbox.drain(ignoreRetrySchedule: true);
+    expect(services.outbox.hasPendingWork, isFalse);
+    expect(services.store.messagesOf('conv-1').single.id, 'srv-c-offline');
   });
 
   test('a rejection the relay would repeat fails the message for the user', () async {

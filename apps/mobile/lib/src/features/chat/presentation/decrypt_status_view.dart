@@ -63,6 +63,8 @@ String systemNoticeText(AppLocalizations l10n, ChatMessage message, String body)
     LocalNoticeCodes.identityChanged => l10n.chatNoticeIdentityChanged,
     LocalNoticeCodes.identityNewDevice => l10n.chatNoticeIdentityNewDevice,
     LocalNoticeCodes.senderKeysKept => l10n.chatNoticeSenderKeysKept,
+    LocalNoticeCodes.groupMemberAdded => l10n.chatNoticeGroupMemberAdded,
+    LocalNoticeCodes.groupMemberRemoved => l10n.chatNoticeGroupMemberRemoved,
     _ => body,
   };
 }

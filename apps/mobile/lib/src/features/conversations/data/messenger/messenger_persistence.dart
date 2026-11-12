@@ -32,11 +32,13 @@ class MessengerPersistence implements MessengerStateObserver {
     required MessengerStateStore store,
     Duration debounce = const Duration(milliseconds: 100),
     Duration maxDelay = const Duration(seconds: 1),
+    DateTime Function() now = DateTime.now,
   })  : _cache = cache,
         _incremental = cache is IncrementalConversationCache ? cache as IncrementalConversationCache : null,
         _store = store,
         _debounce = debounce,
-        _maxDelay = maxDelay {
+        _maxDelay = maxDelay,
+        _now = now {
     _wipes = _incremental?.wipes ?? 0;
   }
 
@@ -45,6 +47,8 @@ class MessengerPersistence implements MessengerStateObserver {
   final MessengerStateStore _store;
   final Duration _debounce;
   final Duration _maxDelay;
+  // The clock disappearing expiries are checked on.
+  final DateTime Function() _now;
 
   bool _conversationsDirty = false;
   final Set<String> _messagesDirty = {};
@@ -90,7 +94,7 @@ class MessengerPersistence implements MessengerStateObserver {
   Future<CachedMessengerState?> hydrate() => _serialized(() async {
         final cache = _cache;
         if (cache == null) return null;
-        await cache.purgeExpiredMessages();
+        await cache.purgeExpiredMessages(now: _now());
         final snapshot = await _readSnapshot(cache);
         _writtenConversations
           ..clear()
@@ -110,7 +114,9 @@ class MessengerPersistence implements MessengerStateObserver {
       _write(() async => _cache?.removePendingMessage(clientMessageId));
 
   /// Deletes what expired in the cache, messages the app never loaded included.
-  Future<void> purgeExpired() => _write(() async => _cache?.purgeExpiredMessages());
+  /// Drops cached rows that expired by [now] (this writer's clock if not
+  /// given).
+  Future<void> purgeExpired([DateTime? now]) => _write(() async => _cache?.purgeExpiredMessages(now: now ?? _now()));
 
   /// Writes every pending change now.
   Future<void> flush() {

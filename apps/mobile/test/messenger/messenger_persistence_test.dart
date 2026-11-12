@@ -16,6 +16,11 @@ import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_persistence.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/identity_change.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/local_notice_writer.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/message_content_service.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_session_context.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_state_store.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 
@@ -127,7 +132,7 @@ class _SlowCache implements ConversationCacheService, IncrementalConversationCac
   Future<List<PendingMessageRecord>> readPendingMessages() async => const [];
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -249,6 +254,46 @@ void main() {
     final stored = await cache.readMessages('conv-1');
     expect(stored, hasLength(200));
     expect(stored.every((message) => message.expiresAt != null), isTrue, reason: 'the clamped expiry reached the cache');
+  });
+
+  test('a local notice reaches the cache at once, without waiting for a flush', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final cache = DriftConversationCacheService(
+      database,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+      cipher: LocalDataCipher.forTesting(_cacheKey),
+    );
+    final store = MessengerStateStore(onChanged: () {});
+    final persistence = MessengerPersistence(
+      cache: cache,
+      store: store,
+      // Nothing is flushed on a timer during this test.
+      debounce: const Duration(hours: 1),
+      maxDelay: const Duration(hours: 1),
+    );
+    addTearDown(persistence.dispose);
+    store.addObserver(persistence);
+    await store.replaceConversations([_conversation('conv-1')], bound: const {}, pin: (merged) async => (merged, <String>[]));
+    await persistence.flush();
+    final session = MessengerSessionContext();
+    final notices = LocalNoticeWriter(
+      store: store,
+      contents: MessageContentService(cache: cache, decrypt: (_, {beforeCommit}) => throw StateError('unused'), onContentStored: (_, __) {}),
+      session: session,
+      flush: persistence.flush,
+    );
+    final notice = localNoticeFor(
+      const NewDeviceAdmitted('conv-1', userId: 'user-selene', deviceId: 'dev-selene-b'),
+      conversationMessages: const [],
+      now: DateTime.utc(2026, 4, 1),
+    );
+
+    await notices.write('conv-1', notice);
+
+    // What a process killed right now would find on the next start.
+    expect((await cache.readMessages('conv-1')).map((message) => message.id), [notice!.message.id]);
   });
 
   test('randomized write delays never persist stale state', () async {

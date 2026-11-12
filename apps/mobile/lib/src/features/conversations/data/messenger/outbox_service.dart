@@ -34,6 +34,7 @@ class OutboxService {
     required AttachmentTransferService attachments,
     required MessengerOperationRunner ops,
     Duration retrySweepInterval = const Duration(seconds: 3),
+    DateTime Function() expiryClock = DateTime.now,
   })  : _store = store,
         _session = session,
         _apiClient = apiClient,
@@ -42,7 +43,8 @@ class OutboxService {
         _contents = contents,
         _pending = pending,
         _attachments = attachments,
-        _ops = ops {
+        _ops = ops,
+        _expiryClock = expiryClock {
     _retrySweep = Timer.periodic(retrySweepInterval, (_) => unawaited(drain()));
   }
 
@@ -55,6 +57,10 @@ class OutboxService {
   final PendingMessages _pending;
   final AttachmentTransferService _attachments;
   final MessengerOperationRunner _ops;
+  // The relay-corrected clock disappearing expiries are stamped on: the
+  // relay refuses an expiry already past by its clock, and recipients
+  // retire messages by theirs.
+  final DateTime Function() _expiryClock;
   final Random _random = Random.secure();
   late final Timer _retrySweep;
   bool _draining = false;
@@ -86,7 +92,7 @@ class OutboxService {
       final session = _session.requireAuthed();
       final conversation = _store.requireConversation(conversationId);
       final clientMessageId = _nextClientMessageId();
-      final expiresAt = disappearAfter == null ? null : DateTime.now().add(disappearAfter);
+      final expiresAt = disappearAfter == null ? null : _expiryClock().add(disappearAfter);
       final envelope = await _encryptOutbound(
         conversation: conversation,
         senderDeviceId: session.deviceId,
@@ -259,6 +265,13 @@ class OutboxService {
       final serverMessage = _mapper.message(response['message'], localDeviceId: _session.deviceId) ??
           (throw StateError('Unexpected response shape'));
       if (serverMessage.isLocalNotice) throw const FormatException('The relay acknowledged a local notice id.');
+      // The ack decides which relayed id our own text is shown under, so it
+      // must be the message just sent: ours, in this conversation.
+      if (serverMessage.clientMessageId != marked.clientMessageId ||
+          serverMessage.envelope.conversationId != marked.conversationId ||
+          !serverMessage.isMine) {
+        throw const FormatException('The relay acknowledged a different message.');
+      }
       await _pending.remove(marked.clientMessageId);
       final content = await _contents.acknowledge(
         clientMessageId: marked.clientMessageId,
@@ -315,6 +328,7 @@ class OutboxService {
     await _contents.storeOutbound(
       conversationId: conversation.id,
       clientMessageId: clientMessageId,
+      senderDeviceId: senderDeviceId,
       body: body,
       kind: messageKind,
       expiresAt: expiresAt,

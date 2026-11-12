@@ -902,8 +902,9 @@ void main() {
     expect((await migratedCache.get('srv-new'))!.body, 'first row after upgrade');
   });
 
-  test('migration from 9 drops the identity mismatch flag and keeps the rows', () async {
-    // Schema 10 left the content tables as schema 9 created them.
+  // The content tables as schemas 9 and 10 created them: today's, without
+  // the sender column schema 11 added.
+  Future<List<String>> schema9ContentTables() async {
     final current = AppDatabase(NativeDatabase.memory());
     final contentTables = [
       for (final row in await current
@@ -911,10 +912,45 @@ void main() {
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name IN ('message_contents', 'retired_messages')",
           )
           .get())
-        row.data['sql'] as String,
+        (row.data['sql'] as String).replaceFirst(RegExp(r'"sender_device_id" TEXT NULL,\s*'), ''),
     ];
     await current.close();
     expect(contentTables, hasLength(2));
+    expect(contentTables.join(), isNot(contains('sender_device_id')));
+    return contentTables;
+  }
+
+  test('migration from 10 adds the content sender and keeps stored content', () async {
+    final contentTables = await schema9ContentTables();
+    final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
+      for (final statement in [..._schemaVersion8, ...contentTables]) {
+        raw.execute(statement);
+      }
+      raw.execute('ALTER TABLE cached_conversations ADD COLUMN "session_remote_identity_public_key" TEXT NULL');
+      raw.execute(
+        'INSERT INTO message_contents (message_key, conversation_id, body, kind, status, created_at, updated_at) '
+        "VALUES ('msg-old', 'conv-old', 'kept words', 'text', 'ok', 1, 1)",
+      );
+      raw.execute('PRAGMA user_version = 10');
+    }));
+    addTearDown(legacy.close);
+
+    final contentColumns = await legacy.customSelect('PRAGMA table_info(message_contents)').get();
+    expect(contentColumns.map((row) => row.data['name']), contains('sender_device_id'));
+    final migratedCache = DriftConversationCacheService(
+      legacy,
+      envelopeCodec: createDefaultCryptoAdapter().envelopeCodec,
+    );
+    final kept = (await migratedCache.get('msg-old'))!;
+    expect(kept.body, 'kept words');
+    // Written before senders were recorded: bound to its conversation only.
+    expect(kept.senderDeviceId, isNull);
+    expect(kept.belongsTo(conversationId: 'conv-old', senderDeviceId: 'any'), isTrue);
+    expect(kept.belongsTo(conversationId: 'conv-other', senderDeviceId: 'any'), isFalse);
+  });
+
+  test('migration from 9 drops the identity mismatch flag and keeps the rows', () async {
+    final contentTables = await schema9ContentTables();
     final legacy = AppDatabase(NativeDatabase.memory(setup: (raw) {
       for (final statement in [..._schemaVersion8, ...contentTables]) {
         raw.execute(statement);

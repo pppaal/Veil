@@ -64,12 +64,15 @@ class ConversationSyncService {
 
   // A refresh pages the relay's history from the newest message back to the
   // newest one this device already holds, so a backlog longer than one page
-  // is fetched, and decrypted oldest first, rather than skipped: frames past
-  // it would otherwise wait on skipped keys, of which a chain keeps only so
-  // many. It stops after [_historyPagesPerSync] pages; the paging cursor
-  // then points at what is left, which loading older history picks up.
+  // is fetched, and decrypted oldest first, rather than skipped: one frame
+  // may skip at most 200 keys of its chain, so a frame further ahead waits
+  // until the ones before it opened. It stops after [_historyPagesPerSync]
+  // pages (2000 messages, as on the web); the paging cursor then points at
+  // what is left, which loading older history picks up, and every page
+  // ingested retries the rows still waiting, so the newer ones open in order
+  // once the older ones did.
   static const _historyPageSize = 50;
-  static const _historyPagesPerSync = 10;
+  static const _historyPagesPerSync = 40;
 
   final MessengerStateStore _store;
   final MessengerSessionContext _session;
@@ -186,7 +189,13 @@ class ConversationSyncService {
       return;
     }
 
+    // A list fetched for an identity that signed out (or was replaced)
+    // while it was on its way is dropped: it must reach neither the next
+    // identity's state nor the cache that was wiped for it.
+    final generation = _session.generation;
+    bool stillCurrent() => generation == _session.generation && !_session.isClosed;
     final response = await _apiClient.getConversations(session.accessToken);
+    if (!stillCurrent()) return;
     final fetched = _mapper.conversations(response, localHandle: session.handle);
     // Recorded before this list can drop a conversation together with the
     // only record of whom its session is with.
@@ -195,11 +204,15 @@ class ConversationSyncService {
         if (preview.type == ConversationType.direct && preview.sessionState != null)
           preview.id: ConversationPeer(userId: preview.recipientBundle.userId, handle: preview.peerHandle),
     });
+    final bound = await _peerBindings.all();
+    if (!stillCurrent()) return;
     final overruled = await _store.replaceConversations(
       fetched,
-      bound: await _peerBindings.all(),
+      bound: bound,
       pin: _crypto.keepSenderKeys,
+      stillCurrent: stillCurrent,
     );
+    if (overruled == null || !stillCurrent()) return;
     _crypto.recordUnlistedSessions();
     for (final conversationId in overruled) {
       await _notices.write(
@@ -207,7 +220,43 @@ class ConversationSyncService {
         senderKeysKeptNotice(conversationId, conversationMessages: _store.messagesOf(conversationId), now: DateTime.now()),
       );
     }
+    await _announceMemberChanges(stillCurrent);
     await _disappearing.reconcile();
+  }
+
+  // The relay decides who is in a group, and the next send seals the group's
+  // keys to every member it lists. So each member it adds or removes is
+  // announced in the chat, against the member set this device last showed
+  // (kept in the keystore, so a change made while the app was closed is
+  // announced too). A group's first listing only records its members.
+  Future<void> _announceMemberChanges(bool Function() stillCurrent) async {
+    final recorded = await _peerBindings.groupMembers();
+    if (!stillCurrent()) return;
+    final localUserId = _session.userId;
+    final shown = <String, Set<String>>{};
+    for (final group in _store.conversations.where((preview) => preview.type == ConversationType.group)) {
+      final members = {for (final member in group.members) member.userId};
+      final before = recorded[group.id];
+      if (before != null && before.length == members.length && before.containsAll(members)) continue;
+      shown[group.id] = members;
+      if (before == null) continue;
+      final now = DateTime.now();
+      final change = '${group.groupEpoch ?? now.microsecondsSinceEpoch}';
+      for (final (added, userIds) in [(true, members.difference(before)), (false, before.difference(members))]) {
+        for (final userId in userIds.where((userId) => userId != localUserId)) {
+          await _notices.write(
+            group.id,
+            memberChangeNotice(group.id,
+                added: added,
+                userId: userId,
+                change: change,
+                conversationMessages: _store.messagesOf(group.id),
+                now: now),
+          );
+        }
+      }
+    }
+    if (stillCurrent()) await _peerBindings.recordGroupMembers(shown);
   }
 
   Future<void> syncConversation(String conversationId, {bool loadMore = false}) async {
@@ -217,6 +266,7 @@ class ConversationSyncService {
       return;
     }
 
+    final generation = _session.generation;
     final knownUpTo = loadMore ? null : _newestRelayedOrder(conversationId);
     final fetched = <ChatMessage>[];
     var cursor = loadMore ? _store.pagingFor(conversationId).nextCursor : null;
@@ -236,11 +286,23 @@ class ConversationSyncService {
       cursor = nextCursor;
     }
     final items = await _contents.withoutRetired(
-      fetched.where((message) => !message.isLocalNotice).toList()..sort(compareMessages),
+      fetched
+          // A frame names the conversation it was sealed for; listed under
+          // another one, it is the relay moving it, and it opens only there.
+          .where((message) => !message.isLocalNotice && message.envelope.conversationId == conversationId)
+          .toList()
+        ..sort(compareMessages),
     );
+    // History fetched for an identity that is gone is dropped.
+    if (generation != _session.generation || _session.isClosed) return;
 
     _store.mergeMessages(conversationId, items);
-    unawaited(_contents.ingestAll(items));
+    // Rows waiting on frames before them (a live frame that beat this sync,
+    // or a backlog page whose older frames only arrived now) are retried in
+    // order once this page has been decrypted.
+    unawaited(_contents
+        .ingestAll(items)
+        .then((_) => _contents.retryPending(conversationId, _store.messagesOf(conversationId))));
     _store.setPaging(
       conversationId,
       ConversationPagingState(nextCursor: nextCursor, hasMoreHistory: nextCursor != null, lastSyncedAt: DateTime.now()),

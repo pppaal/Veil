@@ -260,6 +260,7 @@ class GroupSenderKeyCoordinator {
     CryptoEnvelope envelope, {
     required String accessToken,
     required String localUserId,
+    BeforeCommit? beforeCommit,
   }) async {
     final header = GroupSenderKeyEngine.parseHeader(envelope.ciphertext);
     if (header == null) {
@@ -288,24 +289,35 @@ class GroupSenderKeyCoordinator {
       );
     }
 
-    final GroupPlaintext out;
+    // Decoded before the engine commits, so the hook stores what this
+    // returns while the frame can still be decrypted again.
+    DecryptedMessage? opened;
     try {
-      out = await engine.decrypt(
+      await engine.decrypt(
         groupId: envelope.conversationId,
         payload: envelope.ciphertext,
         nonce: envelope.nonce,
+        beforeCommit: (plaintext) async {
+          opened = _decodePayload(plaintext);
+          if (opened!.isOk) await beforeCommit?.call(opened!);
+        },
       );
     } on GroupCryptoException catch (e) {
       return switch (e.code) {
         'senderKeyMissing' => _failure(DecryptStatus.awaitingKey, e.code),
         'replayed' => _failure(DecryptStatus.replayed, e.code),
+        'persistFailed' => _failure(DecryptStatus.failed, 'persist_failed'),
         _ => _failure(DecryptStatus.failed, e.code),
       };
     }
+    return opened ?? _failure(DecryptStatus.failed, 'malformed_payload');
+  }
+
+  static DecryptedMessage _decodePayload(List<int> plaintext) {
     try {
       // An unrecognised inner kind reads as text: the outer messageKind is
       // server-controlled and must not decide, say, system chrome.
-      final payload = InnerPayload.decode(MessagePadding.unpad(out.plaintext), fallbackKind: MessageKind.text);
+      final payload = InnerPayload.decode(MessagePadding.unpad(plaintext), fallbackKind: MessageKind.text);
       return DecryptedMessage(
         body: payload.body,
         messageKind: payload.kind,

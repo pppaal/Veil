@@ -24,7 +24,8 @@ class _ScriptedEngine implements MessageCryptoEngine {
   final Map<String, DecryptedMessage> outcomes;
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async => outcomes[envelope.ciphertext]!;
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async =>
+      outcomes[envelope.ciphertext]!;
 
   @override
   Future<CryptoEnvelope> encryptMessage({

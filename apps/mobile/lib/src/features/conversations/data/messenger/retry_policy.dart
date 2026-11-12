@@ -31,7 +31,20 @@ const _transientTransportErrorCodes = {
   'attachment_upload_failed',
 };
 
+// No response arrived at all: the device is offline or the relay out of
+// reach. The sealed frame is still valid, so these are retried with backoff
+// for as long as that lasts; the attempt budget is for failures the relay
+// answered. An upload dropped mid-stream stays under the budget, since each
+// retry sends the whole blob again.
+const _offlineErrorCodes = {
+  'network_timeout',
+  'network_unavailable',
+};
+
 bool shouldRetryAutomatically(Object error, int retryCount) {
+  if (error is VeilApiException && error.statusCode == null && _offlineErrorCodes.contains(error.code)) {
+    return true;
+  }
   if (retryCount >= maxAutomaticRetryAttempts) {
     return false;
   }
@@ -53,6 +66,6 @@ bool shouldRetryAutomatically(Object error, int retryCount) {
 }
 
 Duration retryDelayForAttempt(int retryCount) {
-  final seconds = min<int>(30, 1 << (retryCount.clamp(1, 5) - 1));
+  final seconds = min<int>(30, 1 << (retryCount.clamp(1, 6) - 1));
   return Duration(seconds: seconds);
 }

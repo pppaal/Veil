@@ -372,7 +372,8 @@ class _LibMessageCryptoEngine implements MessageCryptoEngine {
       );
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) => _cipher.decrypt(envelope);
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) =>
+      _cipher.decrypt(envelope, beforeCommit: beforeCommit);
 
   @override
   Future<AttachmentCipher> encryptAttachment({

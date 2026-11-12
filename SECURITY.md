@@ -46,7 +46,8 @@ for high-severity issues.
 In scope:
 
 - Cryptographic flaws in `apps/mobile/lib/src/core/crypto/` or
-  `apps/web-demo/app.js` envelope handling
+  `apps/web-demo/src/crypto/` and the web envelope handling in
+  `apps/web-demo/src/app/messaging-stack.js` and `apps/web-demo/src/features/`
 - Authentication bypass (`apps/api/src/modules/auth`)
 - Device transfer race conditions
   (`apps/api/src/modules/device-transfer`)

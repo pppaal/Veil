@@ -27,8 +27,11 @@ Rules:
   nothing from `src/features`, `src/ui` or `src/app`; `src/features`
   nothing from `src/ui` or `src/app`; `src/app/services` nothing from
   `src/ui`. Services report to the user through callbacks the bootstrap
-  hands them (`toast`, `onStatus`, `onSent`, `ui.showAuth`), never by
-  reaching into the page.
+  hands them (`toast`, `onStatus`, `onSent`, `ui.showAuth`) and do not
+  build or change page elements. Two of them do use page-level browser
+  APIs directly: `notifications.js` (document title, visibility, the
+  Notification API and window focus) and `history-sync.js` (skips
+  background work while `document.hidden`).
 - **gate** The lower four layers never touch the page: no `document`,
   `window`, `navigator`, `location`, observers or animation frames. Only
   `src/platform` may use `indexedDB`, `navigator.locks` and the Web

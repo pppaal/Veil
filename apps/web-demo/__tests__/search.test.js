@@ -32,6 +32,8 @@ describe('highlightRuns', () => {
     ]);
     expect(highlightRuns('no match', 'xyz')).toEqual([{ text: 'no match', match: false }]);
     expect(highlightRuns('', 'x')).toEqual([]);
+    expect(highlightRuns('text', '')).toEqual([{ text: 'text', match: false }]);
+    expect(highlightRuns('', '')).toEqual([]);
   });
 });
 

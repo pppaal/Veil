@@ -12,6 +12,8 @@ export function searchMatches(messages, query, now = Date.now()) {
 
 // `text` cut into [{ text, match }] runs around every occurrence of `query`.
 export function highlightRuns(text, query) {
+  // An empty query matches at every index without advancing the cursor.
+  if (query === '') return text === '' ? [] : [{ text, match: false }];
   const lower = text.toLowerCase();
   const wanted = query.toLowerCase();
   const runs = [];

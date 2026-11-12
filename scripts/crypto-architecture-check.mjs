@@ -149,12 +149,14 @@ const packagePrefix = 'package:veil_mobile/';
 // whichever quotes the URI uses. A `part of` names its own library and is
 // no dependency.
 const directivesOf = (file) =>
-  [...read(file).matchAll(/^\s*(import|export|part)\s+(['"])(.+?)\2/gm)].flatMap(([, kind, , uri]) => {
-    if (uri.startsWith(packagePrefix))
-      return [{ kind, target: join('apps/mobile/lib', uri.slice(packagePrefix.length)) }];
-    if (uri.includes(':')) return [];
-    return [{ kind, target: normalize(join(dirname(file), uri)) }];
-  });
+  [...read(file).matchAll(/^\s*(import|export|part)\s+(['"])(.+?)\2/gm)].flatMap(
+    ([, kind, , uri]) => {
+      if (uri.startsWith(packagePrefix))
+        return [{ kind, target: join('apps/mobile/lib', uri.slice(packagePrefix.length)) }];
+      if (uri.includes(':')) return [];
+      return [{ kind, target: normalize(join(dirname(file), uri)) }];
+    },
+  );
 
 const layerOf = (path) => relative(mobileSrc, path).split(sep)[0];
 

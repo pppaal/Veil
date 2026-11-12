@@ -254,8 +254,15 @@ export function renderInventory(models, allowlist = PLAINTEXT_ALLOWLIST) {
     'someone who seizes or breaches the database gets. Message, story and',
     'one-time-link content is ciphertext the server cannot read; everything',
     'else below is metadata the server needs to deliver it. The production stack',
-    'keeps no database dumps or snapshots, so a seized server holds these fields',
-    'as they are now, not as they were before a deletion or a retention sweep.',
+    'keeps no database dumps or snapshots. Deleting a row does not wipe it from',
+    'the disk, though: Postgres leaves the bytes of deleted rows, burned one-time',
+    'links among them, in write-ahead-log segments and in table and index pages',
+    'until it happens to reuse that space, which follows no schedule and on a',
+    'quiet server can take days. A seized database volume can therefore also',
+    'hold rows that were deleted or swept before the seizure, and whoever has',
+    'both the volume and a burned one-time link can still decrypt that link.',
+    'The caveat is spelled out under "No database backups" in',
+    '[metadata-retention.md](metadata-retention.md).',
   );
   out.push('');
   out.push(

@@ -69,10 +69,12 @@ append-only file would hold every write, with its absolute expiry time, until
 a rewrite that by default waits for 64 MB, so the keys below would stay
 readable on disk for weeks after they expired. Redis instead writes an RDB
 snapshot of the keys alive at that moment, within a minute of any write and
-on shutdown, and each snapshot replaces the last. A disk image therefore holds
-the keys that were alive at the last snapshot, not a history of expired ones.
-On a server that has gone idle, the last snapshot stays until the next write
-replaces it, so a key in it can outlive its TTL until then.
+on shutdown, and each snapshot replaces the last. The snapshot file therefore
+holds the keys that were alive at the last snapshot, not a history of expired
+ones; a replaced snapshot can still linger in the disk's free blocks (see "No
+database backups" below). On a server that has gone idle, the last snapshot
+stays until the next write replaces it, so a key in it can outlive its TTL
+until then.
 
 ### No database backups
 
@@ -85,6 +87,26 @@ on the host and wherever it is copied. `scripts/policy-check.mjs`
 runs a dump tool. The only dump the runbook mentions is the one taken right
 before an upgrade that cannot be rolled back otherwise, which the operator
 deletes as soon as the upgrade is verified (`vps-deploy-runbook.md` 8.1).
+
+No dump does not mean a seized volume holds only the current rows. Deleting
+a row does not wipe it from the disk: Postgres leaves the bytes of deleted
+rows in its write-ahead-log segments (`pg_wal`) and in table and index pages
+until it happens to reuse that space. A WAL segment keeps its bytes until
+Postgres has written past it and removed it or overwritten it on reuse, and
+freed space in a page keeps them until a new row lands there or the table is
+rewritten, so this follows no schedule and on a quiet server can take days.
+`apps/api/test/unit/database-residue-postgres.spec.ts` shows it on a real
+Postgres: after `DELETE`, `VACUUM` and `CHECKPOINT`, a burned one-time link's
+ciphertext is still in `pg_wal` and in the `secret_blobs` table file. Until
+the space is reused, a seized volume can also hold rows that were deleted or
+swept before the seizure: burned one-time links (whoever also has the link
+can decrypt one), expired and view-once message ciphertext, receipts, and the
+handles and social graph of deleted accounts. Files deleted on the host, such
+as a Redis snapshot that a newer one replaced or an attachment blob deleted
+from the MinIO volume, likewise stay in the filesystem's free blocks until
+the filesystem reuses them. Encrypting the volumes with a key that is not
+kept on the host keeps this residue from someone who takes a powered-off
+disk; the deployment guides do not set that up.
 
 ### Database and container logs
 

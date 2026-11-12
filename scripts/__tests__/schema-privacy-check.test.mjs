@@ -125,6 +125,37 @@ test('the repository schema passes and its inventory is current', () => {
   assert.equal(renderInventory(models), repoFile(INVENTORY_PATH));
 });
 
+// The inventory is what a seizure yields. It once said a seized server holds
+// these fields "as they are now, not as they were before a deletion", which is
+// false: Postgres leaves deleted rows, burned one-time links among them, in its
+// write-ahead log and freed table pages until it reuses the space. The
+// inventory and metadata-retention.md must say so, and the real-Postgres spec
+// they cite must still exist to show it.
+const RESIDUE_SPEC = 'apps/api/test/unit/database-residue-postgres.spec.ts';
+const RESIDUE_TEST =
+  "keeps a burned one-time link's ciphertext in the write-ahead log and the table file after DELETE, VACUUM and CHECKPOINT";
+
+test('the inventory and the retention document say deleted rows can stay on the database volume', () => {
+  const flat = (text) => text.replace(/\s+/g, ' ');
+  const intro = flat(renderInventory([]).split('## Classes')[0]);
+  assert.doesNotMatch(intro, /as they are now|not as they were|holds only the current/i);
+  assert.match(intro, /keeps no database dumps or snapshots/);
+  assert.match(intro, /burned one-time links among them, in write-ahead-log segments/);
+  assert.match(intro, /seized database volume can therefore also hold rows that were deleted/);
+
+  const retention = repoFile('docs/metadata-retention.md');
+  const start = retention.indexOf('### No database backups');
+  assert.notEqual(start, -1, 'metadata-retention.md has no "No database backups" section');
+  const section = flat(retention.slice(start, retention.indexOf('\n### ', start + 1)));
+  assert.match(section, /does not mean a seized volume holds only the current rows/);
+  assert.match(section, /deleted rows in its write-ahead-log segments/);
+  assert.ok(section.includes(RESIDUE_SPEC), `the section must cite ${RESIDUE_SPEC}`);
+  assert.ok(
+    repoFile(RESIDUE_SPEC).includes(`it("${RESIDUE_TEST}"`),
+    `${RESIDUE_SPEC} lost its test`,
+  );
+});
+
 // README, the privacy policies and docs/claims.yaml name these fields as the
 // only user-written text the server stores readable; growing the list must
 // change this test and that copy together.

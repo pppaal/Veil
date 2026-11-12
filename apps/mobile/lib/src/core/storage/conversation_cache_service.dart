@@ -4,8 +4,10 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart' show SecretBoxAuthenticationError;
 import 'package:drift/drift.dart';
 
-import '../../features/conversations/data/conversation_models.dart';
 import '../crypto/crypto_engine.dart';
+import '../domain/chat_message.dart';
+import '../domain/conversation_preview.dart';
+import '../domain/message_search.dart';
 import '../security/local_data_cipher.dart';
 import 'app_database.dart';
 

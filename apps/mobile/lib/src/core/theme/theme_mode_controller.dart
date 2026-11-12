@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/app_state.dart';
 import '../storage/secure_storage_service.dart';
 
 /// Holds the user-selected [ThemeMode] and persists it through the existing
@@ -57,8 +56,3 @@ class ThemeModeController extends StateNotifier<ThemeMode> {
     }
   }
 }
-
-final themeModeProvider =
-    StateNotifierProvider<ThemeModeController, ThemeMode>((ref) {
-  return ThemeModeController(ref.watch(secureStorageProvider));
-});

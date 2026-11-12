@@ -1,4 +1,4 @@
-import '../../../../core/storage/conversation_cache_service.dart';
+import 'conversation_cache_service.dart';
 
 /// Content store used when the configured cache cannot persist content
 /// (no database yet, or a test fake). Same contract as the Drift store, but

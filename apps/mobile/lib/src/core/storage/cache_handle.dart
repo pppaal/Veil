@@ -1,6 +1,8 @@
-import '../../features/conversations/data/conversation_models.dart';
-import '../../features/conversations/data/messenger/in_memory_message_content_store.dart';
+import '../domain/chat_message.dart';
+import '../domain/conversation_preview.dart';
+import '../domain/message_search.dart';
 import 'conversation_cache_service.dart';
+import 'in_memory_message_content_store.dart';
 
 /// A stable stand-in for the encrypted conversation cache, whose database
 /// opens asynchronously and is reopened after a wipe.

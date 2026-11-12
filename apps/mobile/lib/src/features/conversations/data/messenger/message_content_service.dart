@@ -4,7 +4,7 @@ import 'dart:collection';
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
 import '../conversation_models.dart';
-import 'in_memory_message_content_store.dart';
+import '../../../../core/storage/in_memory_message_content_store.dart';
 
 typedef EnvelopeDecrypter = Future<DecryptedMessage> Function(CryptoEnvelope envelope);
 

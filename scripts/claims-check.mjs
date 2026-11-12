@@ -6,7 +6,8 @@
 //   without the named test or with skipped or focused tests, a gate script
 //   that CI does not run);
 // - a sentence in a public source (README, privacy policies, the site, store
-//   listings, the security roadmap) matches a claim pattern but is not quoted
+//   listings and their drafts, the security roadmap) matches a claim pattern
+//   but is not quoted
 //   by any claim for that file, so new marketing copy cannot make a claim
 //   nobody has to back;
 // - a quoted sentence no longer appears in its file.
@@ -17,8 +18,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const LEDGER_PATH = 'docs/claims.yaml';
 
 // Where public claims are made. Directories are walked for text files.
+// docs/launch and docs/app-store-listing-metadata.md hold store listing drafts
+// that are pasted into the stores; one once advertised "Signed backups".
 export const CLAIM_SOURCES = [
   'README.md',
+  'docs/app-store-listing-metadata.md',
+  'docs/launch',
   'docs/privacy-policy-en.md',
   'docs/privacy-policy-ko.md',
   'docs/security-hardening-roadmap.md',
@@ -33,7 +38,9 @@ export const CLAIM_PATTERNS = [
   /deleted on fetch/i,
   /end[- ]to[- ]end/i,
   /\bE2EE?\b/,
-  /\bno (?:cloud )?backup/i,
+  // Any mention of a backup, as /백업/ below is for Korean: VEIL has none, so
+  // a sentence naming one either denies it or advertises what does not exist.
+  /\bbackups?\b/i,
   /\bno (?:account )?recovery/i,
   /hardware[- ]backed/i,
   /zero[- ]knowledge/i,

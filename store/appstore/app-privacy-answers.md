@@ -1,6 +1,12 @@
 # App Store Privacy Questionnaire Answers (Veil)
 
 Use these answers when filling out the App Store "App Privacy" section.
+The Google Play counterpart, in Play's categories, is
+`store/play/data-safety-answers.md`. These two files are the only source of the
+store privacy labels: other documents point here, and
+`scripts/store-label-check.mjs` fails CI when the two files disagree, when the
+database stores something they do not declare, or when another document says a
+declared type is not collected.
 
 ## Data Collection
 
@@ -24,7 +30,9 @@ Yes — only the minimum operational data described below. No data is used for t
   - Linked to user: Yes
   - Used for: App Functionality
   - Tracking: No
-- **Device ID**: collected
+- **Device ID**: collected (the server-generated id of each device and, when
+  the app registers one, the device's push token, used only for wake-ups that
+  carry no message content)
   - Linked to user: Yes
   - Used for: App Functionality
   - Tracking: No

@@ -236,7 +236,11 @@ describe('AccountService.deleteAccount', () => {
     const before = Date.now();
     await buildService(prisma).deleteAccount(userId);
 
-    expect(order.slice(-2)).toEqual(['phase3.retiredHandle.upsert', 'phase3.user.delete']);
+    const userDelete = order.indexOf('phase3.user.delete');
+    expect(order.slice(userDelete - 1, userDelete + 1)).toEqual([
+      'phase3.retiredHandle.upsert',
+      'phase3.user.delete',
+    ]);
     expect(upserts).toHaveLength(1);
     // Only the peppered digest is stored, never the handle itself.
     expect(upserts[0]!.where.handleHmac).toBe(
@@ -247,11 +251,35 @@ describe('AccountService.deleteAccount', () => {
     expect(Math.round(quarantineDays)).toBe(90);
   });
 
-  it('finishes by deleting the user row inside the final transaction', async () => {
+  it('deletes the user row inside the final transaction, then searches for direct keys naming it', async () => {
     const { prisma, order } = buildPrismaMock();
     await buildService(prisma).deleteAccount(userId);
-    expect(order[order.length - 1]).toBe('phase3.user.delete');
+    // The key search runs after the delete, which waits for any concurrent
+    // insert of a membership naming the user (see releaseDirectConversations).
+    expect(order.slice(order.indexOf('phase3.user.delete'))).toEqual([
+      'phase3.user.delete',
+      'phase3.conversation.findMany',
+    ]);
+    expect(order.indexOf('phase3.conversationMember.findMany')).toBeLessThan(
+      order.indexOf('phase3.user.delete'),
+    );
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the direct conversations found through memberships read before the user row was deleted', async () => {
+    const { prisma, order } = buildPrismaMock({ directConversationIds: ['direct-1'] });
+    await buildService(prisma).deleteAccount(userId);
+    expect(order.slice(order.indexOf('phase3.conversationMember.findMany'))).toEqual([
+      'phase3.conversationMember.findMany',
+      'phase3.user.update',
+      'phase3.device.deleteMany',
+      'phase3.retiredHandle.upsert',
+      'phase3.user.delete',
+      'phase3.conversation.findMany',
+      'phase3.conversation.updateMany',
+      'phase3.conversationMember.deleteMany',
+      'phase3.conversation.deleteMany',
+    ]);
   });
 
   it('deleteAccount calls deleteObject for every uploaded key', async () => {
@@ -292,7 +320,10 @@ describe('AccountService.deleteAccount', () => {
     await expect(buildService(prisma, storage).deleteAccount(userId)).resolves.toEqual({
       deleted: true,
     });
-    expect(order[order.length - 1]).toBe('phase3.user.delete');
+    expect(order.slice(order.indexOf('phase3.user.delete'))).toEqual([
+      'phase3.user.delete',
+      'phase3.conversation.findMany',
+    ]);
   });
 });
 

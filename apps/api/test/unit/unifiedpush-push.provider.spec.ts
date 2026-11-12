@@ -90,6 +90,8 @@ describe('UnifiedPushProvider', () => {
     const failure = provider.sendMessageHint('https://ntfy.sh/up?id=abc', hint);
     await expect(failure).rejects.toThrow('UnifiedPush delivery failed with status class 5xx');
     await expect(failure).rejects.not.toThrow(/ntfy|abc/);
+    // PushService logs only the error's class and code.
+    await expect(failure).rejects.toMatchObject({ code: 'unifiedpush_status_5xx' });
   });
 
   describe('against a real HTTP server', () => {
@@ -168,9 +170,9 @@ describe('UnifiedPushProvider', () => {
       guardedLookup(resolver),
     );
 
-    await expect(provider.sendMessageHint('https://push.example.org/up', hint)).rejects.toThrow(
-      'UnifiedPush delivery failed: EPUSHPRIVATE',
-    );
+    const failure = provider.sendMessageHint('https://push.example.org/up', hint);
+    await expect(failure).rejects.toThrow('UnifiedPush delivery failed: EPUSHPRIVATE');
+    await expect(failure).rejects.toMatchObject({ code: 'unifiedpush_EPUSHPRIVATE' });
     expect(resolver).toHaveBeenCalledWith('push.example.org');
   });
 

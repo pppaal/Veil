@@ -1,6 +1,8 @@
 import { AppLoggerService } from '../../src/common/logger/app-logger.service';
 import { PrismaService } from '../../src/common/prisma.service';
 import { AccountService } from '../../src/modules/account/account.service';
+import { ConversationsService } from '../../src/modules/conversations/conversations.service';
+import { CreateDirectConversationDto } from '../../src/modules/conversations/dto/create-direct-conversation.dto';
 import { RetiredHandlesService } from '../../src/modules/handles/retired-handles.service';
 import { FakeAttachmentStorageGateway } from '../support/fake-services';
 import { conversation, device, directKey, id, users } from '../support/sql-rows';
@@ -14,6 +16,7 @@ import { ThrowawayPostgres, findPostgresBinDir } from '../support/throwaway-post
 const ALICE = id(0xa);
 const BOB = id(0xb);
 const CAROL = id(0xc);
+const DAVE = id(0xd);
 const ALICE_PHONE = id(0xa1);
 const BOB_PHONE = id(0xb1);
 const CAROL_PHONE = id(0xc1);
@@ -21,6 +24,7 @@ const AB = id(0x1ab0);
 const AC = id(0x1ac0);
 const BC = id(0x1bc0);
 const GROUP = id(0x1ff0);
+const AD = id(0x1ad0);
 
 const postgresBinDir = findPostgresBinDir();
 const describeWithPostgres = postgresBinDir ? describe : describe.skip;
@@ -41,12 +45,50 @@ describeWithPostgres('AccountService.deleteAccount on Postgres', () => {
     postgres?.stop();
   });
 
+  const client = (database: string) => {
+    const prisma = new PrismaService({ datasourceUrl: postgres.connectionUrl(database) });
+    clients.push(prisma);
+    return prisma;
+  };
+
+  // Resolves once some session of the cluster is waiting for a lock. A row
+  // lock is waited for on the holder's transaction id, a lock that names no
+  // database; the tests in this file run one at a time on their own cluster.
+  const someoneWaitsForALock = async (database: string) => {
+    const deadline = Date.now() + 20_000;
+    for (;;) {
+      const [[waiting]] = postgres.query(
+        database,
+        'SELECT count(*) FROM pg_locks WHERE NOT granted;',
+      );
+      if (Number(waiting) > 0) return;
+      if (Date.now() > deadline) throw new Error('no session ever waited for a lock');
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  };
+
+  // A transaction on its own connection that stays open until released.
+  const openTransaction = (prisma: PrismaService, work: (tx: any) => Promise<unknown>) => {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    let ready!: () => void;
+    const started = new Promise<void>((resolve) => (ready = resolve));
+    const done = prisma.$transaction(
+      async (tx) => {
+        await work(tx);
+        ready();
+        await released;
+      },
+      { timeout: 30_000, maxWait: 30_000 },
+    );
+    return { started, release, done };
+  };
+
   const setup = (database: string, seed: string) => {
     postgres.createDatabase(database);
     postgres.migrate(database);
     postgres.query(database, seed);
-    const prisma = new PrismaService({ datasourceUrl: postgres.connectionUrl(database) });
-    clients.push(prisma);
+    const prisma = client(database);
     const account = new AccountService(
       prisma,
       { disconnectUser: () => 0 } as never,
@@ -61,11 +103,17 @@ describeWithPostgres('AccountService.deleteAccount on Postgres', () => {
            FROM conversations c LEFT JOIN conversation_members m ON m.conversation_id = c.id
           GROUP BY c.id ORDER BY c.id;`,
       );
-    return { account, conversations };
+    const directConversations = new ConversationsService(
+      prisma,
+      { emitConversationMembers: () => undefined } as never,
+      { isBlockedEitherWay: async () => false } as never,
+      {} as never,
+    );
+    return { account, conversations, directConversations };
   };
 
   const seed = [
-    users([ALICE, 'alice'], [BOB, 'bob'], [CAROL, 'carol']),
+    users([ALICE, 'alice'], [BOB, 'bob'], [CAROL, 'carol'], [DAVE, 'dave']),
     device(ALICE_PHONE, ALICE),
     device(BOB_PHONE, BOB),
     device(CAROL_PHONE, CAROL),
@@ -110,5 +158,65 @@ describeWithPostgres('AccountService.deleteAccount on Postgres', () => {
       [BC, 'direct', directKey(BOB, CAROL), [BOB, CAROL].sort().join(',')],
       [GROUP, 'group', '-', [BOB, CAROL].sort().join(',')],
     ]);
+  });
+
+  it('releases the key of a direct conversation opened while the deletion runs', async () => {
+    // Dave's createDirect read Alice as active before the deletion revoked
+    // her, and its insert lands while the deletion is under way: its
+    // conversation is still uncommitted when the deletion's final step
+    // begins, and commits while that step waits to delete her user row.
+    const { account, conversations } = setup('concurrent_direct', seed);
+    const dave = openTransaction(client('concurrent_direct'), (tx) =>
+      tx.conversation.create({
+        data: {
+          id: AD,
+          type: 'direct',
+          directKey: directKey(ALICE, DAVE),
+          members: { create: [{ userId: ALICE }, { userId: DAVE }] },
+        },
+      }),
+    );
+    await dave.started;
+
+    const deletion = account.deleteAccount(ALICE);
+    await someoneWaitsForALock('concurrent_direct');
+    dave.release();
+    await dave.done;
+    await expect(deletion).resolves.toEqual({ deleted: true });
+
+    expect(conversations()).toEqual([
+      [AB, 'direct', '-', BOB],
+      [AC, 'direct', '-', CAROL],
+      [AD, 'direct', '-', DAVE],
+      [BC, 'direct', directKey(BOB, CAROL), [BOB, CAROL].sort().join(',')],
+      [GROUP, 'group', '-', [BOB, CAROL].sort().join(',')],
+    ]);
+  });
+
+  it('answers createDirect with handle_not_found when the peer row is deleted under it, and keeps nothing', async () => {
+    // The other order: the deletion's final step has deleted Dave's row but
+    // not committed when Bob's createDirect, which read Dave as active,
+    // inserts the membership. Its foreign-key check waits, then fails.
+    const { directConversations, conversations } = setup('deleted_under_create', seed);
+    const deletion = openTransaction(client('deleted_under_create'), (tx) =>
+      tx.user.delete({ where: { id: DAVE } }),
+    );
+    await deletion.started;
+
+    const dto = new CreateDirectConversationDto();
+    dto.peerHandle = 'dave';
+    const created = directConversations.createDirect(BOB, dto);
+    // Keep the outcome observed so a rejection is not reported as unhandled
+    // while the deletion still holds Dave's row.
+    created.catch(() => undefined);
+    await someoneWaitsForALock('deleted_under_create');
+    deletion.release();
+    await deletion.done;
+
+    await expect(created).rejects.toMatchObject({
+      status: 404,
+      response: { code: 'handle_not_found' },
+    });
+    expect(conversations().map(([conversationId]) => conversationId)).toEqual([AB, AC, BC, GROUP]);
   });
 });

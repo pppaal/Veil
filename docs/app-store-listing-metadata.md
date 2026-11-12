@@ -73,17 +73,28 @@ VEIL에는 계정 복구가 없습니다. 기기를 잃거나 앱을 지우면 �
 
 ## Privacy "nutrition label" (App Store Connect) — answer precisely
 
-VEIL cannot read message content, so most "linked to you" data does not apply.
-Declare only what the server actually retains — cross-check against
-`apps/api/src/common/config/env.schema.ts` and the threat model:
+Transcribe `store/appstore/app-privacy-answers.md` (App Store) and
+`store/play/data-safety-answers.md` (Google Play). They are the only source of
+the answers, and `scripts/store-label-check.mjs` fails CI when this page or any
+other document contradicts them. VEIL cannot read message content, but the
+server does keep metadata linked to the account. In short:
 
-- **Data NOT collected:** message content, contacts, precise location, browsing
-  history, photos (transit only, encrypted).
-- **Data that MAY be collected (not linked to identity where possible):**
-  - Coarse diagnostics / crash data — only if a crash reporter is enabled
-    (currently none wired; keep it that way or declare it).
-  - Device/push identifiers — only once APNs/FCM is enabled
-    (`VEIL_PUSH_PROVIDER` is `none` today).
+- **Collected and linked to the user, App Functionality only, no tracking:**
+  - User ID and Device ID. The server also stores the push token a device
+    registers with, next to its Device ID, and uses it only for wake-ups
+    that carry no message content.
+  - Contacts: the in-app contact list (which accounts the user added), a
+    social graph. The phone's address book is never read.
+  - Other User Content: group and channel names and descriptions and device
+    labels (stored readable), and the metadata needed to deliver messages
+    (who is in which conversation, message and receipt times, call records).
+- **Collected and not linked:** Other User Content for the encrypted message
+  payloads, photos and other attachments, which the server holds only as
+  ciphertext it cannot decrypt.
+- **Not collected:** precise or coarse location, browsing and search history,
+  contact info (name, email address, phone number), purchases, usage data,
+  and diagnostics: no crash reporter is wired, and adding one changes the
+  answers.
 - **Metadata retention (server):** terminal call records and consumed prekeys
   are swept after `VEIL_CALL_RECORD_RETENTION_DAYS` /
   `VEIL_PREKEY_CONSUMED_RETENTION_DAYS` (default 30 days). Reflect this honestly.

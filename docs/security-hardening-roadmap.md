@@ -13,6 +13,7 @@ overstating what's already there.
 | No backup / no recovery / device-bound identity | ✅ strong | enforced by `policy-check.mjs` (routes, modules, schema models, contracts, mobile backup code) |
 | No plaintext message content on the server | ✅ CI-enforced | `schema-privacy-check.mjs`, [`server-data-inventory.md`](server-data-inventory.md); group and channel names and descriptions and device labels are still readable and are the gate's only allowlisted fields |
 | Public claims backed by tests | ✅ CI-enforced | `claims-check.mjs`, [`claims.yaml`](claims.yaml) |
+| Store privacy labels declare what the server stores | ✅ CI-enforced | `store-label-check.mjs` ties `store/appstore/app-privacy-answers.md` and `store/play/data-safety-answers.md` to the schema and to each other, and fails on any document that contradicts them |
 | TLS pinning | ✅ present | `buildPinnedHttpClient`, 5 files |
 | Hardware-isolated keys (Secure Enclave / StrongBox) | ❌ absent | keys sit in OS secure storage (Keychain / Keystore-encrypted preferences), not in a hardware key store |
 | Screen-capture / preview protection | ✅ present | `screenCaptureProtection`, 7 files |

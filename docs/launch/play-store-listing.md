@@ -29,10 +29,10 @@ envelopes; it never sees the content of your messages.
   (hard-deleted on first read, on every device).
 - Block, mute, and report without leaking "I blocked you" as visible
   state to the other side.
-- Encrypted local backups you seal under a passphrase you control.
 
 **What Veil is not**
 - Not ad-supported. Not analytics-monetized.
+- No backups, local or cloud.
 - No account recovery. Losing your device is final — that's the
   privacy guarantee.
 - No contact discovery. No "who else is on Veil" directory.
@@ -60,32 +60,31 @@ Expected rating band: **Teen** (13+) — same band Signal sits in.
 
 ## Data safety form (Play Console)
 
-The Data Safety form in Play Console requires per-category disclosure.
-Veil's honest answers:
+Transcribe [`store/play/data-safety-answers.md`](../../store/play/data-safety-answers.md)
+into Play Console → App content → Data safety. That file is the only source
+of the answers and the Play counterpart of
+`store/appstore/app-privacy-answers.md`; `scripts/store-label-check.mjs`
+fails CI when the two disagree, when the server stores data they do not
+declare, or when this page or any other document contradicts them. In short:
 
-| Category          | Collected? | Shared? | Purpose      | Optional? | Notes |
-|-------------------|-----------|---------|--------------|-----------|-------|
-| Name              | No        | —       | —            | —         | handle only, no real name |
-| Email             | No        | —       | —            | —         | never asked |
-| Phone number      | No        | —       | —            | —         | never asked |
-| Physical address  | No        | —       | —            | —         | |
-| User IDs          | Yes       | No      | Functionality| No        | server-generated userId + deviceId, never linked to PII we don't have |
-| Contacts          | No        | —       | —            | —         | no address-book sync by design |
-| Messages          | Yes — encrypted only | No | Functionality | No | server stores ciphertext envelopes, cannot decrypt |
-| Photos/videos     | Yes — encrypted only | No | Functionality | No | same — attachment ciphertext only |
-| Approximate location | No     | —       | —            | —         | |
-| Precise location  | No        | —       | —            | —         | |
-| Device/other IDs  | No        | —       | —            | —         | no IDFA/AAID collected |
-| App activity / search | No    | —       | —            | —         | no analytics SDK |
-| Web browsing      | No        | —       | —            | —         | |
-| App info / perf   | Optional  | No      | App diagnostics | Yes    | crash logs only if user opts in |
-| Financial         | No        | —       | —            | —         | |
+- **Collected, not shared, App functionality only, not optional:** User IDs
+  (handle and account id); Device or other IDs (each device's id and, when
+  the app registers one, its push token); Contacts (the in-app contact list,
+  conversation membership and call records: Play's Contacts type covers
+  social-graph information and call history); Other user-generated content
+  (group and channel names and descriptions and device labels, which the
+  server stores readable).
+- **Collected as ciphertext the server cannot decrypt:** other in-app
+  messages, photos, videos, voice recordings and files.
+- **Not collected:** name, email address, phone number, address, location,
+  financial and health data, app interactions, search and web history, crash
+  logs and diagnostics (the crash log stays on the device; no crash-reporting
+  SDK ships).
+- Data is encrypted in transit: **Yes**. Users can request deletion: **Yes**
+  (in-app Delete account).
 
-**Data is encrypted in transit**: YES (TLS + app-layer E2EE).
-**Users can request data deletion**: YES (in-app Delete Account).
-
-Any deviation from this table is a launch blocker — amend this doc and
-the Data Safety form together.
+Any change to what the server stores is a launch blocker until the answers
+file and the Data safety form are amended together.
 
 ## Permissions
 
@@ -143,7 +142,8 @@ documented in the Privacy Policy.
 ## Submission checklist
 
 - [ ] Privacy policy URL returns 200
-- [ ] Data Safety form matches the table above with no optimistic claims
+- [ ] Data Safety form matches `store/play/data-safety-answers.md` row for row,
+      with no optimistic claims
 - [ ] Content rating questionnaire answered honestly (UGC=yes, UGC
       encrypted=yes)
 - [ ] Target API level meets Play's current requirement

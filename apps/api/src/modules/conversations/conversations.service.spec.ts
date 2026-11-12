@@ -134,6 +134,22 @@ describe('ConversationsService', () => {
       });
     });
 
+    it('answers a peer whose account is being deleted like an unknown handle, and writes nothing', async () => {
+      const { service, prisma } = makeService();
+      const alice = prisma.seedUser('alice');
+      prisma.seedUser('bob');
+      // Account deletion marks the user 'revoked' in its first step and only
+      // deletes the row in its last.
+      prisma.users.find((user) => user.handle === 'bob')!.status = 'revoked';
+
+      await expect(service.createDirect(alice.userId, buildDto('bob'))).rejects.toMatchObject({
+        status: 404,
+        response: { code: 'handle_not_found' },
+      });
+      expect(prisma.conversations).toHaveLength(0);
+      expect(prisma.conversationMembers).toHaveLength(0);
+    });
+
     it('rejects a conversation with yourself', async () => {
       const { service, prisma } = makeService();
       const alice = prisma.seedUser('alice');

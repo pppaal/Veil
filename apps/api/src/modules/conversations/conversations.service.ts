@@ -64,12 +64,21 @@ export class ConversationsService {
   ): Promise<CreateDirectConversationResponse> {
     const peer = await this.prisma.user.findUnique({
       where: { handle: dto.peerHandle.toLowerCase() },
-      select: { id: true },
+      select: { id: true, status: true },
     });
 
     // Either-direction block answers exactly like an unknown handle, so the
     // blocked user can't tell "doesn't exist" from "you've been blocked".
-    if (!peer || (await this.safetyService.isBlockedEitherWay(currentUserId, peer.id))) {
+    // So does an account that is not active: one being deleted is 'revoked'
+    // from the deletion's first step, and a conversation opened with it would
+    // only name it in a new directKey for the deletion's last step to clear.
+    // (A lookup that ran before the revoke is covered there too: see
+    // AccountService.releaseDirectConversations, and the P2003 case below.)
+    if (
+      !peer ||
+      peer.status !== 'active' ||
+      (await this.safetyService.isBlockedEitherWay(currentUserId, peer.id))
+    ) {
       throw apiError('handle_not_found', 'Peer handle not found');
     }
     if (peer.id === currentUserId) {
@@ -122,7 +131,8 @@ export class ConversationsService {
         include: conversationSummaryInclude(now),
       });
     } catch (error) {
-      if ((error as { code?: unknown } | null)?.code === 'P2002') {
+      const code = (error as { code?: unknown } | null)?.code;
+      if (code === 'P2002') {
         const existing = await this.prisma.conversation.findUnique({
           where: { directKey },
           include: conversationSummaryInclude(now),
@@ -130,6 +140,12 @@ export class ConversationsService {
         if (existing) {
           return { conversation: this.toConversationSummary(existing, currentUserId) };
         }
+      }
+      // A member's user row was deleted between the lookup above and the
+      // insert (account deletion finishing): the insert is rolled back, and
+      // the peer is gone like an unknown handle.
+      if (code === 'P2003') {
+        throw apiError('handle_not_found', 'Peer handle not found');
       }
       throw error;
     }

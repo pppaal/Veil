@@ -107,10 +107,12 @@ docker exec veil-postgres-1 psql -U veil -d veil -c "
 # 가 자동으로 Phase 2 + Phase 3 을 실행.
 # 토큰이 없는 강제 삭제 시는 별도 admin 스크립트 또는 위 SQL 절차를
 # 모방하는 manual cascade 가 필요. (Phase L 의 chunked-delete 코드 참고)
-# manual cascade 는 users 행을 지우기 전에, 이 사용자 id 를 담은
-# conversations.direct_key 를 NULL 로 만들고 멤버가 하나도 남지 않은 1:1
-# 대화를 지워야 합니다 (AccountService.releaseDirectConversations 와 같음).
-# 빠뜨리면 상대와의 1:1 대화 키에 삭제된 계정의 id 가 계속 남습니다.
+# manual cascade 는 users 행을 지우는 트랜잭션 안에서, 행을 지운 다음에
+# 이 사용자 id 를 담은 conversations.direct_key 를 NULL 로 만들고 멤버가
+# 하나도 남지 않은 1:1 대화를 지워야 합니다
+# (AccountService.releaseDirectConversations 와 같음). 행을 먼저 지워야, 그
+# 삭제가 기다려 준 동시 1:1 대화 생성까지 키 검색에 잡힙니다. 빠뜨리면 상대와의
+# 1:1 대화 키에 삭제된 계정의 id 가 계속 남습니다.
 # 중간에 멈춘 삭제는 DELETE /v1/account 를 다시 실행하면 이어서 끝납니다.
 ```
 

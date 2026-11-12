@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 
 import { AppLoggerService } from '../../common/logger/app-logger.service';
+import { describeFailure } from '../../common/logger/describe-failure';
 import { PrismaService } from '../../common/prisma.service';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
@@ -164,7 +165,10 @@ export class AccountService {
 
     // Phase 3 (small tx): finish the metadata + the user/device rows
     // themselves. By now everything restricting them is gone. The handle is
-    // quarantined in the same transaction that frees it.
+    // quarantined in the same transaction that frees it. Direct conversations
+    // are released after the user row is deleted (see
+    // releaseDirectConversations); their memberships are read before, since
+    // deleting the user row cascades them.
     await this.prisma.$transaction(async (tx) => {
       if (deviceIds.length > 0) {
         await tx.deviceTransferSession.deleteMany({
@@ -175,7 +179,10 @@ export class AccountService {
       } else {
         await tx.deviceTransferSession.deleteMany({ where: { userId } });
       }
-      await this.releaseDirectConversations(tx, userId);
+      const directMemberships = await tx.conversationMember.findMany({
+        where: { userId, conversation: { type: 'direct' } },
+        select: { conversationId: true },
+      });
       await tx.user.update({
         where: { id: userId },
         data: { activeDeviceId: null },
@@ -183,6 +190,11 @@ export class AccountService {
       await tx.device.deleteMany({ where: { userId } });
       await this.retiredHandles.retire(tx, handle);
       await tx.user.delete({ where: { id: userId } });
+      await this.releaseDirectConversations(
+        tx,
+        userId,
+        directMemberships.map((membership) => membership.conversationId),
+      );
     });
 
     return { deleted: true };
@@ -193,22 +205,27 @@ export class AccountService {
   // row, so it would name the deleted account next to the peer forever. No one
   // can open a direct conversation with a deleted account again, so the key
   // has nothing left to dedupe: it is cleared, and a conversation this leaves
-  // with no members at all is deleted. Runs in Phase 3 so a retry after a
-  // partial failure still finds the conversations through the memberships.
-  // The keys are searched as well, so a retry also releases a key whose
-  // membership is already gone (a deletion that failed under a release whose
-  // Phase 2 deleted direct memberships too). An id holds no '|', so `<id>|`
-  // at the start or `|<id>` at the end names this account and no other. No
-  // index serves the `|<id>` suffix, so this scans conversations once per
-  // account deletion.
+  // with no members at all is deleted.
+  //
+  // The conversations come from the user's direct memberships, read before
+  // the user row was deleted, and from a search of the keys themselves. The
+  // key search catches a key whose membership is already gone (a deletion
+  // that failed under a release whose Phase 2 deleted direct memberships too).
+  // It runs after the user row is deleted so that it also catches a direct
+  // conversation opened concurrently by a createDirect that read the account
+  // as active before Phase 1: the foreign-key check of that conversation's
+  // membership insert holds a lock on the user row until it commits, so the
+  // delete waits for it, and the search that follows (a new snapshot under
+  // READ COMMITTED) sees it. A membership insert that comes after the delete
+  // fails its foreign-key check instead, so no later conversation can name
+  // the account. An id holds no '|', so `<id>|` at the start or `|<id>` at the
+  // end names this account and no other. No index serves the `|<id>` suffix,
+  // so this scans conversations once per account deletion.
   private async releaseDirectConversations(
     tx: Prisma.TransactionClient,
     userId: string,
+    viaMembership: string[],
   ): Promise<void> {
-    const viaMembership = await tx.conversationMember.findMany({
-      where: { userId, conversation: { type: 'direct' } },
-      select: { conversationId: true },
-    });
     const viaKey = await tx.conversation.findMany({
       where: {
         type: 'direct',
@@ -220,10 +237,7 @@ export class AccountService {
       select: { id: true },
     });
     const conversationIds = [
-      ...new Set([
-        ...viaMembership.map((membership) => membership.conversationId),
-        ...viaKey.map((conversation) => conversation.id),
-      ]),
+      ...new Set([...viaMembership, ...viaKey.map((conversation) => conversation.id)]),
     ];
     if (conversationIds.length === 0) {
       return;
@@ -232,6 +246,7 @@ export class AccountService {
       where: { id: { in: conversationIds } },
       data: { directKey: null },
     });
+    // Deleting the user row has already cascaded these on Postgres.
     await tx.conversationMember.deleteMany({
       where: { userId, conversationId: { in: conversationIds } },
     });
@@ -267,10 +282,3 @@ export class AccountService {
     }
   }
 }
-
-// What a log line may say about a failure: its class and, for Prisma errors,
-// the error code, in the shape ApiExceptionFilter logs them.
-const describeFailure = (error: unknown): { name: string; code: unknown } =>
-  error instanceof Error
-    ? { name: error.name, code: (error as { code?: unknown }).code ?? null }
-    : { name: 'unknown', code: null };

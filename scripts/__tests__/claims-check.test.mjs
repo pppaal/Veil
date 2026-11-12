@@ -143,6 +143,28 @@ test('a blanket statement about collection is a claim', () => {
   ]);
 });
 
+test('a store listing draft that advertises a backup is an unledgered claim', () => {
+  // The App Store listing draft once offered "Signed backups" while VEIL has
+  // none; the drafts in docs/launch are pasted into the stores.
+  const draft = [
+    '- **Signed backups.** Your local history can be sealed under a passphrase',
+    '  you control.',
+    '- Encrypted local backups you seal under a passphrase you control.',
+    '',
+  ].join('\n');
+  const failures = checkClaims(
+    tree({
+      'docs/launch/app-store-listing.md': draft,
+      'docs/app-store-listing-metadata.md': 'Restore from backup on a new phone.\n',
+    }),
+  );
+  assert.deepEqual(failures, [
+    'docs/app-store-listing-metadata.md: unledgered claim "Restore from backup on a new phone."',
+    'docs/launch/app-store-listing.md: unledgered claim "Signed backups."',
+    'docs/launch/app-store-listing.md: unledgered claim "Encrypted local backups you seal under a passphrase you control."',
+  ]);
+});
+
 test('claims in HTML text attributes are scanned without splitting the element text', () => {
   const html = [
     '<meta name="description" content="Messages are never stored.">',

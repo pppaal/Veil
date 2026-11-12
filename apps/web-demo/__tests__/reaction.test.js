@@ -9,6 +9,7 @@ import { textContent } from '../src/domain/content.js';
 import { ingestMessage } from '../src/domain/ingest.js';
 import { decodeReaction, encodeReaction, reactionsByTarget } from '../src/domain/reactions.js';
 import { createSender } from '../src/features/sender.js';
+import { createMemoryKv } from '../src/platform/kv.js';
 import { CONVERSATION } from './support/devices.js';
 import { conversation, serverMessage } from './support/messaging.js';
 
@@ -32,7 +33,7 @@ describe('E2E reactions', () => {
   it('sent as E2E control message, no REST call', async () => {
     const { alice, bob } = await conversation();
     const server = relay();
-    const queue = { put: vi.fn() };
+    const queue = createMemoryKv('clientMessageId');
     const aliceSender = createSender({ secure: alice.secure, authedApi: server.authedApi, queue });
     const bobSender = createSender({ secure: bob.secure, authedApi: server.authedApi, queue });
 
@@ -46,7 +47,8 @@ describe('E2E reactions', () => {
 
     expect(server.calls).toEqual(Array(5).fill({ path: '/messages', method: 'POST' }));
     expect(server.calls.some((call) => call.path.includes('reaction'))).toBe(false);
-    expect(queue.put).not.toHaveBeenCalled();
+    // Each went straight out: nothing waits in the outbound queue.
+    expect(await queue.all()).toEqual([]);
     const reactions = server.stored.slice(1);
     for (const message of reactions) {
       expect(message).toMatchObject({ messageType: 'reaction', version: ENVELOPE_VERSION_V2, attachment: null });

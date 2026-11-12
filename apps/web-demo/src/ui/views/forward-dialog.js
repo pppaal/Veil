@@ -5,8 +5,9 @@ import { isTextKind } from '../../domain/ingest.js';
 import { avatarFor, el, handleLine } from '../dom.js';
 import { toast } from '../toast.js';
 
+// stack: src/app/messaging-stack.js (shownPeer names a conversation);
 // composer: src/ui/views/composer.js.
-export function createForwardDialog({ store, composer }) {
+export function createForwardDialog({ store, stack, composer }) {
   const { state } = store;
 
   return {
@@ -34,7 +35,7 @@ export function createForwardDialog({ store, composer }) {
       document.body.appendChild(backdrop);
       let selected = null;
       for (const conv of others) {
-        const peer = conv.members?.find((member) => member.userId !== state.me?.userId);
+        const peer = stack.shownPeer(conv);
         const row = el('div', { class: 'forward-list-item', dataset: { convId: conv.id } }, [
           avatarFor(peer?.handle ?? '?', 'sm'),
           el('div', { style: 'flex:1' }, [handleLine(peer?.handle)]),

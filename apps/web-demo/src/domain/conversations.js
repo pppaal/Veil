@@ -13,9 +13,20 @@ export function directPeer(conversation, selfUserId) {
   return conversation.members?.find((member) => member.userId !== selfUserId) ?? null;
 }
 
-// The member a conversation row, tab and panel header are named after.
-export function shownPeer(conversation, selfHandle) {
-  return (conversation.members || []).find((member) => member.handle !== selfHandle) ?? conversation.members?.[0];
+// The member a conversation row, tab and panel header are named after, and
+// whose handle labels the messages in it this device did not send. Members
+// are told apart by userId, as the crypto tells them apart, never by handle:
+// the relay lists the handles, and a listing that put our own entry under
+// someone else's would otherwise name the conversation after it. A direct
+// conversation is named after the very peer its crypto is about,
+// peerOf(conversationId) (the bound peer, else directPeer: see
+// createPeerResolver in src/domain/peer-bindings.js), and after nobody while
+// it has none; a group after its first member other than us.
+export function shownPeer(conversation, { selfUserId, peerOf }) {
+  if (!conversation) return null;
+  if (conversation.type === 'direct') return peerOf(conversation.id) ?? null;
+  if (!selfUserId) return null;
+  return conversation.members?.find((member) => member.userId !== selfUserId) ?? null;
 }
 
 // Newest activity first: the last message, or the creation of a

@@ -59,6 +59,10 @@ describe('notification levels', () => {
       .toEqual({ title: '@alice', body: 'meet at 6 by the north gate', tag: 'veil-c-1' });
   });
 
+  it('names a sender under a handle no honest server issues by its shown form', () => {
+    expect(buildNotification({ level: 'sender', ...message, senderHandle: 'alice​' }).title).toBe('@alice[U+200B]');
+  });
+
   it('uses localized labels', () => {
     const labels = { appName: 'VEIL', newMessage: '새 메시지' };
     expect(buildNotification({ level: 'generic', ...message, labels }).body).toBe('새 메시지');

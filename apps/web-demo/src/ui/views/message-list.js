@@ -5,6 +5,7 @@
 import { t } from '../../../i18n/i18n.js';
 import { formatBytes } from '../../../lib/format.js';
 import { snippetOf } from '../../domain/conversations.js';
+import { shownHandle } from '../../domain/handles.js';
 import { DELIVERY_GLYPHS, DELIVERY_LABELS, deliveryStatus, groupMessages, sentAt } from '../../domain/message-groups.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { KIND_LABELS } from '../../domain/payload.js';
@@ -225,7 +226,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
       list.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [day.dayLabel])]));
       for (const group of day.groups) {
         const stack = el('div', { class: 'group-stack' });
-        if (!group.isMe) stack.appendChild(el('div', { class: 'group-meta' }, ['@' + group.senderHandle]));
+        if (!group.isMe) stack.appendChild(el('div', { class: 'group-meta' }, ['@' + shownHandle(group.senderHandle)]));
         group.msgs.forEach((message, index) => {
           stack.appendChild(messageRow(convId, message, {
             isMe: group.isMe,

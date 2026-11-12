@@ -235,7 +235,7 @@ describe('modify', () => {
 // A version 2 database as the pre-hardening app.js left it, behind an
 // IDBFactory double that runs the upgrade (stores, cursors, update) and opens
 // once the upgrade's cursor walks have finished.
-function versionTwoIndexedDb(stores) {
+function versionTwoIndexedDb(stores, { oldVersion = 2 } = {}) {
   const data = new Map(Object.entries(stores).map(([name, { keyPath, rows }]) => (
     [name, { keyPath, rows: new Map(rows.map((row) => [row[keyPath], row])) }]
   )));
@@ -295,7 +295,7 @@ function versionTwoIndexedDb(stores) {
       queueMicrotask(() => {
         request.result = db;
         request.transaction = { objectStore };
-        request.onupgradeneeded({ oldVersion: 2 });
+        request.onupgradeneeded({ oldVersion });
         setTimeout(() => request.onsuccess(), 0);
       });
       return request;
@@ -391,5 +391,32 @@ describe('upgrade from version 2', () => {
     }
     // The archive itself keeps its messages; only the sidebar copy drops them.
     expect(disk).toContain('ARCHIVED');
+  });
+});
+
+describe('upgrade from version 5', () => {
+  it('adds the peer bindings and leaves every other store as it was', async () => {
+    const v5Stores = {
+      session: { keyPath: 'id', rows: [{ id: 'me', value: { handle: 'alice' } }] },
+      conversations: { keyPath: 'id', rows: [{ id: 'c-1', type: 'direct', members: [{ userId: 'u-1', handle: 'alice' }] }] },
+      messages: { keyPath: '_key', rows: [{ _key: 'c-1:1', id: 'm-1', conversationId: 'c-1', conversationOrder: 1 }] },
+      outbound: { keyPath: 'clientMessageId', rows: [] },
+      'kakao-archives': { keyPath: 'id', rows: [] },
+      'kakao-archive-meta': { keyPath: 'id', rows: [] },
+      'identity-pins': { keyPath: 'userId', rows: [] },
+      'crypto-sessions': { keyPath: 'conversationId', rows: [{ conversationId: 'c-1', sealed: 'S' }] },
+      'one-time-prekeys': { keyPath: 'keyId', rows: [] },
+      'content-keys': { keyPath: 'conversationId', rows: [] },
+      'message-contents': { keyPath: 'key', rows: [] },
+      'identity-pins-v2': { keyPath: 'id', rows: [{ id: 'u-2/d-2', userId: 'u-2', deviceId: 'd-2' }] },
+      'identity-pending': { keyPath: 'userId', rows: [] },
+      'history-marks': { keyPath: 'conversationId', rows: [{ conversationId: 'c-1', through: 1 }] },
+    };
+    const { factory, data } = versionTwoIndexedDb(v5Stores, { oldVersion: 5 });
+    const idb = createIdb(factory);
+
+    expect(await idb.all('direct-peers')).toEqual([]);
+    expect(data.get('direct-peers').keyPath).toBe('conversationId');
+    for (const [name, { rows }] of Object.entries(v5Stores)) expect(await idb.all(name)).toEqual(rows);
   });
 });

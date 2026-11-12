@@ -1,11 +1,15 @@
 // Two-party harness one level above support/devices.js: each endpoint is the
-// app's secure-messaging stack (pins, decrypt-once content store, session
-// cipher) over in-memory stores, with a directory the test controls.
+// app's secure-messaging stack (pins, peer bindings, decrypt-once content
+// store, session cipher) over in-memory stores, with a directory the test
+// controls. endpoint.peers is the conversation list as the relay names each
+// conversation's other member; the crypto resolves the peer as the app does
+// (src/app/messaging-stack.js): the bound one first.
 
 import { webcrypto } from 'node:crypto';
 
 import { createLocks } from '../../src/crypto/locks.js';
 import { createIdentityTrust, createPinStore } from '../../src/crypto/pins.js';
+import { createConversationVerifier, createPeerBindings } from '../../src/domain/peer-bindings.js';
 import { createSecureMessaging } from '../../src/features/secure-messaging.js';
 import { createContentStore } from '../../src/platform/content-store.js';
 import { createMemoryKv } from '../../src/platform/kv.js';
@@ -28,20 +32,18 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
     deviceId,
     handle,
     now: NOW,
-    peers: new Map(), // conversationId -> { userId, handle }
+    peers: new Map(), // conversationId -> { userId, handle } as the relay lists it
     stores: contentStores(),
     pinKv: createMemoryKv('id', { indexField: 'userId' }),
     pendingKv: createMemoryKv('userId'),
+    bindingKv: createMemoryKv('conversationId'),
     lookups: 0,
     keyChanges: [],
   };
   endpoint.device = await createDevice({
     userId,
     deviceId,
-    verifyIdentity: ({ conversationId, remoteDeviceId, identityKey }) => {
-      const peer = endpoint.peers.get(conversationId);
-      return peer ? endpoint.trust.admit(peer.userId, remoteDeviceId, identityKey) : false;
-    },
+    verifyIdentity: (identity) => endpoint.verifyIdentity(identity),
   });
 
   // As a page load does: everything in memory is rebuilt over the stores,
@@ -54,6 +56,10 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
       onChange: (changed) => endpoint.keyChanges.push(changed),
     });
     await endpoint.trust.load();
+    endpoint.bindings = createPeerBindings(endpoint.bindingKv);
+    await endpoint.bindings.load();
+    endpoint.peerOf = (conversationId) => endpoint.bindings.get(conversationId) ?? endpoint.peers.get(conversationId) ?? null;
+    endpoint.verifyIdentity = createConversationVerifier({ bindings: endpoint.bindings, trust: endpoint.trust, peerOf: endpoint.peerOf });
     endpoint.contentStore = openContentStore(endpoint.stores);
     endpoint.secure = createSecureMessaging({
       cipher: endpoint.device.cipher,
@@ -65,7 +71,8 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
       contentStore: endpoint.contentStore,
       legacyReader: { decrypt: async () => ({ failure: 'no-key' }) },
       getSelf: () => ({ ...endpoint.device.record, deviceId }),
-      getPeer: (conversationId) => endpoint.peers.get(conversationId) ?? null,
+      getPeer: endpoint.peerOf,
+      admitIdentity: endpoint.verifyIdentity,
       clock: () => endpoint.now,
     });
     return endpoint;

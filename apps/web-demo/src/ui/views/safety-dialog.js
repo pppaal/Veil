@@ -4,6 +4,7 @@
 // dialog showed (src/app/services/identity-trust.js).
 
 import { t } from '../../../i18n/i18n.js';
+import { shownHandle } from '../../domain/handles.js';
 import { trapFocus } from '../confirm.js';
 import { $, el } from '../dom.js';
 import { toast } from '../toast.js';
@@ -20,7 +21,7 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
         return;
       }
       if (safety.status === 'no-key') {
-        toast(t('safety.noKey', { handle: peer.handle }), 'error');
+        toast(t('safety.noKey', { handle: shownHandle(peer.handle) }), 'error');
         return;
       }
       const codeInput = el('input', {
@@ -43,7 +44,7 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
           result.textContent = t('safety.verifyFailed', { error: error.message });
           return;
         }
-        toast(t('safety.verified', { handle: peer.handle }), 'good');
+        toast(t('safety.verified', { handle: shownHandle(peer.handle) }), 'good');
         close();
         await identityTrust.reopenLockedMessages(peer.userId);
       };
@@ -59,11 +60,11 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
           'aria-labelledby': 'safety-title',
           style: 'width:420px;max-width:92vw',
         }, [
-          el('div', { class: 'dialog-title', id: 'safety-title' }, [t('safety.title', { handle: peer.handle })]),
-          safety.pendingNoteKey ? el('div', { class: 'key-change-text', role: 'alert' }, [t(safety.pendingNoteKey, { handle: peer.handle })]) : null,
+          el('div', { class: 'dialog-title', id: 'safety-title' }, [t('safety.title', { handle: shownHandle(peer.handle) })]),
+          safety.pendingNoteKey ? el('div', { class: 'key-change-text', role: 'alert' }, [t(safety.pendingNoteKey, { handle: shownHandle(peer.handle) })]) : null,
           safety.remoteKey.verified ? el('div', { class: 'dialog-sub' }, [t('safety.alreadyVerified')]) : null,
           el('div', { class: 'safety-number', id: 'safety-number' }, [safety.number]),
-          el('div', { class: 'dialog-sub' }, [t('safety.explain', { handle: peer.handle })]),
+          el('div', { class: 'dialog-sub' }, [t('safety.explain', { handle: shownHandle(peer.handle) })]),
           el('div', { class: 'field-label' }, [t('safety.yourCode')]),
           el('textarea', { readonly: 'readonly', rows: '3', class: 'safety-code' }, [safety.code]),
           el('div', { class: 'field-label' }, [t('safety.theirCode')]),

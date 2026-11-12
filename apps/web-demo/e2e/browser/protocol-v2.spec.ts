@@ -217,7 +217,9 @@ test.describe('protocol v2 in the browser', () => {
     expect(numbers[0]).toBe(numbers[1]);
   });
 
-  test('relay identity swap shows banner and disables send', async () => {
+  // The banner stops nothing: Alice keeps writing to the key she has, and
+  // the relay's key reads none of it.
+  test('relay identity swap shows banner and keeps sending to the pinned key', async () => {
     await relay('/__test/tamper', { enabled: false });
     // The relay takes over Bob's directory entry with an identity it holds
     // and opens a session to Alice as Bob's device.
@@ -226,14 +228,16 @@ test.describe('protocol v2 in the browser', () => {
     const page = alice.page;
     await expect(page.locator('.key-change-banner')).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('.key-change-banner')).toContainText(`@${bob.handle}`);
-    await expect(page.locator('.panel-input textarea')).toBeDisabled();
-    await expect(page.locator('.send-btn')).toBeDisabled();
+    await expect(page.locator('.panel-input textarea')).toBeEnabled();
     await expect(page.locator('.panel-msgs')).not.toContainText('relay pretending to be bob');
     // The relay's message is refused, not shown.
     await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
     await expect(page.locator('.conv-item', { hasText: `@${bob.handle}` })).toContainText('⚠️');
     // The history from before the swap is untouched.
     expect((await bubbleTexts(alice)).slice(0, texts.length)).toEqual(texts);
+    await send(alice, 'while the banner shows');
+    await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 }).toContain('while the banner shows');
+    await expect(page.locator('.key-change-banner')).toBeVisible();
   });
 
   // The refused frame stays on the relay, and every history refresh and

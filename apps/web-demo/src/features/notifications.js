@@ -7,6 +7,8 @@
 //   sender          sender handle + "new message"
 //   sender_preview  sender handle + text or kind label
 
+import { shownHandle } from '../domain/handles.js';
+
 export const NOTIFICATION_LEVELS = Object.freeze(['off', 'generic', 'sender', 'sender_preview']);
 export const DEFAULT_NOTIFICATION_LEVEL = 'generic';
 export const NOTIFICATION_LEVEL_KEY = 'veil-demo-notification-level-v1';
@@ -35,7 +37,9 @@ export function writeNotificationLevel(storage, level) {
 // Returns { title, body, tag } or null when nothing should be shown.
 // preview is the message's previewLabel(), already free of payload data.
 export function buildNotification({ level, senderHandle, preview, conversationId, labels = DEFAULT_LABELS }) {
-  const named = senderHandle ? `@${senderHandle}` : labels.appName;
+  // A handle no honest server issues is named in its shown form
+  // (src/domain/handles.js), never like the handle it imitates.
+  const named = senderHandle ? `@${shownHandle(senderHandle)}` : labels.appName;
   switch (level) {
     case 'off':
       return null;

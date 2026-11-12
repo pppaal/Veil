@@ -2,10 +2,12 @@
 // the imported Kakao archives below it.
 
 import { t } from '../../../i18n/i18n.js';
-import { matchesSearch, previewMessage, shownPeer } from '../../domain/conversations.js';
+import { matchesSearch, previewMessage } from '../../domain/conversations.js';
+import { shownHandle } from '../../domain/handles.js';
 import { previewLabel } from '../../domain/ingest.js';
 import { $, avatarFor, convSkeletons, el } from '../dom.js';
 import { relativeTime } from '../time.js';
+import { holdTextKey } from './key-change-banner.js';
 
 // navigation: src/ui/views/tabs.js; archiveRows(): the Kakao archive rows
 // (src/ui/views/kakao-import.js).
@@ -13,12 +15,18 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
   const { state } = store;
 
   function conversationRow(conv, now) {
-    const peer = shownPeer(conv, state.me.handle);
+    // Named after the peer its crypto is about (src/domain/conversations.js
+    // shownPeer), never after a member picked by handle.
+    const peer = stack.shownPeer(conv);
     const isActive = store.isOnScreen(conv.id);
     const last = previewMessage(conv, store.messagesOf(conv.id), now);
     const preview = last ? previewLabel(last, now) : '아직 메시지 없음';
     const time = last?.serverReceivedAt ? relativeTime(last.serverReceivedAt) : '';
     const keyChanged = peer && stack.trust.pendingChange(peer.userId);
+    const directPeer = stack.peerOf(conv.id);
+    // Held for the handle it is listed under (src/domain/peer-bindings.js
+    // hold): the row says so instead of previewing what it holds.
+    const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
     const avatar = avatarFor(peer?.handle ?? '?', 'md');
     avatar.appendChild(el('span', { class: 'presence-dot' }));
     if (peer && state.online.has(peer.userId)) avatar.classList.add('online');
@@ -29,10 +37,10 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
       avatar,
       el('div', { class: 'conv-meta' }, [
         el('div', { class: 'conv-row1' }, [
-          el('span', { class: 'conv-name' }, ['@' + (peer?.handle ?? '?')]),
+          el('span', { class: 'conv-name' }, ['@' + shownHandle(peer?.handle)]),
           time ? el('span', { class: 'conv-time' }, [time]) : null,
         ]),
-        el('div', { class: 'conv-preview' }, [keyChanged ? t('keyChange.sidebar') : preview]),
+        el('div', { class: 'conv-preview' }, [hold ? t(holdTextKey(hold, 'sidebar')) : keyChanged ? t('keyChange.sidebar') : preview]),
       ]),
     ]);
   }

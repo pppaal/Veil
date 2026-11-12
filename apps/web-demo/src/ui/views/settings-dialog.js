@@ -3,6 +3,7 @@
 // menu and Ctrl/Cmd+Shift+S share.
 
 import { activeLang, setLang, t } from '../../../i18n/i18n.js';
+import { shownHandle } from '../../domain/handles.js';
 import { NOTIFICATION_LEVELS } from '../../features/notifications.js';
 import { avatarFor, el, handleLine } from '../dom.js';
 import { toast } from '../toast.js';
@@ -44,7 +45,7 @@ export function createSettingsDialog({ store, preferences, safety }) {
           unblock,
         ]);
         unblock.addEventListener('click', async () => {
-          await safety.unblock(user.userId ?? user.id, user.handle ?? '?');
+          await safety.unblock(user.userId ?? user.id, shownHandle(user.handle));
           blockedRow.remove();
         });
         return blockedRow;

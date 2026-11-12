@@ -124,7 +124,7 @@ const session = createSession({
 const transfer = createDeviceTransfer({ store, stack, session });
 
 // Views: what the user sees and does.
-const tabs = createTabs({ store, history });
+const tabs = createTabs({ store, stack, history });
 const kakao = createKakaoImport({ store, archives });
 const sidebar = createSidebar({ store, stack, navigation: tabs, archiveRows: kakao.rows });
 const voice = createVoiceRecorder({ attachments });
@@ -134,7 +134,7 @@ const safetyDialog = createSafetyDialog({ identityTrust, dialogs });
 const keyChangeBanner = createKeyChangeBanner({ identityTrust, safetyDialog, confirm });
 const panelSearch = createPanelSearch({ store });
 const chat = createChatView({ store, stack, messages, messageList, composer, keyChangeBanner, safetyDialog, panelSearch, safety, confirm });
-const forwardDialog = createForwardDialog({ store, composer });
+const forwardDialog = createForwardDialog({ store, stack, composer });
 const reportDialog = createReportDialog({ safety, dialogs });
 const messageActions = createMessageActions({ store, send, safety, composer, forwardDialog, reportDialog, confirm });
 const auth = createAuthView({ stack, session, confirm });

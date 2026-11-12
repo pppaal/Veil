@@ -1,6 +1,8 @@
 // DOM building blocks every view uses. Everything is built with
 // createElement and text nodes: no HTML string ever reaches the page.
 
+import { shownHandle } from '../domain/handles.js';
+
 export const $ = (id) => document.getElementById(id);
 
 // el('div', { class, dataset, onclick, ...attributes }, children)
@@ -37,19 +39,22 @@ function handleHash(handle) {
   return hash;
 }
 
+// A handle no honest server issues is drawn from its shown form
+// (src/domain/handles.js shownHandle), never like the handle it imitates.
 export function avatarFor(handle, size = 'md') {
-  const initial = (handle?.[0] ?? '?').toUpperCase();
-  const [a, b] = PALETTE[handleHash(handle ?? '?') % PALETTE.length];
+  const shown = shownHandle(handle);
+  const initial = shown[0].toUpperCase();
+  const [a, b] = PALETTE[handleHash(shown) % PALETTE.length];
   return el(
     'div',
-    { class: `avatar size-${size}`, style: `background: linear-gradient(135deg, ${a} 0%, ${b} 100%)`, title: handle ?? '' },
+    { class: `avatar size-${size}`, style: `background: linear-gradient(135deg, ${a} 0%, ${b} 100%)`, title: handle ? shown : '' },
     [initial],
   );
 }
 
 // "@handle" for member and contact rows. Handles only: profile text is not
 // something the server keeps.
-export const handleLine = (handle, handleStyle) => el('div', handleStyle ? { style: handleStyle } : {}, ['@' + (handle || '?')]);
+export const handleLine = (handle, handleStyle) => el('div', handleStyle ? { style: handleStyle } : {}, ['@' + shownHandle(handle)]);
 
 // Shimmering placeholder rows for the conversation list while the first
 // /conversations response is on its way.

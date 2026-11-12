@@ -79,7 +79,10 @@ class SignedPrekeyRotation {
 abstract class PrekeyManager {
   Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100});
 
-  Future<SignedPrekeyRotation> rotateSignedPrekey();
+  /// Draws a new signed prekey under the next id and signs it with
+  /// [createdAt] as its timestamp: the directory's time, which it checks
+  /// the timestamp against (the device clock when omitted).
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt});
 
   /// The newest signed prekey as a bundle to publish, or null when the
   /// identity has none of its own (a v1 identity). Signing is

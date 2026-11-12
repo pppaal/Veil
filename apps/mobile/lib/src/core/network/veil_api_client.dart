@@ -7,9 +7,11 @@ import 'package:http/http.dart' as http;
 import '../config/veil_config.dart';
 import 'http_transport.dart';
 import 'pinned_http_client.dart';
+import 'server_clock.dart';
 import 'token_refresh_gate.dart';
 import 'veil_api_exception.dart';
 
+export 'server_clock.dart' show ServerClock;
 export 'veil_api_exception.dart';
 
 class VeilApiClient {
@@ -21,7 +23,9 @@ class VeilApiClient {
     Duration uploadTimeout = kDefaultUploadTimeout,
     http.Client? objectStorageClient,
     ObjectStoragePolicy? objectStoragePolicy,
-  })  : _client = client ??
+    ServerClock? serverClock,
+  })  : serverClock = serverClock ?? ServerClock(),
+        _client = client ??
             buildPinnedHttpClient(
               allowedFingerprints: parsePinList(VeilConfig.tlsPins),
             ),
@@ -34,6 +38,10 @@ class VeilApiClient {
             objectStoragePolicy ?? ObjectStoragePolicy.fromEnvironment();
 
   final String baseUrl;
+
+  /// The relay's time, learned from the `Date` header of every API
+  /// response, refusals included.
+  final ServerClock serverClock;
   final http.Client _client;
   // The refresher is resolved by the auth controller so the API client
   // doesn't need a hard reference to AppState. When a request comes back
@@ -625,10 +633,9 @@ class VeilApiClient {
       request.body = jsonEncode(body);
     }
     try {
-      return await _client
-          .send(request)
-          .then(http.Response.fromStream)
-          .timeout(_requestTimeout);
+      final response = await _client.send(request).then(http.Response.fromStream).timeout(_requestTimeout);
+      serverClock.observe(response.headers['date']);
+      return response;
     } catch (error) {
       final failure = transportFailure(error);
       if (failure == null) {

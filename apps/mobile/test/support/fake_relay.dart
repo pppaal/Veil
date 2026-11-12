@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/x3dh/identity_keys.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 
@@ -111,6 +112,12 @@ class FakeRelay {
 
   int _messageCounter = 0;
   final DateTime _clockBase = DateTime.utc(2026, 4, 1, 9);
+
+  /// How far the relay's clock runs ahead of the devices' clocks; its time
+  /// reaches each client as the HTTP Date header of the key routes.
+  Duration clockSkew = Duration.zero;
+
+  DateTime now() => DateTime.now().toUtc().add(clockSkew);
 
   /// Registers [party] as the active device of its handle. A handle that
   /// already had a device moves to the new one, like a device transfer: the
@@ -360,6 +367,7 @@ class FakeRelayClient extends VeilApiClient {
     required String? accessToken,
     Map<String, String>? query,
   }) async {
+    _stampDate();
     if (path.startsWith('/keys/')) {
       final handle = Uri.decodeComponent(path.substring('/keys/'.length));
       directoryLookups[handle] = (directoryLookups[handle] ?? 0) + 1;
@@ -373,6 +381,7 @@ class FakeRelayClient extends VeilApiClient {
 
   @override
   Future<Map<String, dynamic>> postJson(String path, {required String? accessToken, Object? body}) async {
+    _stampDate();
     if (path != '/prekeys') throw UnimplementedError('POST $path');
     final pool = relay.oneTimePrekeys.putIfAbsent(me.deviceId, () => []);
     final uploaded = [
@@ -384,13 +393,48 @@ class FakeRelayClient extends VeilApiClient {
   }
 
   @override
+  // KeysService.rotateSignedPrekey: a v2 bundle signed by the device
+  // identity, its timestamp within the last hour and at most ten minutes
+  // ahead of the relay's clock, the same IKx, and a higher spkId than the
+  // bundle served now.
+  @override
   Future<Map<String, dynamic>> putJson(String path, {required String? accessToken, Object? body}) async {
+    _stampDate();
     if (path != '/keys/signed-prekey') throw UnimplementedError('PUT $path');
     final bundle = (body as Map<String, dynamic>)['signedPrekeyBundle'] as String;
+    final now = relay.now();
+    final RemotePrekeyBundle next;
+    try {
+      next = await verifyRemoteBundle(bundle, me.identity.identityPublicKey);
+    } catch (_) {
+      throw VeilApiException('not signed by the device', statusCode: 400, code: 'invalid_device_signature');
+    }
+    if (next is! PrekeyBundleV2) {
+      throw VeilApiException('not a v2 bundle', statusCode: 400, code: 'validation_failed');
+    }
+    final spkTs = next.spkTimestampMs;
+    final nowMs = now.millisecondsSinceEpoch;
+    if (spkTs < nowMs - const Duration(hours: 1).inMilliseconds ||
+        spkTs > nowMs + const Duration(minutes: 10).inMilliseconds) {
+      throw VeilApiException('stale timestamp', statusCode: 400, code: 'signed_prekey_timestamp_out_of_window');
+    }
+    final served = await verifyRemoteBundle(
+      relay.publishedSignedPrekeys[me.deviceId] ?? me.identity.signedPrekeyBundle,
+      me.identity.identityPublicKey,
+    );
+    if (served is PrekeyBundleV2 && (!_sameBytes(next.ikx, served.ikx) || next.spkId <= served.spkId)) {
+      throw VeilApiException('spkId must increase', statusCode: 400, code: 'validation_failed');
+    }
     relay.publishedSignedPrekeys[me.deviceId] = bundle;
     signedPrekeyUploads.add(bundle);
-    return {'deviceId': me.deviceId, 'spkId': signedPrekeyUploads.length};
+    return {'deviceId': me.deviceId, 'spkId': next.spkId};
   }
+
+  // The relay's time, as the HTTP Date header of each response carries it.
+  void _stampDate() => serverClock.observe(HttpDate.format(relay.now()));
+
+  static bool _sameBytes(List<int> a, List<int> b) =>
+      a.length == b.length && Iterable<int>.generate(a.length).every((i) => a[i] == b[i]);
 
   @override
   Future<Map<String, dynamic>> sendMessage(

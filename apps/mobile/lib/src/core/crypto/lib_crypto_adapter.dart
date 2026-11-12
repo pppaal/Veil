@@ -144,7 +144,8 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100}) => _keyring.generateOneTimePrekeys(count);
 
   @override
-  Future<SignedPrekeyRotation> rotateSignedPrekey() => _keyring.rotateSignedPrekey();
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt}) =>
+      _keyring.rotateSignedPrekey(createdAt: createdAt);
 
   @override
   Future<SignedPrekeyRotation?> currentSignedPrekey() => _keyring.currentSignedPrekey();

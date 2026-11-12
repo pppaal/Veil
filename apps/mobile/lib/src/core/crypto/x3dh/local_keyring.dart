@@ -128,23 +128,23 @@ class LocalKeyring {
     return out;
   }
 
-  Future<SignedPrekeyRotation> rotateSignedPrekey() async {
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt}) async {
     final keys = await resolveIdentity();
     try {
-      return await _rotateSignedPrekey(keys);
+      return await _rotateSignedPrekey(keys, createdAt ?? _clock());
     } finally {
       keys.destroy();
     }
   }
 
-  Future<SignedPrekeyRotation> _rotateSignedPrekey(LocalIdentityKeys keys) async {
+  Future<SignedPrekeyRotation> _rotateSignedPrekey(LocalIdentityKeys keys, DateTime createdAt) async {
     final stored = await _signedPrekeysInStore(keys.identity);
     final spkId = stored.fold<int>(0, (highest, p) => max(highest, p.keyId)) + 1;
     if (spkId >= maxU32) {
       throw StateError('Signed prekey ids are exhausted.');
     }
     final pair = await generateX25519KeyPair(_random);
-    final rotated = StoredSignedPrekey(keyId: spkId, privateKey: pair.privateKey, createdAt: _clock());
+    final rotated = StoredSignedPrekey(keyId: spkId, privateKey: pair.privateKey, createdAt: createdAt.toUtc());
     try {
       await store.saveSignedPrekey(rotated);
       return await _publishable(keys, rotated);

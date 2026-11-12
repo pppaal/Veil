@@ -58,6 +58,9 @@ class KeysApi {
   final VeilApiClient _client;
   final KeyBundleCodec _codec;
 
+  /// The directory's time, as its responses report it.
+  ServerClock get serverClock => _client.serverClock;
+
   /// Looks [handle] up. Throws [FormatException] when the answer does not
   /// have the directory's shape: it is relayed by the server and decides
   /// whom this device encrypts to, so nothing in it is guessed.

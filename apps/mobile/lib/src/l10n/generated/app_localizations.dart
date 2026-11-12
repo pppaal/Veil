@@ -413,7 +413,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentCollectItem1.
   ///
   /// In en, this message translates to:
-  /// **'User handle, and anonymous account and device IDs'**
+  /// **'User handle, and the random account and device IDs linked to it'**
   String get privacyConsentCollectItem1;
 
   /// No description provided for @privacyConsentCollectItem2.

@@ -170,7 +170,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentCollectTitle => '수집하는 개인정보';
 
   @override
-  String get privacyConsentCollectItem1 => '사용자 핸들, 익명 계정 ID와 디바이스 ID';
+  String get privacyConsentCollectItem1 => '사용자 핸들과 이에 연결된 무작위 계정 ID 및 디바이스 ID';
 
   @override
   String get privacyConsentCollectItem2 =>

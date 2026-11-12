@@ -59,7 +59,7 @@
   "privacyConsentAgree": "위 개인정보 수집·이용에 동의합니다. (필수)\nI agree to the collection and use of personal information as described above. (Required)",
   "privacyConsentAccept": "동의하고 계속하기",
   "privacyConsentCollectTitle": "수집하는 개인정보",
-  "privacyConsentCollectItem1": "사용자 핸들, 익명 계정 ID와 디바이스 ID",
+  "privacyConsentCollectItem1": "사용자 핸들과 이에 연결된 무작위 계정 ID 및 디바이스 ID",
   "privacyConsentCollectItem2": "디바이스 정보 (플랫폼, 디바이스 이름)와 푸시 토큰 (푸시 알림에는 메시지 내용이 포함되지 않음)",
   "privacyConsentCollectItem3": "공개 신원 키와 프리키 (암호화 통신용)",
   "privacyConsentCollectItem4": "앱 내 연락처 목록: 추가한 계정 (연락처에 붙인 이름은 이 기기에만 저장)",

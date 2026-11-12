@@ -431,7 +431,6 @@ class FakeRelayClient extends VeilApiClient {
     return {'uploaded': uploaded.length, 'available': pool.length};
   }
 
-  @override
   // KeysService.rotateSignedPrekey: a v2 bundle signed by the device
   // identity, its timestamp within the last hour and at most ten minutes
   // ahead of the relay's clock, the same IKx, and a higher spkId than the

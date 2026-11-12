@@ -176,7 +176,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentCollectItem1 =>
-      'User handle, and anonymous account and device IDs';
+      'User handle, and the random account and device IDs linked to it';
 
   @override
   String get privacyConsentCollectItem2 =>

@@ -59,7 +59,7 @@
   "privacyConsentAgree": "I agree to the collection and use of personal information above. (Required)\nI agree to the collection and use of personal information as described above. (Required)",
   "privacyConsentAccept": "Agree and continue",
   "privacyConsentCollectTitle": "Information we collect",
-  "privacyConsentCollectItem1": "User handle, and anonymous account and device IDs",
+  "privacyConsentCollectItem1": "User handle, and the random account and device IDs linked to it",
   "privacyConsentCollectItem2": "Device info (platform, device label) and push token; push wake-ups carry no message content",
   "privacyConsentCollectItem3": "Public identity key and prekeys (for encrypted communication)",
   "privacyConsentCollectItem4": "Your in-app contact list: which accounts you added (the names you give them stay on this device)",

@@ -12,6 +12,9 @@ export const utf8 = (text) => encoder.encode(text);
 // lenient decode would turn them into replacement characters silently.
 export const fromUtf8 = (bytes) => strictDecoder.decode(bytes);
 
+// Lowercase hex, the form the API takes digests and shows fingerprints in.
+export const toHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
 export function concatBytes(parts) {
   let length = 0;
   for (const part of parts) length += part.length;

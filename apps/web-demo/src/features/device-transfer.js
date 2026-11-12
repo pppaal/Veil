@@ -22,9 +22,37 @@
 // approval given a rejected session stays a rejected session that keeps the
 // identity.
 
+import { decodeBase64Url } from '../core/base64url.js';
+import { concatBytes, toHex } from '../crypto/bytes.js';
+import { sha256 } from '../crypto/keys.js';
 import { AuthError } from '../platform/api-client.js';
 
 export const TRANSFER_POLL_MS = 2500;
+
+// The code the old device shows and the new one pastes: the session and its
+// token as unpadded base64 of their JSON.
+export const encodeTransferCode = ({ sessionId, transferToken }) =>
+  btoa(JSON.stringify({ sessionId, transferToken })).replace(/=+$/, '');
+
+// { sessionId, transferToken } from a pasted code, or null when it is not one.
+export function parseTransferCode(code) {
+  try {
+    const parsed = JSON.parse(atob(code + '='.repeat((4 - (code.length % 4)) % 4)));
+    return parsed?.sessionId && parsed.transferToken
+      ? { sessionId: parsed.sessionId, transferToken: parsed.transferToken }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// What the old device shows for a claim: SHA-256 over the auth key and the
+// identity key the new device will be trusted with, in groups of four hex
+// digits, computed the way the server computes claimantFingerprint.
+export async function transferFingerprint(subtle, { authPublicKey, publicIdentityKey }) {
+  const digest = await sha256(subtle, concatBytes([decodeBase64Url(authPublicKey), decodeBase64Url(publicIdentityKey)]));
+  return toHex(digest).replace(/(.{4})(?!$)/g, '$1 ');
+}
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 

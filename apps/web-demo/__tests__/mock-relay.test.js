@@ -4,7 +4,8 @@
 // would pass there unnoticed. Each case below mirrors an API rule:
 // KeysService.rotateSignedPrekey (contract C-SPK), PrekeysService.upload,
 // FileAbuseReportDto and CreateUploadTicketDto under the global
-// ValidationPipe ({ whitelist, forbidNonWhitelisted }).
+// ValidationPipe ({ whitelist, forbidNonWhitelisted }), MessagesService.markRead,
+// DeviceTransferService and SecretController.
 
 import { spawn } from 'node:child_process';
 import { webcrypto } from 'node:crypto';
@@ -26,6 +27,8 @@ const MOCK = fileURLToPath(new URL('../e2e/mock-server.mjs', import.meta.url));
 let relay;
 let token;
 let identity;
+let handle;
+let deviceId;
 
 async function call(path, { method = 'GET', body, auth = true } = {}) {
   const response = await fetch(BASE + path, {
@@ -56,28 +59,27 @@ beforeAll(async () => {
     }
   }
   identity = await generateIdentity(subtle);
-  const handle = `relay${PORT}`;
+  handle = `relay${PORT}`;
   const registered = await call('/v1/auth/register', {
     method: 'POST',
     auth: false,
     body: { handle, ...(await publishedKeys(subtle, identity)) },
   });
-  const { body: challenge } = await call('/v1/auth/challenge', {
-    method: 'POST',
-    auth: false,
-    body: { handle, deviceId: registered.body.deviceId },
-  });
-  const { body: tokens } = await call('/v1/auth/verify', {
-    method: 'POST',
-    auth: false,
-    body: {
-      challengeId: challenge.challengeId,
-      deviceId: registered.body.deviceId,
-      signature: await signChallenge(subtle, identity.edPrivKey, challenge.challenge),
-    },
-  });
-  token = tokens.accessToken;
+  deviceId = registered.body.deviceId;
+  token = (await signIn(handle, deviceId, identity)).body.accessToken;
 });
+
+// The challenge's refusal, or the verify response.
+async function signIn(who, device, keys) {
+  const asked = await call('/v1/auth/challenge', { method: 'POST', auth: false, body: { handle: who, deviceId: device } });
+  if (asked.status !== 200) return asked;
+  const challenge = asked.body;
+  return call('/v1/auth/verify', {
+    method: 'POST',
+    auth: false,
+    body: { challengeId: challenge.challengeId, deviceId: device, signature: await signChallenge(subtle, keys.edPrivKey, challenge.challenge) },
+  });
+}
 
 afterAll(() => {
   relay?.kill();
@@ -143,5 +145,75 @@ describe('the mock relay refuses what the API refuses', () => {
     }
     const attachmentId = webcrypto.randomUUID();
     expect(await ticket(attachmentId)).toMatchObject({ status: 200, body: { attachmentId } });
+  });
+
+  it('refuses a read receipt for a message the reader cannot see', async () => {
+    expect(await call(`/v1/messages/${webcrypto.randomUUID()}/read`, { method: 'POST', body: {} }))
+      .toMatchObject({ status: 404, body: { code: 'message_not_found' } });
+  });
+
+  it('keeps a one-time secret for a single read', async () => {
+    const create = (body) => call('/v1/s', { method: 'POST', auth: false, body });
+    expect(await create({ ciphertext: '' })).toMatchObject({ status: 400, body: { code: 'validation_failed' } });
+    expect(await create({ ciphertext: 'sealed', ttlSeconds: 10 })).toMatchObject({ status: 400 });
+    const { body: created } = await create({ ciphertext: 'sealed' });
+    expect(await call('/v1/s/not-a-uuid', { auth: false })).toMatchObject({ status: 400 });
+    expect(await call(`/v1/s/${created.id}`, { auth: false })).toMatchObject({ status: 200, body: { ciphertext: 'sealed' } });
+    expect(await call(`/v1/s/${created.id}`, { auth: false })).toMatchObject({ status: 404 });
+  });
+
+  // The new device proves its keys at claim and at completion, the old one
+  // approves in between, and completing revokes the old device.
+  it('runs a device transfer as DeviceTransferService does', async () => {
+    const init = (oldDeviceId) => call('/v1/device-transfer/init', { method: 'POST', body: { oldDeviceId } });
+    expect(await init(webcrypto.randomUUID())).toMatchObject({ status: 403, body: { code: 'device_forbidden' } });
+    const { body: session } = await init(deviceId);
+    const { sessionId, transferToken } = session;
+    const status = async () => (await call(`/v1/device-transfer/sessions/${sessionId}`)).body;
+    expect(await status()).toMatchObject({ status: 'pending', pendingClaim: null });
+
+    const fresh = await generateIdentity(subtle);
+    const published = await publishedKeys(subtle, fresh);
+    const claimBody = async (signer = fresh) => ({
+      sessionId,
+      transferToken,
+      newDeviceName: 'web-test',
+      platform: 'android',
+      ...published,
+      authProof: await signChallenge(subtle, signer.edPrivKey, `transfer-claim:${sessionId}:${transferToken}`),
+    });
+    const claim = async (body) => call('/v1/device-transfer/claim', { method: 'POST', auth: false, body });
+    expect(await claim({ ...(await claimBody()), transferToken: 'wrong' })).toMatchObject({ status: 401, body: { code: 'transfer_token_invalid' } });
+    expect(await claim(await claimBody(identity))).toMatchObject({ status: 401, body: { code: 'transfer_claim_invalid' } });
+    const { body: claimed } = await claim(await claimBody());
+    expect(claimed.claimantFingerprint).toMatch(/^([0-9a-f]{4} ){15}[0-9a-f]{4}$/);
+    expect(await status()).toMatchObject({ status: 'claimed', pendingClaim: { claimId: claimed.claimId, approvedAt: null } });
+
+    const complete = async (signer = fresh) => call('/v1/device-transfer/complete', {
+      method: 'POST',
+      auth: false,
+      body: {
+        sessionId,
+        transferToken,
+        claimId: claimed.claimId,
+        authProof: await signChallenge(subtle, signer.edPrivKey, `transfer-complete:${sessionId}:${claimed.claimId}:${transferToken}`),
+      },
+    });
+    expect(await complete()).toMatchObject({ status: 403, body: { code: 'transfer_approval_required' } });
+    const approve = (claimId) => call('/v1/device-transfer/approve', { method: 'POST', body: { sessionId, claimId } });
+    expect(await approve(webcrypto.randomUUID())).toMatchObject({ status: 403, body: { code: 'transfer_claim_required' } });
+    expect(await approve(claimed.claimId)).toMatchObject({ status: 200, body: { approved: true } });
+    expect(await complete(identity)).toMatchObject({ status: 401, body: { code: 'transfer_completion_invalid' } });
+    const { status: completedStatus, body: completion } = await complete();
+    expect(completedStatus).toBe(200);
+    expect(completion).toMatchObject({ handle, revokedDeviceId: deviceId });
+
+    // The old device is out: its token, and a fresh sign-in, are refused.
+    expect(await call('/v1/prekeys/count')).toMatchObject({ status: 401 });
+    expect(await signIn(handle, deviceId, identity)).toMatchObject({ status: 404, body: { code: 'active_device_not_found' } });
+    const signedIn = await signIn(handle, completion.newDeviceId, fresh);
+    expect(signedIn).toMatchObject({ status: 200, body: { deviceId: completion.newDeviceId } });
+    token = signedIn.body.accessToken;
+    expect(await complete()).toMatchObject({ status: 403, body: { code: 'transfer_session_inactive' } });
   });
 });

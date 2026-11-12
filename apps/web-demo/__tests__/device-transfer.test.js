@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 
-import { generateIdentity } from '../src/crypto/identity.js';
-import { storeTransferredIdentity, watchOldDeviceTransfer } from '../src/features/device-transfer.js';
-import { createApiClient } from '../src/platform/api-client.js';
+import { decodeBase64Url } from '../src/core/base64url.js';
+import { generateIdentity, signChallenge } from '../src/crypto/identity.js';
+import { ED25519 } from '../src/crypto/keys.js';
+import { createDeviceTransfer } from '../src/app/services/device-transfer.js';
+import { approvalChallenge, storeTransferredIdentity, watchOldDeviceTransfer } from '../src/features/device-transfer.js';
+import { ApiError, createApiClient } from '../src/platform/api-client.js';
 import { createSessionStore } from '../src/platform/session-store.js';
 import { wipeInPlace } from '../src/platform/wipe.js';
 import { memorySessionRepo } from './support/session-repo.js';
@@ -12,11 +15,25 @@ const { subtle } = webcrypto;
 const SESSION_ID = '3b9f6c1e-2a4d-4e8f-9b0a-1c2d3e4f5a6b';
 const CLAIM = { claimId: 'claim-1', claimantFingerprint: 'ab12 cd34', newDeviceName: 'web', platform: 'android' };
 
+// As Ed25519DeviceAuthVerifier: an Ed25519 signature by the raw auth key
+// over the challenge text, base64url.
+async function signedBy(authPublicKey, challenge, proof) {
+  try {
+    const key = await subtle.importKey('raw', decodeBase64Url(authPublicKey), ED25519, false, ['verify']);
+    return await subtle.verify(ED25519, key, decodeBase64Url(proof), new TextEncoder().encode(challenge));
+  } catch {
+    return false;
+  }
+}
+
 // The API as the old device sees it. complete() is the new device's
 // /device-transfer/complete: like DeviceTransferService.complete it marks
 // the session completed and revokes the old device in one step, after which
 // the JWT guard, /auth/refresh and /auth/challenge all refuse the old device.
-function fakeTransferApi() {
+// An approval is taken, as DeviceTransferService.approve takes it, only with
+// the old device's signature by oldDeviceAuthKey over the claim and its
+// fingerprint; anything else is a 401 invalid_device_signature.
+function fakeTransferApi({ oldDeviceAuthKey }) {
   const server = {
     deviceActive: true,
     completedAt: null,
@@ -53,8 +70,13 @@ function fakeTransferApi() {
         pendingClaim: server.claimed ? { ...CLAIM, approvedAt: server.approvedClaimId ? '2026-11-11T09:59:00.000Z' : null } : null,
       }])(request);
     },
-    '/device-transfer/approve': guarded(({ body }) => {
-      expect(body).toEqual({ sessionId: SESSION_ID, claimId: CLAIM.claimId });
+    '/device-transfer/approve': guarded(async ({ body }) => {
+      expect(Object.keys(body).sort()).toEqual(['approvalProof', 'claimId', 'sessionId']);
+      expect(body).toMatchObject({ sessionId: SESSION_ID, claimId: CLAIM.claimId });
+      const challenge = `transfer-approve:${SESSION_ID}:${CLAIM.claimId}:${CLAIM.claimantFingerprint}`;
+      if (!body.approvalProof || !(await signedBy(oldDeviceAuthKey, challenge, body.approvalProof))) {
+        return [401, { code: 'invalid_device_signature', message: 'Approval signature is invalid' }];
+      }
       server.approvedClaimId = body.claimId;
       return [200, { sessionId: SESSION_ID, claimId: body.claimId, approvedAt: '2026-11-11T09:59:00.000Z' }];
     }),
@@ -64,7 +86,7 @@ function fakeTransferApi() {
     const body = init.body ? JSON.parse(init.body) : undefined;
     server.calls.push(path);
     const route = routes[path];
-    const [code, payload] = route ? route({ body }) : [404, { message: 'no route' }];
+    const [code, payload] = route ? await route({ body }) : [404, { message: 'no route' }];
     return { ok: code >= 200 && code < 300, status: code, text: async () => JSON.stringify(payload) };
   });
   return { server, fetchImpl };
@@ -73,12 +95,13 @@ function fakeTransferApi() {
 // The old device: a signed-in session store and an API client whose
 // onSessionRejected asks the transfer first, the way app.js wires it.
 async function oldDevice() {
-  const api = fakeTransferApi();
+  const identity = await generateIdentity(subtle);
+  const api = fakeTransferApi({ oldDeviceAuthKey: identity.edPubB64u });
   const repo = memorySessionRepo({
     handle: 'alice',
     userId: 'user-1',
     deviceId: 'device-old',
-    ...(await generateIdentity(subtle)),
+    ...identity,
     accessToken: 'access-1',
     refreshToken: 'refresh-1',
   });
@@ -96,6 +119,8 @@ async function oldDevice() {
     transfer = watchOldDeviceTransfer({
       sessionId: SESSION_ID,
       authedApi: client.authedApi,
+      // As app.js signs it: with the auth key this device logs in with.
+      signApproval: async (challenge) => (await store.getDeviceCredentials()).sign(challenge),
       sleep: () => new Promise((resolve) => setTimeout(resolve, 0)),
       ...options,
     });
@@ -230,6 +255,44 @@ describe('watchOldDeviceTransfer', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(device.server.calls.length).toBeLessThanOrEqual(seen + 1);
     expect(transfer.approved).toBe(false);
+  });
+
+  it('signs the approval over the claim and the fingerprint the user compared', async () => {
+    const device = await oldDevice();
+    const signed = [];
+    const credentials = await device.store.getDeviceCredentials();
+    const transfer = device.watch({
+      signApproval: (challenge) => {
+        signed.push(challenge);
+        return credentials.sign(challenge);
+      },
+      onClaim: () => transfer.approve(),
+    });
+    device.server.claimed = true;
+
+    await vi.waitFor(() => expect(device.server.approvedClaimId).toBe(CLAIM.claimId));
+    expect(signed).toEqual([`transfer-approve:${SESSION_ID}:${CLAIM.claimId}:${CLAIM.claimantFingerprint}`]);
+    expect(approvalChallenge(SESSION_ID, CLAIM)).toBe(signed[0]);
+    transfer.cancel();
+  });
+
+  it('an approval signed by another key is refused and keeps the session', async () => {
+    const device = await oldDevice();
+    const stranger = await generateIdentity(subtle);
+    const onClaim = vi.fn();
+    const transfer = device.watch({
+      signApproval: (challenge) => signChallenge(subtle, stranger.edPrivKey, challenge),
+      onClaim,
+    });
+    device.server.claimed = true;
+    await vi.waitFor(() => expect(onClaim).toHaveBeenCalledTimes(1));
+
+    await expect(transfer.approve()).rejects.toMatchObject({ status: 401, code: 'invalid_device_signature' });
+    expect(transfer.approved).toBe(false);
+    expect(device.server.approvedClaimId).toBeNull();
+    expect(device.rejections).toEqual([]);
+    expect(device.store.getAccessToken()).toBe('access-1');
+    transfer.cancel();
   });
 
   describe('a failed approval', () => {
@@ -383,5 +446,114 @@ describe('storeTransferredIdentity', () => {
     await expect(storeTransferredIdentity({ completion: COMPLETION, keys, sessionStore }))
       .resolves.toEqual({ cleanupError: null });
     expect(stored).toMatchObject({ handle: 'bob', deviceId: 'device-new' });
+  });
+});
+
+// The new device's /device-transfer/complete (contract C-TRANSFER-RETRY).
+// The relay answers an identical retry of a completion that went through
+// with that completion, so a request that got no answer, or a 5xx, is sent
+// again as it was; only "not approved yet" is polled; any other refusal
+// stops, leaving the keys with the caller.
+describe('awaitCompletion', () => {
+  const TRANSFER_SESSION = '0d3c7a52-5f1e-4c8b-9a6d-2e7f8b9c0a1d';
+  const CLAIM_ID = '7e1f2a3b-4c5d-4e6f-8a9b-0c1d2e3f4a5b';
+  const COMPLETION = { sessionId: TRANSFER_SESSION, claimId: CLAIM_ID, newDeviceId: 'device-new', handle: 'alice' };
+  const notApproved = () => new ApiError(403, 'Old device approval is required before completion', 'transfer_approval_required');
+
+  // answers: what each /complete call gets, in order: a response body, or
+  // an error to throw.
+  async function newDevice(answers) {
+    const keys = await generateIdentity(subtle);
+    const requests = [];
+    const stack = {
+      api: vi.fn(async (path, { body }) => {
+        requests.push({ path, body });
+        const answer = answers.shift();
+        if (answer instanceof Error) throw answer;
+        if (answer === undefined) throw new Error('no more answers');
+        return answer;
+      }),
+    };
+    const transfer = createDeviceTransfer({ store: {}, stack, session: {}, sleep: async () => {} });
+    const claim = { sessionId: TRANSFER_SESSION, transferToken: 'token-1', claimId: CLAIM_ID, keys };
+    return { transfer, requests, claim };
+  }
+
+  async function expectOneProofThroughout({ requests, claim }) {
+    const bodies = requests.map((request) => JSON.stringify(request.body));
+    expect(new Set(bodies).size).toBe(1);
+    expect(requests.every((request) => request.path === '/device-transfer/complete')).toBe(true);
+    const { body } = requests[0];
+    expect(body).toMatchObject({ sessionId: TRANSFER_SESSION, transferToken: 'token-1', claimId: CLAIM_ID });
+    const challenge = `transfer-complete:${TRANSFER_SESSION}:${CLAIM_ID}:token-1`;
+    expect(await signedBy(claim.keys.edPubB64u, challenge, body.authProof)).toBe(true);
+  }
+
+  it('polls while the old device has not approved, then completes', async () => {
+    const device = await newDevice([notApproved(), notApproved(), COMPLETION]);
+    const onWaiting = vi.fn();
+
+    await expect(device.transfer.awaitCompletion(device.claim, { waiting: () => true, onWaiting })).resolves.toEqual(COMPLETION);
+    expect(onWaiting).toHaveBeenCalledTimes(2);
+    await expectOneProofThroughout(device);
+  });
+
+  it('sends the same request again after a network failure or a 5xx', async () => {
+    const device = await newDevice([
+      new TypeError('Failed to fetch'),
+      new ApiError(502, 'Bad Gateway'),
+      notApproved(),
+      new ApiError(500, 'oops'),
+      COMPLETION,
+    ]);
+    const onRetrying = vi.fn();
+
+    await expect(device.transfer.awaitCompletion(device.claim, { waiting: () => true, onWaiting: () => {}, onRetrying }))
+      .resolves.toEqual(COMPLETION);
+    expect(onRetrying).toHaveBeenCalledTimes(3);
+    expect(device.requests).toHaveLength(5);
+    await expectOneProofThroughout(device);
+  });
+
+  // The completion may have gone through on the request that got no answer:
+  // the keys are then the identity's only copy, so the caller giving up
+  // waiting for the approval does not end the retries.
+  it('keeps retrying a request that got no answer after waiting() turned false', async () => {
+    const device = await newDevice([new TypeError('Failed to fetch'), new ApiError(503, 'unavailable'), COMPLETION]);
+    let waiting = true;
+    const onRetrying = vi.fn(() => { waiting = false; });
+
+    await expect(device.transfer.awaitCompletion(device.claim, { waiting: () => waiting, onWaiting: () => {}, onRetrying }))
+      .resolves.toEqual(COMPLETION);
+    expect(device.requests).toHaveLength(3);
+  });
+
+  it('stops once waiting() is false and the relay says it is not approved', async () => {
+    const device = await newDevice([new TypeError('Failed to fetch'), notApproved()]);
+    let waiting = true;
+
+    await expect(device.transfer.awaitCompletion(device.claim, {
+      waiting: () => waiting,
+      onWaiting: () => {},
+      onRetrying: () => { waiting = false; },
+    })).resolves.toBeNull();
+    expect(device.requests).toHaveLength(2);
+  });
+
+  it.each([
+    [403, 'transfer_session_inactive'],
+    [403, 'transfer_claim_required'],
+    [401, 'transfer_completion_invalid'],
+    [401, 'transfer_token_invalid'],
+    [404, 'transfer_session_not_found'],
+    [429, undefined],
+  ])('stops on a %s %s without sending it again', async (status, code) => {
+    const device = await newDevice([new ApiError(status, 'refused', code), COMPLETION]);
+    const onWaiting = vi.fn();
+
+    await expect(device.transfer.awaitCompletion(device.claim, { waiting: () => true, onWaiting }))
+      .rejects.toMatchObject({ status, code });
+    expect(device.requests).toHaveLength(1);
+    expect(onWaiting).not.toHaveBeenCalled();
   });
 });

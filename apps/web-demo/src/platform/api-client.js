@@ -34,6 +34,18 @@ const AUTH_REJECTION_STATUSES = new Set([400, 401, 403, 404]);
 
 export const isAuthRejection = (error) => error instanceof ApiError && AUTH_REJECTION_STATUSES.has(error.status);
 
+// 401 codes with which the API refuses a proof the request itself carries
+// (a device-transfer approval's signature, a step-up challenge), not the
+// bearer token: the session is fine, and recovering it would only send the
+// same proof again and then end a working session.
+const PROOF_REFUSAL_CODES = new Set(['invalid_device_signature', 'challenge_invalid']);
+const isTokenRejection = (error) => error?.status === 401 && !PROOF_REFUSAL_CODES.has(error.code);
+
+// The most the learned offset may move a disappearing-message expiry
+// (expiryNow): the clock it is stamped and judged on follows the relay's,
+// but a relay lying in its Date header shifts a sealed expiry by no more.
+export const MAX_EXPIRY_CORRECTION_MS = 60 * 60 * 1000;
+
 // now() -> this device's clock (ms).
 export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejected, now = Date.now }) {
   let recovery = null;
@@ -132,7 +144,7 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
     try {
       return await request(path, { ...options, token });
     } catch (error) {
-      if (error?.status !== 401) throw error;
+      if (!isTokenRejection(error)) throw error;
     }
     const current = tokenStore.getAccessToken();
     // The session ended while this request was in flight. Recovering now
@@ -143,7 +155,7 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
       try {
         return await request(path, { ...options, token: fresh });
       } catch (error) {
-        if (error?.status !== 401) throw error;
+        if (!isTokenRejection(error)) throw error;
       }
     }
     await rejectSession(fresh ?? token);
@@ -156,6 +168,10 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
     login,
     // This device's clock corrected to the server's, as far as learned.
     serverNow: () => now() + clockOffsetMs,
+    // The same with the correction clamped to MAX_EXPIRY_CORRECTION_MS: the
+    // clock disappearing-message expiries are stamped and judged on
+    // (src/core/expiry.js expiryNow).
+    expiryNow: () => now() + Math.min(MAX_EXPIRY_CORRECTION_MS, Math.max(-MAX_EXPIRY_CORRECTION_MS, clockOffsetMs)),
   };
 }
 

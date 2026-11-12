@@ -158,6 +158,45 @@ describe('peer bindings', () => {
     expect(bindings.get('c-2')).toBeNull();
   });
 
+  // Our own handle names one account, ours: no honest server lists another
+  // account under it.
+  it('hold another account listed under our own handle', async () => {
+    let self = ALICE;
+    const bindings = createPeerBindings(createMemoryKv('conversationId'), { self: () => self });
+    await bindings.load();
+    const posing = { userId: 'u-mallory', handle: 'alice' };
+    expect(bindings.hold('c-new', posing)).toEqual({ reason: HoldReason.OWN_HANDLE });
+    expect(bindings.hold('c-new', { userId: 'u-mallory', handle: 'ALICE' })).toEqual({ reason: HoldReason.UNISSUED_HANDLE });
+    expect(bindings.hold('c-new', MALLORY)).toBeNull();
+    expect(bindings.hold('c-new', BOB)).toBeNull();
+    // A note to self is ours, not another account's.
+    expect(bindings.hold('c-new', ALICE)).toBeNull();
+    // The verifier admits nothing for it, and binds nothing.
+    const trust = { admit: vi.fn(async () => true) };
+    const verifyIdentity = createConversationVerifier({ bindings, trust, peerOf: () => posing });
+    expect(await verifyIdentity({ conversationId: 'c-new', remoteDeviceId: 'd-mallory', identityKey: key })).toBe(false);
+    expect(trust.admit).not.toHaveBeenCalled();
+    expect(bindings.get('c-new')).toBeNull();
+    // Signed out, there is no own handle to hold for.
+    self = null;
+    expect(bindings.hold('c-new', posing)).toBeNull();
+    // Once the user chose to talk to the account, it is bound and not held.
+    self = ALICE;
+    await bindings.bind('c-new', posing);
+    expect(bindings.hold('c-new', posing)).toBeNull();
+  });
+
+  it('leave a session listed under our own handle unbound, and so held', async () => {
+    const bindings = createPeerBindings(createMemoryKv('conversationId'), { self: () => ALICE });
+    await bindings.load();
+    const posing = { userId: 'u-mallory', handle: 'alice' };
+    const listed = [{ id: 'c-1', type: 'direct', members: [ALICE, posing] }, { id: 'c-2', type: 'direct', members: [ALICE, BOB] }];
+    await bindings.bindSessions(listed, { selfUserId: 'u-alice', hasSession: async () => true });
+    expect(bindings.get('c-1')).toBeNull();
+    expect(bindings.hold('c-1', posing)).toEqual({ reason: HoldReason.OWN_HANDLE });
+    expect(bindings.get('c-2')).toEqual(BOB);
+  });
+
   it('leave a session listed under a handle no honest server issues unbound, and so held', async () => {
     const bindings = createPeerBindings(createMemoryKv('conversationId'));
     await bindings.load();

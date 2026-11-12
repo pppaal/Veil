@@ -33,6 +33,10 @@ test.describe('one-time secret links', () => {
     await expect(viewer.locator('#revealText')).toHaveText('the vault code is 4711');
     await expect(viewer.locator('#viewTitle')).toHaveText('비밀 메시지');
     expect(new URL(viewer.url()).hash).toBe('');
+    // A production relay serves only the viewer under /demo/, so the page
+    // points at the public site, never at the demo.
+    await expect(viewer.locator('.cta a')).toHaveAttribute('href', 'https://pppaal.github.io/Veil/');
+    await expect(viewer.locator('.cta a')).toHaveAttribute('rel', 'noreferrer');
 
     const late = await recipient.newPage();
     watchErrors(late, errors);

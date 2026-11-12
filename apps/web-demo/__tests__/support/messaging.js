@@ -56,7 +56,7 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
       onChange: (changed) => endpoint.keyChanges.push(changed),
     });
     await endpoint.trust.load();
-    endpoint.bindings = createPeerBindings(endpoint.bindingKv);
+    endpoint.bindings = createPeerBindings(endpoint.bindingKv, { self: () => ({ userId, handle }) });
     await endpoint.bindings.load();
     endpoint.peerOf = (conversationId) => endpoint.bindings.get(conversationId) ?? endpoint.peers.get(conversationId) ?? null;
     endpoint.verifyIdentity = createConversationVerifier({ bindings: endpoint.bindings, trust: endpoint.trust, peerOf: endpoint.peerOf });

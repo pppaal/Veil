@@ -14,8 +14,9 @@
 // KeysService.rotateSignedPrekey checks it (signature, the spkTs window of an
 // hour back and 10 minutes ahead of server time, the IKx pin, an increasing
 // spkId), and a device transfer as DeviceTransferService runs it (token,
-// signed claim and completion proofs, first claim wins, approval first, the
-// old device revoked with the transfer). A break between the demo and the
+// signed claim, approval and completion proofs, first claim wins, approval
+// first, the old device revoked with the transfer, an identical completion
+// retry answered as the first). A break between the demo and the
 // API then fails here first.
 //
 // Test hooks, under /__test/:
@@ -45,6 +46,9 @@
 //                                       a revocation on the server would: its
 //                                       tokens and sockets stop working and it
 //                                       can no longer sign in
+//   POST /__test/lose-completion        the next device transfer that
+//                                       completes answers 503, as if its
+//                                       answer were lost: the transfer stands
 //   GET  /__test/reports                the abuse reports filed so far
 //
 // Usage: node apps/web-demo/e2e/mock-server.mjs   (VEIL_MOCK_PORT, default 4317)
@@ -177,13 +181,14 @@ function reset() {
     messages: [],
     blobs: new Map(),
     receipts: new Set(), // `${messageId}:${userId}` once that member read it
-    transfers: new Map(), // id -> { id, userId, oldDeviceId, token, expiresAt, completedAt, ended, claim }
+    transfers: new Map(), // id -> { id, userId, oldDeviceId, token, expiresAt, completedAt, ended, claim, newDeviceId }
     secrets: new Map(), // id -> { ciphertext, expiresAt }
     reports: [],
     shuffle: false,
     tamper: false,
     timerSeconds: null,
     relayExpiry: true,
+    loseCompletion: false,
   };
 }
 reset();
@@ -484,6 +489,27 @@ function ownTransfer({ user, device }, sessionId) {
 
 const TRANSFER_TOKEN = matches(/^[A-Za-z0-9._-]{1,256}$/);
 
+const completionOf = (transfer, claimId) => ({
+  sessionId: transfer.id,
+  claimId,
+  newDeviceId: transfer.newDeviceId,
+  revokedDeviceId: transfer.oldDeviceId,
+  preferredDeviceId: transfer.newDeviceId,
+  handle: db.users.get(transfer.userId).handle,
+  completedAt: transfer.completedAt,
+});
+
+// As DeviceTransferService.replayCompletion: only for the device the
+// transfer created, while it is active, and with its proof.
+function replayCompletion(transfer, { sessionId, transferToken, claimId, authProof }) {
+  const device = db.devices.get(transfer.newDeviceId);
+  if (!device || device.revokedAt) throw new HttpError(403, 'transfer_session_inactive', 'Transfer session already completed');
+  if (!signedBy(device.authPublicKey, `transfer-complete:${sessionId}:${claimId}:${transferToken}`, authProof)) {
+    throw new HttpError(401, 'transfer_completion_invalid', 'New device completion proof is invalid');
+  }
+  return completionOf(transfer, claimId);
+}
+
 const routes = [
   ['POST', /^\/__test\/reset$/, () => {
     reset();
@@ -515,6 +541,10 @@ const routes = [
   }],
   ['POST', /^\/__test\/revoke$/, (req) => {
     revokeDevice(activeDevice(userByHandle(req.body.handle)));
+    return {};
+  }],
+  ['POST', /^\/__test\/lose-completion$/, () => {
+    db.loseCompletion = true;
     return {};
   }],
   ['GET', /^\/__test\/reports$/, () => db.reports],
@@ -759,6 +789,7 @@ const routes = [
       completedAt: null,
       ended: null,
       claim: null,
+      newDeviceId: null,
     };
     db.transfers.set(transfer.id, transfer);
     return { sessionId: transfer.id, transferToken: transfer.token, expiresAt: new Date(transfer.expiresAt).toISOString() };
@@ -819,12 +850,19 @@ const routes = [
       expiresAt: new Date(transfer.expiresAt).toISOString(),
     };
   }],
+  // The approval is signed by the old device's auth key over the claim and
+  // its fingerprint (buildApprovalChallenge); every relay requires it.
   ['POST', /^\/v1\/device-transfer\/approve$/, (req) => {
     const session = authenticate(req);
-    validateBody(req.body, { sessionId: uuid(), claimId: uuid() });
+    validateBody(req.body, { sessionId: uuid(), claimId: uuid(), approvalProof: optional(stringUpTo(1024)) });
     const transfer = activeTransfer(ownTransfer(session, req.body.sessionId).id);
     if (transfer.claim?.claimId !== req.body.claimId) {
       throw new HttpError(403, 'transfer_claim_required', 'A matching new-device claim is required before approval');
+    }
+    if (!req.body.approvalProof) throw new HttpError(401, 'invalid_device_signature', 'The old device must sign the approval');
+    const challenge = `transfer-approve:${transfer.id}:${transfer.claim.claimId}:${transfer.claim.claimantFingerprint}`;
+    if (!signedBy(session.device.authPublicKey, challenge, req.body.approvalProof)) {
+      throw new HttpError(401, 'invalid_device_signature', 'Approval signature is invalid');
     }
     transfer.claim.approvedAt = now();
     return { sessionId: transfer.id, claimId: transfer.claim.claimId, approved: true };
@@ -832,6 +870,10 @@ const routes = [
   ['POST', /^\/v1\/device-transfer\/complete$/, (req) => {
     validateBody(req.body, { sessionId: uuid(), transferToken: TRANSFER_TOKEN, claimId: uuid(), authProof: stringUpTo(1024) });
     const { sessionId, transferToken, claimId, authProof } = req.body;
+    const done = db.transfers.get(sessionId);
+    // A retry of a completion that already went through is answered as the
+    // first one was, and changes nothing.
+    if (done?.newDeviceId && transferToken === done.token) return replayCompletion(done, req.body);
     const transfer = activeTransfer(sessionId);
     checkTransferToken(transfer, transferToken);
     const { claim } = transfer;
@@ -854,16 +896,12 @@ const routes = [
     db.devices.set(device.id, device);
     revokeDevice(db.devices.get(transfer.oldDeviceId));
     user.activeDeviceId = device.id;
-    Object.assign(transfer, { completedAt: now(), claim: null });
-    return {
-      sessionId,
-      claimId,
-      newDeviceId: device.id,
-      revokedDeviceId: transfer.oldDeviceId,
-      preferredDeviceId: device.id,
-      handle: user.handle,
-      completedAt: transfer.completedAt,
-    };
+    Object.assign(transfer, { completedAt: now(), claim: null, newDeviceId: device.id });
+    if (db.loseCompletion) {
+      db.loseCompletion = false;
+      throw new HttpError(503, 'service_unavailable', 'Service unavailable');
+    }
+    return completionOf(transfer, claimId);
   }],
 
   // SecretController: public, opaque ciphertext, read once.

@@ -6,6 +6,7 @@
 // is a non-extractable CryptoKey.
 
 import { decodeBase64Url } from '../core/base64url.js';
+import { expiryNow, setExpiryClock } from '../core/expiry.js';
 import { isLegacyIdentity } from '../crypto/identity.js';
 import { createKeySource } from '../crypto/keys.js';
 import { createLegacyV1DevReader } from '../crypto/legacy-v1dev.js';
@@ -83,6 +84,9 @@ export function createMessagingStack({ store, hooks }) {
     onSessionRejected: () => hooks.onSessionRejected(),
   });
   const { authedApi } = apiClient;
+  // Disappearing-message expiries are stamped and judged on the relay's
+  // clock, corrected by an hour at most (src/core/expiry.js).
+  setExpiryClock(apiClient.expiryNow);
 
   const locks = createLocks(navigator.locks);
   const keySource = createKeySource(crypto);
@@ -92,7 +96,7 @@ export function createMessagingStack({ store, hooks }) {
   // identity for it (src/domain/peer-bindings.js): the peer sessions, pins,
   // safety numbers and every view are about is the bound one, and only a
   // conversation not bound yet follows the relay's listing, by userId.
-  const bindings = createPeerBindings(kv('direct-peers'));
+  const bindings = createPeerBindings(kv('direct-peers'), { self: () => store.state.me });
   const { peerOf, shownPeer } = createPeerResolver({
     bindings,
     conversationOf: (conversationId) => store.conversation(conversationId),
@@ -121,7 +125,8 @@ export function createMessagingStack({ store, hooks }) {
     }),
     locks,
     // Signed prekeys are stamped and aged on the server's clock (contract
-    // C-SPK); the clock of everything else stays local.
+    // C-SPK), and expiries on the expiry clock (secure, below); the clock of
+    // everything else stays local.
     keyring: createLocalKeyring({ loadIdentity: () => sessionStore.reload(), opkKv: oneTimePrekeyKv, clock: apiClient.serverNow }),
     clock: Date.now,
     verifyIdentity,
@@ -169,7 +174,7 @@ export function createMessagingStack({ store, hooks }) {
     getSelf,
     getPeer: peerOf,
     admitIdentity: verifyIdentity,
-    clock: Date.now,
+    clock: expiryNow,
   });
 
   // Keeps the directory able to start sessions with us (src/crypto/prekeys.js),

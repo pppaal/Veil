@@ -3,6 +3,24 @@
 // may bring an expiry forward but never push it back, and once it has passed
 // nothing of the message stays on this device (src/domain/ingest.js,
 // src/platform/content-store.js).
+//
+// An expiry is an absolute time, so it is stamped and judged on one clock,
+// expiryNow: this device's clock corrected toward the relay's, by an hour at
+// most (src/platform/api-client.js expiryNow). On the raw local clock, a
+// sender whose clock runs slow would seal an expiry already past for the
+// relay and the recipient, and a recipient whose clock runs fast would
+// retire messages before they were shown. The messaging stack sets it once
+// (setExpiryClock); until then it is the local clock.
+
+let expiryClock = () => Date.now();
+
+// Now (ms) on the expiry clock.
+export const expiryNow = () => expiryClock();
+
+// clock() -> ms.
+export function setExpiryClock(clock) {
+  expiryClock = clock;
+}
 
 // The earlier of two expiries in ms; either may be null.
 export function earlierExpiry(a, b) {

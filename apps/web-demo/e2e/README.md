@@ -15,7 +15,8 @@ the upgrade and the demo runs in polling mode. Playwright starts it;
 nothing else is needed. It refuses what the real API refuses on the routes
 the demo uses, with the same status and error code (request bodies as the
 API's DTOs, a signed prekey as `KeysService` checks it, a device transfer
-as `DeviceTransferService` runs it); `__tests__/mock-relay.test.js` pins
+as `DeviceTransferService` runs it, its signed approval and the identical
+completion retry it answers included); `__tests__/mock-relay.test.js` pins
 those refusals.
 
 ## characterization: the whole app through its UI
@@ -29,7 +30,8 @@ read receipts, history paging and local history deletion (`messaging`),
 pushes, read receipts and typing with the realtime gateway on
 (`realtime`), image and file round trips (`attachments`), safety numbers
 and identity changes accepted and declined (`trust`), device transfer onto
-a browser that holds another identity (`transfer`), one-time secret links
+a browser that holds another identity, through a lost completion answer
+and a refused completion (`transfer`), one-time secret links
 (`secret-link`) and the KakaoTalk import (`kakao-import`). They were
 written against the monolithic `app.js` and passed there before it was
 split (docs/web-architecture.md), so they pin what the split had to keep.

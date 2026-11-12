@@ -541,6 +541,56 @@ test.describe('deleted and expired messages in the browser', () => {
   });
 });
 
+// A disappearing message's expiry is an absolute time, stamped by the sender
+// and judged by the recipient, each on its clock corrected toward the
+// relay's (src/core/expiry.js). Here the sender's clock runs 40 s slow and
+// the recipient's 40 s fast, and the relay sets no outer expiry: on the raw
+// clocks the 20 s message would be past on arrival and never shown.
+test.describe('disappearing messages between clocks that disagree', () => {
+  const stamp = Date.now().toString(36).slice(-6);
+  let slow: Device;
+  let fast: Device;
+
+  async function registerSkewed(browser: Browser, handle: string, skewMs: number): Promise<Device> {
+    const context = await browser.newContext();
+    await context.clock.install({ time: Date.now() + skewMs });
+    const page = await context.newPage();
+    await page.goto('./');
+    await page.fill('#reg-handle', handle);
+    await page.click('#reg-btn');
+    await expect(page.locator('#app')).toBeVisible();
+    return { handle, context, page };
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    slow = await registerSkewed(browser, `slow${stamp}`, -40_000);
+    fast = await registerSkewed(browser, `fast${stamp}`, 40_000);
+  });
+
+  test.afterAll(async () => {
+    await relay('/__test/timer', { seconds: null });
+    await slow?.context.close();
+    await fast?.context.close();
+  });
+
+  test('shows the message for its timer, then removes it', async () => {
+    await startChat(slow, fast);
+    expect(await slow.page.evaluate(() => Date.now())).toBeLessThan(Date.now() - 30_000);
+    expect(await fast.page.evaluate(() => Date.now())).toBeGreaterThan(Date.now() + 30_000);
+    await relay('/__test/timer', { seconds: 20, relayExpiry: false });
+    // The sender learns the timer from the conversation list it polls.
+    await slow.page.waitForTimeout(6_000);
+    await send(slow, 'skewed timer note');
+    await relay('/__test/timer', { seconds: null });
+
+    await expect.poll(() => bubbleTexts(fast), { timeout: 15_000 }).toContain('skewed timer note');
+    for (const device of [slow, fast]) {
+      await expect.poll(() => bubbleTexts(device), { timeout: 45_000 }).not.toContain('skewed timer note');
+    }
+  });
+});
+
 // Two tabs of one browser profile share the session record in IndexedDB,
 // each with its own copy in memory: prekey maintenance in one and token
 // renewals in the other must not revert each other's fields. Each tab runs

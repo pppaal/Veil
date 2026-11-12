@@ -126,6 +126,11 @@
   "unissuedHandle.confirmBody": "No VEIL account can have this name: the list this device received was altered to show it, perhaps to look like someone you know. Continue only if you confirmed with them another way (in person, a call) that this account is theirs.",
   "unissuedHandle.composerFrozen": "A name VEIL never gives out: review it above",
   "unissuedHandle.sidebar": "⚠️ a name VEIL never gives out",
+  "ownHandle.banner": "This conversation is listed under your own name, @{handle}, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is opened or sent here until you choose to talk to this account.",
+  "ownHandle.confirmTitle": "Talk to this other @{handle}?",
+  "ownHandle.confirmBody": "No other VEIL account can have your name: the server showed this account under it. Continue only if you confirmed another way (in person, a call) whose account this is.",
+  "ownHandle.composerFrozen": "Another account under your own name: review it above",
+  "ownHandle.sidebar": "⚠️ another account under your name",
   "safety.verifiedBadge": "✓ verified",
   "safety.verifiedBadgeTitle": "You compared this chat's safety number"
 }

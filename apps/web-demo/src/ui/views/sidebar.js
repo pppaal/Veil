@@ -2,6 +2,7 @@
 // the imported Kakao archives below it.
 
 import { t } from '../../../i18n/i18n.js';
+import { expiryNow } from '../../core/expiry.js';
 import { matchesSearch, previewMessage } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
 import { previewLabel } from '../../domain/ingest.js';
@@ -62,7 +63,7 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
       );
       return;
     }
-    const now = Date.now();
+    const now = expiryNow();
     list.replaceChildren(...filtered.map((conv) => conversationRow(conv, now)), ...archiveRows());
   }
 

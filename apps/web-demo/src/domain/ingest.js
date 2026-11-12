@@ -18,7 +18,7 @@
 // this device kept of it is retired there and then (options.retire): a
 // tombstone fetched by a history poll purges as surely as a realtime event.
 
-import { effectiveExpiry, isPast } from '../core/expiry.js';
+import { effectiveExpiry, expiryNow, isPast } from '../core/expiry.js';
 import { serializeMessageForCache } from '../platform/persist.js';
 import { createMediaHandle } from './media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from './payload.js';
@@ -45,8 +45,8 @@ const GONE_KINDS = new Set(['cleared', 'expired']);
 // same message: when the ciphertext and everything its decryption is bound
 // to are unchanged, its content is reused instead of opening it again, which
 // keeps blob URLs alive across refreshes. options.now is the time expiries
-// are judged at.
-export async function ingestMessage(raw, { open, retire, media, previous = null, now = Date.now() }) {
+// are judged at (src/core/expiry.js expiryNow).
+export async function ingestMessage(raw, { open, retire, media, previous = null, now = expiryNow() }) {
   const envelope = serializeMessageForCache(raw);
   if (raw.deletedAt) {
     // A view that is already a tombstone was retired when it became one.
@@ -101,20 +101,20 @@ export function isTextKind(kind) {
 // Whether nothing of this message may show any more: it has expired (by
 // now, even before a sweep turns it into an 'expired' view) or is history
 // this device deleted.
-export function isGone(message, now = Date.now()) {
+export function isGone(message, now = expiryNow()) {
   return GONE_KINDS.has(message.kind) || isPast(message.expiresAtMs, now);
 }
 
 // Whether a conversation panel shows this message as a bubble. A reaction
 // never is one: it changes what its target shows.
-export function isShown(message, now = Date.now()) {
+export function isShown(message, now = expiryNow()) {
   return message.kind !== 'reaction' && !isGone(message, now);
 }
 
 // What the sidebar and notifications may show: the text of a text message,
 // a kind label for everything else, never a payload, and nothing at all for
 // a message that is gone.
-export function previewLabel(message, now = Date.now()) {
+export function previewLabel(message, now = expiryNow()) {
   if (isGone(message, now)) return '';
   if (isTextKind(message.kind) || message.kind === 'system') {
     const text = message.displayText;

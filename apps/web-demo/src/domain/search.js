@@ -1,9 +1,10 @@
 // In-conversation search over what the panel shows.
 
+import { expiryNow } from '../core/expiry.js';
 import { isShown, isTextKind } from './ingest.js';
 
 // The shown text messages whose text contains `query`, case-insensitively.
-export function searchMatches(messages, query, now = Date.now()) {
+export function searchMatches(messages, query, now = expiryNow()) {
   const wanted = query.trim().toLowerCase();
   if (!wanted) return [];
   return messages.filter((message) =>

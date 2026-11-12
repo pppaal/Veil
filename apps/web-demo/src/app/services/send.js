@@ -2,9 +2,11 @@
 // and deletions. Content is sealed end to end (src/features/sender.js) and
 // shown at once as a pending bubble, then delivered; a send that cannot go
 // out now waits, sealed, in the outbound queue. Under a disappearing timer
-// its expiry is sealed in with it.
+// its expiry is sealed in with it, stamped on the expiry clock
+// (src/core/expiry.js expiryNow), which is the relay's give or take an hour.
 
 import { t } from '../../../i18n/i18n.js';
+import { expiryNow } from '../../core/expiry.js';
 import { MESSAGE_MAX_CHARS } from '../../domain/composer-text.js';
 import { disappearingExpiry, textContent } from '../../domain/content.js';
 import { isTextKind } from '../../domain/ingest.js';
@@ -47,7 +49,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
     local = null,
     onSealed = () => {},
   } = {}) {
-    const content = { ...unsealed, expiresAt: disappearingExpiry(conv.disappearingTimerSeconds, Date.now()) };
+    const content = { ...unsealed, expiresAt: disappearingExpiry(conv.disappearingTimerSeconds, expiryNow()) };
     const markFailed = (message) => {
       message._status = 'failed';
       store.notify('panels');
@@ -145,7 +147,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
           target: messageId,
           emoji,
           current,
-          expiresAt: disappearingExpiry(conv?.disappearingTimerSeconds, Date.now()),
+          expiresAt: disappearingExpiry(conv?.disappearingTimerSeconds, expiryNow()),
         });
         // A queued reaction shows once the outbound queue delivers it.
         if (!message) return;

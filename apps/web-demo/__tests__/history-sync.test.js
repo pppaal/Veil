@@ -214,12 +214,13 @@ describe('a direct conversation bound to its peer', () => {
 
 // A new conversation is not bound yet: its listing names its peer. The
 // relay puts our own entry in it first, under the handle of a contact this
-// device is bound to, and lists the new account under its own handle or
-// under the contact's. The conversation is never shown under the contact's
-// handle for anyone but the contact: it shows the new account's own handle,
-// or is held when that account is listed under the contact's.
+// device is bound to, and lists the new account under its own handle, under
+// the contact's, or under ours. The conversation is never shown under the
+// contact's handle for anyone but the contact: it shows the new account's
+// own handle, or is held when that account is listed under the contact's or
+// under ours.
 describe('a new conversation whose list puts our own entry under a known handle', () => {
-  for (const listedAs of ['mallory', 'bob']) {
+  for (const listedAs of ['mallory', 'bob', 'alice']) {
     it(`is shown under its peer's handle as listed, and held when that is a known one (Mallory listed as @${listedAs})`, async () => {
       const { alice, directory, relay, store, stack, sync } = await aliceSync();
       await sendText(alice, 'hello bob');
@@ -252,10 +253,18 @@ describe('a new conversation whose list puts our own entry under a known handle'
         expect(labelled(store, stack, WITH_MALLORY)).toEqual([['mallory', ['bob here, new phone, send the code']]]);
         expect(alice.bindings.get(WITH_MALLORY)).toEqual(MALLORY);
         expect(pins).toEqual(['d-mallory']);
-      } else {
+      } else if (listedAs === 'bob') {
         // Shown under Bob's handle, so held: nothing opened, pinned or bound.
         expect(alice.bindings.hold(WITH_MALLORY, stack.peerOf(WITH_MALLORY))).toEqual({ reason: HoldReason.OTHER_ACCOUNT, binding: BOB });
         expect(new Set(shownAsBob)).toEqual(new Set([CONVERSATION, WITH_MALLORY]));
+        expect(texts(store, WITH_MALLORY)).not.toContain('bob here, new phone, send the code');
+        expect(store.messagesOf(WITH_MALLORY).map((message) => message.kind)).toEqual(['locked']);
+        expect(alice.bindings.get(WITH_MALLORY)).toBeNull();
+        expect(pins).toEqual([]);
+      } else {
+        // Shown under Alice's own handle, so held just the same.
+        expect(alice.bindings.hold(WITH_MALLORY, stack.peerOf(WITH_MALLORY))).toEqual({ reason: HoldReason.OWN_HANDLE });
+        expect(shownAsBob).toEqual([CONVERSATION]);
         expect(texts(store, WITH_MALLORY)).not.toContain('bob here, new phone, send the code');
         expect(store.messagesOf(WITH_MALLORY).map((message) => message.kind)).toEqual(['locked']);
         expect(alice.bindings.get(WITH_MALLORY)).toBeNull();

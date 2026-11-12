@@ -132,7 +132,8 @@ unit test in `__tests__/`.
 1. `views/composer.js` takes the text on Enter or the send button and calls
    `send.sendText(convId, text)`.
 2. `services/send.js` seals it with the disappearing timer's expiry inside
-   (`features/sender.js` -> `features/secure-messaging.js` `seal`): a
+   (`features/sender.js` -> `features/secure-messaging.js` `seal`),
+   stamped on the expiry clock (below): a
    session is started from the authenticated key directory if there is
    none, the peer's key checked against its pin first, and our own content
    is put in the decrypt-once store before anything is encrypted.
@@ -171,6 +172,15 @@ unit test in `__tests__/`.
    the decrypt-once store or decrypts exactly once and stores the result
    before the session commits. Deleted and expired messages are retired
    there and then.
+   Expiries are absolute times (contract C4), stamped by the sender and
+   judged here, so both happen on one clock, `core/expiry.js` `expiryNow`:
+   this device's clock corrected toward the relay's by the offset of the
+   latest HTTP `Date` header, clamped to an hour (`api-client.js`
+   `expiryNow`, set by `messaging-stack.js`). On the raw local clock a
+   sender running slow would seal an expiry already past for its peers,
+   and a recipient running fast would retire a message unseen; a relay
+   lying in its `Date` header moves an expiry by an hour at most. Signed
+   prekeys use the unclamped offset (`serverNow`, contract C-SPK).
 3. The view goes into the store, the conversation's last message moves,
    and `sidebar` / `panels` redraw. A hidden tab counts it in the title
    and, with permission, shows an OS notification whose content follows the
@@ -196,8 +206,11 @@ unit test in `__tests__/`.
   and a list that names another user, or turns it into a group, changes
   only its last message and timer (`history-sync.js` `adoptConversations`).
   A conversation not bound yet is held (`peer-bindings.js` `hold`) while
-  its listed handle is bound to another account, or is one no honest server
-  issues (`domain/handles.js`: the server's register grammar, 3 to 32 of
+  its listed handle is bound to another account, is this device's own
+  handle on another account (`OWN_HANDLE`: the server issues each handle to
+  one account, so a list that puts our own handle on someone else is
+  lying), or is one no honest server issues (`domain/handles.js`: the
+  server's register grammar, 3 to 32 of
   a-z, 0-9, '.' and '_', which `__tests__/handles.test.js` keeps equal to
   `register.dto.ts`). A hostile relay can list a lookalike of a known
   handle (a zero-width space, a Cyrillic letter, a trailing space) that
@@ -242,16 +255,30 @@ unit test in `__tests__/`.
   the change are opened again.
 - The UI only asks and shows: `views/key-change-banner.js` (what changed,
   decline / review / compare; a held conversation, another account under
-  a known handle or under one no server issues, and talking to it after a
-  confirmation), `views/safety-dialog.js` (the
+  a known handle, under our own or under one no server issues, and talking
+  to it after a confirmation), `views/safety-dialog.js` (the
   number, the verification codes, mark verified), `views/chat-view.js`
   (the verified mark in the header) and `views/composer.js` (the frozen
   composer and why: a group, a legacy identity, a held conversation),
   `views/sidebar.js` (the changed-key and held-conversation markers).
 - Device transfer trust: both screens show the fingerprint the server
   computes over the new device's auth and identity keys; the old device
-  approves only after the user compared them, and the new device asks
-  before replacing an identity stored in the browser.
+  approves only after the user compared them, signing the approval with the
+  auth key it logs in with over the claim and that fingerprint
+  (`transfer-approve:<sessionId>:<claimId>:<fingerprint>`, contract
+  C-PROOF), so a bearer token alone cannot approve; a 401 refusing that
+  signature is about the request, not the session, and signs nobody out
+  (`api-client.js`). The new device asks before replacing an identity
+  stored in the browser, and completes with one signed request sent as
+  often as needed (contract C-TRANSFER-RETRY, `services/device-transfer.js`
+  `awaitCompletion`): it polls while the relay answers
+  `transfer_approval_required`; after a network failure or a 5xx it sends
+  the same request again even if the dialog was closed, since that
+  completion may have gone through and the relay answers an identical retry
+  with it; any other refusal stops, and the claim keeps its keys, offered
+  again in the dialog, until a new code is claimed. A completion's keys are
+  saved before the first sign-in, and kept in the tab until a save
+  succeeds.
 
 ## Testing
 
@@ -270,6 +297,9 @@ unit test in `__tests__/`.
   also what a relay that rewrites its lists cannot change (the messages a
   history holds, whom a conversation is with, the name it is shown and
   searched under, and which new conversations are held), Retry of a
-  refused send, and a send in flight when its page closes.
+  refused send, a send in flight when its page closes, a transfer whose
+  completion answer was lost or refused, and the one-time link viewer.
+  The browser tests also run a disappearing message between two browsers
+  whose clocks are 40 s off in opposite directions.
   It was written against the monolithic `app.js` and passed there before
   the split.

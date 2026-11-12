@@ -31,6 +31,7 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
     peers: new Map(), // conversationId -> { userId, handle }
     stores: contentStores(),
     pinKv: createMemoryKv('id', { indexField: 'userId' }),
+    pendingKv: createMemoryKv('userId'),
     lookups: 0,
     keyChanges: [],
   };
@@ -43,12 +44,16 @@ export async function createEndpoint({ userId, deviceId, handle, directory }) {
     },
   });
 
-  endpoint.restart = () => {
+  // As a page load does: everything in memory is rebuilt over the stores,
+  // and the identity changes awaiting review are read back.
+  endpoint.restart = async () => {
     endpoint.device.restart();
     endpoint.trust = createIdentityTrust({
       pins: createPinStore(endpoint.pinKv),
+      pendingKv: endpoint.pendingKv,
       onChange: (changed) => endpoint.keyChanges.push(changed),
     });
+    await endpoint.trust.load();
     endpoint.contentStore = openContentStore(endpoint.stores);
     endpoint.secure = createSecureMessaging({
       cipher: endpoint.device.cipher,

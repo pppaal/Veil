@@ -57,6 +57,13 @@ export class RecipientNotAdmittedError extends Error {
 
 const failure = (status, reason) => ({ status, payload: null, reason });
 
+// An authenticated frame from an identity the verifier refused, named so the
+// caller can tell a key refused for good from one awaiting review.
+const identityRejected = (state) => ({
+  ...failure(DecryptStatus.IDENTITY_REJECTED, 'identity_rejected'),
+  identity: { remoteDeviceId: state.remoteDeviceId, remoteIdentityKey: state.remoteIdentityKey.slice() },
+});
+
 // keyring: src/crypto/prekeys.js createLocalKeyring.
 // verifyIdentity({ conversationId, remoteDeviceId, identityKey }) -> boolean
 // decides whether the peer identity a frame is sealed to or opened from may
@@ -189,7 +196,7 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
       }
       if (!(await admitted(envelope.conversationId, live))) {
         scratch.destroy();
-        return failure(DecryptStatus.IDENTITY_REJECTED, 'identity_rejected');
+        return identityRejected(live);
       }
       try {
         await beforeCommit?.(opened.payload);
@@ -261,7 +268,7 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
       const opened = await openOn(state, envelope, frame, nonce);
       if (!opened.payload) return failure(DecryptStatus.FAILED, opened.reason);
       if (!(await inboundAccepted(envelope.conversationId, record, state))) {
-        return failure(DecryptStatus.IDENTITY_REJECTED, 'identity_rejected');
+        return identityRejected(state);
       }
       try {
         await beforeCommit?.(opened.payload);
@@ -376,8 +383,9 @@ export function createSessionCipher({ subtle, keys, repo, locks, keyring, clock,
       });
     },
 
-    // Resolves to { status, payload, reason }; hostile input is a result,
-    // never an exception, and leaves session state untouched.
+    // Resolves to { status, payload, reason }, plus the refused { identity }
+    // for IDENTITY_REJECTED; hostile input is a result, never an exception,
+    // and leaves session state untouched.
     async decrypt(envelope, { beforeCommit = null } = {}) {
       const routing = [envelope.version, envelope.conversationId, envelope.senderDeviceId, envelope.messageType];
       if (!routing.every(fitsLengthPrefix)) return failure(DecryptStatus.FAILED, 'invalid_envelope');

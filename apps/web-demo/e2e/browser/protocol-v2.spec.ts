@@ -21,6 +21,12 @@ async function relay(path: string, body: unknown = {}): Promise<void> {
   expect(response.ok).toBe(true);
 }
 
+async function relayState<T>(path: string): Promise<T> {
+  const response = await fetch(RELAY + path);
+  expect(response.ok).toBe(true);
+  return (await response.json()) as T;
+}
+
 // Records the page's ratchet work. Every session operation (decrypt
 // included) holds a 'veil-crypto:<conversation>' Web Lock, and opening a
 // protocol-v2 message runs HKDF (message keys) and often X25519 (DH steps);
@@ -82,6 +88,34 @@ async function startChat(from: Device, to: Device): Promise<void> {
   await from.page.click('#new-confirm');
   await expect(from.page.locator('.panel .panel-title .name')).toHaveText(`@${to.handle}`);
   await openChatWith(to, from);
+}
+
+// Each text goes through the composer in one synchronous step, and the next
+// only once its bubble shows: the panel is rebuilt on every poll and send,
+// and a keypress that lands while it is drops, so a fill-then-press per
+// message would lose one now and then in a long run.
+async function sendAll(device: Device, texts: string[]): Promise<void> {
+  await device.page.evaluate(async (all) => {
+    const own = () => document.querySelectorAll('.panel-msgs .msg-row.me').length;
+    for (const text of all) {
+      const before = own();
+      const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
+      textarea.value = text;
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      while (own() === before) await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }, texts);
+}
+
+// Opens a message's action menu and clicks one of its items; a rebuilt
+// panel closes the menu, so it is opened again until the click lands.
+async function chooseAction(device: Device, text: string, item: string): Promise<void> {
+  const row = device.page.locator('.panel-msgs .msg-row', { hasText: text });
+  await expect(async () => {
+    await row.click({ button: 'right' });
+    await device.page.locator('.msg-action-menu .msg-action-item', { hasText: item }).click({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
 }
 
 interface StoredContent {
@@ -223,6 +257,23 @@ test.describe('protocol v2 in the browser', () => {
     await send(alice, 'after reloading');
     await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 }).toContain('after reloading');
   });
+
+  // The relay checks the body as the API's FileAbuseReportDto does, and
+  // keeps what it was sent.
+  test('a report sends the reason and the ids of the message, and no text', async () => {
+    await chooseAction(alice, 'b1 hi alice', '🚨');
+    await alice.page.locator('#report-dialog input[value="spam"]').check();
+    await alice.page.locator('#report-submit').click();
+    await expect(alice.page.locator('#report-dialog')).toHaveCount(0);
+
+    type Report = { reporterHandle: string; reportedHandle: string; body: Record<string, string> };
+    await expect.poll(async () => (await relayState<Report[]>('/__test/reports')).length, { timeout: 10_000 }).toBe(1);
+    const [report] = await relayState<Report[]>('/__test/reports');
+    const messageId = await alice.page.locator('.panel-msgs .msg-row', { hasText: 'b1 hi alice' }).getAttribute('data-msg-id');
+    expect(report).toMatchObject({ reporterHandle: alice.handle, reportedHandle: bob.handle });
+    expect(Object.keys(report.body).sort()).toEqual(['conversationId', 'messageId', 'reason', 'reportedUserId']);
+    expect(report.body).toMatchObject({ messageId, reason: 'spam' });
+  });
 });
 
 // History is fetched a page at a time, newest first. A device that was away
@@ -250,24 +301,6 @@ test.describe('a backlog longer than a page', () => {
     await erin?.context.close();
     await frank?.context.close();
   });
-
-  // Each text goes through the composer in one synchronous step, and the
-  // next only once its bubble shows: the panel is rebuilt on every poll and
-  // send, and a keypress that lands while it is drops, so a fill-then-press
-  // per message would lose one now and then in a run this long.
-  async function sendAll(device: Device, texts: string[]): Promise<void> {
-    await device.page.evaluate(async (all) => {
-      const own = () => document.querySelectorAll('.panel-msgs .msg-row.me').length;
-      for (const text of all) {
-        const before = own();
-        const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
-        textarea.value = text;
-        textarea.dispatchEvent(new Event('input', { bubbles: true }));
-        textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-        while (own() === before) await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-    }, texts);
-  }
 
   async function react(device: Device, text: string): Promise<void> {
     const row = device.page.locator('.panel-msgs .msg-row', { hasText: text });
@@ -318,6 +351,58 @@ test.describe('a backlog longer than a page', () => {
     await expect.poll(() => bubbleTexts(frank), { timeout: 30_000 }).toEqual(everything);
     await frank.page.waitForTimeout(5_000);
     expect(await bubbleTexts(frank)).toEqual(everything);
+    await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
+  });
+});
+
+// Our own send is cached the moment the relay acknowledges it, above a
+// backlog no refresh has fetched yet. After a reload the backlog is still
+// paged back through: how far history was fetched is kept apart from what
+// the cache holds (src/domain/history.js createHistoryMarks).
+test.describe('a backlog under our own send', () => {
+  const stamp = Date.now().toString(36).slice(-6);
+  const BACKLOG = 260;
+  const label = (n: number) => `g${String(n).padStart(3, '0')} gap`;
+  const backlog = Array.from({ length: BACKLOG }, (_, i) => label(i + 1));
+  const HISTORY = '**/v1/conversations/*/messages*';
+  let erin: Device;
+  let frank: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    erin = await register(browser, `gerin${stamp}`);
+    frank = await register(browser, `gfrank${stamp}`);
+  });
+
+  test.afterAll(async () => {
+    await erin?.context.close();
+    await frank?.context.close();
+  });
+
+  test('is fetched after a reload, in order, with nothing locked', async () => {
+    test.setTimeout(300_000);
+    await startChat(erin, frank);
+    await send(erin, label(0));
+    await expect.poll(() => bubbleTexts(frank), { timeout: 20_000 }).toEqual([label(0)]);
+    await frank.page.close();
+    await sendAll(erin, backlog);
+    await expect(erin.page.locator('.msg-row.me:not(:has(.msg.pending))')).toHaveCount(BACKLOG + 1, { timeout: 60_000 });
+
+    // Frank comes back while every history fetch fails; his own send goes
+    // through and is cached at the top of the conversation.
+    frank.page = await frank.context.newPage();
+    await frank.page.route(HISTORY, (route) => route.abort());
+    await frank.page.goto('./');
+    await expect(frank.page.locator('#app')).toBeVisible();
+    await openChatWith(frank, erin);
+    await send(frank, 'frank on top');
+    await frank.page.unroute(HISTORY);
+
+    await frank.page.reload();
+    await expect(frank.page.locator('#app')).toBeVisible();
+    await openChatWith(frank, erin);
+    const everything = [label(0), ...backlog, 'frank on top'];
+    await expect.poll(() => bubbleTexts(frank), { timeout: 120_000 }).toEqual(everything);
     await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
   });
 });
@@ -392,6 +477,22 @@ test.describe('deleted and expired messages in the browser', () => {
     await openChatWith(dave, carol);
     await expect.poll(() => bubbleTexts(dave), { timeout: 15_000 }).toEqual(['lasting note', DELETED]);
     expect(sweepFailures).toEqual([]);
+  });
+
+  // The relay stores the message with no outer expiresAt, though the
+  // conversation has a timer: the expiry sealed inside it is what removes it.
+  test('a relay that drops the outer expiry cannot keep a disappearing message', async () => {
+    await relay('/__test/timer', { seconds: 20, relayExpiry: false });
+    // The sender learns the timer from the conversation list it polls.
+    await carol.page.waitForTimeout(6_000);
+    await send(carol, 'sealed timer note');
+    await relay('/__test/timer', { seconds: null });
+    for (const device of [carol, dave]) await expect.poll(() => bubbleTexts(device), { timeout: 20_000 }).toContain('sealed timer note');
+    const id = await dave.page.locator('.panel-msgs .msg-row', { hasText: 'sealed timer note' }).getAttribute('data-msg-id') as string;
+    for (const device of [carol, dave]) {
+      await expect.poll(() => bubbleTexts(device), { timeout: 45_000 }).not.toContain('sealed timer note');
+      expect((await storedContents(device.page))[id]).toEqual({ retired: true, sealed: false });
+    }
   });
 
   test('the store retires expired records it is not showing', async ({ browser }) => {

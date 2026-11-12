@@ -29,6 +29,38 @@ export async function fetchHistory(fetchPage, { through = 0 } = {}) {
   return pages.flat();
 }
 
+// How far back each conversation's history has been fetched: the newest
+// conversationOrder a completed refresh covered, the `through` of the next
+// fetchHistory. Only a refresh advances it, once what it fetched is ingested
+// and cached; a message that reaches this device any other way (a live push,
+// our own send, the cache) never does, so a backlog that no refresh has
+// fetched yet is still paged back through, after a reload too.
+// kv: src/platform/kv.js over 'history-marks' ({ conversationId, through }).
+export function createHistoryMarks(kv) {
+  const marks = new Map();
+  return {
+    async load() {
+      marks.clear();
+      for (const { conversationId, through } of await kv.all()) marks.set(conversationId, through);
+    },
+
+    through: (conversationId) => marks.get(conversationId) ?? 0,
+
+    // Never moves back.
+    async advance(conversationId, order) {
+      if (!Number.isFinite(order) || order <= (marks.get(conversationId) ?? 0)) return;
+      marks.set(conversationId, order);
+      await kv.put({ conversationId, through: order });
+    },
+
+    // Forgets what is held in memory (the session ended); the stored marks
+    // stay with the cached history they describe.
+    reset() {
+      marks.clear();
+    },
+  };
+}
+
 // The list a conversation shows after a refresh: `views` (those of the
 // fetched `items`) replace what was held for the range they cover; held
 // messages before or after it stay (history the relay no longer serves lives

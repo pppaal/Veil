@@ -5,11 +5,20 @@
 // The identity record (src/platform/session-store.js) holds
 //   ik             { privateKey, publicKey }              Ed25519 IK
 //   ikx            { privateKey, publicKey, signature }   X25519 IKx + ikxSig
-//   signedPrekeys  [{ id, privateKey, publicKey, createdAt, publishedAt, supersededAt }]
+//   signedPrekeys  [{ id, privateKey, publicKey, createdAt, publishedAt,
+//                     supersededAt, refusedAt? }]
 //   nextOneTimePrekeyId
+//   oneTimePrekeyUpload  { firstId, count } of the batch whose upload is not
+//                        confirmed yet, or null
 // and one-time prekey private keys live in their own store, one row per key,
 // so using one deletes exactly that row. Every private key is a
 // non-extractable CryptoKey.
+//
+// Signed prekeys are stamped (createdAt, the bundle's spkTs) and aged on the
+// server's clock: this device's clock corrected by the HTTP Date header
+// (src/platform/api-client.js serverNow). The directory accepts a stamp at
+// most an hour old and 10 minutes ahead (contract C-SPK), so a device whose
+// clock is off can still rotate.
 
 import { decodeBase64Url, encodeBase64Url } from '../core/base64url.js';
 import { BundleError, signBundle } from './bundle.js';
@@ -20,6 +29,9 @@ export const SIGNED_PREKEY_ROTATION_MS = 7 * DAY_MS;
 // A superseded SPK still answers handshakes started from a bundle fetched
 // before the rotation, for this long after its successor was published.
 export const SIGNED_PREKEY_GRACE_MS = 14 * DAY_MS;
+// An unpublished signed prekey is published again as it is while younger
+// than this; an older one is replaced by a successor (contract C-SPK).
+export const SIGNED_PREKEY_RESEND_MS = 30 * 60 * 1000;
 export const ONE_TIME_PREKEY_BATCH = 100;
 const ONE_TIME_PREKEY_LOW_WATER = 20;
 export const PREKEY_LOCK = 'veil-prekeys';
@@ -104,14 +116,28 @@ export function createLocalKeyring({ loadIdentity, opkKv, clock }) {
 
 // Keeps the directory able to start sessions with us: rotates the signed
 // prekey weekly, drops superseded ones after their grace period, and tops the
-// one-time pool back up to a full batch when it runs low. Callers serialize
-// runs across tabs with PREKEY_LOCK.
+// one-time pool back up to a full batch when it runs low. A failed rotation
+// never holds up the one-time prekeys: they are topped up all the same, and
+// the rotation's error is thrown after. Callers serialize runs across tabs
+// with PREKEY_LOCK.
 //   identity: { current() -> record, update(fields) -> saves the record }
+//   clock() -> the server-corrected time (ms)
 export async function maintainPrekeys({ subtle, keys, authedApi, identity, opkKv, clock }) {
-  await rotateSignedPrekeyIfDue({ subtle, keys, authedApi, identity, nowMs: clock() });
-  const { available } = await authedApi('/prekeys/count');
-  if (available < ONE_TIME_PREKEY_LOW_WATER) await uploadOneTimePrekeys({ keys, authedApi, identity, opkKv });
+  let rotationError = null;
+  try {
+    await rotateSignedPrekeyIfDue({ subtle, keys, authedApi, identity, nowMs: clock() });
+  } catch (error) {
+    rotationError = error;
+  }
+  await replenishOneTimePrekeys({ keys, authedApi, identity, opkKv });
+  if (rotationError) throw rotationError;
 }
+
+// The directory turned the bundle down for what it is (its timestamp out of
+// the window, a repeated id after an answer that was lost, a bad bundle):
+// sending it again would only be refused again. Network failures, 5xx and
+// 429 are not refusals.
+const isRefusal = (error) => error?.status >= 400 && error.status < 500 && error.status !== 429;
 
 async function rotateSignedPrekeyIfDue({ subtle, keys, authedApi, identity, nowMs }) {
   const record = identity.current();
@@ -122,48 +148,84 @@ async function rotateSignedPrekeyIfDue({ subtle, keys, authedApi, identity, nowM
     return;
   }
   // The successor is stored before it is published, so a frame sent to it
-  // the moment the directory serves it already finds its private key. After
-  // a failed publication the next run draws a fresh successor under a new
-  // id, since the directory refuses a stale timestamp and, should the failed
-  // one have arrived after all, a repeated id. The failed one is kept: it
-  // is superseded like the current one once a successor is published.
-  const pair = await keys.x25519();
-  const successor = {
-    id: Math.max(0, ...record.signedPrekeys.map((spk) => spk.id)) + 1,
-    privateKey: pair.privateKey,
-    publicKey: pair.publicKey,
-    createdAt: nowMs,
-    publishedAt: null,
-    supersededAt: null,
-  };
-  await identity.update({ signedPrekeys: [successor, ...live] });
+  // the moment the directory serves it already finds its private key. One
+  // whose publication failed is published again as it is while it is young
+  // enough for the directory's window and was not refused; otherwise a
+  // fresh successor is drawn under a new id. Failed ones are kept: one may
+  // have arrived after all with only the answer lost, and each is
+  // superseded like the current one once a successor is published.
+  let successor = live.find((spk) => spk.publishedAt === null && spk.supersededAt === null && !spk.refusedAt
+    && nowMs - spk.createdAt < SIGNED_PREKEY_RESEND_MS);
+  if (!successor) {
+    const pair = await keys.x25519();
+    successor = {
+      id: Math.max(0, ...record.signedPrekeys.map((spk) => spk.id)) + 1,
+      privateKey: pair.privateKey,
+      publicKey: pair.publicKey,
+      createdAt: nowMs,
+      publishedAt: null,
+      supersededAt: null,
+    };
+    live.unshift(successor);
+  }
+  await identity.update({ signedPrekeys: live });
+  // Ed25519 is deterministic: the same prekey always makes the same bundle.
   const signedPrekeyBundle = await signBundle(subtle, record.ik.privateKey, {
     ikx: record.ikx.publicKey,
     ikxSig: record.ikx.signature,
     spk: successor,
   });
-  await authedApi('/keys/signed-prekey', { method: 'PUT', body: { signedPrekeyBundle } });
+  const others = live.filter((spk) => spk !== successor);
+  try {
+    await authedApi('/keys/signed-prekey', { method: 'PUT', body: { signedPrekeyBundle } });
+  } catch (error) {
+    if (isRefusal(error)) {
+      await identity.update({ signedPrekeys: [{ ...successor, refusedAt: nowMs }, ...others] });
+    }
+    throw error;
+  }
   await identity.update({
     signedPrekeys: [
       { ...successor, publishedAt: nowMs },
-      ...live.map((spk) => (spk.supersededAt === null ? { ...spk, supersededAt: nowMs } : spk)),
+      ...others.map((spk) => (spk.supersededAt === null ? { ...spk, supersededAt: nowMs } : spk)),
     ],
   });
 }
 
-// Ids are allocated monotonically and saved before anything is published, so
-// an id is never reused even when an upload fails half-way.
-async function uploadOneTimePrekeys({ keys, authedApi, identity, opkKv }) {
-  const firstId = identity.current().nextOneTimePrekeyId;
-  await identity.update({ nextOneTimePrekeyId: firstId + ONE_TIME_PREKEY_BATCH });
-  const prekeys = [];
-  for (let i = 0; i < ONE_TIME_PREKEY_BATCH; i += 1) {
+// A batch whose upload was not confirmed goes up again as it is on the next
+// run (the directory skips ids it already holds), never replaced by fresh
+// keys; then the pool is topped up if it runs low.
+async function replenishOneTimePrekeys({ keys, authedApi, identity, opkKv }) {
+  const unconfirmed = identity.current().oneTimePrekeyUpload ?? null;
+  if (unconfirmed) await uploadOneTimePrekeys({ authedApi, identity, opkKv, batch: unconfirmed });
+  const { available } = await authedApi('/prekeys/count');
+  if (available >= ONE_TIME_PREKEY_LOW_WATER) return;
+  await uploadOneTimePrekeys({ authedApi, identity, opkKv, batch: await drawOneTimePrekeys({ keys, identity, opkKv }) });
+}
+
+// Ids are allocated monotonically and saved, with the batch marked
+// unconfirmed, before any key is drawn, so an id is never reused even when
+// an upload fails half-way.
+async function drawOneTimePrekeys({ keys, identity, opkKv }) {
+  const batch = { firstId: identity.current().nextOneTimePrekeyId, count: ONE_TIME_PREKEY_BATCH };
+  await identity.update({ nextOneTimePrekeyId: batch.firstId + batch.count, oneTimePrekeyUpload: batch });
+  for (let keyId = batch.firstId; keyId < batch.firstId + batch.count; keyId += 1) {
     const pair = await keys.x25519();
-    const keyId = firstId + i;
     await opkKv.put({ keyId, privateKey: pair.privateKey, publicKey: pair.publicKey });
-    prekeys.push({ keyId, publicKey: encodeBase64Url(pair.publicKey) });
   }
-  await authedApi('/prekeys', { method: 'POST', body: { prekeys } });
+  return batch;
+}
+
+// Uploads the batch's keys this device still holds: one already used was
+// handed out by the directory, which therefore had it.
+async function uploadOneTimePrekeys({ authedApi, identity, opkKv, batch }) {
+  const prekeys = [];
+  for (let keyId = batch.firstId; keyId < batch.firstId + batch.count; keyId += 1) {
+    const row = await opkKv.get(keyId);
+    if (row) prekeys.push({ keyId, publicKey: encodeBase64Url(row.publicKey) });
+  }
+  if (prekeys.length > 0) await authedApi('/prekeys', { method: 'POST', body: { prekeys } });
+  await identity.update({ oneTimePrekeyUpload: null });
 }
 
 // A one-time prekey the directory handed out, validated before use. A

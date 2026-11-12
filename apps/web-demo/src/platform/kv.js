@@ -1,6 +1,6 @@
 // The key-value interface the crypto stores are written against, with an
 // IndexedDB implementation for the app and an in-memory one for tests:
-//   get(key) -> row | null, put(row), delete(key),
+//   get(key) -> row | null, put(row), delete(key), all() -> every row,
 //   byIndex(value) -> rows whose indexed field equals value,
 //   dueBy(time) -> rows whose expiry field is set and at most time.
 
@@ -9,6 +9,7 @@ export function createIdbKv(idb, storeName, { index = null, expiryIndex = null }
     get: (key) => idb.get(storeName, key),
     put: (row) => idb.put(storeName, row),
     delete: (key) => idb.delete(storeName, key),
+    all: () => idb.all(storeName),
     byIndex: (value) => idb.allByIndex(storeName, index, value),
     // IndexedDB leaves a row whose expiry is null out of the index.
     dueBy: (time) => idb.allByIndexUpTo(storeName, expiryIndex, time),
@@ -16,8 +17,7 @@ export function createIdbKv(idb, storeName, { index = null, expiryIndex = null }
 }
 
 // Copies on the way in and out, as IndexedDB's structured clone does, so no
-// caller ever shares an object with what is stored. all() lets tests look at
-// everything a store holds.
+// caller ever shares an object with what is stored.
 export function createMemoryKv(keyPath, { indexField = null, expiryField = null } = {}) {
   const rows = new Map();
   const all = () => [...rows.values()].map((row) => structuredClone(row));

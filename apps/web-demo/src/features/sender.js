@@ -13,6 +13,11 @@ import { toggledReaction } from '../domain/reactions.js';
 const isRetryableSendError = (error) =>
   error instanceof AuthError || !error?.status || error.status >= 500 || error.status === 429;
 
+// A send's idempotency key. The server keeps it beside the ciphertext for as
+// long as the message, so it is random (a UUID v4) and says nothing about
+// when the message was written or what kind it is.
+export const newClientMessageId = () => crypto.randomUUID();
+
 // queue: { put(entry) } over the 'outbound' store.
 export function createSender({ secure, authedApi, queue }) {
   // { envelope } for the conversation, with the outer attachment pointer
@@ -46,9 +51,10 @@ export function createSender({ secure, authedApi, queue }) {
     deliver,
 
     // A reaction is a message like any other: messageType 'reaction', its
-    // target and emoji inside the ciphertext.
-    async react({ conversationId, clientMessageId, target, emoji, current }) {
-      const content = reactionContent(toggledReaction({ target, emoji, current }));
+    // target and emoji inside the ciphertext, and expiresAt (ms) sealed in
+    // under a disappearing timer.
+    async react({ conversationId, clientMessageId, target, emoji, current, expiresAt = null }) {
+      const content = { ...reactionContent(toggledReaction({ target, emoji, current })), expiresAt };
       const envelope = await seal(conversationId, content, { clientMessageId });
       return { content, ...(await deliver({ conversationId, clientMessageId, envelope })) };
     },

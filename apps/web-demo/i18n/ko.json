@@ -75,6 +75,8 @@
   "keyChange.declineTitle": "@{handle} 의 이 키를 거절할까요?",
   "keyChange.declineBody": "이 키에서 온 메시지는 잠긴 채로 남고, 이 키에 대해 다시 묻지 않아요. 이 대화는 @{handle} 에게 이미 쓰던 키로 계속 보내요. 상대가 정말 이 기기를 쓰고 있다면 그 기기의 메시지는 여기서 읽을 수 없어요.",
   "keyChange.declineSessionKey": "이 대화가 보내는 키라서 거절할 수 없어요. 대신 @{handle} 와(과) 안전 번호를 비교하세요.",
+  "keyChange.declineNoSession": "이 대화에는 대신 보낼 다른 키가 없어서 이 키를 거절할 수 없어요. 대신 @{handle} 와(과) 안전 번호를 비교하세요.",
+  "keyChange.sendRefused": "이 대화가 보낼 키는 거절한 키이거나 다른 연락처의 기기예요. 아무것도 보내지 않았어요.",
   "safety.unverifiedDevice": "@{handle} 을(를) 확인하기 전에 수락했지만 확인한 적은 없는 기기예요. 상대와 이 번호를 비교한 뒤에만 확인됨으로 표시하세요.",
   "safety.verifyFailed": "확인 결과를 저장하지 못했어요: {error}",
   "group.composerFrozen": "웹 데모는 그룹에 종단간 암호화 메시지를 보낼 수 없어요",
@@ -100,5 +102,17 @@
   "history.delete": "이 기기의 대화 기록 삭제",
   "history.deleteBody": "이 기기에 있는 대화 기록을 영구 삭제합니다. 서버가 아직 전달하는 메시지도 이 기기에서는 다시 읽을 수 없어요. 상대방의 기록은 그대로예요.",
   "history.deleteConfirm": "삭제",
-  "history.deleteFailed": "기록을 삭제하지 못했어요: {error}"
+  "history.deleteFailed": "기록을 삭제하지 못했어요: {error}",
+  "report.title": "@{handle} 신고",
+  "report.explain": "고른 사유와 이 메시지·대화의 ID만 전송돼요. 메시지 내용은 이 기기에만 남아요.",
+  "report.reason.spam": "스팸",
+  "report.reason.harassment": "괴롭힘",
+  "report.reason.impersonation": "사칭",
+  "report.reason.csam": "아동 성착취물",
+  "report.reason.violence": "폭력 또는 위협",
+  "report.reason.scam": "사기",
+  "report.reason.other": "기타",
+  "report.submit": "신고",
+  "report.sent": "신고 접수됨",
+  "report.failed": "신고 실패: {error}"
 }

@@ -42,7 +42,7 @@ describe('message content store', () => {
     expect(decrypt).toHaveBeenCalledTimes(3);
 
     // A reload: new cipher, store and messaging over the same stored data.
-    bob.restart();
+    await bob.restart();
     const reloadedDecrypt = vi.spyOn(bob.device.cipher, 'decrypt');
     const reloaded = [];
     for (const message of sent) reloaded.push(await view(bob, message));
@@ -51,7 +51,7 @@ describe('message content store', () => {
 
     // The sender reads its own messages from the store as well; it could not
     // decrypt them (their message keys were single-use).
-    alice.restart();
+    await alice.restart();
     const aliceDecrypt = vi.spyOn(alice.device.cipher, 'decrypt');
     expect((await Promise.all(sent.map((message) => view(alice, message)))).map((v) => v.displayText))
       .toEqual(['first', 'second', 'third']);
@@ -155,7 +155,7 @@ describe('expiry and deletion', () => {
     expect(await rowOf(bob, message)).toEqual(retiredRow(message));
 
     // A reload brings nothing back, and nothing is decrypted again.
-    bob.restart();
+    await bob.restart();
     const reloadedDecrypt = vi.spyOn(bob.device.cipher, 'decrypt');
     expect(await bob.contentStore.get(CONVERSATION, message.id)).toEqual({ retired: true });
     expect(await view(bob, message)).toMatchObject({ kind: 'expired', displayText: '' });
@@ -227,7 +227,7 @@ describe('expiry and deletion', () => {
         .toMatchObject({ kind: 'deleted', displayText: DELETED_TEXT, media: null });
       expect(await rowOf(endpoint, message)).toEqual(retiredRow(message));
       // A relay that serves the original again gets it hidden, not opened.
-      endpoint.restart();
+      await endpoint.restart();
       const decrypt = vi.spyOn(endpoint.device.cipher, 'decrypt');
       expect(await view(endpoint, message)).toMatchObject({ kind: 'expired', displayText: '' });
       expect(decrypt).not.toHaveBeenCalled();
@@ -284,7 +284,7 @@ describe('authorship of stored content', () => {
 
   // What Alice's history shows for a message after a reload.
   async function afterReload(alice, message) {
-    alice.restart();
+    await alice.restart();
     return view(alice, message);
   }
 
@@ -380,6 +380,18 @@ describe('authorship of stored content', () => {
     await view(alice, tombstoned({ ...later, id: 'history-cleared' }));
     for (const message of [fromAlice, fromBob]) expect((await view(alice, message)).kind).toBe('cleared');
     expect(await view(alice, later)).toMatchObject({ displayText: 'later' });
+  });
+
+  it('an acknowledgement under a local key files nothing there', async () => {
+    const { alice } = await conversation();
+    const first = await alice.secure.seal(CONVERSATION, textContent('first words'), { clientMessageId: 'a-7' });
+    const second = await alice.secure.seal(CONVERSATION, textContent('second words'), { clientMessageId: 'a-8' });
+    // The relay answers the second send with the first one's local key.
+    await alice.secure.acknowledge({ ...serverMessage(second, { clientMessageId: 'a-8' }), id: 'client:a-7' });
+    await alice.secure.rememberEdit(CONVERSATION, 'client:a-7', textContent('edited over'), 'n');
+    const fromAlice = serverMessage(first, { clientMessageId: 'a-7' });
+    await alice.secure.acknowledge(fromAlice);
+    expect(await view(alice, fromAlice)).toMatchObject({ senderDeviceId: 'd-alice', displayText: 'first words' });
   });
 
   it('the store keeps a record from being rewritten by another author', async () => {

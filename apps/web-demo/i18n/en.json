@@ -75,6 +75,8 @@
   "keyChange.declineTitle": "Decline this key for @{handle}?",
   "keyChange.declineBody": "Messages from it stay locked and you will not be asked about it again. This chat goes on sending to the key you already have for @{handle}. If they really use this device, its messages will stay unreadable here.",
   "keyChange.declineSessionKey": "This chat sends to that key, so it cannot be declined. Compare safety numbers with @{handle} instead.",
+  "keyChange.declineNoSession": "This chat has no other key to send to, so this one cannot be declined. Compare safety numbers with @{handle} instead.",
+  "keyChange.sendRefused": "The key this chat would send to is one you declined, or a device of another contact. Nothing was sent.",
   "safety.unverifiedDevice": "This device was accepted before you verified @{handle}, but never verified. Only mark it verified after comparing this number with them.",
   "safety.verifyFailed": "Could not save the verification: {error}",
   "group.composerFrozen": "The web demo cannot send end-to-end encrypted group messages",
@@ -100,5 +102,17 @@
   "history.delete": "Delete history on this device",
   "history.deleteBody": "This device's copy of the conversation is destroyed for good, and messages the server still relays stay unreadable here. The other side keeps theirs.",
   "history.deleteConfirm": "Delete",
-  "history.deleteFailed": "Could not delete the history: {error}"
+  "history.deleteFailed": "Could not delete the history: {error}",
+  "report.title": "Report @{handle}",
+  "report.explain": "Only the reason you pick and the IDs of this message and conversation are sent. The message's content stays on this device.",
+  "report.reason.spam": "Spam",
+  "report.reason.harassment": "Harassment",
+  "report.reason.impersonation": "Impersonation",
+  "report.reason.csam": "Child sexual abuse material",
+  "report.reason.violence": "Violence or threats",
+  "report.reason.scam": "Scam or fraud",
+  "report.reason.other": "Something else",
+  "report.submit": "Report",
+  "report.sent": "Report sent",
+  "report.failed": "Could not send the report: {error}"
 }

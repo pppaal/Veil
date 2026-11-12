@@ -3,7 +3,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { fetchHistory, HISTORY_MAX_PAGES, HISTORY_PAGE_SIZE, mergeHistory } from '../src/domain/history.js';
+import {
+  createHistoryMarks,
+  fetchHistory,
+  HISTORY_MAX_PAGES,
+  HISTORY_PAGE_SIZE,
+  mergeHistory,
+} from '../src/domain/history.js';
+import { createMemoryKv } from '../src/platform/kv.js';
 
 const message = (order, extra = {}) => ({ id: `m-${order}`, clientMessageId: `c-${order}`, conversationOrder: order, ...extra });
 
@@ -86,5 +93,24 @@ describe('mergeHistory', () => {
   it('keeps everything held when the relay serves nothing', () => {
     const held = [message(1), message(2)];
     expect(mergeHistory(held, [], [])).toEqual(held);
+  });
+});
+
+describe('history marks', () => {
+  it('only move forward, and are read back after a reload', async () => {
+    const kv = createMemoryKv('conversationId');
+    const marks = createHistoryMarks(kv);
+    expect(marks.through('c-1')).toBe(0);
+    await marks.advance('c-1', 50);
+    await marks.advance('c-1', 20);
+    await marks.advance('c-1', undefined);
+    await marks.advance('c-2', 7);
+    expect([marks.through('c-1'), marks.through('c-2')]).toEqual([50, 7]);
+
+    marks.reset();
+    expect(marks.through('c-1')).toBe(0);
+    const reloaded = createHistoryMarks(kv);
+    await reloaded.load();
+    expect([reloaded.through('c-1'), reloaded.through('c-2')]).toEqual([50, 7]);
   });
 });

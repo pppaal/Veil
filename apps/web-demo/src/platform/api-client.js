@@ -34,9 +34,19 @@ const AUTH_REJECTION_STATUSES = new Set([400, 401, 403, 404]);
 
 export const isAuthRejection = (error) => error instanceof ApiError && AUTH_REJECTION_STATUSES.has(error.status);
 
-export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejected }) {
+// now() -> this device's clock (ms).
+export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejected, now = Date.now }) {
   let recovery = null;
   let rejection = null;
+  // Server time minus ours, from the HTTP Date header of the latest response
+  // that carried one, refusals included (contract C-SPK): signed prekeys are
+  // stamped with server time, which the directory checks to the minute.
+  let clockOffsetMs = 0;
+
+  function learnServerClock(response) {
+    const serverDate = Date.parse(response.headers?.get?.('date') ?? '');
+    if (Number.isFinite(serverDate)) clockOffsetMs = serverDate - now();
+  }
 
   async function request(path, { method = 'GET', body, token } = {}) {
     const response = await fetchImpl(baseUrl + path, {
@@ -47,6 +57,7 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    learnServerClock(response);
     const text = await response.text();
     const data = parseJson(text);
     if (!response.ok) {
@@ -143,6 +154,8 @@ export function createApiClient({ fetchImpl, baseUrl, tokenStore, onSessionRejec
     api: (path, options) => request(path, options),
     authedApi,
     login,
+    // This device's clock corrected to the server's, as far as learned.
+    serverNow: () => now() + clockOffsetMs,
   };
 }
 

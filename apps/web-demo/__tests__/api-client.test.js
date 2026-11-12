@@ -234,3 +234,38 @@ describe('createApiClient session lifecycle', () => {
     expect(isAuthRejection(new TypeError('network'))).toBe(false);
   });
 });
+
+// Contract C-SPK: the server's clock, learned from the Date header of every
+// response that carries a parsable one, refusals included.
+describe('createApiClient server clock', () => {
+  const LOCAL = Date.parse('2026-11-12T09:00:00Z');
+  const responding = (answers) => {
+    const queue = [...answers];
+    return vi.fn(async () => {
+      const [status, date] = queue.shift();
+      return {
+        ...jsonResponse(status, status < 400 ? {} : { code: 'signed_prekey_timestamp_out_of_window', message: 'window' }),
+        headers: new Headers(date === null ? {} : { date }),
+      };
+    });
+  };
+
+  it('corrects this device clock by the offset of the latest response', async () => {
+    const fetchImpl = responding([
+      [200, null],
+      [200, 'Thu, 12 Nov 2026 09:20:00 GMT'],
+      [400, 'Thu, 12 Nov 2026 08:00:00 GMT'],
+      [200, 'not a date'],
+    ]);
+    const client = createApiClient({ fetchImpl, baseUrl: '/v1', tokenStore: {}, now: () => LOCAL });
+    await client.api('/health');
+    expect(client.serverNow()).toBe(LOCAL);
+    await client.api('/health');
+    expect(client.serverNow()).toBe(LOCAL + 20 * 60 * 1000);
+    await expect(client.api('/keys/signed-prekey', { method: 'PUT', body: {} })).rejects.toMatchObject({ status: 400 });
+    expect(client.serverNow()).toBe(LOCAL - 60 * 60 * 1000);
+    // An unreadable header leaves the last offset in place.
+    await client.api('/health');
+    expect(client.serverNow()).toBe(LOCAL - 60 * 60 * 1000);
+  });
+});

@@ -252,11 +252,14 @@ void main() {
       expect(view.peerHandle, 'mallory');
       expect(view.recipientBundle.userId, mallory.device.userId);
       expect(await alice.bodies('conv-am'), contains('hey'));
-      // What it shows is what it encrypts to, also across a restart.
+      // What it shows is what it encrypts to, also across a restart, and it
+      // keeps the session it has: the directory confirms the same peer.
       await alice.restart();
       await settle();
       expect(alice.controller.conversationById('conv-am')!.peerHandle, 'mallory');
       await deliver(alice, mallory, 'who are you?', conversationId: 'conv-am');
+      final reply = alice.lib.envelopeCodec.decodeApiEnvelope(lastRelayed('conv-am'));
+      expect(FrameV2.decode(b64uDecode(reply.ciphertext)).preKey, isNull);
     });
 
     test('without its binding, sends to the contact it shows and refuses the old peer', () async {
@@ -467,6 +470,37 @@ void main() {
       await deliver(initiator, responder, 'still flowing', conversationId: conversationId);
       relay.claimedOneTimePrekeys.clear();
     }
+  });
+
+  test('a late frame on the session of a key the user replaced is refused and asks nothing', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    // bob seals one more frame on the session alice knows; it is delayed.
+    final late = bob.lib.envelopeCodec.encodeApiEnvelope(await bob.lib.messaging.encryptMessage(
+      conversationId: conv,
+      senderDeviceId: bob.device.deviceId,
+      recipientUserId: alice.device.userId,
+      body: 'sent before the reinstall',
+      messageKind: MessageKind.text,
+      recipientBundle: KeyBundle(
+        userId: alice.device.userId,
+        deviceId: alice.device.deviceId,
+        handle: alice.device.handle,
+        identityPublicKey: alice.device.identity.identityPublicKey,
+        signedPrekeyBundle: alice.device.identity.signedPrekeyBundle,
+      ),
+    ));
+    // bob's device comes back under a new key, and alice accepts it.
+    final reinstalled = await InjectedDevice.mint(bob.device.deviceId, owner: bob);
+    final first = await reinstalled.handshake(relay, alice, 'new key, same phone', conversationId: conv);
+    expect((await openRelayed(alice, first)).status, DecryptStatus.identityRejected);
+    await alice.controller.approveIdentityChange(conv, reviewed: alice.controller.pendingIdentityChangeFor(conv));
+    final notices = noticesIn(alice, conv);
+
+    relay.inject(senderHandle: 'bob', conversationId: conv, envelope: late);
+    expect((await openRelayed(alice, late)).status, DecryptStatus.identityRejected);
+    expect(alice.controller.pendingIdentityChangeFor(conv), isNull);
+    expect(noticesIn(alice, conv), notices);
   });
 
   test('a forged key change neither stops the 1:1 nor can only be accepted', () async {

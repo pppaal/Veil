@@ -53,9 +53,9 @@ class GroupSenderKeyCoordinator {
         _trustCheck = trustCheck,
         _clock = clock ?? DateTime.now;
 
-  /// How long a member's directory entry is reused for sending. It bounds
-  /// how late a device the member adds is handed our chain, without asking
-  /// the directory about every member on every send.
+  /// How long the members' directory entries are reused. It bounds how late
+  /// a device a member adds is handed our chain, without asking the
+  /// directory on every send.
   static const Duration memberDevicesTtl = Duration(minutes: 10);
 
   final GroupSenderKeyEngine engine;
@@ -78,13 +78,16 @@ class GroupSenderKeyCoordinator {
   final GroupIdentityTrustCheck? _trustCheck;
   final DateTime Function() _clock;
 
-  // Members' directory entries by user id, with when they were fetched.
-  final Map<String, (KeyDirectoryEntry, DateTime)> _memberDevices = {};
+  // The other members' directory entries, by conversation.
+  final Map<String, _MemberDirectory> _memberDirectories = {};
+  final Map<String, Future<_MemberDirectory>> _memberDirectoryFetches = {};
 
-  // Distributions we have already fetched-and-failed for, keyed by
+  // Pickups that settled every distribution buffered for us, keyed by
   // conversation:epoch, so a flood of undecryptable frames doesn't hammer
-  // the relay. Cleared on epoch bump / key ingest.
+  // the relay. Cleared on epoch bump / key ingest. A pickup that met a
+  // transient failure is not recorded, so the next frame tries again.
   final Set<String> _pickupAttempted = <String>{};
+  final Map<String, Future<void>> _pickups = {};
 
   // Serializes "do we have a chain / who still needs it / distribute" per
   // conversation so concurrent sends and epoch events cannot interleave.
@@ -105,7 +108,7 @@ class GroupSenderKeyCoordinator {
   void clearInMemory() {
     engine.clearInMemory();
     _pickupAttempted.clear();
-    _memberDevices.clear();
+    _memberDirectories.clear();
   }
 
   // ---- send -----------------------------------------------------------------
@@ -143,6 +146,7 @@ class GroupSenderKeyCoordinator {
       try {
         await _distribute(
           conversationId: conversation.id,
+          epoch: epoch,
           key: key,
           recipients: _othersIn(conversation, localUserId),
           accessToken: accessToken,
@@ -169,14 +173,18 @@ class GroupSenderKeyCoordinator {
   /// next prepareSend.
   Future<void> _distribute({
     required String conversationId,
+    required int epoch,
     required GroupSenderKey key,
     required List<GroupMember> recipients,
     required String accessToken,
   }) async {
     final reached = engine.deliveredTo(key);
+    final entryOf = _directoryRound(conversationId, epoch: epoch, accessToken: accessToken);
     final targets = <(GroupMember, KeyBundle)>[];
     for (final member in recipients) {
-      targets.addAll(await _devicesToReach(conversationId, member, reached: reached, accessToken: accessToken));
+      final entry = await entryOf(member.userId);
+      if (entry == null) continue;
+      targets.addAll(await _devicesToReach(conversationId, member, entry, reached: reached));
     }
     if (targets.isEmpty) return;
 
@@ -313,28 +321,39 @@ class GroupSenderKeyCoordinator {
     }
   }
 
+  // Concurrent frames share one pickup, and a pickup counts as done for the
+  // epoch only once every distribution it found was installed or refused
+  // for good: one that met a throttled or unreachable directory would
+  // otherwise strand that member's chain key for the rest of the epoch.
   Future<void> _pickupOnce({
     required String conversationId,
     required int epoch,
     required String accessToken,
     required String localUserId,
-  }) async {
+  }) {
     final marker = '$conversationId:$epoch';
-    if (!_pickupAttempted.add(marker)) return;
-    try {
-      await pickupDistributions(
-        conversationId: conversationId,
-        accessToken: accessToken,
-        localUserId: localUserId,
-      );
-    } catch (_) {
-      // Relay unreachable; the frame stays awaiting its key and a later
-      // realtime distribution / explicit sync retries.
-    }
+    if (_pickupAttempted.contains(marker)) return Future<void>.value();
+    return _pickups[marker] ??= () async {
+      try {
+        final settled = await pickupDistributions(
+          conversationId: conversationId,
+          accessToken: accessToken,
+          localUserId: localUserId,
+        );
+        if (settled) _pickupAttempted.add(marker);
+      } catch (_) {
+        // Relay unreachable; the frame stays awaiting its key and the next
+        // one tries again.
+      } finally {
+        _pickups.remove(marker);
+      }
+    }();
   }
 
-  /// Offline-pickup path: drains every buffered distribution addressed to us.
-  Future<void> pickupDistributions({
+  /// Offline-pickup path: drains every buffered distribution addressed to
+  /// us. Returns false when one of them met a transient failure and stays
+  /// for a later pickup.
+  Future<bool> pickupDistributions({
     required String conversationId,
     required String accessToken,
     required String localUserId,
@@ -344,8 +363,10 @@ class GroupSenderKeyCoordinator {
     final items = (response['distributions'] as List<dynamic>? ?? const [])
         .whereType<Map<String, dynamic>>();
     var ingested = false;
+    var settled = true;
+    final entryOf = _directoryRound(conversationId, epoch: epoch ?? 0, accessToken: accessToken);
     for (final item in items) {
-      final ok = await _ingestSealed(
+      final outcome = await _ingestSealed(
         conversationId: conversationId,
         epoch: epoch ?? (item['epoch'] as num?)?.toInt() ?? 0,
         fromUserId: item['fromUserId'] as String? ?? '',
@@ -354,11 +375,13 @@ class GroupSenderKeyCoordinator {
         nonce: item['nonce'] as String? ?? '',
         version: item['version'] as String? ?? '',
         localUserId: localUserId,
-        accessToken: accessToken,
+        entryOf: entryOf,
       );
-      ingested = ingested || ok;
+      ingested = ingested || outcome == _Ingest.installed;
+      settled = settled && outcome != _Ingest.retry;
     }
     if (ingested) _onKeysChanged?.call(conversationId);
+    return settled;
   }
 
   /// `group.key.distribution` realtime event.
@@ -369,23 +392,26 @@ class GroupSenderKeyCoordinator {
   }) async {
     final conversationId = payload['conversationId'] as String? ?? '';
     if (conversationId.isEmpty) return;
-    final ok = await _ingestSealed(
+    final epoch = (payload['epoch'] as num?)?.toInt() ?? 0;
+    final outcome = await _ingestSealed(
       conversationId: conversationId,
-      epoch: (payload['epoch'] as num?)?.toInt() ?? 0,
+      epoch: epoch,
       fromUserId: payload['fromUserId'] as String? ?? '',
       fromDeviceId: payload['fromDeviceId'] as String? ?? '',
       encryptedChainKey: payload['encryptedChainKey'] as String? ?? '',
       nonce: payload['nonce'] as String? ?? '',
       version: payload['version'] as String? ?? '',
       localUserId: localUserId,
-      accessToken: accessToken,
+      entryOf: _directoryRound(conversationId, epoch: epoch, accessToken: accessToken),
     );
-    if (ok) _onKeysChanged?.call(conversationId);
+    if (outcome == _Ingest.installed) _onKeysChanged?.call(conversationId);
   }
 
-  /// True when a chain was installed; rejected and no-op distributions
-  /// (re-deliveries) both leave the engine untouched.
-  Future<bool> _ingestSealed({
+  /// Whether a chain was installed. Refused and no-op distributions
+  /// (re-deliveries) both leave the engine untouched; so does one the
+  /// directory could not vouch for right now, which the relay keeps for the
+  /// next pickup.
+  Future<_Ingest> _ingestSealed({
     required String conversationId,
     required int epoch,
     required String fromUserId,
@@ -394,10 +420,10 @@ class GroupSenderKeyCoordinator {
     required String nonce,
     required String version,
     required String localUserId,
-    required String accessToken,
+    required _MemberEntryLookup entryOf,
   }) async {
     if (fromUserId.isEmpty || fromDeviceId.isEmpty || encryptedChainKey.isEmpty) {
-      return false;
+      return _Ingest.refused;
     }
     try {
       final distribution = await _openDistribution(
@@ -409,20 +435,20 @@ class GroupSenderKeyCoordinator {
         nonce: nonce,
         version: version,
         localUserId: localUserId,
-        accessToken: accessToken,
+        entryOf: entryOf,
       );
-      final installed = await engine.ingestDistribution(distribution);
-      if (installed) _pickupAttempted.remove('$conversationId:$epoch');
-      return installed;
+      if (!await engine.ingestDistribution(distribution)) return _Ingest.refused;
+      _pickupAttempted.remove('$conversationId:$epoch');
+      return _Ingest.installed;
     } on GroupCryptoException {
-      return false;
+      return _Ingest.refused;
     } on VeilApiException {
-      // The directory could not vouch for the sender right now. Nothing is
-      // installed; the relay keeps the blob for the next pickup.
-      return false;
+      // The directory could not vouch for the sender right now (throttled,
+      // offline, a server error).
+      return _Ingest.retry;
     } on FormatException {
       // Nor could it when its answer was malformed.
-      return false;
+      return _Ingest.retry;
     }
   }
 
@@ -438,7 +464,7 @@ class GroupSenderKeyCoordinator {
     required String nonce,
     required String version,
     required String localUserId,
-    required String accessToken,
+    required _MemberEntryLookup entryOf,
   }) async {
     final identityRef = await _identityPrivateRefLoader();
     final xPriv = identityRef == null ? null : _localX25519PrivateParser(identityRef);
@@ -456,8 +482,7 @@ class GroupSenderKeyCoordinator {
     if (member == null) {
       throw const GroupCryptoException('distributionInvalid', 'sender is not a member');
     }
-    final entry = await _keys.lookup(member.handle, accessToken: accessToken, claim: KeyClaim.none);
-    final sender = entry.userId == fromUserId ? entry.device(fromDeviceId) : null;
+    final sender = (await entryOf(fromUserId, deviceId: fromDeviceId))?.device(fromDeviceId);
     if (sender == null) {
       throw const GroupCryptoException('distributionInvalid', 'sender device not in directory');
     }
@@ -508,6 +533,7 @@ class GroupSenderKeyCoordinator {
             );
             await _distribute(
               conversationId: conversationId,
+              epoch: epoch,
               key: key,
               recipients: _othersIn(conversation, localUserId),
               accessToken: accessToken,
@@ -522,20 +548,16 @@ class GroupSenderKeyCoordinator {
 
   // ---- directory helpers --------------------------------------------------------
 
-  /// [member]'s devices in the directory that [reached] does not list and
-  /// the trust check accepts. Empty when the member has no trusted device in
-  /// the directory, or every device is refused or already reached: each is
-  /// about this member alone and must not cost the others the chain.
-  /// Failures that are not about the member (offline, throttled, server
-  /// error) abort the round; prepareSend decides whether that fails the send.
+  /// The devices of [member]'s [entry] that [reached] does not list and the
+  /// trust check accepts. Empty when every device is refused or already
+  /// reached: each is about this member alone and must not cost the others
+  /// the chain.
   Future<List<(GroupMember, KeyBundle)>> _devicesToReach(
     String conversationId,
-    GroupMember member, {
+    GroupMember member,
+    KeyDirectoryEntry entry, {
     required Set<String> reached,
-    required String accessToken,
   }) async {
-    final entry = await _sendingEntryOf(member, accessToken);
-    if (entry == null) return const [];
     final devices = <(GroupMember, KeyBundle)>[];
     for (final device in entry.devices) {
       final bundle = device.bundle;
@@ -547,45 +569,61 @@ class GroupSenderKeyCoordinator {
     return devices;
   }
 
-  /// The member's directory entry for sealing, reused for
-  /// [memberDevicesTtl]. A member the directory has no trusted device for is
-  /// not remembered, so the next send asks again.
-  Future<KeyDirectoryEntry?> _sendingEntryOf(GroupMember member, String accessToken) async {
-    final now = _clock();
-    final cached = _memberDevices[member.userId];
-    if (cached != null && now.difference(cached.$2) < memberDevicesTtl) return cached.$1;
-    final entry = await _directoryEntryOf(member, accessToken);
-    if (entry == null) {
-      _memberDevices.remove(member.userId);
-    } else {
-      _memberDevices[member.userId] = (entry, now);
+  /// Resolves members' directory entries for one sending round or one batch
+  /// of received distributions. The entry of a member is for sealing to
+  /// their devices or for checking a distribution [deviceId] signed; null
+  /// when the directory lists no trusted device for them (mid account
+  /// deletion, or after their last device was revoked), or not [deviceId]:
+  /// that is about this member alone.
+  ///
+  /// Every member comes from one GET /keys/group/:conversationId, reused for
+  /// sending and receiving while it is about [epoch] or a later one and
+  /// younger than [memberDevicesTtl], never from one lookup per member: the
+  /// directory allows a device ten handle lookups a minute and a group has
+  /// up to 25 members. When a reused answer lacks a member or device, the
+  /// round asks once more; what the newer answer lacks too is taken as
+  /// absent until it is replaced. Failures that are not about a member
+  /// (offline, throttled, server error) are thrown: a sending round then
+  /// aborts, and a distribution stays for a later pickup.
+  _MemberEntryLookup _directoryRound(String conversationId, {required int epoch, required String accessToken}) {
+    _MemberDirectory? directory;
+    var askedThisRound = false;
+    Future<_MemberDirectory> fetch() async {
+      askedThisRound = true;
+      return directory = await _fetchMemberDirectory(conversationId, accessToken);
     }
-    return entry;
-  }
 
-  /// The member's directory entry, provided the directory answers for that
-  /// very user; null when it has no trusted device for them. A malformed
-  /// answer vouches for none of the member's devices either, and must not
-  /// keep the chain from the other members.
-  Future<KeyDirectoryEntry?> _directoryEntryOf(GroupMember member, String accessToken) async {
-    final KeyDirectoryEntry entry;
-    try {
-      entry = await _keys.lookup(member.handle, accessToken: accessToken, claim: KeyClaim.none);
-    } on VeilApiException catch (e) {
-      if (_isNoActiveDevice(e)) return null;
-      rethrow;
-    } on FormatException {
+    return (userId, {deviceId}) async {
+      bool lists(_MemberDirectory directory) {
+        final entry = directory.keys.members[userId];
+        return entry != null && (deviceId == null || entry.device(deviceId) != null);
+      }
+
+      final cached = _memberDirectories[conversationId];
+      var current = directory ??
+          (cached != null && cached.keys.epoch >= epoch && _clock().difference(cached.fetchedAt) < memberDevicesTtl
+              ? directory = cached
+              : await fetch());
+      final missing = deviceId == null ? Uri.encodeComponent(userId) : _deviceAddress(userId, deviceId);
+      if (!lists(current) && !askedThisRound && !current.confirmedMissing.contains(missing)) {
+        current = await fetch();
+      }
+      if (lists(current)) return current.keys.members[userId];
+      current.confirmedMissing.add(missing);
       return null;
-    }
-    return entry.userId == member.userId ? entry : null;
+    };
   }
 
-  /// How the directory reports a user with no trusted active device, e.g.
-  /// mid account deletion or after their last device was revoked. Keyed on
-  /// the error code, not the bare status: a 404 from an unrouted path is not
-  /// about the member and must still fail the round.
-  static bool _isNoActiveDevice(VeilApiException error) =>
-      error.code == 'active_device_not_found';
+  // Concurrent rounds and distributions share one request.
+  Future<_MemberDirectory> _fetchMemberDirectory(String conversationId, String accessToken) =>
+      _memberDirectoryFetches[conversationId] ??= () async {
+        try {
+          final keys = await _keys.groupMemberKeys(conversationId, accessToken: accessToken);
+          return _memberDirectories[conversationId] = _MemberDirectory(keys, _clock());
+        } finally {
+          _memberDirectoryFetches.remove(conversationId);
+        }
+      }();
 
   /// Fails closed: a trust check that throws refuses the identity, exactly as
   /// if it had returned false.
@@ -603,4 +641,31 @@ class GroupSenderKeyCoordinator {
       // Nothing was authenticated, so the server-controlled outer kind must
       // not decide how the failure renders (e.g. as system chrome).
       DecryptedMessage(body: '', messageKind: MessageKind.text, status: status, failureReason: reason);
+}
+
+/// A member's directory entry within one round; see
+/// GroupSenderKeyCoordinator._directoryRound.
+typedef _MemberEntryLookup = Future<KeyDirectoryEntry?> Function(String userId, {String? deviceId});
+
+/// What became of one distribution.
+enum _Ingest {
+  installed,
+
+  /// Refused for good, or a re-delivery of a chain already held.
+  refused,
+
+  /// The directory could not vouch for the signer right now.
+  retry,
+}
+
+/// One answer of GET /keys/group/:conversationId and when it came.
+class _MemberDirectory {
+  _MemberDirectory(this.keys, this.fetchedAt);
+
+  final GroupMemberKeys keys;
+  final DateTime fetchedAt;
+
+  /// Members and devices this answer was asked again for and still lacked:
+  /// not asked for again until the answer is replaced.
+  final Set<String> confirmedMissing = {};
 }

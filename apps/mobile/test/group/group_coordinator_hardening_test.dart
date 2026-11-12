@@ -29,8 +29,45 @@ class _Server {
   final List<List<String>> uploads = <List<String>>[];
   final List<List<String>> uploadedDevices = <List<String>>[];
 
-  /// Handle -> error the directory answers with instead of an entry.
+  /// Handle -> why the directory cannot serve that member: one with no
+  /// active device is left out of GET /keys/group/:id, as the API does; any
+  /// other error fails the whole request.
   final Map<String, VeilApiException> lookupFailures = <String, VeilApiException>{};
+
+  /// The group's members, by handle, in the order the directory lists them.
+  final List<String> members = <String>[];
+
+  /// How often each directory route was asked, and by which device.
+  int groupKeyRequests = 0;
+  int handleLookups = 0;
+  final Map<String, int> groupKeyRequestsBy = <String, int>{};
+
+  /// The API's per-device budgets, which every test here stays within one
+  /// minute of: ten GET /keys/:handle, twenty GET /keys/group/:id.
+  static const handleLookupBudget = 10;
+  static const groupKeysBudget = 20;
+  final Map<String, int> _handleLookupsBy = <String, int>{};
+
+  void lookUpHandle(TestIdentity requester) {
+    handleLookups += 1;
+    final spent = _handleLookupsBy[requester.deviceId] = (_handleLookupsBy[requester.deviceId] ?? 0) + 1;
+    if (spent > handleLookupBudget) throw _throttled;
+  }
+
+  /// GET /keys/group/:id for [requester]: every other member's entry.
+  Map<String, dynamic> groupKeys(String conversationId, TestIdentity requester) {
+    groupKeyRequests += 1;
+    final spent = groupKeyRequestsBy[requester.deviceId] = (groupKeyRequestsBy[requester.deviceId] ?? 0) + 1;
+    if (spent > groupKeysBudget) throw _throttled;
+    final listed = <Map<String, dynamic>>[];
+    for (final handle in members.where((handle) => handle != requester.handle)) {
+      final failure = lookupFailures[handle];
+      if (failure?.code == 'active_device_not_found') continue;
+      if (failure != null) throw failure;
+      listed.add(directory[handle]!);
+    }
+    return {'conversationId': conversationId, 'epoch': 0, 'members': listed};
+  }
 
   /// Error the relay answers every distribution upload with, if set.
   VeilApiException? uploadFailure;
@@ -65,6 +102,8 @@ class _ServerClient extends VeilApiClient {
     required String? accessToken,
     Map<String, String>? query,
   }) async {
+    if (path.startsWith('/keys/group/')) return server.groupKeys(path.substring('/keys/group/'.length), me);
+    server.lookUpHandle(me);
     final handle = path.substring('/keys/'.length);
     final failure = server.lookupFailures[handle];
     if (failure != null) throw failure;
@@ -252,6 +291,8 @@ final _noActiveDevice = VeilApiException(
 
 final _unavailable = VeilApiException('Service unavailable', statusCode: 503);
 
+final _throttled = VeilApiException('Too many requests', code: 'rate_limited', statusCode: 429);
+
 const _attachment = AttachmentReference(
   attachmentId: 'att-1',
   storageKey: 'blobs/att-1',
@@ -280,7 +321,9 @@ void main() {
     carolId = await TestIdentity.generate(userId: 'user-carol', deviceId: 'dev-carol', handle: 'carol');
     for (final id in [aliceId, bobId, carolId]) {
       directory.add(id);
-      server.publish(id);
+      server
+        ..publish(id)
+        ..members.add(id.handle);
     }
     group = ConversationPreview(
       id: groupId,
@@ -521,23 +564,28 @@ void main() {
     expect((await bob.read(envelope)).body, 'hello bob');
   });
 
-  test('member whose directory lookup is 404 is skipped without blocking the others', () async {
+  test('member the directory lists no device for is skipped without blocking the others', () async {
+    var now = DateTime.utc(2026, 11, 1, 9);
+    final sender = _Member(aliceId, server, directory, group, clock: () => now);
     server.lookupFailures[carolId.handle] = _noActiveDevice;
 
-    final envelope = await alice.send(group, 'carol has no device right now');
+    final envelope = await sender.send(group, 'carol has no device right now');
     expect(server.uploads, [
       [bobId.userId],
     ]);
     expect((await bob.read(envelope)).body, 'carol has no device right now');
 
-    // carol has not been reached: each send asks again, and nothing is
-    // uploaded while the directory still has no device for her.
-    await alice.prepareSend(group);
+    // carol has not been reached: the directory answer that lacked her is
+    // asked again once, and nothing is uploaded while it still lacks her.
+    await sender.prepareSend(group);
+    await sender.prepareSend(group);
     expect(server.uploads, hasLength(1));
+    expect(server.groupKeyRequests, 2, reason: "alice's first round and bob's check of her chain; nothing more for carol");
 
     server.lookupFailures.clear();
+    now = now.add(GroupSenderKeyCoordinator.memberDevicesTtl);
     final carol = _Member(carolId, server, directory, group);
-    final later = await alice.send(group, 'welcome back');
+    final later = await sender.send(group, 'welcome back');
     expect(server.uploads.last, [carolId.userId]);
     expect((await carol.read(later)).body, 'welcome back');
   });
@@ -568,8 +616,10 @@ void main() {
   });
 
   test('once a member holds the chain, failing to reach the rest does not fail the send', () async {
+    var now = DateTime.utc(2026, 11, 1, 9);
+    final sender = _Member(aliceId, server, directory, group, clock: () => now);
     server.lookupFailures[carolId.handle] = _noActiveDevice;
-    await alice.send(group, 'bob only');
+    await sender.send(group, 'bob only');
     expect(server.uploads, [
       [bobId.userId],
     ]);
@@ -577,13 +627,15 @@ void main() {
     // bob can read whatever alice sends next, so a transient failure while
     // retrying carol must not cost him the message.
     server.lookupFailures[carolId.handle] = _unavailable;
-    final envelope = await alice.send(group, 'still readable by bob');
+    now = now.add(GroupSenderKeyCoordinator.memberDevicesTtl);
+    final envelope = await sender.send(group, 'still readable by bob');
     expect(server.uploads, hasLength(1));
+    server.lookupFailures.clear();
     expect((await bob.read(envelope)).body, 'still readable by bob');
 
-    server.lookupFailures.clear();
+    now = now.add(GroupSenderKeyCoordinator.memberDevicesTtl);
     final carol = _Member(carolId, server, directory, group);
-    final later = await alice.send(group, 'carol too');
+    final later = await sender.send(group, 'carol too');
     expect(server.uploads.last, [carolId.userId]);
     expect((await carol.read(later)).body, 'carol too');
   });
@@ -681,6 +733,94 @@ void main() {
     final carol = _Member(carolId, server, directory, group);
     expect((await bob.read(envelope)).body, 'readable by everyone');
     expect((await carol.read(envelope)).body, 'readable by everyone');
+  });
+
+  // A full-size group: alice and twelve others, more members than the ten
+  // handle lookups a minute the directory allows a device.
+  Future<(List<TestIdentity>, ConversationPreview)> fullGroup() async {
+    final others = [
+      for (var i = 0; i < 12; i++)
+        await TestIdentity.generate(userId: 'user-m$i', deviceId: 'dev-m$i', handle: 'member$i'),
+    ];
+    server.members.removeWhere((handle) => handle == bobId.handle || handle == carolId.handle);
+    for (final id in others) {
+      directory.add(id);
+      server
+        ..publish(id)
+        ..members.add(id.handle);
+    }
+    final big = group.copyWith(members: [
+      for (final id in [aliceId, ...others]) GroupMember(userId: id.userId, handle: id.handle),
+    ]);
+    return (others, big);
+  }
+
+  test('a distribution round costs one directory request whatever the group size', () async {
+    final (others, big) = await fullGroup();
+    final sender = _Member(aliceId, server, directory, big);
+
+    final envelope = await sender.send(big, 'hello everyone');
+
+    expect(server.uploads.single, [for (final id in others) id.userId]);
+    expect(server.groupKeyRequests, 1);
+    expect(server.handleLookups, 0);
+    final reader = _Member(others.last, server, directory, big);
+    expect((await reader.read(envelope)).body, 'hello everyone');
+  });
+
+  test('the chains of a whole epoch bump are checked against one directory answer', () async {
+    final (others, big) = await fullGroup();
+    final receiver = _Member(aliceId, server, directory, big);
+    final senders = [for (final id in others) _Member(id, server, directory, big)];
+    final frames = [for (final sender in senders) await sender.send(big, 'from ${sender.identity.handle}')];
+    final before = server.groupKeyRequestsBy[aliceId.deviceId] ?? 0;
+
+    for (final blob in List.of(server.buffered[aliceId.userId]!)) {
+      await receiver.receiveRealtime(blob);
+    }
+
+    expect(others.every(receiver.holdsChainOf), isTrue);
+    expect(server.groupKeyRequestsBy[aliceId.deviceId]! - before, 1);
+    expect(server.handleLookups, 0);
+    for (var i = 0; i < frames.length; i++) {
+      expect((await receiver.read(frames[i])).body, 'from ${others[i].handle}');
+    }
+  });
+
+  test('a pickup that met a throttled directory runs again for the next frame', () async {
+    final envelope = await alice.send(group, 'hello bob');
+    server.lookupFailures[aliceId.handle] = _throttled;
+
+    expect((await bob.read(envelope)).status, DecryptStatus.awaitingKey);
+
+    server.lookupFailures.clear();
+    expect((await bob.read(envelope)).body, 'hello bob');
+  });
+
+  test('a signer the reused answer lacks is asked for once more, and only once', () async {
+    final receiver = _Member(bobId, server, directory, group);
+    expect((await receiver.read(await alice.send(group, 'warm-up'))).body, 'warm-up');
+    final asked = server.groupKeyRequestsBy[bobId.deviceId]!;
+
+    // alice adds a tablet after bob's answer was fetched; it hands bob its
+    // own chain.
+    final tablet = await TestIdentity.generate(userId: aliceId.userId, deviceId: 'dev-alice-tablet', handle: 'alice');
+    directory.add(tablet);
+    server.publish(aliceId, devices: [aliceId, tablet]);
+    final fromTablet = await _Member(tablet, server, directory, group).send(group, 'from the tablet');
+    await receiver.receiveRealtime(
+        server.buffered[bobId.userId]!.singleWhere((blob) => blob['fromDeviceId'] == tablet.deviceId));
+    expect(server.groupKeyRequestsBy[bobId.deviceId], asked + 1);
+    expect((await receiver.read(fromTablet)).body, 'from the tablet');
+
+    // A device the directory never lists is asked about once, then not.
+    final forged = {
+      ...server.buffered[bobId.userId]!.first,
+      'fromDeviceId': 'dev-nowhere',
+    };
+    await receiver.receiveRealtime(forged);
+    await receiver.receiveRealtime(forged);
+    expect(server.groupKeyRequestsBy[bobId.deviceId], asked + 2);
   });
 
   test('an unreadable frame carries no body and ignores the outer kind', () async {

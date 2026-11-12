@@ -62,14 +62,28 @@ class _RelayClient extends VeilApiClient {
           {String? cursor, int limit = 50}) async =>
       {'items': const <Map<String, dynamic>>[], 'nextCursor': null};
 
-  // GET /keys/:handle with each user's single device.
+  // GET /keys/group/:id with every other member's single device, and
+  // GET /keys/:handle.
   @override
   Future<Map<String, dynamic>> getJson(
     String path, {
     required String? accessToken,
     Map<String, String>? query,
   }) async {
-    final d = relay.devicesByHandle[path.substring('/keys/'.length)]!;
+    if (path == '/keys/group/$groupId') {
+      return {
+        'conversationId': groupId,
+        'epoch': relay.epoch,
+        'members': [
+          for (final d in visibleMembers ?? relay.devicesByHandle.values)
+            if (d.userId != me.userId) _entryOf(d),
+        ],
+      };
+    }
+    return _entryOf(relay.devicesByHandle[path.substring('/keys/'.length)]!);
+  }
+
+  static Map<String, dynamic> _entryOf(_Device d) {
     return {
       'user': {'id': d.userId, 'handle': d.handle, 'activeDeviceId': d.deviceId},
       'devices': [

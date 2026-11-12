@@ -253,7 +253,7 @@ class FakeRelay {
   Map<String, dynamic> _lookup(RelayParty requester, String handle, String claim) {
     final party = partiesByHandle[handle];
     if (party == null) {
-      throw VeilApiException('not found', statusCode: 404, code: 'active_device_not_found');
+      throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
     }
     final active = bundleOverrides[handle] ??
         {
@@ -280,6 +280,24 @@ class FakeRelay {
       'devices': [
         device(active, isActive: true),
         for (final extra in extraDevices[handle] ?? const <Map<String, dynamic>>[]) device(extra, isActive: false),
+      ],
+    };
+  }
+
+  /// GET /keys/group/:conversationId, like KeysService.getGroupMemberKeys:
+  /// every other member's entry as GET /keys/:handle lists it, nothing
+  /// claimed, and group_not_found for anyone but a member of a group.
+  Map<String, dynamic> _groupKeys(RelayParty requester, String conversationId) {
+    final conversation = conversations[conversationId];
+    if (conversation == null || conversation.type != 'group' || !conversation.memberHandles.contains(requester.handle)) {
+      throw VeilApiException('Group not found', statusCode: 404, code: 'group_not_found');
+    }
+    return {
+      'conversationId': conversationId,
+      'epoch': conversation.epoch,
+      'members': [
+        for (final handle in conversation.memberHandles)
+          if (handle != requester.handle && partiesByHandle.containsKey(handle)) _lookup(requester, handle, 'none'),
       ],
     };
   }
@@ -323,6 +341,7 @@ class FakeRelayClient extends VeilApiClient {
 
   int conversationFetches = 0;
   int messageFetches = 0;
+  int groupKeyRequests = 0;
   final Map<String, int> directoryLookups = {};
   final List<String> markReadCalls = [];
   final List<String> signedPrekeyUploads = [];
@@ -368,6 +387,10 @@ class FakeRelayClient extends VeilApiClient {
     Map<String, String>? query,
   }) async {
     _stampDate();
+    if (path.startsWith('/keys/group/')) {
+      groupKeyRequests += 1;
+      return relay._groupKeys(me, Uri.decodeComponent(path.substring('/keys/group/'.length)));
+    }
     if (path.startsWith('/keys/')) {
       final handle = Uri.decodeComponent(path.substring('/keys/'.length));
       directoryLookups[handle] = (directoryLookups[handle] ?? 0) + 1;

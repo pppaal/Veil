@@ -145,9 +145,11 @@ assertNoMatch(
 
 const packagePrefix = 'package:veil_mobile/';
 
-// Every import and export of [file] inside the app, as repo paths.
+// Every import, export and part of [file] inside the app, as repo paths,
+// whichever quotes the URI uses. A `part of` names its own library and is
+// no dependency.
 const directivesOf = (file) =>
-  [...read(file).matchAll(/^\s*(import|export)\s+'([^']+)'/gm)].flatMap(([, kind, uri]) => {
+  [...read(file).matchAll(/^\s*(import|export|part)\s+(['"])(.+?)\2/gm)].flatMap(([, kind, , uri]) => {
     if (uri.startsWith(packagePrefix))
       return [{ kind, target: join('apps/mobile/lib', uri.slice(packagePrefix.length)) }];
     if (uri.includes(':')) return [];
@@ -169,7 +171,7 @@ for (const file of dartFiles(`${mobileSrc}/core`)) {
     if (layer !== 'features' && layer !== 'app') continue;
     if (kind === 'export' && compatibilityShims.has(file)) continue;
     failures.push(
-      `lib/src/core must not ${kind} ${layer}/ (${relative(mobileSrc, target)}): ${file}`,
+      `lib/src/core must not reach ${layer}/ (${kind} ${relative(mobileSrc, target)}): ${file}`,
     );
   }
 }

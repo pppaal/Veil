@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
@@ -11,11 +13,21 @@ import '../support/messenger_services_fixture.dart';
 
 /// POST /messages, recording what was sent in which order. A send waits
 /// for [gate] when one is set, and fails with [failures] for the ids there.
+/// A send of an id in [stalled] goes over the real transport to a relay
+/// that never answers, so it times out as a slow relay makes it.
 class _RelayApi extends VeilApiClient {
-  _RelayApi() : super(baseUrl: 'http://relay.invalid/v1');
+  _RelayApi()
+      : super(
+          baseUrl: 'http://relay.invalid/v1',
+          client: MockClient((_) => Completer<http.Response>().future),
+          requestTimeout: stallTimeout,
+        );
+
+  static const stallTimeout = Duration(milliseconds: 50);
 
   final List<String> sent = [];
   final Map<String, Object> failures = {};
+  final Set<String> stalled = {};
   Completer<void>? gate;
   int _order = 0;
 
@@ -23,6 +35,7 @@ class _RelayApi extends VeilApiClient {
   Future<Map<String, dynamic>> sendMessage(String accessToken, Map<String, dynamic> body) async {
     final clientMessageId = body['clientMessageId'] as String;
     sent.add(clientMessageId);
+    if (stalled.remove(clientMessageId)) return super.sendMessage(accessToken, body);
     await gate?.future;
     final failure = failures.remove(clientMessageId);
     if (failure != null) throw failure;
@@ -97,11 +110,13 @@ void main() {
 
   test('timeout does not block subsequent sends', () async {
     services.outbox.restore([_pending('c-slow', second: 1), _pending('c-next', second: 2)]);
-    api.failures['c-slow'] = VeilApiException('timed out', code: 'network_timeout');
+    api.stalled.add('c-slow');
     final started = DateTime.now();
 
     await services.outbox.drain();
 
+    expect(DateTime.now().difference(started), greaterThanOrEqualTo(_RelayApi.stallTimeout),
+        reason: 'the first send waited for the relay until it timed out');
     expect(api.sent, ['c-slow', 'c-next']);
     final messages = services.store.messagesOf('conv-1');
     expect(messages.map((message) => message.id), contains('srv-c-next'));
@@ -113,7 +128,7 @@ void main() {
       MessageDeliveryState.pending,
       reason: 'a transient failure stays queued, not failed',
     );
-    expect(services.ops.errorMessage, 'timed out');
+    expect(services.ops.errorMessage, 'The VEIL relay did not respond in time.');
 
     await services.outbox.retry('conv-1');
     expect(api.sent, ['c-slow', 'c-next', 'c-slow']);

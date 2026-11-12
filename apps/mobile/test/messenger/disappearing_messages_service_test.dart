@@ -1,5 +1,6 @@
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
@@ -11,6 +12,8 @@ import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_persistence.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_session_context.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/messenger_state_store.dart';
+
+import '../support/messenger_services_fixture.dart';
 
 final _start = DateTime.utc(2026, 4, 1, 12);
 
@@ -111,5 +114,35 @@ void main() {
       expect(async.pendingTimers, hasLength(1));
       service.dispose();
     });
+  });
+
+  test('arms for the first whole millisecond at or after the expiry', () {
+    fakeAsync((async) {
+      final (store, service) = _service(async);
+      store.setMessages('conv-1', [
+        _message('srv-1', expiresAt: _start.add(const Duration(seconds: 10, microseconds: 400))),
+      ]);
+      async.flushMicrotasks();
+
+      // A real Timer would drop the 400 µs and fire before the expiry.
+      expect(async.pendingTimers.single.duration, const Duration(seconds: 10, milliseconds: 1));
+      service.dispose();
+    });
+  });
+
+  test('resuming the app expires what came due while the device slept', () async {
+    final services = messengerServicesFixture(api: VeilApiClient(baseUrl: 'http://relay.invalid/v1'))
+      ..session.diff(const AppSessionState());
+    addTearDown(services.dispose);
+    // Already past its expiry, as after a sleep the monotonic expiry timer
+    // did not count, and that timer has not fired yet.
+    services.store.setMessages('conv-1', [
+      _message('srv-1', expiresAt: DateTime.now().subtract(const Duration(minutes: 1))),
+      _message('srv-2'),
+    ]);
+
+    final resuming = services.handleAppResumed();
+    expect(services.store.messagesOf('conv-1').map((message) => message.id), ['srv-2']);
+    await resuming;
   });
 }

@@ -119,6 +119,11 @@ class DisappearingMessagesService implements MessengerStateObserver {
     _armedFor = next;
     if (next == null) return;
     final delay = next.difference(_now());
-    _timer = Timer(delay.isNegative ? Duration.zero : delay, () => unawaited(reconcile()));
+    _timer = Timer(delay.isNegative ? Duration.zero : _toWholeMilliseconds(delay), () => unawaited(reconcile()));
   }
+
+  // Timer drops the sub-millisecond part of a delay, so it would fire just
+  // before the expiry, find nothing due and re-arm until it passed.
+  static Duration _toWholeMilliseconds(Duration delay) =>
+      Duration(milliseconds: (delay.inMicroseconds + Duration.microsecondsPerMillisecond - 1) ~/ Duration.microsecondsPerMillisecond);
 }

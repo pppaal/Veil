@@ -100,7 +100,7 @@ class AttachmentTransferService {
 
   String? downloadError(String attachmentId) => _downloadErrors[attachmentId];
 
-  void track(
+  void _track(
     String clientMessageId, {
     required AttachmentTransferPhase phase,
     required double progress,
@@ -133,7 +133,7 @@ class AttachmentTransferService {
     required bool canRetry,
     required bool canCancel,
   }) =>
-      track(
+      _track(
         clientMessageId,
         phase: phase,
         progress: progressOf(draft),
@@ -227,7 +227,7 @@ class AttachmentTransferService {
       'uploadStatus': 'uploaded',
     });
     _activeUploads.remove(pending.clientMessageId);
-    track(
+    _track(
       pending.clientMessageId,
       phase: AttachmentTransferPhase.finalizing,
       progress: 1,
@@ -302,7 +302,7 @@ class AttachmentTransferService {
           } else {
             _pending.put(updated);
           }
-          track(
+          _track(
             clientMessageId,
             phase: AttachmentTransferPhase.uploading,
             progress: totalBytes == 0 ? 0 : sentBytes / totalBytes,

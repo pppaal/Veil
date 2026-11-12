@@ -258,6 +258,9 @@ class MessengerServices {
   }
 
   Future<void> handleAppResumed() async {
+    // The expiry timer runs on the monotonic clock, which stops while the
+    // device sleeps: what came due meanwhile goes now, relay or not.
+    unawaited(disappearing.reconcile());
     if (session.authed == null) return;
     await realtime.reconnect(refreshConversations: true);
     sync.scheduleSyncHint(conversationId: store.activeConversationId);

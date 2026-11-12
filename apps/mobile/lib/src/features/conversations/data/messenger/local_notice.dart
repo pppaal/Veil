@@ -56,8 +56,8 @@ LocalNotice senderKeysKeptNotice(
 /// next, so every change is shown in the chat. [change] tells this change
 /// apart from an earlier one of the same member: the device's own count of
 /// the group's member changes, never anything the relay names. It is
-/// written as 'n<change>', so no notice of a build that keyed changes on the
-/// relay's epoch ('<userId>:<epoch>') can stand in for one.
+/// written as `n` and the count, so no notice of a build that keyed changes
+/// on the relay's epoch (`userId:epoch`) can stand in for one.
 LocalNotice memberChangeNotice(
   String conversationId, {
   required bool added,

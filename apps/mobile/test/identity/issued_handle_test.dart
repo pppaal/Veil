@@ -18,9 +18,9 @@ void main() {
       expect(isIssuableHandle(handle), isTrue, reason: handle);
     }
     for (final handle in [
-      'bоb', // a Cyrillic o
-      'bob​', // a zero-width space
-      '‮bob', // a right-to-left override
+      'b\u043eb', // a Cyrillic o
+      'bob\u200b', // a zero-width space
+      '\u202ebob', // a right-to-left override
       'bob ',
       'Bob',
       'a..b',

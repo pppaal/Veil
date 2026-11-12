@@ -74,7 +74,7 @@
       <li>종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)</li>
       <li>전달에 필요한 메타데이터(대화 참여자, 메시지 도착 시각, 수신·읽음 확인, 기기의 마지막 접속일)</li>
       <li>앱 안의 연락처 목록: 이용자가 추가한 계정(연락처에 붙인 이름은 기기에만 저장됩니다)</li>
-      <li>통화 기록: 대화, 통화를 시작한 기기, 음성·영상 여부, 시작·종료 시각(30일 후 삭제)</li>
+      <li>통화 기록: 대화, 통화를 시작한 기기, 음성·영상 여부, 통화 상태(연결 중·통화 중·종료·부재중·거절), 시작·종료 시각, 통화 시간(30일 후 삭제)</li>
       <li>기기별 푸시 토큰(메시지 내용 없이 앱을 깨우는 데만 사용)</li>
       <li>이용자가 차단한 계정, 알림을 끈 대화, 이용자가 접수한 신고(신고는 90일 후 삭제)</li>
       <li>그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)</li>
@@ -157,7 +157,7 @@
       <li>End-to-end encrypted message payloads that the server cannot decrypt.</li>
       <li>The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).</li>
       <li>Your in-app contact list: which accounts you added. The names you give them stay on your device.</li>
-      <li>Call records: the conversation, the device that started the call, voice or video, and when it started and ended. They are deleted after 30 days.</li>
+      <li>Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.</li>
       <li>A push token for each device, used only for wake-ups that carry no message content.</li>
       <li>The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.</li>
       <li>Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.</li>

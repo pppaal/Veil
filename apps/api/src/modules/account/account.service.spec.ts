@@ -46,6 +46,7 @@ type StepName =
   | 'phase2.conversation.deleteMany'
   | 'phase3.deviceTransferSession.deleteMany'
   | 'phase3.conversationMember.findMany'
+  | 'phase3.conversation.findMany'
   | 'phase3.conversation.updateMany'
   | 'phase3.conversationMember.deleteMany'
   | 'phase3.conversation.deleteMany'
@@ -101,6 +102,10 @@ function buildPrismaMock(opts?: {
         deleteMany: jest.fn(record('phase3.conversationMember.deleteMany')),
       },
       conversation: {
+        findMany: jest.fn(async () => {
+          order.push('phase3.conversation.findMany');
+          return [];
+        }),
         updateMany: jest.fn(record('phase3.conversation.updateMany')),
         deleteMany: jest.fn(record('phase3.conversation.deleteMany')),
       },
@@ -407,6 +412,33 @@ describe('AccountService.deleteAccount against stored rows', () => {
         [withCarol, carol],
       ].sort(),
     );
+  });
+
+  it('releases a direct key that names the user after their direct membership is already gone', async () => {
+    const { prisma, account, addUser, openDirect, storedRows } = setup();
+    const alice = await addUser('alice');
+    const bob = await addUser('bob');
+    const carol = await addUser('carol');
+    const withBob = await openDirect(alice, 'bob');
+    const bobWithCarol = await openDirect(bob, 'carol');
+    // A deletion that failed under an earlier release: its Phase 2 deleted
+    // every membership of hers, direct ones included, and the retry has no
+    // membership left to find the conversation by.
+    prisma.conversationMembers = prisma.conversationMembers.filter(
+      (member) => member.userId !== alice,
+    );
+    expect(storedRows()).toContain(alice);
+
+    await account.deleteAccount(alice);
+
+    expect(storedRows()).not.toContain(alice);
+    // Only keys naming Alice are released.
+    expect(
+      prisma.conversations.map((conversation) => [conversation.id, conversation.directKey]),
+    ).toEqual([
+      [withBob, null],
+      [bobWithCarol, [bob, carol].sort().join('|')],
+    ]);
   });
 
   it('deletes a direct conversation once both of its members have deleted their accounts', async () => {

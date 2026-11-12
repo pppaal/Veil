@@ -154,11 +154,20 @@ export class ThrowawayPostgres {
     );
   }
 
-  /** Applies prisma/migrations in order, from the first up to and including `last`. */
-  migrate(database: string, last: string): void {
+  /** A Prisma datasource URL for `database`, over the cluster's Unix socket. */
+  connectionUrl(database: string): string {
+    return `postgresql://${SUPERUSER}@localhost/${database}?host=${this.dir}`;
+  }
+
+  /**
+   * Applies prisma/migrations in order, from the first up to and including
+   * `last`, or every migration when `last` is omitted.
+   */
+  migrate(database: string, last?: string): void {
     const migrations = readdirSync(MIGRATIONS_DIR)
       .filter((name) => /^\d{4}_/.test(name))
       .sort();
+    last ??= migrations[migrations.length - 1];
     if (!migrations.includes(last)) {
       throw new Error(`no migration named ${last}`);
     }

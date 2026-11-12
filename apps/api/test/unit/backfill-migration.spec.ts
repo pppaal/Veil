@@ -1,3 +1,4 @@
+import { conversation, device, directKey, id, users } from '../support/sql-rows';
 import { ThrowawayPostgres, findPostgresBinDir } from '../support/throwaway-postgres';
 
 // 0020 is hand-written SQL that cleans rows earlier releases left behind, so
@@ -8,45 +9,15 @@ import { ThrowawayPostgres, findPostgresBinDir } from '../support/throwaway-post
 const BEFORE = '0019_metadata_minimisation';
 const BACKFILL = '0020_backfill_departed_metadata';
 
-const id = (n: number): string => `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
-
 const ALICE = id(0xa);
 const BOB = id(0xb);
 const CAROL = id(0xc);
 const DAVE = id(0xd);
 const ERIN = id(0xe);
+const FRANK = id(0xf);
+const GINA = id(0x6);
 const BOB_PHONE = id(0xb1);
 const CAROL_PHONE = id(0xc1);
-
-const directKey = (a: string, b: string): string => [a, b].sort().join('|');
-
-const users = (...entries: Array<[string, string, string?]>): string =>
-  entries
-    .map(
-      ([userId, handle, status = 'active']) =>
-        `INSERT INTO users (id, handle, status, updated_at) VALUES ('${userId}', '${handle}', '${status}', now());`,
-    )
-    .join('\n');
-
-const device = (deviceId: string, userId: string): string =>
-  `INSERT INTO devices (id, user_id, platform, device_name, public_identity_key, signed_prekey_bundle, auth_public_key)
-   VALUES ('${deviceId}', '${userId}', 'ios', 'phone', 'ik', 'spk', 'auth');`;
-
-const conversation = (
-  conversationId: string,
-  type: 'direct' | 'group',
-  members: string[],
-): string =>
-  [
-    `INSERT INTO conversations (id, type, direct_key) VALUES ('${conversationId}', '${type}', ${
-      type === 'direct' ? `'${directKey(members[0], members[1])}'` : 'NULL'
-    });`,
-    ...members.map(
-      (userId) =>
-        `INSERT INTO conversation_members (id, conversation_id, user_id)
-         VALUES (gen_random_uuid(), '${conversationId}', '${userId}');`,
-    ),
-  ].join('\n');
 
 const postgresBinDir = findPostgresBinDir();
 const describeWithPostgres = postgresBinDir ? describe : describe.skip;
@@ -128,6 +99,58 @@ describeWithPostgres(`migration ${BACKFILL}`, () => {
       [GROUP, 'group', '-', BOB],
       // Alice-Carol had nobody left in it and is gone.
     ]);
+  });
+
+  it('clears direct keys that name someone who is no longer a member of the conversation', () => {
+    const BE = id(0x3be0);
+    const BF = id(0x3bf0);
+    const BG = id(0x3b60);
+    prepare(
+      'departed_members',
+      [
+        users([BOB, 'bob'], [ERIN, 'erin', 'revoked'], [FRANK, 'frank'], [GINA, 'gina', 'revoked']),
+        conversation(BE, 'direct', [BOB, ERIN]),
+        conversation(BF, 'direct', [BOB, FRANK]),
+        conversation(BG, 'direct', [BOB, GINA]),
+        // Erin's deletion failed under a release before 0019: its Phase 2
+        // deleted every membership of hers, direct ones included, and Phase 3
+        // never ran, so her user row stays 'revoked'.
+        `DELETE FROM conversation_members WHERE user_id = '${ERIN}';`,
+        // Frank left through POST /groups/:id/leave, which did not check the
+        // conversation type before the conversation-integrity release.
+        `DELETE FROM conversation_members WHERE conversation_id = '${BF}' AND user_id = '${FRANK}';`,
+        // Gina's deletion is in progress under the current code, which keeps
+        // direct memberships until its last phase.
+      ].join('\n'),
+    );
+
+    postgres.applyMigration('departed_members', BACKFILL);
+
+    expect(
+      postgres.query(
+        'departed_members',
+        `SELECT c.id, coalesce(c.direct_key, '-'), string_agg(m.user_id::text, ',' ORDER BY m.user_id)
+           FROM conversations c LEFT JOIN conversation_members m ON m.conversation_id = c.id
+          GROUP BY c.id ORDER BY c.id;`,
+      ),
+    ).toEqual([
+      // Gina's retried deletion finds this conversation through her
+      // membership and releases the key itself.
+      [BG, directKey(BOB, GINA), [BOB, GINA].sort().join(',')],
+      [BE, '-', BOB],
+      [BF, '-', BOB],
+    ]);
+
+    // Erin has no direct membership left to be found by, so this holds even
+    // for a retry that looks only through memberships: once her user row
+    // goes, no key names her.
+    postgres.query('departed_members', `DELETE FROM users WHERE id = '${ERIN}';`);
+    expect(
+      postgres.query(
+        'departed_members',
+        `SELECT count(*) FROM conversations WHERE direct_key LIKE '%${ERIN}%';`,
+      ),
+    ).toEqual([['0']]);
   });
 
   it("deletes former members' sync cursors and mutes and keeps current members'", () => {

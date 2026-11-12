@@ -69,7 +69,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 - [ ] `puro flutter analyze` is clean.
 - [ ] `puro flutter test` is green (78/78 currently).
 - [ ] Privacy policy URL resolves publicly with both KO + EN.
-- [ ] In-app privacy consent screen lists every field the server actually stores.
+- [ ] In-app privacy consent screen lists the same categories of stored data as the privacy policy (KO + EN); the field-by-field list is [server-data-inventory.md](server-data-inventory.md), not the consent screen.
 - [ ] Account deletion path in Settings → verified end-to-end against staging DB.
 - [ ] Korean UI audited on a real device at `ko-KR` locale (splash, onboarding warning, privacy consent, create account, choose handle, settings, chat, conversation list).
 - [ ] No-recovery warning screen is shown on first launch before key material is generated.

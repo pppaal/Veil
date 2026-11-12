@@ -21,6 +21,7 @@ const ENV_SCHEMA = 'apps/api/src/common/config/env.schema.ts';
 const LOGGING_INTERCEPTOR = 'apps/api/src/common/interceptors/logging.interceptor.ts';
 const EXCEPTION_FILTER = 'apps/api/src/common/filters/api-exception.filter.ts';
 const APP_LOGGER = 'apps/api/src/common/logger/app-logger.service.ts';
+const API_MAIN = 'apps/api/src/main.ts';
 const CADDYFILE = 'infra/caddy/Caddyfile';
 
 // Rule ids prefix every failure so the self-test can tell that a seeded
@@ -37,6 +38,7 @@ const RULES = {
   loggingThroughAppLogger: 'logging-through-app-logger',
   authBeforeThrottle: 'auth-before-throttle',
   caddyStripsClientIp: 'caddy-strips-client-ip',
+  corsThroughSharedOptions: 'cors-through-shared-options',
 };
 
 // The body of every reverse_proxy directive (empty when it has no block).
@@ -254,6 +256,30 @@ export function runPolicyChecks(rootDir) {
     }
   }
 
+  // HTTP CORS is configured in one place, corsOptions(), which exposes the
+  // Date header clients take the server clock from to stamp signed prekeys.
+  // Its unit test covers only the helper, so an inline enableCors or a `cors`
+  // option on NestFactory.create would pass every test and still hide Date
+  // from a cross-origin web client. (`cors: false` turns CORS off, as the
+  // realtime gateway does.)
+  assertMatch(
+    API_MAIN,
+    /\.enableCors\(\s*corsOptions\(/,
+    `[${RULES.corsThroughSharedOptions}] API bootstrap must configure CORS with enableCors(corsOptions(...))`,
+  );
+  for (const file of collectFiles(API_SRC)) {
+    const path = display(file);
+    if (path.endsWith('.spec.ts')) {
+      continue;
+    }
+    const source = readFileSync(file, 'utf8');
+    if (/\.enableCors\((?!\s*corsOptions\()|\bcors\s*:(?!\s*false\b)/.test(source)) {
+      failures.push(
+        `[${RULES.corsThroughSharedOptions}] CORS must be configured only through corsOptions(): ${path}`,
+      );
+    }
+  }
+
   for (const target of [LOGGING_INTERCEPTOR, EXCEPTION_FILTER]) {
     assertNoMatch(
       target,
@@ -313,8 +339,13 @@ export const CLEAN_FIXTURE = {
     ']',
     '',
   ].join('\n'),
-  'apps/api/src/main.ts':
-    'app.use(helmet());\napp.useGlobalFilters(new ApiExceptionFilter(logger));\n',
+  [API_MAIN]: [
+    'const app = await NestFactory.create(AppModule, { bufferLogs: true });',
+    'app.use(helmet());',
+    'app.useGlobalFilters(new ApiExceptionFilter(logger));',
+    'app.enableCors(corsOptions(config));',
+    '',
+  ].join('\n'),
   [APP_LOGGER]: "const logger = new Logger('VEIL');\nredactSensitiveFields(meta);\n",
   'apps/api/src/modules/device-transfer/device-transfer.service.ts':
     "const proof = 'transfer-complete:';\n",
@@ -433,6 +464,27 @@ const SEEDED_VIOLATIONS = [
         ']',
         '',
       ].join('\n'),
+    },
+  },
+  {
+    rule: RULES.corsThroughSharedOptions,
+    files: {
+      [API_MAIN]: CLEAN_FIXTURE[API_MAIN].replace(
+        'app.enableCors(corsOptions(config));',
+        'app.enableCors({ origin: allowedOrigins, credentials: false });',
+      ),
+    },
+  },
+  {
+    rule: RULES.corsThroughSharedOptions,
+    files: {
+      [API_MAIN]: CLEAN_FIXTURE[API_MAIN].replace('{ bufferLogs: true }', '{ cors: true }'),
+    },
+  },
+  {
+    rule: RULES.corsThroughSharedOptions,
+    files: {
+      'apps/api/src/bootstrap/http.ts': "app.enableCors({ origin: '*' });\n",
     },
   },
   {

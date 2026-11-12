@@ -1286,6 +1286,10 @@ export class FakePrismaService {
           return value != null && value > operand;
         case 'gte':
           return value != null && value >= operand;
+        case 'startsWith':
+          return typeof value === 'string' && value.startsWith(operand as string);
+        case 'endsWith':
+          return typeof value === 'string' && value.endsWith(operand as string);
         default:
           throw new Error(`FakePrismaService: unsupported filter operator "${operator}"`);
       }

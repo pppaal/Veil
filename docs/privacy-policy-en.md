@@ -14,7 +14,7 @@ The service collects only:
 - End-to-end encrypted message payloads that the server cannot decrypt.
 - The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
 - Your in-app contact list: which accounts you added. The names you give them stay on your device.
-- Call records: the conversation, the device that started the call, voice or video, and when it started and ended. They are deleted after 30 days.
+- Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.
 - A push token for each device, used only for wake-ups that carry no message content.
 - The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.
 - Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.

@@ -195,16 +195,36 @@ export class AccountService {
   // has nothing left to dedupe: it is cleared, and a conversation this leaves
   // with no members at all is deleted. Runs in Phase 3 so a retry after a
   // partial failure still finds the conversations through the memberships.
+  // The keys are searched as well, so a retry also releases a key whose
+  // membership is already gone (a deletion that failed under a release whose
+  // Phase 2 deleted direct memberships too). An id holds no '|', so `<id>|`
+  // at the start or `|<id>` at the end names this account and no other. No
+  // index serves the `|<id>` suffix, so this scans conversations once per
+  // account deletion.
   private async releaseDirectConversations(
     tx: Prisma.TransactionClient,
     userId: string,
   ): Promise<void> {
-    const conversationIds = (
-      await tx.conversationMember.findMany({
-        where: { userId, conversation: { type: 'direct' } },
-        select: { conversationId: true },
-      })
-    ).map((membership) => membership.conversationId);
+    const viaMembership = await tx.conversationMember.findMany({
+      where: { userId, conversation: { type: 'direct' } },
+      select: { conversationId: true },
+    });
+    const viaKey = await tx.conversation.findMany({
+      where: {
+        type: 'direct',
+        OR: [
+          { directKey: { startsWith: `${userId}|` } },
+          { directKey: { endsWith: `|${userId}` } },
+        ],
+      },
+      select: { id: true },
+    });
+    const conversationIds = [
+      ...new Set([
+        ...viaMembership.map((membership) => membership.conversationId),
+        ...viaKey.map((conversation) => conversation.id),
+      ]),
+    ];
     if (conversationIds.length === 0) {
       return;
     }

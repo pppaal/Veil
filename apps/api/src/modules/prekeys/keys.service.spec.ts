@@ -568,8 +568,8 @@ describe('KeysService.rotateSignedPrekey', () => {
     const MINUTE = 60 * 1000;
 
     it.each([
-      ['just under an hour old', VECTOR_SPK_TS + 60 * MINUTE],
-      ['up to 10 minutes ahead of the server', VECTOR_SPK_TS - 10 * MINUTE],
+      ['exactly an hour old', VECTOR_SPK_TS + 60 * MINUTE],
+      ['exactly 10 minutes ahead of the server', VECTOR_SPK_TS - 10 * MINUTE],
       ['stamped now', VECTOR_SPK_TS],
     ])('accepts a bundle %s', async (_label, serverNow) => {
       const { keys, alice, clock, device } = await setupRotation();

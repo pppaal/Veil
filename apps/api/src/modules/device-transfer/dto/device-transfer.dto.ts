@@ -25,6 +25,8 @@ export class DeviceTransferApproveDto implements DeviceTransferApproveRequest {
   @IsUUID()
   claimId!: string;
 
+  // Required by every relay. Optional here so a missing proof gets the same
+  // 401 invalid_device_signature as a wrong one, not a 400 from validation.
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()

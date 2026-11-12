@@ -564,8 +564,9 @@ export interface DeviceTransferApproveRequest {
    * The old device's Ed25519 signature, with the auth key it logs in with,
    * over `transfer-approve:<sessionId>:<claimId>:<claimantFingerprint>`
    * (the fingerprint exactly as the claim and status responses give it). A
-   * stolen bearer token alone cannot approve a transfer. Required by a
-   * production relay; a development relay checks it when it is present.
+   * stolen bearer token alone cannot approve a transfer. Required by every
+   * relay: without it the approval is refused with 401
+   * `invalid_device_signature`.
    */
   approvalProof?: string;
 }
@@ -634,8 +635,8 @@ export type DeviceTrustState = 'current' | 'preferred' | 'trusted' | 'stale' | '
  * holding its bearer token: a challenge from POST /auth/challenge for the
  * calling device, signed with its auth key over `<purpose>:<challengeId>:<challenge>`.
  * The challenge is single-use and consumed whether or not the signature
- * holds. Required by a production relay for the irreversible requests that
- * name it; a development relay checks it when it is present.
+ * holds. Required by every relay for the irreversible requests that name it:
+ * without it they are refused with 401 `challenge_invalid`.
  */
 export interface DeviceStepUpProof {
   challengeId?: string;

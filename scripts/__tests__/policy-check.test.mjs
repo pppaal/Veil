@@ -101,3 +101,32 @@ test('CORS configured anywhere but corsOptions() fails', () => {
 test('every seeded violation is caught by its own rule', () => {
   assert.deepEqual(runSelfTest(), []);
 });
+
+test('Caddy stripping /demo or replacing the viewer headers fails', () => {
+  const CADDYFILE = 'infra/caddy/Caddyfile';
+  const withHeader = (line) =>
+    CLEAN_FIXTURE[CADDYFILE].replace('site {\n', `site {\n\theader {\n\t\t${line}\n\t}\n`);
+  for (const caddyfile of [
+    CLEAN_FIXTURE[CADDYFILE].replace('\treverse_proxy api:3000 {', '\thandle_path /demo* {'),
+    withHeader('Referrer-Policy "strict-origin-when-cross-origin"'),
+    withHeader('>Referrer-Policy "origin"'),
+    withHeader('+Cache-Control "public, max-age=60"'),
+    withHeader('Content-Security-Policy "default-src \'self\'"'),
+  ]) {
+    assert.match(
+      failuresFor({ [CADDYFILE]: caddyfile }).join('\n'),
+      /\[caddy-keeps-viewer-headers\]/,
+      caddyfile,
+    );
+  }
+  // A default that applies only where the API set none, and the prefix kept.
+  assert.deepEqual(
+    failuresFor({
+      [CADDYFILE]: withHeader('?Referrer-Policy "strict-origin-when-cross-origin"').replace(
+        '\treverse_proxy api:3000 {',
+        '\thandle /demo* {\n\t}\n\treverse_proxy api:3000 {',
+      ),
+    }),
+    [],
+  );
+});

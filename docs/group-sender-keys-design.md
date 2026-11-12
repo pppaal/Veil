@@ -28,8 +28,9 @@ reviewer should look first.
    from the blob. Blob AD binds `groupId || epoch || senderDeviceId ||
    recipientUserId`. Not forward-secret on its own; mitigated by the chain
    key dying at the next epoch and the relay's 30-minute TTL. Production
-   Redis keeps no append-only log, so an expired blob is not left on disk;
-   only a snapshot of the keys alive when it was taken is (see
+   Redis keeps no append-only log, so no Redis file keeps an expired blob;
+   only a snapshot of the keys alive when it was taken does, and a replaced
+   snapshot can linger in the disk's free blocks until they are reused (see
    `metadata-retention.md`). Reviewer question #7. Since `veil-gkd-v2` the blob also carries signed freshness
    metadata; see "Distribution freshness" below.
 2. **Frame layout** (`veil-group-v1`, see "Wire shape"): the epoch and a

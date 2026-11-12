@@ -102,6 +102,7 @@
       <li>계정 식별자 및 기기 기록: 계정이 삭제되는 즉시 파기합니다.</li>
       <li>메시지 페이로드: 만료될 때까지 암호화된 상태로 보관하며, 서버 수신 후 최대 30일입니다. 사라지는 메시지 타이머나 한 번 보기가 적용되면 더 일찍 삭제됩니다.</li>
       <li>전달 메타데이터는 정해진 주기로 삭제합니다: 읽음 확인 7일, 통화 기록 30일, 신고 90일, 스토리 24시간. 자세한 내용은 <a href="https://github.com/pppaal/Veil/blob/main/docs/metadata-retention.md">메타데이터 보관</a>을 참고하십시오.</li>
+      <li>삭제한 데이터는 데이터베이스에서 바로 지워지지만, 그 공간이 재사용될 때까지 데이터베이스의 로그·데이터 파일과 디스크의 빈 공간에 남을 수 있으며, 사용량이 적은 서버에서는 며칠이 걸릴 수 있습니다. 자세한 내용은 <a href="https://github.com/pppaal/Veil/blob/main/docs/metadata-retention.md">메타데이터 보관</a>을 참고하십시오.</li>
       <li>법령에 따라 보관이 요구되는 최소 범위는 해당 법령이 정한 기간 동안 보관합니다.</li>
     </ul>
 
@@ -186,6 +187,7 @@
       <li>Account identifiers and device records are deleted immediately when an account is deleted.</li>
       <li>Message payloads are stored encrypted until they expire, at most 30 days after the server received them, and sooner when a disappearing-message timer or view-once applies.</li>
       <li>Delivery metadata is deleted on a schedule: read receipts after 7 days, call records and abuse reports after 30 and 90 days, stories after 24 hours. See <a href="https://github.com/pppaal/Veil/blob/main/docs/metadata-retention.md">metadata retention</a>.</li>
+      <li>Deleted data leaves the database at once, but its bytes can remain in the database's log and data files, and a deleted file in the disk's free space, until that space is reused, which on a quiet server can take days. See <a href="https://github.com/pppaal/Veil/blob/main/docs/metadata-retention.md">metadata retention</a>.</li>
       <li>Anything retained for legal reasons is kept only for the period that law requires.</li>
     </ul>
 

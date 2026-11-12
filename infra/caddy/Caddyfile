@@ -27,11 +27,16 @@
 	# strict referrer policy. CSP is intentionally permissive in this
 	# revision (web demo loads its own JS+CSS); tighten once we ship a
 	# nonce-based pipeline.
+	#
+	# Referrer-Policy is only a default (`?`): the API answers no-referrer,
+	# and the one-time link viewer (/demo/s.html) depends on it. A plain set
+	# would replace it on every response. Caddy must not set CSP or
+	# Cache-Control here either (scripts/policy-check.mjs).
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
-		Referrer-Policy "strict-origin-when-cross-origin"
+		?Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(self), geolocation=(), interest-cohort=()"
 		-Server
 	}

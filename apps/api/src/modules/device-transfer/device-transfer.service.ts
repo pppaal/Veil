@@ -206,17 +206,13 @@ export class DeviceTransferService {
   // The approval moves the account to the claimant's keys for good, so it
   // must come from the old device itself, not only from whoever holds its
   // bearer token: the old device signs the claim with the auth key it logs in
-  // with. A production relay requires the proof; a development relay checks
-  // it when present, so clients released before it keep working (see
+  // with. Every relay requires the proof, whatever VEIL_ENV says (see
   // AuthService.verifyDeviceStepUp).
   private async verifyApproval(
     oldDeviceId: string,
     dto: DeviceTransferApproveDto,
     claimantFingerprint: string,
   ): Promise<void> {
-    if (!dto.approvalProof && !this.config.isProduction) {
-      return;
-    }
     if (!dto.approvalProof) {
       throw unauthorized('invalid_device_signature', 'The old device must sign the approval');
     }

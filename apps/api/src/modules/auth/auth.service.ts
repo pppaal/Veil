@@ -454,19 +454,15 @@ export class AuthService {
    * from every other purpose. The challenge is consumed on first
    * presentation, success or failure.
    *
-   * A production relay requires the proof. A development relay checks it
-   * when the client sends one and lets the request through without it, so
-   * the clients released before step-up keep working until they sign; the
-   * production boot gate means no public relay runs that way.
+   * Every relay requires the proof, whatever VEIL_ENV says: a development
+   * relay that let unsigned requests through would hide a client that never
+   * signs until it met a production one.
    */
   async verifyDeviceStepUp(
     deviceId: string,
     purpose: string,
     proof: DeviceStepUpProof | undefined,
   ): Promise<void> {
-    if (!proof?.challengeId && !proof?.signature && !this.config.isProduction) {
-      return;
-    }
     if (!proof?.challengeId || !proof.signature) {
       throw unauthorized('challenge_invalid', 'A challenge signed by this device is required');
     }

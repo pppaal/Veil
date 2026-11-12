@@ -109,8 +109,11 @@ describe('DeviceTransferService.getSessionStatus (state machine)', () => {
 });
 
 describe('DeviceTransferService.approve', () => {
-  const approve = (svc: DeviceTransferService, claimId = 'claim-1') =>
-    svc.approve(AUTH, { sessionId: 's1', claimId } as never);
+  const approve = (
+    svc: DeviceTransferService,
+    claimId = 'claim-1',
+    proof: { approvalProof?: string } = { approvalProof: 'signed' },
+  ) => svc.approve(AUTH, { sessionId: 's1', claimId, ...proof });
 
   it('404s an unknown session', async () => {
     await expect(approve(make({ session: null }))).rejects.toMatchObject({
@@ -130,6 +133,17 @@ describe('DeviceTransferService.approve', () => {
   it('approves when a matching claim exists', async () => {
     const res = await approve(make({ session: activeSession(), pendingClaim: claim() }));
     expect(res).toEqual({ sessionId: 's1', claimId: 'claim-1', approved: true });
+  });
+
+  // The config here has no isProduction at all: no relay lets an unsigned
+  // approval through.
+  it('refuses an approval without a proof, or with one that does not verify', async () => {
+    await expect(
+      approve(make({ session: activeSession(), pendingClaim: claim() }), 'claim-1', {}),
+    ).rejects.toMatchObject({ response: { code: 'invalid_device_signature' } });
+    await expect(
+      approve(make({ session: activeSession(), pendingClaim: claim(), proofValid: false })),
+    ).rejects.toMatchObject({ response: { code: 'invalid_device_signature' } });
   });
 });
 

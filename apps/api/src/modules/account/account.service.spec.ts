@@ -30,8 +30,10 @@ import { AccountService, UNFINISHED_DELETION_GRACE_MS } from './account.service'
 //                       + device.updateMany(isActive=false)
 //   Phase 2 (no tx):    chunked deleteMany on the bulky child tables, in
 //                       Restrict-FK-respecting order.
-//   Phase 3 (small tx): deviceTransferSession cleanup, then device.deleteMany,
-//                       the handle quarantine and user.delete.
+//   Phase 3 (small tx): deviceTransferSession cleanup, then user.updateMany
+//                       (nothing more when another run already deleted the
+//                       user), device.deleteMany, the handle quarantine and
+//                       user.delete.
 //
 // These tests use jest.fn() mocks so we can verify the high-level contract
 // without wiring up every model. The Restrict-ordering invariant is the key
@@ -58,7 +60,7 @@ type StepName =
   | 'phase3.conversation.updateMany'
   | 'phase3.conversationMember.deleteMany'
   | 'phase3.conversation.deleteMany'
-  | 'phase3.user.update'
+  | 'phase3.user.updateMany'
   | 'phase3.device.deleteMany'
   | 'phase3.retiredHandle.upsert'
   | 'phase3.user.delete';
@@ -72,6 +74,7 @@ function buildPrismaMock(opts?: {
   ownedChannelConversationIds?: string[];
   uploadedStorageKeys?: string[];
   directConversationIds?: string[];
+  userAlreadyDeleted?: boolean;
 }) {
   const order: StepName[] = [];
   const directConversationIds = opts?.directConversationIds ?? [];
@@ -131,9 +134,14 @@ function buildPrismaMock(opts?: {
       // Replace user.update label per phase by inspecting the call count.
       // (We just appended phase1.user.update via the closure above.)
     } else {
-      // Re-bind labels for phase 3 since the same mock fn would otherwise
-      // record phase1.user.update again.
-      tx.user.update = jest.fn(record('phase3.user.update'));
+      // Phase 3 moves the user row with updateMany, which matches nothing
+      // when another run has already deleted it.
+      (tx as any).user = {
+        updateMany: jest.fn(() => {
+          order.push('phase3.user.updateMany');
+          return { count: opts?.userAlreadyDeleted ? 0 : 1 };
+        }),
+      };
     }
     (tx as any).user.delete = jest.fn(record('phase3.user.delete'));
     return cb(tx);
@@ -280,7 +288,7 @@ describe('AccountService.deleteAccount', () => {
     await buildService(prisma).deleteAccount(userId);
     expect(order.slice(order.indexOf('phase3.conversationMember.findMany'))).toEqual([
       'phase3.conversationMember.findMany',
-      'phase3.user.update',
+      'phase3.user.updateMany',
       'phase3.device.deleteMany',
       'phase3.retiredHandle.upsert',
       'phase3.user.delete',
@@ -289,6 +297,15 @@ describe('AccountService.deleteAccount', () => {
       'phase3.conversationMember.deleteMany',
       'phase3.conversation.deleteMany',
     ]);
+  });
+
+  it('stops Phase 3 without error when another run already deleted the user row', async () => {
+    const { prisma, order, upserts } = buildPrismaMock({ userAlreadyDeleted: true });
+    await expect(buildService(prisma).deleteAccount(userId)).resolves.toEqual({ deleted: true });
+    expect(order).toContain('phase3.user.updateMany');
+    expect(order).not.toContain('phase3.device.deleteMany');
+    expect(order).not.toContain('phase3.user.delete');
+    expect(upserts).toEqual([]);
   });
 
   it('deleteAccount calls deleteObject for every uploaded key', async () => {
@@ -481,6 +498,28 @@ describe('AccountService.deleteAccount against stored rows', () => {
       [withBob, null],
       [bobWithCarol, [bob, carol].sort().join('|')],
     ]);
+  });
+
+  // A deletion still running an hour after Phase 1 is resumed in parallel
+  // (resumeUnfinishedDeletions). Whichever run reaches Phase 3 second finds
+  // the account already gone, and must still answer that it is deleted.
+  it('answers deleted when a parallel run finishes the account first', async () => {
+    const { prisma, account, addUser, openDirect, storedRows } = setup();
+    const alice = await addUser('alice');
+    await addUser('bob');
+    await openDirect(alice, 'bob');
+    let parallelRun: Promise<unknown> | undefined;
+    jest.spyOn(account['authService'], 'forgetDevice').mockImplementationOnce(async () => {
+      // This run is in Phase 2; the parallel one runs to the end meanwhile.
+      parallelRun = account.deleteAccount(alice);
+      await parallelRun;
+    });
+
+    await expect(account.deleteAccount(alice)).resolves.toEqual({ deleted: true });
+
+    await expect(parallelRun).resolves.toEqual({ deleted: true });
+    expect(storedRows()).not.toContain(alice);
+    expect(prisma.retiredHandles).toHaveLength(1);
   });
 
   it('deletes a direct conversation once both of its members have deleted their accounts', async () => {

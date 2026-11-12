@@ -59,6 +59,10 @@ export const CLAIM_PATTERNS = [
   /\b(?:no|never|not)\b.*\bplaintext\b/i,
   /\bplaintext\b.*\b(?:never|not)\b/i,
   /readable form/i,
+  // Saying the server holds only ciphertext makes the same claim without
+  // naming plaintext ("암호문만", "ciphertext 만", "only as ciphertext").
+  /(?:ciphertext|암호문)\s*(?:으로)?\s*만/i,
+  /\bonly\b(?:\s+\w+){0,3}\s+ciphertext\b|\bciphertext[- ]only\b|\bciphertext\s+only\b/i,
   // Blanket statements about what is collected. "No data collection" and
   // "the consent screen lists every field" once sat in the store listing
   // while the server kept the contact graph and call records.
@@ -68,6 +72,11 @@ export const CLAIM_PATTERNS = [
   // device ids "anonymous" and "generated on the device".
   /\banonymous (?:user|account|device) id/i,
   /generated on the device/i,
+  // How many devices an account runs on. The Play listing once offered
+  // "multi-device access" while a transfer signs the old device out and an
+  // account is active on one device at a time.
+  /multi[- ]?device/i,
+  /다중 기기/,
   /익명 식별자/,
   /기기에서 생성된/,
   /데이터 수집이 없/,

@@ -8,6 +8,7 @@ import { ApiExceptionFilter } from '../src/common/filters/api-exception.filter';
 import { AppLoggerService } from '../src/common/logger/app-logger.service';
 import { ActorRefGenerator } from '../src/common/logger/request-redactor';
 import { EphemeralStoreService } from '../src/common/ephemeral-store.service';
+import { AccountService } from '../src/modules/account/account.service';
 import { Ed25519DeviceAuthVerifier } from '../src/modules/auth/device-auth-verifier';
 import { ATTACHMENT_STORAGE_GATEWAY } from '../src/modules/attachments/attachment-storage.gateway';
 import { PrismaService } from '../src/common/prisma.service';
@@ -87,6 +88,25 @@ describe('VEIL API (e2e)', () => {
       await app.close();
     }
   });
+
+  // A step-up proof (AuthService.verifyDeviceStepUp): a fresh login challenge
+  // for the device, signed over `<purpose>:<challengeId>:<challenge>`.
+  const stepUp = async (
+    api: ReturnType<typeof request>,
+    device: { handle: string; deviceId: string; authPrivateKey: string },
+    purpose: string,
+  ) => {
+    const challenge = await api
+      .post('/v1/auth/challenge')
+      .send({ handle: device.handle, deviceId: device.deviceId });
+    return {
+      challengeId: challenge.body.challengeId,
+      signature: keyHelper.createProof({
+        challenge: `${purpose}:${challenge.body.challengeId}:${challenge.body.challenge}`,
+        authPrivateKey: device.authPrivateKey,
+      }),
+    };
+  };
 
   it('exposes a public health endpoint', async () => {
     const api = request(app.getHttpServer());
@@ -282,7 +302,14 @@ describe('VEIL API (e2e)', () => {
     expect(transferClaim.status).toBe(201);
 
     // The approval is signed by the old device's auth key; the bearer token
-    // alone, or a signature by any other key, does not approve.
+    // alone, or a signature by any other key, does not approve. This relay
+    // runs without VEIL_ENV=production and still requires the signature.
+    const unsignedApproval = await api
+      .post('/v1/device-transfer/approve')
+      .set('Authorization', bearer)
+      .send({ sessionId: transferInit.body.sessionId, claimId: transferClaim.body.claimId });
+    expect(unsignedApproval.status).toBe(401);
+    expect(unsignedApproval.body.code).toBe('invalid_device_signature');
     const approvalChallenge = `transfer-approve:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferClaim.body.claimantFingerprint}`;
     const forgedApproval = await api
       .post('/v1/device-transfer/approve')
@@ -499,15 +526,108 @@ describe('VEIL API (e2e)', () => {
       .set('Authorization', bearerB);
     expect(deniedDownload.status).toBe(403);
 
-    const revoked = await api
+    // Revoking the calling device locks it out for good, so the bearer token
+    // alone is refused, on a development relay too.
+    const unsignedRevoke = await api
       .post('/v1/devices/revoke')
       .set('Authorization', bearerA)
       .send({ deviceId: registerA.body.deviceId });
+    expect(unsignedRevoke.status).toBe(401);
+    expect(unsignedRevoke.body.code).toBe('challenge_invalid');
+
+    const revoked = await api
+      .post('/v1/devices/revoke')
+      .set('Authorization', bearerA)
+      .send({
+        deviceId: registerA.body.deviceId,
+        ...(await stepUp(
+          api,
+          {
+            handle: 'atlas',
+            deviceId: registerA.body.deviceId,
+            authPrivateKey: keyPairA.authPrivateKey,
+          },
+          `device-revoke:${registerA.body.deviceId}`,
+        )),
+      });
     expect(revoked.status).toBe(201);
 
     const revokedBearer = await api.get('/v1/conversations').set('Authorization', bearerA);
     expect(revokedBearer.status).toBe(401);
     expect(revokedBearer.body.code).toBe('device_not_active');
+  });
+
+  it('deletes an account only with a step-up signed by the device, on a development relay too', async () => {
+    const api = request(app.getHttpServer());
+    const keyPair = keyHelper.createKeyPair();
+    const otherKeyPair = keyHelper.createKeyPair();
+    const register = await api.post('/v1/auth/register').send({
+      handle: 'leaving',
+      displayName: 'Leaving',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-leaving',
+      signedPrekeyBundle: 'prekey-leaving',
+      authPublicKey: keyPair.authPublicKey,
+    });
+    expect(register.status).toBe(201);
+    const device = {
+      handle: 'leaving',
+      deviceId: register.body.deviceId,
+      authPrivateKey: keyPair.authPrivateKey,
+    };
+    const challenge = await api
+      .post('/v1/auth/challenge')
+      .send({ handle: 'leaving', deviceId: register.body.deviceId });
+    const verify = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: register.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: keyPair.authPrivateKey,
+      }),
+    });
+    const bearer = `Bearer ${verify.body.accessToken}`;
+    // The in-memory Prisma fake does not model the whole erasure cascade
+    // (account.service.spec and the Postgres suites cover it); this test is
+    // about the gate in front of it.
+    const deleteAccount = jest
+      .spyOn(app.get(AccountService), 'deleteAccount')
+      .mockResolvedValue({ deleted: true });
+
+    const unsigned = await api.delete('/v1/account').set('Authorization', bearer).send({});
+    expect(unsigned.status).toBe(401);
+    expect(unsigned.body.code).toBe('challenge_invalid');
+
+    const byOtherKey = await api
+      .delete('/v1/account')
+      .set('Authorization', bearer)
+      .send(
+        await stepUp(
+          api,
+          { ...device, authPrivateKey: otherKeyPair.authPrivateKey },
+          'account-delete',
+        ),
+      );
+    expect(byOtherKey.status).toBe(401);
+    expect(byOtherKey.body.code).toBe('invalid_device_signature');
+
+    const forAnotherPurpose = await api
+      .delete('/v1/account')
+      .set('Authorization', bearer)
+      .send(await stepUp(api, device, `device-revoke:${register.body.deviceId}`));
+    expect(forAnotherPurpose.status).toBe(401);
+    expect(forAnotherPurpose.body.code).toBe('invalid_device_signature');
+    expect(deleteAccount).not.toHaveBeenCalled();
+
+    const deleted = await api
+      .delete('/v1/account')
+      .set('Authorization', bearer)
+      .send(await stepUp(api, device, 'account-delete'));
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toEqual({ deleted: true });
+    expect(deleteAccount).toHaveBeenCalledTimes(1);
+    expect(deleteAccount).toHaveBeenCalledWith(register.body.userId);
   });
 
   it('rejects disallowed attachment MIME types and cleans up failed upload sessions', async () => {
@@ -678,6 +798,10 @@ describe('VEIL API (e2e)', () => {
       .send({
         sessionId: transferInit.body.sessionId,
         claimId: transferClaim.body.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: `transfer-approve:${transferInit.body.sessionId}:${transferClaim.body.claimId}:${transferClaim.body.claimantFingerprint}`,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
       })
       .expect(201);
 

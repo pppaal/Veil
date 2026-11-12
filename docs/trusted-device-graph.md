@@ -4,7 +4,7 @@ VEIL private beta uses a trusted-device graph, not cloud recovery and not Telegr
 
 ## Core rules
 
-- A user can have multiple concurrently trusted devices.
+- The graph can hold several trusted devices, but the only way to add one is a transfer (below), which revokes the device it came from, so an account is active on one device at a time.
 - Joining a new device requires an already trusted old device to initiate and approve the handoff.
 - Losing every trusted device still means account and message access are unrecoverable.
 - Sensitive key material remains device-side.
@@ -24,7 +24,7 @@ VEIL private beta uses a trusted-device graph, not cloud recovery and not Telegr
 3. The old device approves the exact `claimId`.
 4. The new device completes the join with a second proof.
 5. The new device is added to the trusted graph with `joined_from_device_id` pointing at the approving device.
-6. The old device remains trusted until it is explicitly revoked.
+6. In the same transaction the old device is revoked and preferred routing moves to the new device (`device-transfer-flow.md`, step 9): a transfer moves the account, it does not add a second device. Message history is not transferred.
 
 ## Revoke flow
 

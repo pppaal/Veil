@@ -69,13 +69,15 @@ Every conversation-scoped endpoint and realtime handler authorizes through one d
 - `read`
   - The recipient marked the message as read.
 - `failed`
-  - Automatic retry budget was exhausted or the relay rejected the send with a permanent error.
+  - The relay refused the send with a permanent error, or (mobile) answered with a retryable error on 5 attempts in a row. A send that got no response at all does not become `failed` on its own.
 - Sender-side message bubbles should keep the body readable and surface delivery state as a short explicit badge, not a verbose sentence.
 
 ## Retry and reconnect behavior
 
 - Outbound items are keyed by `clientMessageId` for idempotent re-send.
-- Temporary relay or network failures stay in the local queue and retry with bounded backoff.
+- A send that got no response (the device is offline or the request timed out) stays queued and keeps retrying with exponential backoff capped at 30 seconds, for as long as that lasts. The sealed envelope stays valid and the relay deduplicates by `clientMessageId`, so no attempt limit applies.
+- The 5-attempt limit (mobile) applies only to failures the relay answered: a 5xx, 408, 409 or 429, or an attachment upload dropped mid-stream. After the fifth the message is `failed` and waits for a manual retry. A permanent relay error (for example `group_epoch_stale` or `conversation_membership_required`) fails it at once.
+- The web client retries with the same capped backoff until the relay accepts the envelope or refuses it with a 4xx other than 429.
 - Reconnect forces an immediate outbox drain and a batched first-page backfill for active, cached, or recently hinted conversations.
 - App resume forces a realtime refresh so stale sockets do not linger after background wake-up.
 - Late `message.delivered` and `message.read` events are buffered locally until the corresponding message page is present.

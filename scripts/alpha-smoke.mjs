@@ -312,12 +312,18 @@ async function run() {
     },
   });
 
+  // Every relay requires the old device's signature over the claim and the
+  // fingerprint the user compared (docs/device-transfer-flow.md).
   await requestJson('/device-transfer/approve', {
     method: 'POST',
     token: tokenA,
     body: {
       sessionId: transferInit.sessionId,
       claimId: claim.claimId,
+      approvalProof: signChallenge(
+        `transfer-approve:${transferInit.sessionId}:${claim.claimId}:${claim.claimantFingerprint}`,
+        accountA.authPrivateKey,
+      ),
     },
   });
 

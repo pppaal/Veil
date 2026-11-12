@@ -42,6 +42,7 @@ We do **not** use data for advertising, marketing, or profiling.
 - Account identifiers and device records are deleted immediately when an account is deleted.
 - Message payloads are stored encrypted until they expire, at most 30 days after the server received them, and sooner when a disappearing-message timer or view-once applies.
 - Delivery metadata is deleted on a schedule: read receipts after 7 days, call records and abuse reports after 30 and 90 days, stories after 24 hours. See [metadata retention](metadata-retention.md).
+- Deleted data leaves the database at once, but its bytes can remain in the database's log and data files, and a deleted file in the disk's free space, until that space is reused, which on a quiet server can take days. See [metadata retention](metadata-retention.md).
 - Anything retained for legal reasons is kept only for the period that law requires.
 
 ## 4. Third parties and cross-border transfers

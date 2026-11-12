@@ -6,19 +6,33 @@ channel contract). This document is the concrete recipe: dependencies, drop-in
 Dart bridge, native handler skeletons, migration, and a build-and-verify
 checklist._
 
-> **Status: code landed, native side unverified.** The Dart bridge adapter,
-> registry flag, Kotlin handler + Keystore-sealed stores, Swift handler +
-> Keychain stores, Gradle dependency and ProGuard rules are all in the tree
-> (file list in §0). The Dart side is covered by `flutter analyze` + unit
-> tests (`test/libsignal_bridge_adapter_test.dart`) and is what CI runs.
-> **The Kotlin and Swift handlers have not been compiled or run**: that needs
-> an Android SDK and **macOS + Xcode**, neither of which exists on the Linux
-> box this was written on. Every libsignal symbol the native code touches is
-> marked `VERIFY(0.86.5)` — check each against the pinned release's API
-> before the first device build (§9). The default adapter is still the Dart
-> ratchet; nothing changes for users until `--dart-define=VEIL_CRYPTO_ADAPTER=libsignal`
-> is passed. Do **not** flip `VEIL_AUDITED_CRYPTO_ATTESTED` based on this doc;
-> it is pre-audit engineering.
+> **Status: code landed, opt-in only, native side never built.** The Dart
+> bridge adapter, registry flag, Kotlin handler + Keystore-sealed stores, Swift
+> handler + Keychain stores, the opt-in Gradle dependency and ProGuard rules
+> are all in the tree (file list in §0). The Dart side is covered by
+> `flutter analyze` + unit tests (`test/libsignal_bridge_adapter_test.dart`)
+> and is what CI runs.
+>
+> **Default builds leave out the native bridge and the libsignal dependency.**
+> On Android the bridge sources (`android/app/src/libsignal`) and
+> `org.signal:libsignal-android` are compiled in only with
+> `-Pveil.libsignal=true` (Gradle) or `--android-project-arg=veil.libsignal=true`
+> (Flutter); otherwise a stub registrar (`android/app/src/nolibsignal`) is
+> used. On iOS `Runner/Crypto/VeilCryptoBridge.swift` is not in the Runner
+> target: opting in means adding it and the `LibSignalClient` package to the
+> target and registering `VeilCryptoBridgePlugin` in `AppDelegate.swift`
+> (the comment there has the line). Without the bridge, selecting
+> `--dart-define=VEIL_CRYPTO_ADAPTER=libsignal` reports the adapter
+> unavailable.
+>
+> **Neither bridge has ever been built into an app.** The Kotlin and Swift
+> handlers have not been compiled or run: that needs an Android SDK and
+> **macOS + Xcode**, neither of which exists on the Linux box this was written
+> on. Every libsignal symbol the native code touches is marked
+> `VERIFY(0.86.5)` — check each against the pinned release's API before the
+> first device build (§9). The default adapter is the Dart ratchet. Do **not**
+> flip `VEIL_AUDITED_CRYPTO_ATTESTED` based on this doc; it is pre-audit
+> engineering.
 
 ## 0. What is in the tree
 
@@ -26,11 +40,11 @@ checklist._
 |---|---|---|
 | Dart bridge adapter | `apps/mobile/lib/src/core/crypto/libsignal_bridge_adapter.dart` | analyze + 7 unit tests (mock channel) |
 | Registry flag | `apps/mobile/lib/src/core/crypto/crypto_adapter_registry.dart` | unit test |
-| Android handler | `apps/mobile/android/app/src/main/kotlin/io/veil/mobile/crypto/VeilCryptoBridge.kt` | **not compiled** |
-| Android stores | `…/crypto/SealedSignalProtocolStore.kt`, `…/crypto/KeystoreSealedStore.kt` | **not compiled** |
-| Android wiring | `MainActivity.kt` (channel), `app/build.gradle.kts` (`org.signal:libsignal-android:0.86.5`), `proguard-rules.pro` | **not compiled** |
-| iOS handler + stores | `apps/mobile/ios/Runner/Crypto/VeilCryptoBridge.swift` | **not compiled**; guarded by `#if canImport(LibSignalClient)` |
-| iOS wiring | `AppDelegate.swift` registers `VeilCryptoBridgePlugin`; SPM package must be added in Xcode (§2) | **not compiled** |
+| Android handler | `apps/mobile/android/app/src/libsignal/kotlin/io/veil/mobile/crypto/VeilCryptoBridge.kt` (opt-in source set) | **not compiled** |
+| Android stores | `…/src/libsignal/kotlin/io/veil/mobile/crypto/SealedSignalProtocolStore.kt`, `…/KeystoreSealedStore.kt` | **not compiled** |
+| Android wiring | `MainActivity.kt` calls `LibsignalBridgeRegistrar` (the real one in `src/libsignal`, a no-op in `src/nolibsignal`); `app/build.gradle.kts` adds `org.signal:libsignal-android:0.86.5` and the `src/libsignal` source set only under `veil.libsignal=true`; `proguard-rules.pro` | default build: stub only; opt-in build **never compiled** |
+| iOS handler + stores | `apps/mobile/ios/Runner/Crypto/VeilCryptoBridge.swift` | **not in the Runner target, not compiled**; guarded by `#if canImport(LibSignalClient)` |
+| iOS wiring | none by default: `AppDelegate.swift` carries the registration line as a comment; the file, the SPM package and that line must be added (§2) | **not compiled** |
 | Server allowlist | `packages/shared/src/domain/protocol.ts` accepts `libsignal-v1`; `signedPrekeyBundle` limit raised to 8 KiB for Kyber bundles | API unit tests |
 
 ### Decisions baked into the code (confirm or change before audit)
@@ -119,10 +133,13 @@ smaller, cheaper, more defensible audit.
 Remove reliance on `cryptography` for the message path once cut over (keep it
 only if still used elsewhere).
 
-**android/app/build.gradle(.kts)** — add to `dependencies`:
+**android/app/build.gradle.kts** — already declares, behind the
+`veil.libsignal` Gradle property (off by default):
 
 ```kotlin
-implementation("org.signal:libsignal-android:<PINNED_VERSION>")
+if (veilLibsignal) {
+    implementation("org.signal:libsignal-android:0.86.5")
+}
 ```
 
 **ios/Podfile** (or the app's SwiftPM manifest) — add:
@@ -401,11 +418,15 @@ cd apps/mobile
 flutter pub get
 flutter analyze                                   # Dart bridge must be clean
 flutter test                                      # adapter unit tests
-flutter build apk --dart-define=VEIL_CRYPTO_ADAPTER=libsignal
+# Without --android-project-arg the bridge and libsignal are left out and the
+# adapter reports itself unavailable.
+flutter build apk --dart-define=VEIL_CRYPTO_ADAPTER=libsignal \
+  --android-project-arg=veil.libsignal=true
 # install on two Android devices, exchange messages end-to-end
 
-# iOS (needs macOS + Xcode):
-cd ios && pod install && cd ..
+# iOS (needs macOS + Xcode). First, in Xcode: add Runner/Crypto/VeilCryptoBridge.swift
+# and the LibSignalClient package (§2) to the Runner target, and uncomment the
+# VeilCryptoBridgePlugin registration in AppDelegate.swift.
 flutter build ios --dart-define=VEIL_CRYPTO_ADAPTER=libsignal
 # run on two devices; verify Safety Numbers + attachments + transfer/revoke
 ```
@@ -413,7 +434,11 @@ flutter build ios --dart-define=VEIL_CRYPTO_ADAPTER=libsignal
 ## 10. Rollout & rollback
 
 1. Land the code with the flag **off** (default stays the old adapter) so CI and
-   normal builds are unaffected.
+   normal builds are unaffected. Done: default builds leave out the native
+   bridge and the libsignal dependency on both platforms; opting in takes
+   `-Pveil.libsignal=true` / `--android-project-arg=veil.libsignal=true` on
+   Android and the Xcode steps in §9 on iOS. Neither opt-in build has been
+   produced yet.
 2. Dogfood `--dart-define=VEIL_CRYPTO_ADAPTER=libsignal` on real devices; run the
    interop + migration tests.
 3. Flip the default to `libsignal` only after interop and migration pass on both

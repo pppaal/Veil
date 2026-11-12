@@ -1,7 +1,7 @@
 # VEIL
 
 **Open-source, end-to-end encrypted messenger** — no phone number, no
-account, no plaintext messages on the server.
+email, no plaintext messages on the server.
 
 [![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![End-to-end encrypted](https://img.shields.io/badge/encryption-E2E%20X25519%20%2B%20AES--256--GCM-success.svg)](#cryptography)
@@ -114,9 +114,13 @@ those checks fails the build:
   shared conversation key. Design + implementation notes in
   [`docs/group-sender-keys-design.md`](docs/group-sender-keys-design.md).
 - **libsignal bridge** (`--dart-define=VEIL_CRYPTO_ADAPTER=libsignal`):
-  Dart adapter + Kotlin/Swift handlers are in the tree but the native side
-  has not been compiled on a real toolchain yet; default builds still use
-  the Dart ratchet. See
+  the Dart adapter and the Kotlin/Swift handlers are in the tree, but default
+  builds leave out the native bridge and the libsignal dependency and use the
+  Dart ratchet. Opting in takes `-Pveil.libsignal=true` (Gradle) or
+  `--android-project-arg=veil.libsignal=true` (Flutter) on Android; on iOS,
+  adding `Runner/Crypto/VeilCryptoBridge.swift` and the `LibSignalClient`
+  package to the Runner target and registering `VeilCryptoBridgePlugin` in
+  `AppDelegate.swift`. Neither bridge has ever been built into an app. See
   [`docs/libsignal-migration-implementation.md`](docs/libsignal-migration-implementation.md).
 - Sealed sender is under revision: the current design in
   [`docs/sealed-sender-design.md`](docs/sealed-sender-design.md) does not
@@ -210,6 +214,16 @@ Mobile `--dart-define` runtime flags:
 - `VEIL_API_BASE_URL` — default `http://localhost:3000/v1`. Use
   `http://10.0.2.2:3000/v1` for Android emulators.
 - `VEIL_REALTIME_URL` — default `http://localhost:3000`.
+- `VEIL_TLS_PINS` — comma-separated TLS pins (`spki:<b64>` or `leaf:<b64>`)
+  for the API and the realtime socket. Empty means no pinning; a release
+  build refuses to run without it.
+- `VEIL_OBJECT_STORAGE_HOSTS` — comma-separated hosts that presigned upload
+  URLs may point at; an upload ticket naming another host is refused.
+- `VEIL_OBJECT_STORAGE_PINS` — TLS pins for the object store, same format as
+  `VEIL_TLS_PINS`; empty falls back to the platform trust store.
+
+A release build refuses to run with a local relay URL or without
+`VEIL_TLS_PINS`. The app has no `VEIL_ENV` define and ignores one.
 
 ---
 

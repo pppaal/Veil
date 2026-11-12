@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { decodeBase64Url, encodeBase64Url } from '../src/core/base64url.js';
-import { concatBytes } from '../src/crypto/bytes.js';
+import { compareBytes, concatBytes } from '../src/crypto/bytes.js';
 import { buildFrameAad, decodeFrame, encodeFrameHeader, ENVELOPE_VERSION_V2 } from '../src/crypto/frame.js';
 import { deriveMessageKey, kdfRoot } from '../src/crypto/kdf.js';
 import { aesGcmSeal, x25519 } from '../src/crypto/keys.js';
@@ -251,5 +251,53 @@ describe('protocol v2 ratchet', () => {
     bob.restart();
     expect(await receive(bob, reuse)).toMatchObject({ status: DecryptStatus.FAILED, reason: 'opk_unavailable' });
     expect(await bob.cipher.hasSession(other)).toBe(false);
+  });
+});
+
+// Contract C-WEDGE: both clients promote an archived state by the same rule
+// (src/crypto/session-record.js #peerAbandonedOurs), so a handshake the peer
+// could not open does not leave everything sent on it unreadable.
+describe('a handshake the peer could not open', () => {
+  // Alice and Bob, with Alice's identity key sorting first or last: glare
+  // settles on the handshake of the lower initiator.
+  async function orderedPair(aliceFirst) {
+    for (;;) {
+      const devices = await pair();
+      const order = compareBytes(devices.alice.record.ik.publicKey, devices.bob.record.ik.publicKey);
+      if ((order < 0) === aliceFirst) return devices;
+    }
+  }
+
+  for (const aliceFirst of [true, false]) {
+    it(`stops holding once the peer keeps sending on its own (${aliceFirst ? 'Alice' : 'Bob'}'s key sorts first)`, async () => {
+      const { alice, bob } = await orderedPair(aliceFirst);
+      // Alice's handshake names a one-time prekey Bob no longer holds.
+      const entry = await connect(alice, bob);
+      await bob.stores.oneTimePrekeys.delete(entry.oneTimePrekey.keyId);
+      const unopenable = await send(alice, bob, 'a0');
+      // Bob, who never received it, starts a handshake of his own.
+      await connect(bob, alice);
+      const [first, second] = await sendMany(bob, alice, 2, 'b');
+
+      expect(await receive(bob, unopenable)).toMatchObject({ status: DecryptStatus.FAILED, reason: 'opk_unavailable' });
+      await expectBody(alice, first, 'b0');
+      await expectBody(alice, second, 'b1');
+      // Alice now sends on Bob's handshake, and the two converse.
+      await expectBody(bob, await send(alice, bob, 'a1'), 'a1');
+      await expectBody(alice, await send(bob, alice, 'b2'), 'b2');
+      await expectBody(bob, await send(alice, bob, 'a2'), 'a2');
+    });
+  }
+
+  it('a single competing frame still loses glare to our unanswered handshake', async () => {
+    const { alice, bob } = await orderedPair(true);
+    await connect(alice, bob);
+    const ours = await send(alice, bob, 'a0');
+    await connect(bob, alice);
+    await expectBody(alice, await send(bob, alice, 'b0'), 'b0');
+    // Alice's handshake holds, and Bob, who can open it, settles on it too.
+    await expectBody(bob, ours, 'a0');
+    await expectBody(bob, await send(alice, bob, 'a1'), 'a1');
+    await expectBody(alice, await send(bob, alice, 'b1'), 'b1');
   });
 });

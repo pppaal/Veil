@@ -29,6 +29,8 @@ export const LOCKED_LABELS = Object.freeze({
   'no-key': '🔒 키 미해결',
   failed: '🔒 복호화 실패',
   identityRejected: '🔒 보안 키 변경 — 확인 필요',
+  // a key the user declined, or a device of another contact: nothing to review
+  identityRefused: '🔒 거부한 보안 키',
   sessionMissing: '🔒 세션 없음',
   'own-missing': '🔒 이 기기에 내용 없음',
 });

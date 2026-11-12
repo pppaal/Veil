@@ -29,7 +29,8 @@ import { claimedOneTimePrekey, createLocalKeyring, maintainPrekeys, PREKEY_LOCK 
 import { formatSafetyNumber, matchesPeerCode, safetyNumber, verificationCode } from './src/crypto/safety-number.js';
 import { createSessionCipher } from './src/crypto/session-cipher.js';
 import { createSessionRepo } from './src/crypto/session-repo.js';
-import { mediaContent, textContent } from './src/domain/content.js';
+import { disappearingExpiry, mediaContent, textContent } from './src/domain/content.js';
+import { createHistoryMarks, fetchHistory, mergeHistory } from './src/domain/history.js';
 import { ingestMessage, isGone, isShown, isTextKind, previewLabel } from './src/domain/ingest.js';
 import { createAttachmentFetcher } from './src/domain/media.js';
 import { KIND_LABELS } from './src/domain/payload.js';
@@ -48,7 +49,8 @@ import {
   PeerKeyChangedError,
   PeerUnavailableError,
 } from './src/features/secure-messaging.js';
-import { createSender } from './src/features/sender.js';
+import { abuseReport, REPORT_REASONS, senderToReport } from './src/features/report.js';
+import { createSender, newClientMessageId } from './src/features/sender.js';
 import { AuthError, createApiClient, isAuthRejection } from './src/platform/api-client.js';
 import { createContentStore } from './src/platform/content-store.js';
 import { createIdb } from './src/platform/idb.js';
@@ -231,6 +233,9 @@ const apiClient = createApiClient({
   onSessionRejected,
 });
 const { api, authedApi } = apiClient;
+// Signed prekeys are stamped and aged on the server's clock (contract C-SPK,
+// src/crypto/prekeys.js); the clock of everything else here stays local.
+const serverNow = apiClient.serverNow;
 
 // Once the user approved a device transfer, the server revoking this device
 // is how the transfer's completion arrives here (src/features/device-transfer.js),
@@ -251,6 +256,7 @@ const PREKEY_MAINTENANCE_MS = 6 * 60 * 60 * 1000;
 
 const trust = createIdentityTrust({
   pins: createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks }),
+  pendingKv: kv('identity-pending'),
   onChange: () => {
     renderSidebar();
     renderActivePanel();
@@ -268,7 +274,7 @@ const cipher = createSessionCipher({
     clock: Date.now,
   }),
   locks,
-  keyring: createLocalKeyring({ loadIdentity: () => sessionStore.reload(), opkKv: oneTimePrekeyKv, clock: Date.now }),
+  keyring: createLocalKeyring({ loadIdentity: () => sessionStore.reload(), opkKv: oneTimePrekeyKv, clock: serverNow }),
   clock: Date.now,
   // A session is installed by an authenticated handshake, and a frame is
   // sealed or opened, only for an identity the pins admit for that peer
@@ -278,6 +284,10 @@ const cipher = createSessionCipher({
     return peer ? trust.admit(peer.userId, remoteDeviceId, identityKey) : false;
   },
 });
+
+// How far back each conversation's history has been fetched
+// (src/domain/history.js).
+const historyMarks = createHistoryMarks(kv('history-marks'));
 
 const contentStore = createContentStore({
   subtle: crypto.subtle,
@@ -336,7 +346,7 @@ function startPrekeyMaintenance() {
       authedApi,
       identity: { current: () => sessionStore.current(), update: (fields) => sessionStore.update(fields) },
       opkKv: oneTimePrekeyKv,
-      clock: Date.now,
+      clock: serverNow,
     });
   }).catch((error) => console.warn('prekey maintenance failed', error));
   run();
@@ -439,7 +449,9 @@ function sortConversations() {
 // key-change explanation instead of a generic error.
 function toastSendFailure(label, error) {
   if (error instanceof PeerKeyChangedError) {
-    toast(t('keyChange.sendBlocked'), 'error');
+    // A key refused outright (declined, or a device of another contact)
+    // leaves no change to review at the top of the chat.
+    toast(t(trust.pendingChange(error.userId) ? 'keyChange.sendBlocked' : 'keyChange.sendRefused'), 'error');
     return;
   }
   if (error instanceof PeerUnavailableError) {
@@ -491,8 +503,10 @@ function connectSocket() {
     // Slow polling to a heartbeat once we have the WS push channel.
     if (state.pollTimer) clearInterval(state.pollTimer);
     state.pollTimer = setInterval(loadConversations, 30000);
-    // Reconnect is the moment to retry anything we couldn't send while offline.
+    // Reconnect is the moment to retry anything we couldn't send while offline,
+    // and to fetch what arrived meanwhile: the push channel replays nothing.
     drainOutbound();
+    for (const convId of state.openTabs) refreshMessages(convId);
   });
   s.on('disconnect', (reason) => {
     setConnPill('connecting', reason === 'io server disconnect' ? '연결 끊김' : '재연결 중…');
@@ -535,6 +549,13 @@ function connectSocket() {
     }
   });
   s.on('conversation.sync', () => loadConversations());
+  // The disappearing timer the next sends seal in (contract C4).
+  s.on('conversation.timer.changed', ({ conversationId, disappearingTimerSeconds } = {}) => {
+    const conv = state.conversations.find((c) => c.id === conversationId);
+    if (!conv) return;
+    conv.disappearingTimerSeconds = Number.isInteger(disappearingTimerSeconds) ? disappearingTimerSeconds : null;
+    persistConversation(conv);
+  });
 }
 
 function clearStaleTyping(convId) {
@@ -1004,9 +1025,9 @@ function renderActivePanel() {
 }
 
 // Shown while a peer presents an identity key the pins do not admit.
-// Sending stays frozen until the user accepts the new key; a contact they
-// had verified has to be verified again, by comparing the new safety number,
-// and so does a device of theirs that was never verified.
+// Sending stays frozen until the user accepts the new key or declines it; a
+// contact they had verified has to be verified again, by comparing the new
+// safety number, and so does a device of theirs that was never verified.
 function renderKeyChangeBanner(convId, peer) {
   const change = trust.pendingChange(peer.userId);
   let text = change?.verified ? 'keyChange.bannerVerified' : 'keyChange.banner';
@@ -1014,10 +1035,35 @@ function renderKeyChangeBanner(convId, peer) {
   return el('div', { class: 'key-change-banner', role: 'alert' }, [
     el('div', { class: 'key-change-text' }, [t(text, { handle: peer.handle })]),
     el('button', {
+      class: 'btn btn-ghost btn-compact key-change-decline',
+      onclick: () => declinePeerKeyChange(convId, peer),
+    }, [t('keyChange.decline')]),
+    el('button', {
       class: 'btn btn-secondary btn-compact',
       onclick: () => (change?.verified ? openSafetyNumberDialog(convId, peer) : acceptPeerKeyChange(convId, peer)),
     }, [t(change?.verified ? 'safety.compare' : 'keyChange.review')]),
   ]);
+}
+
+// Declines the change pending when the banner was clicked: that device and
+// key stay refused without being raised again, and the conversation sends
+// on to the identity it already has. It adds no trust, so a verified
+// contact's change may be declined as well.
+async function declinePeerKeyChange(convId, peer) {
+  const reviewed = trust.pendingChange(peer.userId);
+  if (!reviewed) return;
+  const ok = await uiConfirm({
+    title: t('keyChange.declineTitle', { handle: peer.handle }),
+    body: t('keyChange.declineBody', { handle: peer.handle }),
+    okLabel: t('keyChange.decline'),
+  });
+  if (!ok) return;
+  const outcome = await secure.declineChange(convId, reviewed);
+  if (outcome === 'session-key') {
+    toast(t('keyChange.declineSessionKey', { handle: peer.handle }), 'error');
+  } else if (outcome === 'superseded' && trust.pendingChange(peer.userId)) {
+    toast(t('keyChange.superseded', { handle: peer.handle }), 'error');
+  }
 }
 
 // Accepts the change pending when the banner was clicked, never one that
@@ -1613,8 +1659,7 @@ async function persistMessage(msg) {
   } catch {}
 }
 
-async function persistMessages(convId) {
-  const list = state.messagesByConv.get(convId) || [];
+async function persistMessages(list) {
   for (const m of list) await persistMessage(m);
 }
 
@@ -1750,7 +1795,7 @@ function saveDraft(convId, text) {
 
 // A handle and keys, nothing else: no profile text goes to the server.
 async function registerIdentity(handle) {
-  const keys = await generateIdentity(crypto.subtle);
+  const keys = await generateIdentity(crypto.subtle, { nowMs: serverNow() });
   const reg = await api('/auth/register', {
     method: 'POST',
     body: {
@@ -1790,6 +1835,10 @@ async function restoreSession() {
 
 async function enterApp() {
   state.me = sessionStore.current();
+  // Without them the app still works: a pending key change is raised again
+  // by the next frame or lookup that presents it, and history is fetched
+  // back from the start.
+  await Promise.all([trust.load(), historyMarks.load()]).catch((e) => console.warn('local state load failed', e));
   await hydrateFromCache();
   await loadKakaoArchiveRows();
   showApp();
@@ -1805,6 +1854,7 @@ function resetSessionState() {
   state.conversations = [];
   state.conversationsLoaded = false;
   state.messagesByConv.clear();
+  historyMarks.reset();
   state.activeConv = null;
   state.secondaryConv = null;
   state.openTabs = [];
@@ -2035,18 +2085,21 @@ async function refreshMessages(convId) {
   const target = convId ?? state.activeConv;
   if (!target) return;
   try {
-    const r = await authedApi(`/conversations/${target}/messages?limit=50`);
-    const items = r.items ?? [];
-    // Unchanged messages keep their views (no re-decrypt, blob URLs intact).
-    const fresh = await Promise.all(items.map((raw) => ingest(raw, { previous: findMessage(target, raw.id) })));
-    // Preserve any pending optimistic entries that haven't been ACKed yet.
-    const seenClientIds = new Set(items.map((m) => m.clientMessageId));
-    const pendings = (state.messagesByConv.get(target) || []).filter(
-      (m) => (m._status === 'pending' || m._status === 'failed') && !seenClientIds.has(m.clientMessageId),
+    const items = await fetchHistory(
+      (query) => authedApi(`/conversations/${target}/messages?${query}`),
+      { through: historyMarks.through(target) },
     );
-    setConversationMessages(target, [...fresh, ...pendings]);
+    // One at a time and oldest first, so each ratchet chain moves forward in
+    // order. Unchanged messages keep their views (no re-decrypt, blob URLs
+    // intact).
+    const fresh = [];
+    for (const raw of items) fresh.push(await ingest(raw, { previous: findMessage(target, raw.id) }));
+    setConversationMessages(target, mergeHistory(state.messagesByConv.get(target) || [], items, fresh));
     if (target === state.activeConv || target === state.secondaryConv) renderActivePanel();
-    persistMessages(target);
+    // Cached before the mark moves past them, so a reload in between finds
+    // them in the cache or fetches them again.
+    await persistMessages(fresh);
+    await historyMarks.advance(target, items.at(-1)?.conversationOrder);
   } catch {
     // A rejected session is handled by endSession; anything else retries on the next poll.
   }
@@ -2076,8 +2129,6 @@ async function sendMessage(textarea, convId) {
   });
 }
 
-const newClientMessageId = (prefix = 'web') => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
 // Local-only state of a bubble shown before its content was sealed (an
 // upload's preview, a recording), carried over to the sent message.
 const LOCAL_MEDIA_FIELDS = ['_imageUrl', '_voiceUrl', '_localFile'];
@@ -2092,16 +2143,17 @@ function replaceOwnMessage(convId, clientMessageId, view) {
 
 // Every send: the content is sealed end to end (src/features/sender.js) and
 // shown at once as a pending bubble, then delivered; a send that cannot go
-// out now waits, sealed, in the outbound queue. `local` is a bubble already
-// shown for this send (an upload in progress). Resolves to the delivered
-// view, or null.
-async function sendContent(conv, content, {
+// out now waits, sealed, in the outbound queue. Under a disappearing timer
+// its expiry is sealed in with it. `local` is a bubble already shown for this
+// send (an upload in progress). Resolves to the delivered view, or null.
+async function sendContent(conv, unsealed, {
   clientMessageId = newClientMessageId(),
   attachmentId = null,
   failureLabel = '전송 실패',
   local = null,
   onSealed = () => {},
 } = {}) {
+  const content = { ...unsealed, expiresAt: disappearingExpiry(conv.disappearingTimerSeconds, Date.now()) };
   const markFailed = (message) => {
     message._status = 'failed';
     renderActivePanel();
@@ -2601,7 +2653,7 @@ async function claimTransferNew() {
   $('transfer-new-error').textContent = '';
   $('transfer-new-status').textContent = '새 키 생성 중…';
   try {
-    const keys = await generateIdentity(crypto.subtle);
+    const keys = await generateIdentity(crypto.subtle, { nowMs: serverNow() });
     const published = await publishedKeys(crypto.subtle, keys);
     $('transfer-new-fingerprint-text').textContent = await transferFingerprint(published);
     $('transfer-new-fingerprint').classList.remove('hidden');
@@ -2887,14 +2939,16 @@ async function doReaction(messageId, emoji) {
   if (!found) return;
   const current = reactionsByTarget(found.list).get(messageId)
     ?.find((reaction) => reaction.senderDeviceId === state.me.deviceId)?.emoji ?? null;
-  const clientMessageId = newClientMessageId('react');
+  const clientMessageId = newClientMessageId();
   try {
+    const conv = state.conversations.find((c) => c.id === found.convId);
     const { content, message } = await sender.react({
       conversationId: found.convId,
       clientMessageId,
       target: messageId,
       emoji,
       current,
+      expiresAt: disappearingExpiry(conv?.disappearingTimerSeconds, Date.now()),
     });
     // A queued reaction shows once the outbound queue delivers it.
     if (!message) return;
@@ -2923,7 +2977,8 @@ function startEdit(msg, convId) {
 // An edit is a new frame on the session; the stored content is replaced only
 // once the server has taken it.
 async function doEdit(msg, convId, newText) {
-  const content = textContent(newText, msg.replyTo);
+  // An edit keeps the message's expiry: it can never make it last longer.
+  const content = { ...textContent(newText, msg.replyTo), expiresAt: msg.expiresAtMs ?? null };
   try {
     const envelope = await secure.sealEdit(convId, content);
     await authedApi(`/messages/${msg.id}`, {
@@ -4226,7 +4281,7 @@ async function sendMedia(convId, { kind, blob, contentType, name = '', failureLa
   const conv = state.conversations.find((c) => c.id === convId);
   if (!conv) return null;
   if (!(await ensureSendable(convId, failureLabel))) return null;
-  const clientMessageId = newClientMessageId(kind);
+  const clientMessageId = newClientMessageId();
   const pending = Object.assign(pendingLocalMessage({
     clientMessageId,
     conversationId: convId,
@@ -5193,7 +5248,8 @@ setTimeout(() => {
 //   POST   /safety/blocks  {userId}     block
 //   DELETE /safety/blocks/:userId       unblock
 //   POST   /safety/mutes/:cid {mutedForSeconds}  mute (null = unmute)
-//   POST   /safety/reports {...}        file an abuse report
+//   POST   /safety/reports {reportedUserId, conversationId, messageId, reason}
+//                                       file an abuse report (src/features/report.js)
 // This phase wires UI on top: action-menu entries for peer messages,
 // a header toggle for conversation mute, a list inside the settings
 // dialog for managing blocks.
@@ -5316,25 +5372,69 @@ function formatMuteDuration(seconds) {
   return `${Math.round(seconds / 60)}분`;
 }
 
-async function reportMessage(messageId, peerUserId, peerHandle) {
-  const reason = window.prompt(
-    `@${peerHandle} 신고 — 사유를 짧게 적어주세요 (이 텍스트는 운영자에게 전송됩니다):`,
-  );
-  if (!reason || reason.trim().length === 0) return;
-  try {
-    await authedApi('/safety/reports', {
-      method: 'POST',
-      body: {
-        targetUserId: peerUserId,
-        relatedMessageId: messageId,
-        category: 'other',
-        details: reason.trim(),
-      },
-    });
-    toast('신고 접수됨', 'good');
-  } catch (e) {
-    toast('신고 실패: ' + (e.message || 'unknown'), 'error');
-  }
+// Reports a message (src/features/report.js): the user picks one of the
+// API's reasons, and only that reason and the ids are sent. Nothing typed
+// and nothing of the message's content goes with it.
+function openReportDialog(convId, messageId, sender) {
+  if ($('report-dialog')) return;
+  let back = null;
+  const close = () => {
+    closeDialog('report-dialog');
+    back.remove();
+  };
+  const submitBtn = el('button', { class: 'btn btn-primary', id: 'report-submit', disabled: 'disabled' }, [t('report.submit')]);
+  const choices = REPORT_REASONS.map((reason, index) => el('label', { style: 'display:block;padding:6px 0;cursor:pointer' }, [
+    el('input', {
+      type: 'radio',
+      name: 'report-reason',
+      value: reason,
+      id: index === 0 ? 'report-first-reason' : null,
+      onchange: () => { submitBtn.disabled = false; },
+    }),
+    ' ' + t(`report.reason.${reason}`),
+  ]));
+  submitBtn.addEventListener('click', async () => {
+    const reason = back.querySelector('input[name="report-reason"]:checked')?.value;
+    if (!reason) return;
+    close();
+    try {
+      await authedApi('/safety/reports', {
+        method: 'POST',
+        body: abuseReport({ reportedUserId: sender.userId, conversationId: convId, messageId, reason }),
+      });
+      toast(t('report.sent'), 'good');
+    } catch (e) {
+      toast(t('report.failed', { error: e.message || 'unknown' }), 'error');
+    }
+  });
+  back = el('div', { class: 'dialog-backdrop hidden', id: 'report-dialog', role: 'presentation' }, [
+    el('div', {
+      class: 'dialog',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-labelledby': 'report-title',
+      style: 'width:380px;max-width:92vw',
+    }, [
+      el('div', { class: 'dialog-title', id: 'report-title' }, [t('report.title', { handle: sender.handle })]),
+      el('div', { class: 'dialog-sub' }, [t('report.explain')]),
+      el('div', { role: 'radiogroup', 'aria-labelledby': 'report-title' }, choices),
+      el('div', { class: 'dialog-actions' }, [
+        el('button', { class: 'btn btn-ghost', onclick: close }, [t('common.cancel')]),
+        submitBtn,
+      ]),
+    ]),
+  ]);
+  back.addEventListener('click', (e) => { if (e.target === back) close(); });
+  back.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close();
+    } else {
+      trapFocus('report-dialog', e);
+    }
+  });
+  document.body.appendChild(back);
+  openDialog('report-dialog', 'report-first-reason');
 }
 
 // Hook: extend the action menu with 차단 / 신고 entries for peer
@@ -5353,10 +5453,10 @@ const __veilSafetyMenuObserver = new MutationObserver(() => {
       if (m) { target = m; convId = cid; break; }
     }
     if (!target) return;
-    // Only peer messages get the safety items; you can't block yourself.
-    if (target.senderDeviceId === state.me?.deviceId) return;
-    const conv = state.conversations.find((c) => c.id === convId);
-    const peer = conv?.members?.find((m) => m.userId !== state.me?.userId);
+    // Only messages whose sender is known get the safety items: never our
+    // own, and none in a group, where the sender's device names no member
+    // here.
+    const peer = senderToReport(state.conversations.find((c) => c.id === convId), target, state.me);
     if (!peer) return;
 
     const sep = document.createElement('div');
@@ -5379,7 +5479,7 @@ const __veilSafetyMenuObserver = new MutationObserver(() => {
     reportBtn.addEventListener('click', (ev) => {
       ev.stopPropagation();
       closeActionMenu();
-      reportMessage(target.id, peer.userId, peer.handle);
+      openReportDialog(convId, target.id, peer);
     });
     menu.appendChild(reportBtn);
   });

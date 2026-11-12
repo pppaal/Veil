@@ -1,9 +1,17 @@
 // A stand-in for the VEIL API that the browser tests (e2e/browser/) run the
 // web demo against, with no Postgres, Redis or object storage: it serves the
 // demo at /demo/ and an in-memory /v1 relay (auth, key directory, prekeys,
-// conversations, messages, attachments). It relays ciphertext and never
-// decrypts. /socket.io and /v1/realtime answer 404, so the demo falls back
-// to polling.
+// conversations, messages, attachments, reports). It relays ciphertext and
+// never decrypts. /socket.io and /v1/realtime answer 404, so the demo falls
+// back to polling.
+//
+// Whatever the real API refuses on the routes the demo uses, this relay
+// refuses too, with the same status and error code: request bodies are
+// checked as the API's global ValidationPipe ({ whitelist,
+// forbidNonWhitelisted }) checks its DTOs, and a signed prekey as
+// KeysService.rotateSignedPrekey checks it (signature, the spkTs window of an
+// hour back and 10 minutes ahead of server time, the IKx pin, an increasing
+// spkId). A break between the demo and the API then fails here first.
 //
 // Test hooks, under /__test/:
 //   POST /__test/reset                  forget everything
@@ -18,11 +26,16 @@
 //                                       swap the victim's directory keys for a
 //                                       relay-held identity and open a session
 //                                       to the target as the victim's device
-//   POST /__test/timer {seconds}        set the outer expiresAt of messages
-//                                       stored from now on, as the API does
-//                                       for a conversation timer (null: off).
-//                                       Expired messages are still served, as
-//                                       a lagging or hostile relay would
+//   POST /__test/timer {seconds, relayExpiry}
+//                                       set the conversation timer (null:
+//                                       off): conversations list it, and the
+//                                       outer expiresAt of messages stored
+//                                       from now on follows it, as the API
+//                                       does, unless relayExpiry is false (a
+//                                       hostile relay that drops it). Expired
+//                                       messages are still served, as a
+//                                       lagging or hostile relay would
+//   GET  /__test/reports                the abuse reports filed so far
 //
 // Usage: node apps/web-demo/e2e/mock-server.mjs   (VEIL_MOCK_PORT, default 4317)
 
@@ -33,6 +46,8 @@ import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { decodeBase64Url } from '../src/core/base64url.js';
+import { BundleError, verifyBundle } from '../src/crypto/bundle.js';
+import { constantTimeEqual } from '../src/crypto/bytes.js';
 import { generateIdentity, publishedKeys } from '../src/crypto/identity.js';
 import { createKeySource } from '../src/crypto/keys.js';
 import { createLocks } from '../src/crypto/locks.js';
@@ -53,6 +68,13 @@ const CONTENT_TYPES = {
   '.svg': 'image/svg+xml',
 };
 const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+// The window PUT /keys/signed-prekey accepts spkTs in (contract C-SPK).
+const SIGNED_PREKEY_MAX_AGE_MS = 60 * 60 * 1000;
+const SIGNED_PREKEY_MAX_LEAD_MS = 10 * 60 * 1000;
+const REPORT_REASONS = ['spam', 'harassment', 'impersonation', 'csam', 'violence', 'scam', 'other'];
+const UPLOAD_STATUSES = ['pending', 'uploaded', 'failed'];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 class HttpError extends Error {
   constructor(status, code, message = code) {
@@ -60,6 +82,70 @@ class HttpError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+// Field rules for validateBody: each returns what is wrong, or null.
+const rule = (holds, problem) => (value) => (holds(value) ? null : problem);
+const optional = (check) => (value) => (value === undefined || value === null ? null : check(value));
+const uuid = (pattern = UUID) => rule((value) => typeof value === 'string' && pattern.test(value), 'must be a UUID');
+const oneOf = (allowed) => rule((value) => allowed.includes(value), `must be one of the following values: ${allowed.join(', ')}`);
+const matches = (pattern) => rule((value) => typeof value === 'string' && pattern.test(value), `must match ${pattern}`);
+const intWithin = (min, max) =>
+  rule((value) => Number.isInteger(value) && value >= min && value <= max, `must be an integer from ${min} to ${max}`);
+const stringUpTo = (max) =>
+  rule((value) => typeof value === 'string' && value.length <= max, `must be a string of at most ${max} characters`);
+// UploadPrekeysDto: 1 to 100 { keyId, publicKey }.
+const prekeyBatch = (value) => {
+  const valid = Array.isArray(value) && value.length >= 1 && value.length <= 100 && value.every((prekey) => (
+    Object.keys(prekey ?? {}).every((field) => field === 'keyId' || field === 'publicKey')
+    && intWithin(0, 0x7fffffff)(prekey.keyId) === null
+    && matches(/^[A-Za-z0-9._:+/=-]{1,512}$/)(prekey.publicKey) === null));
+  return valid ? null : 'must be 1 to 100 one-time prekeys { keyId, publicKey }';
+};
+
+const NONCE = /^[A-Za-z0-9._:-]{1,512}$/;
+const isIsoDate = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
+// The fields of an object a DTO nests, each with its rule.
+const nested = (rules) => (value) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return 'must be an object';
+  const unknown = Object.keys(value).filter((field) => !Object.hasOwn(rules, field));
+  if (unknown.length > 0) return `has properties that should not exist: ${unknown.join(', ')}`;
+  const broken = Object.entries(rules).filter(([field, rule]) => rule(value[field]) !== null).map(([field]) => field);
+  return broken.length > 0 ? `has invalid ${broken.join(', ')}` : null;
+};
+const ciphertext = stringUpTo(131072);
+// EnvelopeDto and AttachmentReferenceDto (send-message.dto.ts).
+const envelopeRule = nested({
+  version: stringUpTo(64),
+  conversationId: uuid(),
+  senderDeviceId: uuid(),
+  recipientUserId: optional(uuid()),
+  ciphertext,
+  nonce: matches(NONCE),
+  messageType: stringUpTo(32),
+  expiresAt: optional((value) => (isIsoDate(value) ? null : 'must be an ISO-8601 date')),
+  viewOnce: optional((value) => (typeof value === 'boolean' ? null : 'must be a boolean')),
+  attachment: optional(nested({
+    attachmentId: uuid(),
+    storageKey: optional(stringUpTo(256)),
+    contentType: optional(stringUpTo(128)),
+    sizeBytes: optional(intWithin(0, Number.MAX_SAFE_INTEGER)),
+    sha256: optional(stringUpTo(128)),
+    encryption: optional((value) => (typeof value === 'object' ? null : 'must be an object')),
+  })),
+});
+
+// Refuses a body the way the API's ValidationPipe does: properties the DTO
+// does not declare, and declared ones that break their rule.
+function validateBody(body, rules) {
+  const problems = Object.keys(body ?? {})
+    .filter((field) => !Object.hasOwn(rules, field))
+    .map((field) => `property ${field} should not exist`);
+  for (const [field, rule] of Object.entries(rules)) {
+    const problem = rule(body?.[field]);
+    if (problem) problems.push(`${field} ${problem}`);
+  }
+  if (problems.length > 0) throw new HttpError(400, 'validation_failed', problems.join('; '));
 }
 
 let db;
@@ -73,9 +159,11 @@ function reset() {
     conversations: new Map(), // id -> { id, memberIds, createdAt, lastOrder }
     messages: [],
     blobs: new Map(),
+    reports: [],
     shuffle: false,
     tamper: false,
     timerSeconds: null,
+    relayExpiry: true,
   };
 }
 reset();
@@ -136,6 +224,7 @@ function conversationSummary(viewer, conversation) {
     type: 'direct',
     createdAt: conversation.createdAt,
     members: conversation.memberIds.map((id) => ({ userId: id, handle: db.users.get(id).handle })),
+    disappearingTimerSeconds: db.timerSeconds,
     lastMessage: visible.length > 0 ? summaryFor(visible.at(-1)) : null,
   };
 }
@@ -155,7 +244,7 @@ function storeMessage(device, conversation, { clientMessageId, envelope }) {
     nonce: envelope.nonce,
     messageType: envelope.messageType,
     attachment: envelope.attachment?.attachmentId ? { attachmentId: envelope.attachment.attachmentId } : null,
-    expiresAt: db.timerSeconds ? new Date(Date.now() + db.timerSeconds * 1000).toISOString() : null,
+    expiresAt: db.timerSeconds && db.relayExpiry ? new Date(Date.now() + db.timerSeconds * 1000).toISOString() : null,
     viewOnce: false,
     serverReceivedAt: now(),
     deletedAt: null,
@@ -173,6 +262,45 @@ function storeMessage(device, conversation, { clientMessageId, envelope }) {
 
 function claimOneTimePrekey(device) {
   return device.oneTimePrekeys.shift() ?? null;
+}
+
+// As KeysService.rotateSignedPrekey: a canonical v2 bundle signed by the
+// device identity key, stamped within the window of server time, on the
+// pinned IKx, with a larger spkId than the stored bundle's.
+async function rotateSignedPrekey(device, signedPrekeyBundle) {
+  validateBody({ signedPrekeyBundle }, { signedPrekeyBundle: matches(/^[A-Za-z0-9_-]{1,8192}$/) });
+  const identityKey = decodeBase64Url(device.identityPublicKey);
+  const now = Date.now();
+  let next = null;
+  try {
+    next = await verifyBundle(webcrypto.subtle, signedPrekeyBundle, identityKey, { nowMs: now });
+  } catch (error) {
+    if (!(error instanceof BundleError)) throw error;
+    if (error.reason === 'unsupported' || error.reason === 'malformed') {
+      throw new HttpError(400, 'validation_failed', 'Signed prekey bundle must be a canonical v2 bundle');
+    }
+    if (error.reason === 'bad_signature') {
+      throw new HttpError(400, 'invalid_device_signature', 'Signed prekey bundle is not signed by the device identity key');
+    }
+    // 'stale' or 'future': far outside the window, checked next.
+    next = { spkTs: NaN };
+  }
+  if (!(next.spkTs >= now - SIGNED_PREKEY_MAX_AGE_MS && next.spkTs <= now + SIGNED_PREKEY_MAX_LEAD_MS)) {
+    throw new HttpError(
+      400,
+      'signed_prekey_timestamp_out_of_window',
+      'Signed prekey timestamp must be within the last hour and at most 10 minutes ahead of server time',
+    );
+  }
+  const current = await verifyBundle(webcrypto.subtle, device.signedPrekeyBundle, identityKey, { nowMs: now }).catch(() => null);
+  if (current && !constantTimeEqual(next.ikx, current.ikx)) {
+    throw new HttpError(400, 'validation_failed', 'The X25519 identity key cannot change');
+  }
+  if (current && next.spkId <= current.spkId) {
+    throw new HttpError(400, 'validation_failed', 'spkId must increase with every rotation');
+  }
+  device.signedPrekeyBundle = signedPrekeyBundle;
+  return { deviceId: device.id, spkId: next.spkId };
 }
 
 function directory(handle) {
@@ -237,6 +365,7 @@ async function impersonate({ victim, target, text }) {
   victimDevice.identityPublicKey = published.publicIdentityKey;
   victimDevice.signedPrekeyBundle = published.signedPrekeyBundle;
   victimDevice.oneTimePrekeys = [];
+  victimDevice.uploadedPrekeyIds = new Set();
   storeMessage(victimDevice, conversation, { clientMessageId: `relay-${randomUUID()}`, envelope });
 }
 
@@ -261,8 +390,10 @@ const routes = [
   }],
   ['POST', /^\/__test\/timer$/, (req) => {
     db.timerSeconds = req.body.seconds ?? null;
+    db.relayExpiry = req.body.relayExpiry !== false;
     return {};
   }],
+  ['GET', /^\/__test\/reports$/, () => db.reports],
   ['GET', /^\/__test\/health$/, () => ({ ok: true })],
 
   ['POST', /^\/v1\/auth\/register$/, (req) => {
@@ -316,23 +447,26 @@ const routes = [
     authenticate(req);
     return directory(decodeURIComponent(handle));
   }],
-  ['PUT', /^\/v1\/keys\/signed-prekey$/, (req) => {
-    const { device } = authenticate(req);
-    device.signedPrekeyBundle = req.body.signedPrekeyBundle;
-    return { deviceId: device.id, spkId: 0 };
-  }],
+  ['PUT', /^\/v1\/keys\/signed-prekey$/, (req) => rotateSignedPrekey(authenticate(req).device, req.body.signedPrekeyBundle)],
+  // As PrekeysService.upload: ids the device already uploaded are skipped.
   ['POST', /^\/v1\/prekeys$/, (req) => {
     const { device } = authenticate(req);
-    device.oneTimePrekeys.push(...req.body.prekeys);
-    return { uploaded: req.body.prekeys.length, remaining: device.oneTimePrekeys.length };
+    validateBody(req.body, { prekeys: prekeyBatch });
+    const uploaded = device.uploadedPrekeyIds ?? new Set();
+    device.uploadedPrekeyIds = uploaded;
+    const fresh = req.body.prekeys.filter((prekey) => !uploaded.has(prekey.keyId));
+    for (const prekey of fresh) uploaded.add(prekey.keyId);
+    device.oneTimePrekeys.push(...fresh);
+    return { uploaded: fresh.length, available: device.oneTimePrekeys.length };
   }],
   ['GET', /^\/v1\/prekeys\/count$/, (req) => ({ available: authenticate(req).device.oneTimePrekeys.length })],
 
   ['GET', /^\/v1\/conversations$/, (req) => {
     const { user } = authenticate(req);
-    return [...db.conversations.values()]
+    const items = [...db.conversations.values()]
       .filter((c) => c.memberIds.includes(user.id))
       .map((c) => conversationSummary(user, c));
+    return { items, nextCursor: null };
   }],
   ['POST', /^\/v1\/conversations\/direct$/, (req) => {
     const { user } = authenticate(req);
@@ -347,19 +481,34 @@ const routes = [
     }
     return { conversation: conversationSummary(user, conversation) };
   }],
+  // As ConversationsService.listMessages pages: the newest `limit` (1 to
+  // 100, default 50) messages before the cursor message, in conversation
+  // order, and while the page is full a cursor to the page before it.
   ['GET', /^\/v1\/conversations\/([^/]+)\/messages$/, (req, [conversationId]) => {
     const { user } = authenticate(req);
     conversationFor(user, conversationId);
     if (db.shuffle) releaseOneHeld(user, conversationId);
-    const items = db.messages
+    const requested = Number(req.query.get('limit') ?? 50);
+    const limit = Number.isFinite(requested) ? Math.min(100, Math.max(1, requested)) : 50;
+    const cursor = req.query.get('cursor');
+    const before = cursor ? db.messages.find((m) => m.id === cursor && m.conversationId === conversationId) : null;
+    if (cursor && !before) throw new HttpError(404, 'message_not_found');
+    const page = db.messages
       .filter((m) => m.conversationId === conversationId && visibleTo(user, m))
-      .slice(-50)
-      .map(summaryFor);
-    return { items };
+      .filter((m) => !before || m.conversationOrder < before.conversationOrder)
+      .slice(-limit);
+    return { items: page.map(summaryFor), nextCursor: page.length === limit ? page[0].id : null };
   }],
 
   ['POST', /^\/v1\/messages$/, (req) => {
     const { device, user } = authenticate(req);
+    validateBody(req.body, {
+      conversationId: uuid(),
+      clientMessageId: matches(/^[a-zA-Z0-9._:-]{8,80}$/),
+      envelope: envelopeRule,
+      replyToMessageId: optional(uuid()),
+      groupEpoch: optional(intWithin(0, Number.MAX_SAFE_INTEGER)),
+    });
     const conversation = conversationFor(user, req.body.conversationId);
     const { envelope } = req.body;
     if (envelope.senderDeviceId !== device.id || envelope.conversationId !== conversation.id) {
@@ -373,6 +522,7 @@ const routes = [
   }],
   ['PATCH', /^\/v1\/messages\/([^/]+)$/, (req, [messageId]) => {
     const { device } = authenticate(req);
+    validateBody(req.body, { ciphertext, nonce: matches(NONCE), version: stringUpTo(64) });
     const message = db.messages.find((m) => m.id === messageId && m.senderDeviceId === device.id);
     if (!message) throw new HttpError(404, 'message_not_found');
     Object.assign(message, {
@@ -391,9 +541,16 @@ const routes = [
     return {};
   }],
 
+  // CreateUploadTicketDto: a proposed id must be a random (version 4) UUID.
   ['POST', /^\/v1\/attachments\/upload-ticket$/, (req) => {
     authenticate(req);
-    const { attachmentId } = req.body;
+    validateBody(req.body, {
+      attachmentId: optional(uuid(UUID_V4)),
+      contentType: matches(/^[\w.+-]+\/[\w.+-]+$/),
+      sizeBytes: intWithin(1, 50 * 1024 * 1024),
+      sha256: matches(/^[a-f0-9]{64}$/i),
+    });
+    const attachmentId = req.body.attachmentId ?? randomUUID();
     return {
       attachmentId,
       upload: {
@@ -406,6 +563,7 @@ const routes = [
   }],
   ['POST', /^\/v1\/attachments\/complete$/, (req) => {
     authenticate(req);
+    validateBody(req.body, { attachmentId: uuid(), uploadStatus: oneOf(UPLOAD_STATUSES) });
     return {};
   }],
   ['GET', /^\/v1\/attachments\/([^/]+)\/download-ticket$/, (req, [attachmentId]) => {
@@ -415,6 +573,23 @@ const routes = [
   ['GET', /^\/v1\/safety\/blocks$/, (req) => {
     authenticate(req);
     return { items: [] };
+  }],
+  // FileAbuseReportDto. The API accepts a deprecated note and never stores
+  // it; this relay keeps what it was sent, so a test can see that no note
+  // leaves the demo.
+  ['POST', /^\/v1\/safety\/reports$/, (req) => {
+    const { user } = authenticate(req);
+    validateBody(req.body, {
+      reportedUserId: uuid(),
+      conversationId: optional(uuid()),
+      messageId: optional(uuid()),
+      reason: oneOf(REPORT_REASONS),
+      note: optional(stringUpTo(1000)),
+    });
+    const report = { reportId: randomUUID(), filedAt: now() };
+    const reportedHandle = db.users.get(req.body.reportedUserId)?.handle ?? null;
+    db.reports.push({ ...report, reporterHandle: user.handle, reportedHandle, body: req.body });
+    return report;
   }],
 ];
 
@@ -474,6 +649,7 @@ const server = http.createServer(async (req, res) => {
       if (!match) continue;
       const raw = await readBody(req);
       req.body = raw.length > 0 ? JSON.parse(raw.toString('utf8')) : {};
+      req.query = url.searchParams;
       sendJson(res, 200, await handler(req, match.slice(1)));
       return;
     }

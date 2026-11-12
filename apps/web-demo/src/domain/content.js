@@ -71,17 +71,26 @@ export function contentFromPayload(payload) {
   }
 }
 
-// The inner payload that carries this content.
+// The authenticated expiry (ms) of a message sent at nowMs in a conversation
+// whose disappearing timer is timerSeconds, or null without a timer.
+export const disappearingExpiry = (timerSeconds, nowMs) =>
+  (Number.isInteger(timerSeconds) && timerSeconds > 0 ? nowMs + timerSeconds * 1000 : null);
+
+// The inner payload that carries this content. Its expiry is sealed as "x"
+// (contract C4): receivers expire the message at the earlier of it and the
+// relay's outer expiresAt, so a relay that drops or extends the outer one
+// cannot keep the message around.
 export function payloadFromContent(item) {
+  const expiresAt = Number.isFinite(item.expiresAt) ? item.expiresAt : null;
   switch (item.kind) {
     case 'text':
     case 'reply':
-      return { body: item.text, kind: 'text', replyTo: item.replyTo };
+      return { body: item.text, kind: 'text', replyTo: item.replyTo, expiresAt };
     case 'reaction':
-      return { body: encodeReaction(item.reaction), kind: 'reaction' };
+      return { body: encodeReaction(item.reaction), kind: 'reaction', expiresAt };
     default:
       if (!MEDIA_KINDS.has(item.kind) || !item.attachment) throw new TypeError(`cannot send ${item.kind} content`);
-      return { body: item.text, kind: item.kind, attachment: item.attachment };
+      return { body: item.text, kind: item.kind, attachment: item.attachment, expiresAt };
   }
 }
 

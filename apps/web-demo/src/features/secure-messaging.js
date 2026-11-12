@@ -6,11 +6,12 @@
 //          exactly once and stores the result before the session moves on
 //   retire drops what was kept of a message that was deleted or expired
 // A peer whose identity changed is frozen here for sending until the user
-// reviews the change; nothing in this module ever refetches keys because a
-// message failed to decrypt.
+// reviews the change (accepts, verifies or declines it); nothing in this
+// module ever refetches keys because a message failed to decrypt.
 
 import { effectiveExpiry, isPast } from '../core/expiry.js';
 import { BundleError } from '../crypto/bundle.js';
+import { constantTimeEqual } from '../crypto/bytes.js';
 import { LEGACY_ENVELOPE_VERSION } from '../crypto/frame.js';
 import { isLegacyIdentity } from '../crypto/identity.js';
 import { isLegacyV1DevEnvelope } from '../crypto/legacy-v1dev.js';
@@ -47,8 +48,20 @@ export class PeerUnavailableError extends Error {
 // Our own sends are stored under their client id until the server names them.
 const clientKey = (clientMessageId) => `client:${clientMessageId}`;
 // The content-store record marking how much of a conversation's history this
-// device deleted; message ids are UUIDs, so it cannot collide with one.
+// device deleted.
 const HISTORY_CLEARED = 'history-cleared';
+// Message ids are UUIDs (the server's Message.id). An envelope with any other
+// id is not opened or retired, so the relay cannot name either local key
+// above as a message of its own.
+const SERVER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const isServerId = (id) => typeof id === 'string' && SERVER_ID.test(id);
+
+// The store already holds another author's content under this message id.
+class AuthorConflictError extends Error {}
+
+// open()'s failure for a frame whose identity is refused with nothing left
+// to review (src/crypto/pins.js refusesOutright).
+export const IDENTITY_REFUSED = 'identityRefused';
 
 // lookupPeer(peer) -> { deviceId, identityKey, signedPrekeyBundle, oneTimePrekey }
 // from GET /v1/keys/:handle?claim=active, or a BundleError when the claimed
@@ -116,13 +129,18 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
   // Keeps freshly decrypted content, unless it has already expired: then
   // nothing of it is written, though its message key is spent all the same.
+  // Its author is the senderDeviceId the frame's AAD bound and the AEAD just
+  // verified. Under an id that holds another author's content it throws, so
+  // the session does not commit: the frame's key stays unspent and it still
+  // opens under its own id.
   async function keep(raw, content) {
     const expiresAt = effectiveExpiry(content.expiresAt, raw.expiresAt);
     if (isPast(expiresAt, clock())) {
       await contentStore.retire(raw.conversationId, raw.id);
       return { failure: 'retired' };
     }
-    await contentStore.put(raw.conversationId, raw.id, { content, nonce: raw.nonce }, { expiresAt });
+    const value = { content, nonce: raw.nonce, author: raw.senderDeviceId };
+    if (!(await contentStore.put(raw.conversationId, raw.id, value, { expiresAt }))) throw new AuthorConflictError();
     return { content };
   }
 
@@ -142,13 +160,24 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
       },
     });
     if (result.status === DecryptStatus.OK) return kept;
-    // Another tab may have decrypted it first.
+    // Another tab may have decrypted it first: then what it kept is this
+    // very frame's content.
     if (result.status === DecryptStatus.REPLAYED) {
       const stored = await contentStore.get(raw.conversationId, raw.id);
       if (stored?.retired) return { failure: 'retired' };
-      if (stored) return { content: stored.content };
+      if (stored?.author === raw.senderDeviceId && stored.nonce === raw.nonce) return { content: stored.content };
+    }
+    if (result.status === DecryptStatus.IDENTITY_REJECTED && (await refusedOutright(raw.conversationId, result.identity))) {
+      return { failure: IDENTITY_REFUSED };
     }
     return { failure: result.status };
+  }
+
+  // A frame from a key the user declined, or from a device pinned under
+  // another user, is locked for good: there is no change to review.
+  async function refusedOutright(conversationId, identity) {
+    const peer = getPeer(conversationId);
+    return peer ? trust.refusesOutright(peer.userId, identity.remoteDeviceId, identity.remoteIdentityKey) : false;
   }
 
   return {
@@ -156,10 +185,16 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
     // Resolves to the envelope for POST /messages. Our content is stored
     // before anything is encrypted, so a sent message never becomes
-    // unreadable to us.
+    // unreadable to us, and with the expiry sealed into it, so our copy
+    // expires with the peer's whatever the relay does.
     async seal(conversationId, content, { clientMessageId }) {
       const peer = await prepare(conversationId);
-      await contentStore.put(conversationId, clientKey(clientMessageId), { content, nonce: null });
+      await contentStore.put(
+        conversationId,
+        clientKey(clientMessageId),
+        { content, nonce: null, author: getSelf().deviceId },
+        { expiresAt: content.expiresAt ?? null },
+      );
       try {
         return await encrypt(conversationId, peer, content);
       } catch (error) {
@@ -174,24 +209,35 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
       return encrypt(conversationId, await prepare(conversationId), content);
     },
 
-    rememberEdit: (conversationId, messageId, content, nonce) =>
-      contentStore.put(conversationId, messageId, { content, nonce }),
+    // Like everything below, only under an id the server can have given: a
+    // relay that names a local key (another send's client key, the
+    // history marker) gets nothing filed there.
+    async rememberEdit(conversationId, messageId, content, nonce) {
+      if (isServerId(messageId)) await contentStore.put(conversationId, messageId, { content, nonce, author: getSelf().deviceId });
+    },
 
     // Files our own content under the id the server gave the message, with
     // the expiry the relay set on it: the record must expire with it even if
     // the message is never shown again.
-    acknowledge: (message) => contentStore.move(
-      message.conversationId,
-      clientKey(message.clientMessageId),
-      message.id,
-      { expiresAt: effectiveExpiry(null, message.expiresAt) },
-    ),
+    async acknowledge(message) {
+      if (!isServerId(message.id)) return;
+      await contentStore.move(
+        message.conversationId,
+        clientKey(message.clientMessageId),
+        message.id,
+        { expiresAt: effectiveExpiry(null, message.expiresAt) },
+      );
+    },
 
     // { content } or { failure }: 'retired' for a message deleted or
     // expired, 'cleared' for history this device deleted, or why it is
     // locked. Our own protocol-v2 messages cannot be decrypted (their keys
-    // were single-use), so they come only from the store.
+    // were single-use), so they come only from the store. A stored record is
+    // returned only for the author it names: the relay labels each envelope
+    // with a sender, and must not be able to show one party's words as the
+    // other's.
     async open(raw) {
+      if (!isServerId(raw.id)) return { failure: 'failed' };
       const cleared = await contentStore.get(raw.conversationId, HISTORY_CLEARED);
       if (cleared && raw.conversationOrder <= cleared.throughOrder) return { failure: 'cleared' };
       const own = isOwn(raw);
@@ -203,7 +249,9 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
         stored = await contentStore.get(raw.conversationId, raw.id);
       }
       if (stored?.retired) return { failure: 'retired' };
-      if (own) return stored ? { content: stored.content } : { failure: 'own-missing' };
+      if (own) return stored?.author === raw.senderDeviceId ? { content: stored.content } : { failure: 'own-missing' };
+      // Not decrypted here either: the frame still opens under its own id.
+      if (stored && stored.author !== raw.senderDeviceId) return { failure: 'failed' };
       if (stored?.nonce === raw.nonce) return { content: stored.content };
       const opened = await decryptOnce(raw);
       // An edit that does not open keeps the last content that did; one that
@@ -214,7 +262,7 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
 
     // For good: a ciphertext of it the relay serves again stays hidden.
     async retire(raw) {
-      await contentStore.retire(raw.conversationId, raw.id);
+      if (isServerId(raw.id)) await contentStore.retire(raw.conversationId, raw.id);
       if (isOwn(raw) && raw.clientMessageId) await contentStore.delete(raw.conversationId, clientKey(raw.clientMessageId));
     },
 
@@ -224,6 +272,25 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
     async safetyKey(conversationId) {
       const peer = getPeer(conversationId);
       return peer ? trust.safetyKey(peer.userId, await cipher.sessionIdentity(conversationId)) : null;
+    },
+
+    // Declines `reviewed`, the change pending for this conversation's peer
+    // (src/crypto/pins.js reject), so that sending goes on to the identity
+    // the session sends to. Resolves to 'declined'; 'superseded' when it is
+    // no longer the pending change; or 'session-key' when it is that very
+    // identity, which only a comparison can settle (C-DECLINE: only the
+    // session identity cannot be declined). A conversation without a session
+    // has no session identity, so any presented key may be declined there:
+    // its next send asks the directory again and starts a session to a key
+    // the pins admit, or is refused while the directory serves the declined
+    // one (the app says so: keyChange.sendRefused).
+    async declineChange(conversationId, reviewed) {
+      const peer = getPeer(conversationId);
+      if (!peer) return 'superseded';
+      const session = await cipher.sessionIdentity(conversationId);
+      if (session && session.remoteDeviceId === reviewed.deviceId
+        && constantTimeEqual(session.remoteIdentityKey, reviewed.identityKey)) return 'session-key';
+      return (await trust.reject(peer.userId, reviewed)) ? 'declined' : 'superseded';
     },
 
     // Retires every stored message whose expiry has passed, shown or not.

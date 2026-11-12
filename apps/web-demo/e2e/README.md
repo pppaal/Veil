@@ -8,9 +8,13 @@ projects (see `playwright.config.ts` at the repo root).
 `browser/protocol-v2.spec.ts` runs the demo in Chrome against
 `mock-server.mjs`, a stand-in for the API that serves `/demo/` and an
 in-memory `/v1` relay (auth, key directory, prekeys, conversations,
-messages, attachments). It relays ciphertext and never decrypts; it has no
-realtime gateway (`/socket.io` and `/v1/realtime` answer 404), so the demo
-runs in polling mode. Playwright starts it; nothing else is needed.
+messages, attachments, reports). It relays ciphertext and never decrypts; it
+has no realtime gateway (`/socket.io` and `/v1/realtime` answer 404), so the
+demo runs in polling mode. Playwright starts it; nothing else is needed.
+It refuses what the real API refuses on the routes the demo uses, with the
+same status and error code (request bodies as the API's DTOs, a signed
+prekey as `KeysService` checks it); `__tests__/mock-relay.test.js` pins
+those refusals.
 
 - Alice and Bob exchange 10 messages while the relay hands each recipient
   the held messages one at a time in random order.
@@ -20,11 +24,23 @@ runs in polling mode. Playwright starts it; nothing else is needed.
   session runs on, show the same number.
 - A relay that swaps Bob's identity and opens a session to Alice as Bob's
   device is refused: Alice sees the key-change banner and cannot send.
+  Once she declines that key, she sends to Bob again, and the refused frame,
+  which the relay still serves, raises nothing after a reload.
+- Reporting one of Bob's messages sends only the reason picked and the
+  message, conversation and reported user ids, in the shape the API takes.
+- A device that was away while 260 messages and reactions arrived (more
+  than five pages of history) gets all of them, opened in order and none
+  locked, and keeps them through later refreshes and a reload.
+- A device whose own send was cached above such a backlog, while its
+  history fetches failed, still pages back through the backlog after a
+  reload.
 - A message deleted by its sender, and one past the relay's conversation
   timer, leave both pages and the sidebar, and their rows in the
   decrypt-once store are retired on both devices, with history polling as
-  the only channel and the relay still serving the expired one. The store
-  also retires expired records nothing is showing.
+  the only channel and the relay still serving the expired one. A message
+  sent under the timer expires on both devices even when the relay stores
+  it with no expiry, by the one sealed inside it. The store also retires
+  expired records nothing is showing.
 - Two tabs write the shared session record in IndexedDB at once, one
   rotating prekeys and one renewing tokens, and neither reverts the other.
 

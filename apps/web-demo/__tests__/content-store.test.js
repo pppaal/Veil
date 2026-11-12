@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { textContent } from '../src/domain/content.js';
-import { DELETED_TEXT, ingestMessage, isShown, previewLabel } from '../src/domain/ingest.js';
+import { DELETED_TEXT, ingestMessage, isShown, LOCKED_LABELS, previewLabel } from '../src/domain/ingest.js';
 import { CONVERSATION, NOW } from './support/devices.js';
 import { contentStores, conversation, openContentStore, serverMessage } from './support/messaging.js';
 
@@ -42,7 +42,7 @@ describe('message content store', () => {
     expect(decrypt).toHaveBeenCalledTimes(3);
 
     // A reload: new cipher, store and messaging over the same stored data.
-    bob.restart();
+    await bob.restart();
     const reloadedDecrypt = vi.spyOn(bob.device.cipher, 'decrypt');
     const reloaded = [];
     for (const message of sent) reloaded.push(await view(bob, message));
@@ -51,7 +51,7 @@ describe('message content store', () => {
 
     // The sender reads its own messages from the store as well; it could not
     // decrypt them (their message keys were single-use).
-    alice.restart();
+    await alice.restart();
     const aliceDecrypt = vi.spyOn(alice.device.cipher, 'decrypt');
     expect((await Promise.all(sent.map((message) => view(alice, message)))).map((v) => v.displayText))
       .toEqual(['first', 'second', 'third']);
@@ -155,7 +155,7 @@ describe('expiry and deletion', () => {
     expect(await rowOf(bob, message)).toEqual(retiredRow(message));
 
     // A reload brings nothing back, and nothing is decrypted again.
-    bob.restart();
+    await bob.restart();
     const reloadedDecrypt = vi.spyOn(bob.device.cipher, 'decrypt');
     expect(await bob.contentStore.get(CONVERSATION, message.id)).toEqual({ retired: true });
     expect(await view(bob, message)).toMatchObject({ kind: 'expired', displayText: '' });
@@ -227,7 +227,7 @@ describe('expiry and deletion', () => {
         .toMatchObject({ kind: 'deleted', displayText: DELETED_TEXT, media: null });
       expect(await rowOf(endpoint, message)).toEqual(retiredRow(message));
       // A relay that serves the original again gets it hidden, not opened.
-      endpoint.restart();
+      await endpoint.restart();
       const decrypt = vi.spyOn(endpoint.device.cipher, 'decrypt');
       expect(await view(endpoint, message)).toMatchObject({ kind: 'expired', displayText: '' });
       expect(decrypt).not.toHaveBeenCalled();
@@ -258,5 +258,155 @@ describe('expiry and deletion', () => {
     await Promise.all([putting, retiring]);
     expect(await store.get('c-1', 'm-1')).toEqual({ retired: true });
     expect(await stores.records.get('c-1/m-1')).toEqual({ key: 'c-1/m-1', conversationId: 'c-1', id: 'm-1', retired: true });
+  });
+});
+
+// The relay names each envelope's id and sender. Content is filed under the
+// id, so every record also names who wrote it, and nothing the relay
+// relabels or re-files shows one party's words as the other's or replaces
+// what was kept.
+describe('authorship of stored content', () => {
+  const tombstoned = (raw) => ({ ...raw, deletedAt: '2026-11-11T09:05:00.000Z' });
+
+  // Alice's message, sent and acknowledged; Bob's, sealed but not yet
+  // delivered to her (the relay may withhold it).
+  async function exchange() {
+    const { alice, bob } = await conversation();
+    const sent = await alice.secure.seal(CONVERSATION, textContent('I agree to pay 1000'), { clientMessageId: 'a-1' });
+    const fromAlice = serverMessage(sent, { clientMessageId: 'a-1' });
+    await alice.secure.acknowledge(fromAlice);
+    expect((await view(bob, fromAlice)).displayText).toBe('I agree to pay 1000');
+    const reply = await bob.secure.seal(CONVERSATION, textContent('words bob wrote'), { clientMessageId: 'b-1' });
+    const fromBob = serverMessage(reply, { clientMessageId: 'b-1' });
+    await bob.secure.acknowledge(fromBob);
+    return { alice, bob, fromAlice, fromBob };
+  }
+
+  // What Alice's history shows for a message after a reload.
+  async function afterReload(alice, message) {
+    await alice.restart();
+    return view(alice, message);
+  }
+
+  // Another tab files content under `id` while this one opens a frame the
+  // relay served under it: this tab's first read of the id finds nothing.
+  function racingTab(endpoint, id) {
+    const get = endpoint.contentStore.get.bind(endpoint.contentStore);
+    let raced = false;
+    vi.spyOn(endpoint.contentStore, 'get').mockImplementation(async (conversationId, recordId) => {
+      if (recordId === id && !raced) {
+        raced = true;
+        return null;
+      }
+      return get(conversationId, recordId);
+    });
+  }
+
+  it('our own message relabelled as the peer\'s, nonce cleared, stays locked', async () => {
+    const { alice, fromAlice } = await exchange();
+    const genuine = await view(alice, fromAlice);
+    expect(genuine).toMatchObject({ senderDeviceId: 'd-alice', displayText: 'I agree to pay 1000' });
+
+    // Whatever ciphertext comes with it.
+    for (const ciphertext of [fromAlice.ciphertext, 'AAAA']) {
+      const relabelled = { ...fromAlice, senderDeviceId: 'd-bob', nonce: null, ciphertext };
+      expect(await view(alice, relabelled, { previous: genuine })).toMatchObject({ kind: 'locked', senderDeviceId: 'd-bob' });
+    }
+    expect(await afterReload(alice, fromAlice)).toMatchObject({ kind: 'text', displayText: 'I agree to pay 1000' });
+  });
+
+  it('the peer\'s message relabelled as ours is not shown as ours', async () => {
+    const { alice, fromBob } = await exchange();
+    const relabelled = { ...fromBob, senderDeviceId: 'd-alice' };
+    // Before Alice has opened it, and after.
+    expect(await view(alice, relabelled)).toMatchObject({ kind: 'locked', displayText: LOCKED_LABELS['own-missing'] });
+    const genuine = await view(alice, fromBob);
+    expect(genuine).toMatchObject({ senderDeviceId: 'd-bob', displayText: 'words bob wrote' });
+    expect(await view(alice, relabelled, { previous: genuine })).toMatchObject({ kind: 'locked', senderDeviceId: 'd-alice' });
+  });
+
+  it('a peer frame filed under our message id replaces nothing and still opens under its own', async () => {
+    const { alice, fromAlice, fromBob } = await exchange();
+    const refiled = { ...fromBob, id: fromAlice.id, conversationOrder: fromAlice.conversationOrder };
+    const decrypt = vi.spyOn(alice.device.cipher, 'decrypt');
+    expect(await view(alice, refiled)).toMatchObject({ kind: 'locked', senderDeviceId: 'd-bob' });
+    expect(decrypt).not.toHaveBeenCalled();
+
+    expect(await afterReload(alice, fromAlice)).toMatchObject({ senderDeviceId: 'd-alice', displayText: 'I agree to pay 1000' });
+    expect(await view(alice, fromBob)).toMatchObject({ senderDeviceId: 'd-bob', displayText: 'words bob wrote' });
+  });
+
+  it('a peer frame already opened, served again under our message id, does not show our words', async () => {
+    const { alice, fromAlice, fromBob } = await exchange();
+    expect((await view(alice, fromBob)).displayText).toBe('words bob wrote');
+    expect(await view(alice, { ...fromBob, id: fromAlice.id })).toMatchObject({ kind: 'locked', senderDeviceId: 'd-bob' });
+    expect(await afterReload(alice, fromAlice)).toMatchObject({ displayText: 'I agree to pay 1000' });
+  });
+
+  it('a decryption that would overwrite another author\'s record does not commit', async () => {
+    const { alice, fromAlice, fromBob } = await exchange();
+    racingTab(alice, fromAlice.id);
+    expect(await view(alice, { ...fromBob, id: fromAlice.id })).toMatchObject({ kind: 'locked' });
+    expect(await afterReload(alice, fromAlice)).toMatchObject({ displayText: 'I agree to pay 1000' });
+    // Its message key was not spent.
+    expect(await view(alice, fromBob)).toMatchObject({ senderDeviceId: 'd-bob', displayText: 'words bob wrote' });
+  });
+
+  it('a replayed frame reads back only what was kept of that very frame', async () => {
+    const { alice, fromAlice, fromBob } = await exchange();
+    expect((await view(alice, fromBob)).displayText).toBe('words bob wrote');
+    racingTab(alice, fromAlice.id);
+    expect(await view(alice, { ...fromBob, id: fromAlice.id })).toMatchObject({ kind: 'locked', senderDeviceId: 'd-bob' });
+  });
+
+  it('a server id cannot name a local record', async () => {
+    const { alice, bob } = await conversation();
+    // Alice's send is pending under its client id when the relay files a
+    // frame of Bob's, then a tombstone, there.
+    const sent = await alice.secure.seal(CONVERSATION, textContent('pending words'), { clientMessageId: 'a-9' });
+    const reply = await bob.secure.seal(CONVERSATION, textContent('text bob wrote'), { clientMessageId: 'b-9' });
+    const fromBob = serverMessage(reply, { clientMessageId: 'b-9' });
+    expect(await view(alice, { ...fromBob, id: 'client:a-9' })).toMatchObject({ kind: 'locked' });
+    expect(await view(alice, tombstoned({ ...fromBob, id: 'client:a-9' }))).toMatchObject({ kind: 'deleted' });
+    const fromAlice = serverMessage(sent, { clientMessageId: 'a-9' });
+    await alice.secure.acknowledge(fromAlice);
+    expect(await view(alice, fromAlice)).toMatchObject({ senderDeviceId: 'd-alice', displayText: 'pending words' });
+    expect(await view(alice, fromBob)).toMatchObject({ displayText: 'text bob wrote' });
+
+    // Nor the marker of deleted history, which stays hidden.
+    await alice.secure.forgetConversation(CONVERSATION, fromAlice.conversationOrder);
+    const later = serverMessage(await bob.secure.seal(CONVERSATION, textContent('later'), { clientMessageId: 'b-10' }));
+    await view(alice, { ...later, id: 'history-cleared' });
+    await view(alice, tombstoned({ ...later, id: 'history-cleared' }));
+    for (const message of [fromAlice, fromBob]) expect((await view(alice, message)).kind).toBe('cleared');
+    expect(await view(alice, later)).toMatchObject({ displayText: 'later' });
+  });
+
+  it('an acknowledgement under a local key files nothing there', async () => {
+    const { alice } = await conversation();
+    const first = await alice.secure.seal(CONVERSATION, textContent('first words'), { clientMessageId: 'a-7' });
+    const second = await alice.secure.seal(CONVERSATION, textContent('second words'), { clientMessageId: 'a-8' });
+    // The relay answers the second send with the first one's local key.
+    await alice.secure.acknowledge({ ...serverMessage(second, { clientMessageId: 'a-8' }), id: 'client:a-7' });
+    await alice.secure.rememberEdit(CONVERSATION, 'client:a-7', textContent('edited over'), 'n');
+    const fromAlice = serverMessage(first, { clientMessageId: 'a-7' });
+    await alice.secure.acknowledge(fromAlice);
+    expect(await view(alice, fromAlice)).toMatchObject({ senderDeviceId: 'd-alice', displayText: 'first words' });
+  });
+
+  it('the store keeps a record from being rewritten by another author', async () => {
+    const store = openContentStore(contentStores());
+    const value = (text, author) => ({ content: textContent(text), nonce: null, author });
+    expect(await store.put('c-1', 'm-1', value('mine', 'd-alice'))).toBe(true);
+    expect(await store.put('c-1', 'm-1', value('theirs', 'd-bob'))).toBe(false);
+    expect(await store.put('c-1', 'm-1', value('mine, edited', 'd-alice'))).toBe(true);
+    expect((await store.get('c-1', 'm-1')).content.text).toBe('mine, edited');
+
+    // A move onto another author's record leaves both where they are.
+    await store.put('c-1', 'client:x', value('pending', 'd-alice'));
+    await store.put('c-1', 'm-2', value('theirs', 'd-bob'));
+    await store.move('c-1', 'client:x', 'm-2');
+    expect((await store.get('c-1', 'm-2')).content.text).toBe('theirs');
+    expect((await store.get('c-1', 'client:x')).content.text).toBe('pending');
   });
 });

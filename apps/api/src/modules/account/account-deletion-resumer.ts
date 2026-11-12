@@ -13,6 +13,7 @@ const BOOT_RESUME_DELAY_MS = 60_000;
  */
 @Injectable()
 export class AccountDeletionResumer implements OnModuleInit, OnModuleDestroy {
+  private bootTimer: NodeJS.Timeout | null = null;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
@@ -20,12 +21,20 @@ export class AccountDeletionResumer implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     // unref() so neither timer keeps the event loop alive during shutdown.
-    setTimeout(() => void this.tick(), BOOT_RESUME_DELAY_MS).unref();
+    this.bootTimer = setTimeout(() => {
+      this.bootTimer = null;
+      void this.tick();
+    }, BOOT_RESUME_DELAY_MS);
+    this.bootTimer.unref();
     this.timer = setInterval(() => void this.tick(), RESUME_INTERVAL_MS);
     this.timer.unref();
   }
 
   onModuleDestroy(): void {
+    if (this.bootTimer) {
+      clearTimeout(this.bootTimer);
+      this.bootTimer = null;
+    }
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;

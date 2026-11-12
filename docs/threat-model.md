@@ -41,7 +41,7 @@
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
 - single active device model simplifies trust and revocation in v1
-- rate limiting on auth, user lookup, key directory, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening); realtime events (typing, call signals) have their own per-device budget, signals are relayed only for ringing or active calls and capped at 64 KiB, and a socket frame over 128 KiB closes the socket
+- rate limiting on auth, user lookup, key directory, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening); realtime events (typing, call signals) have their own per-device budget, which reconnecting does not reset, signals are relayed only for ringing or active calls and capped at 64 KiB, and a socket frame over 128 KiB closes the socket
 - key material is served only to signed-in devices (`GET /v1/keys/:handle`, and `GET /v1/keys/group/:conversationId` to current group members); there is no anonymous key lookup
 - Helmet security headers (CSP, HSTS, COEP) in production
 - Swagger disabled by default in production

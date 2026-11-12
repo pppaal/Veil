@@ -21,6 +21,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { CreateDirectConversationDto } from '../conversations/dto/create-direct-conversation.dto';
 import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { AccountController } from './account.controller';
+import { AccountDeletionResumer } from './account-deletion-resumer';
 import { AccountService, UNFINISHED_DELETION_GRACE_MS } from './account.service';
 
 // Destructive-cascade spec. Phase L split deleteAccount into three phases:
@@ -616,6 +617,53 @@ describe('AccountService.resumeUnfinishedDeletions', () => {
       failed: 0,
     });
     expect(prisma.users).toEqual([]);
+  });
+
+  // Every API replica runs the resumer. The claim (moving updatedAt to now,
+  // only while it is still past the cutoff) is what keeps two of them from
+  // running the same deletion at once.
+  it('skips an account another replica claimed after this one listed it', async () => {
+    const { prisma, account } = setup();
+    const alice = await prisma.addUser('alice');
+    await prisma.addDevice(alice);
+    await prisma.user.update({ where: { id: alice }, data: { status: 'revoked' } });
+    passTime(UNFINISHED_DELETION_GRACE_MS + 60_000);
+
+    const list = prisma.user.findMany.bind(prisma.user);
+    jest.spyOn(prisma.user, 'findMany').mockImplementationOnce(async (args: unknown) => {
+      const listed = await list(args);
+      // The other replica claims Alice between this one's listing and claim.
+      await prisma.user.updateMany({ where: { id: alice }, data: { updatedAt: new Date() } });
+      return listed;
+    });
+    const deleteAccount = jest.spyOn(account, 'deleteAccount');
+
+    await expect(account.resumeUnfinishedDeletions()).resolves.toEqual({
+      completed: 0,
+      failed: 0,
+    });
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(prisma.users.map((user) => [user.id, user.status])).toEqual([[alice, 'revoked']]);
+  });
+});
+
+describe('AccountDeletionResumer', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('clears both of its timers on module destroy', () => {
+    jest.useFakeTimers();
+    const resumeUnfinishedDeletions = jest.fn(async () => ({ completed: 0, failed: 0 }));
+    const resumer = new AccountDeletionResumer({ resumeUnfinishedDeletions } as never);
+
+    resumer.onModuleInit();
+    expect(jest.getTimerCount()).toBe(2);
+    resumer.onModuleDestroy();
+
+    expect(jest.getTimerCount()).toBe(0);
+    jest.advanceTimersByTime(60 * 60 * 1000);
+    expect(resumeUnfinishedDeletions).not.toHaveBeenCalled();
   });
 });
 

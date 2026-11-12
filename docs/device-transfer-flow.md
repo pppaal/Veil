@@ -102,9 +102,14 @@ session whose token matches answers with the original completion (same
 `newDeviceId`, `handle` and `completedAt`) when the proof verifies against the
 new device's stored auth key, and changes nothing. A proof by any other key
 answers `401 transfer_completion_invalid`; once the new device has been
-revoked, `403 transfer_session_inactive`. Clients keep the new device's keys
-until they have its id and a session, and retry `complete` on a network error
-or 5xx instead of discarding them.
+revoked, `403 transfer_session_inactive`. This only helps a client that still
+has the new device's keys: a client must keep them until it has the new
+device's id and a session, and retry `complete` on a network error or 5xx
+instead of discarding them. Today's clients do not do this yet. The web client
+drops the keys when `complete` fails with a network error, and the mobile
+client does not keep a pending completion across an app restart, so on either
+a lost answer still leaves the new device without a session; that client work
+is an open follow-up.
 
 ## Explicit failure condition
 

@@ -1,9 +1,15 @@
 import { randomUUID } from 'node:crypto';
 
+import { GATEWAY_OPTIONS } from '@nestjs/websockets/constants';
+
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { FakeSafetyService } from '../../../test/support/fake-services';
-import { CALL_SIGNAL_MAX_DATA_LENGTH, RealtimeGateway } from './realtime.gateway';
+import {
+  CALL_SIGNAL_MAX_DATA_LENGTH,
+  MAX_INBOUND_FRAME_BYTES,
+  RealtimeGateway,
+} from './realtime.gateway';
 
 type Emitted = { userId: string; event: string; payload: unknown };
 
@@ -309,8 +315,8 @@ describe('RealtimeGateway handshake', () => {
 // call. The sender must be allowed to call in the call's conversation; the
 // server never inspects or stores the `data` payload.
 describe('RealtimeGateway call.signal relay', () => {
-  function callFixture() {
-    const fixture = buildGateway();
+  function callFixture(overrides: Parameters<typeof buildGateway>[0] = {}) {
+    const fixture = buildGateway(overrides);
     const alice = fixture.prisma.seedUser('alice');
     const bob = fixture.prisma.seedUser('bob');
     const conversationId = fixture.prisma.seedConversation('direct', [alice.userId, bob.userId]);
@@ -485,5 +491,127 @@ describe('RealtimeGateway call.signal relay', () => {
 
     expect(findCall).not.toHaveBeenCalled();
     expect(emitted).toEqual([]);
+  });
+
+  // A gateway whose handshake signs Alice's device in, so a test can open and
+  // close her sockets through handleConnection and handleDisconnect.
+  function connectingCallFixture() {
+    let claims = { sub: '', deviceId: '', handle: 'alice' };
+    const fixture = callFixture({
+      jwtService: {
+        verifyAsync: async () => ({
+          ...claims,
+          jti: randomUUID(),
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      },
+      config: { isOriginAllowed: () => true, jwtSecret: 's', jwtAudience: 'a', jwtIssuer: 'i' },
+      ephemeralStore: { getJson: async () => null },
+    });
+    claims = { sub: fixture.alice.userId, deviceId: fixture.alice.deviceId, handle: 'alice' };
+    const connect = async () => {
+      const client = {
+        id: `socket-${randomUUID()}`,
+        connected: true,
+        data: {} as Record<string, unknown>,
+        handshake: { headers: { origin: 'https://app.veil' }, auth: { token: 'tok' }, query: {} },
+        disconnect: jest.fn(),
+      };
+      await fixture.gw.handleConnection(client as never);
+      expect(client.data.deviceId).toBe(fixture.alice.deviceId);
+      return client;
+    };
+    const signals = () => fixture.emitted.filter((event) => event.event === 'call.signal');
+    const budgets = () =>
+      (fixture.gw as unknown as { eventBudgetByDevice: Map<string, unknown> }).eventBudgetByDevice;
+    return { ...fixture, connect, signals, budgets };
+  }
+
+  // A device that has spent its budget used to get a fresh burst of 30 as soon
+  // as its last socket closed, so a connect, send 30, disconnect loop relayed
+  // about 18 MB/s of call signals to the peer.
+  it("keeps a device's spent budget when its only socket disconnects and it reconnects", async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-12T10:00:00.000Z') });
+    try {
+      const { gw, prisma, alice, callId, connect, signals } = connectingCallFixture();
+      const findCall = jest.spyOn(prisma.callRecord, 'findUnique');
+      const signal = (client: unknown) =>
+        gw.handleCallSignal(client as never, { callId, kind: 'ice', data: 'opaque-ice' });
+
+      const first = await connect();
+      for (let i = 0; i < 30; i += 1) await signal(first);
+      expect(signals()).toHaveLength(30);
+      expect(findCall).toHaveBeenCalledTimes(30);
+
+      gw.handleDisconnect(first as never);
+      expect(gw.hasConnectedDevice(alice.deviceId)).toBe(false);
+
+      for (let round = 0; round < 5; round += 1) {
+        const again = await connect();
+        await signal(again);
+        await gw.handleTypingStart(again as never, {
+          conversationId: prisma.callRecords[0].conversationId,
+        });
+        gw.handleDisconnect(again as never);
+      }
+      expect(signals()).toHaveLength(30);
+      expect(findCall).toHaveBeenCalledTimes(30);
+
+      // The bucket refills at 5 a second whether or not a socket is open.
+      const reconnected = await connect();
+      jest.advanceTimersByTime(1000);
+      for (let i = 0; i < 6; i += 1) await signal(reconnected);
+      expect(signals()).toHaveLength(35);
+      expect(findCall).toHaveBeenCalledTimes(35);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('drops a budget once it has refilled, so disconnected devices do not pile up', async () => {
+    jest.useFakeTimers({ now: new Date('2026-11-12T10:00:00.000Z') });
+    try {
+      const { gw, alice, callId, connect, budgets } = connectingCallFixture();
+      const signalFrom = (deviceId: string) =>
+        gw.handleCallSignal(socket({ userId: randomUUID(), deviceId }), {
+          callId,
+          kind: 'ice',
+          data: 'opaque-ice',
+        });
+
+      // A budget that has refilled by the time the last socket closes goes at
+      // once; one that has not stays until it has.
+      const client = await connect();
+      await gw.handleCallSignal(client as never, { callId, kind: 'ice', data: 'opaque-ice' });
+      gw.handleDisconnect(client as never);
+      expect(budgets().has(alice.deviceId)).toBe(true);
+      const refilledClient = await connect();
+      jest.advanceTimersByTime(200);
+      gw.handleDisconnect(refilledClient as never);
+      expect(budgets().has(alice.deviceId)).toBe(false);
+
+      // Devices that sent an event and went away are swept once their
+      // buckets have refilled.
+      const gone = Array.from({ length: 50 }, () => randomUUID());
+      for (const deviceId of gone) await signalFrom(deviceId);
+      expect(budgets().size).toBe(50);
+      jest.advanceTimersByTime(6_000);
+      const last = randomUUID();
+      await signalFrom(last);
+      expect([...budgets().keys()]).toEqual([last]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // socket.io closes a connection whose frame is larger than this before any
+  // handler runs. Without it the limit is 1 MB a frame.
+  it('caps the inbound socket frame size in the gateway options', () => {
+    const options = Reflect.getMetadata(GATEWAY_OPTIONS, RealtimeGateway) as {
+      maxHttpBufferSize?: number;
+    };
+    expect(options.maxHttpBufferSize).toBe(MAX_INBOUND_FRAME_BYTES);
+    expect(MAX_INBOUND_FRAME_BYTES).toBe(128 * 1024);
+    expect(MAX_INBOUND_FRAME_BYTES).toBeGreaterThan(CALL_SIGNAL_MAX_DATA_LENGTH);
   });
 });

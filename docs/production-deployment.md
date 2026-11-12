@@ -51,10 +51,12 @@ Known limits, accepted for now:
 
 The HTTP limiter does not run for realtime (WebSocket) events, so the gateway
 has its own: each device may send a burst of 30 events (typing, call signals),
-refilled at 5 a second, shared by all its sockets. A call signal is relayed
-only while its call is ringing or active, and only if its data is at most
-64 KiB; a socket frame over 128 KiB closes the socket. The budget is kept per
-API instance.
+refilled at 5 a second, shared by all its sockets. Closing the sockets does not
+reset it: a device that reconnects continues from what it had spent, so a
+connect, send, disconnect loop gets no more than one open socket would. A call
+signal is relayed only while its call is ringing or active, and only if its
+data is at most 64 KiB; a socket frame over 128 KiB closes the socket. The
+budget is kept per API instance.
 
 ## UnifiedPush
 

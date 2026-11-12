@@ -156,6 +156,43 @@ test('the inventory and the retention document say deleted rows can stay on the 
   );
 });
 
+// The Redis key table is the public record of what the ephemeral store keeps
+// and for how long. It once ended up under "Database and container logs",
+// after two sections were inserted between it and its intro, so the intro's
+// "the keys below" and the rows' "the snapshot caveat above" pointed at the
+// wrong text. The table must sit in the Redis section, and only there.
+const REDIS_SECTION = '### Short-lived keys in the ephemeral store (Redis)';
+const REDIS_TABLE_HEADER = '| Key | Kept for | What it links |';
+const REDIS_KEY_ROWS = [
+  'veil:thr:*',
+  'budget:*',
+  'auth:challenge:*',
+  'auth:refresh:*',
+  'auth:rotated:*',
+  'auth:blacklist:*',
+  'group:keydist:*',
+  'transfer:claim:*',
+];
+
+test('the retention document keeps the Redis key table in the Redis section', () => {
+  const retention = repoFile('docs/metadata-retention.md');
+  const start = retention.indexOf(REDIS_SECTION);
+  assert.notEqual(start, -1, `metadata-retention.md has no "${REDIS_SECTION}" section`);
+  const bodyStart = start + REDIS_SECTION.length;
+  const next = retention.slice(bodyStart).search(/\n#{1,3} /);
+  const section = next === -1 ? retention.slice(start) : retention.slice(start, bodyStart + next);
+
+  assert.ok(section.includes(REDIS_TABLE_HEADER), 'the Redis section lost its key table');
+  assert.equal(
+    retention.split(REDIS_TABLE_HEADER).length,
+    2,
+    'the Redis key table must appear once, in the Redis section',
+  );
+  for (const key of REDIS_KEY_ROWS) {
+    assert.ok(section.includes(`| \`${key}\``), `the Redis section's table has no row for ${key}`);
+  }
+});
+
 // README, the privacy policies and docs/claims.yaml name these fields as the
 // only user-written text the server stores readable; growing the list must
 // change this test and that copy together.

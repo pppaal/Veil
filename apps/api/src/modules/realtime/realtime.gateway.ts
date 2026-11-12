@@ -33,7 +33,7 @@ type TypingEvent = 'typing.start' | 'typing.stop';
 export const CALL_SIGNAL_MAX_DATA_LENGTH = 64 * 1024;
 // socket.io closes a connection whose frame exceeds this, before any handler
 // runs. The default (1 MB) would let every frame carry 1 MB.
-const MAX_INBOUND_FRAME_BYTES = 128 * 1024;
+export const MAX_INBOUND_FRAME_BYTES = 128 * 1024;
 // Calls that can still be set up or are under way; signals for any other call
 // are dropped.
 const SIGNALLING_CALL_STATUSES = new Set(['ringing', 'active']);
@@ -55,11 +55,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   private readonly typingRateLimitBySocket = new Map<string, Map<string, number>>();
   private readonly tokenExpiryTimers = new Map<string, NodeJS.Timeout>();
   private readonly eventBudgetByDevice = new Map<string, { tokens: number; at: number }>();
+  private lastEventBudgetSweepAt = 0;
   private static readonly TYPING_MIN_INTERVAL_MS = 500;
   // Inbound events (typing, call signals) per device: a burst of 30, then 5 a
   // second. The HTTP throttler does not run for gateway handlers, and every
   // event costs database reads and a fan-out. Keyed by device, not socket, so
-  // opening more sockets with the same token does not multiply the budget.
+  // opening more sockets with the same token does not multiply the budget, and
+  // kept across disconnects until it has refilled, so reconnecting does not
+  // reset it either.
   private static readonly EVENT_BURST = 30;
   private static readonly EVENT_REFILL_PER_SECOND = 5;
 
@@ -222,7 +225,13 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         deviceSockets.delete(client.id);
         if (deviceSockets.size === 0) {
           this.socketsByDeviceId.delete(deviceId);
-          this.eventBudgetByDevice.delete(deviceId);
+          // Only a refilled budget is dropped. A spent one stays, so a device
+          // that disconnects and reconnects continues from what it spent
+          // rather than getting a fresh burst; the sweep in takeEventToken
+          // drops it once it has refilled.
+          if (this.eventBudgetRefilled(deviceId, Date.now())) {
+            this.eventBudgetByDevice.delete(deviceId);
+          }
         }
       }
     }
@@ -245,18 +254,44 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     return false;
   }
 
+  private refilledEventTokens(budget: { tokens: number; at: number }, now: number): number {
+    return Math.min(
+      RealtimeGateway.EVENT_BURST,
+      budget.tokens + ((now - budget.at) / 1000) * RealtimeGateway.EVENT_REFILL_PER_SECOND,
+    );
+  }
+
+  private eventBudgetRefilled(deviceId: string, now: number): boolean {
+    const budget = this.eventBudgetByDevice.get(deviceId);
+    return !budget || this.refilledEventTokens(budget, now) >= RealtimeGateway.EVENT_BURST;
+  }
+
+  // Drops every refilled bucket, connected device or not, at most once per
+  // refill period (the time a spent bucket takes to fill again, 6 s). A
+  // missing entry counts as a full bucket, so this changes no budget; the map
+  // then holds only devices that sent an event in about the last two refill
+  // periods, however many have disconnected.
+  private sweepRefilledEventBudgets(now: number): void {
+    const refillMs = (RealtimeGateway.EVENT_BURST / RealtimeGateway.EVENT_REFILL_PER_SECOND) * 1000;
+    if (now - this.lastEventBudgetSweepAt < refillMs) return;
+    this.lastEventBudgetSweepAt = now;
+    for (const [deviceId, budget] of this.eventBudgetByDevice) {
+      if (this.refilledEventTokens(budget, now) >= RealtimeGateway.EVENT_BURST) {
+        this.eventBudgetByDevice.delete(deviceId);
+      }
+    }
+  }
+
   // Token bucket over the device's inbound events. Returns false when the
   // device has spent its budget, and the event is then dropped.
   private takeEventToken(deviceId: string): boolean {
     const now = Date.now();
+    this.sweepRefilledEventBudgets(now);
     const budget = this.eventBudgetByDevice.get(deviceId) ?? {
       tokens: RealtimeGateway.EVENT_BURST,
       at: now,
     };
-    const refilled = Math.min(
-      RealtimeGateway.EVENT_BURST,
-      budget.tokens + ((now - budget.at) / 1000) * RealtimeGateway.EVENT_REFILL_PER_SECOND,
-    );
+    const refilled = this.refilledEventTokens(budget, now);
     if (refilled < 1) {
       this.eventBudgetByDevice.set(deviceId, { tokens: refilled, at: now });
       return false;

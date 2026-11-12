@@ -76,6 +76,17 @@ database backups" below). On a server that has gone idle, the last snapshot
 stays until the next write replaces it, so a key in it can outlive its TTL
 until then.
 
+| Key | Kept for | What it links |
+| --- | --- | --- |
+| `veil:thr:*` (and `…:blocked`) | The rate-limit window, 60 seconds | A request count per route and client. The key is an unkeyed SHA-256 of the route and the client: `ip:<address>` on routes that need no sign-in, `dev:<deviceId>` on the others. Hashing every IPv4 address recovers the client's address in roughly 80 to 100 minutes on one CPU core. |
+| `budget:*` | 1 hour | Key-directory budgets. The key holds a SHA-256 digest of who looked up whom instead of the ids. The digest is unkeyed, so someone who also holds the database ids can test a guessed pair; the one-hour expiry, with the snapshot caveat above, is what limits it. |
+| `auth:challenge:*`, `auth:challenge-index:*` | `VEIL_AUTH_CHALLENGE_TTL_SECONDS` (default 120 seconds) | A pending sign-in or step-up challenge and the device it was issued to. Taken on use; removed on account deletion. |
+| `auth:refresh:*`, `auth:refresh-family:*`, `auth:refresh-families:*` | Until a UTC midnight 31 days after the day of the last refresh (at least 30 days) | The SHA-256 of a refresh token (never the token), with the user id, device id and token family it belongs to. Removed on rotation, logout, reuse detection and account deletion. The expiry is set to a UTC midnight, not to "now + 30 days", so it records the day of the last refresh and not its time, like `devices.lastSeenAt`. A refresh token carries its family id, so a replayed old token is recognised without a record per rotation. |
+| `auth:rotated:*` | Until a UTC midnight, at most 31 days | Only for refresh tokens issued before tokens carried their family id: the family a rotated one belonged to, so its replay is still caught. One per pre-upgrade session at most; none is written for a newer token, so the last expires 31 days after the upgrade. It names no user or device. |
+| `auth:blacklist:*` | Until the access token would expire (at most 1 hour) | The id of a logged-out access token, with its user and device ids. |
+| `group:keydist:*` | 30 minutes | A sealed Sender Keys chain-key distribution, addressed by conversation, epoch and the sending and receiving user and device. The server cannot open it; see `group-sender-keys-design.md`. |
+| `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session: the new device's label, platform and public keys. See `device-transfer-flow.md`. |
+
 ### No database backups
 
 The production stack runs no database dump, base backup or snapshot of the
@@ -117,17 +128,6 @@ ids of a direct conversation, a handle), and statements are logged with their
 `json-file` driver capped at three 10 MB files, so a container log is
 overwritten as it grows rather than kept until the container is removed. See
 `observability-hygiene.md`.
-
-| Key | Kept for | What it links |
-| --- | --- | --- |
-| `veil:thr:*` (and `…:blocked`) | The rate-limit window, 60 seconds | A request count per route and client. The key is an unkeyed SHA-256 of the route and the client: `ip:<address>` on routes that need no sign-in, `dev:<deviceId>` on the others. Hashing every IPv4 address recovers the client's address in roughly 80 to 100 minutes on one CPU core. |
-| `budget:*` | 1 hour | Key-directory budgets. The key holds a SHA-256 digest of who looked up whom instead of the ids. The digest is unkeyed, so someone who also holds the database ids can test a guessed pair; the one-hour expiry, with the snapshot caveat above, is what limits it. |
-| `auth:challenge:*`, `auth:challenge-index:*` | `VEIL_AUTH_CHALLENGE_TTL_SECONDS` (default 120 seconds) | A pending sign-in or step-up challenge and the device it was issued to. Taken on use; removed on account deletion. |
-| `auth:refresh:*`, `auth:refresh-family:*`, `auth:refresh-families:*` | Until a UTC midnight 31 days after the day of the last refresh (at least 30 days) | The SHA-256 of a refresh token (never the token), with the user id, device id and token family it belongs to. Removed on rotation, logout, reuse detection and account deletion. The expiry is set to a UTC midnight, not to "now + 30 days", so it records the day of the last refresh and not its time, like `devices.lastSeenAt`. A refresh token carries its family id, so a replayed old token is recognised without a record per rotation. |
-| `auth:rotated:*` | Until a UTC midnight, at most 31 days | Only for refresh tokens issued before tokens carried their family id: the family a rotated one belonged to, so its replay is still caught. One per pre-upgrade session at most; none is written for a newer token, so the last expires 31 days after the upgrade. It names no user or device. |
-| `auth:blacklist:*` | Until the access token would expire (at most 1 hour) | The id of a logged-out access token, with its user and device ids. |
-| `group:keydist:*` | 30 minutes | A sealed Sender Keys chain-key distribution, addressed by conversation, epoch and the sending and receiving user and device. The server cannot open it; see `group-sender-keys-design.md`. |
-| `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session: the new device's label, platform and public keys. See `device-transfer-flow.md`. |
 
 ## Directory privacy
 

@@ -18,7 +18,8 @@ document explains the design. Code:
 
 - **Ratchet v1** — symmetric hash ratchet only (forward secrecy).
 - **Ratchet v2 (`veil-envelope-v1` wire)** — added the DH ratchet and session
-  persistence. Defects found by the 2026 audit, all reproduced: the responder
+  persistence. Defects found by an internal, AI-assisted code review in 2026
+  (not an external audit; none has taken place yet), all reproduced: the responder
   authenticated nobody; a straggler from the previous turn was lost, and a
   stashed one triggered a bogus DH step that corrupted the session; concurrent
   decrypt/encrypt rolled state back (key reuse); debounced, single-blob

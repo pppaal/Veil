@@ -14,10 +14,9 @@ import { createIdentityTrust, createPinStore } from '../crypto/pins.js';
 import { claimedOneTimePrekey, createLocalKeyring, maintainPrekeys, PREKEY_LOCK } from '../crypto/prekeys.js';
 import { createSessionCipher } from '../crypto/session-cipher.js';
 import { createSessionRepo } from '../crypto/session-repo.js';
-import { directPeer } from '../domain/conversations.js';
 import { createHistoryMarks } from '../domain/history.js';
 import { createAttachmentFetcher } from '../domain/media.js';
-import { createConversationVerifier, createPeerBindings } from '../domain/peer-bindings.js';
+import { createConversationVerifier, createPeerBindings, createPeerResolver } from '../domain/peer-bindings.js';
 import { createSecureMessaging } from '../features/secure-messaging.js';
 import { createSender } from '../features/sender.js';
 import { createApiClient } from '../platform/api-client.js';
@@ -91,11 +90,14 @@ export function createMessagingStack({ store, hooks }) {
   const oneTimePrekeyKv = kv('one-time-prekeys');
   // Whom each direct conversation is with once its crypto has admitted an
   // identity for it (src/domain/peer-bindings.js): the peer sessions, pins,
-  // safety numbers and the panel are about is the bound one, and only a
-  // conversation not bound yet follows the relay's listing.
+  // safety numbers and every view are about is the bound one, and only a
+  // conversation not bound yet follows the relay's listing, by userId.
   const bindings = createPeerBindings(kv('direct-peers'));
-  const peerOf = (conversationId) =>
-    bindings.get(conversationId) ?? directPeer(store.conversation(conversationId), store.state.me?.userId);
+  const { peerOf, shownPeer } = createPeerResolver({
+    bindings,
+    conversationOf: (conversationId) => store.conversation(conversationId),
+    selfUserId: () => store.state.me?.userId,
+  });
 
   const trust = createIdentityTrust({
     pins: createPinStore(kv('identity-pins-v2', { index: 'byUser' }), { locks }),
@@ -224,6 +226,9 @@ export function createMessagingStack({ store, hooks }) {
       },
     }),
     peerOf,
+    // The member every view names a conversation after: for a direct one,
+    // the peer above (src/domain/conversations.js shownPeer).
+    shownPeer,
     media: { subtle: crypto.subtle, fetchAttachment: createAttachmentFetcher({ authedApi, fetchImpl: (url) => fetch(url) }) },
     prekeys,
   };

@@ -2,15 +2,15 @@
 // with a second panel, and the narrow layout's switch between the list and
 // a chat.
 
-import { shownPeer } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
 import { $, el } from '../dom.js';
 import { toast } from '../toast.js';
 
 const NARROW_LAYOUT = '(max-width: 720px)';
 
-// history: src/app/services/history-sync.js.
-export function createTabs({ store, history }) {
+// stack: src/app/messaging-stack.js (shownPeer names a tab); history:
+// src/app/services/history-sync.js.
+export function createTabs({ store, stack, history }) {
   const { state } = store;
 
   // In split view the conversation shown so far moves to the right panel.
@@ -58,7 +58,7 @@ export function createTabs({ store, history }) {
 
   function tab(convId) {
     const conv = store.conversation(convId);
-    const peer = conv ? shownPeer(conv, state.me.handle) : null;
+    const peer = conv ? stack.shownPeer(conv) : null;
     let className = 'tab';
     if (state.activeConv === convId) className += ' active';
     if (state.secondaryConv === convId) className += ' secondary';

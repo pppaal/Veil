@@ -5,7 +5,7 @@
 
 import { isPast } from '../../core/expiry.js';
 import { fetchHistory, mergeHistory } from '../../domain/history.js';
-import { boundConversation } from '../../domain/peer-bindings.js';
+import { adoptedConversation } from '../../domain/peer-bindings.js';
 import { AuthError } from '../../platform/api-client.js';
 import { serializeMessageForCache } from '../../platform/persist.js';
 
@@ -23,13 +23,14 @@ export function createHistorySync({ store, stack, messages, outbox, isRealtimeCo
   // messages are ingested after; meanwhile each keeps its previous view.
   // A direct conversation bound to its peer (src/domain/peer-bindings.js)
   // keeps that peer whatever the list says; sessions from before bindings
-  // existed are bound first, to the peer the list being replaced names. A
+  // existed are bound first, to the peer the list being replaced names. Our
+  // own entry in every conversation is this device's, never the list's. A
   // last message that names another conversation is no preview of this one:
   // its frame authenticates under the id it carries, and the relay must not
   // file one contact's words under another (see refreshMessages).
   async function adoptConversations(listed) {
     await stack.bindSessions(state.conversations).catch((error) => console.warn('binding sessions failed', error));
-    const conversations = listed.map((conv) => boundConversation(conv, stack.bindings.get(conv.id), state.me));
+    const conversations = listed.map((conv) => adoptedConversation(conv, stack.bindings.get(conv.id), state.me));
     for (const conv of conversations) if (conv.lastMessage?.conversationId !== conv.id) conv.lastMessage = null;
     const incoming = conversations.filter((conv) => conv.lastMessage).map((conv) => {
       const raw = conv.lastMessage;

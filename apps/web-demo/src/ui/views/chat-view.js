@@ -4,7 +4,6 @@
 
 import { t } from '../../../i18n/i18n.js';
 import { isLegacyIdentity } from '../../crypto/identity.js';
-import { shownPeer } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
 import { isGone, isShown } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
@@ -140,7 +139,10 @@ export function createChatView({ store, stack, messages, messageList, composer, 
   function renderPanel(convId) {
     const conv = store.conversation(convId);
     if (!conv) return null;
-    const peer = shownPeer(conv, state.me.handle);
+    // The header, and the label of every message this device did not send,
+    // name the peer the conversation's crypto is about
+    // (src/domain/conversations.js shownPeer).
+    const peer = stack.shownPeer(conv);
     const all = store.messagesOf(conv.id);
     // Reactions change what their targets show and are never bubbles of
     // their own; expired messages and history this device deleted are not

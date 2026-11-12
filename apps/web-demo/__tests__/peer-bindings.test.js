@@ -4,7 +4,13 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { boundConversation, createConversationVerifier, createPeerBindings, HoldReason } from '../src/domain/peer-bindings.js';
+import {
+  adoptedConversation,
+  createConversationVerifier,
+  createPeerBindings,
+  createPeerResolver,
+  HoldReason,
+} from '../src/domain/peer-bindings.js';
 import { createMemoryKv } from '../src/platform/kv.js';
 import { BOB_LOOKALIKES } from './support/lookalikes.js';
 
@@ -163,21 +169,57 @@ describe('peer bindings', () => {
   });
 });
 
-describe('boundConversation', () => {
-  const me = { userId: 'u-alice', handle: 'alice' };
+describe('adoptedConversation', () => {
+  const me = { userId: 'u-alice', handle: 'alice', deviceId: 'd-alice' };
   const listing = (type, members) => ({ id: 'c-1', type, members, disappearingTimerSeconds: 60, lastMessage: { id: 'm-9' } });
 
   it('keeps the bound peer whatever the listing names, and takes the rest from it', () => {
-    const relabelled = boundConversation(listing('direct', [ALICE, MALLORY]), BOB, me);
+    const relabelled = adoptedConversation(listing('direct', [ALICE, MALLORY]), BOB, me);
     expect(relabelled).toMatchObject({ type: 'direct', members: [ALICE, BOB], disappearingTimerSeconds: 60, lastMessage: { id: 'm-9' } });
-    expect(boundConversation(listing('group', [ALICE, MALLORY, BOB]), BOB, me)).toMatchObject({ type: 'direct', members: [ALICE, BOB] });
-    expect(boundConversation(listing('direct', [ALICE, { userId: 'u-bob', handle: 'mallory' }]), BOB, me).members)
+    expect(adoptedConversation(listing('group', [ALICE, MALLORY, BOB]), BOB, me)).toMatchObject({ type: 'direct', members: [ALICE, BOB] });
+    expect(adoptedConversation(listing('direct', [ALICE, { userId: 'u-bob', handle: 'mallory' }]), BOB, me).members)
       .toEqual([ALICE, BOB]);
-    expect(boundConversation(listing('direct', [MALLORY]), BOB, me).members).toEqual([ALICE, BOB]);
+    expect(adoptedConversation(listing('direct', [MALLORY]), BOB, me).members).toEqual([ALICE, BOB]);
   });
 
-  it('leaves an unbound conversation as listed', () => {
+  it("takes our own entry from this device, never from the listing, bound or not", () => {
+    const renamedSelf = { userId: 'u-alice', handle: 'bob' };
+    expect(adoptedConversation(listing('direct', [renamedSelf, BOB]), BOB, me).members).toEqual([ALICE, BOB]);
+    expect(adoptedConversation(listing('direct', [BOB, renamedSelf]), BOB, me).members).toEqual([ALICE, BOB]);
+    expect(adoptedConversation(listing('direct', [renamedSelf, MALLORY]), null, me).members).toEqual([ALICE, MALLORY]);
+    expect(adoptedConversation(listing('group', [MALLORY, renamedSelf, BOB]), null, me).members).toEqual([MALLORY, ALICE, BOB]);
+  });
+
+  it('leaves the rest of an unbound conversation as listed', () => {
     const listed = listing('direct', [ALICE, MALLORY]);
-    expect(boundConversation(listed, null, me)).toBe(listed);
+    expect(adoptedConversation(listed, null, me)).toEqual(listed);
+    expect(adoptedConversation(listed, null, null)).toBe(listed);
+  });
+});
+
+describe('createPeerResolver', () => {
+  const me = { userId: 'u-alice', handle: 'alice' };
+
+  it('shows a direct conversation under the peer its crypto is about, whatever handle our own entry is listed under', async () => {
+    const bindings = createPeerBindings(createMemoryKv('conversationId'));
+    await bindings.load();
+    await bindings.bind('c-bob', BOB);
+    // The relay lists our own entry under Carol's handle in the bound
+    // conversation, and under Bob's in Mallory's new one.
+    const listed = new Map([
+      ['c-bob', { id: 'c-bob', type: 'direct', members: [{ userId: 'u-alice', handle: 'carol' }, BOB] }],
+      ['c-new', { id: 'c-new', type: 'direct', members: [{ userId: 'u-alice', handle: 'bob' }, MALLORY] }],
+    ]);
+    const raw = createPeerResolver({ bindings, conversationOf: (id) => listed.get(id), selfUserId: () => me.userId });
+    expect(raw.shownPeer(listed.get('c-bob'))).toEqual(BOB);
+    expect(raw.shownPeer(listed.get('c-new'))).toEqual(MALLORY);
+    expect(raw.shownPeer(listed.get('c-new'))).toEqual(raw.peerOf('c-new'));
+    expect(bindings.hold('c-new', raw.peerOf('c-new'))).toBeNull();
+
+    // As adopted, the same.
+    const adopted = new Map([...listed].map(([id, conv]) => [id, adoptedConversation(conv, bindings.get(id), me)]));
+    const resolver = createPeerResolver({ bindings, conversationOf: (id) => adopted.get(id), selfUserId: () => me.userId });
+    expect(resolver.shownPeer(adopted.get('c-bob'))).toEqual(BOB);
+    expect(resolver.shownPeer(adopted.get('c-new'))).toEqual(MALLORY);
   });
 });

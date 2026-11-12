@@ -118,7 +118,8 @@ focus trap), `dialogs.js` (stacked dialogs), `markdown-dom.js`, `time.js`,
 ### Pure logic added for the views (`src/domain/`)
 
 `conversations.js` (peer, preview, ordering), `peer-bindings.js` (whom a
-direct conversation is with, once bound, and when one is held),
+direct conversation is with, once bound, and when one is held; the one
+resolver its crypto and its views share),
 `handles.js` (the handle grammar the server registers in, and how a handle
 outside it is shown), `message-groups.js` (day and
 sender runs, delivery state), `composer-text.js` (message cap, handle rule,
@@ -208,11 +209,25 @@ unit test in `__tests__/`.
   banners, safety dialog, notifications), a handle outside the grammar is
   shown with each character no handle can hold written as its code point
   (`bob[U+200B]`), so it never renders like the handle it imitates, held or
-  bound. A bound conversation is shown under the handle it was bound with:
-  the server never gives a user another handle (there is no rename; a
-  deleted account's handle is held back for 90 days and then goes only to a
-  new account, under a new user id), so a listing that names the bound user
-  under another handle is the relay's, and is not shown.
+  bound.
+- What the user sees a direct conversation as is what its crypto is about.
+  One resolver (`peer-bindings.js` `createPeerResolver`, wired in
+  `messaging-stack.js`) gives both: `peerOf` (the bound peer, else the
+  listed member whose userId is not ours) for the sessions, pins, safety
+  number, hold, banners and notifications, and `shownPeer` for the row,
+  tab, panel header, forward dialog and the label on every message this
+  device did not send, which for a direct conversation is that same peer
+  (`domain/conversations.js` `shownPeer`; a group is named after its first
+  member whose userId is not ours). No view picks a member by handle, and
+  our own entry in every adopted conversation is this device's userId and
+  handle, never the list's (`peer-bindings.js` `adoptedConversation`): a
+  list that names our own entry after a contact names nothing, and is not
+  shown, searched or offered for mentions. So a bound conversation is shown
+  under the handle it was bound with, whatever the list says (the server
+  never gives a user another handle: there is no rename, and a deleted
+  account's handle is held back for 90 days and then goes only to a new
+  account, under a new user id), and a conversation not bound yet under
+  the handle its peer is listed with, which the hold above judges.
 - Deliberately stricter than the verdict table in
   `docs/crypto-envelope-spec.md` ("Identity trust"): a new device of a
   contact the user never verified is not pinned with a notice but held for
@@ -252,7 +267,9 @@ unit test in `__tests__/`.
   search, forwarding, tabs, receipts and typing, history paging,
   attachments, safety numbers, identity changes, device transfer, secret
   links and the KakaoTalk import, each with no app errors in the console;
-  also what a relay that rewrites its lists cannot change, Retry of a
+  also what a relay that rewrites its lists cannot change (the messages a
+  history holds, whom a conversation is with, the name it is shown and
+  searched under, and which new conversations are held), Retry of a
   refused send, and a send in flight when its page closes.
   It was written against the monolithic `app.js` and passed there before
   the split.

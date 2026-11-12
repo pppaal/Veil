@@ -20,10 +20,28 @@ describe('directPeer', () => {
 });
 
 describe('shownPeer', () => {
-  it('names a conversation after a member other than us, else its first member', () => {
-    expect(shownPeer(direct, 'alice')).toBe(bob);
-    expect(shownPeer({ members: [alice] }, 'alice')).toBe(alice);
-    expect(shownPeer({}, 'alice')).toBeUndefined();
+  const carol = { userId: 'u-carol', handle: 'carol' };
+  const peerOf = (peers) => (conversationId) => peers[conversationId] ?? null;
+
+  it('names a direct conversation after the peer its crypto is about, and nobody while it has none', () => {
+    expect(shownPeer(direct, { selfUserId: alice.userId, peerOf: peerOf({ c1: bob }) })).toBe(bob);
+    expect(shownPeer(direct, { selfUserId: alice.userId, peerOf: peerOf({}) })).toBeNull();
+  });
+
+  it('never picks a member by handle: our own entry listed under another name names nothing', () => {
+    // The listing puts our own entry first, under Carol's handle.
+    const renamed = { ...direct, members: [{ userId: alice.userId, handle: 'carol' }, bob] };
+    expect(shownPeer(renamed, { selfUserId: alice.userId, peerOf: peerOf({ c1: bob }) })).toBe(bob);
+    const group = { id: 'g1', type: 'group', members: [{ userId: alice.userId, handle: 'carol' }, bob, carol] };
+    expect(shownPeer(group, { selfUserId: alice.userId, peerOf: peerOf({}) })).toBe(bob);
+  });
+
+  it('names a group after its first member other than us, and nothing before a login names us', () => {
+    const group = { id: 'g1', type: 'group', members: [alice, carol, bob] };
+    expect(shownPeer(group, { selfUserId: alice.userId, peerOf: peerOf({}) })).toBe(carol);
+    expect(shownPeer({ ...group, members: [alice] }, { selfUserId: alice.userId, peerOf: peerOf({}) })).toBeNull();
+    expect(shownPeer(group, { selfUserId: null, peerOf: peerOf({}) })).toBeNull();
+    expect(shownPeer(undefined, { selfUserId: alice.userId, peerOf: peerOf({}) })).toBeNull();
   });
 });
 

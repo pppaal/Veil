@@ -2,7 +2,7 @@
 // the imported Kakao archives below it.
 
 import { t } from '../../../i18n/i18n.js';
-import { matchesSearch, previewMessage, shownPeer } from '../../domain/conversations.js';
+import { matchesSearch, previewMessage } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
 import { previewLabel } from '../../domain/ingest.js';
 import { $, avatarFor, convSkeletons, el } from '../dom.js';
@@ -15,7 +15,9 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
   const { state } = store;
 
   function conversationRow(conv, now) {
-    const peer = shownPeer(conv, state.me.handle);
+    // Named after the peer its crypto is about (src/domain/conversations.js
+    // shownPeer), never after a member picked by handle.
+    const peer = stack.shownPeer(conv);
     const isActive = store.isOnScreen(conv.id);
     const last = previewMessage(conv, store.messagesOf(conv.id), now);
     const preview = last ? previewLabel(last, now) : '아직 메시지 없음';

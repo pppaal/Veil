@@ -12,7 +12,14 @@
 // earlier peer's history under the new name. Once bound, the crypto resolves
 // the conversation's peer from the binding, and a listing that names anyone
 // else updates only the conversation's last message and timer
-// (boundConversation).
+// (adoptedConversation).
+//
+// What the crypto is about and what the user sees are one and the same
+// member, resolved one way (createPeerResolver): by userId, the binding
+// first. No view picks a member by handle, and our own entry in a listing is
+// always this device's own userId and handle, never the relay's: a listing
+// that put our own entry under a contact's handle would otherwise name the
+// conversation after that contact, whoever its crypto is with.
 //
 // A binding also ties a handle to the account it was bound with. The user
 // sees handles, never user ids, so a conversation that is not bound yet is
@@ -24,7 +31,7 @@
 //
 // kv: src/platform/kv.js over 'direct-peers' ({ conversationId, userId, handle }).
 
-import { directPeer } from './conversations.js';
+import { directPeer, shownPeer } from './conversations.js';
 import { isIssuableHandle } from './handles.js';
 
 // Why a conversation that is not bound yet is held.
@@ -148,19 +155,35 @@ export function createPeerBindings(kv) {
   };
 }
 
-// The conversation as this device shows it and encrypts for it. A bound
-// conversation stays direct, with us and the bound peer under the handle it
-// was bound with, whatever members or type the listing gives; everything
-// else (last message, timer) is the listing's.
-export function boundConversation(conversation, binding, self) {
-  if (!binding || !self?.userId) return conversation;
-  const members = conversation.members ?? [];
-  const selfMember = members.find((member) => member.userId === self.userId) ?? { userId: self.userId, handle: self.handle };
-  const listed = conversation.type === 'direct' ? members.find((member) => member.userId === binding.userId) : null;
+// The conversation as this device shows it and encrypts for it, from the
+// relay's listing of it. Our own entry is always this device's userId and
+// handle, never the listing's. A bound conversation stays direct, with us
+// and the bound peer under the handle it was bound with, whatever members or
+// type the listing gives; everything else (last message, timer) is the
+// listing's. self: the signed-in identity ({ userId, handle }).
+export function adoptedConversation(conversation, binding, self) {
+  if (!self?.userId) return conversation;
+  const own = { userId: self.userId, handle: self.handle };
+  if (binding) {
+    return { ...conversation, type: 'direct', members: [own, { userId: binding.userId, handle: binding.handle }] };
+  }
+  const members = (conversation.members ?? []).map((member) => (member.userId === self.userId ? own : member));
+  return { ...conversation, members };
+}
+
+// Whom a conversation is about, for its crypto and for every view of it,
+// resolved one way: by userId, its bound peer first. peerOf(conversationId)
+// is the peer its sessions, pins and safety number are about (the binding,
+// else the listed direct peer); shownPeer(conversation) the member its row,
+// tab and panel are named after, which for a direct conversation is that
+// same peer (src/domain/conversations.js shownPeer).
+// conversationOf(conversationId): the conversation as adopted;
+// selfUserId(): the signed-in user's id.
+export function createPeerResolver({ bindings, conversationOf, selfUserId }) {
+  const peerOf = (conversationId) => bindings.get(conversationId) ?? directPeer(conversationOf(conversationId), selfUserId());
   return {
-    ...conversation,
-    type: 'direct',
-    members: [selfMember, { ...listed, userId: binding.userId, handle: binding.handle }],
+    peerOf,
+    shownPeer: (conversation) => shownPeer(conversation, { selfUserId: selfUserId(), peerOf }),
   };
 }
 

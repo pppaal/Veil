@@ -380,6 +380,7 @@ class CryptoEnvelope {
     required this.messageKind,
     this.expiresAt,
     this.attachment,
+    this.transmittedMessageType,
   });
 
   final String version;
@@ -391,6 +392,12 @@ class CryptoEnvelope {
   final MessageKind messageKind;
   final DateTime? expiresAt;
   final AttachmentReference? attachment;
+
+  /// The messageType string as the relay delivered it ('' when it sent
+  /// none), which the v2 AAD binds: [messageKind] maps an unknown or
+  /// missing value to text, and a relabelled frame must fail its tag. Null
+  /// for an envelope built on this device.
+  final String? transmittedMessageType;
 }
 
 enum DecryptStatus {

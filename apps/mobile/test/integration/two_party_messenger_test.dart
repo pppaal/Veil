@@ -610,6 +610,10 @@ void main() {
     expect(uploaded.sublist(0, plaintext.length), isNot(equals(plaintext)));
     final sent = await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
     expect(sent.attachment!.attachmentId, reference.attachmentId);
+    // The relay is told nothing about the file's type; only the sealed
+    // reference carries it.
+    expect(relay.uploadTicketContentTypes, ['application/octet-stream']);
+    expect(reference.contentType, 'application/pdf');
   });
 
   test('attachment after a restart over an established session skips the key directory', () async {

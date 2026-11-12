@@ -2137,7 +2137,9 @@ class VeilMessengerController extends ChangeNotifier {
     final sealedId = resetDraft.sealedReference!.attachmentId;
     final upload = await _apiClient.createUploadTicket(_session.accessToken!, {
       'attachmentId': sealedId,
-      'contentType': resetDraft.contentType,
+      // The relay only ever holds ciphertext. The real type travels in the
+      // sealed reference ('ct') alone, as the web client does it.
+      'contentType': 'application/octet-stream',
       'sizeBytes': resetDraft.sizeBytes,
       'sha256': resetDraft.sha256,
     });

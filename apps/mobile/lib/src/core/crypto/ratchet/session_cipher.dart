@@ -151,7 +151,12 @@ class SessionCipher {
     // The server relays these in clear and the v2 AAD length-prefixes them,
     // so one too long to prefix is malformed. Rejected before the lock so it
     // never reaches a session state.
-    if (![envelope.version, envelope.conversationId, envelope.senderDeviceId].every(fitsLengthPrefix)) {
+    if (![
+      envelope.version,
+      envelope.conversationId,
+      envelope.senderDeviceId,
+      envelope.transmittedMessageType ?? '',
+    ].every(fitsLengthPrefix)) {
       return _invalidEnvelope(envelope);
     }
     final Uint8List nonce;
@@ -274,7 +279,9 @@ class SessionCipher {
       version: envelope.version,
       conversationId: envelope.conversationId,
       senderDeviceId: envelope.senderDeviceId,
-      messageKind: envelope.messageKind.name,
+      // The kind as transmitted: a relay that relabels it, even to a value
+      // this build cannot parse, breaks the tag.
+      messageKind: envelope.transmittedMessageType ?? envelope.messageKind.name,
       header: frame.header,
       associatedData: scratch.associatedData,
     );

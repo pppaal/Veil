@@ -385,4 +385,31 @@ void main() {
       expect(received.single.toString(), '$_baseUrl/keys/atlas');
     });
   });
+
+  test('an abuse report carries the FileAbuseReportRequest fields and no text', () async {
+    final received = <http.Request>[];
+    final api = VeilApiClient(
+      baseUrl: _baseUrl,
+      client: MockClient((request) async {
+        received.add(request);
+        return http.Response('{"id": "r-1"}', 201);
+      }),
+    );
+
+    await api.fileAbuseReport(
+      't',
+      reportedUserId: '7d0f8f4e-8f3a-4c1e-9a55-0d6f2c1b9a01',
+      reason: 'spam',
+      conversationId: '0b8f6a2e-4c3d-4b5a-8e7f-1a2b3c4d5e6f',
+      messageId: '9c1d2e3f-4a5b-4c6d-8e7f-a1b2c3d4e5f6',
+    );
+
+    expect(received.single.url.toString(), '$_baseUrl/safety/reports');
+    expect((jsonDecode(received.single.body) as Map).keys.toSet(), {
+      'reportedUserId',
+      'reason',
+      'conversationId',
+      'messageId',
+    });
+  });
 }

@@ -208,13 +208,15 @@ class VeilApiClient {
     );
   }
 
+  /// Files an abuse report: whom, why, and which conversation and message,
+  /// never any text. The relay does not keep free-text notes, so this
+  /// client offers none to send.
   Future<Map<String, dynamic>> fileAbuseReport(
     String accessToken, {
     required String reportedUserId,
     required String reason,
     String? conversationId,
     String? messageId,
-    String? note,
   }) async {
     return _post(
       '/safety/reports',
@@ -223,7 +225,6 @@ class VeilApiClient {
         'reason': reason,
         if (conversationId != null) 'conversationId': conversationId,
         if (messageId != null) 'messageId': messageId,
-        if (note != null) 'note': note,
       },
       accessToken: accessToken,
     );
@@ -340,13 +341,6 @@ class VeilApiClient {
 
   Future<List<dynamic>> getStories(String accessToken) async {
     return _getList('/stories', accessToken: accessToken);
-  }
-
-  Future<Map<String, dynamic>> createStory(
-    String accessToken,
-    Map<String, dynamic> body,
-  ) async {
-    return _post('/stories', body, accessToken: accessToken);
   }
 
   Future<Map<String, dynamic>> viewStory(

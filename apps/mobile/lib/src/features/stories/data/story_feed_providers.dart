@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/network/veil_api_client.dart';
 
 enum StoryContentKind { text, image, video }
 
@@ -58,8 +57,6 @@ class StoryFeedEntry {
   }
 }
 
-const kTextStoryContentUrl = 'text://inline';
-
 final storyFeedProvider =
     FutureProvider<List<StoryFeedEntry>>((ref) async {
   final session = ref.watch(appSessionProvider);
@@ -81,41 +78,19 @@ class StoryMutationResult {
   final String? errorMessage;
 }
 
+/// Posting is refused on this device: the relay takes a story only as one
+/// end-to-end encrypted envelope for a named audience ({ciphertext,
+/// envelopeVersion, audienceUserIds}), and this build has no story sealer.
+/// It used to post the text in the clear; nothing is sent at all until a
+/// sealer exists (see kStoriesEnabled).
 Future<StoryMutationResult> createTextStory(
   WidgetRef ref, {
   required String body,
-  String? caption,
-}) async {
-  final session = ref.read(appSessionProvider);
-  if (!session.isAuthenticated || session.accessToken == null) {
-    return const StoryMutationResult(
+}) async =>
+    const StoryMutationResult(
       success: false,
-      errorMessage: 'Authenticated session required.',
+      errorMessage: 'Stories are not end-to-end encrypted yet, so they cannot be posted.',
     );
-  }
-  try {
-    final apiClient = ref.read(apiClientProvider);
-    await apiClient.createStory(session.accessToken!, {
-      'contentType': 'text',
-      'contentUrl': kTextStoryContentUrl,
-      'caption': body.trim(),
-      if (caption != null && caption.trim().isNotEmpty) 'caption': caption,
-    });
-    ref.invalidate(storyFeedProvider);
-    await ref.read(storyFeedProvider.future);
-    return const StoryMutationResult(success: true);
-  } on VeilApiException catch (error) {
-    return StoryMutationResult(
-      success: false,
-      errorMessage: formatUserFacingError(error),
-    );
-  } catch (error) {
-    return StoryMutationResult(
-      success: false,
-      errorMessage: formatUserFacingError(error),
-    );
-  }
-}
 
 Future<void> markStoryViewed(WidgetRef ref, String storyId) async {
   final session = ref.read(appSessionProvider);

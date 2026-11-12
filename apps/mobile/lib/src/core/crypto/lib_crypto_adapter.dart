@@ -253,6 +253,7 @@ class _LibCryptoEnvelopeCodec implements CryptoEnvelopeCodec, InboundEnvelopeIns
       messageKind: _parseMessageKind(json['messageType'] as String?),
       expiresAt: _parseOptionalDateTime(json['expiresAt']),
       attachment: decodeAttachmentReference(json['attachment'] as Map<String, dynamic>?),
+      transmittedMessageType: json['messageType'] as String? ?? '',
     );
   }
 

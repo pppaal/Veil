@@ -101,6 +101,9 @@ class FakeRelay {
   final Map<String, RelayAttachment> attachments = {};
   final List<String> uploadTickets = [];
 
+  /// The content type each upload-ticket request declared.
+  final List<Object?> uploadTicketContentTypes = [];
+
   Duration uploadTicketLifetime = const Duration(minutes: 10);
 
   /// Upload completions to answer with a transient failure, which leaves the
@@ -501,6 +504,7 @@ class FakeRelayClient extends VeilApiClient {
       sizeBytes: body['sizeBytes'] as int,
     );
     relay.uploadTickets.add(attachmentId);
+    relay.uploadTicketContentTypes.add(body['contentType']);
     return {
       'attachmentId': attachmentId,
       'upload': {

@@ -76,6 +76,48 @@ void main() {
     expect((await handle.readConversations()).single.id, 'conv-early');
   });
 
+  test('a database that failed to open is opened again by the next caller', () async {
+    // The keystore is still locked at the first open (an iOS launch before
+    // first unlock), and unlocked by the time of the second.
+    var opens = 0;
+    final retrying = ProviderContainer(overrides: [
+      secureStorageProvider.overrideWithValue(SecureStorageService(keystore)),
+      appDatabaseFutureProvider.overrideWith((ref) async {
+        opens += 1;
+        if (opens == 1) throw StateError('keystore locked');
+        return AppDatabase(NativeDatabase.memory());
+      }),
+      cryptoAdapterProvider.overrideWithValue(LibCryptoAdapter()),
+    ]);
+    addTearDown(retrying.dispose);
+    final trust = retrying.read(identityTrustProvider);
+    final key = base64UrlNoPadEncode(List<int>.filled(32, 9));
+
+    await expectLater(trust.admit('conv-1', 'user-selene', 'dev-selene', key), throwsStateError);
+    expect(await trust.admit('conv-1', 'user-selene', 'dev-selene', key), isTrue);
+
+    final handle = retrying.read(cacheHandleProvider)!;
+    await handle.storeConversations([
+      ConversationPreview(
+        id: 'conv-after-unlock',
+        peerHandle: 'selene',
+        peerDisplayName: null,
+        recipientBundle: const KeyBundle(
+          userId: 'user-selene',
+          deviceId: '',
+          handle: 'selene',
+          identityPublicKey: '',
+          signedPrekeyBundle: '',
+        ),
+        lastEnvelope: null,
+        updatedAt: DateTime.utc(2026, 4, 1),
+      ),
+    ]);
+    final cache = await retrying.read(conversationCacheProvider.future);
+    expect((await cache!.readConversations()).single.id, 'conv-after-unlock');
+    expect(opens, 2);
+  });
+
   test('identity decisions wait for the legacy trust migration over the cache', () async {
     // An upgraded install: the cache holds a session that recorded no key,
     // and the keystore an old safety-number verification of selene.

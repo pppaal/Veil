@@ -537,6 +537,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
+/// A device's last activity as the server keeps it: the UTC day only, so it
+/// is shown as that day, never as a local time of day that never happened
+/// (or the day before, west of UTC).
+String _utcDay(DateTime at) => '${DateFormat('MMM d').format(at.toUtc())} (UTC)';
+
 int _compareTrustedDevices(_TrustedDevice left, _TrustedDevice right) {
   final trustOrder = <_DeviceTrustState, int>{
     _DeviceTrustState.current: 0,
@@ -622,16 +627,16 @@ class _DeviceRowCard extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               Text(
-                'Seen ${dateFormat.format(device.lastSeenAt.toLocal())}',
+                'Seen ${_utcDay(device.lastSeenAt)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               if (device.lastSyncAt != null)
                 Text(
-                  'Synced ${dateFormat.format(device.lastSyncAt!.toLocal())}',
+                  'Synced ${_utcDay(device.lastSyncAt!)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               Text(
-                'Activity ${dateFormat.format(device.lastTrustedActivityAt.toLocal())}',
+                'Activity ${_utcDay(device.lastTrustedActivityAt)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               if (device.trustedAt != null)
@@ -819,7 +824,7 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
           const SizedBox(height: VeilSpace.md),
           if (mostRecentTrustedActivity != null)
             Text(
-              'Recent trusted activity ${DateFormat('MMM d | HH:mm').format(mostRecentTrustedActivity.toLocal())}',
+              'Recent trusted activity ${_utcDay(mostRecentTrustedActivity)}',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.veilPalette.textSubtle,
                   ),

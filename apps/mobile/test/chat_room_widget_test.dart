@@ -272,6 +272,31 @@ void main() {
     expect(find.text('A different account'), findsNothing);
   });
 
+  testWidgets('an acknowledgement the keystore refuses is shown in the chat, and the 1:1 stays held', (tester) async {
+    final keystore = _RefusingWrites();
+    final bindings = ConversationPeerBindings(
+      store: SecureStorageService(keystore).scoped(SecureScope.conversationPolicy),
+    );
+    await bindings.bindAll({'conv-earlier': const ConversationPeer(userId: 'user-earlier', handle: 'selene')});
+    final controller = await _pumpExpiringChat(tester, peerBindings: bindings);
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
+
+    keystore.refuse = true;
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+
+    expect(controller.errorMessage, contains('keystore unavailable'));
+    expect(find.text('Conversation issue'), findsOneWidget);
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
+    expect(find.text('A different account'), findsOneWidget);
+    final listed = controller.conversationById('conv-1')!;
+    final held = await tester.runAsync(() => bindings.holdFor(
+          'conv-1',
+          ConversationPeer(userId: listed.recipientBundle.userId, handle: listed.peerHandle),
+        ));
+    expect(held?.reason, PeerAccountHoldReason.otherAccount);
+  });
+
   testWidgets('a contact whose every device was verified is marked verified', (tester) async {
     final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()));
     await resolver.adoptVerified('user-peer', 'device-peer', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
@@ -706,5 +731,16 @@ class _FakePagedChatApiClient extends VeilApiClient {
     String messageId,
   ) async {
     return const <String, dynamic>{};
+  }
+}
+
+/// A keystore that refuses writes while [refuse] is set.
+class _RefusingWrites extends MemorySecureStore {
+  bool refuse = false;
+
+  @override
+  Future<void> write({required String key, required String? value}) {
+    if (refuse) throw StateError('keystore unavailable');
+    return super.write(key: key, value: value);
   }
 }

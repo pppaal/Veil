@@ -230,8 +230,11 @@ class VeilMessengerController extends ChangeNotifier {
   PeerAccountHold? peerAccountHoldFor(String conversationId) => _services.identity.accountHoldFor(conversationId);
 
   /// The user chose to talk to the account the held [conversationId] is
-  /// listed with; what it sent and what waited to be sent go through.
-  Future<void> acknowledgePeerAccount(String conversationId) => _services.identity.acknowledgeAccount(conversationId);
+  /// listed with; what it sent and what waited to be sent go through. A
+  /// failure (the keystore refusing the binding, say) is shown like any
+  /// other user action's and leaves the conversation held.
+  Future<void> acknowledgePeerAccount(String conversationId) =>
+      _services.ops.run(() => _services.identity.acknowledgeAccount(conversationId));
 
   /// Whether every pinned device of the 1:1 [conversationId]'s peer was
   /// verified out of band (safety number or QR); false for a group.

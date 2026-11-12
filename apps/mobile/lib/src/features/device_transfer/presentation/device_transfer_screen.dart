@@ -82,7 +82,12 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     final controller = ref.watch(deviceTransferControllerProvider);
     final transferPayload = controller.transferPayload;
     final transferExpired = _isExpired(controller.transferExpiresAt);
-    final claimExpired = _isExpired(_claimExpiresAt);
+    // A transfer the relay committed has no window left to miss: the old
+    // device is revoked and only the login on this device remains, however
+    // long ago the claim was made. The banner, the metric, the pill and the
+    // completion button all follow this, so that login stays reachable.
+    final committed = ref.read(appSessionProvider.notifier).pendingTransfer?.isCompleted ?? false;
+    final claimExpired = !committed && _isExpired(_claimExpiresAt);
 
     if (_payloadController.text.isEmpty && transferPayload != null) {
       _payloadController.text = transferPayload;
@@ -211,7 +216,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               isCompleting: _isCompleting,
               claimId: _claimId,
               claimFingerprint: _claimFingerprint,
-              claimExpiresAt: _claimExpiresAt,
+              claimExpiresAt: committed ? null : _claimExpiresAt,
               claimExpired: claimExpired,
               completionMessage: _completionMessage,
               completionError: _completionError ?? session.errorMessage,
@@ -325,7 +330,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       return;
     }
     // A transfer the relay already committed only needs its login redone,
-    // however long ago the claim was made.
+    // however long ago the claim was made (see build).
     final committed = ref.read(appSessionProvider.notifier).pendingTransfer?.isCompleted ?? false;
     if (!committed && _isExpired(_claimExpiresAt)) {
       setState(() {

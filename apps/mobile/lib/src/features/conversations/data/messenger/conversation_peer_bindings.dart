@@ -125,9 +125,18 @@ class ConversationPeerBindings {
     if (fresh.isEmpty) return;
     bound.addAll(fresh);
     if (_unreadable) return;
-    await _store?.write(_documentKey, json.encode({
-      for (final entry in bound.entries) entry.key: {'userId': entry.value.userId, 'handle': entry.value.handle},
-    }));
+    try {
+      await _store?.write(_documentKey, json.encode({
+        for (final entry in bound.entries) entry.key: {'userId': entry.value.userId, 'handle': entry.value.handle},
+      }));
+    } catch (_) {
+      // Not recorded, so not bound here either: a conversation held for its
+      // handle stays held rather than open only until the next start.
+      for (final MapEntry(:key, :value) in fresh.entries) {
+        if (identical(bound[key], value)) bound.remove(key);
+      }
+      rethrow;
+    }
   }
 
   /// Why the 1:1 [conversationId], listed with [listed], admits no identity

@@ -268,6 +268,65 @@ void main() {
       expect(relay.callsTo('POST /device-transfer/claim'), 1);
     });
 
+    test('the login resumed at start and a tap on the screen log in once', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      await claimed.transfers.approveTransfer(claimed.claimId);
+      relay.failChallenges = 1;
+      await expectLater(_complete(claimed.newDevice, claimed.transfers, claimed.claimId), throwsA(isA<VeilApiException>()));
+      final challengesBefore = relay.callsTo('POST /auth/challenge');
+      final verifiesBefore = relay.callsTo('POST /auth/verify');
+
+      // The start resumes the login; the screen asks for it meanwhile.
+      final restarted = claimed.newDevice.controller();
+      await restarted.bootstrap();
+      final pending = restarted.pendingTransfer!;
+      await restarted.completeTransferAndAuthenticate(
+        sessionId: pending.sessionId,
+        transferToken: pending.transferToken,
+        claimId: pending.claimId,
+      );
+
+      expect(restarted.state.isAuthenticated, isTrue);
+      expect(relay.callsTo('POST /auth/challenge') - challengesBefore, 1);
+      expect(relay.callsTo('POST /auth/verify') - verifiesBefore, 1);
+      expect(relay.callsTo('POST /device-transfer/complete'), 1);
+
+      // A run that ended is not joined again: nothing is left to complete.
+      await expectLater(
+        restarted.completeTransferAndAuthenticate(
+          sessionId: pending.sessionId,
+          transferToken: pending.transferToken,
+          claimId: pending.claimId,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('a claim this device holds is not sent again for the same session', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      final pending = claimed.newDevice.session.pendingTransfer!;
+
+      final restarted = claimed.newDevice.controller();
+      await restarted.bootstrap();
+      await expectLater(
+        restarted.claimTransfer(sessionId: pending.sessionId, transferToken: pending.transferToken),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(relay.callsTo('POST /device-transfer/claim'), 1);
+      expect(relay.transfers[pending.sessionId]!.invalidated, isFalse);
+      expect((await claimed.newDevice.storage.readPendingTransfer())?.claimId, claimed.claimId);
+      await claimed.transfers.approveTransfer(claimed.claimId);
+      await restarted.completeTransferAndAuthenticate(
+        sessionId: pending.sessionId,
+        transferToken: pending.transferToken,
+        claimId: pending.claimId,
+      );
+      expect(restarted.state.isAuthenticated, isTrue);
+    });
+
     test('a claim survives an app restart and is completed, not claimed again', () async {
       final relay = FakeAccountRelay();
       final claimed = await _claimed(relay);

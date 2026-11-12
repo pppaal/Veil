@@ -282,6 +282,70 @@ void main() {
     });
   });
 
+  group('two new 1:1s one list shows under the same name', () {
+    late MessengerParty mallory;
+
+    // One list shows alice the real 1:1 with bob and a 1:1 with mallory that
+    // the relay lists under bob's handle. Neither is bound yet, so neither
+    // is held. Alice then reads or writes in both before any later list,
+    // which would bind the real one by itself (refreshConversations binds
+    // every 1:1 with a session): only the binding made the moment bob's
+    // identity is admitted can hold mallory's chat in that window.
+    setUp(() async {
+      mallory = await MessengerParty.join(relay, handle: 'mallory', userId: 'user-mallory', deviceId: 'dev-mal');
+      relay.listedHandles['alice'] = {'mallory': 'bob'};
+      relay.addDirect('conv-am', 'mallory', 'alice');
+      await mallory.signIn();
+      await alice.controller.refreshConversations();
+      expect(alice.controller.conversationById('conv-am')!.peerHandle, 'bob');
+      expect(alice.controller.peerAccountHoldFor(conv), isNull);
+      expect(alice.controller.peerAccountHoldFor('conv-am'), isNull);
+      // No live event asks for another list while alice reads, and the
+      // resync the new 1:1 already asked for is over.
+      alice.realtime.disconnect();
+      await settle();
+    });
+
+    tearDown(() => mallory.dispose());
+
+    Future<void> writes(MessengerParty from, String conversationId, String body) async {
+      await from.controller.sendText(conversationId: conversationId, body: body);
+      await waitFor(() => from.controller.pendingCountFor(conversationId) == 0, reason: '"$body" was not acked');
+    }
+
+    Future<void> expectMalloryHeld(int listings) async {
+      await alice.controller.loadConversationMessages('conv-am');
+      await settle();
+      expect(alice.api.conversationFetches, listings, reason: 'a later list would bind the real 1:1 by itself');
+      final hold = alice.controller.peerAccountHoldFor('conv-am');
+      expect(hold?.reason, PeerAccountHoldReason.otherAccount);
+      expect(hold?.known?.userId, bob.device.userId);
+      expect(await alice.bodies('conv-am'), isNot(contains('bob here, new phone')));
+      expect(await alice.pins.pinsForUser(mallory.device.userId), isEmpty);
+      expect(alice.controller.peerAccountHoldFor(conv), isNull);
+    }
+
+    test('the real one, opened first from what bob sent, holds the other at once', () async {
+      await writes(bob, conv, 'hi alice');
+      await writes(mallory, 'conv-am', 'bob here, new phone');
+      final listings = alice.api.conversationFetches;
+
+      await alice.controller.loadConversationMessages(conv);
+      await waitFor(() async => (await alice.bodies(conv)).contains('hi alice'), reason: 'bob\'s first message did not open');
+
+      await expectMalloryHeld(listings);
+    });
+
+    test('the real one, written to first, holds the other at once', () async {
+      await writes(mallory, 'conv-am', 'bob here, new phone');
+      final listings = alice.api.conversationFetches;
+
+      await writes(alice, conv, 'hello bob');
+
+      await expectMalloryHeld(listings);
+    });
+  });
+
   group('a 1:1 the relay leaves out of one list and lists again with a verified contact', () {
     late MessengerParty carol;
     late MessengerParty mallory;

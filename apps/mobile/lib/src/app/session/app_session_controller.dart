@@ -55,6 +55,10 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   /// stopped, so the transfer screen can offer to complete it.
   PendingTransferRecord? get pendingTransfer => _pendingTransfer;
 
+  // The completion of a claim that is running now (see
+  // completeTransferAndAuthenticate).
+  ({String claimId, Future<void> done})? _transferRun;
+
   // Attempts of /device-transfer/complete through network failures and 5xx.
   static const _maxTransientTransferAttempts = 3;
 
@@ -402,6 +406,11 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       if (pending != null && pending.isCompleted) {
         throw StateError('Finish the transfer this device already completed before claiming another.');
       }
+      // The relay keeps the first claim of a session and ends the session on
+      // a second one, so the claim this device holds is completed instead.
+      if (pending != null && pending.sessionId == sessionId) {
+        throw StateError('This device already claimed this transfer. Complete it on this device.');
+      }
 
       final materialSeed =
           'device-transfer-${DateTime.now().microsecondsSinceEpoch}';
@@ -461,7 +470,31 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   /// failure or a 5xx (the relay answers an identical retry with the same
   /// completion), and polled while the old device has not approved yet. Any
   /// other refusal stops; the claimed keys stay until the next claim.
+  ///
+  /// A call made while the same claim is still being completed (the login
+  /// resumed at start and a tap on the transfer screen, say) joins that run
+  /// rather than logging in a second time.
   Future<void> completeTransferAndAuthenticate({
+    required String sessionId,
+    required String transferToken,
+    required String claimId,
+  }) {
+    final running = _transferRun;
+    if (running != null && running.claimId == claimId) {
+      return running.done;
+    }
+    final done = _completeTransferAndAuthenticate(
+      sessionId: sessionId,
+      transferToken: transferToken,
+      claimId: claimId,
+    );
+    _transferRun = (claimId: claimId, done: done);
+    return done.whenComplete(() {
+      if (identical(_transferRun?.done, done)) _transferRun = null;
+    });
+  }
+
+  Future<void> _completeTransferAndAuthenticate({
     required String sessionId,
     required String transferToken,
     required String claimId,

@@ -558,13 +558,16 @@ with a letter or digit, with no two separators in a row. A lookalike with a
 zero-width or a non-Latin character renders like a known handle yet equals
 none, which is why the grammar check does not depend on what the device
 knows. A held conversation admits nothing: its frames are `identityRejected`
-before the pins are asked, nothing is pinned, the directory is not asked and
-nothing is sealed, until the user acknowledges the account it is listed with
-("Talk to this account"). That binds it, and what waited is retried as a
-first contact. The chat says why it is held (another account than the one
-talked to before under that handle, or a name no server issues). Mobile:
-`ConversationPeerBindings.holdFor`; web: `peer-bindings.js` `hold`. The mobile
-chat also marks a contact verified once every device pinned for them is.
+before the pins are asked, nothing is pinned, sending and receiving do not ask
+the directory and nothing is sealed, until the user acknowledges the account
+it is listed with ("Talk to this account"). That binds it, and what waited is
+retried as a first contact. The chat says why it is held (another account
+than the one talked to before under that handle, or a name no server issues).
+Mobile: `ConversationPeerBindings.holdFor`; web: `peer-bindings.js` `hold`.
+The mobile chat also marks a contact verified once every device pinned for
+them is. Its safety-numbers screen, opened on a held chat, still looks the
+listed handle up to show the key the directory serves (claiming no prekey);
+with nothing pinned it has nothing to mark verified.
 
 The web client is deliberately stricter than the table above in two places:
 a new device of a contact never verified is raised for review instead of

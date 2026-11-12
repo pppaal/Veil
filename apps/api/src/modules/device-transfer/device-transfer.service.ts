@@ -13,6 +13,7 @@ import { Prisma } from '@prisma/client';
 
 import { AppConfigService } from '../../common/config/app-config.service';
 import { utcDayStart } from '../../common/device-activity';
+import { revokeDevice } from '../../common/device-revocation';
 import { conflict, forbidden, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
@@ -443,14 +444,7 @@ export class DeviceTransferService {
         // new one being created. Without this, the old device's access
         // token keeps working until natural expiry — bad if the user is
         // transferring because the old device was lost or compromised.
-        await tx.device.update({
-          where: { id: session.oldDeviceId },
-          data: {
-            isActive: false,
-            revokedAt: completedAt,
-            pushToken: null,
-          },
-        });
+        await revokeDevice(tx, session.oldDeviceId, completedAt);
 
         await tx.user.update({
           where: { id: session.userId },

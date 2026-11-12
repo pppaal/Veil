@@ -78,7 +78,9 @@ bucket per request against the unauthenticated `/auth` and registration routes.
 (no wildcard).
 
 **Container/infra**: multi-stage-ish Dockerfile with a `HEALTHCHECK` hitting
-`/v1/health`; entrypoint runs `prisma migrate deploy` before starting; the prod
+`/v1/health`; entrypoint runs the boot gate (`dist/preflight.js`), then
+`prisma migrate deploy`, then the API, so a refused configuration never
+reaches a migration; the prod
 compose sets resource limits on every service, `restart: always`, healthchecks
 + `depends_on: service_healthy` for Postgres/Redis, private `expose` (no host
 port publishing except Caddy 80/443), and `.env.prod`-sourced secrets with

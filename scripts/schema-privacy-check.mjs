@@ -260,9 +260,11 @@ export function renderInventory(models, allowlist = PLAINTEXT_ALLOWLIST) {
     'Retention is counted from the event that starts the clock (a message reaching',
     'the server, a prekey being consumed, an account being deleted); the sweeps',
     'that enforce it are described in [metadata-retention.md](metadata-retention.md).',
-    'Short-lived Redis keys (rate-limit budgets, auth challenges, refresh-token',
-    'hashes) and encrypted attachment blobs in object storage are not database',
-    'fields and are covered there too.',
+    'Short-lived Redis keys (rate-limit counters keyed by client address or',
+    'device, key-directory budgets, auth challenges, refresh-token hashes with',
+    'their user and device ids, sealed group key distributions) and encrypted',
+    'attachment blobs in object storage are not database fields and are covered',
+    'there too.',
   );
   out.push('');
   out.push('## Classes');

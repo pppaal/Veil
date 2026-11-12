@@ -201,7 +201,10 @@ model Device {
   pushToken           String?                   @map("push_token")
   /// @privacy(class=operational, retention=account, visibleTo=public)
   isActive            Boolean                   @default(true) @map("is_active")
-  /// @privacy(class=operational, retention=account, visibleTo=self)
+  // A revoked device loses its label, one-time prekeys and sync cursors at
+  // revocation; the row goes 30 days later, once nothing still references it
+  // (RetentionService revokedDevices).
+  /// @privacy(class=operational, retention=30d, visibleTo=self)
   revokedAt           DateTime?                 @map("revoked_at")
   /// @privacy(class=operational, retention=account, visibleTo=self)
   trustedAt           DateTime                  @default(now()) @map("trusted_at")
@@ -228,6 +231,7 @@ model Device {
 
   @@index([userId, isActive])
   @@index([joinedFromDeviceId])
+  @@index([revokedAt])
   @@map("devices")
 }
 
@@ -278,8 +282,9 @@ model Conversation {
   // Null for group/channel rows. The unique index on this column means two
   // concurrent createDirect calls between the same pair can't both create a
   // conversation — one wins, the other catches P2002 and returns the
-  // existing conversation.
-  /// @privacy(class=routing, retention=forever, visibleTo=server)
+  // existing conversation. Cleared when either member deletes their account
+  // (AccountService), so it never outlives the ids it names.
+  /// @privacy(class=routing, retention=account, visibleTo=server)
   directKey                String?                   @map("direct_key") @db.VarChar(80)
   // Monotonic group epoch. Incremented on every membership change (join /
   // leave / remove). Group Sender Keys (see docs/group-sender-keys-design.md)
@@ -313,11 +318,9 @@ model Conversation {
   @@map("conversations")
 }
 
-// Per-member epoch window for group Sender Keys. joinedEpoch records the
-// epoch at which a user is first allowed to start decrypting; leftEpoch is
-// stamped when they are removed (or leave) so the server can refuse to
-// deliver post-departure ciphertext and clients can refuse to decrypt it.
-// A user who re-joins gets joinedEpoch reset and leftEpoch cleared.
+// The epoch at which each current group member joined (group Sender Keys).
+// The row is deleted when the member leaves or is removed, so the table never
+// lists former members; a re-join starts a fresh row at the new epoch.
 // Server-side bookkeeping only — no key material lives here (key
 // distribution rides the existing 1:1 ratchet, see the design doc).
 model GroupMemberEpoch {
@@ -327,8 +330,6 @@ model GroupMemberEpoch {
   userId         String       @map("user_id") @db.Uuid
   /// @privacy(class=operational, retention=account, visibleTo=server)
   joinedEpoch    Int          @map("joined_epoch")
-  /// @privacy(class=operational, retention=account, visibleTo=server)
-  leftEpoch      Int?         @map("left_epoch")
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -356,6 +357,9 @@ model ConversationMember {
   @@map("conversation_members")
 }
 
+// Per-device sync and read cursors, as conversation orders only. There is no
+// timestamp: the exact moment a device last opened, sent in or read each
+// conversation is an activity timeline the server has no use for.
 model DeviceConversationState {
   /// @privacy(class=routing, retention=account, visibleTo=server)
   id                          String       @id @default(uuid()) @db.Uuid
@@ -367,14 +371,11 @@ model DeviceConversationState {
   lastSyncedConversationOrder Int?         @map("last_synced_conversation_order")
   /// @privacy(class=operational, retention=account, visibleTo=self)
   lastReadConversationOrder   Int?         @map("last_read_conversation_order")
-  /// @privacy(class=operational, retention=account, visibleTo=server)
-  updatedAt                   DateTime     @updatedAt @map("updated_at")
   device                      Device       @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   conversation                Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@unique([deviceId, conversationId])
-  @@index([deviceId, updatedAt])
-  @@index([conversationId, updatedAt])
+  @@index([conversationId])
   @@map("device_conversation_states")
 }
 

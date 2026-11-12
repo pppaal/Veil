@@ -125,9 +125,16 @@ our App Privacy "nutrition label" answers). Summary:
 - **User content** (message payloads): transited as **ciphertext only**. The
   server cannot decrypt it, so it is declared unlinked. Messages, media, and
   attachments are end-to-end encrypted.
+- **Contacts:** the in-app contact list (which accounts the user added) is
+  collected and linked to the user, for App Functionality only. The phone's
+  address book is never read.
+- **Other user content, linked:** group and channel names and descriptions and
+  device labels (stored readable), and the metadata needed to deliver
+  messages (conversation membership, message and receipt times, call
+  records), all tied to the account.
 - **Crash diagnostics:** not collected. The app ships no crash-reporting SDK
   (CI rejects adding one without a privacy review).
-- **Not collected:** contacts, location, health/fitness, financial info, browsing
+- **Not collected:** location, health/fitness, financial info, browsing
   history, search history, purchases, usage/analytics data, and sensitive info
   (see `app-privacy-answers.md` for the complete "Data Not Collected" list).
 - Privacy policy: https://pppaal.github.io/Veil/

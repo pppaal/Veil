@@ -123,11 +123,16 @@ export class UnifiedPushProvider implements PushProvider {
       });
     } catch (error) {
       const code = (error as NodeJS.ErrnoException | undefined)?.code ?? 'transport_error';
-      throw new Error(`UnifiedPush delivery failed: ${code}`);
+      throw Object.assign(new Error(`UnifiedPush delivery failed: ${code}`), {
+        code: `unifiedpush_${code}`,
+      });
     }
 
     if (status < 200 || status >= 300) {
-      throw new Error(`UnifiedPush delivery failed with status class ${statusClass(status)}`);
+      throw Object.assign(
+        new Error(`UnifiedPush delivery failed with status class ${statusClass(status)}`),
+        { code: `unifiedpush_status_${statusClass(status)}` },
+      );
     }
   }
 }

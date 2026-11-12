@@ -430,6 +430,64 @@ describe('RetentionService metadata sweeps', () => {
   });
 });
 
+describe('RetentionService revoked devices', () => {
+  const revokedDevice = (prisma: RetentionFakePrismaService, revokedAgo: number) =>
+    prisma.seedDevice('user-1', { isActive: false, revokedAt: ago(revokedAgo) });
+
+  it('deletes a device revoked over 30 days ago that nothing references, with its transfer sessions', async () => {
+    const { prisma, service, sweptCounts } = setup();
+    const active = prisma.seedDevice('user-1');
+    const recentlyRevoked = revokedDevice(prisma, 29 * DAY_MS);
+    const longRevoked = revokedDevice(prisma, 31 * DAY_MS);
+    // An account mid-deletion: inactive but never revoked.
+    const deactivated = prisma.seedDevice('user-2', { isActive: false });
+    prisma.transferSessions.push({
+      id: randomUUID(),
+      userId: 'user-1',
+      oldDeviceId: longRevoked,
+      tokenHash: 'h'.repeat(64),
+      expiresAt: ago(31 * DAY_MS),
+      completedAt: ago(31 * DAY_MS),
+      createdAt: ago(32 * DAY_MS),
+    });
+
+    await service.sweep();
+
+    expect(prisma.devices.map((device) => device.id).sort()).toEqual(
+      [active, recentlyRevoked, deactivated].sort(),
+    );
+    expect(prisma.transferSessions).toEqual([]);
+    expect(sweptCounts()).toMatchObject({ revokedDevices: 1 });
+  });
+
+  it('keeps a long-revoked device while a message, attachment or call record still references it', async () => {
+    const { prisma, service, addMessage, addAttachment, addCall } = setup();
+    const sender = revokedDevice(prisma, 31 * DAY_MS);
+    const uploader = revokedDevice(prisma, 31 * DAY_MS);
+    const caller = revokedDevice(prisma, 31 * DAY_MS);
+    (await addMessage()).senderDeviceId = sender;
+    (await addAttachment()).uploaderDeviceId = uploader;
+    addCall('ended', new Date()).initiatorDeviceId = caller;
+
+    await service.sweep();
+
+    expect(prisma.devices.map((device) => device.id).sort()).toEqual(
+      [sender, uploader, caller].sort(),
+    );
+  });
+
+  it('deletes the device in the same tick once the message sweep has removed what referenced it', async () => {
+    const { prisma, service, addMessage } = setup();
+    const sender = revokedDevice(prisma, 31 * DAY_MS);
+    (await addMessage({ serverReceivedAt: ago(31 * DAY_MS) })).senderDeviceId = sender;
+
+    await service.sweep();
+
+    expect(prisma.messages).toEqual([]);
+    expect(prisma.devices).toEqual([]);
+  });
+});
+
 describe('RetentionService attachment sweep', () => {
   it('orphan uploaded attachment: deleteObject then row', async () => {
     const { prisma, storage, service, addAttachment } = setup();

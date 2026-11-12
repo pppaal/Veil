@@ -5,8 +5,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { CoreModule } from './common/core.module';
-import { envSchema } from './common/config/env.schema';
 import { AppConfigService } from './common/config/app-config.service';
+import { CONFIG_MODULE_OPTIONS } from './common/config/config-module-options';
 import { CfThrottlerGuard } from './common/guards/cf-throttler.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -38,11 +38,7 @@ import { PrekeysModule } from './modules/prekeys/prekeys.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      expandVariables: true,
-      validate: (environment) => envSchema.parse(environment),
-    }),
+    ConfigModule.forRoot(CONFIG_MODULE_OPTIONS),
     JwtModule.register({ global: true }),
     CoreModule,
     ThrottlerModule.forRootAsync({

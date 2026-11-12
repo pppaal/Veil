@@ -63,6 +63,31 @@ test('a mobile backup module fails', () => {
   assert.match(failures.join('\n'), /\[no-mobile-backup\]/);
 });
 
+test('CORS configured anywhere but corsOptions() fails', () => {
+  const MAIN = 'apps/api/src/main.ts';
+  for (const files of [
+    { [MAIN]: CLEAN_FIXTURE[MAIN].replace('app.enableCors(corsOptions(config));\n', '') },
+    {
+      [MAIN]: CLEAN_FIXTURE[MAIN].replace(
+        'corsOptions(config)',
+        '{ origin: allowedOrigins, credentials: false }',
+      ),
+    },
+    { [MAIN]: CLEAN_FIXTURE[MAIN].replace('{ bufferLogs: true }', '{ cors: { origin: true } }') },
+    { 'apps/api/src/modules/realtime/realtime.gateway.ts': '@WebSocketGateway({ cors: true })\n' },
+  ]) {
+    const failures = failuresFor(files);
+    assert.match(failures.join('\n'), /\[cors-through-shared-options\]/, JSON.stringify(files));
+  }
+  // Turning CORS off is not configuring it.
+  assert.deepEqual(
+    failuresFor({
+      'apps/api/src/modules/realtime/realtime.gateway.ts': '@WebSocketGateway({ cors: false })\n',
+    }),
+    [],
+  );
+});
+
 test('every seeded violation is caught by its own rule', () => {
   assert.deepEqual(runSelfTest(), []);
 });

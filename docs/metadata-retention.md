@@ -56,18 +56,33 @@ that schedules sweeps. It runs shortly after boot and then every 10 minutes.
 | `abuse_reports` | Reporter, reported user, reason | 90 days. There is no note column: a free-text note from an older client is accepted and dropped. | `RetentionService` (`abuseReports`); `SafetyService` |
 | `one_time_prekeys` | Public X3DH one-time prekeys | Unconsumed: until claimed or the device is deleted. Consumed: `VEIL_PREKEY_CONSUMED_RETENTION_DAYS` (default 30; 0 keeps them) so a keyId is never reused mid-flight. | `RetentionService` (`consumedPrekeys`) |
 | `secret_blobs` | One-time link ciphertext | Deleted on first read; unopened links are deleted at `expiresAt`. | `SecretService`; `RetentionService` (`secretBlobs`) |
-| `device_transfer_sessions` | Transfer token hash, old device, expiry | Closed after the transfer TTL (default 300 s); rows are deleted with the account. Not swept yet. | `DeviceTransferService`; `AccountService` |
-| `devices` | Public identity, prekey and auth keys, push token, last-seen and last-sync days | Until revoked or the account is deleted. `lastSeenAt` and `lastSyncAt` hold the start of the UTC day only and are written at most once a day, so they do not form an activity timeline. | `AccountService` |
+| `device_transfer_sessions` | Transfer token hash, old device, expiry | Closed after the transfer TTL (default 300 s); deleted with their old device (below) or with the account. | `DeviceTransferService`; `RetentionService` (`revokedDevices`); `AccountService` |
+| `devices` | Public identity, prekey and auth keys, push token, label, last-seen and last-sync days | Active devices: until revoked or the account is deleted. Revoking a device (or transferring away from it) replaces its label with "Removed device" and deletes its push token, unclaimed one-time prekeys and sync cursors at once; the row itself is deleted once it has been revoked for 30 days and no message, attachment or call record references it any more. `lastSeenAt` and `lastSyncAt` hold the start of the UTC day only and are written at most once a day, so they do not form an activity timeline. | `revokeDevice` (`DevicesService`, `DeviceTransferService`); `RetentionService` (`revokedDevices`); `AccountService` |
 | `users`, `user_contacts`, `user_blocks`, `conversation_mutes` | Handle and social graph (no display names, profile text or contact nicknames) | Account lifetime. | `AccountService` |
 | `retired_handles` | Peppered HMAC of a deleted account's handle | 90 days after the account is deleted; until then the handle cannot be registered again. | `AccountService` (insert); `RetentionService` (`retiredHandles`) |
-| `conversations`, `conversation_members`, `device_conversation_states`, `group_metas`, `channel_metas`, `group_member_epochs` | Membership and sync cursors | Conversation or account lifetime. | `AccountService`, conversation deletion |
+| `conversations`, `conversation_members`, `device_conversation_states`, `group_metas`, `channel_metas`, `group_member_epochs` | Current membership, the epoch each group member joined at, and per-device sync and read cursors (conversation orders, no timestamps) | Conversation or account lifetime. Leaving a group or channel, or being removed, deletes the member's membership, epoch row, sync cursors and mute for that conversation, so former members are not kept. A direct conversation's dedupe key names both members; it is cleared when either deletes their account, and a direct conversation left with no members is deleted. | `GroupsService`, `ChannelsService`, `AccountService`, conversation deletion |
 
 ### Short-lived keys in the ephemeral store (Redis)
 
-| Key | Kept for | Notes |
+Production Redis (`docker-compose.prod.yml`) keeps no append-only file. An
+append-only file would hold every write, with its absolute expiry time, until
+a rewrite that by default waits for 64 MB, so the keys below would stay
+readable on disk for weeks after they expired. Redis instead writes an RDB
+snapshot of the keys alive at that moment, within a minute of any write and
+on shutdown, and each snapshot replaces the last. A disk image therefore holds
+the keys that were alive at the last snapshot, not a history of expired ones.
+On a server that has gone idle, the last snapshot stays until the next write
+replaces it, so a key in it can outlive its TTL until then.
+
+| Key | Kept for | What it links |
 | --- | --- | --- |
-| `budget:*` | 1 hour | Key-directory budgets. The key holds a SHA-256 digest of who looked up whom instead of the ids. The digest is unkeyed, so someone who also holds the database ids can test a guessed pair; the one-hour expiry is what limits it. |
-| `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session; see `device-transfer-flow.md`. |
+| `veil:thr:*` (and `…:blocked`) | The rate-limit window, 60 seconds | A request count per route and client. The key is an unkeyed SHA-256 of the route and the client: `ip:<address>` on routes that need no sign-in, `dev:<deviceId>` on the others. Hashing every IPv4 address recovers the client's address in roughly 80 to 100 minutes on one CPU core. |
+| `budget:*` | 1 hour | Key-directory budgets. The key holds a SHA-256 digest of who looked up whom instead of the ids. The digest is unkeyed, so someone who also holds the database ids can test a guessed pair; the one-hour expiry, with the snapshot caveat above, is what limits it. |
+| `auth:challenge:*`, `auth:challenge-index:*` | `VEIL_AUTH_CHALLENGE_TTL_SECONDS` (default 120 seconds) | A pending sign-in challenge and the device it was issued to. Taken on use. |
+| `auth:refresh:*`, `auth:refresh-family:*`, `auth:refresh-families:*`, `auth:rotated:*` | 30 days | The SHA-256 of a refresh token (never the token), with the user id, device id and token family it belongs to. Removed on rotation, logout and reuse detection; otherwise, account deletion included, they expire on their TTL (the device they name no longer exists, so they no longer authenticate). |
+| `auth:blacklist:*` | Until the access token would expire (at most 1 hour) | The id of a logged-out access token, with its user and device ids. |
+| `group:keydist:*` | 30 minutes | A sealed Sender Keys chain-key distribution, addressed by conversation, epoch and the sending and receiving user and device. The server cannot open it; see `group-sender-keys-design.md`. |
+| `transfer:claim:*` | Transfer TTL | The first claim of a device-transfer session: the new device's label, platform and public keys. See `device-transfer-flow.md`. |
 
 ## Directory privacy
 
@@ -80,6 +95,11 @@ The key directory follows the same minimisation:
   atomically in one transaction, at most 20 per hour per (requester device,
   target user) and 50 per hour per target device. Over budget, the lookup still succeeds but
   returns no one-time prekey and consumes nothing.
+- `GET /v1/keys/group/:conversationId` serves the same entries for every other
+  member of a group, only to a current member of that group (anyone else gets
+  404), at 20 requests per minute per device. It claims nothing, so it spends
+  no budget and cannot drain a pool; it reveals nothing a member cannot
+  already learn from the member list and per-handle lookups.
 - `GET /v1/users/:handle` needs a signed-in device and returns only id, handle
   and status. Profiles hold no text until encrypted profiles ship, so
   `GET /v1/profile/:handle` answers 410 `profile_e2e_pending`.

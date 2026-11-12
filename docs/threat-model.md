@@ -25,13 +25,15 @@
 - a deleted account's handle is quarantined for 90 days (a peppered HMAC, not
   the handle, is kept), so a stranger cannot re-register it and inherit the
   trust its contacts gave the old owner
-- device last-seen and last-sync times are stored as the UTC day only
+- device last-seen and last-sync times are stored as the UTC day only, and
+  per-conversation sync and read cursors as conversation orders with no
+  timestamp
 - device transfer requires explicit action from the active old device
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
 - single active device model simplifies trust and revocation in v1
 - rate limiting on auth, user lookup, key directory, message send, attachment ticket, and abuse report endpoints (global 60/min + per-route tightening)
-- key material is served only to signed-in devices (`GET /v1/keys/:handle`); there is no anonymous key lookup
+- key material is served only to signed-in devices (`GET /v1/keys/:handle`, and `GET /v1/keys/group/:conversationId` to current group members); there is no anonymous key lookup
 - Helmet security headers (CSP, HSTS, COEP) in production
 - Swagger disabled by default in production
 - bidirectional user blocks enforced at conversation creation, direct message send, and direct call initiation, with opaque "NotFound" / "unreachable" framing that hides block state from the blocked user
@@ -60,8 +62,8 @@
 ## Residual risks
 
 - production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
-- the session opener bootstraps from the responder's static identity key, so the first message of a session lacks forward secrecy until the first ratchet step. The server-side X3DH one-time-prekey pool now exists (per-device upload/count + atomic single-use claim; `libsignal-migration-design.md` phase L.4), but the client is not yet wired to publish/consume prekeys, so this gap is closed on the server and pending on the client
-- group conversations use a single shared key with no forward secrecy / post-compromise security / cryptographic member-revoke — server-side epoch bookkeeping and the opt-in flag have shipped (phases AB.1/AB.2), but the Sender-Key client crypto itself is still design-only (`group-sender-keys-design.md`)
+- 1:1 sessions (protocol v2) open with X3DH over signed and one-time prekeys, which the mobile client publishes and claims; when a target's one-time prekey pool is empty or a claim budget is spent, the session opens on the signed prekey alone, and that first message has no one-time-prekey forward secrecy and can be replayed once its stored state has aged out (`crypto-envelope-spec.md`). Sessions still on legacy v1 bundles keep the old static-key bootstrap
+- groups created by current mobile clients use Sender Keys (`veil-group-v1`): per-sender chain keys that ratchet with every message and are replaced at every membership change, so a removed member cannot read later messages (`group-sender-keys-design.md`; not yet externally reviewed). Whether a group uses Sender Keys is not left to the server: a device pins the mode the first time a listing or an authenticated group frame shows it, and refuses pairwise frames there from then on, and the server refuses to turn the flag off (`sender_keys_irreversible`). Groups created by older clients stay on a single shared key with no forward secrecy, post-compromise security or cryptographic member removal, and a device that has never seen a group in Sender Keys mode trusts the server's listing for it. The web client does not take part in groups under protocol v2
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is under revision because the current design does not hide the sender (`sealed-sender-design.md`)
 - group and channel names and descriptions are still stored in plaintext until encrypted group metadata ships, and device labels until encrypted profiles ship (allowlisted in `scripts/schema-privacy-check.mjs`)
 - the attachment presigned MinIO/S3 flow (server-side ticketing, strict 64-hex sha256 integrity validation, size caps, rate limits) is implemented; residual risk is that the object-storage deployment configuration (bucket policy, credential rotation) is environment-specific and the flow has not been externally pentested

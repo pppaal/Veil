@@ -12,6 +12,7 @@ import {
   ConversationAccessService,
   type ConversationAccess,
 } from '../../common/conversation-access/conversation-access.service';
+import { removeConversationMember } from '../../common/conversation-access/conversation-departure';
 import {
   historyVisibleSince,
   type ConversationAction,
@@ -113,7 +114,6 @@ export class GroupsService {
           conversationId: conv.id,
           userId: m.userId,
           joinedEpoch: 0,
-          leftEpoch: null,
         })),
       });
 
@@ -589,9 +589,7 @@ export class GroupsService {
 
   private async removeFromGroup(conversationId: string, userId: string): Promise<void> {
     const epoch = await this.prisma.$transaction(async (tx) => {
-      await tx.conversationMember.delete({
-        where: { conversationId_userId: { conversationId, userId } },
-      });
+      await removeConversationMember(tx, conversationId, userId);
       return this.bumpEpochForChange(tx, conversationId, { userId, reason: 'leave' });
     });
 
@@ -611,14 +609,12 @@ export class GroupsService {
   }
 
   /**
-   * Bump a group's membership epoch and update the member's epoch window,
+   * Bump a group's membership epoch and update the member's epoch row,
    * atomically within the caller's transaction. Returns the new epoch.
    *
-   * - join: stamp joinedEpoch = new epoch and clear any prior leftEpoch
-   *   (covers re-joins) so the member may decrypt from this generation on.
-   * - leave: stamp leftEpoch = new epoch on the member's open window so the
-   *   server can refuse post-departure delivery and clients can refuse to
-   *   decrypt newer ciphertext.
+   * - join: record joinedEpoch = new epoch (a re-join starts a fresh row).
+   * - leave: delete the member's row. Nothing reads when someone left, and
+   *   keeping it would list every former member of the group.
    */
   private async bumpEpochForChange(
     tx: Prisma.TransactionClient,
@@ -637,20 +633,18 @@ export class GroupsService {
         where: {
           conversationId_userId: { conversationId, userId: change.userId },
         },
-        update: { joinedEpoch: epoch, leftEpoch: null },
+        update: { joinedEpoch: epoch },
         create: {
           conversationId,
           userId: change.userId,
           joinedEpoch: epoch,
-          leftEpoch: null,
         },
       });
     } else {
-      // Only close the still-open window; a member with no open window (never
-      // joined, or already left) is a no-op rather than an error.
-      await tx.groupMemberEpoch.updateMany({
-        where: { conversationId, userId: change.userId, leftEpoch: null },
-        data: { leftEpoch: epoch },
+      // deleteMany: a member with no row (a group created before epochs) is a
+      // no-op rather than an error.
+      await tx.groupMemberEpoch.deleteMany({
+        where: { conversationId, userId: change.userId },
       });
     }
 

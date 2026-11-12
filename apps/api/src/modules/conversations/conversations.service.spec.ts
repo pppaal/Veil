@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Test } from '@nestjs/testing';
+import { Prisma } from '@prisma/client';
 
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { PrismaService } from '../../common/prisma.service';
@@ -131,6 +132,22 @@ describe('ConversationsService', () => {
         status: 404,
         response: { code: 'handle_not_found' },
       });
+    });
+
+    it('answers a peer whose account is being deleted like an unknown handle, and writes nothing', async () => {
+      const { service, prisma } = makeService();
+      const alice = prisma.seedUser('alice');
+      prisma.seedUser('bob');
+      // Account deletion marks the user 'revoked' in its first step and only
+      // deletes the row in its last.
+      prisma.users.find((user) => user.handle === 'bob')!.status = 'revoked';
+
+      await expect(service.createDirect(alice.userId, buildDto('bob'))).rejects.toMatchObject({
+        status: 404,
+        response: { code: 'handle_not_found' },
+      });
+      expect(prisma.conversations).toHaveLength(0);
+      expect(prisma.conversationMembers).toHaveLength(0);
     });
 
     it('rejects a conversation with yourself', async () => {
@@ -265,6 +282,38 @@ describe('ConversationsService', () => {
         (s) => s.deviceId === alice.deviceId && s.conversationId === conversationId,
       );
       expect(state?.lastSyncedConversationOrder).toBe(2);
+    });
+
+    // Prisma stamps an @updatedAt column on every upsert, so any timestamp on
+    // this table would record when each device last opened every conversation.
+    it('keeps the sync cursor as orders only, with no timestamp of when it moved', async () => {
+      const cursorModel = Prisma.dmmf.datamodel.models.find(
+        (model) => model.name === 'DeviceConversationState',
+      );
+      expect(cursorModel).toBeDefined();
+      expect(
+        cursorModel!.fields
+          .filter((field) => field.type === 'DateTime' || field.isUpdatedAt)
+          .map((field) => field.name),
+      ).toEqual([]);
+
+      const { service, prisma } = makeService();
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('direct', [alice.userId, bob.userId]);
+      seedMessage(prisma, { conversationId, senderDeviceId: bob.deviceId, conversationOrder: 1 });
+
+      await service.listMessagesForUser(alice, conversationId, { limit: 50 });
+
+      expect(Object.keys(prisma.deviceConversationStates[0]!).sort()).toEqual(
+        [
+          'conversationId',
+          'deviceId',
+          'id',
+          'lastReadConversationOrder',
+          'lastSyncedConversationOrder',
+        ].sort(),
+      );
     });
 
     it('does not mark delivered for messages the viewer sent', async () => {

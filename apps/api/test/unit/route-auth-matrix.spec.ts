@@ -152,8 +152,10 @@ describe('route auth matrix', () => {
   it('serves no key material or profile without a bearer token', () => {
     const all = routes.map((entry) => entry.route);
     expect(all).not.toContain('GET /v1/users/:handle/key-bundle');
-    expect(all).toContain('GET /v1/keys/:handle');
-    expect(routes.find((entry) => entry.route === 'GET /v1/keys/:handle')?.isPublic).toBe(false);
+    for (const keyRoute of ['GET /v1/keys/:handle', 'GET /v1/keys/group/:conversationId']) {
+      expect(all).toContain(keyRoute);
+      expect(routes.find((entry) => entry.route === keyRoute)?.isPublic).toBe(false);
+    }
   });
 
   it('no route offers recovery or backup', () => {

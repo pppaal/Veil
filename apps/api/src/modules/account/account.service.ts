@@ -1,5 +1,8 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 
+import { AppLoggerService } from '../../common/logger/app-logger.service';
+import { describeFailure } from '../../common/logger/describe-failure';
 import { PrismaService } from '../../common/prisma.service';
 import {
   ATTACHMENT_STORAGE_GATEWAY,
@@ -26,16 +29,21 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 // resumed), and only put the small final user/device cleanup back inside a
 // transaction. That final transaction also quarantines the handle, so it is
 // never free for someone else to register in between.
+//
+// Failures are logged with the step, the error class and the Prisma code,
+// never the user id or the error message (Prisma messages can quote query
+// arguments): a log line must not outlive the account it is about. The
+// rethrown error reaches ApiExceptionFilter, which logs it against the request,
+// and operators find unfinished deletions by users.status = 'revoked'.
 @Injectable()
 export class AccountService {
-  private readonly logger = new Logger(AccountService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
     @Inject(ATTACHMENT_STORAGE_GATEWAY)
     private readonly storageGateway: AttachmentStorageGateway,
     private readonly retiredHandles: RetiredHandlesService,
+    private readonly logger: AppLoggerService,
   ) {}
 
   async deleteAccount(userId: string): Promise<{ deleted: true }> {
@@ -87,12 +95,16 @@ export class AccountService {
     // Phase 1, and a later retry of deleteAccount picks up wherever this
     // run stopped. Errors are collected per chunk so a single transient
     // failure doesn't mask the rest.
-    const phase2Errors: Array<{ label: string; error: Error }> = [];
+    const phase2Errors: Array<{ label: string; error: unknown }> = [];
     const tryStep = async (label: string, fn: () => Promise<{ count: number }>) => {
       try {
-        await this.runDelete(label, fn);
-      } catch (e) {
-        phase2Errors.push({ label, error: e as Error });
+        await fn();
+      } catch (error) {
+        this.logger.warn('account.delete.step_failed', {
+          step: label,
+          error: describeFailure(error),
+        });
+        phase2Errors.push({ label, error });
       }
     };
 
@@ -120,8 +132,12 @@ export class AccountService {
         where: { OR: [{ userId }, { contactUserId: userId }] },
       }),
     );
+    // Direct memberships stay until Phase 3, which needs them to find the
+    // user's direct conversations (see releaseDirectConversations).
     await tryStep('conversationMembers', () =>
-      this.prisma.conversationMember.deleteMany({ where: { userId } }),
+      this.prisma.conversationMember.deleteMany({
+        where: { userId, conversation: { type: { not: 'direct' } } },
+      }),
     );
 
     if (ownedConversationIds.length > 0) {
@@ -139,15 +155,20 @@ export class AccountService {
       // purge their data. Surface this loudly so an operator can retry —
       // every step is idempotent so re-running deleteAccount picks up
       // exactly where this attempt stopped.
-      this.logger.error(
-        `deleteAccount(${userId}): phase 2 failed on ${phase2Errors.length} step(s); user is locked but cleanup is incomplete. Safe to retry. First failure: ${phase2Errors[0].label}: ${phase2Errors[0].error.message}`,
-      );
-      throw phase2Errors[0].error;
+      const [first] = phase2Errors;
+      this.logger.error('account.delete.incomplete', {
+        failedSteps: phase2Errors.map((failure) => failure.label),
+        firstFailure: { step: first.label, error: describeFailure(first.error) },
+      });
+      throw first.error;
     }
 
     // Phase 3 (small tx): finish the metadata + the user/device rows
     // themselves. By now everything restricting them is gone. The handle is
-    // quarantined in the same transaction that frees it.
+    // quarantined in the same transaction that frees it. Direct conversations
+    // are released after the user row is deleted (see
+    // releaseDirectConversations); their memberships are read before, since
+    // deleting the user row cascades them.
     await this.prisma.$transaction(async (tx) => {
       if (deviceIds.length > 0) {
         await tx.deviceTransferSession.deleteMany({
@@ -158,6 +179,10 @@ export class AccountService {
       } else {
         await tx.deviceTransferSession.deleteMany({ where: { userId } });
       }
+      const directMemberships = await tx.conversationMember.findMany({
+        where: { userId, conversation: { type: 'direct' } },
+        select: { conversationId: true },
+      });
       await tx.user.update({
         where: { id: userId },
         data: { activeDeviceId: null },
@@ -165,9 +190,69 @@ export class AccountService {
       await tx.device.deleteMany({ where: { userId } });
       await this.retiredHandles.retire(tx, handle);
       await tx.user.delete({ where: { id: userId } });
+      await this.releaseDirectConversations(
+        tx,
+        userId,
+        directMemberships.map((membership) => membership.conversationId),
+      );
     });
 
     return { deleted: true };
+  }
+
+  // A direct conversation's dedupe key is its two members' ids
+  // (ConversationsService.createDirect), and nothing cascades it from the user
+  // row, so it would name the deleted account next to the peer forever. No one
+  // can open a direct conversation with a deleted account again, so the key
+  // has nothing left to dedupe: it is cleared, and a conversation this leaves
+  // with no members at all is deleted.
+  //
+  // The conversations come from the user's direct memberships, read before
+  // the user row was deleted, and from a search of the keys themselves. The
+  // key search catches a key whose membership is already gone (a deletion
+  // that failed under a release whose Phase 2 deleted direct memberships too).
+  // It runs after the user row is deleted so that it also catches a direct
+  // conversation opened concurrently by a createDirect that read the account
+  // as active before Phase 1: the foreign-key check of that conversation's
+  // membership insert holds a lock on the user row until it commits, so the
+  // delete waits for it, and the search that follows (a new snapshot under
+  // READ COMMITTED) sees it. A membership insert that comes after the delete
+  // fails its foreign-key check instead, so no later conversation can name
+  // the account. An id holds no '|', so `<id>|` at the start or `|<id>` at the
+  // end names this account and no other. No index serves the `|<id>` suffix,
+  // so this scans conversations once per account deletion.
+  private async releaseDirectConversations(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    viaMembership: string[],
+  ): Promise<void> {
+    const viaKey = await tx.conversation.findMany({
+      where: {
+        type: 'direct',
+        OR: [
+          { directKey: { startsWith: `${userId}|` } },
+          { directKey: { endsWith: `|${userId}` } },
+        ],
+      },
+      select: { id: true },
+    });
+    const conversationIds = [
+      ...new Set([...viaMembership, ...viaKey.map((conversation) => conversation.id)]),
+    ];
+    if (conversationIds.length === 0) {
+      return;
+    }
+    await tx.conversation.updateMany({
+      where: { id: { in: conversationIds } },
+      data: { directKey: null },
+    });
+    // Deleting the user row has already cascaded these on Postgres.
+    await tx.conversationMember.deleteMany({
+      where: { userId, conversationId: { in: conversationIds } },
+    });
+    await tx.conversation.deleteMany({
+      where: { id: { in: conversationIds }, members: { none: {} } },
+    });
   }
 
   // Best effort: a blob that fails to delete must not block the erasure of
@@ -190,22 +275,10 @@ export class AccountService {
       }
     }
     if (attachments.length > 0) {
-      this.logger.log(
-        `deleteAccount: deleted ${attachments.length - failed} of ${attachments.length} attachment blobs`,
-      );
-    }
-  }
-
-  private async runDelete(label: string, run: () => Promise<{ count: number }>): Promise<number> {
-    try {
-      const { count } = await run();
-      if (count > 0) {
-        this.logger.debug(`deleteAccount: ${label} removed ${count} rows`);
-      }
-      return count;
-    } catch (e) {
-      this.logger.warn(`deleteAccount: ${label} failed: ${(e as Error).message}`);
-      throw e;
+      this.logger.info('account.delete.blobs', {
+        deleted: attachments.length - failed,
+        total: attachments.length,
+      });
     }
   }
 }

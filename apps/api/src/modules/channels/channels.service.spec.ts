@@ -133,6 +133,47 @@ describe('ChannelsService', () => {
       );
     });
 
+    it('an unsubscribed member leaves no sync cursor or mute behind in that channel', async () => {
+      const { prisma, service, admin, subscriber, channelId, as } = channelFixture();
+      prisma.deviceConversationStates.push(
+        {
+          id: randomUUID(),
+          deviceId: subscriber.deviceId,
+          conversationId: channelId,
+          lastSyncedConversationOrder: 1,
+          lastReadConversationOrder: 1,
+        },
+        {
+          id: randomUUID(),
+          deviceId: admin.deviceId,
+          conversationId: channelId,
+          lastSyncedConversationOrder: 1,
+          lastReadConversationOrder: 1,
+        },
+      );
+      prisma.conversationMutes.push(
+        {
+          userId: subscriber.userId,
+          conversationId: channelId,
+          mutedUntil: null,
+          createdAt: new Date(),
+        },
+        {
+          userId: admin.userId,
+          conversationId: channelId,
+          mutedUntil: null,
+          createdAt: new Date(),
+        },
+      );
+
+      await service.unsubscribe(as(subscriber, 'subscriber'), channelId);
+
+      expect(prisma.deviceConversationStates.map((state) => state.deviceId)).toEqual([
+        admin.deviceId,
+      ]);
+      expect(prisma.conversationMutes.map((mute) => mute.userId)).toEqual([admin.userId]);
+    });
+
     it('the owner cannot unsubscribe', async () => {
       const { service, owner, channelId, as } = channelFixture();
 

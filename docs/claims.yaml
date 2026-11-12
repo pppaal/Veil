@@ -1,6 +1,8 @@
 # Claims-as-code ledger. Every privacy or security claim VEIL makes in public
-# copy (README, privacy policies, site/, store/, the security roadmap) is listed
-# here with the sentences that make it and the tests or CI gates that back it.
+# copy (README, privacy policies, site/, store/, the store listing drafts in
+# docs/launch/ and docs/app-store-listing-metadata.md, the security roadmap) is
+# listed here with the sentences that make it and the tests or CI gates that
+# back it.
 # scripts/claims-check.mjs fails CI when a claim loses its evidence, a quoted
 # sentence changes, or a source gains a claim sentence this ledger does not quote.
 #
@@ -75,6 +77,22 @@ claims:
         quote: "End-to-end encrypted messenger."
       - file: store/play/short-ko.txt
         quote: "종단간 암호화로 서버도 내 대화를 볼 수 없습니다."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number and no account."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; mention client-side block/report)."
+      - file: docs/launch/app-store-listing.md
+        quote: "End-to-end encrypted."
+      - file: docs/launch/app-store-listing.md
+        quote: "Veil is an end-to-end encrypted messenger built around a single idea: what you say on Veil never leaves your device in a form the server can read."
+      - file: docs/launch/app-store-listing.md
+        quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content — this is the honest rating even though we ship a reporting path)."
+      - file: docs/launch/play-store-listing.md
+        quote: "End-to-end encrypted messenger."
+      - file: docs/launch/play-store-listing.md
+        quote: "Veil is an end-to-end encrypted messenger."
+      - file: docs/launch/play-store-listing.md
+        quote: "End-to-end encrypted messages and attachments."
     evidence:
       - gate: scripts/crypto-test-vectors.mjs
       - gate: scripts/schema-privacy-check.mjs
@@ -121,6 +139,10 @@ claims:
         quote: "Unlike message content, these are stored in readable form."
       - file: site/index.html
         quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
+      - file: store/appstore/app-privacy-answers.md
+        quote: "The names, descriptions and labels are stored in readable form, and all of it is tied to the account."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Privacy Policy URL: https://… (required — must state no-plaintext-on-server, metadata retention windows, no third-party sharing)"
     evidence:
       - gate: scripts/schema-privacy-check.mjs
       - test: scripts/__tests__/schema-privacy-check.test.mjs
@@ -242,6 +264,24 @@ claims:
         quote: "\"복구 불가\"를 약점이 아닌 가치로 재정의."
       - file: store/play/screenshots/README.md
         quote: "06-no-recovery.png | 복구 불가. 그게 안전입니다"
+      - file: docs/app-store-listing-metadata.md
+        quote: "No backup."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Suggested shots: onboarding \"no recovery\" warning, a conversation, voice message, attachment preview, settings/theme."
+      - file: docs/launch/app-store-listing.md
+        quote: "No backup."
+      - file: docs/launch/play-store-listing.md
+        quote: "No backups, local or cloud."
+      - file: docs/launch/play-store-listing.md
+        quote: "No account recovery."
+      - file: store/appstore/app-review-notes.md
+        quote: "There is no password reset, no \"forgot account\" flow, no server-side backup of messages, and no administrator who can read or restore content."
+      - file: store/appstore/screenshot-spec.md
+        quote: "Do not imply backup or recovery — VEIL has none, and that is the product."
+      - file: store/appstore/screenshot-spec.md
+        quote: "Misleading \"restore/backup\" framing risks App Review rejection and contradicts the metadata."
+      - file: store/appstore/screenshot-spec.md
+        quote: "[ ] Device-transfer shot does not imply backup/recovery."
     evidence:
       - gate: scripts/policy-check.mjs
       - test: scripts/__tests__/policy-check.test.mjs
@@ -294,6 +334,8 @@ claims:
         quote: "End-to-end encryption: X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256."
       - file: store/appstore/app-review-notes.md
         quote: "Veil implements its own end-to-end encryption (a Double Ratchet over X25519, AES-256-GCM, Ed25519, and HKDF-SHA256)."
+      - file: docs/launch/app-store-listing.md
+        quote: "Veil uses end-to-end encryption with only standard, published algorithms (X25519, AES-256-GCM, Ed25519, HKDF-SHA256 — see docs/crypto-envelope-spec.md)."
     evidence:
       - gate: scripts/crypto-test-vectors.mjs
   - id: forward-secrecy-ratchet

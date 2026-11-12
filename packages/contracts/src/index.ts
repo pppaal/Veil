@@ -23,6 +23,7 @@ export type VeilErrorCode =
   | 'challenge_invalid'
   | 'device_not_active'
   | 'invalid_device_signature'
+  | 'signed_prekey_timestamp_out_of_window'
   | 'device_forbidden'
   | 'conversation_membership_required'
   | 'conversation_role_required'
@@ -90,6 +91,10 @@ export const ERROR_CATALOG: Readonly<Record<VeilErrorCode, number>> = Object.fre
   challenge_invalid: 401,
   device_not_active: 401,
   invalid_device_signature: 401,
+  // PUT /keys/signed-prekey: spkTs must lie in [server now - 1 h, server now
+  // + 10 min]. Clients stamp it from a clock corrected by the HTTP Date
+  // header, so on this code they refresh that offset and draw a successor.
+  signed_prekey_timestamp_out_of_window: 400,
   device_forbidden: 403,
   conversation_membership_required: 403,
   conversation_role_required: 403,
@@ -252,6 +257,21 @@ export interface KeysResponse {
   };
   /** Trusted, non-revoked devices, most recently trusted first. */
   devices: KeysDevice[];
+}
+
+// GET /keys/group/:conversationId: the key directory of a group, for one
+// Sender Keys distribution round. Only a current member of a group may read
+// it; anyone else gets group_not_found (404), whether or not the id exists.
+export interface GroupMemberKeysResponse {
+  conversationId: string;
+  /** The group's currentEpoch, read in the same snapshot as the members. */
+  epoch: number;
+  /**
+   * One entry per current member except the caller, devices chosen as in
+   * GET /keys/:handle. Nothing is claimed: every oneTimePrekey is null and no
+   * directory budget is spent. A member with no trusted device is left out.
+   */
+  members: KeysResponse[];
 }
 
 export interface RotateSignedPrekeyRequest {

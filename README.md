@@ -23,7 +23,7 @@ fails the build on any commit that introduces a recovery flow or table, an
 admin message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc
 console logging in mobile.
 
-Two more gates keep the rest of this README honest:
+Three more gates keep the rest of this README honest:
 
 - [`scripts/schema-privacy-check.mjs`](scripts/schema-privacy-check.mjs)
   requires a privacy annotation on every database field and publishes the
@@ -32,6 +32,12 @@ Two more gates keep the rest of this README honest:
   privacy or security claim in this README, the privacy policies, the site
   or the store listings is not in the [claims ledger](docs/claims.yaml) with
   the test or gate that backs it.
+- [`scripts/store-label-check.mjs`](scripts/store-label-check.mjs) fails CI
+  when the App Store and Google Play privacy answers
+  ([`store/appstore/app-privacy-answers.md`](store/appstore/app-privacy-answers.md),
+  [`store/play/data-safety-answers.md`](store/play/data-safety-answers.md))
+  leave out data the database stores, disagree with each other, or are
+  contradicted by any other document.
 
 ---
 

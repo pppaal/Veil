@@ -82,7 +82,6 @@ type GroupMemberEpochRecord = {
   conversationId: string;
   userId: string;
   joinedEpoch: number;
-  leftEpoch: number | null;
 };
 
 type CallRecordRecord = {
@@ -144,7 +143,13 @@ type DeviceConversationStateRecord = {
   conversationId: string;
   lastSyncedConversationOrder: number | null;
   lastReadConversationOrder: number | null;
-  updatedAt: Date;
+};
+
+type ConversationMuteRecord = {
+  userId: string;
+  conversationId: string;
+  mutedUntil: Date | null;
+  createdAt: Date;
 };
 
 type UserContactRecord = {
@@ -198,7 +203,12 @@ type ModelName =
   | 'groupMeta'
   | 'channelMeta'
   | 'groupMemberEpoch'
-  | 'callRecord';
+  | 'callRecord'
+  | 'userContact'
+  | 'deviceTransferSession'
+  | 'oneTimePrekey'
+  | 'deviceConversationState'
+  | 'conversationMute';
 
 type RelationRows = { model: ModelName; many: boolean; rows: Row[] };
 
@@ -247,6 +257,7 @@ export class FakePrismaService {
   messages: MessageRecord[] = [];
   messageReceipts: MessageReceiptRecord[] = [];
   deviceConversationStates: DeviceConversationStateRecord[] = [];
+  conversationMutes: ConversationMuteRecord[] = [];
   transferSessions: DeviceTransferSessionRecord[] = [];
   oneTimePrekeys: OneTimePrekeyRecord[] = [];
   retiredHandles: RetiredHandleRecord[] = [];
@@ -262,6 +273,11 @@ export class FakePrismaService {
       this.findRows('user', args).map((row) => this.project('user', row, args)),
     create: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
+    delete: async ({ where }: any) => {
+      const row = this.requireRow('user', where);
+      this.removeRows('user', [row]);
+      return { ...row };
+    },
   };
 
   device = {
@@ -275,6 +291,7 @@ export class FakePrismaService {
       for (const row of rows) this.applyData(row, data);
       return { count: rows.length };
     },
+    deleteMany: async ({ where }: any) => this.deleteWhere('device', where),
   };
 
   conversation = this.delegate('conversation', (data) => this.insertConversation(data));
@@ -290,7 +307,6 @@ export class FakePrismaService {
       conversationId: data.conversationId,
       userId: data.userId,
       joinedEpoch: data.joinedEpoch,
-      leftEpoch: data.leftEpoch ?? null,
     };
     this.groupMemberEpochs.push(record);
     return record;
@@ -322,13 +338,16 @@ export class FakePrismaService {
     deleteMany: async (_args: any) => ({ count: 0 }),
   };
 
-  conversationMute = {
-    findFirst: async (_args: any) => null,
-    findUnique: async (_args: any) => null,
-    findMany: async (_args: any) => [] as any[],
-    upsert: async (_args: any) => undefined as any,
-    delete: async (_args: any) => undefined as any,
-  };
+  conversationMute = this.delegate('conversationMute', (data) => {
+    const record: ConversationMuteRecord = {
+      userId: data.userId,
+      conversationId: data.conversationId,
+      mutedUntil: data.mutedUntil ?? null,
+      createdAt: new Date(),
+    };
+    this.conversationMutes.push(record);
+    return record;
+  });
 
   abuseReport = {
     create: async (_args: any) => undefined as any,
@@ -359,6 +378,11 @@ export class FakePrismaService {
   deviceConversationState = {
     findUnique: async (_args: any) => undefined as any,
     upsert: async (_args: any) => undefined as any,
+    deleteMany: async ({ where }: any) => this.deleteWhere('deviceConversationState', where),
+  };
+
+  oneTimePrekey = {
+    deleteMany: async ({ where }: any) => this.deleteWhere('oneTimePrekey', where),
   };
 
   retiredHandle = this.delegate('retiredHandle', (data) => {
@@ -378,6 +402,7 @@ export class FakePrismaService {
     findUnique: async (_args: any) => undefined as any,
     create: async (_args: any) => undefined as any,
     delete: async (_args: any) => undefined as any,
+    deleteMany: async ({ where }: any) => this.deleteWhere('userContact', where),
   };
 
   deviceTransferSession = {
@@ -386,6 +411,7 @@ export class FakePrismaService {
     findUnique: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
     updateMany: async (_args: any) => ({ count: 0 }),
+    deleteMany: async ({ where }: any) => this.deleteWhere('deviceTransferSession', where),
   };
 
   constructor() {
@@ -629,7 +655,7 @@ export class FakePrismaService {
       );
 
       if (record) {
-        Object.assign(record, update, { updatedAt: new Date() });
+        Object.assign(record, update);
         return record;
       }
 
@@ -639,7 +665,6 @@ export class FakePrismaService {
         conversationId: create.conversationId,
         lastSyncedConversationOrder: create.lastSyncedConversationOrder ?? null,
         lastReadConversationOrder: create.lastReadConversationOrder ?? null,
-        updatedAt: new Date(),
       };
       this.deviceConversationStates.push(createdRecord);
       return createdRecord;
@@ -873,6 +898,12 @@ export class FakePrismaService {
     return callback(this);
   }
 
+  private deleteWhere(model: ModelName, where: Row): { count: number } {
+    const rows = this.findRows(model, { where });
+    this.removeRows(model, rows);
+    return { count: rows.length };
+  }
+
   private delegate(model: ModelName, insert: (data: any) => Row) {
     const create = async ({ data, select, include }: any) =>
       this.project(model, insert(data), { select, include });
@@ -1082,6 +1113,16 @@ export class FakePrismaService {
         return this.groupMemberEpochs;
       case 'callRecord':
         return this.callRecords;
+      case 'userContact':
+        return this.userContacts;
+      case 'deviceTransferSession':
+        return this.transferSessions;
+      case 'oneTimePrekey':
+        return this.oneTimePrekeys;
+      case 'deviceConversationState':
+        return this.deviceConversationStates;
+      case 'conversationMute':
+        return this.conversationMutes;
     }
   }
 
@@ -1153,6 +1194,8 @@ export class FakePrismaService {
         return one('conversation', (c) => c.id === row.conversationId);
       case 'callRecord.initiatorDevice':
         return one('device', (d) => d.id === row.initiatorDeviceId);
+      case 'deviceConversationState.device':
+        return one('device', (d) => d.id === row.deviceId);
       default:
         return undefined;
     }
@@ -1243,6 +1286,10 @@ export class FakePrismaService {
           return value != null && value > operand;
         case 'gte':
           return value != null && value >= operand;
+        case 'startsWith':
+          return typeof value === 'string' && value.startsWith(operand as string);
+        case 'endsWith':
+          return typeof value === 'string' && value.endsWith(operand as string);
         default:
           throw new Error(`FakePrismaService: unsupported filter operator "${operator}"`);
       }

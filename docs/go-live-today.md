@@ -73,9 +73,13 @@ Output: `apps/mobile/build/app/outputs/bundle/release/app-release.aab`
 
 - **Privacy policy URL** → `https://pppaal.github.io/Veil/`
   (enable Pages first — see `docs/privacy-policy-hosting.md`).
-- **Data safety form** → mirror `store/appstore/app-privacy-answers.md`
-  (User ID + Device ID, "App functionality", no tracking, no ads, no
-  third-party analytics).
+- **Data safety form** → transcribe `store/play/data-safety-answers.md` row
+  for row. Data collected: User IDs, Device or other IDs (device ids and push
+  tokens), Contacts (the in-app contact list, conversation membership and call
+  records) and Other user-generated content (group and channel names and
+  descriptions and device labels), plus messages and attachments held only as
+  ciphertext; all "App functionality", not shared, no tracking, no ads, no
+  third-party analytics.
 - **Content rating** questionnaire → Communication category.
 - **App content** → target audience 14+, no ads.
 - Store listing text → paste from `store/play/*-ko.txt` and `*-en.txt`.

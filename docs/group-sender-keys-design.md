@@ -27,8 +27,10 @@ reviewer should look first.
    identity key**, which the recipient fetches from the directory — never
    from the blob. Blob AD binds `groupId || epoch || senderDeviceId ||
    recipientUserId`. Not forward-secret on its own; mitigated by the chain
-   key dying at the next epoch and the relay's 30-minute TTL. Reviewer
-   question #7. Since `veil-gkd-v2` the blob also carries signed freshness
+   key dying at the next epoch and the relay's 30-minute TTL. Production
+   Redis keeps no append-only log, so an expired blob is not left on disk;
+   only a snapshot of the keys alive when it was taken is (see
+   `metadata-retention.md`). Reviewer question #7. Since `veil-gkd-v2` the blob also carries signed freshness
    metadata; see "Distribution freshness" below.
 2. **Frame layout** (`veil-group-v1`, see "Wire shape"): the epoch and a
    64-byte Ed25519 signature travel *in the frame*, so a receiver can route
@@ -75,12 +77,27 @@ reviewer should look first.
    the server controls, is never used. Nor does the outer `messageKind`
    decide rendering: a frame with an unknown inner kind, and the placeholder
    for a frame that does not decrypt, both render as text.
+9. **The server does not decide the mode once a device has seen it.** The
+   `useSenderKeys` flag is set at creation and the server refuses to clear
+   it (`sender_keys_irreversible`), but a lying relay could still list the
+   group without it. A device therefore pins Sender Keys mode in its
+   keystore the first time the group is listed with it or a `veil-group-v1`
+   frame authenticates in it; from then on a listing without it is
+   overruled with a local notice, sends never reach the pairwise engine and
+   pairwise frames in the group are `downgrade_rejected`
+   (`crypto-envelope-spec.md`, version pinning). A device that has never
+   seen the group in Sender Keys mode still follows the listing.
+10. **One directory request per distribution round.**
+   `GET /v1/keys/group/:conversationId` returns every other member's
+   directory entry with the epoch they belong to, so a round no longer costs
+   one `GET /v1/keys/:handle` per member (see "Protocol additions").
 
 **Phase AB.1 (server-side epoch bookkeeping) has shipped.** The server now
-maintains `conversations.current_epoch`, records a per-member
-`group_member_epochs` window (`joined_epoch` / `left_epoch`), bumps the epoch
-on every join/leave/remove, and fans a `group.epoch.bumped` realtime event to
-the remaining members. No key material is involved — this is pure scaffolding
+maintains `conversations.current_epoch`, records the epoch at which each
+current member joined in `group_member_epochs` (`joined_epoch`; the row is
+deleted when the member leaves or is removed, so the table never lists former
+members), bumps the epoch on every join/leave/remove, and fans a
+`group.epoch.bumped` realtime event to the remaining members. No key material is involved — this is pure scaffolding
 that the client crypto (phases AB.3+) will consume once it lands. Clients that
 don't implement Sender Keys yet ignore the event, so the change is a no-op for
 the current shared-key behaviour.
@@ -355,13 +372,13 @@ CREATE TABLE group_member_epochs (
   group_id      UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
   user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   joined_epoch  BIGINT NOT NULL,
-  left_epoch    BIGINT,
   PRIMARY KEY (group_id, user_id)
 );
 ```
 
-`joined_epoch` records when a user is allowed to start decrypting.
-`left_epoch` is set on removal.
+`joined_epoch` records when a user is allowed to start decrypting. The row is
+deleted on leave or removal (migration 0019 dropped the never-read
+`left_epoch`), so only current members have one.
 
 ## Protocol additions
 
@@ -386,6 +403,16 @@ GET /v1/conversations/group/:id/key-distributions ✅ SHIPPED:
   the caller for the group's current epoch. Non-consuming; blobs
   disappear on TTL expiry or epoch bump, after which the recipient
   asks senders to redistribute.
+GET /v1/keys/group/:conversationId ✅ SHIPPED:
+  The key directory of the group for one distribution round:
+  { conversationId, epoch, members: KeysResponse[] }, one entry per
+  current member other than the caller, devices as GET /v1/keys/:handle
+  serves them. Members and epoch are read in one snapshot. Nothing is
+  claimed (oneTimePrekey is always null) and no directory budget is
+  spent, so a round costs one request instead of one handle lookup per
+  member, which the 10/min handle limit could not sustain. 20 requests
+  per minute per device; anything but a current member of a group gets
+  404 group_not_found.
 ```
 
 The key-distribution payload is itself a 1:1 ciphertext under the
@@ -398,8 +425,9 @@ material out of the durable messages table entirely.)
 
 Phase AB.1 — schema + epoch counter ✅ SHIPPED
   - migration 0013 adds conversations.current_epoch + group_member_epochs
-  - GroupsService bumps the epoch and updates the member's joined/left
-    window atomically on createGroup / addMember / removeMember / leaveGroup
+  - GroupsService bumps the epoch and records (on join) or deletes (on
+    leave) the member's epoch row atomically on createGroup / addMember /
+    removeMember / leaveGroup
   - server emits group.epoch.bumped to remaining members on churn (no-op
     clients ignore for now); the removed member is deliberately excluded
   - the inbound-message `group_epoch_stale` gate is intentionally deferred:

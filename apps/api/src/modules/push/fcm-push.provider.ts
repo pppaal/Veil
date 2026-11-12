@@ -87,8 +87,9 @@ export class FcmMetadataPushProvider implements PushProvider {
       body: JSON.stringify(request.body),
     });
     if (!response.ok) {
-      throw new Error(
-        `FCM delivery failed with status ${response.status}: ${await response.text()}`,
+      throw Object.assign(
+        new Error(`FCM delivery failed with status ${response.status}: ${await response.text()}`),
+        { code: `fcm_status_${response.status}` },
       );
     }
   }
@@ -123,8 +124,11 @@ export class FcmMetadataPushProvider implements PushProvider {
       }),
     });
     if (!response.ok) {
-      throw new Error(
-        `FCM token request failed with status ${response.status}: ${await response.text()}`,
+      throw Object.assign(
+        new Error(
+          `FCM token request failed with status ${response.status}: ${await response.text()}`,
+        ),
+        { code: `fcm_token_status_${response.status}` },
       );
     }
     const payload = (await response.json()) as {

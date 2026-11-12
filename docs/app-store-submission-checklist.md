@@ -43,7 +43,7 @@ cause a review rejection are already handled.
 | iOS distribution signing / provisioning | ☐ | Apple Developer account, distribution cert, App Store provisioning profile — operator step, not in repo |
 | App Store Connect record | ☐ | App name, subtitle, category, age rating, screenshots (6.7" + 5.5" iPhone) |
 | Encryption export **filing** | ☐ | Flag=true means Apple expects docs. File the annual US self-classification (and FR encryption declaration if distributing in France). The flag being declared avoids the review block; the *filing* is still an operator task |
-| Privacy "Nutrition Label" | ☐ | Complete in App Store Connect. VEIL collects no message content; be precise about device identifiers / diagnostics actually collected |
+| Privacy "Nutrition Label" | ☐ | Complete in App Store Connect by transcribing `store/appstore/app-privacy-answers.md` (Play: `store/play/data-safety-answers.md`). Declared collected: User ID, Device ID, Contacts (the in-app contact list) and Other User Content (readable group and channel names and descriptions, device labels and delivery metadata, linked; encrypted message payloads, not linked). Crash Data is declared not collected |
 | Real-device release QA | ☐ | `docs/production-deployment.md` §5: onboarding, chat, attachments, app lock (biometric/PIN), revoke, device transfer on physical iPhone |
 | Push (APNs) | ☐ | `VEIL_PUSH_PROVIDER=none` today. APNs key + push privacy review (`docs/push-privacy-review-checklist.md`) before background notifications work |
 

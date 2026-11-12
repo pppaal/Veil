@@ -10,6 +10,7 @@ import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 import { AppConfigService } from './common/config/app-config.service';
+import { corsOptions } from './common/config/cors-options';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { AppLoggerService } from './common/logger/app-logger.service';
 import { ActorRefGenerator } from './common/logger/request-redactor';
@@ -58,18 +59,6 @@ async function bootstrap(): Promise<void> {
   app.useBodyParser('json', { limit: '512kb' });
   const config = app.get(AppConfigService);
   config.assertProductionReady();
-  const corsOrigin = (
-    origin: string | undefined,
-    callback: (error: Error | null, allow?: boolean) => void,
-  ): void => {
-    if (config.isOriginAllowed(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error('CORS origin rejected'));
-  };
-
   app.use(
     helmet({
       contentSecurityPolicy: config.isProduction
@@ -86,10 +75,7 @@ async function bootstrap(): Promise<void> {
         : false,
     }),
   );
-  app.enableCors({
-    origin: corsOrigin,
-    credentials: false,
-  });
+  app.enableCors(corsOptions(config));
   // Only the X-Forwarded-For source needs Express to walk the proxy chain,
   // and then by exactly the configured number of hops; trusting it otherwise
   // would let any client pick its own req.ip.

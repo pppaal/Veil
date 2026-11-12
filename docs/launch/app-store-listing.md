@@ -19,7 +19,7 @@ Alternative (if name collision): **Veil Messenger**.
 
 ## Promotional text (170 chars, updatable without review)
 
-`End-to-end encrypted. No phone number. No cloud backup. No ads. Built for people who actually want their messages to stay private.`
+`End-to-end encrypted. No phone number. No backup. No ads. Built for people who actually want their messages to stay private.`
 
 ## Description
 
@@ -38,8 +38,6 @@ read.
   message that is hard-deleted the moment it's read.
 - **Safety, quietly.** Block, mute, or report without the other side
   seeing the block as a visible state.
-- **Signed backups.** Your local history can be sealed under a passphrase
-  you control. No cloud, no recovery you didn't consent to.
 
 Veil does not run ads, does not sell analytics, and does not offer account
 recovery. Losing your device is final by design — that's the privacy
@@ -62,26 +60,25 @@ honest rating even though we ship a reporting path).
 
 ## Privacy nutrition label
 
-### Data Not Collected
+Transcribe [`store/appstore/app-privacy-answers.md`](../../store/appstore/app-privacy-answers.md)
+into App Store Connect → App Privacy. That file is the only source of the
+answers; `scripts/store-label-check.mjs` fails CI when this page or any other
+document contradicts it. In short:
 
-This is the truth for Veil. Every category below maps to "Data Not
-Collected" in App Store Connect's privacy questionnaire, assuming the
-crash reporter is off or configured as "Not linked to identity."
-
-- Contact Info — not collected
-- Health & Fitness — not collected
-- Financial Info — not collected
-- Location — not collected
-- Sensitive Info — not collected
-- Contacts — not collected (no address-book sync by design)
-- User Content — encrypted on the user's device; the server never has
-  access to plaintext, therefore not "collected" per Apple's definition
-- Browsing History — not collected
-- Search History — not collected
-- Identifiers — **handle only**, no IDFA, no IDFV linked to identity
-- Purchases — not collected
-- Usage Data — not collected (no analytics SDK)
-- Diagnostics — crash logs only, not linked to identity, user-togglable
+- **Collected and linked to the user, for App Functionality only:** User ID
+  and Device ID (with the device's push token); Contacts (the in-app contact
+  list, a social graph; the phone's address book is never read); Other User
+  Content (group and channel names and descriptions and device labels, which
+  the server stores readable, and the metadata needed to deliver messages:
+  who is in which conversation, message and receipt times, call records).
+- **Collected and not linked:** Other User Content for the encrypted message
+  payloads, which the server cannot decrypt.
+- **Diagnostics:** Crash Data, Performance Data and Other Diagnostic Data are
+  declared as not collected. The crash log stays on the device and the app
+  ships no crash-reporting SDK; adding one changes the answers.
+- The remaining categories (Contact Info, Location, Financial Info, Health &
+  Fitness, Sensitive Info, Browsing History, Search History, Purchases, Usage
+  Data and the rest) are declared as not collected, as the answers file lists.
 
 ### Tracking
 
@@ -184,4 +181,5 @@ after launch: Japanese, Chinese (Traditional), German.
       feature behavior
 - [ ] Push entitlement only if push is actually wired to APNs for this
       build (otherwise reject-risk)
-- [ ] Crash reporter settings reviewed against privacy nutrition label
+- [ ] App Privacy answers transcribed from `store/appstore/app-privacy-answers.md`
+      (no crash-reporting SDK added since; adding one changes the answers)

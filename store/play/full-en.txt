@@ -29,11 +29,11 @@ single handle — anonymous, encrypted, and ad-free.
 ■ Who it's for
 • Anyone who needs a private messenger without exposing a phone number
 • Journalists, activists, and professionals who need a secure messenger for sensitive conversations
-• People who want a clean encrypted messenger with no ads and no data collection
+• People who want a clean encrypted messenger with no ads and minimal data collection
 
 ■ Privacy posture
 • No ads. No tracking. No third-party analytics.
-• Minimal data collection. The in-app consent screen lists every field.
+• Minimal data collection. The privacy policy says what is stored, and links the published list of every field the server stores.
 • Designed to meet Korea's PIPA requirements.
 • Open source — the code is public and auditable.
 

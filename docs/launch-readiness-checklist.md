@@ -146,7 +146,7 @@ macOS + Xcode 없이는 불가능. 계정/팀이 먼저 마련된 뒤 수행.
 
 - [x] **설명/키워드/URL** — 설명(EN+KO) 4000자 내, promo text 170자 내; 키워드 EN 69자/KO 36자(100자 한도 내); Support URL `https://veil.app/support`, Marketing URL `https://veil.app`, Privacy Policy URL `https://veil.app/privacy` 모두 양 언어 존재. (URL이 실제 라이브인지 사람이 확인.)
 
-- [x] **App Privacy 질문지 답변 초안** — `store/appstore/app-privacy-answers.md`에 data collection, 식별자(User ID, Device ID), user content(ciphertext), crash diagnostics, tracking=No, data-not-collected 목록 포함. (ASC UI 전사는 사람이.)
+- [x] **App Privacy 질문지 답변 초안** — `store/appstore/app-privacy-answers.md`에 data collection, 식별자(User ID, Device ID), Contacts(앱 안의 연락처 목록), user content(암호문, 연결 안 됨), Other User Content(그룹·채널 이름과 설명, 기기 이름, 전달 메타데이터, 계정에 연결됨), crash data 미수집, tracking=No, data-not-collected 목록 포함. Play Data safety 답변은 `store/play/data-safety-answers.md`. 다른 문서가 두 답변과 어긋나면 `scripts/store-label-check.mjs`가 CI를 실패시킵니다. (ASC/Play Console UI 전사는 사람이.)
 
 - [x] **handoff 머신러리** — `pnpm audit:handoff`(`scripts/audit-handoff-bundle.mjs`)가 dirty tree 거부, SHA/branch 핀, `pnpm beta:external:bundle` 실행, 15개 문서 + 4개 JSON 아티팩트 + 생성 README를 스테이징하고 tar로 패키징. 펌 shortlist(`docs/external-audit-firm-shortlist.md`), RFP 이메일, OTF 신청서, intake/remediation tracker 모두 작성됨.
 

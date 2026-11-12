@@ -96,8 +96,11 @@ export class ApnsMetadataPushProvider implements PushProvider {
           return;
         }
         reject(
-          new Error(
-            `APNs delivery failed with status ${statusCode}: ${responseBody || 'empty body'}`,
+          Object.assign(
+            new Error(
+              `APNs delivery failed with status ${statusCode}: ${responseBody || 'empty body'}`,
+            ),
+            { code: `apns_status_${statusCode}` },
           ),
         );
       });

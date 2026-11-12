@@ -1,8 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
-import type { KeyClaimMode, KeysResponse, RotateSignedPrekeyResponse } from '@veil/contracts';
+import { Prisma } from '@prisma/client';
+import type {
+  GroupMemberKeysResponse,
+  KeyClaimMode,
+  KeysResponse,
+  OneTimePrekeyUpload,
+  RotateSignedPrekeyResponse,
+} from '@veil/contracts';
+import { isUUID } from 'class-validator';
 
-import { badRequest, forbidden, notFound } from '../../common/errors/api-error';
+import { isActionAllowed } from '../../common/conversation-access/conversation-policy';
+import { apiError, badRequest, forbidden, notFound } from '../../common/errors/api-error';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
 import { DIRECTORY_BUDGETS, DirectoryBudget } from './directory-budget';
@@ -13,8 +22,43 @@ export const KEYS_CLOCK = Symbol('KEYS_CLOCK');
 export type Clock = () => number;
 
 // A signed prekey must be fresh when it is published: a replayed old bundle
-// or a pre-generated future one is rejected.
-const MAX_SIGNED_PREKEY_CLOCK_SKEW_MS = 10 * 60 * 1000;
+// or a pre-generated future one is rejected. Clients stamp spkTs from their
+// clock corrected by the HTTP Date header and may re-send an unpublished
+// bundle while it is under 30 minutes old, so the window reaches an hour back
+// and allows 10 minutes ahead for what correction leaves of the skew.
+const SIGNED_PREKEY_MAX_AGE_MS = 60 * 60 * 1000;
+const SIGNED_PREKEY_MAX_LEAD_MS = 10 * 60 * 1000;
+
+// The devices the directory serves for a user: trusted and not revoked, most
+// recently trusted first (pickActiveDevice relies on this order).
+const DIRECTORY_DEVICES = {
+  where: { isActive: true, revokedAt: null },
+  orderBy: [{ trustedAt: 'desc' }, { lastSeenAt: 'desc' }],
+} satisfies Prisma.DeviceFindManyArgs;
+
+interface DirectoryDevice {
+  id: string;
+  publicIdentityKey: string;
+  signedPrekeyBundle: string;
+}
+
+const directoryEntry = (
+  user: { id: string; handle: string },
+  devices: readonly DirectoryDevice[],
+  activeDeviceId: string,
+  claimed: ReadonlyMap<string, OneTimePrekeyUpload>,
+): KeysResponse => ({
+  user: { id: user.id, handle: user.handle, activeDeviceId },
+  devices: devices.map((device) => ({
+    deviceId: device.id,
+    identityPublicKey: device.publicIdentityKey,
+    signedPrekeyBundle: device.signedPrekeyBundle,
+    isActive: device.id === activeDeviceId,
+    oneTimePrekey: claimed.get(device.id) ?? null,
+  })),
+});
+
+const groupNotFound = () => apiError('group_not_found', 'Group not found');
 
 function claimTargets(mode: KeyClaimMode, deviceIds: string[], activeDeviceId: string): string[] {
   switch (mode) {
@@ -54,8 +98,8 @@ export class KeysService {
     }
 
     const devices = await this.prisma.device.findMany({
-      where: { userId: user.id, isActive: true, revokedAt: null },
-      orderBy: [{ trustedAt: 'desc' }, { lastSeenAt: 'desc' }],
+      where: { userId: user.id, ...DIRECTORY_DEVICES.where },
+      orderBy: DIRECTORY_DEVICES.orderBy,
       select: { id: true, publicIdentityKey: true, signedPrekeyBundle: true },
     });
     const activeDevice = pickActiveDevice(devices, user.activeDeviceId);
@@ -73,16 +117,61 @@ export class KeysService {
       ),
     );
 
-    return {
-      user: { id: user.id, handle: user.handle, activeDeviceId: activeDevice.id },
-      devices: devices.map((device) => ({
-        deviceId: device.id,
-        identityPublicKey: device.publicIdentityKey,
-        signedPrekeyBundle: device.signedPrekeyBundle,
-        isActive: device.id === activeDevice.id,
-        oneTimePrekey: claimed.get(device.id) ?? null,
-      })),
-    };
+    return directoryEntry(user, devices, activeDevice.id, claimed);
+  }
+
+  /**
+   * The directory entry of every other current member of a group the caller
+   * belongs to, so a Sender Keys distribution round costs one request instead
+   * of one GET /keys/:handle per member. Devices are chosen as in getKeys;
+   * nothing is claimed and no directory budget is spent, so oneTimePrekey is
+   * always null. Members and epoch come from one snapshot: a membership change
+   * bumps the epoch in the same transaction, so the list is exactly that
+   * epoch's membership. Anything but a current member of a group gets
+   * group_not_found, which does not tell whether the id exists.
+   */
+  async getGroupMemberKeys(
+    requester: DirectoryRequester,
+    conversationId: string,
+  ): Promise<GroupMemberKeysResponse> {
+    if (!isUUID(conversationId)) {
+      throw groupNotFound();
+    }
+    return this.prisma.$transaction(
+      async (tx) => {
+        const membership = await tx.conversationMember.findUnique({
+          where: { conversationId_userId: { conversationId, userId: requester.userId } },
+          select: { role: true, conversation: { select: { type: true, currentEpoch: true } } },
+        });
+        if (
+          membership?.conversation.type !== 'group' ||
+          !isActionAllowed('group', membership.role, 'readMembers')
+        ) {
+          throw groupNotFound();
+        }
+
+        const others = await tx.conversationMember.findMany({
+          where: { conversationId, userId: { not: requester.userId } },
+          orderBy: { joinedAt: 'asc' },
+          select: { user: { select: { id: true, handle: true, activeDeviceId: true } } },
+        });
+        const devices = await tx.device.findMany({
+          where: { userId: { in: others.map(({ user }) => user.id) }, ...DIRECTORY_DEVICES.where },
+          orderBy: DIRECTORY_DEVICES.orderBy,
+          select: { id: true, userId: true, publicIdentityKey: true, signedPrekeyBundle: true },
+        });
+
+        const members = others.flatMap(({ user }) => {
+          const userDevices = devices.filter((device) => device.userId === user.id);
+          const activeDevice = pickActiveDevice(userDevices, user.activeDeviceId);
+          return activeDevice
+            ? [directoryEntry(user, userDevices, activeDevice.id, new Map())]
+            : [];
+        });
+        return { conversationId, epoch: membership.conversation.currentEpoch, members };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 
   /**
@@ -128,10 +217,14 @@ export class KeysService {
         'Signed prekey bundle is not signed by the device identity key',
       );
     }
-    if (Math.abs(next.spkTs - this.clock()) > MAX_SIGNED_PREKEY_CLOCK_SKEW_MS) {
-      throw badRequest(
-        'validation_failed',
-        'Signed prekey timestamp is outside the accepted window',
+    const now = this.clock();
+    if (
+      next.spkTs < now - SIGNED_PREKEY_MAX_AGE_MS ||
+      next.spkTs > now + SIGNED_PREKEY_MAX_LEAD_MS
+    ) {
+      throw apiError(
+        'signed_prekey_timestamp_out_of_window',
+        'Signed prekey timestamp must be within the last hour and at most 10 minutes ahead of server time',
       );
     }
 

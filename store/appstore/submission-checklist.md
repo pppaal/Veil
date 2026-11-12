@@ -178,8 +178,11 @@ Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/m
 Transcribe `store/appstore/app-privacy-answers.md` into App Store Connect → **App Privacy**:
 
 - [ ] Data collected: **User ID** (linked, App Functionality, not tracking), **Device ID**
-      (linked, App Functionality, not tracking), **User Content / encrypted payloads**
-      (NOT linked — server holds only ciphertext, App Functionality, not tracking).
+      (linked, App Functionality, not tracking), **Contacts** (the in-app contact list,
+      a social graph: linked, App Functionality, not tracking), **User Content / encrypted
+      payloads** (NOT linked — server holds only ciphertext, App Functionality, not
+      tracking), **Other User Content** (group and channel names and descriptions, device
+      labels and delivery metadata: linked, App Functionality, not tracking).
       **Crash Data: not collected** (no crash-reporting SDK ships).
 - [ ] **Tracking: No.** Mark the long "Data Not Collected" list accordingly.
 

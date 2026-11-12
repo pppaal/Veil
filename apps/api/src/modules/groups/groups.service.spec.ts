@@ -95,8 +95,8 @@ describe('GroupsService', () => {
 
       expect(prisma.groupMemberEpochs).toEqual(
         expect.arrayContaining([
-          { conversationId: result.id, userId: alice.userId, joinedEpoch: 0, leftEpoch: null },
-          { conversationId: result.id, userId: bob.userId, joinedEpoch: 0, leftEpoch: null },
+          { conversationId: result.id, userId: alice.userId, joinedEpoch: 0 },
+          { conversationId: result.id, userId: bob.userId, joinedEpoch: 0 },
         ]),
       );
       expect(prisma.groupMemberEpochs).toHaveLength(2);
@@ -441,9 +441,9 @@ describe('GroupsService', () => {
     });
   });
 
-  // Every membership change bumps the conversation epoch, records the
-  // member's joined/left window, and fans group.epoch.bumped out to the
-  // current members.
+  // Every membership change bumps the conversation epoch, records when a
+  // current member joined (a departed member's row goes), and fans
+  // group.epoch.bumped out to the current members.
   describe('group epoch bumps', () => {
     const epochEvent = (gateway: GroupRealtimeGateway) =>
       gateway.emitted.filter((e) => e.event === 'group.epoch.bumped');
@@ -457,7 +457,7 @@ describe('GroupsService', () => {
 
       expect(prisma.conversations[0]?.currentEpoch).toBe(4);
       expect(prisma.groupMemberEpochs).toEqual([
-        { conversationId: groupId, userId: outsider.userId, joinedEpoch: 4, leftEpoch: null },
+        { conversationId: groupId, userId: outsider.userId, joinedEpoch: 4 },
       ]);
       expect(epochEvent(gateway)[0]?.payload).toEqual({
         conversationId: groupId,
@@ -467,20 +467,21 @@ describe('GroupsService', () => {
       });
     });
 
-    it('removeMember stamps leftEpoch and announces a leave to remaining members only', async () => {
+    it('removeMember deletes the member epoch row and announces a leave to remaining members only', async () => {
       const { service, prisma, gateway, owner, admin, member, groupId, auth } = groupFixture({
         currentEpoch: 6,
       });
-      prisma.groupMemberEpochs.push({
-        conversationId: groupId,
-        userId: member.userId,
-        joinedEpoch: 0,
-        leftEpoch: null,
-      });
+      prisma.groupMemberEpochs.push(
+        { conversationId: groupId, userId: member.userId, joinedEpoch: 0 },
+        { conversationId: groupId, userId: admin.userId, joinedEpoch: 0 },
+      );
 
       await service.removeMember(auth(admin), groupId, 'member');
 
-      expect(prisma.groupMemberEpochs[0]?.leftEpoch).toBe(7);
+      expect(prisma.conversations[0]?.currentEpoch).toBe(7);
+      expect(prisma.groupMemberEpochs).toEqual([
+        { conversationId: groupId, userId: admin.userId, joinedEpoch: 0 },
+      ]);
       const events = epochEvent(gateway);
       expect(events[0]?.payload).toEqual({
         conversationId: groupId,
@@ -489,6 +490,76 @@ describe('GroupsService', () => {
         userId: member.userId,
       });
       expect(events.map((e) => e.userId).sort()).toEqual([owner.userId, admin.userId].sort());
+    });
+
+    it('a departed member leaves no epoch row, sync cursor or mute behind in that group', async () => {
+      const { service, prisma, admin, member, groupId, auth } = groupFixture({ currentEpoch: 1 });
+      const memberSecondDevice = prisma.seedDevice(member.userId);
+      const otherGroupId = prisma.seedConversation('group', [member.userId]);
+      prisma.groupMemberEpochs.push(
+        { conversationId: groupId, userId: member.userId, joinedEpoch: 0 },
+        { conversationId: groupId, userId: admin.userId, joinedEpoch: 0 },
+        { conversationId: otherGroupId, userId: member.userId, joinedEpoch: 0 },
+      );
+      const cursor = (deviceId: string, conversationId: string) => ({
+        id: randomUUID(),
+        deviceId,
+        conversationId,
+        lastSyncedConversationOrder: 5,
+        lastReadConversationOrder: 4,
+      });
+      prisma.deviceConversationStates.push(
+        cursor(member.deviceId, groupId),
+        cursor(memberSecondDevice, groupId),
+        cursor(admin.deviceId, groupId),
+        cursor(member.deviceId, otherGroupId),
+      );
+      const mute = (userId: string, conversationId: string) => ({
+        userId,
+        conversationId,
+        mutedUntil: null,
+        createdAt: new Date(),
+      });
+      prisma.conversationMutes.push(
+        mute(member.userId, groupId),
+        mute(admin.userId, groupId),
+        mute(member.userId, otherGroupId),
+      );
+
+      await service.leaveGroup(auth(member), groupId);
+
+      const namesMemberInGroup = (row: {
+        conversationId: string;
+        userId?: string;
+        deviceId?: string;
+      }) =>
+        row.conversationId === groupId &&
+        (row.userId === member.userId ||
+          row.deviceId === member.deviceId ||
+          row.deviceId === memberSecondDevice);
+      expect(prisma.groupMemberEpochs.filter(namesMemberInGroup)).toEqual([]);
+      expect(prisma.deviceConversationStates.filter(namesMemberInGroup)).toEqual([]);
+      expect(prisma.conversationMutes.filter(namesMemberInGroup)).toEqual([]);
+      // Other members' rows, and the member's rows in other conversations, stay.
+      expect(prisma.groupMemberEpochs).toHaveLength(2);
+      expect(prisma.deviceConversationStates).toHaveLength(2);
+      expect(prisma.conversationMutes).toHaveLength(2);
+    });
+
+    it('a member who rejoins gets one fresh epoch row at the new epoch', async () => {
+      const { service, prisma, owner, member, groupId, auth } = groupFixture({ currentEpoch: 2 });
+      prisma.groupMemberEpochs.push({
+        conversationId: groupId,
+        userId: member.userId,
+        joinedEpoch: 0,
+      });
+
+      await service.leaveGroup(auth(member), groupId);
+      await service.addMember(auth(owner), groupId, { handle: 'member' });
+
+      expect(prisma.groupMemberEpochs).toEqual([
+        { conversationId: groupId, userId: member.userId, joinedEpoch: 4 },
+      ]);
     });
 
     it('leaveGroup bumps the epoch and announces a leave', async () => {

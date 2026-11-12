@@ -1,5 +1,18 @@
 import { createHmac } from 'node:crypto';
 
+import { ConsoleLogger, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+
+import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { AppLoggerService } from '../../common/logger/app-logger.service';
+import { RetentionFakePrismaService } from '../../../test/support/fake-prisma-retention';
+import {
+  FakeAttachmentStorageGateway,
+  FakeRealtimeGateway,
+  FakeSafetyService,
+} from '../../../test/support/fake-services';
+import { ConversationsService } from '../conversations/conversations.service';
+import { CreateDirectConversationDto } from '../conversations/dto/create-direct-conversation.dto';
 import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { AccountService } from './account.service';
 
@@ -32,6 +45,11 @@ type StepName =
   | 'phase2.conversationMember.deleteMany'
   | 'phase2.conversation.deleteMany'
   | 'phase3.deviceTransferSession.deleteMany'
+  | 'phase3.conversationMember.findMany'
+  | 'phase3.conversation.findMany'
+  | 'phase3.conversation.updateMany'
+  | 'phase3.conversationMember.deleteMany'
+  | 'phase3.conversation.deleteMany'
   | 'phase3.user.update'
   | 'phase3.device.deleteMany'
   | 'phase3.retiredHandle.upsert'
@@ -45,8 +63,10 @@ function buildPrismaMock(opts?: {
   ownedGroupConversationIds?: string[];
   ownedChannelConversationIds?: string[];
   uploadedStorageKeys?: string[];
+  directConversationIds?: string[];
 }) {
   const order: StepName[] = [];
+  const directConversationIds = opts?.directConversationIds ?? [];
   const deviceIds = opts?.deviceIds ?? ['device-1'];
   const uploadedStorageKeys = opts?.uploadedStorageKeys ?? [];
   const ownedGroups = opts?.ownedGroupConversationIds ?? [];
@@ -73,6 +93,21 @@ function buildPrismaMock(opts?: {
       },
       deviceTransferSession: {
         deleteMany: jest.fn(record('phase3.deviceTransferSession.deleteMany')),
+      },
+      conversationMember: {
+        findMany: jest.fn(async () => {
+          order.push('phase3.conversationMember.findMany');
+          return directConversationIds.map((conversationId) => ({ conversationId }));
+        }),
+        deleteMany: jest.fn(record('phase3.conversationMember.deleteMany')),
+      },
+      conversation: {
+        findMany: jest.fn(async () => {
+          order.push('phase3.conversation.findMany');
+          return [];
+        }),
+        updateMany: jest.fn(record('phase3.conversation.updateMany')),
+        deleteMany: jest.fn(record('phase3.conversation.deleteMany')),
       },
       retiredHandle: {
         upsert: jest.fn((args: (typeof upserts)[number]) => {
@@ -138,7 +173,13 @@ function buildService(
     prismaMock as never,
     { retiredHandlePepper: PEPPER } as never,
   );
-  return new AccountService(prismaMock as never, realtimeGateway, storage as never, retiredHandles);
+  return new AccountService(
+    prismaMock as never,
+    realtimeGateway,
+    storage as never,
+    retiredHandles,
+    new AppLoggerService(),
+  );
 }
 
 const userId = 'user-victim';
@@ -195,7 +236,11 @@ describe('AccountService.deleteAccount', () => {
     const before = Date.now();
     await buildService(prisma).deleteAccount(userId);
 
-    expect(order.slice(-2)).toEqual(['phase3.retiredHandle.upsert', 'phase3.user.delete']);
+    const userDelete = order.indexOf('phase3.user.delete');
+    expect(order.slice(userDelete - 1, userDelete + 1)).toEqual([
+      'phase3.retiredHandle.upsert',
+      'phase3.user.delete',
+    ]);
     expect(upserts).toHaveLength(1);
     // Only the peppered digest is stored, never the handle itself.
     expect(upserts[0]!.where.handleHmac).toBe(
@@ -206,11 +251,35 @@ describe('AccountService.deleteAccount', () => {
     expect(Math.round(quarantineDays)).toBe(90);
   });
 
-  it('finishes by deleting the user row inside the final transaction', async () => {
+  it('deletes the user row inside the final transaction, then searches for direct keys naming it', async () => {
     const { prisma, order } = buildPrismaMock();
     await buildService(prisma).deleteAccount(userId);
-    expect(order[order.length - 1]).toBe('phase3.user.delete');
+    // The key search runs after the delete, which waits for any concurrent
+    // insert of a membership naming the user (see releaseDirectConversations).
+    expect(order.slice(order.indexOf('phase3.user.delete'))).toEqual([
+      'phase3.user.delete',
+      'phase3.conversation.findMany',
+    ]);
+    expect(order.indexOf('phase3.conversationMember.findMany')).toBeLessThan(
+      order.indexOf('phase3.user.delete'),
+    );
     expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+  });
+
+  it('releases the direct conversations found through memberships read before the user row was deleted', async () => {
+    const { prisma, order } = buildPrismaMock({ directConversationIds: ['direct-1'] });
+    await buildService(prisma).deleteAccount(userId);
+    expect(order.slice(order.indexOf('phase3.conversationMember.findMany'))).toEqual([
+      'phase3.conversationMember.findMany',
+      'phase3.user.update',
+      'phase3.device.deleteMany',
+      'phase3.retiredHandle.upsert',
+      'phase3.user.delete',
+      'phase3.conversation.findMany',
+      'phase3.conversation.updateMany',
+      'phase3.conversationMember.deleteMany',
+      'phase3.conversation.deleteMany',
+    ]);
   });
 
   it('deleteAccount calls deleteObject for every uploaded key', async () => {
@@ -251,6 +320,168 @@ describe('AccountService.deleteAccount', () => {
     await expect(buildService(prisma, storage).deleteAccount(userId)).resolves.toEqual({
       deleted: true,
     });
-    expect(order[order.length - 1]).toBe('phase3.user.delete');
+    expect(order.slice(order.indexOf('phase3.user.delete'))).toEqual([
+      'phase3.user.delete',
+      'phase3.conversation.findMany',
+    ]);
+  });
+});
+
+// Logs outlive the account, so a failed deletion must not write down whose it
+// was or the database's error text (Prisma messages can quote query
+// arguments). Captures everything any Nest logger writes during the call.
+describe('AccountService.deleteAccount logging', () => {
+  const victim = '7d3f2a10-1111-4222-8333-944455556666';
+  const device = 'aa11bb22-cccc-4ddd-8eee-666677778888';
+  let written: string[];
+
+  beforeEach(() => {
+    written = [];
+    const capture = (message: unknown) => {
+      written.push(String(message));
+    };
+    Logger.overrideLogger({
+      log: capture,
+      error: capture,
+      warn: capture,
+      debug: capture,
+      verbose: capture,
+      fatal: capture,
+    });
+  });
+
+  afterEach(() => {
+    Logger.overrideLogger(new ConsoleLogger());
+  });
+
+  it('logs the failed step, error class and Prisma code, never the user id, device id or error text', async () => {
+    const { prisma } = buildPrismaMock({ deviceIds: [device], uploadedStorageKeys: ['k/1'] });
+    const failure = new Prisma.PrismaClientKnownRequestError(
+      `Foreign key constraint violated: messages for user ${victim} device ${device}`,
+      { code: 'P2003', clientVersion: Prisma.prismaVersion.client },
+    );
+    prisma.message.deleteMany = jest.fn().mockRejectedValue(failure);
+
+    await expect(buildService(prisma).deleteAccount(victim)).rejects.toBe(failure);
+
+    const output = written.join('\n');
+    expect(output).not.toContain(victim);
+    expect(output).not.toContain(device);
+    expect(output).not.toContain('Foreign key constraint');
+    const events = written.map((line) => JSON.parse(line) as Record<string, unknown>);
+    const prismaError = { name: 'PrismaClientKnownRequestError', code: 'P2003' };
+    expect(events).toContainEqual({
+      level: 'warn',
+      event: 'account.delete.step_failed',
+      step: 'messages',
+      error: prismaError,
+    });
+    expect(events).toContainEqual({
+      level: 'error',
+      event: 'account.delete.incomplete',
+      failedSteps: ['messages'],
+      firstFailure: { step: 'messages', error: prismaError },
+    });
+  });
+});
+
+// The same deletion against stored rows, with direct conversations opened by
+// the real ConversationsService, so the key format is the one it writes.
+describe('AccountService.deleteAccount against stored rows', () => {
+  function setup() {
+    const prisma = new RetentionFakePrismaService();
+    const safety = new FakeSafetyService();
+    const conversations = new ConversationsService(
+      prisma as never,
+      new FakeRealtimeGateway() as never,
+      safety as never,
+      new ConversationAccessService(prisma as never, safety as never),
+    );
+    const account = new AccountService(
+      prisma as never,
+      { disconnectUser: () => 0 } as never,
+      new FakeAttachmentStorageGateway() as never,
+      new RetiredHandlesService(prisma as never, { retiredHandlePepper: PEPPER } as never),
+      new AppLoggerService(),
+    );
+    const addUser = async (handle: string) => {
+      const id = await prisma.addUser(handle);
+      await prisma.addDevice(id);
+      return id;
+    };
+    const openDirect = async (fromUserId: string, peerHandle: string) => {
+      const dto = new CreateDirectConversationDto();
+      dto.peerHandle = peerHandle;
+      return (await conversations.createDirect(fromUserId, dto)).conversation.id;
+    };
+    // Every stored row of every table the fake holds.
+    const storedRows = () =>
+      JSON.stringify(Object.values(prisma).filter((value) => Array.isArray(value)));
+    return { prisma, account, addUser, openDirect, storedRows };
+  }
+
+  it('leaves no stored row naming the deleted user, while the peers keep their conversations', async () => {
+    const { prisma, account, addUser, openDirect, storedRows } = setup();
+    const alice = await addUser('alice');
+    const bob = await addUser('bob');
+    const carol = await addUser('carol');
+    const withBob = await openDirect(alice, 'bob');
+    const withCarol = await openDirect(carol, 'alice');
+    expect(storedRows()).toContain(alice);
+
+    await account.deleteAccount(alice);
+
+    expect(storedRows()).not.toContain(alice);
+    expect(prisma.conversations.map((conversation) => conversation.id).sort()).toEqual(
+      [withBob, withCarol].sort(),
+    );
+    expect(
+      prisma.conversationMembers.map((member) => [member.conversationId, member.userId]).sort(),
+    ).toEqual(
+      [
+        [withBob, bob],
+        [withCarol, carol],
+      ].sort(),
+    );
+  });
+
+  it('releases a direct key that names the user after their direct membership is already gone', async () => {
+    const { prisma, account, addUser, openDirect, storedRows } = setup();
+    const alice = await addUser('alice');
+    const bob = await addUser('bob');
+    const carol = await addUser('carol');
+    const withBob = await openDirect(alice, 'bob');
+    const bobWithCarol = await openDirect(bob, 'carol');
+    // A deletion that failed under an earlier release: its Phase 2 deleted
+    // every membership of hers, direct ones included, and the retry has no
+    // membership left to find the conversation by.
+    prisma.conversationMembers = prisma.conversationMembers.filter(
+      (member) => member.userId !== alice,
+    );
+    expect(storedRows()).toContain(alice);
+
+    await account.deleteAccount(alice);
+
+    expect(storedRows()).not.toContain(alice);
+    // Only keys naming Alice are released.
+    expect(
+      prisma.conversations.map((conversation) => [conversation.id, conversation.directKey]),
+    ).toEqual([
+      [withBob, null],
+      [bobWithCarol, [bob, carol].sort().join('|')],
+    ]);
+  });
+
+  it('deletes a direct conversation once both of its members have deleted their accounts', async () => {
+    const { prisma, account, addUser, openDirect } = setup();
+    const alice = await addUser('alice');
+    const bob = await addUser('bob');
+    await openDirect(alice, 'bob');
+
+    await account.deleteAccount(alice);
+    await account.deleteAccount(bob);
+
+    expect(prisma.conversations).toEqual([]);
+    expect(prisma.conversationMembers).toEqual([]);
   });
 });

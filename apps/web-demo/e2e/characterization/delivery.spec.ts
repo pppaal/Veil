@@ -66,18 +66,18 @@ test.describe('a send the relay does not take at once', () => {
       textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     }, 'sent as the tab died');
     await expect.poll(() => stalled.length).toBe(1);
-    // The tab is gone with the request in flight: frozen, no code of it runs
-    // again (a closed page could still run the request's failure handler).
+    // The tab is closed with the request in flight. Closing releases what
+    // the tab held, as a dead tab does; freezing it instead (an earlier
+    // version of this test) could leave one of its IndexedDB transactions
+    // open forever and stall the next page behind it.
     const dead = alice.page;
-    const devtools = await alice.context.newCDPSession(dead);
-    await devtools.send('Page.setWebLifecycleState', { state: 'frozen' });
+    await dead.close({ runBeforeUnload: false });
 
     await reopen(alice);
     await expect(alice.page.locator('#app')).toBeVisible();
     await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 })
       .toEqual(['first', 'refused, then retried', 'sent as the tab died']);
     expect(stalled).toHaveLength(1);
-    await dead.close();
     expectNoErrors(alice, bob);
   });
 });

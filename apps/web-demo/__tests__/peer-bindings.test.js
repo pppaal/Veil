@@ -4,8 +4,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { boundConversation, createConversationVerifier, createPeerBindings } from '../src/domain/peer-bindings.js';
+import { boundConversation, createConversationVerifier, createPeerBindings, HoldReason } from '../src/domain/peer-bindings.js';
 import { createMemoryKv } from '../src/platform/kv.js';
+import { BOB_LOOKALIKES } from './support/lookalikes.js';
 
 const ALICE = { userId: 'u-alice', handle: 'alice' };
 const BOB = { userId: 'u-bob', handle: 'bob' };
@@ -94,6 +95,46 @@ describe('peer bindings', () => {
     expect(await verifyIdentity({ conversationId: 'c-new', remoteDeviceId: 'd-mallory', identityKey: key })).toBe(true);
   });
 
+  // A hostile relay lists another account under a lookalike of a handle
+  // this device knows: it renders as 'bob' but equals none, so only the
+  // handle grammar tells.
+  for (const [what, lookalike] of Object.entries({ ...BOB_LOOKALIKES, 'a capital B': 'Bob' })) {
+    it(`hold a handle no honest server issues (bob with ${what}), until that conversation is bound`, async () => {
+      const bindings = createPeerBindings(createMemoryKv('conversationId'));
+      await bindings.load();
+      const listed = { userId: 'u-mallory', handle: lookalike };
+      // Held on a device that knows no one, too.
+      expect(bindings.hold('c-new', listed)).toEqual({ reason: HoldReason.UNISSUED_HANDLE });
+      await bindings.bind('c-bob', BOB);
+      expect(bindings.hold('c-new', listed)).toEqual({ reason: HoldReason.UNISSUED_HANDLE });
+
+      const trust = { admit: vi.fn(async () => true) };
+      const verifyIdentity = createConversationVerifier({ bindings, trust, peerOf: (id) => bindings.get(id) ?? listed });
+      expect(await verifyIdentity({ conversationId: 'c-new', remoteDeviceId: 'd-mallory', identityKey: key })).toBe(false);
+      expect(trust.admit).not.toHaveBeenCalled();
+      expect(bindings.get('c-new')).toBeNull();
+
+      // Acknowledged (bound), it is kept as it is.
+      await bindings.bind('c-new', listed);
+      expect(bindings.hold('c-new', listed)).toBeNull();
+      expect(await verifyIdentity({ conversationId: 'c-new', remoteDeviceId: 'd-mallory', identityKey: key })).toBe(true);
+    });
+  }
+
+  it('hold an issued handle only when it is known under another account', async () => {
+    const bindings = createPeerBindings(createMemoryKv('conversationId'));
+    await bindings.load();
+    await bindings.bind('c-bob', BOB);
+    expect(bindings.hold('c-new', { userId: 'u-mallory', handle: 'bob' })).toEqual({ reason: HoldReason.OTHER_ACCOUNT, binding: BOB });
+    expect(bindings.hold('c-new', BOB)).toBeNull();
+    expect(bindings.hold('c-new', MALLORY)).toBeNull();
+    expect(bindings.hold('c-new', { userId: 'u-veil', handle: 'veil.operator' })).toBeNull();
+    // A bound conversation keeps its peer whatever it is listed under.
+    expect(bindings.hold('c-bob', { userId: 'u-mallory', handle: 'bob​' })).toBeNull();
+    // No peer (a group): nothing to hold.
+    expect(bindings.hold('g-1', null)).toBeNull();
+  });
+
   it('bind the listed sessions that predate them, each looked at once', async () => {
     const bindings = createPeerBindings(createMemoryKv('conversationId'));
     await bindings.load();
@@ -109,6 +150,16 @@ describe('peer bindings', () => {
     await bindings.bindSessions(listed, { selfUserId: 'u-alice', hasSession });
     expect(hasSession.mock.calls.map(([id]) => id)).toEqual(['c-1', 'c-2']);
     expect(bindings.get('c-2')).toBeNull();
+  });
+
+  it('leave a session listed under a handle no honest server issues unbound, and so held', async () => {
+    const bindings = createPeerBindings(createMemoryKv('conversationId'));
+    await bindings.load();
+    const lookalike = { userId: 'u-mallory', handle: BOB_LOOKALIKES['a zero-width space'] };
+    const listed = [{ id: 'c-1', type: 'direct', members: [ALICE, lookalike] }];
+    await bindings.bindSessions(listed, { selfUserId: 'u-alice', hasSession: async () => true });
+    expect(bindings.get('c-1')).toBeNull();
+    expect(bindings.hold('c-1', lookalike)).toEqual({ reason: HoldReason.UNISSUED_HANDLE });
   });
 });
 

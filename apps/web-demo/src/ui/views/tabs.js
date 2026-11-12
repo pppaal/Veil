@@ -3,6 +3,7 @@
 // a chat.
 
 import { shownPeer } from '../../domain/conversations.js';
+import { shownHandle } from '../../domain/handles.js';
 import { $, el } from '../dom.js';
 import { toast } from '../toast.js';
 
@@ -76,8 +77,8 @@ export function createTabs({ store, history }) {
         activate(convId);
         store.notify('sidebar', 'tabs', 'panels');
       },
-      title: peer?.handle ? '@' + peer.handle : '대화',
-    }, [el('span', {}, ['@' + (peer?.handle ?? '?')]), closeButton]);
+      title: peer?.handle ? '@' + shownHandle(peer.handle) : '대화',
+    }, [el('span', {}, ['@' + shownHandle(peer?.handle)]), closeButton]);
   }
 
   return {

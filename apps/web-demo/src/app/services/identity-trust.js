@@ -28,14 +28,15 @@ export function createIdentityTrust({ store, stack, messages }) {
     pendingChange: (userId) => trust.pendingChange(userId),
 
     // A direct conversation not bound to its peer yet, listed under a handle
-    // this device knows under another account (src/domain/peer-bindings.js
-    // handleConflict), admits nothing until the user says it is a different
-    // account and wants to talk to it: then the conversation is bound to it,
-    // and what it sent is opened again, as a first contact. Resolves to
-    // false when there was no such conflict to settle.
+    // this device knows under another account or under one no honest
+    // server issues (src/domain/peer-bindings.js hold), admits nothing until
+    // the user says it is a different account and wants to talk to it: then
+    // the conversation is bound to it, and what it sent is opened again, as
+    // a first contact. Resolves to false when there was no such hold to
+    // settle.
     async acknowledgeAccount(convId) {
       const peer = stack.peerOf(convId);
-      if (!peer || !stack.bindings.handleConflict(convId, peer)) return false;
+      if (!peer || !stack.bindings.hold(convId, peer)) return false;
       await stack.bindings.bind(convId, peer);
       await reopenLockedMessages(peer.userId);
       return true;

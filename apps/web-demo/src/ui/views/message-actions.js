@@ -3,6 +3,7 @@
 // and block and report for a peer's message in a direct conversation. A
 // deleted text can be put back in the composer for a few seconds.
 
+import { shownHandle } from '../../domain/handles.js';
 import { isTextKind } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { senderToReport } from '../../features/report.js';
@@ -137,12 +138,12 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
 
   async function block(peer) {
     const ok = await confirm({
-      title: '@' + peer.handle + ' 차단',
+      title: '@' + shownHandle(peer.handle) + ' 차단',
       body: '이 사용자가 보낸 메시지가 더 이상 도착하지 않고, 이 사용자가 보낸 새 채팅도 시작할 수 없게 됩니다. 언제든지 설정에서 해제할 수 있어요.',
       okLabel: '차단',
       destructive: true,
     });
-    if (ok) await safety.block(peer.userId, peer.handle);
+    if (ok) await safety.block(peer.userId, shownHandle(peer.handle));
   }
 
   // The message a row in a conversation panel shows, with its conversation.

@@ -4,6 +4,7 @@
 
 import { MESSAGE_MAX_CHARS } from '../../domain/composer-text.js';
 import { snippetOf } from '../../domain/conversations.js';
+import { shownHandle } from '../../domain/handles.js';
 import { sanitizeFilename } from '../../domain/sanitize.js';
 import { el } from '../dom.js';
 import { toast } from '../toast.js';
@@ -93,7 +94,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     return el('div', { class: 'reply-banner' }, [
       el('span', { class: 'reply-banner-icon' }, ['↩']),
       el('div', { class: 'reply-banner-body' }, [
-        el('div', { class: 'reply-banner-meta' }, ['답장: @' + (draft.sender ?? peerHandle ?? '?')]),
+        el('div', { class: 'reply-banner-meta' }, ['답장: @' + shownHandle(draft.sender ?? peerHandle)]),
         el('div', { class: 'reply-banner-snippet' }, [draft.snippet]),
       ]),
       el('button', {

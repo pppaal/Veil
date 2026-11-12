@@ -2,6 +2,7 @@
 // the API's reasons, and only that reason and the ids are sent.
 
 import { t } from '../../../i18n/i18n.js';
+import { shownHandle } from '../../domain/handles.js';
 import { REPORT_REASONS } from '../../features/report.js';
 import { trapFocus } from '../confirm.js';
 import { $, el } from '../dom.js';
@@ -39,7 +40,7 @@ export function createReportDialog({ safety, dialogs }) {
       });
       backdrop = el('div', { class: 'dialog-backdrop hidden', id: DIALOG_ID, role: 'presentation' }, [
         el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'report-title', style: 'width:380px;max-width:92vw' }, [
-          el('div', { class: 'dialog-title', id: 'report-title' }, [t('report.title', { handle: sender.handle })]),
+          el('div', { class: 'dialog-title', id: 'report-title' }, [t('report.title', { handle: shownHandle(sender.handle) })]),
           el('div', { class: 'dialog-sub' }, [t('report.explain')]),
           el('div', { role: 'radiogroup', 'aria-labelledby': 'report-title' }, choices),
           el('div', { class: 'dialog-actions' }, [el('button', { class: 'btn btn-ghost', onclick: close }, [t('common.cancel')]), submit]),

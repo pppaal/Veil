@@ -121,6 +121,11 @@
   "accountConflict.failed": "Could not save your choice: {error}",
   "accountConflict.composerFrozen": "A different account under a name you know: review it above",
   "accountConflict.sidebar": "⚠️ different account, same name",
+  "unissuedHandle.banner": "@{handle} is not a name VEIL gives out: no account can have a name with an invisible character, a letter from another alphabet, a capital letter or a space in it. It may be someone posing as a contact you know: nothing is opened or sent here until you choose to talk to this account.",
+  "unissuedHandle.confirmTitle": "Talk to @{handle}?",
+  "unissuedHandle.confirmBody": "No VEIL account can have this name: the list this device received was altered to show it, perhaps to look like someone you know. Continue only if you confirmed with them another way (in person, a call) that this account is theirs.",
+  "unissuedHandle.composerFrozen": "A name VEIL never gives out: review it above",
+  "unissuedHandle.sidebar": "⚠️ a name VEIL never gives out",
   "safety.verifiedBadge": "✓ verified",
   "safety.verifiedBadgeTitle": "You compared this chat's safety number"
 }

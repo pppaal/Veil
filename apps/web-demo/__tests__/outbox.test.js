@@ -21,10 +21,13 @@ import { conversation, serverMessage } from './support/messaging.js';
 async function aliceApp() {
   const { alice, bob } = await conversation();
   const outbound = createMemoryKv('clientMessageId');
-  const relay = { refusals: [], posts: [], stored: [] };
+  // gates: promises a POST waits on, in order, before it is answered.
+  const relay = { refusals: [], posts: [], stored: [], gates: [] };
   const authedApi = async (path, { method, body }) => {
     expect([path, method]).toEqual(['/messages', 'POST']);
     relay.posts.push(body.clientMessageId);
+    const gate = relay.gates.shift();
+    if (gate) await gate;
     const status = relay.refusals.shift();
     if (status) throw Object.assign(new Error(`refused with ${status}`), { status });
     const message = serverMessage(body.envelope, { clientMessageId: body.clientMessageId });
@@ -72,6 +75,37 @@ async function expectDelivered(app, text) {
   expect((await app.bob.secure.open(app.relay.stored.at(-1))).content.text).toBe(text);
   expect(await app.outbound.all()).toEqual([]);
 }
+
+describe('a send in flight', () => {
+  beforeEach(() => vi.stubGlobal('BroadcastChannel', undefined));
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  // Its queue entry is due again a short while after the POST went out, so
+  // that a page closed meanwhile has it sent from the next one; a drain in
+  // this tab meanwhile does not send it a second time.
+  it('is not posted again by a drain in the same tab, however long it takes', async () => {
+    const app = await aliceApp();
+    let answer;
+    app.relay.gates.push(new Promise((resolve) => (answer = resolve)));
+    const sending = app.send.sendContent(app.conv, textContent('slow network'));
+    await vi.waitFor(() => expect(app.relay.posts).toHaveLength(1));
+    const [entry] = await app.outbound.all();
+    const later = entry.nextRetryAt + 60_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+
+    await app.outbox.drain();
+    expect(app.relay.posts).toHaveLength(1);
+    expect(await app.outbound.all()).toHaveLength(1);
+
+    answer();
+    await sending;
+    await expectDelivered(app, 'slow network');
+    expect(app.relay.posts).toHaveLength(1);
+  });
+});
 
 describe('retrying a refused send', () => {
   // No BroadcastChannel: this tab drains the queue on its own.

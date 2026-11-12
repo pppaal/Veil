@@ -18,9 +18,11 @@ import {
 } from '../src/crypto/pins.js';
 import { claimedOneTimePrekey } from '../src/crypto/prekeys.js';
 import { textContent } from '../src/domain/content.js';
+import { HoldReason } from '../src/domain/peer-bindings.js';
 import { IDENTITY_REFUSED, PeerKeyChangedError } from '../src/features/secure-messaging.js';
 import { createMemoryKv } from '../src/platform/kv.js';
 import { CONVERSATION } from './support/devices.js';
+import { BOB_LOOKALIKES } from './support/lookalikes.js';
 import { conversation, createEndpoint, directoryEntryOf, serverMessage } from './support/messaging.js';
 
 const OTHER_CONVERSATION = '0d4c1a2b-3d4e-4f50-8a9b-0c1d2e3f4a5c';
@@ -853,4 +855,53 @@ describe('a direct conversation bound to its peer', () => {
     directory.set('bob', directoryEntryOf(bob));
     expect((await sendText(alice, bob, 'still bob')).opened.content.text).toBe('still bob');
   });
+
+  // The same relay lists the new conversation under a lookalike of Bob's
+  // handle: it renders as 'bob' and equals no handle Alice knows, but no
+  // honest server issues it (src/domain/handles.js). It gets nothing
+  // pinned, opened or sealed until the user says it is a different account,
+  // on a device that knows Bob and on one that knows no one alike.
+  const lookalikeCases = [
+    ...Object.entries(BOB_LOOKALIKES).map(([what, handle]) => ({ what, handle, knowsBob: true })),
+    { what: 'a zero-width space, Bob unknown', handle: BOB_LOOKALIKES['a zero-width space'], knowsBob: false },
+  ];
+  for (const { what, handle, knowsBob } of lookalikeCases) {
+    it(`a new conversation under a lookalike of a known handle is held until the user acknowledges it (bob with ${what})`, async () => {
+      const { alice, bob, directory } = await conversation();
+      if (knowsBob) {
+        await sendText(alice, bob, 'hello bob');
+        await verifyShownKey(alice);
+      }
+      const mallory = await createEndpoint({ userId: 'u-mallory', deviceId: 'd-mallory', handle: 'mallory', directory });
+      alice.peers.set(OTHER_CONVERSATION, { userId: 'u-mallory', handle });
+      mallory.peers.set(OTHER_CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+      // The relay answers lookups for the lookalike with Mallory's keys.
+      directory.set(handle, directoryEntryOf(mallory));
+      expect(alice.bindings.hold(OTHER_CONVERSATION, alice.peerOf(OTHER_CONVERSATION)))
+        .toEqual({ reason: HoldReason.UNISSUED_HANDLE });
+
+      const fromMallory = await sendText(mallory, alice, 'bob here, new phone, send the code', OTHER_CONVERSATION);
+      expect(fromMallory.opened).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+      await expect(alice.secure.seal(OTHER_CONVERSATION, textContent('the code'), { clientMessageId: 'code' }))
+        .rejects.toBeInstanceOf(PeerKeyChangedError);
+      expect(await createPinStore(alice.pinKv).pinsFor('u-mallory')).toEqual([]);
+      expect(alice.trust.pendingChange('u-mallory')).toBeNull();
+      expect(alice.bindings.get(OTHER_CONVERSATION)).toBeNull();
+      expect(await alice.device.cipher.hasSession(OTHER_CONVERSATION)).toBe(false);
+      // The same after a reload.
+      await alice.restart();
+      expect(await alice.secure.open(fromMallory.message)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+      expect(await createPinStore(alice.pinKv).pinsFor('u-mallory')).toEqual([]);
+
+      // Acknowledged as another account, it is a first contact like any
+      // other, and the conversation with Bob is untouched.
+      await alice.bindings.bind(OTHER_CONVERSATION, alice.peerOf(OTHER_CONVERSATION));
+      expect((await alice.secure.open(fromMallory.message)).content.text).toBe('bob here, new phone, send the code');
+      expect((await createPinStore(alice.pinKv).pinsFor('u-mallory')).map((pin) => pin.deviceId)).toEqual(['d-mallory']);
+      if (knowsBob) {
+        expect(alice.bindings.get(CONVERSATION)).toEqual({ userId: 'u-bob', handle: 'bob' });
+        expect((await sendText(alice, bob, 'still bob')).opened.content.text).toBe('still bob');
+      }
+    });
+  }
 });

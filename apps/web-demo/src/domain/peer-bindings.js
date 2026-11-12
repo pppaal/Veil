@@ -15,14 +15,25 @@
 // (boundConversation).
 //
 // A binding also ties a handle to the account it was bound with. The user
-// sees handles, never user ids, so a conversation that is not bound yet and
-// lists a handle this device knows under another account is held
-// (handleConflict) until the user says it is a different account; until
-// then nothing is pinned, installed or sealed for it.
+// sees handles, never user ids, so a conversation that is not bound yet is
+// held (hold) while its listed handle is one this device knows under
+// another account (handleConflict), or one no honest server issues
+// (src/domain/handles.js): a lookalike of a known handle, with an invisible
+// or a non-Latin character in it, matches none of them. Until the user says
+// it is a different account, nothing is pinned, installed or sealed for it.
 //
 // kv: src/platform/kv.js over 'direct-peers' ({ conversationId, userId, handle }).
 
 import { directPeer } from './conversations.js';
+import { isIssuableHandle } from './handles.js';
+
+// Why a conversation that is not bound yet is held.
+export const HoldReason = Object.freeze({
+  // Listed under a handle this device knows under another account.
+  OTHER_ACCOUNT: 'other-account',
+  // Listed under a handle no honest server issues.
+  UNISSUED_HANDLE: 'unissued-handle',
+});
 
 const sameHandle = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 
@@ -63,6 +74,23 @@ export function createPeerBindings(kv) {
     }
   }
 
+  function handleConflict(conversationId, peer) {
+    if (!peer?.handle || bound.has(conversationId)) return null;
+    for (const binding of bound.values()) {
+      if (sameHandle(binding.handle, peer.handle) && binding.userId !== peer.userId) return { ...binding };
+    }
+    return null;
+  }
+
+  // An unissued handle is held whatever this device knows: none it bound
+  // can equal it, yet it may render as one of them.
+  function hold(conversationId, peer) {
+    if (!peer || bound.has(conversationId)) return null;
+    if (!isIssuableHandle(peer.handle)) return { reason: HoldReason.UNISSUED_HANDLE };
+    const binding = handleConflict(conversationId, peer);
+    return binding ? { reason: HoldReason.OTHER_ACCOUNT, binding } : null;
+  }
+
   return {
     load,
     // Resolves once the stored bindings are read, reading them again after
@@ -82,25 +110,27 @@ export function createPeerBindings(kv) {
     // The binding of another conversation under this peer's handle but
     // another account, while this conversation is not bound itself; null
     // otherwise.
-    handleConflict(conversationId, peer) {
-      if (!peer?.handle || bound.has(conversationId)) return null;
-      for (const binding of bound.values()) {
-        if (sameHandle(binding.handle, peer.handle) && binding.userId !== peer.userId) return { ...binding };
-      }
-      return null;
-    },
+    handleConflict,
+
+    // Why the conversation admits nothing until the user chooses to talk to
+    // the account it is listed with, while it is not bound:
+    // { reason: HoldReason.UNISSUED_HANDLE } for a handle no honest server
+    // issues, { reason: HoldReason.OTHER_ACCOUNT, binding } for one this
+    // device knows under another account; null otherwise.
+    hold,
 
     // Binds the listed direct conversations that already hold a session,
     // each checked once per sign-in: sessions started before bindings
     // existed are bound to the peer they are listed with now, before a
-    // later listing can name someone else. hasSession(conversationId) ->
-    // boolean.
+    // later listing can name someone else. One listed under a handle no
+    // honest server issues is left unbound, and so held, for the user to
+    // settle. hasSession(conversationId) -> boolean.
     async bindSessions(conversations, { selfUserId, hasSession }) {
       if (!loaded) return;
       for (const conversation of conversations) {
         if (bound.has(conversation.id) || sessionChecked.has(conversation.id)) continue;
         const peer = directPeer(conversation, selfUserId);
-        if (!peer) continue;
+        if (!peer || !isIssuableHandle(peer.handle)) continue;
         sessionChecked.add(conversation.id);
         if (await hasSession(conversation.id)) await bind(conversation.id, peer);
       }
@@ -139,10 +169,10 @@ export function boundConversation(conversation, binding, self) {
 // (src/crypto/session-cipher.js verifyIdentity), about the conversation's
 // bound peer: peerOf(conversationId) resolves the binding first. A
 // conversation that is not bound yet is bound to the peer the pins
-// admitted, before anything is installed or sealed for it; one whose
-// listed handle this device knows under another account is refused until
-// the user acknowledges that account (which binds it). Refuses while the
-// bindings cannot be read.
+// admitted, before anything is installed or sealed for it; one held for
+// its listed handle (hold: known under another account, or never issued)
+// is refused, the pins not even asked, until the user acknowledges that
+// account (which binds it). Refuses while the bindings cannot be read.
 export function createConversationVerifier({ bindings, trust, peerOf }) {
   return async function verifyIdentity({ conversationId, remoteDeviceId, identityKey }) {
     try {
@@ -153,7 +183,7 @@ export function createConversationVerifier({ bindings, trust, peerOf }) {
     const peer = peerOf(conversationId);
     if (!peer) return false;
     const bound = bindings.get(conversationId);
-    if (!bound && bindings.handleConflict(conversationId, peer)) return false;
+    if (!bound && bindings.hold(conversationId, peer)) return false;
     if (!(await trust.admit(peer.userId, remoteDeviceId, identityKey))) return false;
     if (bound) return true;
     try {

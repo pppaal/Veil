@@ -5,12 +5,14 @@
 import { t } from '../../../i18n/i18n.js';
 import { isLegacyIdentity } from '../../crypto/identity.js';
 import { shownPeer } from '../../domain/conversations.js';
+import { shownHandle } from '../../domain/handles.js';
 import { isGone, isShown } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { muteSecondsFromMinutes } from '../../domain/mute.js';
 import { reactionsByTarget } from '../../domain/reactions.js';
 import { $, avatarFor, el, emptyStateSvg } from '../dom.js';
 import { toast } from '../toast.js';
+import { holdTextKey } from './key-change-banner.js';
 
 // Near enough to the bottom to follow new messages down.
 const NEAR_BOTTOM_PX = 120;
@@ -121,7 +123,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     const sub = subtitle(conv, peer);
     return el('div', { class: 'panel-header' }, [
       avatar,
-      el('div', { class: 'panel-title' }, [el('div', { class: 'name' }, ['@' + (peer?.handle ?? '?')]), el('div', { class: sub.className }, [sub.text])]),
+      el('div', { class: 'panel-title' }, [el('div', { class: 'name' }, ['@' + shownHandle(peer?.handle)]), el('div', { class: sub.className }, [sub.text])]),
       directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
       headerButton('대화에서 찾기 (Ctrl/Cmd+F)', '🔍', () => panelSearch.open(conv.id), '대화에서 찾기'),
       directPeer && !legacyIdentity ? headerButton(t('safety.open'), '🛡', () => safetyDialog.open(conv.id, directPeer)) : null,
@@ -151,15 +153,17 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     // A key change waiting for review raises its banner but does not stop
     // sending: the cipher seals only to an identity the pins admit, and a
     // send it refuses says why (src/app/services/send.js). A conversation
-    // listed under a handle this device knows under another account opens
-    // and sends nothing until the user chooses to talk to that account.
+    // held for the handle it is listed under (src/domain/peer-bindings.js
+    // hold: one this device knows under another account, or one no honest
+    // server issues) opens and sends nothing until the user chooses to talk
+    // to that account.
     const directPeer = stack.peerOf(conv.id);
     const keyChanged = Boolean(directPeer && stack.trust.pendingChange(directPeer.userId));
-    const otherAccount = Boolean(directPeer && stack.bindings.handleConflict(conv.id, directPeer));
+    const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
     const legacyIdentity = isLegacyIdentity(state.me);
     let placeholder = '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
     if (!directPeer) placeholder = t('group.composerFrozen');
-    if (otherAccount) placeholder = t('accountConflict.composerFrozen');
+    if (hold) placeholder = t(holdTextKey(hold, 'composerFrozen'));
     if (legacyIdentity) placeholder = t('legacy.composerFrozen');
 
     // Scroll position from the previous drawing of this conversation.
@@ -173,13 +177,13 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     const list = messageList.render(convId, { shown, reactions, peerHandle: peer?.handle });
     list.addEventListener('scroll', () => state.scrollTops.set(convId, list.scrollTop));
     const { node: composerNode, textarea } = composer.render(convId, {
-      frozen: legacyIdentity || !directPeer || otherAccount,
+      frozen: legacyIdentity || !directPeer || Boolean(hold),
       placeholder,
       peerHandle: peer?.handle,
     });
     const panel = el('div', { class: 'panel', dataset: { conv: convId } }, [
       header(conv, peer, directPeer, legacyIdentity),
-      otherAccount ? keyChangeBanner.renderAccountConflict(convId, directPeer) : null,
+      hold ? keyChangeBanner.renderHold(convId, directPeer, hold) : null,
       keyChanged ? keyChangeBanner.render(convId, directPeer) : null,
       panelSearch.render(convId),
       list,

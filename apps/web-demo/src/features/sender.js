@@ -24,6 +24,11 @@ export const newClientMessageId = () => crypto.randomUUID();
 
 // queue: { put(entry), delete(clientMessageId) } over the 'outbound' store.
 export function createSender({ secure, authedApi, queue, clock = Date.now }) {
+  // Client message ids whose POST this tab has in flight: the outbox skips
+  // them however long the request takes, so a slow request is not sent a
+  // second time from the same tab while it is still on its way.
+  const inFlight = new Set();
+
   // { envelope } for the conversation, with the outer attachment pointer
   // carrying only the blob's id (contract C3).
   async function seal(conversationId, content, { clientMessageId, attachmentId = null }) {
@@ -35,36 +40,45 @@ export function createSender({ secure, authedApi, queue, clock = Date.now }) {
   // Resolves to { message } once the server has the message, or
   // { queued: true, sessionEnded } when it will go out later; throws on a
   // permanent refusal, which leaves nothing queued. While the request is in
-  // flight its queue entry is not due, so the outbox does not send it a
-  // second time meanwhile; once that wait passes (the page was closed), the
-  // next drain sends it.
+  // flight this tab's outbox skips its queue entry (isInFlight), and the
+  // entry is not due for a short while, which keeps other tabs from sending
+  // it meanwhile; once that wait passes with no tab sending it (the page was
+  // closed), the next drain sends it.
   async function deliver({ conversationId, clientMessageId, envelope }) {
     const entry = outboundQueueEntry({ clientMessageId, conversationId, envelope });
-    await queue.put({ ...entry, nextRetryAt: clock() + retryDelayMs(1) });
-    let message;
+    inFlight.add(clientMessageId);
     try {
-      ({ message } = await authedApi('/messages', {
-        method: 'POST',
-        body: { conversationId, clientMessageId, envelope },
-      }));
-      await secure.acknowledge(message);
-    } catch (error) {
-      if (!isRetryableSendError(error)) {
-        await queue.delete(clientMessageId);
-        throw error;
+      await queue.put({ ...entry, nextRetryAt: clock() + retryDelayMs(1) });
+      let message;
+      try {
+        ({ message } = await authedApi('/messages', {
+          method: 'POST',
+          body: { conversationId, clientMessageId, envelope },
+        }));
+        await secure.acknowledge(message);
+      } catch (error) {
+        if (!isRetryableSendError(error)) {
+          await queue.delete(clientMessageId);
+          throw error;
+        }
+        await queue.put(entry);
+        return { queued: true, sessionEnded: error instanceof AuthError };
       }
-      await queue.put(entry);
-      return { queued: true, sessionEnded: error instanceof AuthError };
+      // Delivered: an entry a failed delete leaves behind is sent once more,
+      // and the server answers with this same message.
+      await queue.delete(clientMessageId).catch(() => {});
+      return { message };
+    } finally {
+      inFlight.delete(clientMessageId);
     }
-    // Delivered: an entry a failed delete leaves behind is sent once more,
-    // and the server answers with this same message.
-    await queue.delete(clientMessageId).catch(() => {});
-    return { message };
   }
 
   return {
     seal,
     deliver,
+
+    // Whether this tab's POST of that send is still on its way.
+    isInFlight: (clientMessageId) => inFlight.has(clientMessageId),
 
     // A reaction is a message like any other: messageType 'reaction', its
     // target and emoji inside the ciphertext, and expiresAt (ms) sealed in

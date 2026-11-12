@@ -121,6 +121,11 @@
   "accountConflict.failed": "選択を保存できませんでした: {error}",
   "accountConflict.composerFrozen": "知っている名前の別アカウントです: 上で確認してください",
   "accountConflict.sidebar": "⚠️ 同じ名前、別のアカウント",
+  "unissuedHandle.banner": "@{handle} はVEILが発行しない名前です: 見えない文字、別の文字体系の文字、大文字、空白を含む名前はどのアカウントも持てません。知り合いになりすましている可能性があります: このアカウントと話すことを選ぶまで、ここでは何も開いたり送信したりしません。",
+  "unissuedHandle.confirmTitle": "@{handle} と話しますか?",
+  "unissuedHandle.confirmBody": "この名前を持てるVEILアカウントはありません: この端末が受け取った一覧がこの名前を表示するよう改変されており、知り合いに見せかけようとしている可能性があります。別の方法(対面、通話)で相手のアカウントだと確認した場合にのみ続けてください。",
+  "unissuedHandle.composerFrozen": "VEILが発行しない名前です: 上で確認してください",
+  "unissuedHandle.sidebar": "⚠️ VEILが発行しない名前",
   "safety.verifiedBadge": "✓ 確認済み",
   "safety.verifiedBadgeTitle": "このチャットの安全番号を比較しました"
 }

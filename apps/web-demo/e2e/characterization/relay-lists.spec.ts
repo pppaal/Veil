@@ -19,8 +19,9 @@ import {
 // conversation list and each history; the frames in them authenticate, but
 // the lists around them do not. A history holds only its own conversation's
 // messages, a direct conversation keeps the peer it was bound to, and a
-// handle shown for another account than the one this device knows under it
-// is held until the user chooses to talk to that account.
+// handle shown for another account than the one this device knows under it,
+// or one no honest server issues (a lookalike of a known one), is held until
+// the user chooses to talk to that account.
 
 test.describe.configure({ mode: 'serial' });
 
@@ -204,6 +205,87 @@ test.describe('another account under a handle this device knows', () => {
 
     // The real Bob's conversation still shows him as verified.
     await page.locator('.conv-item', { hasText: 'hi alice' }).click();
+    await expect(page.locator('.panel-header .verified-badge')).toBeVisible();
+    expectNoErrors(alice, bob, mallory);
+  });
+});
+
+test.describe('another account under a lookalike of a handle this device knows', () => {
+  const id = stamp();
+  let alice: Device;
+  let bob: Device;
+  let mallory: Device;
+
+  test.beforeAll(async ({ browser }) => {
+    await relay('/__test/reset');
+    alice = await register(browser, `zalice${id}`);
+    bob = await register(browser, `zbob${id}`);
+    mallory = await register(browser, `zmal${id}`);
+    await startChat(alice, bob);
+    await send(bob, 'hi alice');
+    await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
+    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    const dialog = alice.page.locator('#safety-dialog');
+    await dialog.locator('button', { hasText: '확인됨으로 표시' }).click();
+    await expect(dialog).toHaveCount(0);
+  });
+
+  test.afterAll(async () => {
+    await closeAll(alice, bob, mallory);
+  });
+
+  test('is held, and shown for what it is, until the user chooses to talk to it', async () => {
+    const { page } = alice;
+    // The relay lists Mallory under Bob's handle with a zero-width space
+    // after it: it renders as Bob's and equals no handle Alice knows.
+    await rewriteList(page, (items) => {
+      for (const conv of items) {
+        for (const member of conv.members) if (member.handle === mallory.handle) member.handle = `${bob.handle}​`;
+      }
+    });
+    await mallory.page.click('#new-chat-btn');
+    await mallory.page.fill('#new-peer-input', alice.handle);
+    await mallory.page.click('#new-confirm');
+    await expect(mallory.page.locator('.panel .panel-title .name')).toHaveText(`@${alice.handle}`);
+    await send(mallory, 'bob here, new phone, send the code');
+
+    const shown = `@${bob.handle}[U+200B]`;
+    const lookalike = page.locator('.conv-item', { hasText: '⚠️ VEIL이 발급하지 않는 이름' });
+    await expect(lookalike).toHaveCount(1, { timeout: 15_000 });
+    await expect(lookalike.locator('.conv-name')).toHaveText(shown);
+    await lookalike.click();
+    await expect(page.locator('.panel .panel-title .name')).toHaveText(shown);
+    const banner = page.locator('.account-conflict-banner.unissued-handle');
+    await expect(banner).toBeVisible();
+    await expect(banner.locator('.key-change-text')).toContainText(`${shown} 은(는) VEIL이 발급하지 않는 이름이에요`);
+    await expect(page.locator('.panel-input textarea')).toBeDisabled();
+    await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
+    await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+
+    // A reload changes nothing.
+    await reload(alice);
+    await page.locator('.conv-item', { hasText: '⚠️ VEIL이 발급하지 않는 이름' }).click();
+    await expect(page.locator('.account-conflict-banner.unissued-handle')).toBeVisible();
+    await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
+
+    // Chosen as a different account after a confirmation, it is a first
+    // contact like any other, still unverified and still shown for what it is.
+    await page.locator('.account-conflict-banner button').click();
+    await expect(page.locator('#confirm-title')).toHaveText(`${shown} 와(과) 대화할까요?`);
+    await page.click('#confirm-ok');
+    await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
+    await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(1, { timeout: 15_000 });
+    await expect(page.locator('.panel-input textarea')).toBeEnabled();
+    await expect(page.locator('.panel .panel-title .name')).toHaveText(shown);
+    await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
+    // Its messages are named, and drawn, under the same shown form.
+    await expect(page.locator('.panel-msgs .msg-group.them .group-meta').last()).toHaveText(shown);
+    await expect(page.locator('.panel-msgs .msg-group.them > .avatar').last()).toHaveAttribute('title', shown.slice(1));
+
+    // The real Bob's conversation still shows him as verified.
+    await page.locator('.conv-item', { hasText: 'hi alice' }).click();
+    await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
     await expect(page.locator('.panel-header .verified-badge')).toBeVisible();
     expectNoErrors(alice, bob, mallory);
   });

@@ -91,7 +91,7 @@ allowlisting serializers in `src/platform/persist.js`.
 | `outbox.js` | the sealed outbound queue: one leader tab, backoff, permanent refusals, retry of a refused send |
 | `send.js` | text, reactions, edits and deletions; what a refused send tells the user |
 | `attachments.js` | encrypt, upload and send images, voice notes and files |
-| `identity-trust.js` | accepting or declining a changed key, safety numbers, verification, another account under a known handle |
+| `identity-trust.js` | accepting or declining a changed key, safety numbers, verification, a conversation held for its handle (another account under a known handle, or a handle no server issues) |
 | `device-transfer.js` | both sides of a device transfer |
 | `notifications.js` | the unread count in the title, OS notifications by privacy level |
 | `safety.js` | block, unblock, mute, report |
@@ -118,7 +118,9 @@ focus trap), `dialogs.js` (stacked dialogs), `markdown-dom.js`, `time.js`,
 ### Pure logic added for the views (`src/domain/`)
 
 `conversations.js` (peer, preview, ordering), `peer-bindings.js` (whom a
-direct conversation is with, once bound), `message-groups.js` (day and
+direct conversation is with, once bound, and when one is held),
+`handles.js` (the handle grammar the server registers in, and how a handle
+outside it is shown), `message-groups.js` (day and
 sender runs, delivery state), `composer-text.js` (message cap, handle rule,
 mentions), `search.js`, `delivery.js` (outbound backoff), `mute.js`,
 `local-messages.js` (ids of sends the server has not named). Each has a
@@ -136,12 +138,14 @@ unit test in `__tests__/`.
 3. The composer clears and the optimistic view (`__pending__` id) is put in
    the store from the content we hold; `panels` redraws.
 4. `sender.deliver` puts the sealed envelope (never the plaintext) in the
-   outbound queue, not due while the request is in flight, then POSTs the
-   envelope only. On success the store's content is filed under the
-   server's id, the queue entry goes and the delivered view replaces the
-   pending one. On a passing failure (network, 5xx, 429, ended session) the
-   entry stays, and `services/outbox.js` drains it on reconnect and on every
-   conversation-list load; so does a page that opens after one closed with
+   outbound queue, not due for a short while, then POSTs the envelope only;
+   this tab's outbox skips the entry for as long as the request is in
+   flight (`sender.isInFlight`), however slow it is. On success the store's
+   content is filed under the server's id, the queue entry goes and the
+   delivered view replaces the pending one. On a passing failure (network,
+   5xx, 429, ended session) the entry stays, and `services/outbox.js`
+   drains it on reconnect and on every conversation-list load; so does a
+   page that opens after one closed with
    the request in flight (the server takes a repeated client message id as
    the same message). A permanent refusal (another 4xx) drops the entry and
    marks the bubble failed; the bubble keeps the sealed envelope in memory,
@@ -190,8 +194,30 @@ unit test in `__tests__/`.
   load. From then on the pins judge that conversation for the bound peer,
   and a list that names another user, or turns it into a group, changes
   only its last message and timer (`history-sync.js` `adoptConversations`).
-  A conversation not bound yet whose listed handle is bound to another
-  account admits nothing until the user chooses to talk to that account.
+  A conversation not bound yet is held (`peer-bindings.js` `hold`) while
+  its listed handle is bound to another account, or is one no honest server
+  issues (`domain/handles.js`: the server's register grammar, 3 to 32 of
+  a-z, 0-9, '.' and '_', which `__tests__/handles.test.js` keeps equal to
+  `register.dto.ts`). A hostile relay can list a lookalike of a known
+  handle (a zero-width space, a Cyrillic letter, a trailing space) that
+  renders the same and equals none; the grammar catches it where comparing
+  handles cannot. A held conversation admits nothing, the pins not even
+  asked, and shows a banner, a marker in its row and a frozen composer
+  until the user chooses to talk to that account, which binds it. Wherever
+  a conversation or a sender is named (row, tab, panel header, avatar,
+  banners, safety dialog, notifications), a handle outside the grammar is
+  shown with each character no handle can hold written as its code point
+  (`bob[U+200B]`), so it never renders like the handle it imitates, held or
+  bound. A bound conversation is shown under the handle it was bound with:
+  the server never gives a user another handle (there is no rename; a
+  deleted account's handle is held back for 90 days and then goes only to a
+  new account, under a new user id), so a listing that names the bound user
+  under another handle is the relay's, and is not shown.
+- Deliberately stricter than the verdict table in
+  `docs/crypto-envelope-spec.md` ("Identity trust"): a new device of a
+  contact the user never verified is not pinned with a notice but held for
+  review like a changed key (`NEW_DEVICE`): past the first device a
+  contact is pinned with, the web admits none the user was not shown.
 - The user's decisions are carried out in `services/identity-trust.js`,
   each bound to the change or key the user was shown: `accept` (refused
   with 'reverify' for a contact who was verified, or a device of theirs
@@ -200,13 +226,13 @@ unit test in `__tests__/`.
   was computed from. After an accept or a verification, messages locked by
   the change are opened again.
 - The UI only asks and shows: `views/key-change-banner.js` (what changed,
-  decline / review / compare; another account under a known handle, and
-  talking to it after a confirmation), `views/safety-dialog.js` (the
+  decline / review / compare; a held conversation, another account under
+  a known handle or under one no server issues, and talking to it after a
+  confirmation), `views/safety-dialog.js` (the
   number, the verification codes, mark verified), `views/chat-view.js`
   (the verified mark in the header) and `views/composer.js` (the frozen
-  composer and why: a group, a legacy identity, another account under a
-  known handle), `views/sidebar.js` (the changed-key and other-account
-  markers).
+  composer and why: a group, a legacy identity, a held conversation),
+  `views/sidebar.js` (the changed-key and held-conversation markers).
 - Device transfer trust: both screens show the fingerprint the server
   computes over the new device's auth and identity keys; the old device
   approves only after the user compared them, and the new device asks

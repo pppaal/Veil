@@ -55,6 +55,9 @@ export function createOutbox({ store, stack, messages, toast }) {
         continue;
       }
       if (item.nextRetryAt && item.nextRetryAt > Date.now()) continue;
+      // Still on its way from this tab (src/features/sender.js deliver),
+      // however long the request takes.
+      if (stack.sender.isInFlight(item.clientMessageId)) continue;
       try {
         const sent = await stack.authedApi('/messages', {
           method: 'POST',

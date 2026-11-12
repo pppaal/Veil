@@ -121,6 +121,11 @@
   "accountConflict.failed": "선택을 저장하지 못했어요: {error}",
   "accountConflict.composerFrozen": "아는 이름의 다른 계정이에요: 위에서 확인하세요",
   "accountConflict.sidebar": "⚠️ 같은 이름, 다른 계정",
+  "unissuedHandle.banner": "@{handle} 은(는) VEIL이 발급하지 않는 이름이에요: 보이지 않는 문자, 다른 문자 체계의 글자, 대문자, 공백이 들어간 이름은 어떤 계정도 가질 수 없어요. 아는 사람인 척하는 누군가일 수 있어요: 이 계정과 대화하기로 하기 전까지 여기서는 아무것도 열거나 보내지 않아요.",
+  "unissuedHandle.confirmTitle": "@{handle} 와(과) 대화할까요?",
+  "unissuedHandle.confirmBody": "어떤 VEIL 계정도 이 이름을 가질 수 없어요: 이 기기가 받은 목록이 이 이름을 보여주도록 바뀐 것이고, 아는 사람처럼 보이게 하려는 것일 수 있어요. 다른 경로(직접 만나기, 전화)로 상대의 계정이 맞는지 확인한 뒤에만 계속하세요.",
+  "unissuedHandle.composerFrozen": "VEIL이 발급하지 않는 이름이에요: 위에서 확인하세요",
+  "unissuedHandle.sidebar": "⚠️ VEIL이 발급하지 않는 이름",
   "safety.verifiedBadge": "✓ 확인됨",
   "safety.verifiedBadgeTitle": "이 대화의 안전 번호를 비교했어요"
 }

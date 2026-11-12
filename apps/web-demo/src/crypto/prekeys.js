@@ -194,14 +194,26 @@ async function rotateSignedPrekeyIfDue({ subtle, keys, authedApi, identity, nowM
 
 // A batch whose upload was not confirmed goes up again as it is on the next
 // run (the directory skips ids it already holds), never replaced by fresh
-// keys; then the pool is topped up if it runs low.
+// keys, unless the directory refuses it: then it never stored it, and its
+// keys are dropped so that one bad batch cannot stop every later top-up.
+// Then the pool is topped up if it runs low.
 async function replenishOneTimePrekeys({ keys, authedApi, identity, opkKv }) {
   const unconfirmed = identity.current().oneTimePrekeyUpload ?? null;
-  if (unconfirmed) await uploadOneTimePrekeys({ authedApi, identity, opkKv, batch: unconfirmed });
+  if (unconfirmed) {
+    try {
+      await uploadOneTimePrekeys({ authedApi, identity, opkKv, batch: unconfirmed });
+    } catch (error) {
+      if (!isRefusal(error)) throw error;
+      for (const keyId of keyIdsOf(unconfirmed)) await opkKv.delete(keyId);
+      await identity.update({ oneTimePrekeyUpload: null });
+    }
+  }
   const { available } = await authedApi('/prekeys/count');
   if (available >= ONE_TIME_PREKEY_LOW_WATER) return;
   await uploadOneTimePrekeys({ authedApi, identity, opkKv, batch: await drawOneTimePrekeys({ keys, identity, opkKv }) });
 }
+
+const keyIdsOf = (batch) => Array.from({ length: batch.count }, (_, i) => batch.firstId + i);
 
 // Ids are allocated monotonically and saved, with the batch marked
 // unconfirmed, before any key is drawn, so an id is never reused even when
@@ -209,7 +221,7 @@ async function replenishOneTimePrekeys({ keys, authedApi, identity, opkKv }) {
 async function drawOneTimePrekeys({ keys, identity, opkKv }) {
   const batch = { firstId: identity.current().nextOneTimePrekeyId, count: ONE_TIME_PREKEY_BATCH };
   await identity.update({ nextOneTimePrekeyId: batch.firstId + batch.count, oneTimePrekeyUpload: batch });
-  for (let keyId = batch.firstId; keyId < batch.firstId + batch.count; keyId += 1) {
+  for (const keyId of keyIdsOf(batch)) {
     const pair = await keys.x25519();
     await opkKv.put({ keyId, privateKey: pair.privateKey, publicKey: pair.publicKey });
   }
@@ -220,7 +232,7 @@ async function drawOneTimePrekeys({ keys, identity, opkKv }) {
 // handed out by the directory, which therefore had it.
 async function uploadOneTimePrekeys({ authedApi, identity, opkKv, batch }) {
   const prekeys = [];
-  for (let keyId = batch.firstId; keyId < batch.firstId + batch.count; keyId += 1) {
+  for (const keyId of keyIdsOf(batch)) {
     const row = await opkKv.get(keyId);
     if (row) prekeys.push({ keyId, publicKey: encodeBase64Url(row.publicKey) });
   }

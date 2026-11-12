@@ -32,7 +32,7 @@ const START = Date.parse('2026-11-11T09:00:00Z');
 // (signature, the spkTs window of an hour back and 10 minutes ahead, an
 // increasing spkId), POST /prekeys skips ids it holds. handle() answers
 // [status, body].
-function fakeDirectory(identityKey, { available, failRotation, failUploads }) {
+function fakeDirectory(identityKey, { available, failRotation, failUploads, uploadFailure = 503 }) {
   const directory = {
     now: START,
     available,
@@ -49,7 +49,7 @@ function fakeDirectory(identityKey, { available, failRotation, failUploads }) {
     if (path === '/prekeys' && method === 'POST') {
       if (directory.failUploads > 0) {
         directory.failUploads -= 1;
-        return [503, { code: 'unavailable', message: 'unavailable' }];
+        return [uploadFailure, { code: 'unavailable', message: 'unavailable' }];
       }
       const held = new Set(directory.uploads.map((prekey) => prekey.keyId));
       const fresh = body.prekeys.filter((prekey) => !held.has(prekey.keyId));
@@ -84,13 +84,13 @@ function fakeDirectory(identityKey, { available, failRotation, failUploads }) {
 // run(serverNow, { clock }): one maintenance run while the directory's clock
 // reads serverNow; the device's corrected clock reads the same unless
 // `clock` says otherwise.
-async function harness({ available = 0, failRotation = false, failUploads = 0 } = {}) {
+async function harness({ available = 0, failRotation = false, failUploads = 0, uploadFailure } = {}) {
   let record = await generateIdentity(subtle, { nowMs: START });
   const identity = {
     current: () => record,
     update: vi.fn(async (fields) => { record = { ...record, ...fields }; }),
   };
-  const directory = fakeDirectory(record.ik.publicKey, { available, failRotation, failUploads });
+  const directory = fakeDirectory(record.ik.publicKey, { available, failRotation, failUploads, uploadFailure });
   const authedApi = vi.fn(async (path, options) => {
     const [status, body] = await directory.handle(path, options);
     if (status >= 400) throw Object.assign(new Error(body.message), { status, code: body.code });
@@ -276,6 +276,17 @@ describe('prekey maintenance', () => {
       held.map((row) => Buffer.from(row.publicKey).toString('base64url')),
     );
     expect(h.record()).toMatchObject({ nextOneTimePrekeyId: nextId, oneTimePrekeyUpload: null });
+  });
+
+  it('drops a one-time prekey batch the directory refuses, and tops up with a fresh one', async () => {
+    const h = await harness({ available: 0, failUploads: 2, uploadFailure: 400 });
+    await expect(h.run(START)).rejects.toThrow('unavailable');
+    // Refused again as it is: its keys go, and a fresh batch goes up.
+    await h.run(START + MINUTE_MS);
+    const fresh = Array.from({ length: ONE_TIME_PREKEY_BATCH }, (_, i) => ONE_TIME_PREKEY_BATCH + i + 1);
+    expect(h.directory.uploads.map((prekey) => prekey.keyId)).toEqual(fresh);
+    expect((await h.opkKv.all()).map((row) => row.keyId)).toEqual(fresh);
+    expect(h.record().oneTimePrekeyUpload).toBeNull();
   });
 
   // The device's clock is off by more than the directory's window allows.

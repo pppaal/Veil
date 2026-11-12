@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/crypto/lib_crypto_adapter.dart';
-import '../core/router/app_router.dart';
-import '../core/theme/theme_mode_controller.dart';
+import 'router/app_router.dart';
 import '../core/theme/veil_theme.dart';
 import '../l10n/generated/app_localizations.dart';
 import '../shared/presentation/veil_ui.dart';
 import 'app_state.dart';
+import 'theme_mode_provider.dart';
 
 class VeilApp extends ConsumerWidget {
   const VeilApp({super.key});
@@ -83,7 +83,7 @@ class _PrivacyLifecycleBoundaryState
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
         _engagePrivacyShield();
-        _flushPendingRatchetSnapshots();
+        _flushPendingWrites();
         break;
       case AppLifecycleState.resumed:
         _refreshPlatformSecurity();
@@ -99,19 +99,22 @@ class _PrivacyLifecycleBoundaryState
         break;
       case AppLifecycleState.detached:
         _engagePrivacyShield();
-        _flushPendingRatchetSnapshots();
+        _flushPendingWrites();
         break;
     }
   }
 
-  // Drain debounced session-snapshot writes before the OS freezes or kills
-  // the process — otherwise the latest ratchet state could be lost within
-  // the debounce window. Safe to call unconditionally: no-op if the active
-  // adapter doesn't use the debounced persister.
-  void _flushPendingRatchetSnapshots() {
+  // Drain debounced writes (ratchet snapshots, messenger state) before the
+  // OS freezes or kills the process — otherwise the latest state could be
+  // lost within the debounce window.
+  void _flushPendingWrites() {
     final adapter = ref.read(cryptoAdapterProvider);
     if (adapter is LibCryptoAdapter) {
       unawaited(adapter.flushPendingSnapshotWrites());
+    }
+    // A messenger not created yet has nothing to write.
+    if (ref.exists(messengerControllerProvider)) {
+      unawaited(ref.read(messengerControllerProvider).flushPendingWrites());
     }
   }
 

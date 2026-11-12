@@ -4,8 +4,10 @@ import 'dart:math';
 import 'package:cryptography/cryptography.dart' show SecretBoxAuthenticationError;
 import 'package:drift/drift.dart';
 
-import '../../features/conversations/data/conversation_models.dart';
 import '../crypto/crypto_engine.dart';
+import '../domain/chat_message.dart';
+import '../domain/conversation_preview.dart';
+import '../domain/message_search.dart';
 import '../security/local_data_cipher.dart';
 import 'app_database.dart';
 
@@ -503,7 +505,85 @@ abstract class ConversationCacheService {
   Future<void> clearAll();
 }
 
-class DriftConversationCacheService implements ConversationCacheService, MessageContentStore {
+/// Everything the cache holds about conversations, as one read returns it.
+class ConversationCacheSnapshot {
+  const ConversationCacheSnapshot({
+    this.conversations = const [],
+    this.messages = const {},
+    this.paging = const {},
+  });
+
+  final List<ConversationPreview> conversations;
+  final Map<String, List<ChatMessage>> messages;
+  final Map<String, ConversationPagingState> paging;
+}
+
+/// Rows a writer changed since its last write, applied together.
+class ConversationCacheChanges {
+  const ConversationCacheChanges({
+    this.conversations = const [],
+    this.messages = const [],
+    this.replacedConversationIds = const {},
+    this.deletedMessageIds = const {},
+    this.paging = const {},
+  });
+
+  /// Inserted or updated; their paging columns are left as they are.
+  final List<ConversationPreview> conversations;
+
+  /// Inserted or updated, after the deletions below.
+  final List<ChatMessage> messages;
+
+  /// Conversations whose stored messages are all deleted first, so
+  /// [messages] holds the whole of them.
+  final Set<String> replacedConversationIds;
+
+  final Set<String> deletedMessageIds;
+  final Map<String, ConversationPagingState> paging;
+
+  bool get isEmpty =>
+      conversations.isEmpty &&
+      messages.isEmpty &&
+      replacedConversationIds.isEmpty &&
+      deletedMessageIds.isEmpty &&
+      paging.isEmpty;
+}
+
+/// Thrown by the row-level calls of [IncrementalConversationCache] when no
+/// database can be reached, as on an iOS launch before first unlock.
+class ConversationCacheUnavailable implements Exception {
+  const ConversationCacheUnavailable(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'ConversationCacheUnavailable: $cause';
+}
+
+/// Row-level access for a writer that tracks its own changes, so a change
+/// costs the rows it touched rather than a rewrite of the conversation.
+/// Kept apart from [ConversationCacheService] so its many fakes in tests
+/// are unaffected; callers check for it with `is`.
+abstract interface class IncrementalConversationCache {
+  /// How many wipes ([ConversationCacheService.clearAll]) have begun. A
+  /// writer that keeps unwritten state or a record of the rows it wrote
+  /// compares it before each write: once it moves, those rows are gone and
+  /// what the writer still holds belongs to the identity that was wiped.
+  int get wipes;
+
+  /// Every conversation with its messages and paging, in one query.
+  /// Throws [ConversationCacheUnavailable] when no database can be reached,
+  /// rather than reading as empty.
+  Future<ConversationCacheSnapshot> readSnapshot();
+
+  /// Applies [changes] in one transaction. Throws
+  /// [ConversationCacheUnavailable] when no database can be reached, so a
+  /// writer never counts rows that were not written.
+  Future<void> writeChanges(ConversationCacheChanges changes);
+}
+
+class DriftConversationCacheService
+    implements ConversationCacheService, MessageContentStore, IncrementalConversationCache {
   DriftConversationCacheService(
     this._db, {
     required CryptoEnvelopeCodec envelopeCodec,
@@ -514,6 +594,12 @@ class DriftConversationCacheService implements ConversationCacheService, Message
   final AppDatabase _db;
   final LocalDataCipher? _cipher;
   final CryptoEnvelopeCodec _envelopeCodec;
+  // Writers that run alongside a wipe reach this cache through CacheHandle,
+  // which orders the wipe after the writes already under way.
+  int _wipes = 0;
+
+  @override
+  int get wipes => _wipes;
 
   @override
   Future<List<ConversationPreview>> readConversations() async {
@@ -528,90 +614,9 @@ class DriftConversationCacheService implements ConversationCacheService, Message
     final conversations = <ConversationPreview>[];
 
     for (final row in rows) {
-      final peerHandle = await _decrypt(row.peerHandle);
-      if (peerHandle == null) {
-        continue;
+      if (await _decodeConversation(row) case final conversation?) {
+        conversations.add(conversation);
       }
-
-      final peerDisplayName = await _decrypt(row.peerDisplayName);
-      final peerUserId = await _decrypt(row.peerUserId);
-      final peerDeviceId = await _decrypt(row.peerDeviceId);
-      final peerIdentityPublicKey = await _decrypt(row.peerIdentityPublicKey);
-      final peerSignedPrekeyBundle = await _decrypt(row.peerSignedPrekeyBundle);
-      final previewSenderDeviceId = await _decrypt(row.previewSenderDeviceId);
-      final previewCiphertext = await _decrypt(row.previewCiphertext);
-      final previewNonce = await _decrypt(row.previewNonce);
-      final previewMessageType = await _decrypt(row.previewMessageType);
-      final previewAttachmentJson = await _decrypt(row.previewAttachmentJson);
-      final sessionLocator = await _decrypt(row.sessionLocator);
-      final sessionEnvelopeVersion =
-          await _decrypt(row.sessionEnvelopeVersion);
-      final sessionRequiresLocalPersistence =
-          await _decrypt(row.sessionRequiresLocalPersistence);
-      final sessionLocalDeviceId = await _decrypt(row.sessionLocalDeviceId);
-      final sessionRemoteDeviceId = await _decrypt(row.sessionRemoteDeviceId);
-      final sessionRemoteIdentityFingerprint =
-          await _decrypt(row.sessionRemoteIdentityFingerprint);
-      final sessionAuditHint = await _decrypt(row.sessionAuditHint);
-      final sessionBootstrappedAt =
-          await _decrypt(row.sessionBootstrappedAt);
-      final sessionRemoteIdentityPublicKey =
-          await _decrypt(row.sessionRemoteIdentityPublicKey);
-
-      conversations.add(
-        ConversationPreview(
-          id: row.id,
-          peerHandle: peerHandle,
-          peerDisplayName: peerDisplayName,
-          recipientBundle: KeyBundle(
-            userId: peerUserId ?? 'cached-user-$peerHandle',
-            deviceId: peerDeviceId ?? '',
-            handle: peerHandle,
-            identityPublicKey: peerIdentityPublicKey ?? '',
-            signedPrekeyBundle: peerSignedPrekeyBundle ?? '',
-          ),
-          lastEnvelope: previewMessageType == null ||
-                  previewSenderDeviceId == null ||
-                  previewCiphertext == null ||
-                  previewNonce == null
-              ? null
-              : CryptoEnvelope(
-                  version: row.previewEnvelopeVersion ??
-                      _envelopeCodec.defaultEnvelopeVersion,
-                  conversationId: row.id,
-                  senderDeviceId: previewSenderDeviceId,
-                  recipientUserId: peerUserId ?? '',
-                  ciphertext: previewCiphertext,
-                  nonce: previewNonce,
-                  messageKind: MessageKind.values.byName(previewMessageType),
-                  expiresAt: row.previewExpiresAt,
-                  attachment: _decodeAttachment(previewAttachmentJson),
-                ),
-          updatedAt: row.updatedAt,
-          sessionState: sessionLocator == null ||
-                  sessionEnvelopeVersion == null ||
-                  sessionRequiresLocalPersistence == null ||
-                  row.sessionSchemaVersion == null ||
-                  sessionLocalDeviceId == null ||
-                  sessionRemoteDeviceId == null ||
-                  sessionRemoteIdentityFingerprint == null ||
-                  sessionBootstrappedAt == null
-              ? null
-              : ConversationSessionState(
-                  sessionLocator: sessionLocator,
-                  sessionEnvelopeVersion: sessionEnvelopeVersion,
-                  requiresLocalPersistence:
-                      sessionRequiresLocalPersistence == 'true',
-                  sessionSchemaVersion: row.sessionSchemaVersion!,
-                  localDeviceId: sessionLocalDeviceId,
-                  remoteDeviceId: sessionRemoteDeviceId,
-                  remoteIdentityFingerprint: sessionRemoteIdentityFingerprint,
-                  bootstrappedAt: DateTime.parse(sessionBootstrappedAt),
-                  auditHint: sessionAuditHint,
-                  remoteIdentityPublicKey: sessionRemoteIdentityPublicKey ?? '',
-                ),
-        ),
-      );
     }
 
     return conversations;
@@ -631,172 +636,299 @@ class DriftConversationCacheService implements ConversationCacheService, Message
     final messages = <ChatMessage>[];
 
     for (final row in rows) {
-      final senderDeviceId = await _decrypt(row.senderDeviceId);
-      final ciphertext = await _decrypt(row.ciphertext);
-      final nonce = await _decrypt(row.nonce);
-      final messageType = await _decrypt(row.messageType);
-      final attachmentJson = await _decrypt(row.attachmentJson);
-      final searchBody = await _decrypt(row.searchBody);
-
-      if (senderDeviceId == null ||
-          ciphertext == null ||
-          nonce == null ||
-          messageType == null) {
-        continue;
+      if (await _decodeMessage(row) case final message?) {
+        messages.add(message);
       }
-
-      messages.add(
-        ChatMessage(
-          id: row.id,
-          clientMessageId: row.clientMessageId,
-          senderDeviceId: senderDeviceId,
-          sentAt: row.receivedAt,
-          envelope: CryptoEnvelope(
-            version: row.envelopeVersion ?? _envelopeCodec.defaultEnvelopeVersion,
-            conversationId: row.conversationId,
-            senderDeviceId: senderDeviceId,
-            recipientUserId: '',
-            ciphertext: ciphertext,
-            nonce: nonce,
-            messageKind: MessageKind.values.byName(messageType),
-            expiresAt: row.expiresAt,
-            attachment: _decodeAttachment(attachmentJson),
-          ),
-          conversationOrder: row.conversationOrder,
-          deliveryState: _decodeDeliveryState(
-            state: row.deliveryState,
-            deliveredAt: row.deliveredAt,
-            readAt: row.readAt,
-          ),
-          deliveredAt: row.deliveredAt,
-          readAt: row.readAt,
-          expiresAt: row.expiresAt,
-          searchableBody: searchBody,
-          isMine: false,
-        ),
-      );
     }
 
     return messages;
   }
 
+  // Upserts leave the paging columns alone: a new row takes their defaults
+  // and an existing one keeps what storePagingState wrote.
   @override
-  Future<void> storeConversations(
-      List<ConversationPreview> conversations) async {
-    final existingRows = await _db.select(_db.cachedConversations).get();
-    final existingById = {for (final row in existingRows) row.id: row};
-    final rows = <CachedConversationsCompanion>[];
+  Future<void> storeConversations(List<ConversationPreview> conversations) async {
+    final rows = [for (final conversation in conversations) await _conversationRow(conversation)];
+    await _db.batch((batch) => batch.insertAllOnConflictUpdate(_db.cachedConversations, rows));
+  }
 
-    for (final conversation in conversations) {
-      final preview = conversation.lastEnvelope;
-      final existing = existingById[conversation.id];
-      rows.add(
-        CachedConversationsCompanion.insert(
-          id: conversation.id,
-          peerHandle: await _requireEncryptedValue(conversation.peerHandle),
-          updatedAt: conversation.updatedAt,
-          peerUserId:
-              Value(await _encrypt(conversation.recipientBundle.userId)),
-          peerDisplayName: Value(await _encrypt(conversation.peerDisplayName)),
-          peerDeviceId:
-              Value(await _encrypt(conversation.recipientBundle.deviceId)),
-          peerIdentityPublicKey: Value(
-              await _encrypt(conversation.recipientBundle.identityPublicKey)),
-          peerSignedPrekeyBundle: Value(
-              await _encrypt(conversation.recipientBundle.signedPrekeyBundle)),
-          previewSenderDeviceId: Value(await _encrypt(preview?.senderDeviceId)),
-          previewCiphertext: Value(await _encrypt(preview?.ciphertext)),
-          previewNonce: Value(await _encrypt(preview?.nonce)),
-          previewMessageType: Value(await _encrypt(preview?.messageKind.name)),
-          previewAttachmentJson:
-              Value(await _encrypt(_encodeAttachment(preview?.attachment))),
-          previewEnvelopeVersion: Value(preview?.version),
-          previewExpiresAt: Value(preview?.expiresAt),
-          sessionLocator:
-              Value(await _encrypt(conversation.sessionState?.sessionLocator)),
-          sessionEnvelopeVersion: Value(await _encrypt(
-              conversation.sessionState?.sessionEnvelopeVersion)),
-          sessionRequiresLocalPersistence: Value(await _encrypt(
-            conversation.sessionState?.requiresLocalPersistence.toString(),
-          )),
-          sessionSchemaVersion:
-              Value(conversation.sessionState?.sessionSchemaVersion),
-          sessionLocalDeviceId: Value(
-              await _encrypt(conversation.sessionState?.localDeviceId)),
-          sessionRemoteDeviceId: Value(
-              await _encrypt(conversation.sessionState?.remoteDeviceId)),
-          sessionRemoteIdentityFingerprint: Value(await _encrypt(
-              conversation.sessionState?.remoteIdentityFingerprint)),
-          sessionAuditHint:
-              Value(await _encrypt(conversation.sessionState?.auditHint)),
-          sessionBootstrappedAt: Value(await _encrypt(
-            conversation.sessionState?.bootstrappedAt.toIso8601String(),
-          )),
-          sessionRemoteIdentityPublicKey: Value(await _encrypt(
-              conversation.sessionState?.remoteIdentityPublicKey)),
-          paginationCursor: Value(existing?.paginationCursor),
-          hasMoreHistory: Value(existing?.hasMoreHistory ?? true),
-          lastSyncedAt: Value(existing?.lastSyncedAt),
-        ),
-      );
-    }
-
+  @override
+  Future<void> storeMessages(String conversationId, List<ChatMessage> messages) async {
+    final rows = [for (final message in messages) await _messageRow(message)];
     await _db.batch((batch) {
-      for (final row in rows) {
-        batch.insert(
+      batch.deleteWhere(_db.cachedMessages, (table) => table.conversationId.equals(conversationId));
+      batch.insertAll(_db.cachedMessages, rows, mode: InsertMode.insertOrReplace);
+    });
+  }
+
+  @override
+  Future<ConversationCacheSnapshot> readSnapshot() async {
+    final rows = await (_db.select(_db.cachedConversations).join([
+      leftOuterJoin(
+        _db.cachedMessages,
+        _db.cachedMessages.conversationId.equalsExp(_db.cachedConversations.id),
+      ),
+    ])
+          ..orderBy([
+            OrderingTerm.desc(_db.cachedConversations.updatedAt),
+            OrderingTerm.asc(_db.cachedConversations.id),
+            OrderingTerm.asc(_db.cachedMessages.receivedAt),
+          ]))
+        .get();
+    final conversations = <ConversationPreview>[];
+    final messages = <String, List<ChatMessage>>{};
+    final paging = <String, ConversationPagingState>{};
+    final seen = <String>{};
+    for (final row in rows) {
+      final conversationRow = row.readTable(_db.cachedConversations);
+      if (seen.add(conversationRow.id)) {
+        final conversation = await _decodeConversation(conversationRow);
+        if (conversation == null) continue;
+        conversations.add(conversation);
+        messages[conversation.id] = [];
+        paging[conversation.id] = ConversationPagingState(
+          nextCursor: conversationRow.paginationCursor,
+          hasMoreHistory: conversationRow.hasMoreHistory,
+          lastSyncedAt: conversationRow.lastSyncedAt,
+        );
+      }
+      final messageRow = row.readTableOrNull(_db.cachedMessages);
+      final conversationMessages = messages[conversationRow.id];
+      if (messageRow == null || conversationMessages == null) continue;
+      if (await _decodeMessage(messageRow) case final message?) {
+        conversationMessages.add(message);
+      }
+    }
+    return ConversationCacheSnapshot(conversations: conversations, messages: messages, paging: paging);
+  }
+
+  @override
+  Future<void> writeChanges(ConversationCacheChanges changes) async {
+    if (changes.isEmpty) return;
+    final conversationRows = [for (final conversation in changes.conversations) await _conversationRow(conversation)];
+    final messageRows = [for (final message in changes.messages) await _messageRow(message)];
+    await _db.batch((batch) {
+      batch.insertAllOnConflictUpdate(_db.cachedConversations, conversationRows);
+      for (final chunk in _chunked(changes.replacedConversationIds)) {
+        batch.deleteWhere(_db.cachedMessages, (table) => table.conversationId.isIn(chunk));
+      }
+      for (final chunk in _chunked(changes.deletedMessageIds)) {
+        batch.deleteWhere(_db.cachedMessages, (table) => table.id.isIn(chunk));
+      }
+      batch.insertAllOnConflictUpdate(_db.cachedMessages, messageRows);
+      for (final MapEntry(key: conversationId, value: state) in changes.paging.entries) {
+        batch.update(
           _db.cachedConversations,
-          row,
-          mode: InsertMode.insertOrReplace,
+          CachedConversationsCompanion(
+            paginationCursor: Value(state.nextCursor),
+            hasMoreHistory: Value(state.hasMoreHistory),
+            lastSyncedAt: Value(state.lastSyncedAt),
+          ),
+          where: (table) => table.id.equals(conversationId),
         );
       }
     });
   }
 
-  @override
-  Future<void> storeMessages(
-      String conversationId, List<ChatMessage> messages) async {
-    final rows = <CachedMessagesCompanion>[];
-
-    for (final message in messages) {
-      rows.add(
-        CachedMessagesCompanion.insert(
-          id: message.id,
-          conversationId: message.envelope.conversationId,
-          clientMessageId: Value(message.clientMessageId),
-          senderDeviceId: await _requireEncryptedValue(message.senderDeviceId),
-          ciphertext: await _requireEncryptedValue(message.envelope.ciphertext),
-          nonce: await _requireEncryptedValue(message.envelope.nonce),
-          messageType:
-              await _requireEncryptedValue(message.envelope.messageKind.name),
-          attachmentJson: Value(
-              await _encrypt(_encodeAttachment(message.envelope.attachment))),
-          envelopeVersion: Value(message.envelope.version),
-          searchBody: Value(await _encrypt(message.searchableBody)),
-          conversationOrder: Value(message.conversationOrder),
-          receivedAt: message.sentAt,
-          expiresAt: Value(message.expiresAt),
-          deliveryState: Value(message.deliveryState.name),
-          deliveredAt: Value(message.deliveredAt),
-          readAt: Value(message.readAt),
-        ),
-      );
+  Future<ConversationPreview?> _decodeConversation(CachedConversation row) async {
+    final peerHandle = await _decrypt(row.peerHandle);
+    if (peerHandle == null) {
+      return null;
     }
 
-    await _db.transaction(() async {
-      await (_db.delete(_db.cachedMessages)
-            ..where((table) => table.conversationId.equals(conversationId)))
-          .go();
+    final peerDisplayName = await _decrypt(row.peerDisplayName);
+    final peerUserId = await _decrypt(row.peerUserId);
+    final peerDeviceId = await _decrypt(row.peerDeviceId);
+    final peerIdentityPublicKey = await _decrypt(row.peerIdentityPublicKey);
+    final peerSignedPrekeyBundle = await _decrypt(row.peerSignedPrekeyBundle);
+    final previewSenderDeviceId = await _decrypt(row.previewSenderDeviceId);
+    final previewCiphertext = await _decrypt(row.previewCiphertext);
+    final previewNonce = await _decrypt(row.previewNonce);
+    final previewMessageType = await _decrypt(row.previewMessageType);
+    final previewAttachmentJson = await _decrypt(row.previewAttachmentJson);
+    final sessionLocator = await _decrypt(row.sessionLocator);
+    final sessionEnvelopeVersion =
+        await _decrypt(row.sessionEnvelopeVersion);
+    final sessionRequiresLocalPersistence =
+        await _decrypt(row.sessionRequiresLocalPersistence);
+    final sessionLocalDeviceId = await _decrypt(row.sessionLocalDeviceId);
+    final sessionRemoteDeviceId = await _decrypt(row.sessionRemoteDeviceId);
+    final sessionRemoteIdentityFingerprint =
+        await _decrypt(row.sessionRemoteIdentityFingerprint);
+    final sessionAuditHint = await _decrypt(row.sessionAuditHint);
+    final sessionBootstrappedAt =
+        await _decrypt(row.sessionBootstrappedAt);
+    final sessionRemoteIdentityPublicKey =
+        await _decrypt(row.sessionRemoteIdentityPublicKey);
 
-      await _db.batch((batch) {
-        for (final row in rows) {
-          batch.insert(
-            _db.cachedMessages,
-            row,
-            mode: InsertMode.insertOrReplace,
-          );
-        }
-      });
-    });
+    return ConversationPreview(
+      id: row.id,
+      peerHandle: peerHandle,
+      peerDisplayName: peerDisplayName,
+      recipientBundle: KeyBundle(
+        userId: peerUserId ?? 'cached-user-$peerHandle',
+        deviceId: peerDeviceId ?? '',
+        handle: peerHandle,
+        identityPublicKey: peerIdentityPublicKey ?? '',
+        signedPrekeyBundle: peerSignedPrekeyBundle ?? '',
+      ),
+      lastEnvelope: previewMessageType == null ||
+              previewSenderDeviceId == null ||
+              previewCiphertext == null ||
+              previewNonce == null
+          ? null
+          : CryptoEnvelope(
+              version: row.previewEnvelopeVersion ??
+                  _envelopeCodec.defaultEnvelopeVersion,
+              conversationId: row.id,
+              senderDeviceId: previewSenderDeviceId,
+              recipientUserId: peerUserId ?? '',
+              ciphertext: previewCiphertext,
+              nonce: previewNonce,
+              messageKind: MessageKind.values.byName(previewMessageType),
+              expiresAt: row.previewExpiresAt,
+              attachment: _decodeAttachment(previewAttachmentJson),
+            ),
+      updatedAt: row.updatedAt,
+      sessionState: sessionLocator == null ||
+              sessionEnvelopeVersion == null ||
+              sessionRequiresLocalPersistence == null ||
+              row.sessionSchemaVersion == null ||
+              sessionLocalDeviceId == null ||
+              sessionRemoteDeviceId == null ||
+              sessionRemoteIdentityFingerprint == null ||
+              sessionBootstrappedAt == null
+          ? null
+          : ConversationSessionState(
+              sessionLocator: sessionLocator,
+              sessionEnvelopeVersion: sessionEnvelopeVersion,
+              requiresLocalPersistence:
+                  sessionRequiresLocalPersistence == 'true',
+              sessionSchemaVersion: row.sessionSchemaVersion!,
+              localDeviceId: sessionLocalDeviceId,
+              remoteDeviceId: sessionRemoteDeviceId,
+              remoteIdentityFingerprint: sessionRemoteIdentityFingerprint,
+              bootstrappedAt: DateTime.parse(sessionBootstrappedAt),
+              auditHint: sessionAuditHint,
+              remoteIdentityPublicKey: sessionRemoteIdentityPublicKey ?? '',
+            ),
+    );
+  }
+
+  Future<ChatMessage?> _decodeMessage(CachedMessage row) async {
+    final senderDeviceId = await _decrypt(row.senderDeviceId);
+    final ciphertext = await _decrypt(row.ciphertext);
+    final nonce = await _decrypt(row.nonce);
+    final messageType = await _decrypt(row.messageType);
+    final attachmentJson = await _decrypt(row.attachmentJson);
+    final searchBody = await _decrypt(row.searchBody);
+
+    if (senderDeviceId == null ||
+        ciphertext == null ||
+        nonce == null ||
+        messageType == null) {
+      return null;
+    }
+
+    return ChatMessage(
+      id: row.id,
+      clientMessageId: row.clientMessageId,
+      senderDeviceId: senderDeviceId,
+      sentAt: row.receivedAt,
+      envelope: CryptoEnvelope(
+        version: row.envelopeVersion ?? _envelopeCodec.defaultEnvelopeVersion,
+        conversationId: row.conversationId,
+        senderDeviceId: senderDeviceId,
+        recipientUserId: '',
+        ciphertext: ciphertext,
+        nonce: nonce,
+        messageKind: MessageKind.values.byName(messageType),
+        expiresAt: row.expiresAt,
+        attachment: _decodeAttachment(attachmentJson),
+      ),
+      conversationOrder: row.conversationOrder,
+      deliveryState: _decodeDeliveryState(
+        state: row.deliveryState,
+        deliveredAt: row.deliveredAt,
+        readAt: row.readAt,
+      ),
+      deliveredAt: row.deliveredAt,
+      readAt: row.readAt,
+      expiresAt: row.expiresAt,
+      searchableBody: searchBody,
+      isMine: false,
+    );
+  }
+
+  Future<CachedConversationsCompanion> _conversationRow(ConversationPreview conversation) async {
+    final preview = conversation.lastEnvelope;
+    return CachedConversationsCompanion.insert(
+      id: conversation.id,
+      peerHandle: await _requireEncryptedValue(conversation.peerHandle),
+      updatedAt: conversation.updatedAt,
+      peerUserId:
+          Value(await _encrypt(conversation.recipientBundle.userId)),
+      peerDisplayName: Value(await _encrypt(conversation.peerDisplayName)),
+      peerDeviceId:
+          Value(await _encrypt(conversation.recipientBundle.deviceId)),
+      peerIdentityPublicKey: Value(
+          await _encrypt(conversation.recipientBundle.identityPublicKey)),
+      peerSignedPrekeyBundle: Value(
+          await _encrypt(conversation.recipientBundle.signedPrekeyBundle)),
+      previewSenderDeviceId: Value(await _encrypt(preview?.senderDeviceId)),
+      previewCiphertext: Value(await _encrypt(preview?.ciphertext)),
+      previewNonce: Value(await _encrypt(preview?.nonce)),
+      previewMessageType: Value(await _encrypt(preview?.messageKind.name)),
+      previewAttachmentJson:
+          Value(await _encrypt(_encodeAttachment(preview?.attachment))),
+      previewEnvelopeVersion: Value(preview?.version),
+      previewExpiresAt: Value(preview?.expiresAt),
+      sessionLocator:
+          Value(await _encrypt(conversation.sessionState?.sessionLocator)),
+      sessionEnvelopeVersion: Value(await _encrypt(
+          conversation.sessionState?.sessionEnvelopeVersion)),
+      sessionRequiresLocalPersistence: Value(await _encrypt(
+        conversation.sessionState?.requiresLocalPersistence.toString(),
+      )),
+      sessionSchemaVersion:
+          Value(conversation.sessionState?.sessionSchemaVersion),
+      sessionLocalDeviceId: Value(
+          await _encrypt(conversation.sessionState?.localDeviceId)),
+      sessionRemoteDeviceId: Value(
+          await _encrypt(conversation.sessionState?.remoteDeviceId)),
+      sessionRemoteIdentityFingerprint: Value(await _encrypt(
+          conversation.sessionState?.remoteIdentityFingerprint)),
+      sessionAuditHint:
+          Value(await _encrypt(conversation.sessionState?.auditHint)),
+      sessionBootstrappedAt: Value(await _encrypt(
+        conversation.sessionState?.bootstrappedAt.toIso8601String(),
+      )),
+      sessionRemoteIdentityPublicKey: Value(await _encrypt(
+          conversation.sessionState?.remoteIdentityPublicKey)),
+    );
+  }
+
+  Future<CachedMessagesCompanion> _messageRow(ChatMessage message) async {
+    return CachedMessagesCompanion.insert(
+      id: message.id,
+      conversationId: message.envelope.conversationId,
+      clientMessageId: Value(message.clientMessageId),
+      senderDeviceId: await _requireEncryptedValue(message.senderDeviceId),
+      ciphertext: await _requireEncryptedValue(message.envelope.ciphertext),
+      nonce: await _requireEncryptedValue(message.envelope.nonce),
+      messageType:
+          await _requireEncryptedValue(message.envelope.messageKind.name),
+      attachmentJson: Value(
+          await _encrypt(_encodeAttachment(message.envelope.attachment))),
+      envelopeVersion: Value(message.envelope.version),
+      searchBody: Value(await _encrypt(message.searchableBody)),
+      conversationOrder: Value(message.conversationOrder),
+      receivedAt: message.sentAt,
+      expiresAt: Value(message.expiresAt),
+      deliveryState: Value(message.deliveryState.name),
+      deliveredAt: Value(message.deliveredAt),
+      readAt: Value(message.readAt),
+    );
   }
 
   @override
@@ -1139,6 +1271,7 @@ class DriftConversationCacheService implements ConversationCacheService, Message
 
   @override
   Future<void> clearAll() async {
+    _wipes += 1;
     await _db.transaction(() async {
       await _db.delete(_db.messageContents).go();
       await _db.delete(_db.retiredMessages).go();

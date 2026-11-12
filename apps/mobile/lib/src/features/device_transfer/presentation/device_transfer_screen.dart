@@ -11,6 +11,7 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../data/device_transfer_providers.dart';
 
 enum _TransferMode { oldDevice, newDevice }
 
@@ -68,7 +69,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
-    final controller = ref.watch(messengerControllerProvider);
+    final controller = ref.watch(deviceTransferControllerProvider);
     final transferPayload = controller.transferPayload;
     final transferExpired = _isExpired(controller.transferExpiresAt);
     final claimExpired = _isExpired(_claimExpiresAt);
@@ -168,8 +169,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               transferExpired: transferExpired,
               errorMessage: controller.errorMessage,
               claimIdController: _claimIdController,
-              onInit: () => ref.read(messengerControllerProvider).initTransfer(),
-              onApprove: () => ref.read(messengerControllerProvider).approveTransfer(
+              onInit: () => ref.read(deviceTransferControllerProvider).initTransfer(),
+              onApprove: () => ref.read(deviceTransferControllerProvider).approveTransfer(
                     _claimIdController.text.trim(),
                   ),
               onCopyPayload: transferPayload == null || transferExpired
@@ -186,7 +187,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
                         ),
                       );
                     },
-              onClear: () => ref.read(messengerControllerProvider).clearTransferState(),
+              onClear: () => ref.read(deviceTransferControllerProvider).clearTransferState(),
               now: _now,
             )
           else

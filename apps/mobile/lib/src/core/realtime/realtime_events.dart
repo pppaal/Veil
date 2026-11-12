@@ -146,6 +146,9 @@ final class MessageNewEvent extends RealtimeEvent {
   }
 }
 
+/// A receipt is applied by message id alone: it only ever reaches the
+/// message's sender, so the reader it names ([userId], which a relay may
+/// leave out) decides nothing.
 final class MessageDeliveredEvent extends RealtimeEvent {
   const MessageDeliveredEvent({
     required this.messageId,
@@ -157,23 +160,23 @@ final class MessageDeliveredEvent extends RealtimeEvent {
   String get name => 'message.delivered';
 
   final String messageId;
-  final String userId;
+  final String? userId;
   final DateTime deliveredAt;
 
   static MessageDeliveredEvent? _tryParse(Map<String, dynamic> payload) {
     if (payload
         case {
           'messageId': String messageId,
-          'userId': String userId,
           'deliveredAt': String rawDeliveredAt,
         }) {
       final deliveredAt = DateTime.tryParse(rawDeliveredAt);
-      if (deliveredAt == null || !_allNonEmpty([messageId, userId])) {
+      final userId = _optionalId(payload['userId']);
+      if (deliveredAt == null || messageId.isEmpty || userId == _malformedId) {
         return null;
       }
       return MessageDeliveredEvent(
         messageId: messageId,
-        userId: userId,
+        userId: userId as String?,
         deliveredAt: deliveredAt,
       );
     }
@@ -181,6 +184,7 @@ final class MessageDeliveredEvent extends RealtimeEvent {
   }
 }
 
+/// See [MessageDeliveredEvent] on [userId].
 final class MessageReadEvent extends RealtimeEvent {
   const MessageReadEvent({
     required this.messageId,
@@ -192,23 +196,23 @@ final class MessageReadEvent extends RealtimeEvent {
   String get name => 'message.read';
 
   final String messageId;
-  final String userId;
+  final String? userId;
   final DateTime readAt;
 
   static MessageReadEvent? _tryParse(Map<String, dynamic> payload) {
     if (payload
         case {
           'messageId': String messageId,
-          'userId': String userId,
           'readAt': String rawReadAt,
         }) {
       final readAt = DateTime.tryParse(rawReadAt);
-      if (readAt == null || !_allNonEmpty([messageId, userId])) {
+      final userId = _optionalId(payload['userId']);
+      if (readAt == null || messageId.isEmpty || userId == _malformedId) {
         return null;
       }
       return MessageReadEvent(
         messageId: messageId,
-        userId: userId,
+        userId: userId as String?,
         readAt: readAt,
       );
     }
@@ -517,6 +521,15 @@ final class UnknownRealtimeEvent extends RealtimeEvent {
 }
 
 bool _isOptional<T>(Object? value) => value == null || value is T;
+
+const Object _malformedId = Object();
+
+/// An optional id: null when absent, the id, or [_malformedId].
+Object? _optionalId(Object? value) => switch (value) {
+      null => null,
+      final String id when id.isNotEmpty => id,
+      _ => _malformedId,
+    };
 
 bool _isOptionalTimestamp(Object? value) {
   return value == null || (value is String && DateTime.tryParse(value) != null);

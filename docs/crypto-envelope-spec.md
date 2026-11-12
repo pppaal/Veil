@@ -414,7 +414,7 @@ without v2 states binds nothing and a v2 handshake can upgrade it.
 | `failed`                | malformed, unauthenticated, or prekeys unavailable; `failureReason` says which. `persist_failed`: the frame opened but the caller's content write or the state commit failed; nothing was committed, so it is retried |
 | `replayed`              | `(pub, N)` already consumed or its chain left behind       |
 | `sessionMissing`        | Normal or legacy v1 frame with no matching session         |
-| `awaitingKey`           | group frame whose sender key has not arrived, or a Normal frame more than 200 keys ahead of its chain (`skip_limit`); retried once key material or earlier frames arrive |
+| `awaitingKey`           | group frame whose sender key has not arrived, or (mobile only) a Normal frame more than 200 keys ahead of its chain (`skip_limit`); retried once key material or earlier frames arrive. The web client reports such a Normal frame as `failed` |
 | `identityRejected`      | an authenticated handshake from an identity the conversation is not bound to, or that the verifier vetoed; or a frame on a state whose identity the verifier no longer admits (nothing is committed) |
 | `legacyUnauthenticated` | decrypted from a legacy v1 frame                           |
 

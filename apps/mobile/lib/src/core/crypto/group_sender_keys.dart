@@ -1008,7 +1008,12 @@ class GroupSenderKeyEngine {
         peer.skipped[header.counter] = spent!;
       } else {
         newlySkipped.keys.forEach(peer.skipped.remove);
+        // Only keys held before this frame go back. A key this frame skipped
+        // and the cap then evicted was never held; it wraps a scratch list
+        // that dropScratch() wipes, so restoring it would leave a wiped key
+        // at a counter the restored chain has yet to reach.
         for (final entry in evicted) {
+          if (identical(entry.chain, peer) && newlySkipped.containsKey(entry.counter)) continue;
           entry.chain.skipped[entry.counter] = entry.key;
         }
         peer.chainKey = previousChainKey;

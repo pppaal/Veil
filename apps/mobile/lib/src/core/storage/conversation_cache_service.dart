@@ -549,15 +549,36 @@ class ConversationCacheChanges {
       paging.isEmpty;
 }
 
+/// Thrown by the row-level calls of [IncrementalConversationCache] when no
+/// database can be reached, as on an iOS launch before first unlock.
+class ConversationCacheUnavailable implements Exception {
+  const ConversationCacheUnavailable(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'ConversationCacheUnavailable: $cause';
+}
+
 /// Row-level access for a writer that tracks its own changes, so a change
 /// costs the rows it touched rather than a rewrite of the conversation.
 /// Kept apart from [ConversationCacheService] so its many fakes in tests
 /// are unaffected; callers check for it with `is`.
 abstract interface class IncrementalConversationCache {
+  /// How many wipes ([ConversationCacheService.clearAll]) have begun. A
+  /// writer that keeps unwritten state or a record of the rows it wrote
+  /// compares it before each write: once it moves, those rows are gone and
+  /// what the writer still holds belongs to the identity that was wiped.
+  int get wipes;
+
   /// Every conversation with its messages and paging, in one query.
+  /// Throws [ConversationCacheUnavailable] when no database can be reached,
+  /// rather than reading as empty.
   Future<ConversationCacheSnapshot> readSnapshot();
 
-  /// Applies [changes] in one transaction.
+  /// Applies [changes] in one transaction. Throws
+  /// [ConversationCacheUnavailable] when no database can be reached, so a
+  /// writer never counts rows that were not written.
   Future<void> writeChanges(ConversationCacheChanges changes);
 }
 
@@ -573,6 +594,12 @@ class DriftConversationCacheService
   final AppDatabase _db;
   final LocalDataCipher? _cipher;
   final CryptoEnvelopeCodec _envelopeCodec;
+  // Writers that run alongside a wipe reach this cache through CacheHandle,
+  // which orders the wipe after the writes already under way.
+  int _wipes = 0;
+
+  @override
+  int get wipes => _wipes;
 
   @override
   Future<List<ConversationPreview>> readConversations() async {
@@ -1244,6 +1271,7 @@ class DriftConversationCacheService
 
   @override
   Future<void> clearAll() async {
+    _wipes += 1;
     await _db.transaction(() async {
       await _db.delete(_db.messageContents).go();
       await _db.delete(_db.retiredMessages).go();

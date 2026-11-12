@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../domain/chat_message.dart';
 import '../domain/conversation_preview.dart';
 import '../domain/message_search.dart';
@@ -15,7 +17,14 @@ import 'in_memory_message_content_store.dart';
 ///
 /// A database that cannot be opened leaves the app as it runs without a
 /// local cache: nothing is kept beyond the process, but messaging, sign-out
-/// and wipe keep working. Each call tries the database again.
+/// and wipe keep working. Each call tries the database again. Only the
+/// row-level calls of a writer that records what it wrote throw instead
+/// ([ConversationCacheUnavailable]), so it never counts a write that
+/// reached no database.
+///
+/// The session controller wipes the cache through the same handle the
+/// messenger writes through, so a wipe waits for every write already under
+/// way: one that began before the wipe lands before it, never after.
 class CacheHandle implements ConversationCacheService, MessageContentStore, IncrementalConversationCache {
   CacheHandle(this._resolve);
 
@@ -23,6 +32,11 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
   /// its database cannot be opened.
   final Future<DriftConversationCacheService> Function() _resolve;
   final InMemoryMessageContentStore _processOnlyContent = InMemoryMessageContentStore();
+  final Set<Future<void>> _writing = {};
+  int _wipes = 0;
+
+  @override
+  int get wipes => _wipes;
 
   Future<DriftConversationCacheService?> _cache() async {
     try {
@@ -30,6 +44,25 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
     } catch (_) {
       return null;
     }
+  }
+
+  Future<DriftConversationCacheService> _requireCache() async {
+    try {
+      return await _resolve();
+    } catch (error) {
+      throw ConversationCacheUnavailable(error);
+    }
+  }
+
+  // Starts [write] as one the next wipe waits for. Every mutating call
+  // goes through here before its first await, so no write can begin
+  // unseen by a wipe that starts after it.
+  Future<void> _write(Future<void> Function() write) {
+    final result = write();
+    final settled = result.then<void>((_) {}, onError: (Object _) {});
+    _writing.add(settled);
+    unawaited(settled.whenComplete(() => _writing.remove(settled)));
+    return result;
   }
 
   Future<MessageContentStore> _contents() async => await _cache() ?? _processOnlyContent;
@@ -43,12 +76,12 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
       await (await _cache())?.readMessages(conversationId) ?? const [];
 
   @override
-  Future<void> storeConversations(List<ConversationPreview> conversations) async =>
-      (await _cache())?.storeConversations(conversations);
+  Future<void> storeConversations(List<ConversationPreview> conversations) =>
+      _write(() async => (await _cache())?.storeConversations(conversations));
 
   @override
-  Future<void> storeMessages(String conversationId, List<ChatMessage> messages) async =>
-      (await _cache())?.storeMessages(conversationId, messages);
+  Future<void> storeMessages(String conversationId, List<ChatMessage> messages) =>
+      _write(() async => (await _cache())?.storeMessages(conversationId, messages));
 
   @override
   Future<ConversationPagingState> readPagingState(String conversationId) async =>
@@ -60,37 +93,37 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
     String? nextCursor,
     required bool hasMoreHistory,
     DateTime? lastSyncedAt,
-  }) async =>
-      (await _cache())?.storePagingState(
-        conversationId,
-        nextCursor: nextCursor,
-        hasMoreHistory: hasMoreHistory,
-        lastSyncedAt: lastSyncedAt,
-      );
+  }) =>
+      _write(() async => (await _cache())?.storePagingState(
+            conversationId,
+            nextCursor: nextCursor,
+            hasMoreHistory: hasMoreHistory,
+            lastSyncedAt: lastSyncedAt,
+          ));
 
   @override
   Future<List<PendingMessageRecord>> readPendingMessages() async =>
       await (await _cache())?.readPendingMessages() ?? const [];
 
   @override
-  Future<void> upsertPendingMessage(PendingMessageRecord pending) async =>
-      (await _cache())?.upsertPendingMessage(pending);
+  Future<void> upsertPendingMessage(PendingMessageRecord pending) =>
+      _write(() async => (await _cache())?.upsertPendingMessage(pending));
 
   @override
-  Future<void> removePendingMessage(String clientMessageId) async =>
-      (await _cache())?.removePendingMessage(clientMessageId);
+  Future<void> removePendingMessage(String clientMessageId) =>
+      _write(() async => (await _cache())?.removePendingMessage(clientMessageId));
 
   @override
   Future<void> indexMessageBody({
     required String conversationId,
     required String messageId,
     required String searchableBody,
-  }) async =>
-      (await _cache())?.indexMessageBody(
-        conversationId: conversationId,
-        messageId: messageId,
-        searchableBody: searchableBody,
-      );
+  }) =>
+      _write(() async => (await _cache())?.indexMessageBody(
+            conversationId: conversationId,
+            messageId: messageId,
+            searchableBody: searchableBody,
+          ));
 
   @override
   Future<List<String>> searchCachedMessageIds({
@@ -108,23 +141,25 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
       const MessageSearchPage(items: <MessageSearchResult>[]);
 
   @override
-  Future<ConversationCacheSnapshot> readSnapshot() async =>
-      await (await _cache())?.readSnapshot() ?? const ConversationCacheSnapshot();
+  Future<ConversationCacheSnapshot> readSnapshot() async => (await _requireCache()).readSnapshot();
 
   @override
-  Future<void> writeChanges(ConversationCacheChanges changes) async => (await _cache())?.writeChanges(changes);
+  Future<void> writeChanges(ConversationCacheChanges changes) =>
+      _write(() async => (await _requireCache()).writeChanges(changes));
 
   @override
-  Future<void> purgeExpiredMessages() async => (await _cache())?.purgeExpiredMessages();
+  Future<void> purgeExpiredMessages() => _write(() async => (await _cache())?.purgeExpiredMessages());
 
   @override
   Future<void> clearAll() async {
+    _wipes += 1;
+    await Future.wait([..._writing]);
     _processOnlyContent.clear();
     await (await _cache())?.clearAll();
   }
 
   @override
-  Future<void> put(MessageContentRecord record) async => (await _contents()).put(record);
+  Future<void> put(MessageContentRecord record) => _write(() async => (await _contents()).put(record));
 
   @override
   Future<MessageContentRecord?> get(String messageKey) async => (await _contents()).get(messageKey);
@@ -141,16 +176,17 @@ class CacheHandle implements ConversationCacheService, MessageContentStore, Incr
   Future<void> rekeyLocalToServer({
     required String clientMessageId,
     required String serverMessageId,
-  }) async =>
-      (await _contents()).rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: serverMessageId);
+  }) =>
+      _write(() async => (await _contents())
+          .rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: serverMessageId));
 
   @override
-  Future<void> deleteConversation(String conversationId) async =>
-      (await _contents()).deleteConversation(conversationId);
+  Future<void> deleteConversation(String conversationId) =>
+      _write(() async => (await _contents()).deleteConversation(conversationId));
 
   @override
-  Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys = const []}) async =>
-      (await _contents()).deleteExpired(now, messageKeys: messageKeys);
+  Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys = const []}) =>
+      _write(() async => (await _contents()).deleteExpired(now, messageKeys: messageKeys));
 
   @override
   Future<Set<String>> retiredAmong(Iterable<String> messageKeys) async =>

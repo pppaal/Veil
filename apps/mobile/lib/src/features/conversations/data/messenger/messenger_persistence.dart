@@ -16,8 +16,16 @@ typedef CachedMessengerState = ({ConversationCacheSnapshot snapshot, List<Pendin
 /// after the last change (at most 1 s after the first), when the app
 /// pauses, or when the messenger is disposed, writes the rows that differ
 /// from what this writer last wrote, read from the state as it is then.
-/// Outbox records are written at once: a queued message must survive a
-/// crash right after the send.
+/// Outbox records are queued at once, without waiting for a flush: a
+/// queued message must survive a crash right after the send.
+///
+/// Only rows that reached a database count as written. A write that fails,
+/// or finds no database, leaves its conversations to the next flush, which
+/// writes them whole.
+///
+/// A wipe of the cache drops everything this writer still holds, and it
+/// writes nothing more until [reset] starts it over for the next identity:
+/// the state it holds until then belongs to the identity that was wiped.
 class MessengerPersistence implements MessengerStateObserver {
   MessengerPersistence({
     required ConversationCacheService? cache,
@@ -25,11 +33,15 @@ class MessengerPersistence implements MessengerStateObserver {
     Duration debounce = const Duration(milliseconds: 100),
     Duration maxDelay = const Duration(seconds: 1),
   })  : _cache = cache,
+        _incremental = cache is IncrementalConversationCache ? cache as IncrementalConversationCache : null,
         _store = store,
         _debounce = debounce,
-        _maxDelay = maxDelay;
+        _maxDelay = maxDelay {
+    _wipes = _incremental?.wipes ?? 0;
+  }
 
   final ConversationCacheService? _cache;
+  final IncrementalConversationCache? _incremental;
   final MessengerStateStore _store;
   final Duration _debounce;
   final Duration _maxDelay;
@@ -49,8 +61,10 @@ class MessengerPersistence implements MessengerStateObserver {
   // that zone, and work queued from another zone would wait on it.
   Future<void>? _tail;
   // Bumped when the identity changes: writes queued for the previous one
-  // are dropped, so nothing of it lands in a cache wiped at sign-out.
+  // are dropped.
   int _generation = 0;
+  // The cache's wipe count when this writer last started over.
+  int _wipes = 0;
   bool _disposed = false;
 
   @override
@@ -77,9 +91,7 @@ class MessengerPersistence implements MessengerStateObserver {
         final cache = _cache;
         if (cache == null) return null;
         await cache.purgeExpiredMessages();
-        final snapshot = cache is IncrementalConversationCache
-            ? await (cache as IncrementalConversationCache).readSnapshot()
-            : await _readEachConversation(cache);
+        final snapshot = await _readSnapshot(cache);
         _writtenConversations
           ..clear()
           ..addAll({for (final conversation in snapshot.conversations) conversation.id: conversation});
@@ -109,19 +121,12 @@ class MessengerPersistence implements MessengerStateObserver {
     return _write(_writeChanges);
   }
 
-  /// Forgets the previous identity's unwritten changes and drops its queued
-  /// writes.
+  /// Forgets the previous identity's unwritten changes, drops its queued
+  /// writes, and starts writing again after a wipe.
   void reset() {
     _generation += 1;
-    _debounceTimer?.cancel();
-    _maxDelayTimer?.cancel();
-    _debounceTimer = null;
-    _maxDelayTimer = null;
-    _conversationsDirty = false;
-    _messagesDirty.clear();
-    _pagingDirty.clear();
-    _writtenConversations.clear();
-    _writtenMessages.clear();
+    _wipes = _incremental?.wipes ?? 0;
+    _forget();
   }
 
   /// Writes what is still pending and stops scheduling.
@@ -131,20 +136,46 @@ class MessengerPersistence implements MessengerStateObserver {
     _disposed = true;
   }
 
+  // A change marked after a wipe is forgotten with the rest (see
+  // [_cacheWiped]).
   void _schedule() {
-    if (_disposed || _cache == null) return;
+    if (_disposed || _cache == null || _cacheWiped()) return;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(_debounce, () => unawaited(flush()));
     _maxDelayTimer ??= Timer(_maxDelay, () => unawaited(flush()));
   }
 
   // Queues a write for the current identity; it is dropped if the
-  // identity changes before its turn.
+  // identity changes or the cache is wiped before its turn. The check and
+  // the start of the write share one synchronous step, so a wipe either
+  // comes first and is seen here, or waits for the write (CacheHandle).
   Future<void> _write(Future<void> Function() write) {
     final generation = _generation;
     return _serialized(() async {
-      if (generation == _generation) await write();
+      if (generation == _generation && !_cacheWiped()) await write();
     });
+  }
+
+  // Whether the cache was wiped since this writer last started over. The
+  // rows it recorded are gone then, and its unwritten changes and the
+  // state they would be read from belong to the identity that was wiped:
+  // all of it is forgotten, and nothing is written until [reset].
+  bool _cacheWiped() {
+    if ((_incremental?.wipes ?? _wipes) == _wipes) return false;
+    _forget();
+    return true;
+  }
+
+  void _forget() {
+    _debounceTimer?.cancel();
+    _maxDelayTimer?.cancel();
+    _debounceTimer = null;
+    _maxDelayTimer = null;
+    _conversationsDirty = false;
+    _messagesDirty.clear();
+    _pagingDirty.clear();
+    _writtenConversations.clear();
+    _writtenMessages.clear();
   }
 
   Future<T> _serialized<T>(Future<T> Function() task) {
@@ -203,14 +234,22 @@ class MessengerPersistence implements MessengerStateObserver {
     if (changes.isEmpty) return;
 
     try {
-      if (cache is IncrementalConversationCache) {
-        await (cache as IncrementalConversationCache).writeChanges(changes);
+      final incremental = _incremental;
+      if (incremental != null) {
+        await incremental.writeChanges(changes);
       } else {
         await _writeWhole(cache, changes, written);
       }
     } catch (_) {
-      // Kept for the next flush, which the next change schedules.
-      _conversationsDirty |= conversationsDirty;
+      // None of the batch is known to have landed, and the record of what
+      // did land may be what failed it: a message whose conversation row
+      // never reached the database. The next flush, which the next change
+      // or a pause schedules, writes these conversations whole.
+      for (final id in {for (final conversation in changes.conversations) conversation.id, ...written.keys}) {
+        _writtenConversations.remove(id);
+        _writtenMessages.remove(id);
+      }
+      _conversationsDirty = true;
       _messagesDirty.addAll(written.keys);
       _pagingDirty.addAll(changes.paging.keys);
       return;
@@ -242,6 +281,19 @@ class MessengerPersistence implements MessengerStateObserver {
         hasMoreHistory: state.hasMoreHistory,
         lastSyncedAt: state.lastSyncedAt,
       );
+    }
+  }
+
+  // A cache whose database cannot be opened yet reads as empty, and
+  // nothing of it is recorded as written: the first write that reaches a
+  // database writes each conversation whole.
+  Future<ConversationCacheSnapshot> _readSnapshot(ConversationCacheService cache) async {
+    final incremental = _incremental;
+    if (incremental == null) return _readEachConversation(cache);
+    try {
+      return await incremental.readSnapshot();
+    } on ConversationCacheUnavailable {
+      return const ConversationCacheSnapshot();
     }
   }
 

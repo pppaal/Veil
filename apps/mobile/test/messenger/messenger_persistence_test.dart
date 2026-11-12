@@ -4,12 +4,14 @@ import 'dart:math';
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/app/app_session_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/security/local_data_cipher.dart';
 import 'package:veil_mobile/src/core/storage/app_database.dart';
+import 'package:veil_mobile/src/core/storage/cache_handle.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
@@ -27,10 +29,13 @@ class _CountingCache extends DriftConversationCacheService {
 
   int bulkWrites = 0;
   int wholeConversationWrites = 0;
+  // While set, a bulk write waits for it before it reaches the database.
+  Completer<void>? hold;
 
   @override
-  Future<void> writeChanges(ConversationCacheChanges changes) {
+  Future<void> writeChanges(ConversationCacheChanges changes) async {
     bulkWrites += 1;
+    await hold?.future;
     return super.writeChanges(changes);
   }
 
@@ -68,6 +73,9 @@ class _HistoryApi extends VeilApiClient {
   Future<Map<String, dynamic>> getMessages(String accessToken, String conversationId,
           {String? cursor, int limit = 50}) async =>
       {'items': history, 'nextCursor': null};
+
+  @override
+  Future<Map<String, dynamic>> markRead(String accessToken, String messageId) async => const {};
 }
 
 class _SilentRealtime extends RealtimeService {
@@ -94,6 +102,9 @@ class _SlowCache implements ConversationCacheService, IncrementalConversationCac
   final List<String> regressions = [];
 
   Future<void> _delay() => Future<void>.delayed(Duration(microseconds: _random.nextInt(4000)));
+
+  @override
+  int get wipes => 0;
 
   @override
   Future<void> writeChanges(ConversationCacheChanges changes) async {
@@ -155,50 +166,72 @@ ChatMessage _version(String id, int version) => ChatMessage(
       ),
     );
 
-void main() {
-  test('opening a 200-message chat and decrypting all causes at most 2 bulk writes', () async {
-    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
-    final adapter = createDefaultCryptoAdapter();
-    final innerExpiry = DateTime.now().add(const Duration(hours: 1));
-    final history = <Map<String, dynamic>>[];
-    for (var order = 1; order <= 200; order++) {
-      final envelope = await adapter.messaging.encryptMessage(
-        conversationId: 'conv-1',
-        senderDeviceId: 'dev-selene',
-        recipientUserId: 'user-atlas',
-        body: 'message $order',
-        messageKind: MessageKind.text,
-        recipientBundle: const KeyBundle(
-          userId: 'user-atlas',
-          deviceId: 'dev-atlas',
-          handle: 'atlas',
-          identityPublicKey: 'ik-atlas',
-          signedPrekeyBundle: 'spk-atlas',
+/// Selene's messages [from] to [to] as the relay returns them, sealed for
+/// atlas with [innerExpiry]; the relay strips the outer expiry.
+Future<List<Map<String, dynamic>>> _relayedHistory(
+  CryptoAdapter adapter, {
+  int from = 1,
+  required int to,
+  DateTime? innerExpiry,
+}) async =>
+    [
+      for (var order = from; order <= to; order++)
+        relayedMessageJson(
+          {
+            ...adapter.envelopeCodec.encodeApiEnvelope(await adapter.messaging.encryptMessage(
+              conversationId: 'conv-1',
+              senderDeviceId: 'dev-selene',
+              recipientUserId: 'user-atlas',
+              body: 'message $order',
+              messageKind: MessageKind.text,
+              recipientBundle: const KeyBundle(
+                userId: 'user-atlas',
+                deviceId: 'dev-atlas',
+                handle: 'atlas',
+                identityPublicKey: 'ik-atlas',
+                signedPrekeyBundle: 'spk-atlas',
+              ),
+              expiresAt: innerExpiry,
+            )),
+            'expiresAt': null,
+          },
+          id: 'srv-$order',
+          order: order,
+          senderDeviceId: 'dev-selene',
         ),
-        expiresAt: innerExpiry,
-      );
-      // The relay strips the outer expiry; decrypting clamps every message
-      // to the sealed one, so each decrypt changes its row.
-      history.add(relayedMessageJson(
-        {...adapter.envelopeCodec.encodeApiEnvelope(envelope), 'expiresAt': null},
-        id: 'srv-$order',
-        order: order,
-        senderDeviceId: 'dev-selene',
-      ));
-    }
+    ];
+
+VeilMessengerController _messenger(CryptoAdapter adapter, VeilApiClient api, ConversationCacheService cache) {
+  final controller = VeilMessengerController(
+    apiClient: api,
+    cryptoEngine: adapter.messaging,
+    keyBundleCodec: adapter.keyBundles,
+    envelopeCodec: adapter.envelopeCodec,
+    sessionBootstrapper: adapter.sessions,
+    realtimeService: _SilentRealtime(),
+    cacheService: cache,
+    peerBindings: ConversationPeerBindings(),
+  );
+  addTearDown(controller.dispose);
+  return controller;
+}
+
+Future<({int conversations, int messages})> _rowCounts(AppDatabase database) async => (
+      conversations: (await database.select(database.cachedConversations).get()).length,
+      messages: (await database.select(database.cachedMessages).get()).length,
+    );
+
+void main() {
+  setUpAll(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = true);
+
+  test('opening a 200-message chat and decrypting all causes at most 2 bulk writes', () async {
+    final adapter = createDefaultCryptoAdapter();
+    // Decrypting clamps every message to the sealed expiry, so each decrypt
+    // changes its row.
+    final history = await _relayedHistory(adapter, to: 200, innerExpiry: DateTime.now().add(const Duration(hours: 1)));
     final database = AppDatabase(NativeDatabase.memory());
     final cache = _CountingCache(database, envelopeCodec: adapter.envelopeCodec);
-    final controller = VeilMessengerController(
-      apiClient: _HistoryApi(history),
-      cryptoEngine: adapter.messaging,
-      keyBundleCodec: adapter.keyBundles,
-      envelopeCodec: adapter.envelopeCodec,
-      sessionBootstrapper: adapter.sessions,
-      realtimeService: _SilentRealtime(),
-      cacheService: cache,
-      peerBindings: ConversationPeerBindings(),
-    );
-    addTearDown(controller.dispose);
+    final controller = _messenger(adapter, _HistoryApi(history), cache);
     await controller.applySession(fixtureSession);
     await controller.flushPendingWrites();
     cache.bulkWrites = 0;
@@ -270,5 +303,99 @@ void main() {
       );
       persistence.dispose();
     }
+  });
+
+  for (final throughHandle in [false, true]) {
+    test('changes waiting for a flush never reach a cache wiped under them (${throughHandle ? 'handle' : 'database'})',
+        () async {
+      final adapter = createDefaultCryptoAdapter();
+      final database = AppDatabase(NativeDatabase.memory());
+      final drift = _CountingCache(database, envelopeCodec: adapter.envelopeCodec);
+      final ConversationCacheService cache = throughHandle ? CacheHandle(() async => drift) : drift;
+      final controller = _messenger(adapter, _HistoryApi(await _relayedHistory(adapter, to: 3)), cache);
+      await controller.applySession(fixtureSession);
+      await controller.loadConversationMessages('conv-1');
+
+      // As a sign-out, device wipe or revocation runs: the wipe first, the
+      // signed-out state only after it.
+      await cache.clearAll();
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      expect(await _rowCounts(database), (conversations: 0, messages: 0));
+
+      await controller.applySession(const AppSessionState());
+      await controller.applySession(fixtureSession);
+      await controller.loadConversationMessages('conv-1');
+      await controller.flushPendingWrites();
+      expect(await _rowCounts(database), (conversations: 1, messages: 3), reason: 'the next identity writes again');
+    });
+  }
+
+  test('a write under way when the wipe begins lands before it, not after', () async {
+    final adapter = createDefaultCryptoAdapter();
+    final database = AppDatabase(NativeDatabase.memory());
+    final drift = _CountingCache(database, envelopeCodec: adapter.envelopeCodec);
+    final handle = CacheHandle(() async => drift);
+    final store = MessengerStateStore(onChanged: () {});
+    final persistence = MessengerPersistence(cache: handle, store: store);
+    addTearDown(persistence.dispose);
+    store.addObserver(persistence);
+    await store.replaceConversations(
+      [_conversation('conv-1')],
+      bound: const {},
+      pin: (merged) async => (merged, <String>[]),
+    );
+    store.setMessages('conv-1', [_version('srv-1', 1)]);
+
+    drift.hold = Completer<void>();
+    final flushing = persistence.flush();
+    await Future<void>.delayed(Duration.zero);
+    expect(drift.bulkWrites, 1, reason: 'the write is under way');
+    final wiping = handle.clearAll();
+    drift.hold!.complete();
+    await Future.wait([flushing, wiping]);
+
+    expect(await _rowCounts(database), (conversations: 0, messages: 0));
+  });
+
+  group('a database that opens only after the messenger loaded', () {
+    late CryptoAdapter adapter;
+    late AppDatabase database;
+    late _HistoryApi api;
+    late VeilMessengerController controller;
+    var available = false;
+
+    setUp(() async {
+      available = false;
+      adapter = createDefaultCryptoAdapter();
+      database = AppDatabase(NativeDatabase.memory());
+      final drift = _CountingCache(database, envelopeCodec: adapter.envelopeCodec);
+      api = _HistoryApi(await _relayedHistory(adapter, to: 3));
+      controller = _messenger(
+        adapter,
+        api,
+        CacheHandle(() async => available ? drift : throw StateError('locked before first unlock')),
+      );
+      await controller.applySession(fixtureSession);
+      await controller.loadConversationMessages('conv-1');
+      await controller.flushPendingWrites();
+      available = true;
+    });
+
+    test('receives what was loaded before it opened with the next change', () async {
+      api.history.addAll(await _relayedHistory(adapter, from: 4, to: 4));
+      await controller.loadConversationMessages('conv-1');
+      await controller.flushPendingWrites();
+
+      expect(await _rowCounts(database), (conversations: 1, messages: 4));
+    });
+
+    test('takes a receipt-only change together with the conversation row it needs', () async {
+      await controller.markRead('srv-1');
+      await controller.flushPendingWrites();
+
+      expect(await _rowCounts(database), (conversations: 1, messages: 3));
+      final read = await (database.select(database.cachedMessages)..where((row) => row.id.equals('srv-1'))).getSingle();
+      expect(read.readAt, isNotNull);
+    });
   });
 }

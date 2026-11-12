@@ -16,22 +16,24 @@ const assertMatch = (file, pattern, message) => {
   }
 };
 
+// The providers app_state.dart used to declare now live in
+// core/di/core_providers.dart; app_state.dart only re-exports them.
 assertNoMatch(
-  'apps/mobile/lib/src/app/app_state.dart',
+  'apps/mobile/lib/src/core/di/core_providers.dart',
   /mock_crypto_engine\.dart/,
-  'App state must not depend on the mock crypto implementation directly',
+  'Core providers must not depend on the mock crypto implementation directly',
 );
 
 assertNoMatch(
-  'apps/mobile/lib/src/app/app_state.dart',
+  'apps/mobile/lib/src/core/di/core_providers.dart',
   /device_auth_signer\.dart/,
-  'App state must not depend on a concrete auth signer implementation directly',
+  'Core providers must not depend on a concrete auth signer implementation directly',
 );
 
 assertMatch(
-  'apps/mobile/lib/src/app/app_state.dart',
+  'apps/mobile/lib/src/core/di/core_providers.dart',
   /crypto_adapter_registry\.dart/,
-  'App state must bootstrap crypto through the adapter registry',
+  'Core providers must bootstrap crypto through the adapter registry',
 );
 
 assertNoMatch(

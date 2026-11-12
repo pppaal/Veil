@@ -4,9 +4,10 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/app_session_state.dart';
 import '../../../core/config/veil_config.dart';
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/errors/user_facing_error.dart';
 import '../../../core/identity/identity_key_value_backend.dart';
 import '../../../core/identity/trusted_identity_resolver.dart';
 import '../../../core/identity/trusted_identity_store.dart';
@@ -17,6 +18,7 @@ import '../../../core/realtime/realtime_service.dart';
 import '../../../core/storage/conversation_cache_service.dart';
 import '../../../core/util/uuid_v4.dart';
 import '../../attachments/data/attachment_temp_file_store.dart';
+import '../../device_transfer/data/device_transfer_controller.dart';
 import 'conversation_models.dart';
 import 'group_sender_key_coordinator.dart';
 import 'messenger/conversation_merge.dart';
@@ -59,6 +61,7 @@ class VeilMessengerController extends ChangeNotifier {
     EnvelopeVersionPolicy? envelopeVersions,
     ConversationPeerBindings? peerBindings,
     PrekeyMaintenance? prekeyMaintenance,
+    DeviceTransferController? deviceTransfer,
   })  : _readReceiptsEnabled = readReceiptsEnabled ?? _always,
         _typingIndicatorsEnabled = typingIndicatorsEnabled ?? _always,
         _apiClient = apiClient,
@@ -78,7 +81,11 @@ class VeilMessengerController extends ChangeNotifier {
             IdentityTrust(TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()))),
         _envelopeVersions = envelopeVersions ?? EnvelopeVersionPolicy(),
         _peerBindings = peerBindings ?? ConversationPeerBindings(),
-        _prekeys = prekeyMaintenance {
+        _prekeys = prekeyMaintenance,
+        _ownsDeviceTransfer = deviceTransfer == null {
+    _deviceTransfer = deviceTransfer ??
+        DeviceTransferController(apiClient: apiClient, session: () => _session, onSecurityException: onSecurityException);
+    _deviceTransfer.addListener(notifyListeners);
     _trustEvents = _trust.events.listen((event) => unawaited(_onTrustEvent(event)));
     _expirationTicker = Timer.periodic(
       const Duration(seconds: 1),
@@ -106,6 +113,8 @@ class VeilMessengerController extends ChangeNotifier {
   final EnvelopeVersionPolicy _envelopeVersions;
   final ConversationPeerBindings _peerBindings;
   final PrekeyMaintenance? _prekeys;
+  late final DeviceTransferController _deviceTransfer;
+  final bool _ownsDeviceTransfer;
   late final StreamSubscription<IdentityTrustEvent> _trustEvents;
   final ReactionLedger _reactions = ReactionLedger();
   // Devices and identity keys inbound handshakes proved, by conversation,
@@ -154,10 +163,6 @@ class VeilMessengerController extends ChangeNotifier {
   bool _realtimeConnected = false;
   String? _activeConversationId;
   String? _errorMessage;
-  String? _transferSessionId;
-  String? _transferToken;
-  String? _transferStatus;
-  DateTime? _transferExpiresAt;
   Timer? _syncHintDebounce;
   bool _syncAfterHintInFlight = false;
   final Map<String, String> _typingByConversation = {};
@@ -174,10 +179,14 @@ class VeilMessengerController extends ChangeNotifier {
   String? attachmentDownloadError(String attachmentId) => _attachmentDownloadErrors[attachmentId];
   AttachmentTransferSnapshot? attachmentTransferForMessage(String clientMessageId) =>
       _attachmentTransfersByClientMessageId[clientMessageId];
-  String? get transferSessionId => _transferSessionId;
-  String? get transferToken => _transferToken;
-  String? get transferStatus => _transferStatus;
-  DateTime? get transferExpiresAt => _transferExpiresAt;
+  @Deprecated('Use deviceTransferControllerProvider.')
+  String? get transferSessionId => _deviceTransfer.transferSessionId;
+  @Deprecated('Use deviceTransferControllerProvider.')
+  String? get transferToken => _deviceTransfer.transferToken;
+  @Deprecated('Use deviceTransferControllerProvider.')
+  String? get transferStatus => _deviceTransfer.transferStatus;
+  @Deprecated('Use deviceTransferControllerProvider.')
+  DateTime? get transferExpiresAt => _deviceTransfer.transferExpiresAt;
   bool get hasPendingWork => _pendingByClientMessageId.isNotEmpty;
   String? typingHandleFor(String conversationId) => _typingByConversation[conversationId];
   bool isUserOnline(String userId) => _onlineUserIds.contains(userId);
@@ -193,10 +202,8 @@ class VeilMessengerController extends ChangeNotifier {
   /// Decrypted kind of the conversation's latest message, or null until it
   /// has opened. Never the envelope's unauthenticated kind.
   MessageKind? lastMessageKindFor(String conversationId) => _lastContents[conversationId]?.kind;
-  String? get transferPayload =>
-      _transferSessionId == null || _transferToken == null
-          ? null
-          : 'VEIL_TRANSFER::${_transferSessionId!}::${_transferToken!}';
+  @Deprecated('Use deviceTransferControllerProvider.')
+  String? get transferPayload => _deviceTransfer.transferPayload;
 
   List<ChatMessage> messagesFor(String conversationId) =>
       List.unmodifiable(_messagesByConversation[conversationId] ?? const []);
@@ -269,10 +276,7 @@ class VeilMessengerController extends ChangeNotifier {
         _attachmentTransfersByClientMessageId.clear();
         _queuedSyncConversationIds.clear();
         _activeConversationId = null;
-        _transferSessionId = null;
-        _transferToken = null;
-        _transferStatus = null;
-        _transferExpiresAt = null;
+        _deviceTransfer.clearTransferState();
         _sessionsRestored = false;
         _groupCrypto?.clearInMemory();
         notifyListeners();
@@ -942,49 +946,14 @@ class VeilMessengerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> initTransfer() async {
-    await _run(() async {
-      if (!_session.isAuthenticated || !VeilConfig.hasApi) {
-        _transferStatus = 'Transfer requires API mode.';
-        return;
-      }
+  @Deprecated('Use deviceTransferControllerProvider.')
+  Future<void> initTransfer() => _deviceTransfer.initTransfer();
 
-      final response =
-          await _apiClient.initTransfer(_session.accessToken!, _session.deviceId!);
-      _transferSessionId = response['sessionId'] as String;
-      _transferToken = response['transferToken'] as String;
-      _transferExpiresAt = DateTime.parse(response['expiresAt'] as String);
-      _transferStatus = 'Init complete. Token ready.';
-    });
-  }
+  @Deprecated('Use deviceTransferControllerProvider.')
+  Future<void> approveTransfer(String claimId) => _deviceTransfer.approveTransfer(claimId);
 
-  Future<void> approveTransfer(String claimId) async {
-    await _run(() async {
-      final trimmedClaimId = claimId.trim();
-      if (_transferSessionId == null || !_session.isAuthenticated || !VeilConfig.hasApi) {
-        _transferStatus = 'Start transfer first.';
-        return;
-      }
-      if (trimmedClaimId.isEmpty) {
-        _transferStatus = 'Enter the new-device claim code first.';
-        return;
-      }
-
-      await _apiClient.approveTransfer(_session.accessToken!, {
-        'sessionId': _transferSessionId,
-        'claimId': trimmedClaimId,
-      });
-      _transferStatus = 'Approved claim $trimmedClaimId on old device.';
-    });
-  }
-
-  void clearTransferState() {
-    _transferSessionId = null;
-    _transferToken = null;
-    _transferStatus = null;
-    _transferExpiresAt = null;
-    notifyListeners();
-  }
+  @Deprecated('Use deviceTransferControllerProvider.')
+  void clearTransferState() => _deviceTransfer.clearTransferState();
 
   Future<DecryptedMessage> decryptEnvelope(CryptoEnvelope envelope) async {
     final groupCrypto = _groupCrypto;
@@ -2738,6 +2707,8 @@ class VeilMessengerController extends ChangeNotifier {
     }
     _realtimeService.disconnect();
     unawaited(_trustEvents.cancel());
+    _deviceTransfer.removeListener(notifyListeners);
+    if (_ownsDeviceTransfer) _deviceTransfer.dispose();
     _disposed = true;
     super.dispose();
   }

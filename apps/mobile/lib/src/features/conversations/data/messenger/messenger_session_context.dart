@@ -1,5 +1,6 @@
 import '../../../../app/app_session_state.dart';
 import '../../../../core/config/veil_config.dart';
+import 'conversation_peer_bindings.dart' show ConversationPeer;
 import 'session_change.dart';
 
 /// The signed-in identity in the shape every relay request needs it.
@@ -53,6 +54,13 @@ class MessengerSessionContext {
     }
     return null;
   }
+
+  /// The signed-in user as a 1:1 would list them, for the holds of
+  /// ConversationPeerBindings; null when signed out.
+  ConversationPeer? get selfPeer => switch (signedIn) {
+        final session? => ConversationPeer(userId: session.userId, handle: session.handle),
+        null => null,
+      };
 
   /// [signedIn] when the relay is configured: what every relay request needs.
   AuthedSession? get authed => VeilConfig.hasApi ? signedIn : null;

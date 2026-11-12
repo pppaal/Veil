@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/core/security/device_step_up.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 
+import '../support/async_wait.dart';
 import '../support/fake_account_relay.dart';
 import '../support/memory_secure_store.dart';
 
@@ -20,12 +21,12 @@ class _Device {
   late final SecureStorageService storage = SecureStorageService(store);
   late AppSessionController session = controller();
 
-  AppSessionController controller() => AppSessionController(
+  AppSessionController controller({Duration approvalWait = const Duration(seconds: 2)}) => AppSessionController(
         storage,
         relay,
         createDefaultCryptoAdapter(),
         transferRetryDelay: Duration.zero,
-        transferApprovalWait: const Duration(seconds: 2),
+        transferApprovalWait: approvalWait,
       );
 
   DeviceStepUp get stepUp => DeviceStepUp(
@@ -72,6 +73,33 @@ Future<void> _complete(_Device newDevice, DeviceTransferController transfers, St
       transferToken: transfers.transferToken!,
       claimId: claimId,
     );
+
+// The relay commits the next completion and the connection drops; both
+// retries then get a 503, so the new device never learns it committed.
+void _loseCompletionAnswer(FakeAccountRelay relay) {
+  relay.dropCompletionResponses = 1;
+  relay.onComplete = () {
+    if (relay.callsTo('POST /device-transfer/complete') == 2) relay.failCompletions = 2;
+  };
+}
+
+// Moves the window of the claim [device] holds [age] into the past.
+Future<void> _ageClaim(_Device device, Duration age) async {
+  final pending = (await device.storage.readPendingTransfer())!;
+  await device.storage.persistPendingTransfer(PendingTransferRecord(
+    sessionId: pending.sessionId,
+    transferToken: pending.transferToken,
+    claimId: pending.claimId,
+    claimantFingerprint: pending.claimantFingerprint,
+    expiresAt: DateTime.now().subtract(age),
+    identity: pending.identity,
+    authKey: pending.authKey,
+    newDeviceId: pending.newDeviceId,
+    handle: pending.handle,
+    completionOutcomeUnknown: pending.completionOutcomeUnknown,
+    ended: pending.ended,
+  ));
+}
 
 void main() {
   group('step-up proofs', () {
@@ -241,7 +269,7 @@ void main() {
       final restarted = claimed.newDevice.controller();
       await restarted.bootstrap();
       expect(restarted.pendingTransfer?.isCompleted, isTrue);
-      await restarted.resumeCompletedTransfer();
+      await restarted.resumePendingTransfer();
 
       expect(restarted.state.isAuthenticated, isTrue);
       expect(restarted.state.deviceId, relay.transfers[claimed.transfers.transferSessionId]!.newDeviceId);
@@ -375,6 +403,131 @@ void main() {
       final pending = await claimed.newDevice.storage.readPendingTransfer();
       expect(pending?.claimId, claimed.claimId);
       expect(claimed.newDevice.session.pendingTransfer, isNotNull);
+    });
+  });
+
+  // closing F1: once a /complete went out and its answer was lost, only the
+  // relay knows whether the account moved to the claimed keys; it answers a
+  // retry of a committed transfer at any age. The claim window decides only
+  // for a claim with no /complete left unanswered.
+  group('the claim window', () {
+    test('a completion whose answer was lost is asked again at the next start, however old the claim, and logs in', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      await claimed.transfers.approveTransfer(claimed.claimId);
+      _loseCompletionAnswer(relay);
+      await expectLater(_complete(claimed.newDevice, claimed.transfers, claimed.claimId), throwsA(isA<VeilApiException>()));
+      relay.onComplete = null;
+
+      final transfer = relay.transfers[claimed.transfers.transferSessionId]!;
+      expect(relay.callsTo('POST /device-transfer/complete'), 3);
+      expect(transfer.newDeviceId, isNotNull);
+      expect(relay.devices[claimed.oldDevice.session.state.deviceId]!.active, isFalse);
+      final kept = (await claimed.newDevice.storage.readPendingTransfer())!;
+      expect(kept.isCompleted, isFalse);
+      expect(kept.completionOutcomeUnknown, isTrue);
+      expect(kept.mayBeCommitted, isTrue);
+
+      await _ageClaim(claimed.newDevice, const Duration(minutes: 6));
+      final restarted = claimed.newDevice.controller();
+      await restarted.bootstrap();
+      await waitFor(() => restarted.state.isAuthenticated);
+
+      expect(restarted.state.deviceId, transfer.newDeviceId);
+      expect(relay.devices, hasLength(2), reason: 'the relay committed once: the old device and this one');
+      expect(relay.callsTo('POST /device-transfer/complete'), 4);
+      expect(await claimed.newDevice.storage.readPendingTransfer(), isNull);
+    });
+
+    test('a claim whose completion answer was lost is not replaced by another claim', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      await claimed.transfers.approveTransfer(claimed.claimId);
+      _loseCompletionAnswer(relay);
+      await expectLater(_complete(claimed.newDevice, claimed.transfers, claimed.claimId), throwsA(isA<VeilApiException>()));
+      relay.onComplete = null;
+      final kept = await claimed.newDevice.storage.readPendingTransfer();
+
+      await expectLater(
+        claimed.newDevice.session.claimTransfer(sessionId: 'another-session', transferToken: 'another-token'),
+        throwsA(isA<StateError>()),
+      );
+
+      final after = await claimed.newDevice.storage.readPendingTransfer();
+      expect(after?.claimId, kept?.claimId);
+      expect(after?.authKey.privateKey, kept?.authKey.privateKey);
+      expect(relay.callsTo('POST /device-transfer/claim'), 1);
+    });
+
+    test('an unanswered claim the relay did not commit ends only on transfer_session_inactive', () async {
+      final relay = FakeAccountRelay()..failCompletions = 3;
+      final claimed = await _claimed(relay);
+      await claimed.transfers.approveTransfer(claimed.claimId);
+      await expectLater(_complete(claimed.newDevice, claimed.transfers, claimed.claimId), throwsA(isA<VeilApiException>()));
+      final transfer = relay.transfers[claimed.transfers.transferSessionId]!;
+      expect(transfer.newDeviceId, isNull);
+      await _ageClaim(claimed.newDevice, const Duration(minutes: 6));
+      expect((await claimed.newDevice.storage.readPendingTransfer())!.expiredAt(DateTime.now()), isFalse);
+
+      // The relay's session ran out too: the next start asks, and the relay
+      // ends the claim.
+      transfer.expiresAt = DateTime.now().subtract(const Duration(minutes: 1));
+      final restarted = claimed.newDevice.controller();
+      await restarted.bootstrap();
+      await waitFor(() => restarted.pendingTransfer?.ended ?? false);
+
+      expect(relay.callsTo('POST /device-transfer/complete'), 4);
+      expect(restarted.state.isAuthenticated, isFalse);
+      final ended = (await claimed.newDevice.storage.readPendingTransfer())!;
+      expect(ended.ended, isTrue);
+      expect(ended.expiredAt(DateTime.now()), isTrue);
+      expect(ended.mayBeCommitted, isFalse);
+
+      // An ended claim is not asked about again, and a new claim may replace it.
+      final again = claimed.newDevice.controller();
+      await again.bootstrap();
+      await settle();
+      expect(relay.callsTo('POST /device-transfer/complete'), 4);
+      final next = claimed.oldDevice.transfers();
+      await next.initTransfer();
+      await again.claimTransfer(sessionId: next.transferSessionId!, transferToken: next.transferToken!);
+      expect((await claimed.newDevice.storage.readPendingTransfer())?.sessionId, next.transferSessionId);
+    });
+
+    test('a claim the old device never approved expires with its window without asking the relay', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      claimed.newDevice.session = claimed.newDevice.controller(approvalWait: Duration.zero);
+      await expectLater(
+        _complete(claimed.newDevice, claimed.transfers, claimed.claimId),
+        throwsA(isA<VeilApiException>().having((e) => e.code, 'code', 'transfer_approval_required')),
+      );
+      final answered = (await claimed.newDevice.storage.readPendingTransfer())!;
+      expect(answered.completionOutcomeUnknown, isFalse);
+      expect(answered.mayBeCommitted, isFalse);
+      final calls = relay.callsTo('POST /device-transfer/complete');
+
+      await _ageClaim(claimed.newDevice, const Duration(minutes: 6));
+      final restarted = claimed.newDevice.controller();
+      await restarted.bootstrap();
+      await settle();
+
+      expect(relay.callsTo('POST /device-transfer/complete'), calls);
+      expect(restarted.pendingTransfer!.expiredAt(DateTime.now()), isTrue);
+    });
+
+    test('a claim kept before the outcome was recorded asks the relay rather than its window', () async {
+      final relay = FakeAccountRelay();
+      final claimed = await _claimed(relay);
+      await _ageClaim(claimed.newDevice, const Duration(minutes: 6));
+      final json = (await claimed.newDevice.storage.readPendingTransfer())!.toJson()
+        ..remove('completionOutcomeUnknown');
+
+      final legacy = PendingTransferRecord.fromJson(json);
+
+      expect(legacy.completionOutcomeUnknown, isTrue);
+      expect(legacy.expiredAt(DateTime.now()), isFalse);
+      expect(legacy.mayBeCommitted, isTrue);
     });
   });
 }

@@ -910,6 +910,14 @@ class StoredSession {
 /// A device transfer this new device claimed and has not finished yet.
 /// [newDeviceId] and [handle] are set once the relay committed the transfer:
 /// from then on the account trusts these keys and no other device.
+///
+/// Until then only the relay knows whether it committed: the answer to a
+/// /device-transfer/complete can be lost after the commit
+/// ([completionOutcomeUnknown]), and the relay answers a retry with that
+/// completion however long ago the claim window ([expiresAt]) closed. So the
+/// window decides only for a claim with no /complete left unanswered; any
+/// other claim is the relay's to end, which it does by answering
+/// `transfer_session_inactive` ([ended]).
 class PendingTransferRecord {
   const PendingTransferRecord({
     required this.sessionId,
@@ -921,6 +929,8 @@ class PendingTransferRecord {
     required this.authKey,
     this.newDeviceId,
     this.handle,
+    this.completionOutcomeUnknown = false,
+    this.ended = false,
   });
 
   factory PendingTransferRecord.fromJson(Map<String, dynamic> json) {
@@ -941,6 +951,10 @@ class PendingTransferRecord {
       ),
       newDeviceId: json['newDeviceId'] as String?,
       handle: json['handle'] as String?,
+      // A record kept before this flag was may have sent /complete: the
+      // relay is asked rather than the window trusted.
+      completionOutcomeUnknown: json['completionOutcomeUnknown'] as bool? ?? true,
+      ended: json['ended'] as bool? ?? false,
     );
   }
 
@@ -954,9 +968,44 @@ class PendingTransferRecord {
   final String? newDeviceId;
   final String? handle;
 
+  /// Set just before this device sends /complete for the claim, and cleared
+  /// only by an answer that shows the relay did not commit it (the old device
+  /// has not approved, say). A lost answer, a 5xx or the app stopping
+  /// mid-request leave it set: the relay may have committed the transfer to
+  /// these keys, and only another /complete can tell.
+  final bool completionOutcomeUnknown;
+
+  /// The relay refused to complete this claim with `transfer_session_inactive`:
+  /// it never moved the account to these keys (or has revoked them since),
+  /// and never will. The keys stay until the next claim replaces them.
+  final bool ended;
+
   bool get isCompleted => newDeviceId != null && handle != null;
 
-  PendingTransferRecord completedAs({required String newDeviceId, required String handle}) {
+  /// Whether the relay may have moved the account to these keys: it did, or
+  /// a /complete went out whose answer this device never got. Such a claim is
+  /// finished, never replaced by another claim.
+  bool get mayBeCommitted => isCompleted || (completionOutcomeUnknown && !ended);
+
+  /// Whether this claim can no longer be completed at [now]: the relay said
+  /// so, or the window closed with no /complete left unanswered (only a
+  /// /complete signed with [authKey] can commit the claim, so none did).
+  bool expiredAt(DateTime now) =>
+      !isCompleted && (ended || (!completionOutcomeUnknown && !expiresAt.isAfter(now)));
+
+  PendingTransferRecord completedAs({required String newDeviceId, required String handle}) =>
+      _copy(newDeviceId: newDeviceId, handle: handle, completionOutcomeUnknown: false);
+
+  PendingTransferRecord withCompletionOutcomeUnknown(bool unknown) => _copy(completionOutcomeUnknown: unknown);
+
+  PendingTransferRecord endedByRelay() => _copy(completionOutcomeUnknown: false, ended: true);
+
+  PendingTransferRecord _copy({
+    String? newDeviceId,
+    String? handle,
+    bool? completionOutcomeUnknown,
+    bool? ended,
+  }) {
     return PendingTransferRecord(
       sessionId: sessionId,
       transferToken: transferToken,
@@ -965,8 +1014,10 @@ class PendingTransferRecord {
       expiresAt: expiresAt,
       identity: identity,
       authKey: authKey,
-      newDeviceId: newDeviceId,
-      handle: handle,
+      newDeviceId: newDeviceId ?? this.newDeviceId,
+      handle: handle ?? this.handle,
+      completionOutcomeUnknown: completionOutcomeUnknown ?? this.completionOutcomeUnknown,
+      ended: ended ?? this.ended,
     );
   }
 
@@ -983,6 +1034,8 @@ class PendingTransferRecord {
         'authPrivateKey': authKey.privateKey,
         if (newDeviceId != null) 'newDeviceId': newDeviceId,
         if (handle != null) 'handle': handle,
+        'completionOutcomeUnknown': completionOutcomeUnknown,
+        if (ended) 'ended': true,
       };
 }
 

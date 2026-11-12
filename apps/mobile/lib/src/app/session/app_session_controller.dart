@@ -92,10 +92,11 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
     if (session == null) {
       _pendingTransfer = await _storage.readPendingTransfer();
-      // The relay already moved the account to this device's keys: finish
-      // the login it was waiting for when the app stopped.
-      if (_pendingTransfer?.isCompleted ?? false) {
-        unawaited(resumeCompletedTransfer().catchError((Object _) {}));
+      // The relay moved the account to this device's keys, or may have (a
+      // /complete went unanswered): finish the login it was waiting for when
+      // the app stopped, or ask the relay again, whatever the claim window.
+      if (_pendingTransfer?.mayBeCommitted ?? false) {
+        unawaited(resumePendingTransfer().catchError((Object _) {}));
       }
     }
   }
@@ -356,7 +357,8 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 
     // A transfer refusal never drops the claimed keys: once the relay has
     // committed the transfer they are the only keys the account trusts. The
-    // next claim replaces them.
+    // next claim replaces them, once the relay cannot have committed them
+    // (see claimTransfer).
     return false;
   }
 
@@ -401,14 +403,18 @@ class AppSessionController extends StateNotifier<AppSessionState> {
         throw StateError('API mode is required for device transfer.');
       }
       // The relay already moved an account to the keys of a transfer whose
-      // login has not finished; a new claim must not replace them.
+      // login has not finished, or may have (a /complete went unanswered); a
+      // new claim must not replace them.
       final pending = _pendingTransfer ?? await _storage.readPendingTransfer();
       if (pending != null && pending.isCompleted) {
         throw StateError('Finish the transfer this device already completed before claiming another.');
       }
+      if (pending != null && pending.mayBeCommitted) {
+        throw StateError('Finish the transfer this device already started before claiming another.');
+      }
       // The relay keeps the first claim of a session and ends the session on
       // a second one, so the claim this device holds is completed instead.
-      if (pending != null && pending.sessionId == sessionId) {
+      if (pending != null && !pending.ended && pending.sessionId == sessionId) {
         throw StateError('This device already claimed this transfer. Complete it on this device.');
       }
 
@@ -470,6 +476,10 @@ class AppSessionController extends StateNotifier<AppSessionState> {
   /// failure or a 5xx (the relay answers an identical retry with the same
   /// completion), and polled while the old device has not approved yet. Any
   /// other refusal stops; the claimed keys stay until the next claim.
+  /// Whether the relay may have committed meanwhile is kept with the claim
+  /// ([PendingTransferRecord.completionOutcomeUnknown]): such a claim is
+  /// completed whatever its window says, until the relay answers
+  /// `transfer_session_inactive` ([PendingTransferRecord.ended]).
   ///
   /// A call made while the same claim is still being completed (the login
   /// resumed at start and a tap on the transfer screen, say) joins that run
@@ -520,12 +530,27 @@ class AppSessionController extends StateNotifier<AppSessionState> {
           challenge: 'transfer-complete:$sessionId:$claimId:$transferToken',
           keyMaterial: record.authKey,
         );
-        final completed = await _completeTransferRequest({
-          'sessionId': sessionId,
-          'transferToken': transferToken,
-          'claimId': claimId,
-          'authProof': completionProof,
-        });
+        // From the moment the request leaves, the relay may commit the
+        // transfer to these keys without this device ever hearing so. Kept
+        // first, so a lost answer or a stopped app asks the relay again
+        // rather than trusting the claim window.
+        if (!record.completionOutcomeUnknown) {
+          record = record.withCompletionOutcomeUnknown(true);
+          await _storage.persistPendingTransfer(record);
+          _pendingTransfer = record;
+        }
+        final Map<String, dynamic> completed;
+        try {
+          completed = await _completeTransferRequest({
+            'sessionId': sessionId,
+            'transferToken': transferToken,
+            'claimId': claimId,
+            'authProof': completionProof,
+          });
+        } on VeilApiException catch (error) {
+          await _recordCompletionRefusal(record, error);
+          rethrow;
+        }
         record = record.completedAs(
           newDeviceId: completed['newDeviceId'] as String,
           handle: completed['handle'] as String,
@@ -543,11 +568,13 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     }
   }
 
-  /// Finishes a transfer the relay already committed, when the app stopped
-  /// between the completion and the first login. Does nothing without one.
-  Future<void> resumeCompletedTransfer() async {
+  /// Finishes a transfer the relay committed, or may have, when the app
+  /// stopped before the first login on this device: the login is redone, or
+  /// /complete sent again, which the relay answers with the completion it
+  /// made however long ago the claim window closed. Does nothing without one.
+  Future<void> resumePendingTransfer() async {
     final record = _pendingTransfer ?? await _storage.readPendingTransfer();
-    if (record == null || !record.isCompleted || state.isAuthenticated) {
+    if (record == null || !record.mayBeCommitted || state.isAuthenticated) {
       return;
     }
     await completeTransferAndAuthenticate(
@@ -555,6 +582,39 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       transferToken: record.transferToken,
       claimId: record.claimId,
     );
+  }
+
+  // Answers to /complete that show the relay has not committed the claim:
+  // its session is open and has not reached the completion.
+  static const _uncommittedRefusals = {
+    'transfer_approval_required',
+    'transfer_claim_required',
+    'transfer_token_invalid',
+  };
+
+  // A refusal showing the relay did not commit the claim settles what an
+  // unanswered /complete left open; `transfer_session_inactive` ends the
+  // claim for good. Anything else (a 5xx, a lost answer, a refusal this
+  // build cannot place) leaves the outcome for the relay to settle later.
+  Future<void> _recordCompletionRefusal(
+    PendingTransferRecord record,
+    VeilApiException error,
+  ) async {
+    final PendingTransferRecord settled;
+    if (error.code == 'transfer_session_inactive') {
+      settled = record.endedByRelay();
+    } else if (_uncommittedRefusals.contains(error.code)) {
+      settled = record.withCompletionOutcomeUnknown(false);
+    } else {
+      return;
+    }
+    try {
+      await _storage.persistPendingTransfer(settled);
+      _pendingTransfer = settled;
+    } catch (_) {
+      // Left as it was, outcome unknown: the relay is asked again, and the
+      // refusal itself is what the caller reports.
+    }
   }
 
   Future<Map<String, dynamic>> _completeTransferRequest(

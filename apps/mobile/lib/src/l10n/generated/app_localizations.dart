@@ -1586,6 +1586,30 @@ abstract class AppLocalizations {
   /// **'This chat is listed under a name no VEIL server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.'**
   String get chatAccountHoldUnissuedBody;
 
+  /// No description provided for @chatAccountHoldOwnTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Another account under your name'**
+  String get chatAccountHoldOwnTitle;
+
+  /// No description provided for @chatAccountHoldOwnBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This chat is listed under your own name, @{handle}, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  String chatAccountHoldOwnBody(String handle);
+
+  /// No description provided for @chatAccountHoldOwnConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk to this other @{handle}?'**
+  String chatAccountHoldOwnConfirmTitle(String handle);
+
+  /// No description provided for @chatAccountHoldOwnConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'No other VEIL account can have your name: the server showed this account under it. Continue only if you confirmed another way (in person, a call) whose account this is.'**
+  String get chatAccountHoldOwnConfirmBody;
+
   /// No description provided for @chatAccountHoldAcknowledge.
   ///
   /// In en, this message translates to:
@@ -2803,6 +2827,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This new-device claim has expired. Register a fresh claim first.'**
   String get deviceTransferClaimExpiredRegisterFresh;
+
+  /// No description provided for @deviceTransferFinishStartedFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'This device already started completing a transfer that the relay may have finished. Complete that transfer on this device before importing another.'**
+  String get deviceTransferFinishStartedFirst;
 
   /// No description provided for @deviceTransferComplete.
   ///

@@ -210,13 +210,19 @@ class ConversationSyncService {
     bool stillCurrent() => generation == _session.generation && !_session.isClosed;
     final response = await _apiClient.getConversations(session.accessToken);
     if (!stillCurrent()) return;
-    final fetched = _mapper.conversations(response, localHandle: session.handle);
+    final fetched = _mapper.conversations(response, localHandle: session.handle, localUserId: session.userId);
+    final self = ConversationPeer(userId: session.userId, handle: session.handle);
     // Recorded before this list can drop a conversation together with the
-    // only record of whom its session is with.
+    // only record of whom its session is with. One listed under a handle no
+    // honest relay issues, or under this device's own handle as another
+    // account, is left unbound, and so held, for the user to settle (see
+    // ConversationPeerBindings.mayBindUnasked).
     await _peerBindings.bindAll({
       for (final preview in _store.conversations)
         if (preview.type == ConversationType.direct && preview.sessionState != null)
-          preview.id: ConversationPeer(userId: preview.recipientBundle.userId, handle: preview.peerHandle),
+          if (ConversationPeer(userId: preview.recipientBundle.userId, handle: preview.peerHandle) case final peer
+              when ConversationPeerBindings.mayBindUnasked(peer, self))
+            preview.id: peer,
     });
     final bound = await _peerBindings.all();
     if (!stillCurrent()) return;
@@ -228,7 +234,7 @@ class ConversationSyncService {
     );
     if (overruled == null || !stillCurrent()) return;
     _crypto.recordUnlistedSessions();
-    await _checkAccountHolds(stillCurrent);
+    await _checkAccountHolds(self, stillCurrent);
     for (final conversationId in overruled) {
       await _notices.write(
         conversationId,
@@ -242,11 +248,15 @@ class ConversationSyncService {
   // Finds which listed 1:1 conversations are held for their handle (see
   // ConversationPeerBindings.holdFor), so a chat says so before anything
   // was sent or received in it.
-  Future<void> _checkAccountHolds(bool Function() stillCurrent) async {
+  Future<void> _checkAccountHolds(ConversationPeer self, bool Function() stillCurrent) async {
     for (final conversation in _store.conversations.toList()) {
       final peerUserId = conversation.recipientBundle.userId;
       if (conversation.type != ConversationType.direct || peerUserId.isEmpty) continue;
-      await _peerBindings.holdFor(conversation.id, ConversationPeer(userId: peerUserId, handle: conversation.peerHandle));
+      await _peerBindings.holdFor(
+        conversation.id,
+        ConversationPeer(userId: peerUserId, handle: conversation.peerHandle),
+        self: self,
+      );
       if (!stillCurrent()) return;
     }
     _store.changed();

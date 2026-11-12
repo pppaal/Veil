@@ -272,12 +272,15 @@ back to. Re-labelling a frame (another conversation, sender, kind or version)
 breaks the tag. `expiresAt` is
 deliberately **not** bound (contract C4): the server may clamp the outer value,
 the authenticated expiry travels in the payload, and receivers expire at
-`min(inner, outer)`. The mobile client stamps the expiry, and checks it, on the
-relay's clock as the HTTP `Date` header reports it, corrected by at most one
-hour, so a device clock that is off neither seals an expiry the relay already
-counts as past nor retires or hides a message early (the screens check expiry
-on the same clock), while a lying `Date` header moves a sealed expiry by an
-hour at most; the web client still uses its local clock.
+`min(inner, outer)`. Both clients stamp the expiry, and check it, on the
+relay's clock as the HTTP `Date` header reports it, with the device clock
+corrected toward it by at most one hour, so a device clock that is off neither
+seals an expiry the relay already counts as past nor retires or hides a
+message early (the screens check expiry on the same clock), while a lying
+`Date` header moves a sealed expiry by an hour at most. Mobile:
+`ServerClock.boundedNow` (`core/network/server_clock.dart`); web:
+`src/core/expiry.js` `expiryNow`, which the messaging stack sets to
+`src/platform/api-client.js` `expiryNow` (`MAX_EXPIRY_CORRECTION_MS`).
 A receiver treats any envelope whose version is not
 `veil-envelope-v1` as v2, so relabelled versions fail authentication.
 
@@ -550,20 +553,40 @@ makes every 1:1 conversation with that contact ask the directory again.
 Handles and display names are relayed by the server: a listing can name any
 account with any handle. Pins, verification and safety numbers are about the
 account (its user id), never the name. So a binding also ties the handle it was
-recorded with to its account, and a 1:1 that is not bound yet is held while
-its listed handle is one this device bound to another account (compared
-without case), or one no honest server issues: outside the registration
-grammar of 3 to 32 characters of `a-z`, `0-9`, `.` and `_`, starting and ending
-with a letter or digit, with no two separators in a row. A lookalike with a
-zero-width or a non-Latin character renders like a known handle yet equals
-none, which is why the grammar check does not depend on what the device
-knows. A held conversation admits nothing: its frames are `identityRejected`
-before the pins are asked, nothing is pinned, sending and receiving do not ask
-the directory and nothing is sealed, until the user acknowledges the account
-it is listed with ("Talk to this account"). That binds it, and what waited is
-retried as a first contact. The chat says why it is held (another account
-than the one talked to before under that handle, or a name no server issues).
-Mobile: `ConversationPeerBindings.holdFor`; web: `peer-bindings.js` `hold`.
+recorded with to its account, and a 1:1 that is not bound yet is held for one
+of three reasons, checked in this order by both clients:
+
+- its listed handle is one no honest server issues: outside the registration
+  grammar of 3 to 32 characters of `a-z`, `0-9`, `.` and `_`, starting and
+  ending with a letter or digit, with no two separators in a row (mobile
+  `PeerAccountHoldReason.unissuedHandle`, web `HoldReason.UNISSUED_HANDLE`);
+- it is listed under this device's own handle (compared without case) as
+  another account: that handle names one account, the user's own, so no
+  honest server lists anyone else under it (mobile
+  `PeerAccountHoldReason.ownHandle`, web `HoldReason.OWN_HANDLE`);
+- its listed handle is one this device bound to another account (compared
+  without case; mobile `PeerAccountHoldReason.otherAccount`, web
+  `HoldReason.OTHER_ACCOUNT`).
+
+A lookalike with a zero-width or a non-Latin character renders like a known
+handle yet equals none, which is why the grammar check does not depend on what
+the device knows. The peer of a listed 1:1 is the member that is not the
+user's own account, picked by user id, so another account under the user's
+own handle is never taken for the user. A held conversation admits nothing:
+its frames are `identityRejected` before the pins are asked, nothing is
+pinned, sending and receiving do not ask the directory and nothing is sealed,
+until the user acknowledges the account it is listed with ("Talk to this
+account"). That binds it, and what waited is retried as a first contact. The
+chat says why it is held (another account than the one talked to before under
+that handle, another account under the user's own name, or a name no server
+issues). A session recorded before bindings existed is bound, at the next
+list, to the peer it is listed with, unless that listing is under a name no
+server issues or under the user's own handle as another account: those stay
+unbound, and so held. Mobile: `ConversationPeerBindings.holdFor` and
+`mayBindUnasked`; web: `peer-bindings.js` `hold` and `bindSessions`. One
+difference remains in the views: the web asks for a confirmation before every
+acknowledgement, the mobile chat only before acknowledging another account
+under the user's own name.
 The mobile chat also marks a contact verified once every device pinned for
 them is. Its safety-numbers screen, opened on a held chat, still looks the
 listed handle up to show the key the directory serves (claiming no prekey);

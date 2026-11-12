@@ -107,6 +107,27 @@ void main() {
       expect(conversation.updatedAt, DateTime.parse('2026-04-01T10:00:00.000Z'));
     });
 
+    // closing F4: a listing that puts another account under this user's own
+    // handle names that account as the peer, whatever order it lists the
+    // two in, so the own-handle hold sees it.
+    test('a 1:1 names the member that is not this account, also under this user\'s own handle', () {
+      final json = _conversationJson({
+        'members': [
+          {'userId': 'user-atlas', 'handle': 'atlas', 'displayName': 'Atlas'},
+          {'userId': 'user-mallory', 'handle': 'atlas', 'displayName': 'Atlas'},
+        ],
+      });
+
+      final conversation = mapper.conversation(json, localHandle: 'atlas', localUserId: 'user-atlas')!;
+
+      expect(conversation.recipientBundle.userId, 'user-mallory');
+      expect(conversation.peerHandle, 'atlas');
+      final listed = mapper.conversations({
+        'items': [json],
+      }, localHandle: 'atlas', localUserId: 'user-atlas');
+      expect(listed.single.recipientBundle.userId, 'user-mallory');
+    });
+
     test('a group carries its members, Sender Keys flag and epoch', () {
       final conversation = mapper.conversation(
         _conversationJson({'type': 'group', 'useSenderKeys': true, 'currentEpoch': 3}),

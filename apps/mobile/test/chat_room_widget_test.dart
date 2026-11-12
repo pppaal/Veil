@@ -293,8 +293,37 @@ void main() {
     final held = await tester.runAsync(() => bindings.holdFor(
           'conv-1',
           ConversationPeer(userId: listed.recipientBundle.userId, handle: listed.peerHandle),
+          self: const ConversationPeer(userId: 'user-local', handle: 'atlas'),
         ));
     expect(held?.reason, PeerAccountHoldReason.otherAccount);
+  });
+
+  // closing F4: another account listed under the user's own handle.
+  testWidgets('a 1:1 listed under this device\'s own handle as another account is held until confirmed',
+      (tester) async {
+    final controller = await _pumpExpiringChat(tester, peerHandle: 'atlas');
+
+    expect(controller.conversationById('conv-1')!.recipientBundle.userId, 'user-peer');
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
+    expect(find.text('Another account under your name'), findsOneWidget);
+    expect(find.textContaining('listed under your own name, @atlas'), findsOneWidget);
+
+    // Acknowledging it asks first; backing out keeps it held.
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Talk to this other @atlas?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
+    expect(find.text('Another account under your name'), findsOneWidget);
+
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Talk to this account')));
+    await tester.pumpAndSettle();
+
+    expect(controller.peerAccountHoldFor('conv-1'), isNull);
+    expect(find.text('Another account under your name'), findsNothing);
   });
 
   testWidgets('a contact whose every device was verified is marked verified', (tester) async {
@@ -323,6 +352,7 @@ Future<VeilMessengerController> _pumpExpiringChat(
   Duration deviceClockAhead = Duration.zero,
   ConversationPeerBindings? peerBindings,
   IdentityTrust? identityTrust,
+  String peerHandle = 'selene',
 }) async {
   tester.view.physicalSize = const Size(1400, 1600);
   tester.view.devicePixelRatio = 1;
@@ -345,7 +375,7 @@ Future<VeilMessengerController> _pumpExpiringChat(
       signedPrekeyBundle: 'bundle-peer',
     ),
   );
-  final api = _FakeChatApiClient(envelope, expiresAt: expiresAt);
+  final api = _FakeChatApiClient(envelope, expiresAt: expiresAt, peerHandle: peerHandle);
   api.serverClock.observe(HttpDate.format(DateTime.now().toUtc().subtract(deviceClockAhead)));
   final cache = _MemoryConversationCache();
   final storedAt = DateTime.utc(2026, 4, 7, 9, 29);
@@ -536,10 +566,13 @@ class _MemoryConversationCache implements ConversationCacheService, MessageConte
 }
 
 class _FakeChatApiClient extends VeilApiClient {
-  _FakeChatApiClient(this._envelope, {this.expiresAt}) : super(baseUrl: 'http://localhost:3000/v1');
+  _FakeChatApiClient(this._envelope, {this.expiresAt, this.peerHandle = 'selene'})
+      : super(baseUrl: 'http://localhost:3000/v1');
 
   final CryptoEnvelope _envelope;
   final DateTime? expiresAt;
+  // The handle the list shows the peer's account under.
+  final String peerHandle;
 
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
@@ -556,7 +589,7 @@ class _FakeChatApiClient extends VeilApiClient {
             },
             {
               'userId': 'user-peer',
-              'handle': 'selene',
+              'handle': peerHandle,
               'displayName': 'Selene',
             },
           ],

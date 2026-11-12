@@ -801,6 +801,23 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 대화는 VEIL 서버가 발급하지 않는 이름으로 표시되어, 아는 사람처럼 보이기만 할 수 있습니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
 
   @override
+  String get chatAccountHoldOwnTitle => '내 이름을 쓰는 다른 계정';
+
+  @override
+  String chatAccountHoldOwnBody(String handle) {
+    return '이 대화는 내 이름 @$handle(으)로 표시되지만 다른 계정입니다. 다른 사람은 내 이름을 가질 수 없습니다: 이 기기가 받은 목록이 바뀐 것이고, 누군가를 나처럼 보이게 하려는 것일 수 있습니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
+  }
+
+  @override
+  String chatAccountHoldOwnConfirmTitle(String handle) {
+    return '다른 @$handle 계정과 대화할까요?';
+  }
+
+  @override
+  String get chatAccountHoldOwnConfirmBody =>
+      '다른 VEIL 계정은 내 이름을 가질 수 없습니다: 서버가 이 계정을 그 이름으로 보여준 것입니다. 다른 경로(직접 만나기, 전화)로 누구의 계정인지 확인한 경우에만 계속하세요.';
+
+  @override
   String get chatAccountHoldAcknowledge => '이 계정과 대화하기';
 
   @override
@@ -1479,6 +1496,10 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get deviceTransferClaimExpiredRegisterFresh =>
       '이 새 기기 클레임이 만료되었습니다. 먼저 새 클레임을 등록하세요.';
+
+  @override
+  String get deviceTransferFinishStartedFirst =>
+      '이 기기는 릴레이가 이미 마쳤을 수 있는 이전을 완료하는 중이었습니다. 다른 이전을 가져오기 전에 이 기기에서 그 이전을 완료하세요.';
 
   @override
   String get deviceTransferComplete =>

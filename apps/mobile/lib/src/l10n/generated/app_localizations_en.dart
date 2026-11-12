@@ -838,6 +838,23 @@ class AppLocalizationsEn extends AppLocalizations {
       'This chat is listed under a name no VEIL server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.';
 
   @override
+  String get chatAccountHoldOwnTitle => 'Another account under your name';
+
+  @override
+  String chatAccountHoldOwnBody(String handle) {
+    return 'This chat is listed under your own name, @$handle, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.';
+  }
+
+  @override
+  String chatAccountHoldOwnConfirmTitle(String handle) {
+    return 'Talk to this other @$handle?';
+  }
+
+  @override
+  String get chatAccountHoldOwnConfirmBody =>
+      'No other VEIL account can have your name: the server showed this account under it. Continue only if you confirmed another way (in person, a call) whose account this is.';
+
+  @override
   String get chatAccountHoldAcknowledge => 'Talk to this account';
 
   @override
@@ -1535,6 +1552,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get deviceTransferClaimExpiredRegisterFresh =>
       'This new-device claim has expired. Register a fresh claim first.';
+
+  @override
+  String get deviceTransferFinishStartedFirst =>
+      'This device already started completing a transfer that the relay may have finished. Complete that transfer on this device before importing another.';
 
   @override
   String get deviceTransferComplete =>

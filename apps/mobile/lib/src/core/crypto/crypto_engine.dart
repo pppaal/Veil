@@ -534,13 +534,6 @@ abstract class ConversationSessionBootstrapper {
   // inbound-bootstrap on an incoming envelope. Mock/stub adapters may always
   // return true to short-circuit the bootstrap path in tests.
   bool hasSessionFor(String conversationId) => true;
-
-  // Arms a manual DH ratchet rotation on the next outbound message for this
-  // conversation. Implementations that support forward-secret session state
-  // should also drop any pre-rotation skipped keys. Returns true if an
-  // existing session was armed, false if there's no session yet. Stub/mock
-  // adapters without session state may safely return false.
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 }
 
 abstract class InboundEnvelopeInspector {

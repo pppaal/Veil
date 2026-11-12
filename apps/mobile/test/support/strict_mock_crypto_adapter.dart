@@ -154,8 +154,4 @@ class _StrictSessions implements ConversationSessionBootstrapper {
 
   @override
   bool hasSessionFor(String conversationId) => _established.contains(conversationId);
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) async =>
-      _established.contains(conversationId);
 }

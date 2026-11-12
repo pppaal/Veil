@@ -43,7 +43,7 @@ class SafetyNumbersScreen extends ConsumerStatefulWidget {
 
 class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<_SafetyNumbersViewData>? _loader;
-  bool _rekeying = false;
+  bool _renewing = false;
   // A scanned code that did not match; the screen stays failed until left.
   bool _scanMismatch = false;
   late final StreamSubscription<PendingIdentityChange> _changes;
@@ -275,8 +275,8 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     }
   }
 
-  Future<void> _rotateSessionKeys() async {
-    if (_rekeying) return;
+  Future<void> _renewSession() async {
+    if (_renewing) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -300,16 +300,16 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     if (confirmed != true) return;
     if (!mounted) return;
 
-    setState(() => _rekeying = true);
+    setState(() => _renewing = true);
     VeilHaptics.medium();
     try {
       final messenger = ref.read(messengerControllerProvider);
-      final armed = await messenger.rekeyConversation(widget.conversationId);
+      final renewed = await messenger.renewSession(widget.conversationId);
       if (!mounted) return;
       final l10n = AppLocalizations.of(context);
       VeilToast.show(
         context,
-        message: armed
+        message: renewed
             ? l10n.safetyNumbersSessionRotated
             : l10n.safetyNumbersNoSessionYet,
       );
@@ -322,7 +322,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _rekeying = false);
+        setState(() => _renewing = false);
       }
     }
   }
@@ -374,7 +374,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   Widget _buildGroupList(BuildContext context, _GroupListData data) {
-    final palette = VeilPalette.dark;
     final l10n = AppLocalizations.of(context);
     if (data.members.isEmpty) {
       return Padding(
@@ -418,36 +417,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               },
             ),
           ),
-        const SizedBox(height: VeilSpace.md),
-        VeilSurfaceCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                l10n.safetyNumbersGroupRotateEyebrow,
-                style: TextStyle(
-                  color: palette.textSubtle,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
-                ),
-              ),
-              const SizedBox(height: VeilSpace.xs),
-              Text(
-                l10n.safetyNumbersGroupRotateBody,
-                style: TextStyle(color: palette.textSubtle, fontSize: 13),
-              ),
-              const SizedBox(height: VeilSpace.md),
-              VeilButton(
-                label: _rekeying
-                    ? l10n.safetyNumbersRotatingGroup
-                    : l10n.safetyNumbersRotateGroupButton,
-                tone: VeilButtonTone.secondary,
-                onPressed: _rekeying ? null : _rotateSessionKeys,
-              ),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -584,11 +553,11 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
                 ),
                 const SizedBox(height: VeilSpace.md),
                 VeilButton(
-                  label: _rekeying
+                  label: _renewing
                       ? l10n.safetyNumbersRotating
                       : l10n.safetyNumbersRotateButton,
                   tone: VeilButtonTone.secondary,
-                  onPressed: _rekeying ? null : _rotateSessionKeys,
+                  onPressed: _renewing ? null : _renewSession,
                 ),
               ],
             ),

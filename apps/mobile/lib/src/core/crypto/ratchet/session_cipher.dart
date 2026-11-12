@@ -72,20 +72,6 @@ class SessionCipher {
         return _material(state);
       });
 
-  Future<bool> forceRekey(String conversationId) => store.serialized(conversationId, () async {
-        final record = store[conversationId];
-        // Until the peer replies, it can only reach our later chains through
-        // the ratchet key in the handshake frames, so a second send step
-        // would strand every later frame if those were lost.
-        if (record == null || record.current.awaitingFirstReply) return false;
-        final live = record.current;
-        final scratch = live.copy()
-          ..needsSendStep = true
-          ..clearSkipped();
-        await _commitReplacing(conversationId, record, live, scratch);
-        return true;
-      });
-
   /// Seals [payload] on the conversation's sending state. [recipientIdentityKey]
   /// (base64url, empty when the caller knows none) is the identity the caller
   /// chose to reach: an inbound handshake can install a state bound to

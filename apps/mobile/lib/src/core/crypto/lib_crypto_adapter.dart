@@ -126,14 +126,6 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   /// suspend the process and before logout/wipe.
   Future<void> flushPendingSnapshotWrites() => _store.flush();
 
-  /// Forces the next outbound message on this conversation to perform a DH
-  /// ratchet step (the "rotate keys" UX) and drops the current state's
-  /// skipped keys so pre-rotation stragglers no longer decrypt. Returns false
-  /// when no session exists or the peer has not yet replied to our handshake.
-  /// Known limitation (docs/crypto-envelope-spec.md): if the peer has a reply
-  /// in flight, the forced step desynchronises the session.
-  Future<bool> forceRekeyNextSend(String conversationId) => _cipher.forceRekey(conversationId);
-
   void setLocalPrekeyStore(LocalPrekeyStore store) {
     _keyring.store = store;
   }
@@ -350,9 +342,6 @@ class _LibSessionBootstrapper implements ConversationSessionBootstrapper {
 
   @override
   bool hasSessionFor(String conversationId) => _store.contains(conversationId);
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) => _cipher.forceRekey(conversationId);
 }
 
 class _LibMessageCryptoEngine implements MessageCryptoEngine {

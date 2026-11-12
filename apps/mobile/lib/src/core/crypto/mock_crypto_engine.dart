@@ -360,9 +360,6 @@ class _MockConversationSessionBootstrapper
   bool hasSessionFor(String conversationId) => true;
 
   @override
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
-
-  @override
   Future<SessionBootstrapMaterial> bootstrapSessionFromInbound(
     InboundSessionBootstrapRequest request,
   ) async {

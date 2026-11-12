@@ -112,9 +112,6 @@ class _RecordingSessions implements ConversationSessionBootstrapper {
 
   @override
   bool hasSessionFor(String conversationId) => _inner.hasSessionFor(conversationId);
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) => _inner.forceRekeyNextSend(conversationId);
 }
 
 void main() {

@@ -450,24 +450,28 @@ class VeilMessengerController extends ChangeNotifier {
     );
   }
 
-  // Manually rotates the DH ratchet for [conversationId]. Arms the next
-  // outbound encrypt to perform a fresh DH step, drops any stashed skipped
-  // keys from prior epochs, then sends a system notice so the rotation
-  // actually lands on the wire (the peer only learns the new ratchet pub
-  // once it decrypts a real envelope). Returns true if a session existed
-  // and was armed; false if there's no session yet for this conversation.
-  Future<bool> rekeyConversation(String conversationId) async {
-    final armed = await _sessionBootstrapper.forceRekeyNextSend(conversationId);
-    if (!armed) {
+  /// Replaces the session of the 1:1 [conversationId] with a new one: a
+  /// fresh X3DH handshake with the peer's current directory entry, which
+  /// must pass the identity pins first (else IdentityChangedException and
+  /// nothing changes). The old session is archived, never destroyed, so
+  /// frames already in flight on it still open; the next message sent here
+  /// carries the handshake, and the peer moves to the new session when it
+  /// reads it. Returns false when there is no session to replace.
+  ///
+  /// A forced ratchet step on the live session cannot be made safe: if the
+  /// peer sent since our last send, the step is taken from a ratchet key it
+  /// already moved past, and neither side can decrypt the other again.
+  Future<bool> renewSession(String conversationId) async {
+    final conversation = conversationById(conversationId);
+    if (conversation == null ||
+        conversation.type != ConversationType.direct ||
+        !_session.isAuthenticated ||
+        !_sessionBootstrapper.hasSessionFor(conversationId)) {
       return false;
     }
-    // The rotation itself happens inside the existing session; the next send
-    // also re-checks the peer's directory entry.
-    _directoryRecheck.add(conversationId);
-    await sendSystemNotice(
-      conversationId: conversationId,
-      body: 'session.rekey',
-    );
+    final served = await _fetchPeerBundle(conversation.peerHandle, KeyClaim.active);
+    await _applyDirectoryAnswer(conversationId, served, mustBootstrap: true);
+    _directoryRecheck.remove(conversationId);
     return true;
   }
 

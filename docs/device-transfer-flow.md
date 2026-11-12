@@ -80,18 +80,19 @@ proof. A missing or wrong proof answers `401 invalid_device_signature` and
 leaves the claim unapproved, so `complete` keeps answering
 `403 transfer_approval_required`.
 
-A production relay requires the proof. A development relay checks a proof it
-receives and accepts an approval without one, so clients released before the
-proof keep working until they sign; the production boot gate means no public
-relay runs that way. This does not help against malware or same-origin script
-on the old device itself, which can use its key.
+Every relay requires the proof, whatever `VEIL_ENV` says; there is no
+development-mode exception. This does not help against malware or same-origin
+script on the old device itself, which can use its key.
 
 The same step-up guards the other requests a stolen token could use to lock
 the owner out for good: `DELETE /v1/account` and `POST /v1/devices/revoke`
 for the calling device or the account's last active device carry
 `{challengeId, signature}`, a challenge from `POST /v1/auth/challenge` for the
 calling device signed over `account-delete:<challengeId>:<challenge>` or
-`device-revoke:<deviceId>:<challengeId>:<challenge>`.
+`device-revoke:<deviceId>:<challengeId>:<challenge>`. Without the proof these
+answer `401 challenge_invalid`; with a signature by another key or for another
+purpose, `401 invalid_device_signature`. The challenge is consumed on first
+presentation either way.
 
 ## Retrying `complete`
 
@@ -103,9 +104,17 @@ session whose token matches answers with the original completion (same
 new device's stored auth key, and changes nothing. A proof by any other key
 answers `401 transfer_completion_invalid`; once the new device has been
 revoked, `403 transfer_session_inactive`. This only helps a client that still
-has the new device's keys: a client must keep them until it has the new
-device's id and a session, and retry `complete` on a network error or 5xx
-instead of discarding them. Today's clients do not do this yet. The web client
+has the new device's keys. The client contract (C-TRANSFER-RETRY):
+
+- persist the completion (the new device's id and keys) before signing in
+  with `POST /v1/auth/challenge` and `/v1/auth/verify`, and keep the keys
+  until it has a session;
+- retry `complete` with the same request on a network error or a 5xx;
+- keep polling `complete` only while it answers `403 transfer_approval_required`;
+- stop on `403 transfer_session_inactive` or any other 4xx, without
+  discarding keys it has not stored yet.
+
+Today's clients do not do this yet. The web client
 drops the keys when `complete` fails with a network error, and the mobile
 client does not keep a pending completion across an app restart, so on either
 a lost answer still leaves the new device without a session; that client work

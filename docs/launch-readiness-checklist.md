@@ -62,6 +62,8 @@ App-Store-same-day는 **불가능**합니다. 이유는 단순합니다:
 
 macOS + Xcode 없이는 불가능. 계정/팀이 먼저 마련된 뒤 수행.
 
+- [ ] **실제 툴체인에서 첫 Android 릴리스 빌드와 첫 iOS 아카이브 생성 (first Android release build and first iOS archive produced on a real toolchain)** — 둘 다 아직 한 번도 만들어진 적이 없습니다. CI는 `flutter analyze`·`flutter test`만 돌리고 앱은 빌드하지 않습니다. Android는 Android SDK가 있는 머신에서 `flutter build appbundle --release`(필수 `--dart-define`은 `docs/go-live-today.md` 3장), iOS는 macOS + Xcode에서 아카이브. 기본 빌드에는 libsignal 브리지와 libsignal 의존성이 빠져 있으며 opt-in입니다 (Android `-Pveil.libsignal=true` / `--android-project-arg=veil.libsignal=true`, iOS는 Swift 파일·`LibSignalClient` 패키지·등록 코드 추가; `docs/libsignal-migration-implementation.md`). 두 브리지 모두 앱에 빌드된 적이 없습니다.
+
 - [ ] **첫 빌드: `flutter pub get` + `pod install` + 아카이브** — `Generated.xcconfig` 부재, Podfile/Pods 미설치 상태. macOS에서 최초 빌드 부트스트랩 필요.
 
 - [ ] **배포 서명 설정(인증서 + 프로비저닝 프로파일)** — Runner 타겟에 Automatic signing 활성화(또는 Distribution 인증서 + App Store 프로비저닝 프로파일 임포트) 후 `flutter build ipa` / Xcode Archive.
@@ -148,7 +150,7 @@ macOS + Xcode 없이는 불가능. 계정/팀이 먼저 마련된 뒤 수행.
 
 - [x] **App Privacy 질문지 답변 초안** — `store/appstore/app-privacy-answers.md`에 data collection, 식별자(User ID, Device ID), Contacts(앱 안의 연락처 목록), user content(암호문, 연결 안 됨), Other User Content(그룹·채널 이름과 설명, 기기 이름, 전달 메타데이터, 계정에 연결됨), crash data 미수집, tracking=No, data-not-collected 목록 포함. Play Data safety 답변은 `store/play/data-safety-answers.md`. 다른 문서가 두 답변과 어긋나면 `scripts/store-label-check.mjs`가 CI를 실패시킵니다. (ASC/Play Console UI 전사는 사람이.)
 
-- [x] **handoff 머신러리** — `pnpm audit:handoff`(`scripts/audit-handoff-bundle.mjs`)가 dirty tree 거부, SHA/branch 핀, `pnpm beta:external:bundle` 실행, 15개 문서 + 4개 JSON 아티팩트 + 생성 README를 스테이징하고 tar로 패키징. 펌 shortlist(`docs/external-audit-firm-shortlist.md`), RFP 이메일, OTF 신청서, intake/remediation tracker 모두 작성됨.
+- [x] **handoff 머신러리** — `pnpm audit:handoff`(`scripts/audit-handoff-bundle.mjs`)가 dirty tree 거부, SHA/branch 핀, `pnpm beta:external:bundle` 실행, `scripts/audit-scope.mjs`가 정한 문서 + 4개 JSON 아티팩트 + 생성 README를 스테이징하고 tar로 패키징(범위에 적힌 경로가 하나라도 없으면 중단). 펌 shortlist(`docs/external-audit-firm-shortlist.md`), RFP 이메일, OTF 신청서, intake/remediation tracker 모두 작성됨.
 
 - [x] **정적 품질 게이트 + web-demo 테스트** — 현재 sandbox에서 통과 확인: `pnpm format:check`, `pnpm policy:check`, `pnpm architecture:check`, `pnpm -C apps/web-demo test`(47/47).
 

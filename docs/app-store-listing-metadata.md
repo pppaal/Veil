@@ -17,8 +17,8 @@ localize the primary fields for each store locale.
 - **App name:** VEIL — Private Messenger
 - **Subtitle (iOS, ≤30 chars):** No number. No backup. No leaks.
 - **Promotional text (iOS, ≤170 chars, updatable without review):**
-  End-to-end encrypted messages with no phone number and no account. Nothing is
-  stored in plaintext, ever. Your device is your identity.
+  End-to-end encrypted messages with no phone number, no email and no real name.
+  Message content is never stored in plaintext. Your device is your identity.
 
 ## Description (English)
 
@@ -26,7 +26,7 @@ localize the primary fields for each store locale.
 VEIL is an open-source, end-to-end encrypted messenger built on one idea:
 the server should never be able to read your messages — and neither should we.
 
-• No phone number, no email, no account. Your device is your identity.
+• No phone number, no email, no real name. Your device is your identity.
 • End-to-end encryption (X25519 + AES-256-GCM, Double Ratchet forward secrecy).
 • No cloud backup, no password reset, no admin override — by design.
 • The server only ever relays ciphertext. It cannot decrypt your conversations.
@@ -47,7 +47,7 @@ disappearing timers, and block/mute controls.
 VEIL은 오픈소스 종단간 암호화 메신저입니다. 서버가 당신의 메시지를 절대 읽을
 수 없도록 설계되었습니다.
 
-• 전화번호도, 이메일도, 계정도 없습니다. 기기 자체가 신원입니다.
+• 전화번호도, 이메일도, 실명도 필요 없습니다. 기기 자체가 신원입니다.
 • 종단간 암호화 (X25519 + AES-256-GCM, Double Ratchet 순방향 비밀성).
 • 클라우드 백업 없음, 비밀번호 재설정 없음, 관리자 우회 없음 — 의도된 설계입니다.
 • 서버는 암호문만 중계하며, 대화를 복호화할 수 없습니다.
@@ -105,8 +105,10 @@ server does keep metadata linked to the account. In short:
 VEIL is an end-to-end encrypted messenger. Two behaviors commonly mistaken for
 bugs are intentional privacy design — please read before testing:
 
-1. NO ACCOUNT / NO PHONE NUMBER. There is no sign-up form. Identity is bound to
-   the device on first launch. This is not a broken onboarding flow.
+1. NO PHONE NUMBER / NO EMAIL. There is no password, email or SMS sign-up.
+   After a privacy notice, the app creates an account bound to the device
+   (Create Account) and asks for a handle (Choose Handle). This is not a broken
+   onboarding flow.
 
 2. NO RECOVERY. There is deliberately no password reset, no cloud backup, and no
    way to restore a conversation on a new device without the original device.
@@ -115,12 +117,13 @@ bugs are intentional privacy design — please read before testing:
 
 Encryption: uses standard cryptography (X25519, AES-256-GCM, Ed25519). Export
 compliance is declared (ITSAppUsesNonExemptEncryption=true) and the annual
-self-classification is on file.
+self-classification report will be filed before distribution.
 
 Source is public under AGPL-3.0 for independent verification.
 
-Test walkthrough: launch → device identity is created automatically → start a
-conversation → send text/voice/photo → reactions and replies work inline. No
+Test walkthrough: launch → agree to the privacy notice → Create Account →
+Choose Handle (any free handle) → start a conversation with a second device's
+handle → send text/voice/photo → reactions and replies work inline. No
 credentials are required to reach full functionality.
 ```
 

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { Ed25519DeviceAuthVerifier } from '../auth/device-auth-verifier';
-import { DeviceTransferService } from './device-transfer.service';
+import { buildApprovalChallenge, DeviceTransferService } from './device-transfer.service';
 import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import {
@@ -19,6 +19,7 @@ describe('DeviceTransferService', () => {
     const keyHelper = new DeviceAuthTestHelper();
     const realtime = new FakeRealtimeGateway();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -42,7 +43,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -81,6 +82,14 @@ describe('DeviceTransferService', () => {
       {
         sessionId: init.sessionId,
         claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
       },
     );
 
@@ -302,6 +311,7 @@ describe('DeviceTransferService', () => {
     const verifier = new Ed25519DeviceAuthVerifier();
     const keyHelper = new DeviceAuthTestHelper();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -325,7 +335,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -360,7 +370,18 @@ describe('DeviceTransferService', () => {
 
     await service.approve(
       { userId: 'user-1', deviceId: 'device-old' },
-      { sessionId: init.sessionId, claimId: claim.claimId },
+      {
+        sessionId: init.sessionId,
+        claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
+      },
     );
 
     const proof = keyHelper.createProof({
@@ -402,6 +423,7 @@ describe('DeviceTransferService', () => {
     const verifier = new Ed25519DeviceAuthVerifier();
     const keyHelper = new DeviceAuthTestHelper();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -425,7 +447,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -461,7 +483,18 @@ describe('DeviceTransferService', () => {
 
     await service.approve(
       { userId: 'user-1', deviceId: 'device-old' },
-      { sessionId: init.sessionId, claimId: claim.claimId },
+      {
+        sessionId: init.sessionId,
+        claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
+      },
     );
 
     // Wedge a revocation in right before the serializable transaction runs.

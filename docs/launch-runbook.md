@@ -32,7 +32,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 
 1. Generate upload keystore if not done: `keytool -genkeypair -v -keystore veil-upload.jks -keyalg RSA -keysize 4096 -validity 36500 -alias veil`.
 2. Copy `android/keystore.properties.example` → `android/keystore.properties`, point `storeFile` at the keystore, and fill the passwords/alias. Keep both the keystore and `keystore.properties` **out of the repo** (both are gitignored); inject from CI secrets in automated builds. The release `signingConfig` reads this file and the build fails loudly if it is missing — there is no debug-key fallback.
-3. Build: `puro flutter build appbundle --release --dart-define=VEIL_ENV=prod`. (No product flavors are defined, so do **not** pass `--flavor`.)
+3. Build: `puro flutter build appbundle --release --dart-define=VEIL_API_BASE_URL=https://<relay>/v1 --dart-define=VEIL_REALTIME_URL=https://<relay> --dart-define=VEIL_TLS_PINS=<pins> --dart-define=VEIL_OBJECT_STORAGE_HOSTS=<object-store host> --dart-define=VEIL_OBJECT_STORAGE_PINS=<pins>`. A release build refuses to run without a non-local `VEIL_API_BASE_URL` and `VEIL_REALTIME_URL` and a non-empty `VEIL_TLS_PINS` (`apps/mobile/lib/src/core/config/veil_config.dart`). The app ignores `VEIL_ENV`: passing it changes nothing. (No product flavors are defined, so do **not** pass `--flavor`.)
 4. Upload `build/app/outputs/bundle/release/app-release.aab` to Play Console internal track.
 5. Store listing → paste from [`store/play/title-ko.txt`](../store/play/title-ko.txt), [`short-ko.txt`](../store/play/short-ko.txt), [`full-ko.txt`](../store/play/full-ko.txt) (and `-en.txt` equivalents) into KO and EN language slots.
 6. Data safety form → transcribe [`store/play/data-safety-answers.md`](../store/play/data-safety-answers.md) row for row (it declares the same data as [`store/appstore/app-privacy-answers.md`](../store/appstore/app-privacy-answers.md), in Play's categories). Key calls:
@@ -47,7 +47,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 
 1. Bump `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` in `ios/Runner.xcodeproj/project.pbxproj` to match pubspec.
 2. Confirm `PrivacyInfo.xcprivacy` is in the Runner target ("Add to target" must be checked).
-3. Build: `puro flutter build ipa --release --dart-define=VEIL_ENV=prod`.
+3. Build: `puro flutter build ipa --release` with the same five `--dart-define`s as the Android build in section 3 (`VEIL_API_BASE_URL`, `VEIL_REALTIME_URL`, `VEIL_TLS_PINS`, `VEIL_OBJECT_STORAGE_HOSTS`, `VEIL_OBJECT_STORAGE_PINS`). The app ignores `VEIL_ENV`.
 4. Upload via Transporter or Xcode → App Store Connect.
 5. App Store Connect → App Privacy → answer each question using [`store/appstore/app-privacy-answers.md`](../store/appstore/app-privacy-answers.md) as the source of truth.
 6. Listing content → paste from [`store/appstore/metadata-ko.txt`](../store/appstore/metadata-ko.txt) and `metadata-en.txt`.

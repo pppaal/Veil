@@ -207,10 +207,19 @@ export class AccountService {
         where: { userId, conversation: { type: 'direct' } },
         select: { conversationId: true },
       });
-      await tx.user.update({
+      // Two runs can reach this point for one account: a deletion still
+      // running an hour after Phase 1 is resumed in parallel. The run that
+      // gets here second finds no user row left (on Postgres this update waits
+      // for the other run's transaction, then matches nothing). The other run
+      // has done everything below, so this one is done too, and must not
+      // answer an error for a deletion that completed.
+      const remaining = await tx.user.updateMany({
         where: { id: userId },
         data: { activeDeviceId: null },
       });
+      if (remaining.count === 0) {
+        return;
+      }
       await tx.device.deleteMany({ where: { userId } });
       await this.retiredHandles.retire(tx, handle);
       await tx.user.delete({ where: { id: userId } });

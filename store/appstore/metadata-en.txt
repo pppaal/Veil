@@ -5,7 +5,7 @@ VEIL Messenger
 Encrypted privacy messenger
 
 [Promotional Text]
-A cold, encrypted messenger with no accounts, no phone numbers, and no recovery path. Only you and the people you talk to can read your conversations.
+A cold, encrypted messenger with no phone number, no email, no real name and no recovery path. Only you and the people you talk to can read your conversations.
 
 [Description]
 VEIL is a messenger designed with privacy as the first principle.

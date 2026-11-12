@@ -4,7 +4,10 @@ import { ConflictException } from '@nestjs/common';
 
 import { REVOKED_DEVICE_NAME } from '../../src/common/device-revocation';
 import { Ed25519DeviceAuthVerifier } from '../../src/modules/auth/device-auth-verifier';
-import { DeviceTransferService } from '../../src/modules/device-transfer/device-transfer.service';
+import {
+  buildApprovalChallenge,
+  DeviceTransferService,
+} from '../../src/modules/device-transfer/device-transfer.service';
 import { DeviceAuthTestHelper } from '../support/device-auth-test-helper';
 import { FakePrismaService } from '../support/fake-prisma.service';
 import {
@@ -22,6 +25,7 @@ describe('DeviceTransferService', () => {
     const keyHelper = new DeviceAuthTestHelper();
     const realtime = new FakeRealtimeGateway();
     const keyPair = keyHelper.createKeyPair();
+    const oldKeyPair = keyHelper.createKeyPair();
     const service = new DeviceTransferService(
       prisma as never,
       store as never,
@@ -45,7 +49,7 @@ describe('DeviceTransferService', () => {
       deviceName: 'Pixel',
       publicIdentityKey: 'pub',
       signedPrekeyBundle: 'prekey',
-      authPublicKey: 'auth',
+      authPublicKey: oldKeyPair.authPublicKey,
       pushToken: null,
       isActive: true,
       revokedAt: null,
@@ -99,6 +103,14 @@ describe('DeviceTransferService', () => {
       {
         sessionId: init.sessionId,
         claimId: claim.claimId,
+        approvalProof: keyHelper.createProof({
+          challenge: buildApprovalChallenge(
+            init.sessionId,
+            claim.claimId,
+            claim.claimantFingerprint,
+          ),
+          authPrivateKey: oldKeyPair.authPrivateKey,
+        }),
       },
     );
 
@@ -334,19 +346,23 @@ describe('DeviceTransferService first-claim-wins', () => {
       };
     };
     const status = () => service.getSessionStatus({ sessionId: init.sessionId, auth: oldDevice });
-    const approve = (claimId: string) =>
-      service.approve(oldDevice, { sessionId: init.sessionId, claimId });
     const signApproval = (
       claimId: string,
       fingerprint: string,
       authPrivateKey = oldKeyPair.authPrivateKey,
     ) =>
       keyHelper.createProof({
-        challenge: `transfer-approve:${init.sessionId}:${claimId}:${fingerprint}`,
+        challenge: buildApprovalChallenge(init.sessionId, claimId, fingerprint),
         authPrivateKey,
       });
     const approveSigned = (claimId: string, approvalProof?: string) =>
       service.approve(oldDevice, { sessionId: init.sessionId, claimId, approvalProof });
+    // What the old device does: it reads the claimant's fingerprint from the
+    // session status it polls, and signs the approval over it.
+    const approve = async (claimId: string) => {
+      const { pendingClaim } = await status();
+      return approveSigned(claimId, signApproval(claimId, pendingClaim?.claimantFingerprint ?? ''));
+    };
 
     const restart = () => service.init(oldDevice, { oldDeviceId: 'device-old' });
 
@@ -415,10 +431,14 @@ describe('DeviceTransferService first-claim-wins', () => {
   // A stolen bearer token of the old device must not be enough to hand the
   // account to the thief's keys: the approval is signed with the old
   // device's auth key over the claim and the fingerprint the user compared.
-  describe('approval proof on a production relay', () => {
+  // Every relay requires it, whatever VEIL_ENV says.
+  describe.each([
+    ['a production relay', true],
+    ['a development relay', false],
+  ])('approval proof on %s', (_relay, isProduction) => {
     it('approves with a signature by the old device over the claim and its fingerprint', async () => {
       const { claimant, approveSigned, signApproval, status } = await startTransfer({
-        isProduction: true,
+        isProduction,
       });
       const newDevice = claimant();
       const { claimId, claimantFingerprint } = await newDevice.claim();
@@ -434,7 +454,7 @@ describe('DeviceTransferService first-claim-wins', () => {
 
     it('refuses an approval without a proof, by another key or over another fingerprint', async () => {
       const { claimant, approveSigned, signApproval, status } = await startTransfer({
-        isProduction: true,
+        isProduction,
       });
       const newDevice = claimant();
       const { claimId, claimantFingerprint } = await newDevice.claim();
@@ -453,8 +473,8 @@ describe('DeviceTransferService first-claim-wins', () => {
       expect(await codeOf(newDevice.complete(claimId))).toBe('transfer_approval_required');
     });
 
-    it('still checks a proof a development relay receives', async () => {
-      const { claimant, approveSigned, signApproval } = await startTransfer();
+    it("refuses an approval signed by the claimant's own key", async () => {
+      const { claimant, approveSigned, signApproval } = await startTransfer({ isProduction });
       const newDevice = claimant();
       const { claimId, claimantFingerprint } = await newDevice.claim();
 

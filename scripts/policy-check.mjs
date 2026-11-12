@@ -38,6 +38,7 @@ const RULES = {
   loggingThroughAppLogger: 'logging-through-app-logger',
   authBeforeThrottle: 'auth-before-throttle',
   caddyStripsClientIp: 'caddy-strips-client-ip',
+  caddyKeepsViewerHeaders: 'caddy-keeps-viewer-headers',
   corsThroughSharedOptions: 'cors-through-shared-options',
   noDatabaseDumps: 'no-database-dumps',
 };
@@ -46,6 +47,12 @@ const RULES = {
 // infra/.
 const INFRA_DIR = 'infra';
 const DATABASE_DUMP_TOOLS = /\b(pg_dump|pg_dumpall|pg_basebackup|pgbackrest|wal-g)\b/;
+
+// Response headers the API sets on the one-time link viewer (/demo/s.html,
+// apps/api/src/web-assets.ts) that a Caddy `header` line must not replace or
+// duplicate. A `?Name value` default applies only where the API set none.
+const VIEWER_HEADER_OVERRIDE =
+  /^[ \t]*[>+]?(Referrer-Policy|Content-Security-Policy|Cache-Control)[ \t]/im;
 
 // The body of every reverse_proxy directive (empty when it has no block).
 // Brace-balanced, because placeholders such as {remote_host} nest inside it.
@@ -341,6 +348,21 @@ export function runPolicyChecks(rootDir) {
         `[${RULES.caddyStripsClientIp}] Caddy access log must delete request>remote_ip: ${CADDYFILE}`,
       );
     }
+
+    // The app shares one-time links as <relay>/demo/s.html#<id>.<key>. The
+    // API serves the viewer under /demo with no-referrer, no-store and its own
+    // CSP; Caddy must neither strip the prefix nor overwrite those headers.
+    if (/^[ \t]*handle_path[ \t]+\/demo/m.test(caddyfile)) {
+      failures.push(
+        `[${RULES.caddyKeepsViewerHeaders}] /demo must be proxied with handle, not handle_path (the API serves it under /demo): ${CADDYFILE}`,
+      );
+    }
+    const override = VIEWER_HEADER_OVERRIDE.exec(caddyfile);
+    if (override) {
+      failures.push(
+        `[${RULES.caddyKeepsViewerHeaders}] Caddy must not replace the API's ${override[1]} (use ?${override[1]} for a default): ${CADDYFILE}`,
+      );
+    }
   }
 
   return failures;
@@ -535,6 +557,24 @@ const SEEDED_VIOLATIONS = [
       [CADDYFILE]: CLEAN_FIXTURE[CADDYFILE].replace(
         'request>remote_ip delete',
         'request>headers delete',
+      ),
+    },
+  },
+  {
+    rule: RULES.caddyKeepsViewerHeaders,
+    files: {
+      [CADDYFILE]: CLEAN_FIXTURE[CADDYFILE].replace(
+        '\treverse_proxy api:3000 {',
+        '\thandle_path /demo* {\n\t\treverse_proxy api:3000\n\t}\n\treverse_proxy api:3000 {',
+      ),
+    },
+  },
+  {
+    rule: RULES.caddyKeepsViewerHeaders,
+    files: {
+      [CADDYFILE]: CLEAN_FIXTURE[CADDYFILE].replace(
+        'site {\n',
+        'site {\n\theader {\n\t\tReferrer-Policy "strict-origin-when-cross-origin"\n\t}\n',
       ),
     },
   },

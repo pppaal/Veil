@@ -210,12 +210,14 @@ In App Store Connect export-compliance flow (or at TestFlight upload):
 ## 13. Review notes  · owner: code-today (draft) → human-account (paste)
 
 - [ ] Author `store/appstore/app-review-notes.md` if missing, then paste into the version's
-      **App Review Information → Notes**. **Critical** because VEIL has no accounts, no phone number,
-      and no recovery, so reviewers cannot "log in." The notes must explain:
-      - No demo credentials are needed and none exist — there is **no login**.
-      - How an identity is created on **first launch** (device-bound, no account/phone/email).
-      - How to test **1:1 and group messaging** using **two devices/simulators** (you exchange
-        the on-screen identity to start a conversation).
+      **App Review Information → Notes**. **Critical** because VEIL asks for no phone number, no
+      email and no real name, and has no recovery, so reviewers cannot "log in." The notes must explain:
+      - No demo credentials are needed and none exist — there is **no password login**.
+      - How an account is created on **first launch**: privacy notice, product rules, **Create
+        Account**, **Choose Handle**; the identity keys are created locally (no phone number,
+        no email, no real name).
+      - How to test **1:1 and group messaging** using **two devices/simulators** (start a
+        conversation with the other device's handle and compare safety numbers).
       - That **no account recovery exists by design** (losing the device loses the chats).
       - That **no crash-reporting SDK** ships, so no diagnostics leave the device.
       - Contact: `privacy@veil.app`.

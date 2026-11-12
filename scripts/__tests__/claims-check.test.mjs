@@ -128,6 +128,27 @@ test('denying plaintext or disclosing readable data is a claim, mentioning plain
   ]);
 });
 
+test('saying the server holds only ciphertext is a claim', () => {
+  const copy = [
+    'DB 를 열면 메시지는 ciphertext 만 보입니다.',
+    '서버는 메시지 내용을 암호문으로만 저장합니다.',
+    '서버는 암호문만 중계합니다.',
+    'Photos are held only as ciphertext.',
+    'Ciphertext-only relay.',
+    'Message payloads are transited as ciphertext only.',
+    'Ciphertext length tracks the message length.',
+  ].join('\n\n');
+  const failures = checkClaims(tree({ 'README.md': `${README}\n${copy}\n` }));
+  assert.deepEqual(failures, [
+    'README.md: unledgered claim "DB 를 열면 메시지는 ciphertext 만 보입니다."',
+    'README.md: unledgered claim "서버는 메시지 내용을 암호문으로만 저장합니다."',
+    'README.md: unledgered claim "서버는 암호문만 중계합니다."',
+    'README.md: unledgered claim "Photos are held only as ciphertext."',
+    'README.md: unledgered claim "Ciphertext-only relay."',
+    'README.md: unledgered claim "Message payloads are transited as ciphertext only."',
+  ]);
+});
+
 test('a blanket statement about collection is a claim', () => {
   const copy = [
     'People who want a messenger with no ads and no data collection.',
@@ -154,6 +175,23 @@ test('calling the server-assigned ids anonymous or device-generated is a claim',
   assert.deepEqual(failures, [
     'README.md: unledgered claim "An anonymous user ID and device ID generated on the device."',
     'README.md: unledgered claim "기기에서 생성된 익명 식별자(User ID, Device ID)"',
+  ]);
+});
+
+test('offering multi-device use is a claim', () => {
+  // The Play listing once offered "multi-device access" while a transfer signs
+  // the old device out and an account runs on one device at a time.
+  const copy = [
+    'For multi-device access, use the built-in encrypted device transfer.',
+    'Use it on a multi device setup.',
+    '다중 기기 동기화를 원하시면 기기 전송 기능을 사용해 주세요.',
+    'VEIL runs on one device at a time.',
+  ].join('\n\n');
+  const failures = checkClaims(tree({ 'store/play/full-en.txt': `${copy}\n` }));
+  assert.deepEqual(failures, [
+    'store/play/full-en.txt: unledgered claim "For multi-device access, use the built-in encrypted device transfer."',
+    'store/play/full-en.txt: unledgered claim "Use it on a multi device setup."',
+    'store/play/full-en.txt: unledgered claim "다중 기기 동기화를 원하시면 기기 전송 기능을 사용해 주세요."',
   ]);
 });
 

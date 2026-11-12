@@ -1,7 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { AuthService } from './auth.service';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
@@ -554,14 +554,23 @@ describe('AuthService', () => {
       ).toBe('challenge_invalid');
     });
 
-    it('lets a development relay through without a proof, but checks one it receives', async () => {
+    it('requires the proof on a development relay too', async () => {
       const context = setup();
       const account = await context.registerAndLogin('stepup');
       const other = await context.registerAndLogin('bystander');
       const deviceId = account.registered.deviceId;
 
+      for (const missing of [undefined, {}, { challengeId: randomUUID() }, { signature: 'sig' }]) {
+        await expect(
+          context.service.verifyDeviceStepUp(deviceId, 'account-delete', missing),
+        ).rejects.toMatchObject({ response: { code: 'challenge_invalid' } });
+      }
       await expect(
-        context.service.verifyDeviceStepUp(deviceId, 'account-delete', {}),
+        context.service.verifyDeviceStepUp(
+          deviceId,
+          'account-delete',
+          await signedStepUp(context, account, 'account-delete'),
+        ),
       ).resolves.toBeUndefined();
       const byOtherKey = await signedStepUp(
         context,

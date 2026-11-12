@@ -49,12 +49,28 @@ cd apps/mobile
 puro flutter gen-l10n
 puro flutter analyze            # must be clean
 puro flutter test               # must be green
-puro flutter build appbundle --release --dart-define=VEIL_ENV=prod
+puro flutter build appbundle --release \
+  --dart-define=VEIL_API_BASE_URL=https://<relay>/v1 \
+  --dart-define=VEIL_REALTIME_URL=https://<relay> \
+  --dart-define=VEIL_TLS_PINS=<pins> \
+  --dart-define=VEIL_OBJECT_STORAGE_HOSTS=<object-store host> \
+  --dart-define=VEIL_OBJECT_STORAGE_PINS=<pins>
 ```
+
+> A release build refuses to run without a non-local relay URL and
+> `VEIL_TLS_PINS`. The app ignores `VEIL_ENV`; passing it changes nothing.
 
 > No `--flavor` — this project defines no product flavors.
 
 Output: `apps/mobile/build/app/outputs/bundle/release/app-release.aab`
+
+> **Not done yet: the first Android release build and the first iOS archive
+> produced on a real toolchain.** Neither has ever been built: CI runs
+> `flutter analyze` and `flutter test` only and builds no app. The first
+> `appbundle` run above is also the first time the Android
+> build files are exercised, so budget time for build fixes. Default builds
+> leave out the libsignal bridge; it is opt-in
+> (`docs/libsignal-migration-implementation.md`).
 
 ## 4. Play Console — internal testing track
 

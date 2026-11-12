@@ -34,9 +34,9 @@
   approval is signed with the old device's auth key over the claim and the
   fingerprint the user compared, so a stolen bearer token alone cannot hand
   the account to other keys. Account deletion and revoking the calling or last
-  device likewise need the device to sign a fresh challenge. A production
-  relay requires these proofs; a development relay checks them when sent
-  (`device-transfer-flow.md`). They do not help against malware or same-origin
+  device likewise need the device to sign a fresh challenge. Every relay
+  requires these proofs, in development too (`device-transfer-flow.md`). They
+  do not help against malware or same-origin
   script on the device itself, which can use its key
 - push payloads are metadata-only (senderDeviceId excluded)
 - no contact sync reduces unnecessary address-book exposure
@@ -73,6 +73,7 @@
 - production crypto adapter (X25519+AES-256-GCM) is integrated but not yet externally audited
 - 1:1 sessions (protocol v2) open with X3DH over signed and one-time prekeys, which the mobile client publishes and claims; when a target's one-time prekey pool is empty or a claim budget is spent, the session opens on the signed prekey alone, and that first message has no one-time-prekey forward secrecy and can be replayed once its stored state has aged out (`crypto-envelope-spec.md`). Sessions still on legacy v1 bundles keep the old static-key bootstrap
 - groups created by current mobile clients use Sender Keys (`veil-group-v1`): per-sender chain keys that ratchet with every message and are replaced at every membership change, so a removed member cannot read later messages (`group-sender-keys-design.md`; not yet externally reviewed). Whether a group uses Sender Keys is not left to the server: a device pins the mode the first time a listing or an authenticated group frame shows it, and refuses pairwise frames there from then on, and the server refuses to turn the flag off (`sender_keys_irreversible`). Groups created by older clients stay on a single shared key with no forward secrecy, post-compromise security or cryptographic member removal, and a device that has never seen a group in Sender Keys mode trusts the server's listing for it. The web client does not take part in groups under protocol v2
+- group membership is decided by the server. A malicious or compromised server can add a member (an account of its own) to a group; that member's devices then receive the group's keys and can read every message sent after the addition, though not earlier ones. Nothing in the protocol stops the addition: the mobile client shows a notice in the chat whenever the server's list adds or removes a member, and the members can be checked on the safety number screen. The web client does not take part in groups under protocol v2
 - sender metadata and the conversation membership graph are visible to the server in plaintext; sealed sender is under revision because the current design does not hide the sender (`sealed-sender-design.md`)
 - group and channel names and descriptions are still stored in plaintext until encrypted group metadata ships, and device labels until encrypted profiles ship (allowlisted in `scripts/schema-privacy-check.mjs`)
 - the attachment presigned MinIO/S3 flow (server-side ticketing, strict 64-hex sha256 integrity validation, size caps, rate limits) is implemented; residual risk is that the object-storage deployment configuration (bucket policy, credential rotation) is environment-specific and the flow has not been externally pentested

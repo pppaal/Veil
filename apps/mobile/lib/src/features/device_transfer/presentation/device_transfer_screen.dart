@@ -13,6 +13,7 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/device_transfer_providers.dart';
+import 'device_transfer_labels.dart';
 
 enum _TransferMode { oldDevice, newDevice }
 
@@ -181,7 +182,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               transferSessionId: controller.transferSessionId,
               transferToken: controller.transferToken,
               transferPayload: transferPayload,
-              transferStatus: controller.transferStatus,
+              transferStatus: transferStatusLabel(l10n, controller.transferStatus),
               transferExpiresAt: controller.transferExpiresAt,
               transferExpired: transferExpired,
               errorMessage: controller.errorMessage,
@@ -851,9 +852,7 @@ String _formatExpiry(DateTime expiresAt, DateTime now, AppLocalizations l10n) {
     return l10n.deviceTransferExpiryInMinutes(remaining.inMinutes);
   }
 
-  return l10n.deviceTransferExpiryAt(
-    DateFormat('MMM d, HH:mm').format(expiresAt.toLocal()),
-  );
+  return l10n.deviceTransferExpiryAt(DateFormat('MMM d, HH:mm').format(expiresAt.toLocal()));
 }
 
 class _ParsedTransferPayload {

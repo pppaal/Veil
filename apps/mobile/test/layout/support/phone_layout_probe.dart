@@ -109,7 +109,8 @@ enum LayoutDefect {
   /// asks for.
   primaryContentSqueezed,
 
-  /// Something to tap is smaller than 44x44, on a screen held to that.
+  /// Something to tap is smaller than 44x44, on a screen held to that
+  /// (every screen but the ones exempted by name).
   smallTapTarget,
 
   /// The action of a chat's warning is missing, or not wholly on screen
@@ -311,33 +312,79 @@ Set<String> otherLanguageTextsOnScreen(WidgetTester tester, String locale) {
   };
 }
 
-/// Tap targets on screen smaller than [guideline] asks, as the framework's
-/// own accessibility check reports them: Android's 48x48 for the report,
-/// [minimumTapTarget] for the screens the gate holds to it.
-Future<Set<String>> smallTapTargetsOnScreen(
-  WidgetTester tester, {
-  AccessibilityGuideline guideline = androidTapTargetGuideline,
-}) async {
+/// Tap targets on screen smaller than [minimum] logical pixels either way:
+/// Android's 48 for the report, [minimumTapTarget] for the gate.
+///
+/// What takes a tap or a long press is read from the semantics tree, as the
+/// framework's own tap target guideline reads it, with the same exceptions
+/// (links, hidden nodes). That guideline also passes over every control
+/// that touches any edge of the list it scrolls in, on the grounds that it
+/// may be half scrolled out, which lets through each button set flush left
+/// in a list. Here a control is passed over only when it reaches an edge of
+/// its list along the way the list scrolls, or an edge of the screen (as a
+/// sheet's scrim does, which is whatever the sheet leaves uncovered).
+Future<Set<String>> smallTapTargetsOnScreen(WidgetTester tester, {double minimum = 48}) async {
   final handle = tester.ensureSemantics();
   try {
     await tester.pump();
-    final evaluation = await guideline.evaluate(tester);
-    if (evaluation.passed) return const {};
-    return {
-      for (final line in (evaluation.reason ?? '').split('\n'))
-        if (_tapTargetLine.firstMatch(line) case final match?)
-          '${match.group(2)} (${match.group(1) ?? 'unlabelled'})',
-    };
+    final view = tester.view;
+    final screen = Offset.zero & view.physicalSize;
+    final small = <String>{};
+
+    void visit(SemanticsNode node) {
+      node.visitChildren((child) {
+        visit(child);
+        return true;
+      });
+      if (node.isMergedIntoParent) return;
+      final data = node.getSemanticsData();
+      final takesTaps = data.hasAction(SemanticsAction.tap) || data.hasAction(SemanticsAction.longPress);
+      if (!takesTaps || data.flagsCollection.isHidden || data.flagsCollection.isLink) return;
+
+      // The node's rectangle, carried up to the root: physical pixels.
+      var rect = node.rect;
+      for (SemanticsNode? current = node; current != null; current = current.parent) {
+        final transform = current.transform;
+        if (transform != null) rect = MatrixUtils.transformRect(transform, rect);
+        final list = current.parent;
+        if (list == null || !list.flagsCollection.hasImplicitScrolling) continue;
+        final scrolling = list.getSemanticsData();
+        final vertical =
+            scrolling.hasAction(SemanticsAction.scrollUp) || scrolling.hasAction(SemanticsAction.scrollDown);
+        final horizontal =
+            scrolling.hasAction(SemanticsAction.scrollLeft) || scrolling.hasAction(SemanticsAction.scrollRight);
+        if (vertical && (rect.top <= list.rect.top + _edge || rect.bottom >= list.rect.bottom - _edge)) return;
+        if (horizontal && (rect.left <= list.rect.left + _edge || rect.right >= list.rect.right - _edge)) return;
+      }
+      if (rect.left <= screen.left + _edge ||
+          rect.top <= screen.top + _edge ||
+          rect.right >= screen.right - _edge ||
+          rect.bottom >= screen.bottom - _edge) {
+        return;
+      }
+      final size = rect.size / view.devicePixelRatio;
+      if (size.width < minimum - _edge || size.height < minimum - _edge) {
+        final label = data.label.isEmpty ? (data.tooltip.isEmpty ? 'unlabelled' : data.tooltip) : data.label;
+        small.add('Size(${size.width.toStringAsFixed(1)}, ${size.height.toStringAsFixed(1)}) ($label)');
+      }
+    }
+
+    for (final renderView in tester.binding.renderViews) {
+      final root = renderView.owner?.semanticsOwner?.rootSemanticsNode;
+      if (root != null) visit(root);
+    }
+    return small;
   } finally {
     handle.dispose();
   }
 }
 
-/// The least a control may measure on the screens the gate holds to it: 44
-/// logical pixels each way, Apple's minimum, which Android's 48 also meets.
-const AccessibilityGuideline minimumTapTarget = iOSTapTargetGuideline;
+/// The least a control may measure where the gate holds it: 44 logical
+/// pixels each way, Apple's minimum, which Android's 48 also meets.
+const double minimumTapTarget = 44;
 
-final _tapTargetLine = RegExp(r'(?:label: "([^"]*)".*)?but found (Size\([\d., ]+\))');
+// How close to an edge counts as reaching it, in physical pixels.
+const double _edge = 0.01;
 
 /// One line per case of a run that writes shots: `<SHOTS_DIR>/report.json`.
 class LayoutReport {

@@ -16,6 +16,26 @@ extension VeilThemeContext on BuildContext {
   bool get veilPhoneWidth => MediaQuery.sizeOf(this).width < 600;
 }
 
+final _hangul = RegExp(r'[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]');
+final _word = RegExp(r'\S+');
+
+/// [text] for a headline, with its Korean words kept whole where it wraps.
+/// A line of Korean may break between any two syllables, which leaves the
+/// last syllable of a headline alone on a line ("...됩니" / "다."). A word
+/// joiner goes between the characters of each word that has Hangul in it,
+/// so the line breaks at spaces; a word wider than the line still breaks.
+/// Text without Hangul comes back as it is.
+///
+/// The result is for drawing only: give the widget the plain text as its
+/// semantics label.
+String veilKeepWordsWhole(String text) {
+  if (!_hangul.hasMatch(text)) return text;
+  return text.replaceAllMapped(_word, (match) {
+    final word = match[0]!;
+    return _hangul.hasMatch(word) ? word.characters.join('\u2060') : word;
+  });
+}
+
 class VeilButton extends StatelessWidget {
   const VeilButton({
     super.key,
@@ -320,7 +340,8 @@ class _VeilHeroPanelState extends State<VeilHeroPanel>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        widget.title,
+                        veilKeepWordsWhole(widget.title),
+                        semanticsLabel: widget.title,
                         style: compact
                             ? theme.textTheme.headlineMedium
                             : theme.textTheme.headlineLarge?.copyWith(height: 1.04),
@@ -541,8 +562,9 @@ IconData _defaultIconFor(VeilBannerTone tone) {
 
 /// A [VeilInlineBanner] cut down to one row, for where there is no height
 /// for the banner: the icon, the title and, at the end of the same row, the
-/// action. A row with no action shows as much of its message after the
-/// title as fits the line.
+/// action. Beside an action a long title takes a second line rather than
+/// be cut short; a row with no action shows as much of its message after
+/// the title as fits the line.
 ///
 /// The row is a strip across the full width with no gap around it, 44 px
 /// tall at the default text size, so that two of them fit where one banner
@@ -604,7 +626,7 @@ class VeilNoticeRow extends StatelessWidget {
                     ),
                 ],
               ),
-              maxLines: 1,
+              maxLines: hasAction ? 2 : 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -1315,6 +1337,7 @@ class VeilEmptyState extends StatelessWidget {
     required this.body,
     this.icon = Icons.inbox_outlined,
     this.action,
+    this.compact = false,
   });
 
   final String title;
@@ -1322,51 +1345,59 @@ class VeilEmptyState extends StatelessWidget {
   final IconData icon;
   final Widget? action;
 
+  /// Without the icon and most of the space around it, for where there is
+  /// little height: above an open keyboard, say.
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
+    final theme = Theme.of(context);
 
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420),
         child: Padding(
-          padding: const EdgeInsets.symmetric(
+          padding: EdgeInsets.symmetric(
             horizontal: VeilSpace.lg,
-            vertical: VeilSpace.xxl,
+            vertical: compact ? VeilSpace.sm : VeilSpace.xxl,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(VeilRadius.lg),
-                  border: Border.all(color: palette.stroke),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [palette.surfaceRaised, palette.canvasAlt],
+              if (!compact) ...[
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(VeilRadius.lg),
+                    border: Border.all(color: palette.stroke),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [palette.surfaceRaised, palette.canvasAlt],
+                    ),
                   ),
+                  child: Icon(icon, size: VeilIconSize.xl, color: palette.primary),
                 ),
-                child: Icon(icon, size: VeilIconSize.xl, color: palette.primary),
-              ),
-              const SizedBox(height: VeilSpace.lg),
+                const SizedBox(height: VeilSpace.lg),
+              ],
               Text(
-                title,
-                style: Theme.of(context).textTheme.headlineMedium,
+                veilKeepWordsWhole(title),
+                semanticsLabel: title,
+                style: compact ? theme.textTheme.titleLarge : theme.textTheme.headlineMedium,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: VeilSpace.xs),
+              SizedBox(height: compact ? VeilSpace.xxs : VeilSpace.xs),
               Text(
                 body,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.textMuted,
-                    ),
+                style: (compact ? theme.textTheme.bodySmall : theme.textTheme.bodyMedium)?.copyWith(
+                  color: palette.textMuted,
+                ),
                 textAlign: TextAlign.center,
               ),
               if (action != null) ...[
-                const SizedBox(height: VeilSpace.lg),
+                SizedBox(height: compact ? VeilSpace.sm : VeilSpace.lg),
                 action!,
               ],
             ],

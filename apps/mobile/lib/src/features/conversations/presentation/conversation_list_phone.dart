@@ -132,6 +132,8 @@ class _StatusLine extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
     final relay = connected ? l10n.conversationsRelayLinked : l10n.conversationsRelayIdle;
+    final parts = [relay, l10n.conversationsCount(conversationCount), l10n.conversationsNoBackup];
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
       child: Row(
@@ -152,13 +154,16 @@ class _StatusLine extends StatelessWidget {
               ),
             ),
           const SizedBox(width: VeilSpace.xs),
+          // Each part moves to the next line whole: a line that is too
+          // long never breaks inside "No backup".
           Expanded(
-            child: Text(
-              '$relay  ·  ${l10n.conversationsCount(conversationCount)}  ·  ${l10n.conversationsNoBackup}',
-              // Wraps before it would cut "No backup" off.
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            child: MergeSemantics(
+              child: Wrap(
+                children: [
+                  for (final (index, part) in parts.indexed)
+                    Text(index == parts.length - 1 ? part : '$part  ·  ', style: style),
+                ],
+              ),
             ),
           ),
         ],

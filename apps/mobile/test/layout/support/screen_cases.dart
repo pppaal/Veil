@@ -98,7 +98,7 @@ class ScreenCase {
   final double textScale;
 
   /// Whether every control of the case must measure 44x44 or more.
-  bool get holdsTapTargets => tapTargetScreens.contains(file);
+  bool get holdsTapTargets => !tapTargetExemptScreens.contains(file);
 
   /// How many warning actions the case's chat must show, each wholly on
   /// screen: one per warning of [attention] that asks for a decision.
@@ -120,13 +120,12 @@ class ScreenCase {
   final Future<void> Function(WidgetTester tester)? settle;
 }
 
-/// The screens whose controls the gate holds to 44x44: the ones laid out
-/// for a phone. The others are measured too, into report.json; add a screen
-/// here once its controls are up to it.
-const tapTargetScreens = {
-  'app_lock_screen.dart',
-  'chat_room_screen.dart',
-  'conversation_list_screen.dart',
+/// The screens whose controls the gate does not hold to 44x44, each with
+/// what is smaller there. Every other screen is held to it. This set may
+/// only shrink: a new screen is held from the start.
+const tapTargetExemptScreens = {
+  // The emoji and sticker grid packs eight cells of about 33 px into a row.
+  'sticker_picker_screen.dart',
 };
 
 /// The text size of the larger-text cases: the step most people who enlarge
@@ -239,8 +238,9 @@ const List<ScreenCase> screenCases = [
 
   // The states the first gate left out: nothing sent yet and the keyboard
   // up, warnings and the keyboard together (the least room a chat ever
-  // has), a held account (the longest warning), search open in the bar, a
-  // disappearing timer, and the timer's sheet.
+  // has), a held account (the longest warning) with and without the
+  // keyboard, search open in the bar, a disappearing timer, and the timer's
+  // sheet.
   ScreenCase(
     'chat-room-empty-keyboard',
     screen: ChatRoomScreen,
@@ -266,6 +266,16 @@ const List<ScreenCase> screenCases = [
     file: 'chat_room_screen.dart',
     location: _chat,
     attention: ChatAttention(accountHeld: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+  ),
+  ScreenCase(
+    'chat-room-account-hold-keyboard',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(accountHeld: true),
+    keyboardHeight: 300,
     primaryExtent: chatMessagesExtent,
     minPrimaryExtent: minSqueezedMessagesExtent,
   ),

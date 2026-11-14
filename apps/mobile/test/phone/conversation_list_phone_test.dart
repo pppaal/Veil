@@ -27,7 +27,12 @@ void main() {
       expect(find.byType(VeilMetricStrip), findsNothing);
       // What the hero card said: the relay, the count, and that nothing is
       // backed up.
-      expect(find.text('Relay linked  ·  8 conversations  ·  No backup'), findsOneWidget);
+      final status = ['Relay linked  ·  ', '8 conversations  ·  ', 'No backup'];
+      for (final part in status) {
+        expect(find.text(part), findsOneWidget);
+      }
+      expect({for (final part in status) tester.getTopLeft(find.text(part)).dy}, hasLength(1),
+          reason: 'one line at the default text size');
       expect(find.widgetWithText(TextField, 'Search chats and messages'), findsOneWidget);
 
       final rows = find.byType(VeilConversationCard);
@@ -39,6 +44,17 @@ void main() {
             box,
       ];
       expect(whole.length, greaterThanOrEqualTo(4), reason: 'a 360x640 phone shows at least four whole rows');
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  testWidgets('with larger text the status line wraps between its parts, never inside one', (tester) async {
+    await withPhoneApp(tester, identities, location: '/conversations', textScale: 1.3, body: (world) async {
+      final relay = tester.getRect(find.text('Relay linked  ·  '));
+      final noBackup = tester.getRect(find.text('No backup'));
+      expect(noBackup.top, greaterThan(relay.top), reason: 'the line is too long for 360 px at this size');
+      expect(noBackup.height, relay.height, reason: '"No backup" is on one line');
+      expect(noBackup.right, lessThanOrEqualTo(360));
       expect(tester.takeException(), isNull);
     });
   });
@@ -115,7 +131,9 @@ void main() {
 
   testWidgets('is in Korean in a Korean app, tabs included', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', locale: 'ko', body: (world) async {
-      expect(find.text('릴레이 연결됨  ·  대화 8개  ·  백업 없음'), findsOneWidget);
+      for (final part in ['릴레이 연결됨  ·  ', '대화 8개  ·  ', '백업 없음']) {
+        expect(find.text(part), findsOneWidget);
+      }
       expect(find.widgetWithText(TextField, '대화와 메시지 검색'), findsOneWidget);
       for (final tab in ['채팅', '연락처', '통화']) {
         expect(find.text(tab), findsOneWidget);

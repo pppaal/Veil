@@ -28,8 +28,11 @@ fails
   unbounded constraints),
 - when the messages of a chat or the rows of the conversation list get less
   than 45% of the screen height (96 px under the keyboard or warnings),
-- when a control of a screen laid out for phones (the chat, the conversation
-  list, the lock screen) is smaller than 44x44.
+- when a control is smaller than 44x44, on every screen but the sticker
+  picker (the one exception, named in `screen_cases.dart`),
+- when a chat does not show the action of each of its warnings whole, where
+  a tap reaches it. A button cut off by the area it scrolls in is no layout
+  error, so the gate looks for it.
 
 It runs with the rest of `flutter test`.
 
@@ -57,6 +60,13 @@ screens tighten under 600 px (`context.veilPhoneWidth`): hero panels shrink,
 decorative stat tiles step aside, and the field a screen is for comes before
 its explanations. `test/phone` holds the behaviour that moved with the
 layouts (search, timer, safety number, back).
+
+A chat's warnings are banners while they fit above the messages, which keep
+96 px. When they do not (a small phone with the keyboard up), each warning
+is one row with its title and its action, and only more rows than fit
+scroll. `VeilFirstThatFits` makes that choice during layout. Opening a
+message that a search found moves the list to it however far back it is
+(`navigation_target_jump.dart`).
 
 ## Release builds
 

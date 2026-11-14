@@ -6,6 +6,47 @@ import '../../../core/errors/user_facing_error.dart';
 import '../../../core/network/veil_api_client.dart';
 import '../../../core/security/device_step_up.dart';
 
+/// What the old device's last transfer step came to. A value, so that the
+/// screen says it in the app's language.
+sealed class TransferStatus {
+  const TransferStatus();
+}
+
+/// The transfer needs a signed-in session against a configured relay.
+class TransferNeedsApi extends TransferStatus {
+  const TransferNeedsApi();
+}
+
+/// The transfer session is open and its token can be handed over.
+class TransferTokenReady extends TransferStatus {
+  const TransferTokenReady();
+}
+
+/// An approval was asked for before any transfer session was opened.
+class TransferNotStarted extends TransferStatus {
+  const TransferNotStarted();
+}
+
+/// An approval was asked for with no claim code.
+class TransferClaimCodeMissing extends TransferStatus {
+  const TransferClaimCodeMissing();
+}
+
+/// The relay has no claim [claimId] waiting on this transfer.
+class TransferClaimNotWaiting extends TransferStatus {
+  const TransferClaimNotWaiting(this.claimId);
+
+  final String claimId;
+}
+
+/// This device approved claim [claimId], made with the keys of [fingerprint].
+class TransferClaimApproved extends TransferStatus {
+  const TransferClaimApproved(this.claimId, this.fingerprint);
+
+  final String claimId;
+  final String fingerprint;
+}
+
 /// The old device's half of a device transfer: it opens a transfer session,
 /// shows its token, and approves the claim the new device made with it.
 /// The new device's half (claim and completion) belongs to the session
@@ -32,14 +73,14 @@ class DeviceTransferController extends ChangeNotifier {
   String? _errorMessage;
   String? _transferSessionId;
   String? _transferToken;
-  String? _transferStatus;
+  TransferStatus? _transferStatus;
   DateTime? _transferExpiresAt;
 
   bool get isBusy => _isBusy;
   String? get errorMessage => _errorMessage;
   String? get transferSessionId => _transferSessionId;
   String? get transferToken => _transferToken;
-  String? get transferStatus => _transferStatus;
+  TransferStatus? get transferStatus => _transferStatus;
   DateTime? get transferExpiresAt => _transferExpiresAt;
   String? get transferPayload => _transferSessionId == null || _transferToken == null
       ? null
@@ -51,7 +92,7 @@ class DeviceTransferController extends ChangeNotifier {
       final deviceId = session.deviceId;
       final accessToken = session.accessToken;
       if (!session.isAuthenticated || !VeilConfig.hasApi || deviceId == null || accessToken == null) {
-        _transferStatus = 'Transfer requires API mode.';
+        _transferStatus = const TransferNeedsApi();
         return;
       }
 
@@ -59,7 +100,7 @@ class DeviceTransferController extends ChangeNotifier {
       _transferSessionId = response['sessionId'] as String;
       _transferToken = response['transferToken'] as String;
       _transferExpiresAt = DateTime.parse(response['expiresAt'] as String);
-      _transferStatus = 'Init complete. Token ready.';
+      _transferStatus = const TransferTokenReady();
     });
   }
 
@@ -69,11 +110,11 @@ class DeviceTransferController extends ChangeNotifier {
       final session = _session();
       final accessToken = session.accessToken;
       if (_transferSessionId == null || !session.isAuthenticated || !VeilConfig.hasApi || accessToken == null) {
-        _transferStatus = 'Start transfer first.';
+        _transferStatus = const TransferNotStarted();
         return;
       }
       if (trimmedClaimId.isEmpty) {
-        _transferStatus = 'Enter the new-device claim code first.';
+        _transferStatus = const TransferClaimCodeMissing();
         return;
       }
 
@@ -89,7 +130,7 @@ class DeviceTransferController extends ChangeNotifier {
       final status = await _apiClient.getTransferStatus(accessToken, sessionId);
       final claim = status['pendingClaim'];
       if (claim is! Map<String, dynamic> || claim['claimId'] != trimmedClaimId) {
-        _transferStatus = 'No claim $trimmedClaimId is waiting on this transfer.';
+        _transferStatus = TransferClaimNotWaiting(trimmedClaimId);
         return;
       }
       final fingerprint = claim['claimantFingerprint'] as String;
@@ -103,7 +144,7 @@ class DeviceTransferController extends ChangeNotifier {
         'claimId': trimmedClaimId,
         'approvalProof': approvalProof,
       });
-      _transferStatus = 'Approved claim $trimmedClaimId on old device. Key fingerprint: $fingerprint';
+      _transferStatus = TransferClaimApproved(trimmedClaimId, fingerprint);
     });
   }
 

@@ -23,16 +23,19 @@ Future<void> withPhoneApp(
   Future<Object?> Function(LayoutWorld world)? prepare,
   PhoneSize size = phoneSmall,
   double keyboardHeight = 0,
+  double textScale = 1,
   String locale = 'en',
   LayoutAccount account = LayoutAccount.signedIn,
   ChatAttention attention = const ChatAttention(),
+  bool transferStarted = false,
 }) async {
-  usePhoneView(tester, size, keyboardHeight: keyboardHeight);
+  usePhoneView(tester, size, keyboardHeight: keyboardHeight, textScale: textScale);
   final world = await LayoutWorld.create(
     identities: identities,
     account: account,
     locale: locale,
     attention: attention,
+    transferStarted: transferStarted,
   );
   try {
     final extra = await prepare?.call(world);
@@ -44,6 +47,15 @@ Future<void> withPhoneApp(
     await tester.pump();
     world.dispose();
   }
+}
+
+/// Scrolls the screen to its end a screenful at a time and returns every
+/// text that was on screen in the language the run is not in (see
+/// [otherLanguageTextsOnScreen]): names and values included.
+Future<Set<String>> otherLanguageTextsOfScreen(WidgetTester tester, String locale) async {
+  final texts = otherLanguageTextsOnScreen(tester, locale);
+  await scrollToEnd(tester, onPage: (_) async => texts.addAll(otherLanguageTextsOnScreen(tester, locale)));
+  return texts;
 }
 
 /// The part of [finder]'s first widget that is on screen.

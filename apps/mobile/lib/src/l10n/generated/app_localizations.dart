@@ -1304,6 +1304,282 @@ abstract class AppLocalizations {
   /// **'Delete your account?'**
   String get settingsDeleteAccountConfirmHeadline;
 
+  /// No description provided for @settingsDeviceGraphLoadFailedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This device could not load the current trust graph. Local security controls remain available.'**
+  String get settingsDeviceGraphLoadFailedBody;
+
+  /// No description provided for @settingsNoTrustedDevicesBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This account has no readable device graph yet. Bound-device controls still remain local and unrecoverable.'**
+  String get settingsNoTrustedDevicesBody;
+
+  /// No description provided for @settingsRefreshDeviceGraph.
+  ///
+  /// In en, this message translates to:
+  /// **'Refresh device graph'**
+  String get settingsRefreshDeviceGraph;
+
+  /// No description provided for @settingsSectionSecurity.
+  ///
+  /// In en, this message translates to:
+  /// **'SECURITY'**
+  String get settingsSectionSecurity;
+
+  /// No description provided for @settingsSectionSession.
+  ///
+  /// In en, this message translates to:
+  /// **'SESSION'**
+  String get settingsSectionSession;
+
+  /// No description provided for @settingsDestructiveNoticeBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.'**
+  String get settingsDestructiveNoticeBody;
+
+  /// No description provided for @settingsLockNowSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide the current session behind the local barrier immediately'**
+  String get settingsLockNowSubtitle;
+
+  /// No description provided for @settingsWipeLocalSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Deletes local session state, local secrets, encrypted cache, PIN, and onboarding state on this device only.'**
+  String get settingsWipeLocalSubtitle;
+
+  /// No description provided for @settingsWipeConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This erases local VEIL state on this device. It does not create a recovery path. If this is your only active device, access is gone.'**
+  String get settingsWipeConfirmBody;
+
+  /// No description provided for @settingsWipeConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Wipe local state'**
+  String get settingsWipeConfirmAction;
+
+  /// No description provided for @settingsRevokeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Destroys this bound device session and wipes local state on this device. No recovery exists.'**
+  String get settingsRevokeSubtitle;
+
+  /// No description provided for @settingsRevokeConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes the active device binding for this account on this device and wipes local state here. VEIL cannot restore it.'**
+  String get settingsRevokeConfirmBody;
+
+  /// No description provided for @settingsRevokeConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke device'**
+  String get settingsRevokeConfirmAction;
+
+  /// No description provided for @settingsLogoutSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clears this local session while leaving the onboarding acknowledgment and local barrier intact.'**
+  String get settingsLogoutSubtitle;
+
+  /// No description provided for @settingsTypePhraseToContinue.
+  ///
+  /// In en, this message translates to:
+  /// **'Type {phrase} to continue.'**
+  String settingsTypePhraseToContinue(String phrase);
+
+  /// No description provided for @settingsRevokeListedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke {deviceName}?'**
+  String settingsRevokeListedTitle(String deviceName);
+
+  /// No description provided for @settingsRevokeListedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This removes {deviceName} from the trusted device graph. VEIL will not create a recovery path for that device.'**
+  String settingsRevokeListedBody(String deviceName);
+
+  /// No description provided for @settingsRevokeListedDone.
+  ///
+  /// In en, this message translates to:
+  /// **'{deviceName} was removed from the trusted graph.'**
+  String settingsRevokeListedDone(String deviceName);
+
+  /// No description provided for @settingsRevokeListedFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The device could not be revoked. Try again.'**
+  String get settingsRevokeListedFailed;
+
+  /// No description provided for @settingsDeviceStateCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'This device'**
+  String get settingsDeviceStateCurrent;
+
+  /// No description provided for @settingsDeviceStatePreferred.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred'**
+  String get settingsDeviceStatePreferred;
+
+  /// No description provided for @settingsDeviceStateTrusted.
+  ///
+  /// In en, this message translates to:
+  /// **'Trusted'**
+  String get settingsDeviceStateTrusted;
+
+  /// No description provided for @settingsDeviceStateStale.
+  ///
+  /// In en, this message translates to:
+  /// **'Stale'**
+  String get settingsDeviceStateStale;
+
+  /// No description provided for @settingsDeviceStateRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoked'**
+  String get settingsDeviceStateRevoked;
+
+  /// No description provided for @settingsDeviceRevokeAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoke'**
+  String get settingsDeviceRevokeAction;
+
+  /// No description provided for @settingsDeviceCreated.
+  ///
+  /// In en, this message translates to:
+  /// **'Created {when}'**
+  String settingsDeviceCreated(String when);
+
+  /// No description provided for @settingsDeviceSeen.
+  ///
+  /// In en, this message translates to:
+  /// **'Seen {when}'**
+  String settingsDeviceSeen(String when);
+
+  /// No description provided for @settingsDeviceSynced.
+  ///
+  /// In en, this message translates to:
+  /// **'Synced {when}'**
+  String settingsDeviceSynced(String when);
+
+  /// No description provided for @settingsDeviceActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Activity {when}'**
+  String settingsDeviceActivity(String when);
+
+  /// No description provided for @settingsDeviceTrustedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Trusted {when}'**
+  String settingsDeviceTrustedAt(String when);
+
+  /// No description provided for @settingsDeviceJoinedFrom.
+  ///
+  /// In en, this message translates to:
+  /// **'Joined from {device}'**
+  String settingsDeviceJoinedFrom(String device);
+
+  /// No description provided for @settingsDeviceRevokedAt.
+  ///
+  /// In en, this message translates to:
+  /// **'Revoked {when}'**
+  String settingsDeviceRevokedAt(String when);
+
+  /// No description provided for @settingsDeviceNoteCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'This is the current trusted device. If every trusted device is lost, VEIL cannot restore access.'**
+  String get settingsDeviceNoteCurrent;
+
+  /// No description provided for @settingsDeviceNotePreferred.
+  ///
+  /// In en, this message translates to:
+  /// **'This trusted device is the current preferred routing device. It is not a cloud recovery anchor.'**
+  String get settingsDeviceNotePreferred;
+
+  /// No description provided for @settingsDeviceNoteTrusted.
+  ///
+  /// In en, this message translates to:
+  /// **'This device remains trusted and can continue syncing while another trusted device exists.'**
+  String get settingsDeviceNoteTrusted;
+
+  /// No description provided for @settingsDeviceNoteStale.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is still trusted but recent trusted activity has gone quiet. Revoke it if it should no longer retain access.'**
+  String get settingsDeviceNoteStale;
+
+  /// No description provided for @settingsDeviceNoteRevoked.
+  ///
+  /// In en, this message translates to:
+  /// **'This device is no longer trusted and cannot resume the session.'**
+  String get settingsDeviceNoteRevoked;
+
+  /// No description provided for @settingsGraphSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'GRAPH SUMMARY'**
+  String get settingsGraphSummary;
+
+  /// No description provided for @settingsGraphTrustedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} trusted'**
+  String settingsGraphTrustedCount(int count);
+
+  /// No description provided for @settingsGraphStaleCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} stale'**
+  String settingsGraphStaleCount(int count);
+
+  /// No description provided for @settingsGraphRevokedCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} revoked'**
+  String settingsGraphRevokedCount(int count);
+
+  /// No description provided for @settingsGraphRecentActivity.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent trusted activity {when}'**
+  String settingsGraphRecentActivity(String when);
+
+  /// No description provided for @settingsGraphPreferredDiffersTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Preferred device differs'**
+  String get settingsGraphPreferredDiffersTitle;
+
+  /// No description provided for @settingsGraphPreferredDiffersBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{preferred} is currently preferred for routing and directory compatibility. {current} remains trusted.'**
+  String settingsGraphPreferredDiffersBody(String preferred, String current);
+
+  /// No description provided for @settingsGraphStaleTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stale trusted devices present'**
+  String get settingsGraphStaleTitle;
+
+  /// No description provided for @settingsGraphStaleBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Some trusted devices have no recent trusted activity. Stale does not mean revoked, but they should be reviewed deliberately.'**
+  String get settingsGraphStaleBody;
+
   /// No description provided for @chatEmptyTitle.
   ///
   /// In en, this message translates to:
@@ -1697,31 +1973,31 @@ abstract class AppLocalizations {
   /// No description provided for @chatAttachmentTicketTitle.
   ///
   /// In en, this message translates to:
-  /// **'Attachment ticket ready'**
+  /// **'Download ticket issued'**
   String get chatAttachmentTicketTitle;
 
   /// No description provided for @chatAttachmentTicketBody.
   ///
   /// In en, this message translates to:
-  /// **'A short-lived local download ticket was resolved for this device.\n\nSummary: {summary}\n\nCopying and sharing the raw ticket is intentionally disabled.'**
+  /// **'The relay issued a short-lived download ticket for this device.\n\nSummary: {summary}\n\nThis build stops here: it does not fetch or open the file yet. The ticket itself is not shown, so it cannot be copied or shared.'**
   String chatAttachmentTicketBody(String summary);
 
   /// No description provided for @chatAttachmentTicketFailed.
   ///
   /// In en, this message translates to:
-  /// **'Attachment ticket failed'**
+  /// **'Download request failed'**
   String get chatAttachmentTicketFailed;
 
   /// No description provided for @chatAttachmentResolveAction.
   ///
   /// In en, this message translates to:
-  /// **'Resolve download ticket'**
+  /// **'Request download'**
   String get chatAttachmentResolveAction;
 
   /// No description provided for @chatAttachmentResolvingAction.
   ///
   /// In en, this message translates to:
-  /// **'Resolving ticket'**
+  /// **'Requesting download'**
   String get chatAttachmentResolvingAction;
 
   /// No description provided for @chatAttachmentEncryptedImage.
@@ -1759,6 +2035,180 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Attachment state'**
   String get chatAttachmentStateBanner;
+
+  /// No description provided for @attachmentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachment'**
+  String get attachmentTitle;
+
+  /// No description provided for @attachmentHeroEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'ATTACHMENT'**
+  String get attachmentHeroEyebrow;
+
+  /// No description provided for @attachmentHeroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypted before it leaves.'**
+  String get attachmentHeroTitle;
+
+  /// No description provided for @attachmentHeroBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This device encrypts locally, uploads an opaque blob, and then sends an encrypted message that points at it.'**
+  String get attachmentHeroBody;
+
+  /// No description provided for @attachmentPillOpaqueBlob.
+  ///
+  /// In en, this message translates to:
+  /// **'Opaque blob'**
+  String get attachmentPillOpaqueBlob;
+
+  /// No description provided for @attachmentPillMetadataOnlyRelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Metadata-only relay'**
+  String get attachmentPillMetadataOnlyRelay;
+
+  /// No description provided for @attachmentPillNoPlaintextPush.
+  ///
+  /// In en, this message translates to:
+  /// **'No plaintext push'**
+  String get attachmentPillNoPlaintextPush;
+
+  /// No description provided for @attachmentNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'FILE NAME'**
+  String get attachmentNameLabel;
+
+  /// No description provided for @attachmentNameCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'This build has no file picker yet: it sends a small placeholder file under this name, along the path a real attachment will take.'**
+  String get attachmentNameCaption;
+
+  /// No description provided for @attachmentNameInputLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'File name'**
+  String get attachmentNameInputLabel;
+
+  /// No description provided for @attachmentRelayPolicyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Relay policy'**
+  String get attachmentRelayPolicyTitle;
+
+  /// No description provided for @attachmentRelayPolicyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Private beta currently allows JPEG, PNG, WEBP, PDF, and opaque binary payloads. The relay never receives plaintext filenames or attachment keys.'**
+  String get attachmentRelayPolicyBody;
+
+  /// No description provided for @attachmentMetricType.
+  ///
+  /// In en, this message translates to:
+  /// **'Type'**
+  String get attachmentMetricType;
+
+  /// No description provided for @attachmentMetricUpload.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload'**
+  String get attachmentMetricUpload;
+
+  /// No description provided for @attachmentMetricUploadValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticketed'**
+  String get attachmentMetricUploadValue;
+
+  /// No description provided for @attachmentMetricBlob.
+  ///
+  /// In en, this message translates to:
+  /// **'Blob'**
+  String get attachmentMetricBlob;
+
+  /// No description provided for @attachmentMetricBlobValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Opaque'**
+  String get attachmentMetricBlobValue;
+
+  /// No description provided for @attachmentStepsSection.
+  ///
+  /// In en, this message translates to:
+  /// **'SEND LIFECYCLE'**
+  String get attachmentStepsSection;
+
+  /// No description provided for @attachmentStep1Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Ticket'**
+  String get attachmentStep1Title;
+
+  /// No description provided for @attachmentStep1Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Request a scoped upload URL for the opaque blob.'**
+  String get attachmentStep1Body;
+
+  /// No description provided for @attachmentStep2Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Blob upload'**
+  String get attachmentStep2Title;
+
+  /// No description provided for @attachmentStep2Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Upload the opaque bytes. A retry reuses the local temporary blob and renews the upload ticket if it has expired.'**
+  String get attachmentStep2Body;
+
+  /// No description provided for @attachmentStep3Title.
+  ///
+  /// In en, this message translates to:
+  /// **'Message'**
+  String get attachmentStep3Title;
+
+  /// No description provided for @attachmentStep3Body.
+  ///
+  /// In en, this message translates to:
+  /// **'Queue the encrypted message that points at the upload, and clear the local temporary blob once it is finalized.'**
+  String get attachmentStep3Body;
+
+  /// No description provided for @attachmentSendFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Attachment send failed'**
+  String get attachmentSendFailedTitle;
+
+  /// No description provided for @attachmentQueuedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Queued locally'**
+  String get attachmentQueuedTitle;
+
+  /// No description provided for @attachmentQueuedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The attachment now continues inside the conversation. Progress, retry and cancel follow its message.'**
+  String get attachmentQueuedBody;
+
+  /// No description provided for @attachmentSendAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypt and send'**
+  String get attachmentSendAction;
+
+  /// No description provided for @attachmentSendingAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Encrypting and sending'**
+  String get attachmentSendingAction;
 
   /// No description provided for @chatReplyLocally.
   ///
@@ -3488,6 +3938,18 @@ abstract class AppLocalizations {
   /// **'SAFETY NUMBER'**
   String get safetyNumbersCardLabel;
 
+  /// No description provided for @safetyNumbersCardLabelCurrent.
+  ///
+  /// In en, this message translates to:
+  /// **'CURRENT SAFETY NUMBER'**
+  String get safetyNumbersCardLabelCurrent;
+
+  /// No description provided for @safetyNumbersCardLabelNew.
+  ///
+  /// In en, this message translates to:
+  /// **'NEW SAFETY NUMBER'**
+  String get safetyNumbersCardLabelNew;
+
   /// No description provided for @safetyNumbersScanLabel.
   ///
   /// In en, this message translates to:
@@ -4105,6 +4567,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Transfer status'**
   String get deviceTransferStatusTitle;
+
+  /// No description provided for @deviceTransferStatusNeedsApi.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer requires API mode.'**
+  String get deviceTransferStatusNeedsApi;
+
+  /// No description provided for @deviceTransferStatusTokenReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer session open. The token is ready.'**
+  String get deviceTransferStatusTokenReady;
+
+  /// No description provided for @deviceTransferStatusNotStarted.
+  ///
+  /// In en, this message translates to:
+  /// **'Start transfer first.'**
+  String get deviceTransferStatusNotStarted;
+
+  /// No description provided for @deviceTransferStatusClaimCodeMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the new-device claim code first.'**
+  String get deviceTransferStatusClaimCodeMissing;
+
+  /// No description provided for @deviceTransferStatusClaimNotWaiting.
+  ///
+  /// In en, this message translates to:
+  /// **'No claim {claimId} is waiting on this transfer.'**
+  String deviceTransferStatusClaimNotWaiting(String claimId);
+
+  /// No description provided for @deviceTransferStatusClaimApproved.
+  ///
+  /// In en, this message translates to:
+  /// **'Approved claim {claimId} on old device. Key fingerprint: {fingerprint}'**
+  String deviceTransferStatusClaimApproved(String claimId, String fingerprint);
 
   /// No description provided for @deviceTransferFailedTitle.
   ///

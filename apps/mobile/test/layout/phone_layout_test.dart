@@ -15,11 +15,11 @@ import 'support/screen_cases.dart';
 // A case fails when the framework reports a layout error (an overflowing
 // flex, unbounded constraints, a build that throws), when the messages of a
 // chat or the rows of the conversation list get less than 45% of the screen
-// height, when a control of a screen laid out for phones (the chat, the
-// conversation list, the lock) is smaller than 44x44, or when the action of
-// a chat's warning is not wholly on screen where a tap reaches it. Cases
-// known to fail are listed in known_phone_layout_failures.dart, which this
-// gate only lets shrink; it is empty.
+// height, when a control is smaller than 44x44 (on every screen but the
+// one listed in tapTargetExemptScreens), or when the action of a chat's
+// warning is not wholly on screen where a tap reaches it. Cases known to
+// fail are listed in known_phone_layout_failures.dart, which this gate only
+// lets shrink; it is empty.
 //
 //   flutter test test/layout
 //
@@ -73,6 +73,50 @@ void main() {
       expect(known.reason, isNotEmpty, reason: key);
       expect(listed.add(key), isTrue, reason: '$key is listed twice');
     }
+  });
+
+  // The framework's own tap target check passes over a control that
+  // touches any edge of the list it is in, so a short button set flush left
+  // in a scrolling screen went unseen. The gate's check must see it, and
+  // must still leave out what the list has half scrolled away.
+  testWidgets('the tap target check sees a small control flush with the side of its list', (tester) async {
+    Widget button(String label) => Align(
+          alignment: Alignment.centerLeft,
+          child: SizedBox(
+            width: 120,
+            height: 30,
+            // Its own node, as a button's is.
+            child: Semantics(
+              container: true,
+              button: true,
+              label: label,
+              onTap: () {},
+              child: const ColoredBox(color: Color(0xFF444444)),
+            ),
+          ),
+        );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Padding(
+          padding: const EdgeInsets.all(40),
+          child: ListView(
+            children: [
+              const SizedBox(height: 60),
+              button('flush left'),
+              const SizedBox(height: 2000),
+            ],
+          ),
+        ),
+      ),
+    ));
+    expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), {'Size(120.0, 30.0) (flush left)'});
+    expect(await smallTapTargetsOnScreen(tester, minimum: 30), isEmpty);
+
+    // Half scrolled out at the top of the list, it is not measured: what
+    // is on screen of it says nothing about its size.
+    tester.state<ScrollableState>(find.byType(Scrollable)).position.jumpTo(75);
+    await tester.pump();
+    expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), isEmpty);
   });
 
   // The chat cannot show its messages on a phone today, so nothing on
@@ -157,7 +201,7 @@ Future<LayoutFindings> _render(
 
   Future<void> audit() async {
     if (screenCase.holdsTapTargets) {
-      for (final target in await smallTapTargetsOnScreen(tester, guideline: minimumTapTarget)) {
+      for (final target in await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget)) {
         findings.add(LayoutDefect.smallTapTarget, 'smaller than 44x44: $target');
       }
     }

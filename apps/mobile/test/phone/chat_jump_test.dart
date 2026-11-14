@@ -121,6 +121,14 @@ void main() {
       body: (world) async {
         await settleJump(tester);
         expectLineInView(tester, _middleLine);
+        // With what was said after it below: the hit is in the upper half.
+        final area = onScreen(tester, find.byType(ChatMessageList));
+        expect(tester.getCenter(find.text(historyLine(_middleLine))).dy, lessThan(area.center.dy));
+        expect(find.text(historyLine(_middleLine + 2)), findsOneWidget);
+        expect(
+          tester.getCenter(find.text(historyLine(_middleLine + 2))).dy,
+          greaterThan(tester.getCenter(find.text(historyLine(_middleLine))).dy),
+        );
       },
     );
     await withPhoneApp(

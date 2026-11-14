@@ -6,6 +6,7 @@ import '../../../app/app_state.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
@@ -78,15 +79,27 @@ class ChatMessageList extends ConsumerWidget {
     }
 
     if (messages.isEmpty) {
-      return _CenteredState(
-        child: VeilEmptyState(
-          title: l10n.chatEmptyTitle,
-          body: l10n.chatEmptyBody,
-          icon: Icons.chat_bubble_outline_rounded,
-          action: FilledButton.tonal(
-            onPressed: onStartMessage,
-            child: Text(l10n.chatSendAction),
-          ),
+      // Above an open keyboard there is no room for the icon and the space
+      // around it: the same words and button then show without them.
+      Widget emptyState({required bool compact}) => VeilEmptyState(
+            compact: compact,
+            title: l10n.chatEmptyTitle,
+            body: l10n.chatEmptyBody,
+            icon: Icons.chat_bubble_outline_rounded,
+            action: FilledButton.tonal(
+              onPressed: onStartMessage,
+              child: Text(l10n.chatSendAction),
+            ),
+          );
+      return Center(
+        child: VeilFirstThatFits(
+          children: [
+            emptyState(compact: false),
+            SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: emptyState(compact: true),
+            ),
+          ],
         ),
       );
     }

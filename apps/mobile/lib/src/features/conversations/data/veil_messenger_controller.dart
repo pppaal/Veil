@@ -278,7 +278,7 @@ class VeilMessengerController extends ChangeNotifier {
   @Deprecated('Use deviceTransferControllerProvider.')
   String? get transferToken => _deviceTransfer.transferToken;
   @Deprecated('Use deviceTransferControllerProvider.')
-  String? get transferStatus => _deviceTransfer.transferStatus;
+  TransferStatus? get transferStatus => _deviceTransfer.transferStatus;
   @Deprecated('Use deviceTransferControllerProvider.')
   DateTime? get transferExpiresAt => _deviceTransfer.transferExpiresAt;
   @Deprecated('Use deviceTransferControllerProvider.')

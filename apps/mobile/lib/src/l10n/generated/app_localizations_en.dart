@@ -676,6 +676,192 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDeleteAccountConfirmHeadline => 'Delete your account?';
 
   @override
+  String get settingsDeviceGraphLoadFailedBody =>
+      'This device could not load the current trust graph. Local security controls remain available.';
+
+  @override
+  String get settingsNoTrustedDevicesBody =>
+      'This account has no readable device graph yet. Bound-device controls still remain local and unrecoverable.';
+
+  @override
+  String get settingsRefreshDeviceGraph => 'Refresh device graph';
+
+  @override
+  String get settingsSectionSecurity => 'SECURITY';
+
+  @override
+  String get settingsSectionSession => 'SESSION';
+
+  @override
+  String get settingsDestructiveNoticeBody =>
+      'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.';
+
+  @override
+  String get settingsLockNowSubtitle =>
+      'Hide the current session behind the local barrier immediately';
+
+  @override
+  String get settingsWipeLocalSubtitle =>
+      'Deletes local session state, local secrets, encrypted cache, PIN, and onboarding state on this device only.';
+
+  @override
+  String get settingsWipeConfirmBody =>
+      'This erases local VEIL state on this device. It does not create a recovery path. If this is your only active device, access is gone.';
+
+  @override
+  String get settingsWipeConfirmAction => 'Wipe local state';
+
+  @override
+  String get settingsRevokeSubtitle =>
+      'Destroys this bound device session and wipes local state on this device. No recovery exists.';
+
+  @override
+  String get settingsRevokeConfirmBody =>
+      'This removes the active device binding for this account on this device and wipes local state here. VEIL cannot restore it.';
+
+  @override
+  String get settingsRevokeConfirmAction => 'Revoke device';
+
+  @override
+  String get settingsLogoutSubtitle =>
+      'Clears this local session while leaving the onboarding acknowledgment and local barrier intact.';
+
+  @override
+  String settingsTypePhraseToContinue(String phrase) {
+    return 'Type $phrase to continue.';
+  }
+
+  @override
+  String settingsRevokeListedTitle(String deviceName) {
+    return 'Revoke $deviceName?';
+  }
+
+  @override
+  String settingsRevokeListedBody(String deviceName) {
+    return 'This removes $deviceName from the trusted device graph. VEIL will not create a recovery path for that device.';
+  }
+
+  @override
+  String settingsRevokeListedDone(String deviceName) {
+    return '$deviceName was removed from the trusted graph.';
+  }
+
+  @override
+  String get settingsRevokeListedFailed =>
+      'The device could not be revoked. Try again.';
+
+  @override
+  String get settingsDeviceStateCurrent => 'This device';
+
+  @override
+  String get settingsDeviceStatePreferred => 'Preferred';
+
+  @override
+  String get settingsDeviceStateTrusted => 'Trusted';
+
+  @override
+  String get settingsDeviceStateStale => 'Stale';
+
+  @override
+  String get settingsDeviceStateRevoked => 'Revoked';
+
+  @override
+  String get settingsDeviceRevokeAction => 'Revoke';
+
+  @override
+  String settingsDeviceCreated(String when) {
+    return 'Created $when';
+  }
+
+  @override
+  String settingsDeviceSeen(String when) {
+    return 'Seen $when';
+  }
+
+  @override
+  String settingsDeviceSynced(String when) {
+    return 'Synced $when';
+  }
+
+  @override
+  String settingsDeviceActivity(String when) {
+    return 'Activity $when';
+  }
+
+  @override
+  String settingsDeviceTrustedAt(String when) {
+    return 'Trusted $when';
+  }
+
+  @override
+  String settingsDeviceJoinedFrom(String device) {
+    return 'Joined from $device';
+  }
+
+  @override
+  String settingsDeviceRevokedAt(String when) {
+    return 'Revoked $when';
+  }
+
+  @override
+  String get settingsDeviceNoteCurrent =>
+      'This is the current trusted device. If every trusted device is lost, VEIL cannot restore access.';
+
+  @override
+  String get settingsDeviceNotePreferred =>
+      'This trusted device is the current preferred routing device. It is not a cloud recovery anchor.';
+
+  @override
+  String get settingsDeviceNoteTrusted =>
+      'This device remains trusted and can continue syncing while another trusted device exists.';
+
+  @override
+  String get settingsDeviceNoteStale =>
+      'This device is still trusted but recent trusted activity has gone quiet. Revoke it if it should no longer retain access.';
+
+  @override
+  String get settingsDeviceNoteRevoked =>
+      'This device is no longer trusted and cannot resume the session.';
+
+  @override
+  String get settingsGraphSummary => 'GRAPH SUMMARY';
+
+  @override
+  String settingsGraphTrustedCount(int count) {
+    return '$count trusted';
+  }
+
+  @override
+  String settingsGraphStaleCount(int count) {
+    return '$count stale';
+  }
+
+  @override
+  String settingsGraphRevokedCount(int count) {
+    return '$count revoked';
+  }
+
+  @override
+  String settingsGraphRecentActivity(String when) {
+    return 'Recent trusted activity $when';
+  }
+
+  @override
+  String get settingsGraphPreferredDiffersTitle => 'Preferred device differs';
+
+  @override
+  String settingsGraphPreferredDiffersBody(String preferred, String current) {
+    return '$preferred is currently preferred for routing and directory compatibility. $current remains trusted.';
+  }
+
+  @override
+  String get settingsGraphStaleTitle => 'Stale trusted devices present';
+
+  @override
+  String get settingsGraphStaleBody =>
+      'Some trusted devices have no recent trusted activity. Stale does not mean revoked, but they should be reviewed deliberately.';
+
+  @override
   String get chatEmptyTitle => 'No messages yet';
 
   @override
@@ -901,21 +1087,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlDisabledLabel => 'Disappear off';
 
   @override
-  String get chatAttachmentTicketTitle => 'Attachment ticket ready';
+  String get chatAttachmentTicketTitle => 'Download ticket issued';
 
   @override
   String chatAttachmentTicketBody(String summary) {
-    return 'A short-lived local download ticket was resolved for this device.\n\nSummary: $summary\n\nCopying and sharing the raw ticket is intentionally disabled.';
+    return 'The relay issued a short-lived download ticket for this device.\n\nSummary: $summary\n\nThis build stops here: it does not fetch or open the file yet. The ticket itself is not shown, so it cannot be copied or shared.';
   }
 
   @override
-  String get chatAttachmentTicketFailed => 'Attachment ticket failed';
+  String get chatAttachmentTicketFailed => 'Download request failed';
 
   @override
-  String get chatAttachmentResolveAction => 'Resolve download ticket';
+  String get chatAttachmentResolveAction => 'Request download';
 
   @override
-  String get chatAttachmentResolvingAction => 'Resolving ticket';
+  String get chatAttachmentResolvingAction => 'Requesting download';
 
   @override
   String get chatAttachmentEncryptedImage => 'Encrypted image';
@@ -934,6 +1120,100 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatAttachmentStateBanner => 'Attachment state';
+
+  @override
+  String get attachmentTitle => 'Attachment';
+
+  @override
+  String get attachmentHeroEyebrow => 'ATTACHMENT';
+
+  @override
+  String get attachmentHeroTitle => 'Encrypted before it leaves.';
+
+  @override
+  String get attachmentHeroBody =>
+      'This device encrypts locally, uploads an opaque blob, and then sends an encrypted message that points at it.';
+
+  @override
+  String get attachmentPillOpaqueBlob => 'Opaque blob';
+
+  @override
+  String get attachmentPillMetadataOnlyRelay => 'Metadata-only relay';
+
+  @override
+  String get attachmentPillNoPlaintextPush => 'No plaintext push';
+
+  @override
+  String get attachmentNameLabel => 'FILE NAME';
+
+  @override
+  String get attachmentNameCaption =>
+      'This build has no file picker yet: it sends a small placeholder file under this name, along the path a real attachment will take.';
+
+  @override
+  String get attachmentNameInputLabel => 'File name';
+
+  @override
+  String get attachmentRelayPolicyTitle => 'Relay policy';
+
+  @override
+  String get attachmentRelayPolicyBody =>
+      'Private beta currently allows JPEG, PNG, WEBP, PDF, and opaque binary payloads. The relay never receives plaintext filenames or attachment keys.';
+
+  @override
+  String get attachmentMetricType => 'Type';
+
+  @override
+  String get attachmentMetricUpload => 'Upload';
+
+  @override
+  String get attachmentMetricUploadValue => 'Ticketed';
+
+  @override
+  String get attachmentMetricBlob => 'Blob';
+
+  @override
+  String get attachmentMetricBlobValue => 'Opaque';
+
+  @override
+  String get attachmentStepsSection => 'SEND LIFECYCLE';
+
+  @override
+  String get attachmentStep1Title => 'Ticket';
+
+  @override
+  String get attachmentStep1Body =>
+      'Request a scoped upload URL for the opaque blob.';
+
+  @override
+  String get attachmentStep2Title => 'Blob upload';
+
+  @override
+  String get attachmentStep2Body =>
+      'Upload the opaque bytes. A retry reuses the local temporary blob and renews the upload ticket if it has expired.';
+
+  @override
+  String get attachmentStep3Title => 'Message';
+
+  @override
+  String get attachmentStep3Body =>
+      'Queue the encrypted message that points at the upload, and clear the local temporary blob once it is finalized.';
+
+  @override
+  String get attachmentSendFailedTitle => 'Attachment send failed';
+
+  @override
+  String get attachmentQueuedTitle => 'Queued locally';
+
+  @override
+  String get attachmentQueuedBody =>
+      'The attachment now continues inside the conversation. Progress, retry and cancel follow its message.';
+
+  @override
+  String get attachmentSendAction => 'Encrypt and send';
+
+  @override
+  String get attachmentSendingAction => 'Encrypting and sending';
 
   @override
   String get chatReplyLocally => 'Reply locally';
@@ -1947,6 +2227,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersCardLabel => 'SAFETY NUMBER';
 
   @override
+  String get safetyNumbersCardLabelCurrent => 'CURRENT SAFETY NUMBER';
+
+  @override
+  String get safetyNumbersCardLabelNew => 'NEW SAFETY NUMBER';
+
+  @override
   String get safetyNumbersScanLabel => 'SCAN TO COMPARE';
 
   @override
@@ -2294,6 +2580,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferStatusTitle => 'Transfer status';
+
+  @override
+  String get deviceTransferStatusNeedsApi => 'Transfer requires API mode.';
+
+  @override
+  String get deviceTransferStatusTokenReady =>
+      'Transfer session open. The token is ready.';
+
+  @override
+  String get deviceTransferStatusNotStarted => 'Start transfer first.';
+
+  @override
+  String get deviceTransferStatusClaimCodeMissing =>
+      'Enter the new-device claim code first.';
+
+  @override
+  String deviceTransferStatusClaimNotWaiting(String claimId) {
+    return 'No claim $claimId is waiting on this transfer.';
+  }
+
+  @override
+  String deviceTransferStatusClaimApproved(String claimId, String fingerprint) {
+    return 'Approved claim $claimId on old device. Key fingerprint: $fingerprint';
+  }
 
   @override
   String get deviceTransferFailedTitle => 'Transfer failed';

@@ -14,7 +14,18 @@
 // (src/crypto/session-cipher.js), so nothing is installed, opened or sealed
 // for a changed identity, whichever way the server tries it, until the user
 // decides. A conversation whose session still sends to an admitted identity
-// goes on sending meanwhile (src/features/secure-messaging.js prepare).
+// goes on sending meanwhile, and one without a session starts it to the key
+// the directory serves once that key is admitted
+// (src/features/secure-messaging.js prepare).
+//
+// A new device of a contact the user never verified is held like the rest,
+// although the verdict table in docs/crypto-envelope-spec.md ("Identity
+// trust") pins it with a notice: device ids are the server's to assign, so
+// pinned on sight, a device the relay names, under a key of its own, would
+// take the replies of an established conversation (an admitted handshake
+// becomes the sending state, src/crypto/session-record.js
+// installingInbound), and the refusal of a changed key on a pinned device
+// would be one fresh device id away. The spec records this deviation.
 //
 // A device id pinned under one user is refused under every other: the server
 // assigns device ids, so a legitimate one never belongs to two users, and a

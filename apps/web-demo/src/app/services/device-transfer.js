@@ -8,6 +8,7 @@
 // has approved (contract C-TRANSFER-RETRY, awaitCompletion).
 
 import { generateIdentity, publishedKeys, signChallenge } from '../../crypto/identity.js';
+import { WEB_DEVICE_PLATFORM } from '../../domain/web-device.js';
 import {
   encodeTransferCode,
   storeTransferredIdentity,
@@ -78,7 +79,7 @@ export function createDeviceTransfer({ store, stack, session, sleep = delay }) {
       const authProof = await signChallenge(crypto.subtle, keys.edPrivKey, `transfer-claim:${sessionId}:${transferToken}`);
       const claim = await stack.api('/device-transfer/claim', {
         method: 'POST',
-        body: { sessionId, transferToken, newDeviceName: name, platform: 'android', ...published, authProof },
+        body: { sessionId, transferToken, newDeviceName: name, platform: WEB_DEVICE_PLATFORM, ...published, authProof },
       });
       return claim.claimId;
     },

@@ -497,18 +497,19 @@ describe('identity pins', () => {
 // the conversation goes on with Bob's device; the refused frame, which every
 // history refresh and reload opens again, raises nothing more.
 describe('declining a key change', () => {
-  // The relay's device, with a session of its own to Alice in CONVERSATION.
-  async function relayDevice(alice, deviceId = 'd-relay') {
+  // The relay's device, with a session of its own to Alice in the
+  // conversation (CONVERSATION unless named).
+  async function relayDevice(alice, deviceId = 'd-relay', conversationId = CONVERSATION) {
     const relay = await createEndpoint({ userId: 'u-bob', deviceId, handle: 'bob', directory: new Map() });
-    relay.peers.set(CONVERSATION, { userId: 'u-alice', handle: 'alice' });
+    relay.peers.set(conversationId, { userId: 'u-alice', handle: 'alice' });
     // Her signed prekey alone will do, as often as the relay likes.
     const entry = await alice.device.directoryEntry({ oneTimePrekey: false });
-    await relay.device.cipher.bootstrap({ conversationId: CONVERSATION, ...entry });
+    await relay.device.cipher.bootstrap({ conversationId, ...entry });
     return relay;
   }
 
-  const frame = async (from, text) => {
-    const envelope = await from.secure.seal(CONVERSATION, textContent(text), { clientMessageId: `web-${text}` });
+  const frame = async (from, text, conversationId = CONVERSATION) => {
+    const envelope = await from.secure.seal(conversationId, textContent(text), { clientMessageId: `web-${text}` });
     return serverMessage(envelope, { clientMessageId: `web-${text}` });
   };
 
@@ -563,7 +564,11 @@ describe('declining a key change', () => {
 
   // Each forged handshake comes from a fresh device id, so each raises a
   // change of its own; none of them stops the conversation, before or after
-  // a reload.
+  // a reload. None is pinned either, also for a contact never verified,
+  // where the spec's verdict table would pin it with a notice: pinned, the
+  // forged handshake would become the sending state and read the next reply
+  // (the web's deliberate deviation, docs/crypto-envelope-spec.md "Identity
+  // trust").
   for (const verified of [true, false]) {
     it(`forged new devices never stop an established conversation, ${verified ? 'verified' : 'unverified'} contact`, async () => {
       const { alice, bob } = await established({ verified });
@@ -574,6 +579,38 @@ describe('declining a key change', () => {
         await sendsOnlyTo(alice, bob, relay, `round ${round}`);
         await alice.restart();
         await sendsOnlyTo(alice, bob, relay, `round ${round}, reloaded`);
+      }
+      expect((await createPinStore(alice.pinKv).pinsFor('u-bob')).map((pin) => pin.deviceId)).toEqual(['d-bob']);
+    });
+  }
+
+  // A conversation without a session yet asks the directory, and its first
+  // send goes ahead once the pins admit what the directory serves: a change
+  // a forged handshake raised meanwhile, about a device the directory does
+  // not serve, holds back nothing (docs/crypto-envelope-spec.md, "Identity
+  // trust"). Each round is a new 1:1 with Bob, whom Alice has pinned, into
+  // which the relay forges a handshake from a fresh device id before she
+  // writes.
+  for (const verified of [true, false]) {
+    it(`forged new devices never stop the first send of a conversation without a session, ${verified ? 'verified' : 'unverified'} contact`, async () => {
+      const { alice, bob } = await established({ verified });
+      for (const round of [1, 2, 3]) {
+        const conversationId = randomUUID();
+        alice.peers.set(conversationId, { userId: 'u-bob', handle: 'bob' });
+        bob.peers.set(conversationId, { userId: 'u-alice', handle: 'alice' });
+        const relay = await relayDevice(alice, `d-ghost-${round}`, conversationId);
+        const forged = await frame(relay, `ghost ${round}`, conversationId);
+        expect(await alice.secure.open(forged)).toEqual({ failure: DecryptStatus.IDENTITY_REJECTED });
+        expect(alice.trust.pendingChange('u-bob')).toMatchObject({ deviceId: `d-ghost-${round}`, verified });
+        expect(await alice.device.cipher.hasSession(conversationId)).toBe(false);
+        if (round === 2) await alice.restart();
+
+        const first = await sendText(alice, bob, `first in round ${round}`, conversationId);
+        expect(first.opened.content.text).toBe(`first in round ${round}`);
+        expect((await relay.secure.open(first.message)).content).toBeUndefined();
+        await expect(alice.secure.safetyKey(conversationId))
+          .resolves.toMatchObject({ deviceId: `d-ghost-${round}`, pendingVerdict: PinVerdict.NEW_DEVICE });
+        expect(await alice.device.cipher.sessionIdentity(conversationId)).toMatchObject({ remoteDeviceId: 'd-bob' });
       }
       expect((await createPinStore(alice.pinKv).pinsFor('u-bob')).map((pin) => pin.deviceId)).toEqual(['d-bob']);
     });

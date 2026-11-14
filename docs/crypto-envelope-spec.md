@@ -444,8 +444,9 @@ too long to prefix counts with those routing fields.
 
 ### Identity trust
 
-These rules bind both clients; where their names differ, the mobile name comes
-first and the web name follows.
+These rules bind both clients, except where the web client is deliberately
+stricter (the end of this section says where and why); where their names
+differ, the mobile name comes first and the web name follows.
 
 The directory is relayed by the server, so a client never takes an identity
 key from it on trust alone. Each device keeps a pin table, one entry per
@@ -466,7 +467,7 @@ group chain key is sealed to or accepted from.
 | ------- | ------- |
 | no pin for the user | pinned (trust on first use), proceed |
 | pin matches | proceed |
-| new device, contact never verified | pinned in the same step as the decision, proceed, the conversation gets an `identity.new_device` notice |
+| new device, contact never verified | pinned in the same step as the decision, proceed, the conversation gets an `identity.new_device` notice (web: refused until the user approves; see the end of this section) |
 | new device, contact verified | refused until the user approves after re-verifying |
 | device pinned unverified, another device of the contact verified since (`NewDeviceForKnownUser(verified)`; web `UNVERIFIED_DEVICE`) | refused until the user approves after re-verifying: verifying a contact never vouches for a device that was not compared, also when that device already holds the session |
 | different key for a pinned device | refused until the user approves; if the contact has any verified device, approval requires re-verification |
@@ -592,11 +593,25 @@ them is. Its safety-numbers screen, opened on a held chat, still looks the
 listed handle up to show the key the directory serves (claiming no prekey);
 with nothing pinned it has nothing to mark verified.
 
-The web client is deliberately stricter than the table above in two places:
-a new device of a contact never verified is raised for review instead of
-being pinned with an `identity.new_device` notice, and in a 1:1 with no
-session yet a send waits while any identity change is pending for the
-conversation, which spends none of the peer's one-time prekeys.
+The web client is deliberately stricter than the table above in one place: a
+new device of a contact never verified is raised for review (web
+`NEW_DEVICE`) instead of being pinned with an `identity.new_device` notice.
+The server assigns device ids, so the relay can name a fresh one for any
+contact at will and complete a handshake with an identity of its own against
+the user's published signed prekey alone. Pinned on sight, that handshake
+would be installed as the web's sending state (an admitted inbound handshake
+is promoted unless it loses the glare tie-break: `session-record.js`
+`installingInbound`), so the user's next reply in an established 1:1 would be
+sealed to the relay's key and the relay's frame shown as the contact's words,
+and the refusal of a different key for a pinned device would be one fresh
+device id away. Held for review, it installs, opens and seals nothing. Like
+every refusal it stops nothing either: a 1:1 with a session goes on sending
+to the identity the session sends to, and one without a session asks the
+directory and starts a session once the pins accept what it serves, whatever
+change is pending. The cost is one decision when a never-verified contact
+really moves to a new device: until the user accepts it, the web goes on
+sending to the device its session holds. Declining it refuses that device
+and key, as any decline does.
 
 Approving a change for a contact the user had verified takes a fresh
 comparison: either a scanned code that matches the presented key, or an

@@ -50,6 +50,9 @@
 //                                       completes answers 503, as if its
 //                                       answer were lost: the transfer stands
 //   GET  /__test/reports                the abuse reports filed so far
+//   GET  /__test/devices/:handle        the name and platform the relay
+//                                       stored for each of the handle's
+//                                       devices, oldest first
 //
 // Usage: node apps/web-demo/e2e/mock-server.mjs   (VEIL_MOCK_PORT, default 4317)
 
@@ -173,7 +176,7 @@ let db;
 function reset() {
   db = {
     users: new Map(), // id -> { id, handle, activeDeviceId }
-    devices: new Map(), // id -> { id, userId, identityPublicKey, signedPrekeyBundle, authPublicKey, oneTimePrekeys: [], revokedAt }
+    devices: new Map(), // id -> { id, userId, deviceName, platform, identityPublicKey, signedPrekeyBundle, authPublicKey, oneTimePrekeys: [], revokedAt }
     tokens: new Map(), // access token -> deviceId
     refreshTokens: new Map(),
     challenges: new Map(),
@@ -219,10 +222,11 @@ function authenticate(req) {
   return session;
 }
 
-// As revokeDevice in apps/api: the device's tokens stop working at once and
-// it holds no realtime channel.
+// As revokeDevice in apps/api: the device's tokens stop working at once, it
+// holds no realtime channel, and its name is scrubbed.
 function revokeDevice(device) {
   device.revokedAt = now();
+  device.deviceName = 'Removed device';
   for (const tokens of [db.tokens, db.refreshTokens]) {
     for (const [value, deviceId] of tokens) if (deviceId === device.id) tokens.delete(value);
   }
@@ -548,15 +552,35 @@ const routes = [
     return {};
   }],
   ['GET', /^\/__test\/reports$/, () => db.reports],
+  ['GET', /^\/__test\/devices\/([^/]+)$/, (req, [handle]) => {
+    const user = userByHandle(decodeURIComponent(handle));
+    if (!user) throw new HttpError(404, 'handle_not_found');
+    return [...db.devices.values()]
+      .filter((device) => device.userId === user.id)
+      .map(({ deviceName, platform }) => ({ deviceName, platform }));
+  }],
   ['GET', /^\/__test\/health$/, () => ({ ok: true })],
 
+  // RegisterDto.
   ['POST', /^\/v1\/auth\/register$/, (req) => {
-    const { handle, publicIdentityKey, signedPrekeyBundle, authPublicKey } = req.body;
+    validateBody(req.body, {
+      handle: matches(/^(?=.{3,32}$)[a-z0-9](?!.*[._]{2})[a-z0-9._]*[a-z0-9]$/),
+      displayName: optional(stringUpTo(80)),
+      deviceName: stringUpTo(80),
+      platform: oneOf(DEVICE_PLATFORMS),
+      publicIdentityKey: stringUpTo(1024),
+      signedPrekeyBundle: stringUpTo(8192),
+      authPublicKey: stringUpTo(512),
+      pushToken: optional(stringUpTo(512)),
+    });
+    const { handle, deviceName, platform, publicIdentityKey, signedPrekeyBundle, authPublicKey } = req.body;
     if (userByHandle(handle)) throw new HttpError(409, 'handle_taken', 'Handle is already taken');
     const user = { id: randomUUID(), handle };
     const device = {
       id: randomUUID(),
       userId: user.id,
+      deviceName,
+      platform,
       identityPublicKey: publicIdentityKey,
       signedPrekeyBundle,
       authPublicKey,
@@ -888,6 +912,8 @@ const routes = [
     const device = {
       id: randomUUID(),
       userId: user.id,
+      deviceName: claim.newDeviceName,
+      platform: claim.platform,
       identityPublicKey: claim.publicIdentityKey,
       signedPrekeyBundle: claim.signedPrekeyBundle,
       authPublicKey: claim.authPublicKey,

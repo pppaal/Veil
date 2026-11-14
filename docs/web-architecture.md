@@ -125,7 +125,10 @@ outside it is shown), `message-groups.js` (day and
 sender runs, delivery state), `composer-text.js` (message cap, handle rule,
 mentions), `search.js`, `delivery.js` (outbound backoff), `mute.js`,
 `local-messages.js` (ids of sends the server has not named). Each has a
-unit test in `__tests__/`.
+unit test in `__tests__/`. `web-device.js` (the device name and platform
+every browser registers and claims a transfer with, never the browser's
+own platform string) is checked where the relay receives them, by the
+characterization session and transfer specs.
 
 ## Sending a message
 
@@ -197,8 +200,9 @@ unit test in `__tests__/`.
   every frame it seals or opens. A key the pins do not admit records a
   pending change, and nothing is installed, opened or sealed for it; a
   conversation whose session sends to an identity the pins still admit
-  goes on sending, so a forged frame stops nothing. Without a session, a
-  send waits until no change is pending.
+  goes on sending, and one without a session asks the directory and starts
+  a session once the pins admit the key it serves, so a forged frame stops
+  nothing.
 - Whom a direct conversation is with is bound the first time its crypto
   admits an identity (`domain/peer-bindings.js`, IndexedDB `direct-peers`),
   and sessions from before bindings existed are bound on the next list
@@ -245,7 +249,12 @@ unit test in `__tests__/`.
   `docs/crypto-envelope-spec.md` ("Identity trust"): a new device of a
   contact the user never verified is not pinned with a notice but held for
   review like a changed key (`NEW_DEVICE`): past the first device a
-  contact is pinned with, the web admits none the user was not shown.
+  contact is pinned with, the web admits none the user was not shown. The
+  server assigns device ids, so a device pinned on sight could be one the
+  relay named under a key of its own, and an admitted handshake becomes
+  the sending state (`crypto/session-record.js` `installingInbound`): it
+  would take the next reply. Held, it takes nothing, and sending goes on as
+  above. The spec records the deviation and its reason.
 - The user's decisions are carried out in `services/identity-trust.js`,
   each bound to the change or key the user was shown: `accept` (refused
   with 'reverify' for a contact who was verified, or a device of theirs

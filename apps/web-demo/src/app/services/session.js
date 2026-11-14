@@ -8,6 +8,7 @@
 
 import { t } from '../../../i18n/i18n.js';
 import { generateIdentity, publishedKeys } from '../../crypto/identity.js';
+import { WEB_DEVICE_NAME, WEB_DEVICE_PLATFORM } from '../../domain/web-device.js';
 import { wipeEverything, wipeInPlace } from '../../platform/wipe.js';
 import { webStorage } from './preferences.js';
 
@@ -82,15 +83,17 @@ export function createSession({ store, stack, messages, history, realtime, archi
     enterApp,
     reset,
 
-    // A handle and keys, nothing else: no profile text goes to the server.
+    // A handle and keys, nothing else: no profile text goes to the server,
+    // and the device's name and platform are the same for every browser
+    // (src/domain/web-device.js).
     async register(handle) {
       const keys = await generateIdentity(crypto.subtle, { nowMs: apiClient.serverNow() });
       const registered = await stack.api('/auth/register', {
         method: 'POST',
         body: {
           handle,
-          deviceName: 'web-' + (navigator.platform || 'browser'),
-          platform: 'android',
+          deviceName: WEB_DEVICE_NAME,
+          platform: WEB_DEVICE_PLATFORM,
           // The Ed25519 identity key and its signed prekey bundle (contract
           // C1), which peers fetch from /v1/keys to start a session.
           ...(await publishedKeys(crypto.subtle, keys)),

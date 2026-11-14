@@ -83,13 +83,13 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number, no email and no real name."
       - file: docs/app-store-listing-metadata.md
-        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; mention client-side block/report)."
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app has no block or report screen yet, so claim none)."
       - file: docs/launch/app-store-listing.md
         quote: "End-to-end encrypted."
       - file: docs/launch/app-store-listing.md
         quote: "Veil is an end-to-end encrypted messenger built around a single idea: what you say on Veil never leaves your device in a form the server can read."
       - file: docs/launch/app-store-listing.md
-        quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content — this is the honest rating even though we ship a reporting path)."
+        quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content)."
       - file: docs/launch/play-store-listing.md
         quote: "End-to-end encrypted messenger."
       - file: docs/launch/play-store-listing.md

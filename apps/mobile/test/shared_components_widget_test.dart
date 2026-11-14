@@ -121,10 +121,18 @@ void main() {
       const name = '김서연 (디자인팀)';
       const preview = '두 번째 시안이 더 낫긴 한데 헤더가 아직 무거워 보여요.';
       await tester.pumpWidget(_app(
-        const VeilConversationCard(title: name, handle: 'seoyeon', subtitle: preview, timestamp: '08:21'),
+        const VeilConversationCard(
+          title: name,
+          handle: 'seoyeon',
+          subtitle: preview,
+          timestamp: '08:21',
+          semanticLabel: '$name님과의 대화',
+        ),
       ));
       expect(find.text(name), findsOneWidget);
       expect(find.text(preview), findsOneWidget);
+      // A screen reader hears that the row is a conversation, and with whom.
+      expect(find.bySemanticsLabel(RegExp(RegExp.escape('$name님과의 대화'))), findsOneWidget);
     });
   });
 

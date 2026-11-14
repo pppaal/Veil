@@ -34,14 +34,15 @@ read.
 - **Device-bound identity.** Your identity lives on your device. There is
   no cloud copy. When you retire a device, its access retires with it.
 - **Disappearing messages.** Set a per-conversation timer and messages
-  self-destruct on every device after it expires. Or send a view-once
-  message that is hard-deleted the moment it's read.
-- **Safety, quietly.** Block, mute, or report without the other side
-  seeing the block as a visible state.
+  self-destruct on every device after it expires.
 
 Veil does not run ads, does not sell analytics, and does not offer account
 recovery. Losing your device is final by design — that's the privacy
 guarantee.
+
+Not in the mobile build, so not in this listing: view-once messages,
+block, mute and report. The relay has the endpoints; the app has no screen
+for any of them yet. Put a bullet back when its screen ships.
 
 ## Keywords (100 chars, comma-separated)
 
@@ -55,8 +56,10 @@ guarantee.
 ## Age rating
 
 17+ (unrestricted web access not enabled, but user-generated content is
-end-to-end encrypted so we cannot moderate private content — this is the
-honest rating even though we ship a reporting path).
+end-to-end encrypted so we cannot moderate private content). The mobile app
+has no reporting or blocking screen yet, though the relay takes abuse
+reports. App Review expects both in an app with user-generated content
+(guideline 1.2): a launch blocker.
 
 ## Privacy nutrition label
 
@@ -111,8 +114,8 @@ iPhone, 12.9" iPad, 11" iPad). Consistent visual order:
 1. Hero shot — conversation list with at least one disappearing-messages
    indicator visible. Korean + English variants.
 2. Safety numbers screen — the "verify this conversation" moment.
-3. Compose + view-once toggle.
-4. Settings → Block list + Mute list.
+3. A chat with the disappearing-message timer set.
+4. Settings: devices, app lock and privacy.
 5. Onboarding — "no phone number required" screen.
 
 Asset directory: `apps/mobile/ios/fastlane/screenshots/` (not yet

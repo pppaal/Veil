@@ -136,12 +136,13 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
       actions: _searchOpen
           ? null
           : [
-              if (isDirect)
-                IconButton(
-                  tooltip: l10n.safetyNumbersTitle,
-                  onPressed: widget.onOpenSafetyNumbers,
-                  icon: const Icon(Icons.verified_user_outlined),
-                ),
+              // A 1:1 opens the peer's safety number, a group the list of
+              // its members with each one's.
+              IconButton(
+                tooltip: l10n.safetyNumbersTitle,
+                onPressed: widget.onOpenSafetyNumbers,
+                icon: const Icon(Icons.verified_user_outlined),
+              ),
               IconButton(
                 tooltip: l10n.chatSearchTooltip,
                 onPressed: _openSearch,

@@ -31,7 +31,9 @@ to it, `lib/src/features/<name>/<name>_feature.dart`:
 | `kStoriesEnabled` | stories are not end-to-end encrypted | the Stories tab, `/stories`, `/story-viewer/:id` |
 
 While a constant is false the route table (`lib/src/app/router/app_router.dart`)
-leaves the feature's routes out and nothing in the app leads to it. The
+leaves the feature's routes out and nothing in the app leads to it. A
+location no route has (a link into such a feature, a mistyped one) opens the
+conversation list instead of the router's "Page Not Found". The
 screens still compile, their tests still run, and the layout gate still
 renders them, through the test-only routes in
 `test/layout/support/screen_cases.dart` (`layoutOnlyRoutes`). To switch a
@@ -52,8 +54,9 @@ legacy frame, search results). A case fails
 
 - on any layout error the framework reports (an overflowing row or column,
   unbounded constraints),
-- when the messages of a chat or the rows of the conversation list get less
-  than 45% of the screen height (96 px under the keyboard or warnings),
+- when the messages of a chat, the rows of the conversation list or the
+  rows of the contacts get less than 45% of the screen height (96 px under
+  the keyboard or warnings),
 - when a control is smaller than 44x44, on every screen but the sticker
   picker (the one exception, named in `screen_cases.dart`). A control at an
   edge of the screen is measured like any other; only a modal's scrim is
@@ -62,20 +65,24 @@ legacy frame, search results). A case fails
   a tap reaches it. A button cut off by the area it scrolls in is no layout
   error, so the gate looks for it,
 - when the control a screen is for is not on the first screenful. A case
-  names it (`primaryAction`: the first input or the primary button); with
-  the keyboard closed it must be wholly on screen at 390x844 and 412x915,
-  and begin on screen at 360x640,
+  names it (`primaryAction`: the first input, the primary button, the first
+  setting of the settings screen); with the keyboard closed it must be
+  wholly on screen at 390x844 and 412x915, and begin on screen at 360x640,
 - when a text of the app's own copy is in the other language: Latin words
   and no Hangul in a Korean run, Hangul in an English run. What is not the
   app's copy (the brand, fixture names and messages, handles, platform
   names, PIN, URLs, file names, MIME types) is listed with its reason in
   `test/layout/support/language_probe.dart` (`notOwnCopy`).
 
-Each case is rendered once more in the light theme (390x844, Korean, first
-screenful), held to layout errors and tap targets. The wide cases open the
+Each case is rendered once more in the light theme (390x844, Korean, every
+screenful), held to layout errors and tap targets. Nothing reads colours:
+a light render that passes can still hold text nobody can read, so look at
+its PNGs (`<case>__390x844__ko__light.png`). The wide cases open the
 two-pane shell with a chat at 1280x800 and 1440x1000, and the chat on an
 upright tablet (1024x1366, which is under the 1120 px the two panes need),
-with and without warnings, held to layout errors and the messages' share.
+with and without warnings, held to what a phone's chat is held to: layout
+errors, the messages' share, each warning's action whole on screen, and tap
+targets.
 
 It runs with the rest of `flutter test`.
 
@@ -97,8 +104,9 @@ one that fails.
 
 - `test/layout/known_phone_layout_failures.dart`: one line per case, with
   the sizes and languages it fails at and the defects it shows.
-- `test/layout/known_other_language_text.dart`: one line per screen, with
-  how many texts it shows in the other language.
+- `test/layout/known_other_language_text.dart`: per screen, the texts it
+  shows in the other language. A text that is not listed fails the case
+  that shows it; a listed text no case shows any more fails the full run.
 
 ## UI strings gate
 
@@ -108,10 +116,21 @@ text (every `features/*/presentation` folder, `shared/presentation`, `app/`
 and `core/errors/user_facing_error.dart`) and fails on a user-facing string
 literal that is not an `AppLocalizations` lookup. It catches what no render
 opens: a toast, a dialog, an error. Route paths, keys, map keys, compared
-values, patterns, exception and log messages and identifier-shaped tokens
-are not UI text; there is no comment that silences a finding. Files that
-fail today are in `KNOWN_HARDCODED` at the top of the script with their
-count, which may only go down. `--list` prints every literal it finds.
+values, patterns, URLs, exception and log messages and identifier-shaped
+tokens are not UI text, unless they stand where text goes: the argument of
+`Text`, a `label`, a `title`, a `tooltip` (`Text('send')` is a finding).
+There is no comment that silences a finding. Two lists at the top of the
+script, by file and literal:
+
+- `KNOWN_HARDCODED`: the copy that is still hard-coded today. It only
+  shrinks: an unlisted literal fails, and so does a listed one the file no
+  longer holds.
+- `NOT_COPY`: what the gate takes for text and nobody translates (an example
+  handle in a hint, a file name), each with its reason. This is the way out
+  for a false positive: add the literal with why it is not copy, rather than
+  rewriting code to get past the gate.
+
+`--list` prints every literal it finds, as the lists spell it.
 
 ## Phone and wide layouts
 

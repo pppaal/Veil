@@ -16,7 +16,7 @@ class SafetyNumberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = VeilPalette.dark;
+    final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
     return VeilSurfaceCard(
       child: Column(

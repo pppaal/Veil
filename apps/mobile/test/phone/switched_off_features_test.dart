@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
@@ -71,6 +72,56 @@ void main() {
     }
     // What works has its route whatever is switched off.
     expect(app, containsAll(['/conversations', '/contacts', '/settings', '/profile', '/secret-link']));
+  });
+
+  // A link into a feature that is off (a `veil://` link, an unlock that
+  // returns to `?from=`) must not end on the router's own "Page Not Found",
+  // whose only button leads nowhere.
+  testWidgets('a location no route has opens the conversation list, not a dead end', (tester) async {
+    usePhoneView(tester, phoneSmall);
+    final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'ko');
+    try {
+      // The app's own router, guard and all.
+      final router = world.container.read(appRouterProvider);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: world.container,
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('ko'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ));
+      await pumpFrames(tester);
+      expect(find.byType(ConversationListScreen), findsOneWidget);
+
+      final nowhere = [
+        for (final (enabled, paths) in _featureRoutes.values)
+          if (!enabled)
+            for (final path in paths)
+              path.replaceFirst(':conversationId', chatConversationId).replaceFirst(':userId', 'user-$peerHandle'),
+        '/no-such-screen',
+        // Unlocked already, the lock passes on to where `from` points.
+        '/lock?from=%2Fno-such-screen',
+      ];
+      expect(nowhere, hasLength(greaterThan(2)));
+      for (final location in nowhere) {
+        router.go('/contacts');
+        await pumpFrames(tester, frames: 3);
+        expect(find.byType(ContactsScreen), findsOneWidget);
+
+        router.go(location);
+        await pumpFrames(tester, frames: 3);
+        expect(tester.takeException(), isNull, reason: location);
+        expect(router.routerDelegate.currentConfiguration.uri.path, '/conversations', reason: location);
+        expect(find.byType(ConversationListScreen), findsOneWidget, reason: location);
+        expect(find.textContaining('Not Found'), findsNothing, reason: location);
+      }
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      world.dispose();
+    }
   });
 
   testWidgets('the bottom bar is Chats, Contacts and Settings, plus the tabs of features that are on',

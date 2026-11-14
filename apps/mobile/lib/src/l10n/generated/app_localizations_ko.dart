@@ -1207,12 +1207,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get attachmentSendingAction => '암호화하여 보내는 중';
 
   @override
-  String get chatReplyLocally => '로컬 답장';
-
-  @override
-  String get chatReplyPrimed => '이 대화에서 빠른 응답을 위한 입력창이 활성화되었습니다.';
-
-  @override
   String get chatScreenshotToast =>
       '이 대화에서 스크린샷이 감지되었습니다. 이 기기에서는 VEIL이 이를 막을 수 없으며, 상대방에게 알림을 보내는 중입니다.';
 
@@ -2260,6 +2254,17 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get safetyNumbersChangeReplaced =>
       '검토하는 동안 안전 번호가 다시 바뀌었습니다. 수락하기 전에 새 번호를 비교하세요.';
+
+  @override
+  String get safetyNumbersChangedElsewhereTitle => '안전 번호가 바뀌었습니다';
+
+  @override
+  String safetyNumbersChangedElsewhereBody(String peer) {
+    return '$peer님이 다른 대화에서 새 신원 키를 제시했습니다. 그 대화에서 확인하기 전까지 $peer님은 확인됨으로 표시되지 않습니다. 아래는 변경 전에 이 기기에 고정된 번호입니다.';
+  }
+
+  @override
+  String get safetyNumbersReviewChange => '새 키 확인하기';
 
   @override
   String get profileTitle => '프로필';

@@ -75,7 +75,7 @@ class ScreenCase {
     this.withGroup = false,
     this.textScale = 1,
     this.sizes = phoneSizes,
-    this.tapTargets = true,
+    this.chatInPane = false,
     this.primaryExtent,
     this.minPrimaryShare,
     this.minPrimaryExtent,
@@ -116,15 +116,20 @@ class ScreenCase {
   /// The screen sizes the case is rendered at.
   final List<PhoneSize> sizes;
 
-  /// False for a case that is not held to tap targets (the wide cases).
-  final bool tapTargets;
-
   /// Whether every control of the case must measure 44x44 or more.
-  bool get holdsTapTargets => tapTargets && !tapTargetExemptScreens.contains(file);
+  bool get holdsTapTargets => !tapTargetExemptScreens.contains(file);
+
+  /// True for a case that opens the chat of the cases beside the list, in
+  /// the second pane of the wide shell, where [screen] is the list.
+  final bool chatInPane;
+
+  /// Whether the case has the chat of [attention] on screen, as its own
+  /// screen or in the second pane.
+  bool get showsChat => screen == ChatRoomScreen || chatInPane;
 
   /// How many warning actions the case's chat must show, each wholly on
   /// screen: one per warning of [attention] that asks for a decision.
-  int get warningActionCount => screen == ChatRoomScreen ? attention.warningActionCount : 0;
+  int get warningActionCount => showsChat ? attention.warningActionCount : 0;
 
   /// Height in logical pixels the screen's primary content has on screen:
   /// the messages of a chat, the rows of the conversation list. Measured
@@ -464,7 +469,12 @@ const List<ScreenCase> screenCases = [
 
   // The other tabs.
   ScreenCase('contacts',
-      screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts', primaryAction: _addContact),
+      screen: ContactsScreen,
+      file: 'contacts_screen.dart',
+      location: '/contacts',
+      primaryAction: _addContact,
+      primaryExtent: contactRowsExtent,
+      minPrimaryShare: minPrimaryContentShare),
   ScreenCase('contacts-add-sheet',
       screen: ContactsScreen,
       file: 'contacts_screen.dart',
@@ -482,7 +492,8 @@ const List<ScreenCase> screenCases = [
       screen: StoryViewerScreen, file: 'story_viewer_screen.dart', location: '/story-viewer/user-$peerHandle'),
 
   // Account, device and security.
-  ScreenCase('settings', screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings'),
+  ScreenCase('settings',
+      screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', primaryAction: _firstSetting),
   ScreenCase('profile', screen: ProfileScreen, file: 'profile_screen.dart', location: '/profile'),
   ScreenCase('security-status',
       screen: SecurityStatusScreen, file: 'security_status_screen.dart', location: '/security-status'),
@@ -523,6 +534,15 @@ const List<ScreenCase> screenCases = [
       location: '/safety-numbers/$groupConversationId',
       withGroup: true,
       settle: _awaitSafetyNumber),
+  // The peer's key changed in the group: their 1:1 holds no change, and its
+  // safety number says where the change waits instead of "verified".
+  ScreenCase('safety-numbers-change-elsewhere',
+      screen: SafetyNumbersScreen,
+      file: 'safety_numbers_screen.dart',
+      location: '/safety-numbers/$chatConversationId',
+      withGroup: true,
+      attention: ChatAttention(identityChangedInGroup: true),
+      settle: _awaitChangeElsewhere),
   ScreenCase(
     'chat-room-legacy-badge',
     screen: ChatRoomScreen,
@@ -579,9 +599,10 @@ const _tablet = [tabletUpright];
 
 /// The cases wider than a phone. From 1120 px the conversations shell shows
 /// the list and the open chat side by side; a tablet held upright is too
-/// narrow for that and opens the chat on top, like a phone. Held to layout
-/// errors and to the messages keeping their share of the height, with and
-/// without the chat's warnings.
+/// narrow for that and opens the chat on top, like a phone. Held to what a
+/// phone's chat is held to: layout errors, the messages keeping their share
+/// of the height, every warning's action wholly on screen, and tap targets
+/// (1280x800 is also a tablet on its side).
 const List<ScreenCase> wideCases = [
   ScreenCase(
     'wide-chat',
@@ -589,7 +610,7 @@ const List<ScreenCase> wideCases = [
     file: 'conversation_list_screen.dart',
     location: '/conversations',
     sizes: _wideSizes,
-    tapTargets: false,
+    chatInPane: true,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
     settle: _openChatPane,
@@ -601,7 +622,7 @@ const List<ScreenCase> wideCases = [
     location: '/conversations',
     attention: ChatAttention(identityChanged: true, failedSends: 2),
     sizes: _wideSizes,
-    tapTargets: false,
+    chatInPane: true,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
     settle: _openChatPane,
@@ -612,7 +633,6 @@ const List<ScreenCase> wideCases = [
     file: 'chat_room_screen.dart',
     location: _chat,
     sizes: _tablet,
-    tapTargets: false,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
@@ -623,7 +643,6 @@ const List<ScreenCase> wideCases = [
     location: _chat,
     attention: ChatAttention(identityChanged: true, failedSends: 2),
     sizes: _tablet,
-    tapTargets: false,
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
   ),
@@ -641,6 +660,12 @@ Finder _firstInput() => find.byType(TextField);
 
 // What adds a contact, wherever the screen puts it.
 Finder _addContact() => find.byIcon(Icons.person_add_outlined);
+
+// The first control of the settings screen that changes a setting: the
+// theme selector or a switch, whichever the screen puts first. A row that
+// only leads to another screen (the profile, the security status) is not it.
+Finder _firstSetting() =>
+    find.byWidgetPredicate((widget) => widget is Switch || widget is SegmentedButton<ThemeMode>);
 
 /// Why the first control [finder] finds is not on the first screenful, or
 /// null when it is. On the two larger phones all of it must be on screen where a
@@ -670,8 +695,13 @@ double chatMessagesExtent(WidgetTester tester) {
 /// the first conversation row to the bottom of the list it scrolls in.
 /// What sits above the first row (a header, a search field) is not it,
 /// whether it scrolls with the rows or stays put.
-double conversationRowsExtent(WidgetTester tester) {
-  final rows = find.byType(VeilConversationCard);
+double conversationRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
+
+/// The same for the contacts: from the top of the first contact's row to
+/// the bottom of the list it scrolls in.
+double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilListTileCard));
+
+double _rowsExtent(WidgetTester tester, Finder rows) {
   if (rows.evaluate().isEmpty) return 0;
   final firstRow = tester.renderObject<RenderBox>(rows.first);
   final RenderObject? viewport = RenderAbstractViewport.maybeOf(firstRow);
@@ -797,6 +827,12 @@ Future<void> _awaitSafetyNumber(WidgetTester tester) async {
   expect(loading, findsNothing, reason: 'the safety number never loaded');
   expect(find.byType(VeilErrorState), findsNothing, reason: 'the safety number failed to load');
   await pumpFrames(tester, frames: 3);
+}
+
+Future<void> _awaitChangeElsewhere(WidgetTester tester) async {
+  await _awaitSafetyNumber(tester);
+  // The page opens on the notice; a verified contact's page has none.
+  expect(find.byType(VeilInlineBanner), findsOneWidget, reason: 'the page does not say a change waits elsewhere');
 }
 
 // The call screen plays dialing (2 s) and ringing (3 s) before the state a

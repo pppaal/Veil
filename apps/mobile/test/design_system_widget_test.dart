@@ -79,6 +79,7 @@ void main() {
                   handle: 'atlas',
                   subtitle: 'Encrypted message',
                   timestamp: '08:45',
+                  semanticLabel: 'Conversation with Atlas',
                   selected: true,
                   meta: Wrap(
                     spacing: 8,

@@ -1048,7 +1048,7 @@ class VeilConversationCard extends StatelessWidget {
     this.selected = false,
     this.meta,
     this.onTap,
-    this.semanticLabel,
+    required this.semanticLabel,
     this.dense = false,
     this.titleIcon,
     this.titleIconLabel,
@@ -1063,8 +1063,9 @@ class VeilConversationCard extends StatelessWidget {
   final Widget? meta;
   final VoidCallback? onTap;
 
-  /// What a screen reader says for the row, in the user's language.
-  final String? semanticLabel;
+  /// What a screen reader says for the row, in the user's language: that
+  /// it is a conversation, and with whom. The title alone does not say it.
+  final String semanticLabel;
 
   /// A lower row with a smaller avatar, for a phone's list.
   final bool dense;
@@ -1092,7 +1093,7 @@ class VeilConversationCard extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: semanticLabel ?? title,
+      label: semanticLabel,
       child: AnimatedContainer(
         duration: VeilMotion.normal,
         curve: VeilMotion.emphasize,

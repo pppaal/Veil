@@ -1248,13 +1248,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachmentSendingAction => 'Encrypting and sending';
 
   @override
-  String get chatReplyLocally => 'Reply locally';
-
-  @override
-  String get chatReplyPrimed =>
-      'Composer primed for a quick response in this conversation.';
-
-  @override
   String get chatScreenshotToast =>
       'Screenshot detected in this conversation. Veil cannot prevent it on this device — a notice is being sent to the other side.';
 
@@ -2350,6 +2343,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get safetyNumbersChangeReplaced =>
       'The safety number changed again while you were reviewing it. Compare the new number before accepting it.';
+
+  @override
+  String get safetyNumbersChangedElsewhereTitle => 'Safety number changed';
+
+  @override
+  String safetyNumbersChangedElsewhereBody(String peer) {
+    return '$peer presented a new identity key in another conversation. Until you review it there, $peer is not shown as verified. The number below is the one this device pinned before the change.';
+  }
+
+  @override
+  String get safetyNumbersReviewChange => 'Review the new key';
 
   @override
   String get profileTitle => 'Profile';

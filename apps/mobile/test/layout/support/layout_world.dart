@@ -88,6 +88,7 @@ class ChatAttention {
     this.accountHeld = false,
     this.peerTyping = false,
     this.legacyMessage = false,
+    this.identityChangedInGroup = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -106,6 +107,11 @@ class ChatAttention {
   /// The peer's first message came on a legacy frame whose handshake never
   /// authenticated its sender, so its bubble carries the badge saying so.
   final bool legacyMessage;
+
+  /// The peer's identity key changed in the group they share with the
+  /// user, which holds the change for review; their 1:1 holds none. Needs a
+  /// world with the group.
+  final bool identityChangedInGroup;
 
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change, releasing the held account, retrying failed sends.
@@ -205,6 +211,12 @@ class LayoutWorld {
       peer: peer,
     );
     if (_hasAccount) await messenger.applySession(_session);
+    // After the session is applied, which forgets what was pending before it.
+    if (attention.identityChangedInGroup) {
+      assert(withGroup, 'a change in the group needs the group');
+      // Their device presents another key there: refused, and held.
+      await trust.admit(groupConversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey);
+    }
 
     final session = _LayoutSession(storage, api, identities.adapter, _session, bootstrapping: bootstrapping);
     container = ProviderContainer(overrides: [

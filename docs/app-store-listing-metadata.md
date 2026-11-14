@@ -68,8 +68,8 @@ VEIL에는 계정 복구가 없습니다. 기기를 잃거나 앱을 지우면 �
 - Primary category: **Social Networking** (alt: Utilities).
 - Age rating: expect **17+** — unfiltered user-generated messaging. Answer the
   ITunes/Play content questionnaire truthfully (user communication, no
-  moderation of E2E content is possible by design; mention client-side
-  block/report).
+  moderation of E2E content is possible by design; the mobile app has no
+  block or report screen yet, so claim none).
 
 ## Privacy "nutrition label" (App Store Connect) — answer precisely
 

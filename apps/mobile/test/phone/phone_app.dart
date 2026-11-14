@@ -15,7 +15,8 @@ export '../layout/support/phone_layout_probe.dart';
 /// Opens the app at [location] on a phone of [size], runs [body], and takes
 /// the app down again before the test ends, so no timer of the messenger
 /// outlives it. [prepare] changes the seeded world before the app opens;
-/// what it returns is what the route is opened with. [extraRoutes] are added
+/// what it returns is what the route is opened with. [withGroup] adds the
+/// seeded group to the account's conversations. [extraRoutes] are added
 /// to the app's route table: `layoutOnlyRoutes` for a test of a screen
 /// whose feature is switched off.
 Future<void> withPhoneApp(
@@ -31,6 +32,7 @@ Future<void> withPhoneApp(
   LayoutAccount account = LayoutAccount.signedIn,
   ChatAttention attention = const ChatAttention(),
   bool transferStarted = false,
+  bool withGroup = false,
   List<RouteBase> extraRoutes = const [],
 }) async {
   usePhoneView(tester, size, keyboardHeight: keyboardHeight, textScale: textScale);
@@ -40,6 +42,7 @@ Future<void> withPhoneApp(
     locale: locale,
     attention: attention,
     transferStarted: transferStarted,
+    withGroup: withGroup,
   );
   try {
     final extra = await prepare?.call(world);

@@ -4,7 +4,6 @@ import 'support/phone_layout_probe.dart';
 
 const _small = [phoneSmall];
 const _phones = phoneSizes;
-const _wide = [wideSmall, wideLarge];
 const _both = ['en', 'ko'];
 
 /// A case that is known not to fit, and how it fails.
@@ -65,11 +64,28 @@ const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[
       'the second pane stacks a hero, a header card, a search card and tiles above the messages and overflows'),
   KnownPhoneLayoutFailure('wide-chat', [wideLarge], _both, {LayoutDefect.primaryContentSqueezed},
       'the second pane stacks a hero, a header card, a search card and tiles above the messages'),
-  KnownPhoneLayoutFailure('wide-chat-warnings', _wide, _both,
-      {LayoutDefect.overflow, LayoutDefect.primaryContentSqueezed},
-      'with two warnings under the cards the second pane overflows and the messages get no height'),
+  KnownPhoneLayoutFailure('wide-chat-warnings', [wideSmall], _both,
+      {LayoutDefect.overflow, LayoutDefect.primaryContentSqueezed, LayoutDefect.hiddenAction},
+      'with two warnings under the cards the second pane overflows, the messages get no height, and '
+          'both warning actions (Review, Retry failed sends) are pushed below the screen'),
+  KnownPhoneLayoutFailure(
+      'wide-chat-warnings',
+      [wideLarge],
+      _both,
+      {
+        LayoutDefect.overflow,
+        LayoutDefect.primaryContentSqueezed,
+        LayoutDefect.hiddenAction,
+        LayoutDefect.smallTapTarget,
+      },
+      'with two warnings under the cards the second pane overflows, the messages get no height, and '
+          'Retry failed sends is cut to a 9 px strip under the composer'),
 
   // --- Settings, security status, safety numbers, contacts, one-time link.
+  KnownPhoneLayoutFailure('settings', _phones, _both, {LayoutDefect.primaryActionBelowFold},
+      'the first setting (the theme, then the privacy switches) comes after the hero, the profile row and the device list'),
+  KnownPhoneLayoutFailure('contacts', [phoneSmall, phoneMedium], _both, {LayoutDefect.primaryContentSqueezed},
+      'the notice and the add button above the list leave the contacts a quarter to a third of the screen'),
 
   // --- Switched-off surfaces (calls, media, voice, stickers, assistant,
   // stories, attachments): fixed by whoever switches one on.

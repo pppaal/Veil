@@ -248,11 +248,23 @@ class VeilMessengerController extends ChangeNotifier {
     return isUserVerified(conversation.recipientBundle.userId);
   }
 
-  /// Whether [conversationId] waits for the user to review who its peer is.
-  /// A screen that keeps the answer of [isPeerVerified] asks this when it
-  /// builds, so the mark goes the moment the question is raised.
-  bool peerIdentityInQuestion(String conversationId) =>
-      pendingIdentityChangeFor(conversationId) != null || peerAccountHoldFor(conversationId) != null;
+  /// Whether who the peer of [conversationId] is waits for the user's review:
+  /// an identity change or a held account in this conversation, or, for a
+  /// 1:1, an identity change of the peer's pending in any other (a group
+  /// they share). A screen that keeps the answer of [isPeerVerified] asks
+  /// this when it builds, so the mark goes the moment the question is raised.
+  bool peerIdentityInQuestion(String conversationId) {
+    if (pendingIdentityChangeFor(conversationId) != null || peerAccountHoldFor(conversationId) != null) return true;
+    final conversation = conversationById(conversationId);
+    return conversation != null &&
+        conversation.type == ConversationType.direct &&
+        pendingIdentityChangeAbout(conversation.recipientBundle.userId) != null;
+  }
+
+  /// The identity change of [userId] that a conversation holds for review,
+  /// if any does. A screen about that contact shows them as unverified while
+  /// it is there, and leads to the conversation that holds it.
+  PendingIdentityChange? pendingIdentityChangeAbout(String userId) => _services.trust.pendingChangeAbout(userId);
 
   /// Whether every pinned device of [userId] was verified out of band and
   /// no conversation holds an identity change of theirs for review. What

@@ -63,6 +63,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: guard,
     redirect: (context, state) => redirectFor(guard.value, state.uri),
     routes: ref.read(appRoutesProvider),
+    // A location no route has (a link into a feature this build has
+    // switched off, a mistyped one) has nothing to show. It opens the app
+    // where it normally opens instead of a dead end, and the guard above
+    // still has the last word on where that is.
+    onException: (context, state, router) => router.go('/conversations'),
   );
 
   // Locking replaces the navigation stack, and `?from=` can only name its

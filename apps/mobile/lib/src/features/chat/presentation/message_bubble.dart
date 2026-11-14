@@ -17,9 +17,9 @@ import 'message_expiry_label.dart';
 
 /// One message as a bubble on its sender's side: the decrypted text, or
 /// the chip for a message that did not open, any attachment and its
-/// transfer, and the time, delivery state and expiry. Swiping it primes a
-/// reply. A bubble takes at most 340 px and, on a narrow screen, 82% of the
-/// width, so the side it sits on still tells who wrote it.
+/// transfer, and the time, delivery state and expiry. A bubble takes at most
+/// 340 px and, on a narrow screen, 82% of the width, so the side it sits on
+/// still tells who wrote it.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -32,7 +32,6 @@ class MessageBubble extends StatelessWidget {
     required this.isResolvingAttachment,
     required this.attachmentDownloadError,
     required this.transferSnapshot,
-    required this.onReplyGesture,
     required this.expiryNow,
     this.onRetryMessage,
   });
@@ -46,7 +45,6 @@ class MessageBubble extends StatelessWidget {
   final bool Function(String attachmentId) isResolvingAttachment;
   final String? Function(String attachmentId) attachmentDownloadError;
   final AttachmentTransferSnapshot? transferSnapshot;
-  final VoidCallback onReplyGesture;
   final DateTime Function() expiryNow;
   final VoidCallback? onRetryMessage;
 
@@ -76,120 +74,95 @@ class MessageBubble extends StatelessWidget {
               : null,
           color: highlighted ? context.veilPalette.primarySoft : Colors.transparent,
         ),
-        child: Dismissible(
-          key: ValueKey('reply-${message.id}'),
-          direction: DismissDirection.startToEnd,
-          confirmDismiss: (_) async {
-            onReplyGesture();
-            return false;
-          },
-          background: Container(
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.lg),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(VeilRadius.lg),
-              color: context.veilPalette.primarySoft,
-              border: Border.all(color: context.veilPalette.strokeStrong),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.reply_rounded),
-                const SizedBox(width: VeilSpace.xs),
-                Text(l10n.chatReplyLocally),
-              ],
-            ),
-          ),
-          child: VeilMessageBubbleCard(
-            isMine: message.isMine,
-            highlighted: highlighted,
-            child: FutureBuilder<DecryptedMessage>(
-              future: decryptFuture,
-              builder: (context, snapshot) {
-                final decrypted = snapshot.data;
-                final status = decrypted?.status;
-                // Attachment metadata comes only from the authenticated
-                // payload; the envelope carries a bare pointer.
-                final attachment = decrypted?.attachment;
-                final attachmentId = attachment?.attachmentId;
-                final attachmentResolving =
-                    attachmentId != null && isResolvingAttachment(attachmentId);
-                final downloadError =
-                    attachmentId == null ? null : attachmentDownloadError(attachmentId);
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    switch (status) {
-                      null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle),
-                      DecryptStatus.ok => Text(decrypted!.body, style: bodyStyle),
-                      DecryptStatus.legacyUnauthenticated => Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(decrypted!.body, style: bodyStyle),
-                            const SizedBox(height: VeilSpace.xs),
-                            VeilStatusPill(label: l10n.chatLegacyUnverifiedBadge, tone: VeilBannerTone.warn),
-                          ],
-                        ),
-                      _ => DecryptFailureChip(status: status),
-                    },
-                    if (transferSnapshot != null) ...[
-                      const SizedBox(height: 12),
-                      AttachmentTransferPanel(
-                        snapshot: transferSnapshot!,
-                        onRetry: onRetryMessage,
-                        onCancel: transferSnapshot!.canCancel
-                            ? onCancelAttachment
-                            : null,
+        child: VeilMessageBubbleCard(
+          isMine: message.isMine,
+          highlighted: highlighted,
+          child: FutureBuilder<DecryptedMessage>(
+            future: decryptFuture,
+            builder: (context, snapshot) {
+              final decrypted = snapshot.data;
+              final status = decrypted?.status;
+              // Attachment metadata comes only from the authenticated
+              // payload; the envelope carries a bare pointer.
+              final attachment = decrypted?.attachment;
+              final attachmentId = attachment?.attachmentId;
+              final attachmentResolving =
+                  attachmentId != null && isResolvingAttachment(attachmentId);
+              final downloadError =
+                  attachmentId == null ? null : attachmentDownloadError(attachmentId);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  switch (status) {
+                    null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle),
+                    DecryptStatus.ok => Text(decrypted!.body, style: bodyStyle),
+                    DecryptStatus.legacyUnauthenticated => Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(decrypted!.body, style: bodyStyle),
+                          const SizedBox(height: VeilSpace.xs),
+                          VeilStatusPill(label: l10n.chatLegacyUnverifiedBadge, tone: VeilBannerTone.warn),
+                        ],
                       ),
-                    ],
-                    if (attachment != null) ...[
-                      const SizedBox(height: 12),
-                      MessageAttachmentCard(
-                        attachment: attachment,
-                        resolving: attachmentResolving,
-                        downloadError: downloadError,
-                        onResolve:
-                            kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
-                        onRetry: message.hasFailed ? onRetryMessage : null,
-                      ),
-                    ],
-                    if (message.hasFailed &&
-                        attachment == null &&
-                        onRetryMessage != null) ...[
-                      const SizedBox(height: VeilSpace.xs),
-                      _BubbleRetryButton(label: l10n.chatRetrySend, onPressed: onRetryMessage!),
-                    ],
-                    const SizedBox(height: VeilSpace.xxs + 2),
-                    // Wraps instead of cutting a word short when the time,
-                    // the delivery state and the expiry do not fit one line.
-                    Wrap(
-                      spacing: VeilSpace.xs,
-                      runSpacing: VeilSpace.xxs,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Text(sentAtFormat.format(message.sentAt), style: metaStyle),
-                        if (message.isMine) _DeliveryMark(message: message, style: metaStyle),
-                        if (message.expiresAt != null)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.timer_outlined, size: 12, color: metaColor),
-                              const SizedBox(width: 2),
-                              Flexible(
-                                child: MessageExpiryLabel(
-                                  expiresAt: message.expiresAt!,
-                                  now: expiryNow,
-                                  style: metaStyle,
-                                ),
-                              ),
-                            ],
-                          ),
-                      ],
+                    _ => DecryptFailureChip(status: status),
+                  },
+                  if (transferSnapshot != null) ...[
+                    const SizedBox(height: 12),
+                    AttachmentTransferPanel(
+                      snapshot: transferSnapshot!,
+                      onRetry: onRetryMessage,
+                      onCancel: transferSnapshot!.canCancel
+                          ? onCancelAttachment
+                          : null,
                     ),
                   ],
-                );
-              },
-            ),
+                  if (attachment != null) ...[
+                    const SizedBox(height: 12),
+                    MessageAttachmentCard(
+                      attachment: attachment,
+                      resolving: attachmentResolving,
+                      downloadError: downloadError,
+                      onResolve:
+                          kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
+                      onRetry: message.hasFailed ? onRetryMessage : null,
+                    ),
+                  ],
+                  if (message.hasFailed &&
+                      attachment == null &&
+                      onRetryMessage != null) ...[
+                    const SizedBox(height: VeilSpace.xs),
+                    _BubbleRetryButton(label: l10n.chatRetrySend, onPressed: onRetryMessage!),
+                  ],
+                  const SizedBox(height: VeilSpace.xxs + 2),
+                  // Wraps instead of cutting a word short when the time,
+                  // the delivery state and the expiry do not fit one line.
+                  Wrap(
+                    spacing: VeilSpace.xs,
+                    runSpacing: VeilSpace.xxs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(sentAtFormat.format(message.sentAt), style: metaStyle),
+                      if (message.isMine) _DeliveryMark(message: message, style: metaStyle),
+                      if (message.expiresAt != null)
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.timer_outlined, size: 12, color: metaColor),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: MessageExpiryLabel(
+                                expiresAt: message.expiresAt!,
+                                now: expiryNow,
+                                style: metaStyle,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),

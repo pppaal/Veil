@@ -10,6 +10,7 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../layout/support/layout_seed.dart';
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
@@ -82,6 +83,22 @@ void main() {
       expect(find.byType(SafetyNumbersScreen), findsNothing);
       expect(find.byType(ChatRoomScreen), findsOneWidget);
       expect(find.byTooltip('Verified'), findsOneWidget);
+    });
+  });
+
+  // A group has no one safety number: its action opens the list of its
+  // members, each with their own.
+  testWidgets('a group chat opens the safety numbers of its members from the bar', (tester) async {
+    await withPhoneApp(tester, identities, withGroup: true, location: '/chat/$groupConversationId',
+        body: (world) async {
+      expect(find.byTooltip('Verified'), findsNothing, reason: 'a group is never verified as a whole');
+      await tester.tap(find.byTooltip('Safety Number'));
+      await pumpFrames(tester);
+      await awaitSafetyNumber(tester);
+      final opened = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
+      expect((opened.conversationId, opened.memberUserId), (groupConversationId, null));
+      expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+      expect(tester.takeException(), isNull);
     });
   });
 

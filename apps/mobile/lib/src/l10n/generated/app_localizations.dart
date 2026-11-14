@@ -2270,18 +2270,6 @@ abstract class AppLocalizations {
   /// **'Encrypting and sending'**
   String get attachmentSendingAction;
 
-  /// No description provided for @chatReplyLocally.
-  ///
-  /// In en, this message translates to:
-  /// **'Reply locally'**
-  String get chatReplyLocally;
-
-  /// No description provided for @chatReplyPrimed.
-  ///
-  /// In en, this message translates to:
-  /// **'Composer primed for a quick response in this conversation.'**
-  String get chatReplyPrimed;
-
   /// No description provided for @chatScreenshotToast.
   ///
   /// In en, this message translates to:
@@ -4153,6 +4141,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The safety number changed again while you were reviewing it. Compare the new number before accepting it.'**
   String get safetyNumbersChangeReplaced;
+
+  /// No description provided for @safetyNumbersChangedElsewhereTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety number changed'**
+  String get safetyNumbersChangedElsewhereTitle;
+
+  /// No description provided for @safetyNumbersChangedElsewhereBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{peer} presented a new identity key in another conversation. Until you review it there, {peer} is not shown as verified. The number below is the one this device pinned before the change.'**
+  String safetyNumbersChangedElsewhereBody(String peer);
+
+  /// No description provided for @safetyNumbersReviewChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Review the new key'**
+  String get safetyNumbersReviewChange;
 
   /// No description provided for @profileTitle.
   ///

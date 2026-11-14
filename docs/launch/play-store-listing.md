@@ -25,10 +25,7 @@ envelopes; it never sees the content of your messages.
 - No phone number, no email, no address book upload. You pick a handle.
 - Device-bound identity. No cloud account. No silent sync across devices
   you didn't explicitly add.
-- Disappearing messages (per-conversation timer) and view-once messages
-  (hard-deleted on first read, on every device).
-- Block, mute, and report without leaking "I blocked you" as visible
-  state to the other side.
+- Disappearing messages (per-conversation timer).
 
 **What Veil is not**
 - Not ad-supported. Not analytics-monetized.
@@ -42,6 +39,10 @@ People who want their private conversations to actually be private. If
 "private" to you means "the company running the server can't read my
 messages even if they try," Veil is for you.
 
+Not in the mobile build, so not in this listing: view-once messages,
+block, mute and report. The relay has the endpoints; the app has no screen
+for any of them yet. Put a bullet back when its screen ships.
+
 ## Category
 
 - Primary: **Communication**
@@ -52,7 +53,11 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: YES (abuse reports to a privileged queue)
+- In-app reporting: NO in the current build. The relay takes abuse reports
+  (`POST /safety/reports`), but the mobile app has no screen that files
+  one. Google Play expects in-app reporting and blocking in an app with
+  user-generated content: a launch blocker. Answer YES once the screen
+  exists.
 - Interactive features: chat only; no live video to strangers, no
   unmoderated public rooms
 

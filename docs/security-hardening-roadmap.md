@@ -17,13 +17,14 @@ exists, not that a test or a device run backs it.
 | No plaintext message content on the server | ✅ CI-enforced | `schema-privacy-check.mjs`, [`server-data-inventory.md`](server-data-inventory.md); group and channel names and descriptions and device labels are still readable and are the gate's only allowlisted fields |
 | Public claims backed by tests | ✅ CI-enforced | `claims-check.mjs`, [`claims.yaml`](claims.yaml) |
 | Store privacy labels declare what the server stores | ✅ CI-enforced | `store-label-check.mjs` ties `store/appstore/app-privacy-answers.md` and `store/play/data-safety-answers.md` to the schema and to each other, and fails on any document that contradicts them |
-| TLS pinning | ✅ present | `buildPinnedHttpClient`, 5 files |
+| TLS pinning | ✅ present | `buildPinnedHttpClient` in `pinned_http_client.dart`, tested against a real TLS handshake in `pinned_tls_handshake_test.dart` |
 | Hardware-isolated keys (Secure Enclave / StrongBox) | ❌ absent | keys sit in OS secure storage (Keychain / Keystore-encrypted preferences), not in a hardware key store |
 | Screen-capture / preview protection | ⚠️ code present, untested | Android `FLAG_SECURE` in `MainActivity.kt`, the iOS app-switcher shield in `SceneDelegate.swift`, read through `platform_security_service.dart`; CI builds neither native app, no test exercises this code, and the repository records no device test of it |
 | Integrity / jailbreak-root detection | ⚠️ code present, untested | root and jailbreak heuristics in `MainActivity.kt` and `AppDelegate.swift`; CI builds neither native app, no test exercises this code, and the repository records no device test of it |
-| Disappearing / view-once messages | ✅ present | 100 files |
+| Disappearing messages | ✅ present | the server deletes a message once its `expiresAt` passes (`retention.service.ts`, `retention.service.spec.ts`); mobile drops it locally on time (`disappearing_messages_service.dart`, `disappearing_messages_service_test.dart`) |
+| View-once messages | ⚠️ server only | the API deletes a view-once message when its recipient reads it (`messages.service.ts`, `messages.service.spec.ts`), but neither client sends one yet |
 | Safety numbers (manual key verification) | ✅ present | `safety_numbers.dart` — 60-digit, Signal-style |
-| Rate limiting / abuse throttle | ✅ present | `@Throttle`, 29 files |
+| Rate limiting / abuse throttle | ✅ present | the global `CfThrottlerGuard` with per-route `@Throttle` limits, counted in Redis when `VEIL_REDIS_URL` is set (required in production) and failing open while Redis is unreachable (`cf-throttler.guard.spec.ts`, `redis-throttler.storage.spec.ts`) |
 | Push payloads metadata-minimal | ✅ present | `threat-model.md` |
 | Message-length padding | ✅ shipped (mobile and web) | every message is ISO/IEC 7816-4 padded to a size bucket before AES-GCM, attachments to a Padmé length: `message_padding.dart` (1:1 and Sender Keys groups), web `padding.js`; pinned by the protocol-v2 known-answer vectors (`crypto-test-vectors.mjs`, `kat-v2.test.js`) |
 | **Key zeroization** | ⚠️ weak | collection `.clear()` only; no true secret wiping (Dart GC/strings) |

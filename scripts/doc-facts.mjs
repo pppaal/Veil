@@ -15,10 +15,11 @@
 // - a document repeats a statement the code contradicts (STALE_STATEMENTS).
 //   Each entry names the code that makes its statements false, and an entry
 //   whose code is gone fails too, so the list cannot outlive the code;
-// - README.md, the launch runbook or the OTF application template states how
-//   many tests, test files, specs or migrations there are (every such count
-//   in them had gone stale), or a module count apps/api/src/modules does not
-//   have.
+// - README.md, the launch runbook, the OTF application template or the
+//   security roadmap states how many tests, files, specs or migrations there
+//   are (every such count in them had gone stale, down to the roadmap's
+//   "`@Throttle`, 29 files" in a table headed "measured"), or a module count
+//   apps/api/src/modules does not have.
 //
 // scripts/__tests__/doc-facts.test.mjs runs this check on the repository, so
 // `pnpm scripts:test`, part of `pnpm ci:api`, enforces it.
@@ -41,6 +42,7 @@ export const COUNT_SOURCES = [
   'README.md',
   'docs/launch-runbook.md',
   'docs/otf-application-template.md',
+  'docs/security-hardening-roadmap.md',
 ];
 
 // Rule ids prefix every failure so a test can tell which rule caught it.
@@ -59,12 +61,27 @@ const ADAPTER_ID = /\blib-(?:[a-z0-9]+-)*aes256gcm-v\d+\b/g;
 const HISTORICAL =
   /\b(?:retired|legacy|pre-v2|proposed|proposal|as written against)\b|\bveil-envelope-v1\b/i;
 
+// The getter returns either a string literal or a constant declared in the
+// same file: `String get adapterId => 'lib-…';` or
+// `String get adapterId => kLibCryptoAdapterId;` with
+// `const String kLibCryptoAdapterId = 'lib-…';`.
+const ADAPTER_ID_GETTER = /\bString get adapterId =>\s*(?:'([^']+)'|([A-Za-z_]\w*))\s*;/;
+const stringConstant = (name) => new RegExp(`\\bconst (?:String )?${name} = '([^']+)'`);
+
 /** The id `LibCryptoAdapter.adapterId` returns. */
 export function readProductionAdapterId(rootDir) {
   const source = readFileSync(join(rootDir, ADAPTER_SOURCE), 'utf8');
-  const match = /\bString get adapterId => '([^']+)'/.exec(source);
-  if (!match) throw new Error(`${ADAPTER_SOURCE} declares no adapterId`);
-  return match[1];
+  const getter = ADAPTER_ID_GETTER.exec(source);
+  if (!getter) throw new Error(`${ADAPTER_SOURCE} declares no adapterId`);
+  if (getter[1] !== undefined) return getter[1];
+  const name = getter[2];
+  const constant = stringConstant(name).exec(source);
+  if (!constant) {
+    throw new Error(
+      `${ADAPTER_SOURCE}: adapterId returns ${name}, which the file does not declare as a string constant`,
+    );
+  }
+  return constant[1];
 }
 
 const TABLE_ROW = /^\s*\|/;
@@ -86,7 +103,8 @@ const BOOT_GUARD = /\b(?:boot|startup) (?:guard|gate)\b/i;
 const REMOVAL =
   /\b(?:remov|lift|disabl|drop|relax|loosen|bypass|re-?evaluat|reconsider)\w*|\b(?:turn|switch)\w* off\b/i;
 const PROHIBITION = /\b(?:do not|don't|never|must not|may not|cannot|can't)\b/i;
-const CONDITION = /\b(?:until|unless|only after|once|after|before|when)\b/i;
+// "even when testing" widens a prohibition instead of ending it.
+const CONDITION = /(?<!\beven )\b(?:until|unless|only after|once|after|before|when)\b/i;
 
 // --- code-contradicts
 
@@ -150,7 +168,7 @@ export const STALE_STATEMENTS = [
 // --- no-stale-counts
 
 const COUNTED =
-  /\b\d[\d,]*(?:\s*\/\s*\d[\d,]*)?\s+(?:(?:Prisma\s+)?migrations|(?:\w+\s+)?test files|(?:unit\s+|e2e\s+)?tests|Vitest\b|(?:Playwright\s+)?(?:e2e\s+)?specs)\b|\(\d+\/\d+ currently\)/i;
+  /\b\d[\d,]*(?:\s*\/\s*\d[\d,]*)?\s+(?:(?:Prisma\s+)?migrations|(?:\w+\s+)?files|(?:unit\s+|e2e\s+)?tests|Vitest\b|(?:Playwright\s+)?(?:e2e\s+)?specs)\b|\(\d+\/\d+ currently\)/i;
 const MODULE_COUNT = /\b(\d+) modules\b/g;
 
 // --- the check
@@ -246,7 +264,7 @@ export function checkDocFacts(rootDir) {
     for (const sentence of sentences.get(path) ?? []) {
       if (COUNTED.test(sentence)) {
         failures.push(
-          `[${RULES.counts}] ${path} hard-codes a test or migration count, which goes stale: ` +
+          `[${RULES.counts}] ${path} hard-codes a test, file or migration count, which goes stale: ` +
             `"${sentence}"`,
         );
       }

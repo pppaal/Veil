@@ -53,7 +53,7 @@
 
 ## Security Status
 - Open Security Status and confirm it accurately reflects device binding, local secret refs, app lock, runtime connectivity, and cache state.
-- Confirm the `Crypto adapter` row reads `Production (unaudited)` and says an external audit is still pending (the screen names no adapter id). A `VEIL_ENV=production` server refuses to boot until that audit is attested.
+- Confirm the `Crypto adapter` row reads `Production (unaudited)` and says an external audit is still pending. If the row names an adapter id, confirm it is `lib-x3dh-x25519-aes256gcm-v4`, the id `LibCryptoAdapter.adapterId` returns. A `VEIL_ENV=production` server refuses to boot until that audit is attested.
 
 ## Private Beta Release Gate
 - Run `pnpm ci:api` and confirm build, lint, policy checks, unit tests, and API e2e all pass.

@@ -82,6 +82,41 @@ test('the production adapter id is read from LibCryptoAdapter', () => {
   );
 });
 
+test('the production adapter id is read through a string constant the getter returns', () => {
+  // The shape a behaviour-preserving refactor of lib_crypto_adapter.dart gave
+  // the getter: it returns a top-level constant instead of a literal.
+  const viaConstant = {
+    [ADAPTER_SOURCE]: [
+      "/// [LibCryptoAdapter.adapterId]: VEIL's own X3DH and Double Ratchet.",
+      `const String kLibCryptoAdapterId = '${CURRENT}';`,
+      '',
+      'class LibCryptoAdapter {',
+      '  @override',
+      '  String get adapterId => kLibCryptoAdapterId;',
+      '}',
+      '',
+    ].join('\n'),
+  };
+  assert.equal(readProductionAdapterId(tree(viaConstant)), CURRENT);
+  assert.deepEqual(checkDocFacts(tree(viaConstant)), []);
+  // The constant still decides what counts as current.
+  assert.equal(
+    failuresOf(RULES.adapterId, {
+      ...viaConstant,
+      'docs/threat-model.md': `- the AEAD binds the header (mobile adapter \`${RETIRED}\`)\n`,
+    }).length,
+    1,
+  );
+
+  const unresolved = {
+    [ADAPTER_SOURCE]: 'class LibCryptoAdapter {\n  String get adapterId => kElsewhere;\n}\n',
+  };
+  assert.throws(() => readProductionAdapterId(tree(unresolved)), /adapterId returns kElsewhere/);
+  assert.deepEqual(failuresOf(RULES.adapterId, unresolved), [
+    `[${RULES.adapterId}] ${ADAPTER_SOURCE}: adapterId returns kElsewhere, which the file does not declare as a string constant`,
+  ]);
+});
+
 test('a retired adapter id named as the production one fails, in a document or a script', () => {
   const failures = failuresOf(RULES.adapterId, {
     'docs/threat-model.md': `- the AEAD binds the header (mobile adapter \`${RETIRED}\`)\n`,
@@ -119,11 +154,23 @@ test('a document that removes or relaxes the production boot guard fails', () =>
       statement,
     );
   }
-  assert.deepEqual(
+  for (const prohibition of [
+    'Never bypass the production boot guard.',
+    'Never disable the production boot guard, even when testing.',
+  ]) {
+    assert.deepEqual(
+      failuresOf(RULES.bootGuard, { 'docs/production.md': `- ${prohibition}\n` }),
+      [],
+      prohibition,
+    );
+  }
+  // "even" widens only the condition word right after it.
+  assert.equal(
     failuresOf(RULES.bootGuard, {
-      'docs/production.md': '- Never bypass the production boot guard.\n',
-    }),
-    [],
+      'docs/production.md':
+        '- Do not remove the production boot guard, even when testing, until the audit completes.\n',
+    }).length,
+    1,
   );
 });
 
@@ -181,6 +228,23 @@ test('hard-coded test and migration counts fail, and a module count must match t
     }).length,
     1,
   );
+  // The security roadmap's "measured" table once counted grep hits.
+  const roadmap = [
+    '| Capability | State | Evidence |',
+    '| --- | --- | --- |',
+    '| TLS pinning | ✅ present | `buildPinnedHttpClient`, 5 files |',
+    '| Disappearing / view-once messages | ✅ present | 100 files |',
+    '| Rate limiting / abuse throttle | ✅ present | `@Throttle`, 29 files |',
+    '| Safety numbers (manual key verification) | ✅ present | `safety_numbers.dart` — 60-digit |',
+    '',
+  ].join('\n');
+  const roadmapFailures = failuresOf(RULES.counts, {
+    'docs/security-hardening-roadmap.md': roadmap,
+  });
+  assert.equal(roadmapFailures.length, 3, roadmapFailures.join('\n'));
+  for (const failure of roadmapFailures) {
+    assert.match(failure, /docs\/security-hardening-roadmap\.md hard-codes a .* count/);
+  }
   assert.deepEqual(failuresOf(RULES.counts, { 'README.md': 'The API has 3 modules.\n' }), [
     `[${RULES.counts}] README.md says 3 modules; apps/api/src/modules has 2`,
   ]);

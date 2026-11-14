@@ -15,6 +15,59 @@ flutter run \
   --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000
 ```
 
+## Phone layout gate
+
+`flutter test test/layout` opens every screen at three phone sizes
+(360x640, 390x844, 412x915) in English and Korean, with the bundled fonts,
+and scrolls it to its end. Besides each screen's everyday state it opens the
+states that take room away (the keyboard, stacked warnings, a search, larger
+system text) and the sheets and menus that only appear on a tap. A case
+fails
+
+- on any layout error the framework reports (an overflowing row or column,
+  unbounded constraints),
+- when the messages of a chat or the rows of the conversation list get less
+  than 45% of the screen height (96 px under the keyboard or warnings),
+- when a control is smaller than 44x44, on every screen but the sticker
+  picker (the one exception, named in `screen_cases.dart`),
+- when a chat does not show the action of each of its warnings whole, where
+  a tap reaches it. A button cut off by the area it scrolls in is no layout
+  error, so the gate looks for it.
+
+It runs with the rest of `flutter test`.
+
+To look at the screens, pass a directory: the run then also writes one PNG
+per case and a `report.json`.
+
+```bash
+flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots
+flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=SHOTS_PAGES=all
+```
+
+`SHOTS_PAGES=all` adds a PNG for every further screenful of a scrolling
+screen. A new screen needs a case in `test/layout/support/screen_cases.dart`,
+and a new sheet or state of an existing screen deserves one. Cases known not
+to fit would be listed in `test/layout/known_phone_layout_failures.dart`,
+which may only shrink; it is empty.
+
+## Phone and wide layouts
+
+Under 1120 px the conversation list is the whole screen and a chat opens on
+top of it (`conversation_list_phone.dart`, `chat_phone_layout.dart`): content
+first, with the bar carrying what the header cards carry in the wide,
+two-pane layout (`conversation_list_pane.dart`, `chat_header.dart`). Other
+screens tighten under 600 px (`context.veilPhoneWidth`): hero panels shrink,
+decorative stat tiles step aside, and the field a screen is for comes before
+its explanations. `test/phone` holds the behaviour that moved with the
+layouts (search, timer, safety number, back).
+
+A chat's warnings are banners while they fit above the messages, which keep
+96 px. When they do not (a small phone with the keyboard up), each warning
+is one row with its title and its action, and only more rows than fit
+scroll. `VeilFirstThatFits` makes that choice during layout. Opening a
+message that a search found moves the list to it however far back it is
+(`navigation_target_jump.dart`).
+
 ## Release builds
 
 A release build must name its relay and pin its TLS keys. With the

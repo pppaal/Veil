@@ -28,6 +28,13 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
   Widget build(BuildContext context) {
     final controller = ref.watch(messengerControllerProvider);
     final l10n = AppLocalizations.of(context);
+    // On a phone the field and its button come first; the note on how
+    // discovery works follows them.
+    final phone = context.veilPhoneWidth;
+    final notice = VeilInlineBanner(
+      title: l10n.startDirectBannerTitle,
+      message: l10n.startDirectBannerBody,
+    );
 
     return VeilShell(
       title: l10n.startDirectTitle,
@@ -47,28 +54,28 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
               ],
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilInlineBanner(
-            title: l10n.startDirectBannerTitle,
-            message: l10n.startDirectBannerBody,
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilMetricStrip(
-            items: [
-              VeilMetricItem(
-                label: l10n.startDirectMetricDiscovery,
-                value: l10n.startDirectMetricDiscoveryValue,
-              ),
-              VeilMetricItem(
-                label: l10n.startDirectMetricGraph,
-                value: l10n.startDirectMetricGraphValue,
-              ),
-              VeilMetricItem(
-                label: l10n.startDirectMetricMode,
-                value: l10n.startDirectMetricModeValue,
-              ),
-            ],
-          ),
+          if (!phone) ...[const SizedBox(height: VeilSpace.md), notice],
+          // Three fixed facts the panel above already states: on a phone they
+          // would only push the field off the first screenful.
+          if (!phone) ...[
+            const SizedBox(height: VeilSpace.md),
+            VeilMetricStrip(
+              items: [
+                VeilMetricItem(
+                  label: l10n.startDirectMetricDiscovery,
+                  value: l10n.startDirectMetricDiscoveryValue,
+                ),
+                VeilMetricItem(
+                  label: l10n.startDirectMetricGraph,
+                  value: l10n.startDirectMetricGraphValue,
+                ),
+                VeilMetricItem(
+                  label: l10n.startDirectMetricMode,
+                  value: l10n.startDirectMetricModeValue,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: VeilSpace.md),
           VeilFieldBlock(
             label: l10n.startDirectFieldLabel,
@@ -94,7 +101,7 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
               tone: VeilBannerTone.danger,
             ),
           ],
-          const SizedBox(height: VeilSpace.xl),
+          SizedBox(height: phone ? VeilSpace.md : VeilSpace.xl),
           VeilButton(
             onPressed: controller.isBusy || _handleController.text.trim().isEmpty
                 ? null
@@ -110,6 +117,7 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
             label: controller.isBusy ? l10n.startDirectOpening : l10n.startDirectOpenButton,
             icon: Icons.arrow_forward_rounded,
           ),
+          if (phone) ...[const SizedBox(height: VeilSpace.md), notice],
         ],
       ),
     );

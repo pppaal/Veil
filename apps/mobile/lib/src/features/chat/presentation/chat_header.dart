@@ -4,13 +4,12 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// The top of a chat: who it is with and whether they are online, the
-/// disappearing-message timer, and the local message search. Standalone,
-/// a hero panel sits above it.
+/// The top of a chat in the wide layout's pane: who it is with and whether
+/// they are online, the disappearing-message timer, and the local message
+/// search. A phone has these in its bar instead (chat_phone_layout.dart).
 class ChatHeader extends StatelessWidget {
   const ChatHeader({
     super.key,
-    required this.embedded,
     required this.title,
     required this.searchController,
     required this.searching,
@@ -20,7 +19,6 @@ class ChatHeader extends StatelessWidget {
     this.peerOnline = false,
   });
 
-  final bool embedded;
   final String title;
   final TextEditingController searchController;
   final bool searching;
@@ -33,7 +31,7 @@ class ChatHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
-    final header = Column(
+    return Column(
       children: [
         VeilSurfaceCard(
           padding: const EdgeInsets.symmetric(
@@ -61,7 +59,7 @@ class ChatHeader extends StatelessWidget {
                         ],
                         Expanded(
                           child: Text(
-                            embedded ? title : l10n.chatTitleFallback,
+                            title,
                             style: Theme.of(context).textTheme.titleMedium,
                           ),
                         ),
@@ -69,11 +67,7 @@ class ChatHeader extends StatelessWidget {
                     ),
                     const SizedBox(height: VeilSpace.xxs),
                     Text(
-                      peerOnline
-                          ? l10n.chatSubtitleOnline
-                          : embedded
-                              ? l10n.chatSubtitleEmbedded
-                              : l10n.chatSubtitleStandalone,
+                      peerOnline ? l10n.chatSubtitleOnline : l10n.chatSubtitleEmbedded,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                             color: peerOnline ? palette.success : null,
                           ),
@@ -141,34 +135,6 @@ class ChatHeader extends StatelessWidget {
             ],
           ),
         ),
-      ],
-    );
-
-    if (embedded) {
-      return header;
-    }
-
-    return Column(
-      children: [
-        VeilHeroPanel(
-          eyebrow: l10n.chatHeroEyebrow,
-          title: title,
-          body: l10n.chatHeroBody,
-          bottom: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              VeilStatusPill(
-                label: ttlLabel,
-                tone: ttlActive ? VeilBannerTone.warn : VeilBannerTone.info,
-              ),
-              VeilStatusPill(label: l10n.chatPillAttachmentsEncrypted),
-              VeilStatusPill(label: l10n.chatPillLocalSearchOnly),
-            ],
-          ),
-        ),
-        const SizedBox(height: VeilSpace.sm),
-        header,
       ],
     );
   }

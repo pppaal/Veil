@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/identity/trusted_identity.dart';
@@ -18,6 +17,7 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/identity_trust.dart';
 import '../domain/safety_numbers.dart';
+import 'safety_number_cards.dart';
 
 /// Safety numbers v2 over the identities this device pinned: what it
 /// actually encrypts to, never what the directory says right now. The
@@ -431,14 +431,15 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     final directoryDiffers = data.directory != null && data.directory != _DirectoryAnswer.matches;
     final warn = directoryDiffers || change != null || _scanMismatch;
 
+    // On a phone the hero fills the first screenful, so a pending change
+    // is announced before it; the new number it is about follows below.
+    final changeBanner = change == null ? null : _keyChangedBanner(l10n, data);
+    final bannerFirst = changeBanner != null && context.veilPhoneWidth;
+
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        VeilSpace.md,
-        VeilSpace.sm,
-        VeilSpace.md,
-        VeilSpace.xl,
-      ),
+      padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.sm, VeilSpace.md, VeilSpace.xl),
       children: [
+        if (bannerFirst) ...[changeBanner, const SizedBox(height: VeilSpace.md)],
         VeilHeroPanel(
           eyebrow: l10n.safetyNumbersDetailEyebrow,
           title: l10n.safetyNumbersDetailTitle(data.peer.title),
@@ -491,12 +492,15 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ),
         ] else ...[
           const SizedBox(height: VeilSpace.md),
-          _SafetyNumberCard(groups: formatSafetyNumber(data.number!)),
+          SafetyNumberCard(
+            groups: formatSafetyNumber(data.number!),
+            label: change == null ? null : l10n.safetyNumbersCardLabelCurrent,
+          ),
           const SizedBox(height: VeilSpace.md),
           // During a change the peer compares against the new key, so the
           // code to show is the one beside the new number.
           if (change == null) ...[
-            _QrCard(content: _qrPayload(data, pin.identityKey), palette: palette),
+            SafetyQrCard(content: _qrPayload(data, pin.identityKey), palette: palette),
             const SizedBox(height: VeilSpace.md),
           ],
           if (verified && change == null)
@@ -522,7 +526,8 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               onPressed: _scanMismatch ? null : () => _markVerified(data),
             ),
         ],
-        if (change != null) ..._pendingChangeSection(context, data, change),
+        if (change != null)
+          ..._pendingChangeSection(context, data, change, banner: bannerFirst ? null : changeBanner),
         if (pin != null || change != null) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilButton(
@@ -572,22 +577,22 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   // user must compare before accepting it. A verified contact is accepted
   // only through a matching scanned code or an explicit affirmation that the
   // new number was compared, never with a single tap.
-  List<Widget> _pendingChangeSection(BuildContext context, _DetailData data, PendingIdentityChange change) {
+  List<Widget> _pendingChangeSection(
+    BuildContext context,
+    _DetailData data,
+    PendingIdentityChange change, {
+    required Widget? banner,
+  }) {
     final l10n = AppLocalizations.of(context);
-    final verifiedAt = data.pin?.verifiedAt;
     return [
       const SizedBox(height: VeilSpace.md),
-      VeilInlineBanner(
-        tone: VeilBannerTone.warn,
-        title: l10n.safetyNumbersKeyChangedTitle,
-        message: verifiedAt != null
-            ? l10n.safetyNumbersKeyChangedMessage(_formatDate(verifiedAt))
-            : l10n.safetyNumbersPendingBody,
+      if (banner != null) ...[banner, const SizedBox(height: VeilSpace.md)],
+      SafetyNumberCard(
+        groups: formatSafetyNumber(data.pendingNumber!),
+        label: l10n.safetyNumbersCardLabelNew,
       ),
       const SizedBox(height: VeilSpace.md),
-      _SafetyNumberCard(groups: formatSafetyNumber(data.pendingNumber!)),
-      const SizedBox(height: VeilSpace.md),
-      _QrCard(content: _qrPayload(data, change.presentedKey), palette: VeilPalette.dark),
+      SafetyQrCard(content: _qrPayload(data, change.presentedKey), palette: VeilPalette.dark),
       const SizedBox(height: VeilSpace.md),
       if (change.requiresReverification)
         VeilButton(
@@ -612,6 +617,19 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         ),
       ],
     ];
+  }
+
+  // That the peer's identity changed, and since when it differs from the
+  // one the user verified.
+  Widget _keyChangedBanner(AppLocalizations l10n, _DetailData data) {
+    final verifiedAt = data.pin?.verifiedAt;
+    return VeilInlineBanner(
+      tone: VeilBannerTone.warn,
+      title: l10n.safetyNumbersKeyChangedTitle,
+      message: verifiedAt != null
+          ? l10n.safetyNumbersKeyChangedMessage(_formatDate(verifiedAt))
+          : l10n.safetyNumbersPendingBody,
+    );
   }
 
   static String _qrPayload(_DetailData data, String remoteKey) => encodeSafetyQrPayload(
@@ -647,7 +665,7 @@ class _ReverifyDialogState extends State<_ReverifyDialog> {
           children: [
             Text(l10n.safetyNumbersReverifyDialogBody(widget.peer)),
             const SizedBox(height: VeilSpace.md),
-            _SafetyNumberCard(groups: formatSafetyNumber(widget.number)),
+            SafetyNumberCard(groups: formatSafetyNumber(widget.number)),
             CheckboxListTile(
               value: _compared,
               onChanged: (value) => setState(() => _compared = value ?? false),
@@ -708,103 +726,6 @@ class _ScannedCodeDialogState extends State<_ScannedCodeDialog> {
           child: Text(l10n.safetyNumbersScanVerify),
         ),
       ],
-    );
-  }
-}
-
-class _SafetyNumberCard extends StatelessWidget {
-  const _SafetyNumberCard({required this.groups});
-
-  final List<String> groups;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = VeilPalette.dark;
-    final l10n = AppLocalizations.of(context);
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.safetyNumbersCardLabel,
-            style: TextStyle(
-              color: palette.textSubtle,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            children: [
-              for (final g in groups)
-                Text(
-                  g,
-                  style: TextStyle(
-                    color: palette.text,
-                    fontFamily: 'monospace',
-                    fontSize: 20,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    letterSpacing: 1.2,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QrCard extends StatelessWidget {
-  const _QrCard({required this.content, required this.palette});
-
-  final String content;
-  final VeilPalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              l10n.safetyNumbersScanLabel,
-              style: TextStyle(
-                color: palette.textSubtle,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-              ),
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          Container(
-            padding: const EdgeInsets.all(VeilSpace.md),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(VeilRadius.md),
-            ),
-            child: QrImageView(
-              data: content,
-              version: QrVersions.auto,
-              size: 220,
-              backgroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          Text(
-            l10n.safetyNumbersQrNote,
-            style: TextStyle(color: palette.textSubtle, fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
     );
   }
 }

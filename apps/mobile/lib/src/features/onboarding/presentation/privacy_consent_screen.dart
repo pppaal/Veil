@@ -8,6 +8,9 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
+// Above and below the consent row, inside what a tap on it reaches.
+const double _consentRowPadding = 10;
+
 class PrivacyConsentScreen extends ConsumerStatefulWidget {
   const PrivacyConsentScreen({super.key});
 
@@ -94,35 +97,44 @@ class _PrivacyConsentScreenState extends ConsumerState<PrivacyConsentScreen> {
             title: l10n.privacyConsentThirdPartyTitle,
             message: l10n.privacyConsentThirdPartyBody,
           ),
-          const SizedBox(height: VeilSpace.lg),
-          GestureDetector(
-            onTap: () => setState(() => _consentChecked = !_consentChecked),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: Checkbox(
-                    value: _consentChecked,
-                    onChanged: (value) =>
-                        setState(() => _consentChecked = value ?? false),
-                  ),
+          // The box and its sentence are one thing to tap, 44 px tall or
+          // more: the padding that makes it so comes out of the gaps around
+          // it, and a screen reader reads one checkbox with its sentence.
+          const SizedBox(height: VeilSpace.lg - _consentRowPadding),
+          MergeSemantics(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _consentChecked = !_consentChecked),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: _consentRowPadding),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: Checkbox(
+                        value: _consentChecked,
+                        onChanged: (value) =>
+                            setState(() => _consentChecked = value ?? false),
+                      ),
+                    ),
+                    const SizedBox(width: VeilSpace.sm),
+                    Expanded(
+                      child: Text(
+                        l10n.privacyConsentAgree,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: palette.textMuted,
+                              height: 1.5,
+                            ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: VeilSpace.sm),
-                Expanded(
-                  child: Text(
-                    l10n.privacyConsentAgree,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: palette.textMuted,
-                          height: 1.5,
-                        ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-          const SizedBox(height: VeilSpace.xl),
+          const SizedBox(height: VeilSpace.xl - _consentRowPadding),
           VeilButton(
             onPressed: _consentChecked
                 ? () async {

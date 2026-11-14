@@ -194,7 +194,12 @@ void main() {
       expect(claimed.transfers.errorMessage, isNull);
       final session = relay.transfers[claimed.transfers.transferSessionId]!;
       expect(session.claim!.approved, isTrue);
-      expect(claimed.transfers.transferStatus, contains(session.claim!.claimantFingerprint));
+      expect(
+        claimed.transfers.transferStatus,
+        isA<TransferClaimApproved>()
+            .having((status) => status.claimId, 'claimId', claimed.claimId)
+            .having((status) => status.fingerprint, 'fingerprint', session.claim!.claimantFingerprint),
+      );
     });
 
     test('an approval this device cannot sign is refused and the claim stays unapproved', () async {

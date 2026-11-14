@@ -62,11 +62,14 @@ Future<void> showReactionPickerSheet(
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(VeilSpace.md),
-          child: ReactionPickerWidget(
-            onReactionSelected: (emoji) {
-              Navigator.of(sheetContext).pop();
-              onSelected(emoji);
-            },
+          child: Center(
+            heightFactor: 1,
+            child: ReactionPickerWidget(
+              onReactionSelected: (emoji) {
+                Navigator.of(sheetContext).pop();
+                onSelected(emoji);
+              },
+            ),
           ),
         ),
       );

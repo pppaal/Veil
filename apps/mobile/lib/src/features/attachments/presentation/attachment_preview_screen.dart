@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
+/// Sends an attachment into a conversation. This build has no file picker:
+/// it sends a small placeholder file under the name typed here, along the
+/// path a real attachment takes (stage, ticket, upload, message).
 class AttachmentPreviewScreen extends ConsumerStatefulWidget {
   const AttachmentPreviewScreen({super.key, required this.conversationId});
 
@@ -27,6 +31,7 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final controller = ref.watch(messengerControllerProvider);
     final hasError = controller.errorMessage != null;
     final isSending = controller.isBusy;
@@ -34,48 +39,45 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
     final contentType = _guessContentType(filename);
 
     return VeilShell(
-      title: 'Attachment Preview',
+      title: l10n.attachmentTitle,
       child: ListView(
         children: [
-          const VeilHeroPanel(
-            eyebrow: 'ATTACHMENT FLOW',
-            title: 'Encrypted blob only.',
-            body:
-                'The sender encrypts locally, uploads an opaque blob, and then sends an encrypted envelope with the attachment reference.',
+          VeilHeroPanel(
+            eyebrow: l10n.attachmentHeroEyebrow,
+            title: l10n.attachmentHeroTitle,
+            body: l10n.attachmentHeroBody,
             bottom: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                VeilStatusPill(label: 'Opaque blob'),
-                VeilStatusPill(label: 'Metadata-only relay'),
-                VeilStatusPill(label: 'No plaintext push'),
+                VeilStatusPill(label: l10n.attachmentPillOpaqueBlob),
+                VeilStatusPill(label: l10n.attachmentPillMetadataOnlyRelay),
+                VeilStatusPill(label: l10n.attachmentPillNoPlaintextPush),
               ],
             ),
           ),
           const SizedBox(height: VeilSpace.md),
           VeilFieldBlock(
-            label: 'LOCAL ATTACHMENT LABEL',
-            caption:
-                'Client flow: stage a local opaque blob, request an upload ticket, stream the blob, finalize the object, then send the encrypted attachment envelope.',
+            label: l10n.attachmentNameLabel,
+            caption: l10n.attachmentNameCaption,
             trailing: VeilStatusPill(label: contentType),
             child: TextField(
               controller: _filenameController,
-              decoration: const InputDecoration(labelText: 'Filename'),
+              decoration: InputDecoration(labelText: l10n.attachmentNameInputLabel),
             ),
           ),
           const SizedBox(height: VeilSpace.sm),
-          const VeilInlineBanner(
-            title: 'Relay policy',
-            message:
-                'Private beta currently allows JPEG, PNG, WEBP, PDF, and opaque binary payloads. The relay never receives plaintext filenames or attachment keys.',
+          VeilInlineBanner(
+            title: l10n.attachmentRelayPolicyTitle,
+            message: l10n.attachmentRelayPolicyBody,
             tone: VeilBannerTone.info,
           ),
           const SizedBox(height: VeilSpace.md),
           VeilMetricStrip(
             items: [
-              VeilMetricItem(label: 'MIME', value: contentType),
-              const VeilMetricItem(label: 'Upload', value: 'Ticketed'),
-              const VeilMetricItem(label: 'Blob', value: 'Opaque'),
+              VeilMetricItem(label: l10n.attachmentMetricType, value: contentType),
+              VeilMetricItem(label: l10n.attachmentMetricUpload, value: l10n.attachmentMetricUploadValue),
+              VeilMetricItem(label: l10n.attachmentMetricBlob, value: l10n.attachmentMetricBlobValue),
             ],
           ),
           const SizedBox(height: VeilSpace.md),
@@ -84,56 +86,46 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const VeilSectionLabel('SEND LIFECYCLE'),
+                VeilSectionLabel(l10n.attachmentStepsSection),
                 const SizedBox(height: VeilSpace.md),
                 VeilStepRow(
                   step: 1,
-                  title: 'Ticket',
-                  body: 'Request a scoped upload URL for the opaque blob.',
+                  title: l10n.attachmentStep1Title,
+                  body: l10n.attachmentStep1Body,
                   active: isSending && !_submitted,
                   complete: _submitted || hasError,
                 ),
                 const SizedBox(height: VeilSpace.md),
                 VeilStepRow(
                   step: 2,
-                  title: 'Blob upload',
-                  body:
-                      'Upload ciphertext-like bytes. Retry reuses the local opaque temp blob and renews the presigned ticket if it expires.',
+                  title: l10n.attachmentStep2Title,
+                  body: l10n.attachmentStep2Body,
                   active: isSending,
                   complete: _submitted && !hasError,
                 ),
                 const SizedBox(height: VeilSpace.md),
                 VeilStepRow(
                   step: 3,
-                  title: 'Envelope send',
-                  body:
-                      'Queue the encrypted attachment reference into the conversation and clear the local temp blob after finalizing.',
+                  title: l10n.attachmentStep3Title,
+                  body: l10n.attachmentStep3Body,
                   active: isSending,
                   complete: _submitted && !hasError,
                 ),
               ],
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          const VeilInlineBanner(
-            title: 'Private beta note',
-            message:
-                'This build still uses the mock crypto adapter, but the attachment path preserves the encrypted-envelope architecture.',
-            tone: VeilBannerTone.info,
-          ),
           if (controller.errorMessage != null) ...[
             const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
-              title: 'Attachment send failed',
+              title: l10n.attachmentSendFailedTitle,
               message: controller.errorMessage!,
               tone: VeilBannerTone.danger,
             ),
           ] else if (_submitted) ...[
             const SizedBox(height: VeilSpace.md),
-            const VeilInlineBanner(
-              title: 'Queued locally',
-              message:
-                  'The attachment flow now continues inside the conversation. Progress, retry, and cancel state will follow the staged message bubble.',
+            VeilInlineBanner(
+              title: l10n.attachmentQueuedTitle,
+              message: l10n.attachmentQueuedBody,
               tone: VeilBannerTone.good,
             ),
           ],
@@ -154,7 +146,7 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
                           Navigator.of(context).pop();
                         }
                       },
-                label: isSending ? 'Encrypting and sending' : 'Encrypt and send',
+                label: isSending ? l10n.attachmentSendingAction : l10n.attachmentSendAction,
                 icon: Icons.arrow_upward_rounded,
               ),
               if (hasError)
@@ -165,7 +157,7 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
                           .read(messengerControllerProvider)
                           .retryPendingMessages(widget.conversationId),
                   tone: VeilButtonTone.secondary,
-                  label: 'Retry queued failures',
+                  label: l10n.chatRetryFailedSendsAction,
                 ),
             ],
           ),

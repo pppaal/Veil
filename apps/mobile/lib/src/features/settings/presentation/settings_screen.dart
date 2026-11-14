@@ -21,7 +21,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<_DeviceGraphSnapshot>? _deviceGraphFuture;
-  final _dateFormat = DateFormat('MMM d | HH:mm');
   final _wipeConfirmController = TextEditingController();
   final _revokeConfirmController = TextEditingController();
   final _deleteAccountConfirmController = TextEditingController();
@@ -87,8 +86,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     children: [
                       VeilInlineBanner(
                         title: l10n.settingsDeviceGraphUnavailable,
-                        message:
-                            'This device could not load the current trust graph. Local security controls remain available.',
+                        message: l10n.settingsDeviceGraphLoadFailedBody,
                         tone: VeilBannerTone.warn,
                       ),
                       const SizedBox(height: VeilSpace.md),
@@ -106,8 +104,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               if (snapshotValue.devices.isEmpty) {
                 return VeilEmptyState(
                   title: l10n.settingsNoTrustedDevices,
-                  body:
-                      'This account has no readable device graph yet. Bound-device controls still remain local and unrecoverable.',
+                  body: l10n.settingsNoTrustedDevicesBody,
                   icon: Icons.devices_outlined,
                 );
               }
@@ -125,7 +122,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     if (index > 0) const SizedBox(height: VeilSpace.sm),
                     _DeviceRowCard(
                       device: snapshotValue.devices[index],
-                      dateFormat: _dateFormat,
                       onRevoke: snapshotValue.devices[index].trustState ==
                                   _DeviceTrustState.current ||
                               snapshotValue.devices[index].trustState ==
@@ -140,7 +136,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     alignment: Alignment.centerLeft,
                     child: TextButton(
                       onPressed: _refreshDeviceGraph,
-                      child: const Text('Refresh device graph'),
+                      child: Text(l10n.settingsRefreshDeviceGraph),
                     ),
                   ),
                 ],
@@ -167,18 +163,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     segments: [
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.light,
-                        icon: const Icon(Icons.light_mode_outlined),
-                        label: Text(l10n.themeModeLight),
+                        icon: context.veilPhoneWidth ? null : const Icon(Icons.light_mode_outlined),
+                        label: Text(l10n.themeModeLight, maxLines: 1, softWrap: false),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.dark,
-                        icon: const Icon(Icons.dark_mode_outlined),
-                        label: Text(l10n.themeModeDark),
+                        icon: context.veilPhoneWidth ? null : const Icon(Icons.dark_mode_outlined),
+                        label: Text(l10n.themeModeDark, maxLines: 1, softWrap: false),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.system,
-                        icon: const Icon(Icons.brightness_auto_outlined),
-                        label: Text(l10n.themeModeSystem),
+                        icon: context.veilPhoneWidth ? null : const Icon(Icons.brightness_auto_outlined),
+                        label: Text(l10n.themeModeSystem, maxLines: 1, softWrap: false),
                       ),
                     ],
                     selected: {themeMode},
@@ -220,7 +216,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ],
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilSectionLabel('SECURITY'),
+          VeilSectionLabel(l10n.settingsSectionSecurity),
           const SizedBox(height: VeilSpace.sm),
           VeilActionCluster(
             children: [
@@ -243,28 +239,26 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onTap: () => context.push('/security-status'),
               ),
               VeilListTileCard(
-                title: '일회성 비밀 링크',
-                subtitle: '한 번 읽히면 사라지는 암호화 메시지 — 받는 사람은 앱 없이 열람',
+                title: l10n.oneTimeLinkTitle,
+                subtitle: l10n.oneTimeLinkSettingsSubtitle,
                 leading: const Icon(Icons.link_outlined),
                 onTap: () => context.push('/secret-link'),
               ),
             ],
           ),
           const SizedBox(height: VeilSpace.md),
-          const VeilSectionLabel('SESSION'),
+          VeilSectionLabel(l10n.settingsSectionSession),
           const SizedBox(height: VeilSpace.sm),
           VeilDestructiveNotice(
             title: l10n.settingsNoRecoveryPath,
-            body:
-                'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.',
+            body: l10n.settingsDestructiveNoticeBody,
           ),
           const SizedBox(height: VeilSpace.sm),
           VeilActionCluster(
             children: [
               VeilListTileCard(
                 title: l10n.settingsLockNow,
-                subtitle:
-                    'Hide the current session behind the local barrier immediately',
+                subtitle: l10n.settingsLockNowSubtitle,
                 leading: const Icon(Icons.visibility_off_outlined),
                 onTap: () {
                   ref.read(appSessionProvider.notifier).lock();
@@ -273,8 +267,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               VeilListTileCard(
                 title: l10n.settingsWipeLocal,
-                subtitle:
-                    'Deletes local session state, local secrets, encrypted cache, PIN, and onboarding state on this device only.',
+                subtitle: l10n.settingsWipeLocalSubtitle,
                 leading: Icon(
                   Icons.layers_clear_outlined,
                   color: Theme.of(context).colorScheme.error,
@@ -285,9 +278,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     controller: _wipeConfirmController,
                     context: context,
                     title: l10n.settingsWipeConfirmTitle,
-                    body:
-                        'This erases local VEIL state on this device. It does not create a recovery path. If this is your only active device, access is gone.',
-                    confirmVerb: 'Wipe local state',
+                    body: l10n.settingsWipeConfirmBody,
+                    confirmVerb: l10n.settingsWipeConfirmAction,
                     expectedPhrase: 'WIPE',
                   );
 
@@ -305,8 +297,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               VeilListTileCard(
                 title: l10n.settingsRevokeTitle,
-                subtitle:
-                    'Destroys this bound device session and wipes local state on this device. No recovery exists.',
+                subtitle: l10n.settingsRevokeSubtitle,
                 leading: Icon(
                   Icons.phonelink_erase_outlined,
                   color: Theme.of(context).colorScheme.error,
@@ -317,9 +308,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     controller: _revokeConfirmController,
                     context: context,
                     title: l10n.settingsRevokeConfirmTitle,
-                    body:
-                        'This removes the active device binding for this account on this device and wipes local state here. VEIL cannot restore it.',
-                    confirmVerb: 'Revoke device',
+                    body: l10n.settingsRevokeConfirmBody,
+                    confirmVerb: l10n.settingsRevokeConfirmAction,
                     expectedPhrase: 'REVOKE',
                   );
 
@@ -348,8 +338,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               VeilListTileCard(
                 title: l10n.settingsLogout,
-                subtitle:
-                    'Clears this local session while leaving the onboarding acknowledgment and local barrier intact.',
+                subtitle: l10n.settingsLogoutSubtitle,
                 leading: const Icon(Icons.logout),
                 onTap: () async {
                   await ref.read(appSessionProvider.notifier).logout();
@@ -430,6 +419,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     required String expectedPhrase,
   }) {
     controller.clear();
+    final l10n = AppLocalizations.of(context);
     return showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -444,7 +434,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: [
                 Text(body),
                 const SizedBox(height: VeilSpace.md),
-                Text('Type $expectedPhrase to continue.'),
+                Text(l10n.settingsTypePhraseToContinue(expectedPhrase)),
                 const SizedBox(height: VeilSpace.sm),
                 TextField(
                   controller: controller,
@@ -463,7 +453,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(false),
-                child: const Text('Cancel'),
+                child: Text(l10n.commonCancel),
               ),
               FilledButton(
                 onPressed: confirmedPhrase
@@ -479,21 +469,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _confirmAndRevokeDevice(_TrustedDevice device) async {
+    final l10n = AppLocalizations.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: Text('Revoke ${device.deviceName}?'),
-        content: Text(
-          'This removes ${device.deviceName} from the trusted device graph. VEIL will not create a recovery path for that device.',
-        ),
+        title: Text(l10n.settingsRevokeListedTitle(device.deviceName)),
+        content: Text(l10n.settingsRevokeListedBody(device.deviceName)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.commonCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Revoke device'),
+            child: Text(l10n.settingsRevokeConfirmAction),
           ),
         ],
       ),
@@ -510,10 +499,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         return;
       }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text('${device.deviceName} was removed from the trusted graph.'),
-        ),
+        SnackBar(content: Text(l10n.settingsRevokeListedDone(device.deviceName))),
       );
     } catch (_) {
       if (!mounted) {
@@ -521,7 +507,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
       VeilToast.show(
         context,
-        message: 'The device could not be revoked. Try again.',
+        message: l10n.settingsRevokeListedFailed,
         tone: VeilBannerTone.warn,
       );
     }
@@ -551,7 +537,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 /// A device's last activity as the server keeps it: the UTC day only, so it
 /// is shown as that day, never as a local time of day that never happened
 /// (or the day before, west of UTC).
-String _utcDay(DateTime at) => '${DateFormat('MMM d').format(at.toUtc())} (UTC)';
+String _utcDay(String locale, DateTime at) => '${DateFormat.MMMd(locale).format(at.toUtc())} (UTC)';
+
+/// A moment on this device's clock, with the day in the app's language.
+String _localTime(String locale, DateTime at) {
+  final local = at.toLocal();
+  return '${DateFormat.MMMd(locale).format(local)} | ${DateFormat('HH:mm').format(local)}';
+}
 
 int _compareTrustedDevices(_TrustedDevice left, _TrustedDevice right) {
   final trustOrder = <_DeviceTrustState, int>{
@@ -574,16 +566,16 @@ int _compareTrustedDevices(_TrustedDevice left, _TrustedDevice right) {
 class _DeviceRowCard extends StatelessWidget {
   const _DeviceRowCard({
     required this.device,
-    required this.dateFormat,
     this.onRevoke,
   });
 
   final _TrustedDevice device;
-  final DateFormat dateFormat;
   final VoidCallback? onRevoke;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final locale = l10n.localeName;
     final statusTone = switch (device.trustState) {
       _DeviceTrustState.current => VeilBannerTone.good,
       _DeviceTrustState.preferred => VeilBannerTone.info,
@@ -592,11 +584,11 @@ class _DeviceRowCard extends StatelessWidget {
       _DeviceTrustState.revoked => VeilBannerTone.danger,
     };
     final statusLabel = switch (device.trustState) {
-      _DeviceTrustState.current => 'This device',
-      _DeviceTrustState.preferred => 'Preferred',
-      _DeviceTrustState.trusted => 'Trusted',
-      _DeviceTrustState.stale => 'Stale',
-      _DeviceTrustState.revoked => 'Revoked',
+      _DeviceTrustState.current => l10n.settingsDeviceStateCurrent,
+      _DeviceTrustState.preferred => l10n.settingsDeviceStatePreferred,
+      _DeviceTrustState.trusted => l10n.settingsDeviceStateTrusted,
+      _DeviceTrustState.stale => l10n.settingsDeviceStateStale,
+      _DeviceTrustState.revoked => l10n.settingsDeviceStateRevoked,
     };
 
     return VeilSurfaceCard(
@@ -614,7 +606,7 @@ class _DeviceRowCard extends StatelessWidget {
               if (onRevoke != null) ...[
                 TextButton(
                   onPressed: onRevoke,
-                  child: const Text('Revoke'),
+                  child: Text(l10n.settingsDeviceRevokeAction),
                 ),
                 const SizedBox(width: VeilSpace.xs),
               ],
@@ -634,35 +626,35 @@ class _DeviceRowCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               Text(
-                'Created ${dateFormat.format(device.createdAt.toLocal())}',
+                l10n.settingsDeviceCreated(_localTime(locale, device.createdAt)),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               Text(
-                'Seen ${_utcDay(device.lastSeenAt)}',
+                l10n.settingsDeviceSeen(_utcDay(locale, device.lastSeenAt)),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               if (device.lastSyncAt != null)
                 Text(
-                  'Synced ${_utcDay(device.lastSyncAt!)}',
+                  l10n.settingsDeviceSynced(_utcDay(locale, device.lastSyncAt!)),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               Text(
-                'Activity ${_utcDay(device.lastTrustedActivityAt)}',
+                l10n.settingsDeviceActivity(_utcDay(locale, device.lastTrustedActivityAt)),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               if (device.trustedAt != null)
                 Text(
-                  'Trusted ${dateFormat.format(device.trustedAt!.toLocal())}',
+                  l10n.settingsDeviceTrustedAt(_localTime(locale, device.trustedAt!)),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               if (device.joinedFromDeviceId != null)
                 Text(
-                  'Joined from ${device.joinedFromDeviceName ?? device.joinedFromDeviceId}',
+                  l10n.settingsDeviceJoinedFrom(device.joinedFromDeviceName ?? device.joinedFromDeviceId!),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               if (device.revokedAt != null)
                 Text(
-                  'Revoked ${dateFormat.format(device.revokedAt!.toLocal())}',
+                  l10n.settingsDeviceRevokedAt(_localTime(locale, device.revokedAt!)),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
             ],
@@ -670,16 +662,11 @@ class _DeviceRowCard extends StatelessWidget {
           const SizedBox(height: VeilSpace.sm),
           Text(
             switch (device.trustState) {
-              _DeviceTrustState.current =>
-                'This is the current trusted device. If every trusted device is lost, VEIL cannot restore access.',
-              _DeviceTrustState.preferred =>
-                'This trusted device is the current preferred routing device. It is not a cloud recovery anchor.',
-              _DeviceTrustState.trusted =>
-                'This device remains trusted and can continue syncing while another trusted device exists.',
-              _DeviceTrustState.stale =>
-                'This device is still trusted but recent trusted activity has gone quiet. Revoke it if it should no longer retain access.',
-              _DeviceTrustState.revoked =>
-                'This device is no longer trusted and cannot resume the session.',
+              _DeviceTrustState.current => l10n.settingsDeviceNoteCurrent,
+              _DeviceTrustState.preferred => l10n.settingsDeviceNotePreferred,
+              _DeviceTrustState.trusted => l10n.settingsDeviceNoteTrusted,
+              _DeviceTrustState.stale => l10n.settingsDeviceNoteStale,
+              _DeviceTrustState.revoked => l10n.settingsDeviceNoteRevoked,
             },
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -780,6 +767,7 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final trustedCount = devices
         .where((device) => device.trustState == _DeviceTrustState.trusted)
         .length;
@@ -811,21 +799,20 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const VeilSectionLabel('GRAPH SUMMARY'),
+          VeilSectionLabel(l10n.settingsGraphSummary),
           const SizedBox(height: VeilSpace.sm),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
+              VeilStatusPill(label: l10n.settingsGraphTrustedCount(trustedCount), tone: VeilBannerTone.info),
               VeilStatusPill(
-                  label: '$trustedCount trusted', tone: VeilBannerTone.info),
-              VeilStatusPill(
-                label: '$staleCount stale',
+                label: l10n.settingsGraphStaleCount(staleCount),
                 tone:
                     staleCount > 0 ? VeilBannerTone.warn : VeilBannerTone.good,
               ),
               VeilStatusPill(
-                label: '$revokedCount revoked',
+                label: l10n.settingsGraphRevokedCount(revokedCount),
                 tone: revokedCount > 0
                     ? VeilBannerTone.warn
                     : VeilBannerTone.info,
@@ -835,7 +822,7 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
           const SizedBox(height: VeilSpace.md),
           if (mostRecentTrustedActivity != null)
             Text(
-              'Recent trusted activity ${_utcDay(mostRecentTrustedActivity)}',
+              l10n.settingsGraphRecentActivity(_utcDay(l10n.localeName, mostRecentTrustedActivity)),
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: context.veilPalette.textSubtle,
                   ),
@@ -845,19 +832,20 @@ class _DeviceGraphSummaryCard extends StatelessWidget {
           if (preferredDevice != null &&
               preferredDevice.id != currentDevice?.id)
             VeilInlineBanner(
-              title: 'Preferred device differs',
-              message:
-                  '${preferredDevice.deviceName} is currently preferred for routing and directory compatibility. ${currentDevice?.deviceName ?? 'This device'} remains trusted.',
+              title: l10n.settingsGraphPreferredDiffersTitle,
+              message: l10n.settingsGraphPreferredDiffersBody(
+                preferredDevice.deviceName,
+                currentDevice?.deviceName ?? l10n.settingsDeviceStateCurrent,
+              ),
               tone: VeilBannerTone.info,
             ),
           if (staleCount > 0) ...[
             if (preferredDevice != null &&
                 preferredDevice.id != currentDevice?.id)
               const SizedBox(height: VeilSpace.sm),
-            const VeilInlineBanner(
-              title: 'Stale trusted devices present',
-              message:
-                  'Some trusted devices have no recent trusted activity. Stale does not mean revoked, but they should be reviewed deliberately.',
+            VeilInlineBanner(
+              title: l10n.settingsGraphStaleTitle,
+              message: l10n.settingsGraphStaleBody,
               tone: VeilBannerTone.warn,
             ),
           ],

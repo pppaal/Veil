@@ -32,6 +32,7 @@ import '../../features/stories/presentation/stories_screen.dart';
 import '../../features/stories/presentation/story_viewer_screen.dart';
 import '../../features/stories/stories_feature.dart';
 import '../../features/voice/presentation/voice_recorder_screen.dart';
+import '../../l10n/generated/app_localizations.dart';
 import '../../shared/presentation/veil_ui.dart';
 import '../app_state.dart';
 import 'route_guard.dart';
@@ -296,16 +297,22 @@ class _VeilMainShell extends StatelessWidget {
   final Widget child;
 
   static const _tabs = <_VeilNavTab>[
-    _VeilNavTab(path: '/conversations', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: 'Chats'),
-    _VeilNavTab(path: '/contacts', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Contacts'),
+    _VeilNavTab(path: '/conversations', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: _chatsLabel),
+    _VeilNavTab(path: '/contacts', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: _contactsLabel),
     if (kStoriesEnabled)
-      _VeilNavTab(path: '/stories', icon: Icons.amp_stories_outlined, activeIcon: Icons.amp_stories_rounded, label: 'Stories'),
-    _VeilNavTab(path: '/calls', icon: Icons.call_outlined, activeIcon: Icons.call_rounded, label: 'Calls'),
+      _VeilNavTab(path: '/stories', icon: Icons.amp_stories_outlined, activeIcon: Icons.amp_stories_rounded, label: _storiesLabel),
+    _VeilNavTab(path: '/calls', icon: Icons.call_outlined, activeIcon: Icons.call_rounded, label: _callsLabel),
   ];
+
+  static String _chatsLabel(AppLocalizations l10n) => l10n.navChats;
+  static String _contactsLabel(AppLocalizations l10n) => l10n.navContacts;
+  static String _storiesLabel(AppLocalizations l10n) => l10n.navStories;
+  static String _callsLabel(AppLocalizations l10n) => l10n.navCalls;
 
   @override
   Widget build(BuildContext context) {
     const palette = VeilPalette.dark;
+    final l10n = AppLocalizations.of(context);
     final currentPath = GoRouterState.of(context).fullPath ?? '/conversations';
     var currentIndex = _tabs.indexWhere((tab) => currentPath.startsWith(tab.path));
     if (currentIndex < 0) {
@@ -373,7 +380,7 @@ class _VeilMainShell extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              tab.label,
+                              tab.label(l10n),
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
@@ -407,5 +414,7 @@ class _VeilNavTab {
   final String path;
   final IconData icon;
   final IconData activeIcon;
-  final String label;
+
+  /// The tab's name in the user's language.
+  final String Function(AppLocalizations l10n) label;
 }

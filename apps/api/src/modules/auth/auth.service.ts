@@ -11,9 +11,10 @@ import type {
 import { JwtService } from '@nestjs/jwt';
 import { isUUID } from 'class-validator';
 
+import { jtiBlacklistKey, refreshFamilyKey } from '../../common/access-token-revocation';
 import { AppConfigService } from '../../common/config/app-config.service';
 import { recordDeviceSeen, utcDayStart } from '../../common/device-activity';
-import { conflict, notFound, unauthorized } from '../../common/errors/api-error';
+import { apiError, conflict, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
@@ -76,9 +77,7 @@ const challengeIndexKey = (deviceId: string): string => `auth:challenge-index:${
 const refreshTokenKey = (tokenHash: string): string => `auth:refresh:${tokenHash}`;
 // Only for tokens issued before they carried their family id; see refresh().
 const legacyRotatedTokenKey = (tokenHash: string): string => `auth:rotated:${tokenHash}`;
-const refreshFamilyKey = (familyId: string): string => `auth:refresh-family:${familyId}`;
 const deviceFamiliesKey = (deviceId: string): string => `auth:refresh-families:${deviceId}`;
-const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 
 // Only the SHA-256 of a refresh token is ever stored, so a store dump yields
 // no usable tokens.
@@ -209,28 +208,22 @@ export class AuthService {
     };
   }
 
+  // An unknown handle answers exactly like a known one with a wrong device:
+  // this public route must not tell which handles exist, or the rate limits
+  // that keep directory lookups slow would not matter.
   async createChallenge(dto: ChallengeDto): Promise<AuthChallengeResponse> {
-    const user = await this.prisma.user.findUnique({
-      where: { handle: dto.handle.toLowerCase() },
-      select: { id: true },
-    });
-
-    if (!user) {
-      throw notFound('handle_not_found', 'Handle not found');
-    }
-
     const device = await this.prisma.device.findFirst({
       where: {
         id: dto.deviceId,
-        userId: user.id,
         isActive: true,
         revokedAt: null,
+        user: { handle: dto.handle.toLowerCase() },
       },
       select: { id: true },
     });
 
     if (!device) {
-      throw notFound('active_device_not_found', 'Active device not found for handle');
+      throw apiError('active_device_not_found', 'Active device not found for handle');
     }
 
     const challengeId = randomUUID();
@@ -416,7 +409,9 @@ export class AuthService {
   }
 
   // Logout ends every session of the device, whether or not the client still
-  // has, or sends, its refresh token.
+  // has, or sends, its refresh token. Revoking the refresh families also
+  // revokes every access token issued under them (isAccessTokenRevoked), on
+  // this device's other sessions too, not only the token that called logout.
   async logout(authContext: {
     userId: string;
     deviceId: string;
@@ -593,12 +588,15 @@ export class AuthService {
     refreshExpiresAtMs: number,
   ): Promise<TokenPair> {
     const jti = randomUUID();
+    // sid names the refresh family, so the access token lives no longer than
+    // its session: see isAccessTokenRevoked.
     const accessToken = await this.jwtService.signAsync(
       {
         sub: userId,
         deviceId,
         handle,
         jti,
+        sid: familyId,
       },
       {
         secret: this.config.jwtSecret,

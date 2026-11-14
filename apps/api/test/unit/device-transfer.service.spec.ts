@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
 
-import { ConflictException } from '@nestjs/common';
-
 import { REVOKED_DEVICE_NAME } from '../../src/common/device-revocation';
 import { Ed25519DeviceAuthVerifier } from '../../src/modules/auth/device-auth-verifier';
 import {
@@ -489,7 +487,7 @@ describe('DeviceTransferService first-claim-wins', () => {
     });
   });
 
-  it('second claim returns 409 and invalidates session', async () => {
+  it('second claim is refused with transfer_claim_invalid and invalidates session', async () => {
     const { prisma, store, init, claimant, status } = await startTransfer();
     const first = claimant();
     const attacker = claimant();
@@ -497,7 +495,7 @@ describe('DeviceTransferService first-claim-wins', () => {
 
     const rejection = await attacker.claim().catch((error) => error);
 
-    expect(rejection).toBeInstanceOf(ConflictException);
+    expect(rejection.getStatus()).toBe(401);
     expect(rejection.getResponse()).toMatchObject({ code: 'transfer_claim_invalid' });
     await expect(store.getJson(`transfer:claim:${init.sessionId}`)).resolves.toBeNull();
     const session = prisma.transferSessions.find((item) => item.id === init.sessionId)!;

@@ -92,11 +92,22 @@ export class MessagesService {
       throw apiError('envelope_context_mismatch', 'Envelope sender context mismatch');
     }
 
-    const { conversation } = await this.access.requireAccess(
-      auth.userId,
-      dto.conversationId,
-      'send',
-    );
+    const access = await this.access.requireMember(auth.userId, dto.conversationId);
+
+    // A retry of a message the relay already stored gets that message back
+    // before any rule a new send must meet: since it was accepted, the group
+    // may have switched to Sender Keys or the peer may have blocked, and the
+    // sender must not be told that a delivered message failed.
+    const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
+    if (existing) {
+      return {
+        message: toMessageSummary(existing, { viewerUserId: auth.userId }),
+        idempotent: true,
+      };
+    }
+
+    await this.access.authorize(access, 'send');
+    const { conversation } = access;
     assertEnvelopeAccepted(conversation, dto.envelope, this.config.isProduction);
 
     const memberUserIds = await this.memberUserIds(dto.conversationId);
@@ -110,14 +121,6 @@ export class MessagesService {
         'direct_peer_mismatch',
         'Envelope recipient does not match direct conversation peer',
       );
-    }
-
-    const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
-    if (existing) {
-      return {
-        message: toMessageSummary(existing, { viewerUserId: auth.userId }),
-        idempotent: true,
-      };
     }
 
     // Group Sender Keys epoch gate. Runs after the idempotency short-circuit

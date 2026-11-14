@@ -177,6 +177,62 @@ describe('MessagesService', () => {
       expect(prisma.messages).toHaveLength(1);
     });
 
+    // A retry whose first answer was lost must get the stored message back,
+    // even when a rule a new send must meet changed in between; otherwise the
+    // sender shows a delivered message as failed.
+    it('answers a retry of a stored message after the peer blocked', async () => {
+      const { safety, alice, bob, prisma, sendFromAlice } = directFixture();
+      const first = await sendFromAlice({ clientMessageId: 'client-before-block' });
+      safety.setBlocked(bob.userId, alice.userId);
+
+      const retry = await sendFromAlice({ clientMessageId: 'client-before-block' });
+
+      expect(retry).toMatchObject({ idempotent: true, message: { id: first.message.id } });
+      expect(prisma.messages).toHaveLength(1);
+      await expect(sendFromAlice({ clientMessageId: 'client-after-block' })).rejects.toMatchObject({
+        response: { code: 'peer_unreachable' },
+      });
+    });
+
+    it('answers a retry of a stored message after the group switched to Sender Keys', async () => {
+      const { service, prisma } = makeService();
+      const alice = prisma.seedUser('alice');
+      const bob = prisma.seedUser('bob');
+      const conversationId = prisma.seedConversation('group', [alice.userId, bob.userId]);
+      const send = (clientMessageId: string) =>
+        service.send(
+          alice,
+          buildSendDto({
+            conversationId,
+            sender: alice,
+            version: 'veil-envelope-v2',
+            clientMessageId,
+          }),
+        );
+      const first = await send('client-before-switch');
+      prisma.conversations.find((row) => row.id === conversationId)!.groupUseSenderKeys = true;
+
+      const retry = await send('client-before-switch');
+
+      expect(retry).toMatchObject({ idempotent: true, message: { id: first.message.id } });
+      expect(prisma.messages).toHaveLength(1);
+      await expect(send('client-after-switch')).rejects.toMatchObject({
+        response: { code: 'envelope_version_mismatch' },
+      });
+    });
+
+    it('still refuses a retry from someone who is no longer a member', async () => {
+      const { prisma, alice, conversationId, sendFromAlice } = directFixture();
+      await sendFromAlice({ clientMessageId: 'client-then-left' });
+      prisma.conversationMembers = prisma.conversationMembers.filter(
+        (member) => !(member.conversationId === conversationId && member.userId === alice.userId),
+      );
+
+      await expect(sendFromAlice({ clientMessageId: 'client-then-left' })).rejects.toMatchObject({
+        response: { code: 'conversation_membership_required' },
+      });
+    });
+
     it('rejects when direct envelope recipientUserId does not match the peer', async () => {
       const { prisma, sendFromAlice } = directFixture();
       const eve = prisma.seedUser('eve');

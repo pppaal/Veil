@@ -434,6 +434,22 @@ describe('GroupsService', () => {
       expect(roleOf(owner)).toBeUndefined();
     });
 
+    // Each request passes the owner check before either swaps roles; the
+    // swap itself must re-check, or both succeed and the group has two
+    // owners, neither of whom can then leave or be removed.
+    it('two concurrent transfers leave exactly one owner', async () => {
+      const { service, owner, admin, member, groupId, auth, roleOf } = groupFixture();
+
+      const results = await Promise.allSettled([
+        service.transferOwnership(auth(owner), groupId, { userId: admin.userId }),
+        service.transferOwnership(auth(owner), groupId, { userId: member.userId }),
+      ]);
+
+      expect(results.map((result) => result.status)).toEqual(['fulfilled', 'rejected']);
+      expect((results[1] as PromiseRejectedResult).reason).toMatchObject(roleRequired);
+      expect([roleOf(owner), roleOf(admin), roleOf(member)]).toEqual(['admin', 'owner', 'member']);
+    });
+
     it('only the owner may transfer ownership, and only to a current member', async () => {
       const { service, owner, admin, outsider, groupId, auth } = groupFixture();
 
@@ -497,8 +513,10 @@ describe('GroupsService', () => {
       expect(events.map((e) => e.userId).sort()).toEqual([owner.userId, admin.userId].sort());
     });
 
-    it('a departed member leaves no epoch row, sync cursor or mute behind in that group', async () => {
-      const { service, prisma, admin, member, groupId, auth } = groupFixture({ currentEpoch: 1 });
+    it('a departed member leaves no epoch row, sync cursor, mute or receipt behind in that group', async () => {
+      const { service, prisma, owner, admin, member, groupId, auth } = groupFixture({
+        currentEpoch: 1,
+      });
       const memberSecondDevice = prisma.seedDevice(member.userId);
       const otherGroupId = prisma.seedConversation('group', [member.userId]);
       prisma.groupMemberEpochs.push(
@@ -530,6 +548,39 @@ describe('GroupsService', () => {
         mute(admin.userId, groupId),
         mute(member.userId, otherGroupId),
       );
+      const message = (conversationId: string) => {
+        const id = randomUUID();
+        prisma.messages.push({
+          id,
+          conversationId,
+          senderDeviceId: owner.deviceId,
+          clientMessageId: `client-${id}`,
+          conversationOrder: prisma.messages.length + 1,
+          ciphertext: 'ciphertext',
+          nonce: 'nonce',
+          messageType: 'text',
+          attachmentId: null,
+          attachmentRef: null,
+          serverReceivedAt: new Date(),
+          deletedAt: null,
+          expiresAt: null,
+        });
+        return id;
+      };
+      const inGroup = message(groupId);
+      const inOtherGroup = message(otherGroupId);
+      const receipt = (messageId: string, userId: string) => ({
+        id: randomUUID(),
+        messageId,
+        userId,
+        deliveredAt: new Date(),
+        readAt: new Date(),
+      });
+      prisma.messageReceipts.push(
+        receipt(inGroup, member.userId),
+        receipt(inGroup, admin.userId),
+        receipt(inOtherGroup, member.userId),
+      );
 
       await service.leaveGroup(auth(member), groupId);
 
@@ -549,6 +600,10 @@ describe('GroupsService', () => {
       expect(prisma.groupMemberEpochs).toHaveLength(2);
       expect(prisma.deviceConversationStates).toHaveLength(2);
       expect(prisma.conversationMutes).toHaveLength(2);
+      expect(prisma.messageReceipts.map((row) => [row.messageId, row.userId])).toEqual([
+        [inGroup, admin.userId],
+        [inOtherGroup, member.userId],
+      ]);
     });
 
     it('a member who rejoins gets one fresh epoch row at the new epoch', async () => {

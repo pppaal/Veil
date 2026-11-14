@@ -34,8 +34,9 @@ export class PrekeysController {
 
   // Legacy single-device claim, superseded by GET /v1/keys/:handle. A claim
   // consumes the target's pool, so it needs an authenticated requester whose
-  // per-target budgets cap how fast any one device can drain it.
-  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  // per-target budgets cap how fast any one device can drain it. It also
+  // tells whether a handle exists, so it is held to the directory's limit.
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('claim/:handle')
   claim(
     @Req() request: AuthenticatedRequest,

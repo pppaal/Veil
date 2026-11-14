@@ -1,3 +1,6 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import {
   BadRequestException,
   ConflictException,
@@ -73,5 +76,47 @@ describe('apiError', () => {
       code: 'call_not_found',
       message: 'Call record not found',
     });
+  });
+});
+
+// The deprecated helpers fix the status by their name, not by the catalog, so
+// a call that pairs a code with another helper would surface that code with a
+// second status. Every call in the API source must agree with ERROR_CATALOG.
+describe('deprecated error helpers', () => {
+  const HELPER_STATUS: Readonly<Record<string, number>> = {
+    badRequest: 400,
+    unauthorized: 401,
+    forbidden: 403,
+    notFound: 404,
+    conflict: 409,
+    serviceUnavailable: 503,
+  };
+  const SRC = join(__dirname, '../..');
+  const sourceFiles = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return sourceFiles(path);
+      return entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts') ? [path] : [];
+    });
+
+  it('raise every code with its catalog status', () => {
+    const calls: string[] = [];
+    const mismatches: string[] = [];
+    const helperCall = new RegExp(
+      `(?<![.\\w])(${Object.keys(HELPER_STATUS).join('|')})\\(\\s*(?:'([a-z_]+)'|"([a-z_]+)")?`,
+      'g',
+    );
+    for (const file of sourceFiles(SRC)) {
+      for (const match of readFileSync(file, 'utf8').matchAll(helperCall)) {
+        const [, helper, single, double] = match;
+        const code = (single ?? double) as VeilErrorCode | undefined;
+        const where = `${file.slice(SRC.length + 1)}: ${helper}(${code ?? '<not a literal>'})`;
+        calls.push(where);
+        if (!code || ERROR_CATALOG[code] !== HELPER_STATUS[helper]) mismatches.push(where);
+      }
+    }
+    // The scan must keep finding the calls it checks.
+    expect(calls.length).toBeGreaterThan(50);
+    expect(mismatches).toEqual([]);
   });
 });

@@ -6,12 +6,13 @@ import type {
   UploadOneTimePrekeysResponse,
 } from '@veil/contracts';
 
-import { forbidden, notFound } from '../../common/errors/api-error';
+import { apiError, notFound } from '../../common/errors/api-error';
 import type { AuthContext } from '../../common/guards/authenticated-request';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
 import { SafetyService } from '../safety/safety.service';
 import { DIRECTORY_BUDGETS, DirectoryBudget } from './directory-budget';
+import { MAX_UNCONSUMED_PREKEYS_PER_DEVICE } from './dto/upload-prekeys.dto';
 
 // How many times the atomic claim retries when it loses the race for a
 // candidate prekey to a concurrent claimer before giving up and reporting the
@@ -34,7 +35,10 @@ export class PrekeysService {
    * Store a batch of the calling device's public one-time prekeys. Duplicate
    * (device, keyId) pairs are skipped rather than erroring, so a client can
    * safely retry an upload. Returns how many were newly stored plus the
-   * device's remaining unconsumed count.
+   * device's remaining unconsumed count. A batch that would leave the device
+   * holding more than MAX_UNCONSUMED_PREKEYS_PER_DEVICE unused prekeys is
+   * refused whole; keys it repeats do not count, so a retry of a stored
+   * batch still succeeds.
    */
   async upload(
     userId: string,
@@ -43,20 +47,33 @@ export class PrekeysService {
   ): Promise<UploadOneTimePrekeysResponse> {
     await this.assertActiveDevice(userId, deviceId);
 
-    const result = await this.prisma.oneTimePrekey.createMany({
-      data: prekeys.map((prekey) => ({
-        deviceId,
-        keyId: prekey.keyId,
-        publicKey: prekey.publicKey,
-      })),
-      skipDuplicates: true,
-    });
+    return this.prisma.$transaction(async (tx) => {
+      // One upload per device at a time, so concurrent uploads cannot each
+      // pass the cap below on a count that misses the other's rows.
+      await tx.$queryRaw`SELECT 1 FROM devices WHERE id = ${deviceId}::uuid FOR UPDATE`;
 
-    const available = await this.prisma.oneTimePrekey.count({
-      where: { deviceId, consumedAt: null },
-    });
+      const result = await tx.oneTimePrekey.createMany({
+        data: prekeys.map((prekey) => ({
+          deviceId,
+          keyId: prekey.keyId,
+          publicKey: prekey.publicKey,
+        })),
+        skipDuplicates: true,
+      });
 
-    return { uploaded: result.count, available };
+      const available = await tx.oneTimePrekey.count({
+        where: { deviceId, consumedAt: null },
+      });
+      if (available > MAX_UNCONSUMED_PREKEYS_PER_DEVICE) {
+        // Thrown inside the transaction, so nothing of the batch is stored.
+        throw apiError(
+          'validation_failed',
+          `A device may hold at most ${MAX_UNCONSUMED_PREKEYS_PER_DEVICE} unused one-time prekeys`,
+        );
+      }
+
+      return { uploaded: result.count, available };
+    });
   }
 
   /** Remaining unconsumed prekeys for the calling device. */
@@ -176,7 +193,7 @@ export class PrekeysService {
       throw notFound('device_not_found', 'Device not found');
     }
     if (!device.isActive || device.revokedAt) {
-      throw forbidden('device_not_active', 'Device is not active');
+      throw apiError('device_not_active', 'Device is not active');
     }
   }
 

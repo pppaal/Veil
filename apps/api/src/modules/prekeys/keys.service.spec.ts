@@ -483,7 +483,7 @@ describe('key directory routes', () => {
 
     expect(perMinuteLimit(KeysController.prototype.getKeys)).toEqual([60_000, 10]);
     expect(perMinuteLimit(KeysController.prototype.getGroupMemberKeys)).toEqual([60_000, 20]);
-    expect(perMinuteLimit(PrekeysController.prototype.claim)).toEqual([60_000, 30]);
+    expect(perMinuteLimit(PrekeysController.prototype.claim)).toEqual([60_000, 10]);
   });
 
   it('the rotation body cannot carry an identity key', async () => {
@@ -522,7 +522,7 @@ describe('KeysService.rotateSignedPrekey', () => {
     expect(device.publicIdentityKey).toBe(VECTOR_IDENTITY_PUBLIC_KEY);
   });
 
-  it('bad spkSig 400', async () => {
+  it('bad spkSig is refused with invalid_device_signature at its catalog status', async () => {
     const { keys, alice, device } = await setupRotation();
     const decode = (encoded: string) =>
       JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
@@ -537,8 +537,7 @@ describe('KeysService.rotateSignedPrekey', () => {
       .rotateSignedPrekey(alice, Buffer.from(JSON.stringify(tampered)).toString('base64url'))
       .catch((error) => error);
 
-    expect(rejection).toBeInstanceOf(BadRequestException);
-    expect(rejection.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    expect(rejection.getStatus()).toBe(HttpStatus.UNAUTHORIZED);
     expect(rejection.response.code).toBe('invalid_device_signature');
     expect(device.signedPrekeyBundle).toBe('legacy-v1-bundle');
   });

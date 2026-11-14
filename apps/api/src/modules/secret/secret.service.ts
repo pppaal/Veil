@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common';
 
+import { apiError } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
-import { DEFAULT_TTL_SECONDS, MAX_TTL_SECONDS, MIN_TTL_SECONDS } from './dto/create-secret.dto';
+import {
+  DEFAULT_TTL_SECONDS,
+  MAX_STORED_SECRET_BYTES,
+  MAX_STORED_SECRETS,
+  MAX_TTL_SECONDS,
+  MIN_TTL_SECONDS,
+} from './dto/create-secret.dto';
 
 export interface CreatedSecret {
   id: string;
@@ -17,6 +24,7 @@ export class SecretService {
    * decryption key is never sent here; it stays in the link fragment.
    */
   async create(ciphertext: string, ttlSeconds?: number): Promise<CreatedSecret> {
+    await this.assertWithinBudget(Buffer.byteLength(ciphertext, 'utf8'));
     const ttl = Math.min(
       Math.max(ttlSeconds ?? DEFAULT_TTL_SECONDS, MIN_TTL_SECONDS),
       MAX_TTL_SECONDS,
@@ -27,6 +35,24 @@ export class SecretService {
       select: { id: true, expiresAt: true },
     });
     return { id: blob.id, expiresAt: blob.expiresAt };
+  }
+
+  /**
+   * Refuses a link that would take the stored links past the relay-wide
+   * budget, counting rows the sweep has not yet removed: they still take
+   * space. Concurrent creates can overshoot by what they add between them,
+   * at most a few rows of MAX_CIPHERTEXT_LENGTH each.
+   */
+  private async assertWithinBudget(incomingBytes: number): Promise<void> {
+    const [usage] = await this.prisma.$queryRaw<Array<{ blobs: bigint; bytes: bigint }>>`
+      SELECT count(*) AS blobs, coalesce(sum(octet_length(ciphertext)), 0)::bigint AS bytes
+        FROM secret_blobs`;
+    if (
+      Number(usage?.blobs ?? 0) >= MAX_STORED_SECRETS ||
+      Number(usage?.bytes ?? 0) + incomingBytes > MAX_STORED_SECRET_BYTES
+    ) {
+      throw apiError('secret_storage_full', 'One-time links are at capacity; try again later');
+    }
   }
 
   /**

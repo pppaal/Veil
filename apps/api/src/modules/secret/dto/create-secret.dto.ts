@@ -7,6 +7,12 @@ export const MAX_CIPHERTEXT_LENGTH = 128 * 1024; // ~128 KB of base64
 export const MIN_TTL_SECONDS = 60; // 1 minute
 export const MAX_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
 export const DEFAULT_TTL_SECONDS = 24 * 60 * 60; // 1 day
+// What every stored link together may hold. Creating one needs no account,
+// so without a relay-wide budget the per-IP limit alone would let one
+// address add gigabytes a day to the primary database (more from an IPv6
+// prefix, whose addresses each get their own limit).
+export const MAX_STORED_SECRETS = 50_000;
+export const MAX_STORED_SECRET_BYTES = 256 * 1024 * 1024;
 
 export class CreateSecretDto {
   @ApiProperty({ description: 'Client-encrypted ciphertext (server never decrypts).' })

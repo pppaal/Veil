@@ -11,7 +11,7 @@ import type {
 import { isUUID } from 'class-validator';
 
 import { isActionAllowed } from '../../common/conversation-access/conversation-policy';
-import { apiError, badRequest, forbidden, notFound } from '../../common/errors/api-error';
+import { apiError, badRequest, notFound } from '../../common/errors/api-error';
 import { pickActiveDevice } from '../../common/pick-active-device';
 import { PrismaService } from '../../common/prisma.service';
 import { SafetyService } from '../safety/safety.service';
@@ -208,7 +208,7 @@ export class KeysService {
       throw notFound('device_not_found', 'Device not found');
     }
     if (!device.isActive || device.revokedAt) {
-      throw forbidden('device_not_active', 'Device is not active');
+      throw apiError('device_not_active', 'Device is not active');
     }
 
     const next = decodeSignedPrekeyBundleV2(signedPrekeyBundle);
@@ -216,7 +216,7 @@ export class KeysService {
       throw badRequest('validation_failed', 'Signed prekey bundle must be a canonical v2 bundle');
     }
     if (!verifySignedPrekeyBundleV2(next, device.publicIdentityKey)) {
-      throw badRequest(
+      throw apiError(
         'invalid_device_signature',
         'Signed prekey bundle is not signed by the device identity key',
       );

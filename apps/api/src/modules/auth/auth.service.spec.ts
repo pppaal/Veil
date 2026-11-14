@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { AuthService } from './auth.service';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
+import { isAccessTokenRevoked } from '../../common/access-token-revocation';
 import { RetiredHandlesService } from '../handles/retired-handles.service';
 import { FakePrismaService } from '../../../test/support/fake-prisma.service';
 import { DeviceAuthTestHelper } from '../../../test/support/device-auth-test-helper';
@@ -201,6 +202,25 @@ describe('AuthService', () => {
   });
 
   describe('challenges', () => {
+    // A public route: an unknown handle must answer exactly like a known
+    // handle with a device it does not have, or it would list handles.
+    it('answers an unknown handle exactly like a wrong device for a known one', async () => {
+      const { service, keyHelper } = setup();
+      await service.register(registration('known', keyHelper.createKeyPair()));
+      const refusal = (handle: string) =>
+        service.createChallenge({ handle, deviceId: randomUUID() }).catch((error) => ({
+          status: error.getStatus(),
+          response: error.getResponse(),
+        }));
+
+      const unknown = await refusal('nobody');
+      expect(unknown).toEqual({
+        status: 404,
+        response: { code: 'active_device_not_found', message: expect.any(String) },
+      });
+      expect(await refusal('known')).toEqual(unknown);
+    });
+
     it('rejects verification when the device is no longer active', async () => {
       const { prisma, service, keyHelper, signChallenge } = setup();
       const keyPair = keyHelper.createKeyPair();
@@ -608,6 +628,32 @@ describe('AuthService', () => {
       }
       await expect(service.refresh(bystander.verified.refreshToken)).resolves.toBeDefined();
       await expect(store.getJson(`auth:blacklist:${decoded.jti}`)).resolves.not.toBeNull();
+    });
+
+    // The device's other sessions hold access tokens of their own; logout
+    // must end those too, not only the token that called it.
+    it("revokes the access tokens of every session of the device, and only that device's", async () => {
+      const { service, store, jwt, registerAndLogin, login } = setup();
+      const { verified, registered, keyPair } = await registerAndLogin('logoutall');
+      const secondSession = await login('logoutall', registered.deviceId, keyPair);
+      const bystander = await registerAndLogin('bystander');
+      const claims = (accessToken: string) =>
+        jwt.decode(accessToken) as { jti: string; exp: number; sid: string };
+      expect(claims(verified.accessToken).sid).toBe(verified.refreshToken.split('.')[0]);
+      for (const token of [verified, secondSession, bystander.verified]) {
+        await expect(isAccessTokenRevoked(store, claims(token.accessToken))).resolves.toBe(false);
+      }
+
+      const { jti, exp } = claims(verified.accessToken);
+      await service.logout({ userId: registered.userId, deviceId: registered.deviceId, jti, exp });
+
+      await expect(isAccessTokenRevoked(store, claims(verified.accessToken))).resolves.toBe(true);
+      await expect(isAccessTokenRevoked(store, claims(secondSession.accessToken))).resolves.toBe(
+        true,
+      );
+      await expect(
+        isAccessTokenRevoked(store, claims(bystander.verified.accessToken)),
+      ).resolves.toBe(false);
     });
 
     describe('with the TTL-honouring in-memory store', () => {

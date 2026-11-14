@@ -33,6 +33,7 @@ function build(
     isPublic?: boolean;
     verify?: () => Promise<unknown>;
     blacklisted?: unknown;
+    liveFamilies?: readonly string[];
     device?: unknown;
     recordSeen?: () => Promise<{ count: number }>;
   } = {},
@@ -53,7 +54,13 @@ function build(
       },
     },
   } as never;
-  const ephemeralStore = { getJson: async () => opts.blacklisted ?? null } as never;
+  const ephemeralStore = {
+    getJson: async (key: string) => {
+      if (key.startsWith('auth:blacklist:')) return opts.blacklisted ?? null;
+      const family = /^auth:refresh-family:(.+)$/.exec(key)?.[1];
+      return family && opts.liveFamilies?.includes(family) ? { deviceId: 'd1' } : null;
+    },
+  } as never;
   return Object.assign(new JwtAuthGuard(reflector, jwtService, config, prisma, ephemeralStore), {
     activityWrites,
   });
@@ -88,6 +95,29 @@ describe('JwtAuthGuard', () => {
     await expect(
       build({ blacklisted: { revoked: true } }).canActivate(authed()),
     ).rejects.toMatchObject({ response: { code: 'token_revoked' } });
+  });
+
+  // Logout revokes every refresh family of the device, and with it every
+  // access token issued under one, not just the token that called logout.
+  it('rejects a token whose session (refresh family) has been revoked', async () => {
+    const token = async () => ({
+      sub: 'u1',
+      deviceId: 'd1',
+      handle: 'alice',
+      jti: 'j2',
+      sid: 'f1',
+    });
+
+    await expect(
+      build({ verify: token, liveFamilies: [] }).canActivate(authed()),
+    ).rejects.toMatchObject({ response: { code: 'token_revoked' } });
+    await expect(
+      build({ verify: token, liveFamilies: ['f1'] }).canActivate(authed()),
+    ).resolves.toBe(true);
+  });
+
+  it('judges a token issued before tokens named their session by the blacklist alone', async () => {
+    await expect(build({ liveFamilies: [] }).canActivate(authed())).resolves.toBe(true);
   });
 
   it('rejects a revoked / inactive device', async () => {

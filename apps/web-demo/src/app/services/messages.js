@@ -22,6 +22,12 @@ const blobUrlsOf = (message) =>
 
 export function createMessages({ store, stack }) {
   const { state } = store;
+  // The newest re-ingest started for each message. Re-ingests race: our own
+  // edit's echo from the relay can start opening the old stored content
+  // before the edit is remembered and finish after the edit's own re-ingest,
+  // so only the most recently started one may write its view.
+  let reingestSeq = 0;
+  const latestReingest = new Map();
 
   // `content` is passed only for our own sends, whose content we already hold.
   async function ingest(raw, { previous = null, content } = {}) {
@@ -101,8 +107,12 @@ export function createMessages({ store, stack }) {
     // Re-ingests a changed envelope (edit, tombstone) and swaps the result in
     // wherever the old view is shown.
     async reingestInPlace(messageId, raw, { content, editCount } = {}) {
+      const ticket = ++reingestSeq;
+      latestReingest.set(messageId, ticket);
       const previous = store.locateMessage(messageId)?.message ?? null;
       const view = await ingest(raw, { previous, content });
+      if (latestReingest.get(messageId) !== ticket) return;
+      latestReingest.delete(messageId);
       if (editCount !== undefined) view.editCount = editCount;
       const current = store.locateMessage(messageId);
       if (!current) return;

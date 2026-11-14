@@ -95,6 +95,7 @@ class MessengerServices {
       keys: keys,
       trust: trust,
       bindings: peerBindings,
+      flush: persistence.flush,
     );
     crypto = ConversationCryptoRouter(
       store: store,
@@ -108,6 +109,7 @@ class MessengerServices {
       refreshConversations: () => sync.refreshConversations(),
       onSessionOpened: (conversationId) =>
           unawaited(contents.retryPending(conversationId, store.messagesOf(conversationId))),
+      flush: persistence.flush,
     );
     receipts = ReceiptService(
       store: store,

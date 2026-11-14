@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:math';
 
 import '../../../../core/crypto/crypto_engine.dart';
 import '../../../../core/errors/user_facing_error.dart';
 import '../../../../core/network/veil_api_client.dart';
 import '../../../../core/storage/conversation_cache_service.dart';
+import '../../../../core/util/uuid_v4.dart';
 import '../conversation_models.dart';
 import '../group_sender_key_coordinator.dart';
 import 'attachment_transfer_service.dart';
@@ -62,7 +62,6 @@ class OutboxService {
   // relay refuses an expiry already past by its clock, and recipients
   // retire messages by theirs.
   final DateTime Function() _expiryClock;
-  final Random _random = Random.secure();
   late final Timer _retrySweep;
   bool _draining = false;
 
@@ -273,12 +272,14 @@ class OutboxService {
           !serverMessage.isMine) {
         throw const FormatException('The relay acknowledged a different message.');
       }
-      await _pending.remove(marked.clientMessageId);
       final content = await _contents.acknowledge(
         clientMessageId: marked.clientMessageId,
         serverMessageId: serverMessage.id,
       );
       _store.mergeMessages(marked.conversationId, [withInnerExpiry(serverMessage, content?.innerExpiresAt)]);
+      // Only now, with the relayed copy in the state, does the outbox
+      // record go: remove() writes that copy to the cache first.
+      await _pending.remove(marked.clientMessageId);
       _attachments.forget(marked.clientMessageId);
     } catch (error) {
       await _ops.handleSecurityException(error);
@@ -399,8 +400,10 @@ class OutboxService {
     if (updated && errorMessage != null) _ops.showMessage(errorMessage);
   }
 
-  String _nextClientMessageId() {
-    final entropy = _random.nextInt(1 << 32).toRadixString(36);
-    return 'msg-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$entropy';
-  }
+  // Random, nothing else: the relay keeps this id with the message and
+  // shows it to every member, so a clock in it would tell them when the
+  // message was written and how this device's clock is set. Drawn once per
+  // message; every retry of the send reuses it, which is what lets the
+  // relay recognise a retry of a send it already took.
+  String _nextClientMessageId() => randomUuidV4();
 }

@@ -395,7 +395,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentAgree.
   ///
   /// In en, this message translates to:
-  /// **'I agree to the collection and use of personal information above. (Required)\nI agree to the collection and use of personal information as described above. (Required)'**
+  /// **'I agree to the collection and use of personal information as described above. (Required)'**
   String get privacyConsentAgree;
 
   /// No description provided for @privacyConsentAccept.
@@ -1463,7 +1463,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatScreenshotToast.
   ///
   /// In en, this message translates to:
-  /// **'Screenshot detected in this conversation. Veil cannot prevent it on this device — the other side has been notified.'**
+  /// **'Screenshot detected in this conversation. Veil cannot prevent it on this device — a notice is being sent to the other side.'**
   String get chatScreenshotToast;
 
   /// No description provided for @chatScreenshotSystemNotice.
@@ -3217,6 +3217,630 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Demo: replies are scripted on this device. Nothing is sent anywhere.'**
   String get aiDemoBannerBody;
+
+  /// No description provided for @securityStatusTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Security Status'**
+  String get securityStatusTitle;
+
+  /// No description provided for @securityStatusEyebrow.
+  ///
+  /// In en, this message translates to:
+  /// **'SECURITY STATUS'**
+  String get securityStatusEyebrow;
+
+  /// No description provided for @securityStatusHeroTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No backup. No recovery. No leaks.'**
+  String get securityStatusHeroTitle;
+
+  /// No description provided for @securityStatusHeroBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The identity and runtime rows are read from this device and this build. The product rules hold for every VEIL build.'**
+  String get securityStatusHeroBody;
+
+  /// No description provided for @securityStatusPillPrivateBeta.
+  ///
+  /// In en, this message translates to:
+  /// **'Private beta'**
+  String get securityStatusPillPrivateBeta;
+
+  /// No description provided for @securityStatusMetricRuntime.
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime'**
+  String get securityStatusMetricRuntime;
+
+  /// No description provided for @securityStatusMetricRelay.
+  ///
+  /// In en, this message translates to:
+  /// **'Relay'**
+  String get securityStatusMetricRelay;
+
+  /// No description provided for @securityStatusMetricRelayLinked.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked'**
+  String get securityStatusMetricRelayLinked;
+
+  /// No description provided for @securityStatusMetricCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Cache'**
+  String get securityStatusMetricCache;
+
+  /// No description provided for @securityStatusMetricCacheOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Off'**
+  String get securityStatusMetricCacheOff;
+
+  /// No description provided for @securityStatusSectionIdentity.
+  ///
+  /// In en, this message translates to:
+  /// **'Identity'**
+  String get securityStatusSectionIdentity;
+
+  /// No description provided for @securityStatusSectionRuntime.
+  ///
+  /// In en, this message translates to:
+  /// **'Runtime'**
+  String get securityStatusSectionRuntime;
+
+  /// No description provided for @securityStatusSectionProductRules.
+  ///
+  /// In en, this message translates to:
+  /// **'Product Rules'**
+  String get securityStatusSectionProductRules;
+
+  /// No description provided for @securityStatusChecking.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking'**
+  String get securityStatusChecking;
+
+  /// No description provided for @securityStatusAvailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Available'**
+  String get securityStatusAvailable;
+
+  /// No description provided for @securityStatusUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Unavailable'**
+  String get securityStatusUnavailable;
+
+  /// No description provided for @securityStatusEnabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Enabled'**
+  String get securityStatusEnabled;
+
+  /// No description provided for @securityStatusDisabled.
+  ///
+  /// In en, this message translates to:
+  /// **'Disabled'**
+  String get securityStatusDisabled;
+
+  /// No description provided for @securityStatusReady.
+  ///
+  /// In en, this message translates to:
+  /// **'Ready'**
+  String get securityStatusReady;
+
+  /// No description provided for @securityStatusStarting.
+  ///
+  /// In en, this message translates to:
+  /// **'Starting'**
+  String get securityStatusStarting;
+
+  /// No description provided for @securityStatusBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked'**
+  String get securityStatusBlocked;
+
+  /// No description provided for @securityStatusIdle.
+  ///
+  /// In en, this message translates to:
+  /// **'Idle'**
+  String get securityStatusIdle;
+
+  /// No description provided for @securityStatusBoundDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Bound device'**
+  String get securityStatusBoundDevice;
+
+  /// No description provided for @securityStatusBoundDeviceUnbound.
+  ///
+  /// In en, this message translates to:
+  /// **'Unbound'**
+  String get securityStatusBoundDeviceUnbound;
+
+  /// No description provided for @securityStatusBoundDeviceNoneDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'No active device session is present.'**
+  String get securityStatusBoundDeviceNoneDetail;
+
+  /// No description provided for @securityStatusBoundDeviceDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This device currently holds the active VEIL session.'**
+  String get securityStatusBoundDeviceDetail;
+
+  /// No description provided for @securityStatusSecretRefs.
+  ///
+  /// In en, this message translates to:
+  /// **'Local secret refs'**
+  String get securityStatusSecretRefs;
+
+  /// No description provided for @securityStatusSecretRefsPresent.
+  ///
+  /// In en, this message translates to:
+  /// **'Present'**
+  String get securityStatusSecretRefsPresent;
+
+  /// No description provided for @securityStatusSecretRefsMissing.
+  ///
+  /// In en, this message translates to:
+  /// **'Missing'**
+  String get securityStatusSecretRefsMissing;
+
+  /// No description provided for @securityStatusSecretRefsDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Private device material stays on the device. The server never receives it.'**
+  String get securityStatusSecretRefsDetail;
+
+  /// No description provided for @securityStatusPin.
+  ///
+  /// In en, this message translates to:
+  /// **'App lock PIN'**
+  String get securityStatusPin;
+
+  /// No description provided for @securityStatusPinConfigured.
+  ///
+  /// In en, this message translates to:
+  /// **'Configured'**
+  String get securityStatusPinConfigured;
+
+  /// No description provided for @securityStatusPinUnset.
+  ///
+  /// In en, this message translates to:
+  /// **'Unset'**
+  String get securityStatusPinUnset;
+
+  /// No description provided for @securityStatusPinDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Local barrier only. VEIL cannot unlock the app for you.'**
+  String get securityStatusPinDetail;
+
+  /// No description provided for @securityStatusBiometrics.
+  ///
+  /// In en, this message translates to:
+  /// **'Biometrics'**
+  String get securityStatusBiometrics;
+
+  /// No description provided for @securityStatusBiometricsDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Device-level biometric unlock only. No remote fallback exists.'**
+  String get securityStatusBiometricsDetail;
+
+  /// No description provided for @securityStatusPrivacyShield.
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy shield'**
+  String get securityStatusPrivacyShield;
+
+  /// No description provided for @securityStatusPrivacyShieldDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.'**
+  String get securityStatusPrivacyShieldDetail;
+
+  /// No description provided for @securityStatusAppPreview.
+  ///
+  /// In en, this message translates to:
+  /// **'Recent-app preview'**
+  String get securityStatusAppPreview;
+
+  /// No description provided for @securityStatusAppPreviewProtected.
+  ///
+  /// In en, this message translates to:
+  /// **'Protected'**
+  String get securityStatusAppPreviewProtected;
+
+  /// No description provided for @securityStatusAppPreviewPartial.
+  ///
+  /// In en, this message translates to:
+  /// **'Partial'**
+  String get securityStatusAppPreviewPartial;
+
+  /// No description provided for @securityStatusAppPreviewDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Native and Flutter privacy shields are used to hide app-switcher content while VEIL is backgrounded.'**
+  String get securityStatusAppPreviewDetail;
+
+  /// No description provided for @securityStatusScreenCapture.
+  ///
+  /// In en, this message translates to:
+  /// **'Screen capture'**
+  String get securityStatusScreenCapture;
+
+  /// No description provided for @securityStatusScreenCapturePlatformLimited.
+  ///
+  /// In en, this message translates to:
+  /// **'Platform-limited'**
+  String get securityStatusScreenCapturePlatformLimited;
+
+  /// No description provided for @securityStatusScreenCaptureNotBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Not blocked'**
+  String get securityStatusScreenCaptureNotBlocked;
+
+  /// No description provided for @securityStatusScreenCaptureSupportedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Android blocks screenshots with secure-window flags when enabled.'**
+  String get securityStatusScreenCaptureSupportedDetail;
+
+  /// No description provided for @securityStatusScreenCaptureUnsupportedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This platform has no public API for full screenshot blocking, so VEIL relies on preview shielding and rapid relocking instead.'**
+  String get securityStatusScreenCaptureUnsupportedDetail;
+
+  /// No description provided for @securityStatusScreenCaptureCheckingDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking native screen-capture policy.'**
+  String get securityStatusScreenCaptureCheckingDetail;
+
+  /// No description provided for @securityStatusClipboard.
+  ///
+  /// In en, this message translates to:
+  /// **'Clipboard hygiene'**
+  String get securityStatusClipboard;
+
+  /// No description provided for @securityStatusClipboardRestricted.
+  ///
+  /// In en, this message translates to:
+  /// **'Restricted'**
+  String get securityStatusClipboardRestricted;
+
+  /// No description provided for @securityStatusClipboardDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Sensitive attachment tickets are summarized locally instead of exposing raw signed URLs for copy/share.'**
+  String get securityStatusClipboardDetail;
+
+  /// No description provided for @securityStatusTransport.
+  ///
+  /// In en, this message translates to:
+  /// **'Transport policy'**
+  String get securityStatusTransport;
+
+  /// No description provided for @securityStatusTransportCompliant.
+  ///
+  /// In en, this message translates to:
+  /// **'Compliant'**
+  String get securityStatusTransportCompliant;
+
+  /// No description provided for @securityStatusTransportDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Configured endpoints satisfy the current private-beta transport policy.'**
+  String get securityStatusTransportDetail;
+
+  /// No description provided for @securityStatusTlsPins.
+  ///
+  /// In en, this message translates to:
+  /// **'TLS pinning'**
+  String get securityStatusTlsPins;
+
+  /// No description provided for @securityStatusTlsPinsPinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned'**
+  String get securityStatusTlsPinsPinned;
+
+  /// No description provided for @securityStatusTlsPinsUnpinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Not pinned'**
+  String get securityStatusTlsPinsUnpinned;
+
+  /// No description provided for @securityStatusTlsPinsPinnedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This build pins the relay\'s TLS keys ({count}). A certificate whose key matches none of them is refused.'**
+  String securityStatusTlsPinsPinnedDetail(int count);
+
+  /// No description provided for @securityStatusTlsPinsUnpinnedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This build sets no TLS pins (VEIL_TLS_PINS), so the relay connection accepts any certificate the platform trusts. Release builds stop at a configuration error without them.'**
+  String get securityStatusTlsPinsUnpinnedDetail;
+
+  /// No description provided for @securityStatusApiMode.
+  ///
+  /// In en, this message translates to:
+  /// **'API mode'**
+  String get securityStatusApiMode;
+
+  /// No description provided for @securityStatusApiAttached.
+  ///
+  /// In en, this message translates to:
+  /// **'Attached'**
+  String get securityStatusApiAttached;
+
+  /// No description provided for @securityStatusApiAttachedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'REST API is configured for this build.'**
+  String get securityStatusApiAttachedDetail;
+
+  /// No description provided for @securityStatusApiUnavailableDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'No API endpoint is configured. Messaging is unavailable.'**
+  String get securityStatusApiUnavailableDetail;
+
+  /// No description provided for @securityStatusRelayLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Relay link'**
+  String get securityStatusRelayLink;
+
+  /// No description provided for @securityStatusRelayConnected.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get securityStatusRelayConnected;
+
+  /// No description provided for @securityStatusRelayConnectedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime relay is connected with opaque event payloads.'**
+  String get securityStatusRelayConnectedDetail;
+
+  /// No description provided for @securityStatusRelayIdleDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Realtime relay is disconnected or still syncing.'**
+  String get securityStatusRelayIdleDetail;
+
+  /// No description provided for @securityStatusLocalCache.
+  ///
+  /// In en, this message translates to:
+  /// **'Local cache'**
+  String get securityStatusLocalCache;
+
+  /// No description provided for @securityStatusLocalCacheDisabledDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Local message cache is disabled in this build.'**
+  String get securityStatusLocalCacheDisabledDetail;
+
+  /// No description provided for @securityStatusLocalCacheDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer, scrubbed from app-switcher previews, and wiped on destructive local lifecycle events.'**
+  String get securityStatusLocalCacheDetail;
+
+  /// No description provided for @securityStatusIntegrity.
+  ///
+  /// In en, this message translates to:
+  /// **'Device integrity'**
+  String get securityStatusIntegrity;
+
+  /// No description provided for @securityStatusIntegrityCompromised.
+  ///
+  /// In en, this message translates to:
+  /// **'Compromised'**
+  String get securityStatusIntegrityCompromised;
+
+  /// No description provided for @securityStatusIntegrityClean.
+  ///
+  /// In en, this message translates to:
+  /// **'Clean'**
+  String get securityStatusIntegrityClean;
+
+  /// No description provided for @securityStatusIntegrityCompromisedDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This device matched rooted or jailbroken heuristics. VEIL blocks local unlock in this state.'**
+  String get securityStatusIntegrityCompromisedDetail;
+
+  /// No description provided for @securityStatusIntegrityCompromisedReasons.
+  ///
+  /// In en, this message translates to:
+  /// **'This device matched rooted or jailbroken heuristics. {reasons}'**
+  String securityStatusIntegrityCompromisedReasons(String reasons);
+
+  /// No description provided for @securityStatusIntegrityCleanDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Native rooted and jailbroken heuristics did not trigger on this device.'**
+  String get securityStatusIntegrityCleanDetail;
+
+  /// No description provided for @securityStatusIntegrityCheckingDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Checking native integrity heuristics.'**
+  String get securityStatusIntegrityCheckingDetail;
+
+  /// No description provided for @securityStatusCloudBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Cloud backup'**
+  String get securityStatusCloudBackup;
+
+  /// No description provided for @securityStatusCloudBackupDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'VEIL does not keep a recovery copy of your message history.'**
+  String get securityStatusCloudBackupDetail;
+
+  /// No description provided for @securityStatusAccountRecovery.
+  ///
+  /// In en, this message translates to:
+  /// **'Account recovery'**
+  String get securityStatusAccountRecovery;
+
+  /// No description provided for @securityStatusAccountRecoveryDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'No recovery email, reset flow, or admin restore path exists.'**
+  String get securityStatusAccountRecoveryDetail;
+
+  /// No description provided for @securityStatusDeviceTransfer.
+  ///
+  /// In en, this message translates to:
+  /// **'Device transfer'**
+  String get securityStatusDeviceTransfer;
+
+  /// No description provided for @securityStatusDeviceTransferValue.
+  ///
+  /// In en, this message translates to:
+  /// **'Old device required'**
+  String get securityStatusDeviceTransferValue;
+
+  /// No description provided for @securityStatusDeviceTransferDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Transfer succeeds only while the old device can approve it.'**
+  String get securityStatusDeviceTransferDetail;
+
+  /// No description provided for @securityStatusLocalWipe.
+  ///
+  /// In en, this message translates to:
+  /// **'Local wipe'**
+  String get securityStatusLocalWipe;
+
+  /// No description provided for @securityStatusLocalWipeDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.'**
+  String get securityStatusLocalWipeDetail;
+
+  /// No description provided for @securityStatusCryptoAdapter.
+  ///
+  /// In en, this message translates to:
+  /// **'Crypto adapter'**
+  String get securityStatusCryptoAdapter;
+
+  /// No description provided for @securityStatusCryptoVeilRatchet.
+  ///
+  /// In en, this message translates to:
+  /// **'Production (unaudited)'**
+  String get securityStatusCryptoVeilRatchet;
+
+  /// No description provided for @securityStatusCryptoVeilRatchetDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'VEIL\'s own X3DH and Double Ratchet (X25519, AES-256-GCM, Ed25519) is active ({adapterId}). An external audit is still pending.'**
+  String securityStatusCryptoVeilRatchetDetail(String adapterId);
+
+  /// No description provided for @securityStatusCryptoLibsignal.
+  ///
+  /// In en, this message translates to:
+  /// **'libsignal bridge (unaudited)'**
+  String get securityStatusCryptoLibsignal;
+
+  /// No description provided for @securityStatusCryptoLibsignalDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Sessions and message encryption run in Signal\'s libsignal through VEIL\'s native bridge ({adapterId}). The bridge has not been audited.'**
+  String securityStatusCryptoLibsignalDetail(String adapterId);
+
+  /// No description provided for @securityStatusCryptoDevelopment.
+  ///
+  /// In en, this message translates to:
+  /// **'Development only'**
+  String get securityStatusCryptoDevelopment;
+
+  /// No description provided for @securityStatusCryptoDevelopmentDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'This build runs a development adapter ({adapterId}), not production cryptography. Do not use it for real conversations.'**
+  String securityStatusCryptoDevelopmentDetail(String adapterId);
+
+  /// No description provided for @securityStatusPushPlaintext.
+  ///
+  /// In en, this message translates to:
+  /// **'Push plaintext'**
+  String get securityStatusPushPlaintext;
+
+  /// No description provided for @securityStatusPushPlaintextForbidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Forbidden'**
+  String get securityStatusPushPlaintextForbidden;
+
+  /// No description provided for @securityStatusPushPlaintextDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Push payloads must never contain plaintext message content.'**
+  String get securityStatusPushPlaintextDetail;
+
+  /// No description provided for @securityStatusPushProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Push provider'**
+  String get securityStatusPushProvider;
+
+  /// No description provided for @securityStatusPushProviderSeam.
+  ///
+  /// In en, this message translates to:
+  /// **'Seam only'**
+  String get securityStatusPushProviderSeam;
+
+  /// No description provided for @securityStatusPushProviderSeamDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'The metadata-only wake-up path is defined, but a real APNs/FCM provider is not wired in this build.'**
+  String get securityStatusPushProviderSeamDetail;
+
+  /// No description provided for @securityStatusPushProviderUnavailableDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'No API endpoint is configured, so push delivery is unavailable in this build.'**
+  String get securityStatusPushProviderUnavailableDetail;
+
+  /// No description provided for @securityStatusPushPayloads.
+  ///
+  /// In en, this message translates to:
+  /// **'Push payloads'**
+  String get securityStatusPushPayloads;
+
+  /// No description provided for @securityStatusPushPayloadsMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Metadata only'**
+  String get securityStatusPushPayloadsMetadata;
+
+  /// No description provided for @securityStatusPushPayloadsMetadataDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'If push is enabled later, wake-up hints must stay metadata-only. Message bodies remain out of push.'**
+  String get securityStatusPushPayloadsMetadataDetail;
+
+  /// No description provided for @securityStatusPushPayloadsUnavailableDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'No API endpoint is configured, so push payload generation is unavailable in this build.'**
+  String get securityStatusPushPayloadsUnavailableDetail;
 }
 
 class _AppLocalizationsDelegate

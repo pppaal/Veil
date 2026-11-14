@@ -160,31 +160,14 @@ const directivesOf = (file) =>
 
 const layerOf = (path) => relative(mobileSrc, path).split(sep)[0];
 
-// The old core/router paths stay importable for existing callers. They may
-// only re-export app/router, and nothing else in core may reach up.
-const compatibilityShims = new Set([
-  `${mobileSrc}/core/router/app_router.dart`,
-  `${mobileSrc}/core/router/route_guard.dart`,
-]);
-
+// Nothing in core may reach up, re-exports included.
 for (const file of dartFiles(`${mobileSrc}/core`)) {
   for (const { kind, target } of directivesOf(file)) {
     const layer = layerOf(target);
     if (layer !== 'features' && layer !== 'app') continue;
-    if (kind === 'export' && compatibilityShims.has(file)) continue;
     failures.push(
       `lib/src/core must not reach ${layer}/ (${kind} ${relative(mobileSrc, target)}): ${file}`,
     );
-  }
-}
-
-for (const shim of compatibilityShims) {
-  const code = read(shim)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line && !line.startsWith('//'));
-  if (!code.every((line) => /^export '[^']+';$/.test(line))) {
-    failures.push(`Compatibility path must hold re-exports only: ${shim}`);
   }
 }
 

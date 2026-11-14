@@ -166,7 +166,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentAgree =>
-      'I agree to the collection and use of personal information above. (Required)\nI agree to the collection and use of personal information as described above. (Required)';
+      'I agree to the collection and use of personal information as described above. (Required)';
 
   @override
   String get privacyConsentAccept => 'Agree and continue';
@@ -764,7 +764,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatScreenshotToast =>
-      'Screenshot detected in this conversation. Veil cannot prevent it on this device — the other side has been notified.';
+      'Screenshot detected in this conversation. Veil cannot prevent it on this device — a notice is being sent to the other side.';
 
   @override
   String get chatScreenshotSystemNotice =>
@@ -1776,4 +1776,358 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiDemoBannerBody =>
       'Demo: replies are scripted on this device. Nothing is sent anywhere.';
+
+  @override
+  String get securityStatusTitle => 'Security Status';
+
+  @override
+  String get securityStatusEyebrow => 'SECURITY STATUS';
+
+  @override
+  String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
+
+  @override
+  String get securityStatusHeroBody =>
+      'The identity and runtime rows are read from this device and this build. The product rules hold for every VEIL build.';
+
+  @override
+  String get securityStatusPillPrivateBeta => 'Private beta';
+
+  @override
+  String get securityStatusMetricRuntime => 'Runtime';
+
+  @override
+  String get securityStatusMetricRelay => 'Relay';
+
+  @override
+  String get securityStatusMetricRelayLinked => 'Linked';
+
+  @override
+  String get securityStatusMetricCache => 'Cache';
+
+  @override
+  String get securityStatusMetricCacheOff => 'Off';
+
+  @override
+  String get securityStatusSectionIdentity => 'Identity';
+
+  @override
+  String get securityStatusSectionRuntime => 'Runtime';
+
+  @override
+  String get securityStatusSectionProductRules => 'Product Rules';
+
+  @override
+  String get securityStatusChecking => 'Checking';
+
+  @override
+  String get securityStatusAvailable => 'Available';
+
+  @override
+  String get securityStatusUnavailable => 'Unavailable';
+
+  @override
+  String get securityStatusEnabled => 'Enabled';
+
+  @override
+  String get securityStatusDisabled => 'Disabled';
+
+  @override
+  String get securityStatusReady => 'Ready';
+
+  @override
+  String get securityStatusStarting => 'Starting';
+
+  @override
+  String get securityStatusBlocked => 'Blocked';
+
+  @override
+  String get securityStatusIdle => 'Idle';
+
+  @override
+  String get securityStatusBoundDevice => 'Bound device';
+
+  @override
+  String get securityStatusBoundDeviceUnbound => 'Unbound';
+
+  @override
+  String get securityStatusBoundDeviceNoneDetail =>
+      'No active device session is present.';
+
+  @override
+  String get securityStatusBoundDeviceDetail =>
+      'This device currently holds the active VEIL session.';
+
+  @override
+  String get securityStatusSecretRefs => 'Local secret refs';
+
+  @override
+  String get securityStatusSecretRefsPresent => 'Present';
+
+  @override
+  String get securityStatusSecretRefsMissing => 'Missing';
+
+  @override
+  String get securityStatusSecretRefsDetail =>
+      'Private device material stays on the device. The server never receives it.';
+
+  @override
+  String get securityStatusPin => 'App lock PIN';
+
+  @override
+  String get securityStatusPinConfigured => 'Configured';
+
+  @override
+  String get securityStatusPinUnset => 'Unset';
+
+  @override
+  String get securityStatusPinDetail =>
+      'Local barrier only. VEIL cannot unlock the app for you.';
+
+  @override
+  String get securityStatusBiometrics => 'Biometrics';
+
+  @override
+  String get securityStatusBiometricsDetail =>
+      'Device-level biometric unlock only. No remote fallback exists.';
+
+  @override
+  String get securityStatusPrivacyShield => 'Privacy shield';
+
+  @override
+  String get securityStatusPrivacyShieldDetail =>
+      'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.';
+
+  @override
+  String get securityStatusAppPreview => 'Recent-app preview';
+
+  @override
+  String get securityStatusAppPreviewProtected => 'Protected';
+
+  @override
+  String get securityStatusAppPreviewPartial => 'Partial';
+
+  @override
+  String get securityStatusAppPreviewDetail =>
+      'Native and Flutter privacy shields are used to hide app-switcher content while VEIL is backgrounded.';
+
+  @override
+  String get securityStatusScreenCapture => 'Screen capture';
+
+  @override
+  String get securityStatusScreenCapturePlatformLimited => 'Platform-limited';
+
+  @override
+  String get securityStatusScreenCaptureNotBlocked => 'Not blocked';
+
+  @override
+  String get securityStatusScreenCaptureSupportedDetail =>
+      'Android blocks screenshots with secure-window flags when enabled.';
+
+  @override
+  String get securityStatusScreenCaptureUnsupportedDetail =>
+      'This platform has no public API for full screenshot blocking, so VEIL relies on preview shielding and rapid relocking instead.';
+
+  @override
+  String get securityStatusScreenCaptureCheckingDetail =>
+      'Checking native screen-capture policy.';
+
+  @override
+  String get securityStatusClipboard => 'Clipboard hygiene';
+
+  @override
+  String get securityStatusClipboardRestricted => 'Restricted';
+
+  @override
+  String get securityStatusClipboardDetail =>
+      'Sensitive attachment tickets are summarized locally instead of exposing raw signed URLs for copy/share.';
+
+  @override
+  String get securityStatusTransport => 'Transport policy';
+
+  @override
+  String get securityStatusTransportCompliant => 'Compliant';
+
+  @override
+  String get securityStatusTransportDetail =>
+      'Configured endpoints satisfy the current private-beta transport policy.';
+
+  @override
+  String get securityStatusTlsPins => 'TLS pinning';
+
+  @override
+  String get securityStatusTlsPinsPinned => 'Pinned';
+
+  @override
+  String get securityStatusTlsPinsUnpinned => 'Not pinned';
+
+  @override
+  String securityStatusTlsPinsPinnedDetail(int count) {
+    return 'This build pins the relay\'s TLS keys ($count). A certificate whose key matches none of them is refused.';
+  }
+
+  @override
+  String get securityStatusTlsPinsUnpinnedDetail =>
+      'This build sets no TLS pins (VEIL_TLS_PINS), so the relay connection accepts any certificate the platform trusts. Release builds stop at a configuration error without them.';
+
+  @override
+  String get securityStatusApiMode => 'API mode';
+
+  @override
+  String get securityStatusApiAttached => 'Attached';
+
+  @override
+  String get securityStatusApiAttachedDetail =>
+      'REST API is configured for this build.';
+
+  @override
+  String get securityStatusApiUnavailableDetail =>
+      'No API endpoint is configured. Messaging is unavailable.';
+
+  @override
+  String get securityStatusRelayLink => 'Relay link';
+
+  @override
+  String get securityStatusRelayConnected => 'Connected';
+
+  @override
+  String get securityStatusRelayConnectedDetail =>
+      'Realtime relay is connected with opaque event payloads.';
+
+  @override
+  String get securityStatusRelayIdleDetail =>
+      'Realtime relay is disconnected or still syncing.';
+
+  @override
+  String get securityStatusLocalCache => 'Local cache';
+
+  @override
+  String get securityStatusLocalCacheDisabledDetail =>
+      'Local message cache is disabled in this build.';
+
+  @override
+  String get securityStatusLocalCacheDetail =>
+      'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer, scrubbed from app-switcher previews, and wiped on destructive local lifecycle events.';
+
+  @override
+  String get securityStatusIntegrity => 'Device integrity';
+
+  @override
+  String get securityStatusIntegrityCompromised => 'Compromised';
+
+  @override
+  String get securityStatusIntegrityClean => 'Clean';
+
+  @override
+  String get securityStatusIntegrityCompromisedDetail =>
+      'This device matched rooted or jailbroken heuristics. VEIL blocks local unlock in this state.';
+
+  @override
+  String securityStatusIntegrityCompromisedReasons(String reasons) {
+    return 'This device matched rooted or jailbroken heuristics. $reasons';
+  }
+
+  @override
+  String get securityStatusIntegrityCleanDetail =>
+      'Native rooted and jailbroken heuristics did not trigger on this device.';
+
+  @override
+  String get securityStatusIntegrityCheckingDetail =>
+      'Checking native integrity heuristics.';
+
+  @override
+  String get securityStatusCloudBackup => 'Cloud backup';
+
+  @override
+  String get securityStatusCloudBackupDetail =>
+      'VEIL does not keep a recovery copy of your message history.';
+
+  @override
+  String get securityStatusAccountRecovery => 'Account recovery';
+
+  @override
+  String get securityStatusAccountRecoveryDetail =>
+      'No recovery email, reset flow, or admin restore path exists.';
+
+  @override
+  String get securityStatusDeviceTransfer => 'Device transfer';
+
+  @override
+  String get securityStatusDeviceTransferValue => 'Old device required';
+
+  @override
+  String get securityStatusDeviceTransferDetail =>
+      'Transfer succeeds only while the old device can approve it.';
+
+  @override
+  String get securityStatusLocalWipe => 'Local wipe';
+
+  @override
+  String get securityStatusLocalWipeDetail =>
+      'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.';
+
+  @override
+  String get securityStatusCryptoAdapter => 'Crypto adapter';
+
+  @override
+  String get securityStatusCryptoVeilRatchet => 'Production (unaudited)';
+
+  @override
+  String securityStatusCryptoVeilRatchetDetail(String adapterId) {
+    return 'VEIL\'s own X3DH and Double Ratchet (X25519, AES-256-GCM, Ed25519) is active ($adapterId). An external audit is still pending.';
+  }
+
+  @override
+  String get securityStatusCryptoLibsignal => 'libsignal bridge (unaudited)';
+
+  @override
+  String securityStatusCryptoLibsignalDetail(String adapterId) {
+    return 'Sessions and message encryption run in Signal\'s libsignal through VEIL\'s native bridge ($adapterId). The bridge has not been audited.';
+  }
+
+  @override
+  String get securityStatusCryptoDevelopment => 'Development only';
+
+  @override
+  String securityStatusCryptoDevelopmentDetail(String adapterId) {
+    return 'This build runs a development adapter ($adapterId), not production cryptography. Do not use it for real conversations.';
+  }
+
+  @override
+  String get securityStatusPushPlaintext => 'Push plaintext';
+
+  @override
+  String get securityStatusPushPlaintextForbidden => 'Forbidden';
+
+  @override
+  String get securityStatusPushPlaintextDetail =>
+      'Push payloads must never contain plaintext message content.';
+
+  @override
+  String get securityStatusPushProvider => 'Push provider';
+
+  @override
+  String get securityStatusPushProviderSeam => 'Seam only';
+
+  @override
+  String get securityStatusPushProviderSeamDetail =>
+      'The metadata-only wake-up path is defined, but a real APNs/FCM provider is not wired in this build.';
+
+  @override
+  String get securityStatusPushProviderUnavailableDetail =>
+      'No API endpoint is configured, so push delivery is unavailable in this build.';
+
+  @override
+  String get securityStatusPushPayloads => 'Push payloads';
+
+  @override
+  String get securityStatusPushPayloadsMetadata => 'Metadata only';
+
+  @override
+  String get securityStatusPushPayloadsMetadataDetail =>
+      'If push is enabled later, wake-up hints must stay metadata-only. Message bodies remain out of push.';
+
+  @override
+  String get securityStatusPushPayloadsUnavailableDetail =>
+      'No API endpoint is configured, so push payload generation is unavailable in this build.';
 }

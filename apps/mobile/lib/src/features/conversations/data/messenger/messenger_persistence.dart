@@ -17,7 +17,12 @@ typedef CachedMessengerState = ({ConversationCacheSnapshot snapshot, List<Pendin
 /// pauses, or when the messenger is disposed, writes the rows that differ
 /// from what this writer last wrote, read from the state as it is then.
 /// Outbox records are queued at once, without waiting for a flush: a
-/// queued message must survive a crash right after the send.
+/// queued message must survive a crash right after the send. Some state
+/// changes are flushed at once by whoever makes them, because a crash
+/// would lose them for good or at a cost: the relayed copy of a sent
+/// message before its outbox record is deleted (PendingMessages.remove),
+/// the session and bundle a 1:1 conversation records (PeerSessionResolver,
+/// ConversationCryptoRouter), and local notices (LocalNoticeWriter).
 ///
 /// Only rows that reached a database count as written. A write that fails,
 /// or finds no database, leaves its conversations to the next flush, which

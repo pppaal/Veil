@@ -1070,11 +1070,17 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
+  /* One column: the list and the chat take turns in the same cell. With two
+     columns the chat sat in the second one, off the right edge of the phone. */
   .app {
-    grid-template-columns: 100vw 100vw;
+    grid-template-columns: 100%;
     grid-template-areas:
-      "topbar topbar"
-      "sidebar main";
+      "topbar"
+      "content";
+  }
+  .sidebar,
+  .main {
+    grid-area: content;
   }
   .main {
     transform: translateX(0);

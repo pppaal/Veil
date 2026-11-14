@@ -5,6 +5,45 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 void main() {
+  // The text theme the app builds replaces the default one, so the bundled
+  // family has to be set on it (and on component styles) explicitly.
+  test('every themed text style uses the bundled font family', () {
+    for (final theme in [VeilTheme.dark(), VeilTheme.light()]) {
+      final text = theme.textTheme;
+      for (final style in [
+        text.displayLarge,
+        text.headlineMedium,
+        text.titleMedium,
+        text.bodyLarge,
+        text.bodyMedium,
+        text.bodySmall,
+        text.labelLarge,
+      ]) {
+        expect(style?.fontFamily, 'Pretendard');
+      }
+      expect(theme.appBarTheme.titleTextStyle?.fontFamily, 'Pretendard');
+      expect(theme.filledButtonTheme.style?.textStyle?.resolve({})?.fontFamily, 'Pretendard');
+      expect(theme.chipTheme.labelStyle?.fontFamily, 'Pretendard');
+    }
+  });
+
+  // An unclipped backdrop filter blurs the whole screen, not just the bar.
+  testWidgets('a frosted bar blurs only its own bounds', (tester) async {
+    await tester.pumpWidget(
+      const _DesignTestApp(
+        child: Scaffold(
+          body: Align(
+            alignment: Alignment.topCenter,
+            child: VeilBlur(child: SizedBox(height: 52, width: double.infinity)),
+          ),
+        ),
+      ),
+    );
+    final clip = find.ancestor(of: find.byType(BackdropFilter), matching: find.byType(ClipRect));
+    expect(clip, findsWidgets);
+    expect(tester.getSize(clip.first).height, 52);
+  });
+
   testWidgets('design system primitives render with premium dark semantics', (
     tester,
   ) async {

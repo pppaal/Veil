@@ -76,7 +76,7 @@
       <li>앱 안의 연락처 목록: 이용자가 추가한 계정(연락처에 붙인 이름은 기기에만 저장됩니다)</li>
       <li>통화 기록: 대화, 통화를 시작한 기기, 음성·영상 여부, 통화 상태(연결 중·통화 중·종료·부재중·거절), 시작·종료 시각, 통화 시간(30일 후 삭제)</li>
       <li>기기별 푸시 토큰(메시지 내용 없이 앱을 깨우는 데만 사용)</li>
-      <li>IP 주소: 로그인 전 요청의 횟수 제한을 위해 일시적으로 처리하며, 키 없는 해시 형태로 최대 2분간 보관하고 데이터베이스에는 저장하지 않습니다. 해시는 대입으로 주소를 되찾을 수 있으므로 그 시간 동안은 주소 자체로 보아야 합니다.</li>
+      <li>IP 주소: 로그인 전 요청의 횟수 제한을 위해 일시적으로 처리하며, 키 없는 해시 형태로 최대 2분간 보관하고 데이터베이스에는 저장하지 않습니다. 일회용 링크를 만들면 하루 생성 한도를 지키기 위해 날짜와 IP 주소(IPv6는 /64 단위)의 키 없는 해시를 그날 만든 링크 수·바이트 수와 함께 다음 UTC 00:00까지 보관합니다. 해시는 대입으로 주소를 되찾을 수 있으므로 그 시간 동안은 주소 자체로 보아야 합니다.</li>
       <li>이용자가 차단한 계정, 알림을 끈 대화, 이용자가 접수한 신고(신고는 90일 후 삭제)</li>
       <li>그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)</li>
     </ul>
@@ -161,7 +161,7 @@
       <li>Your in-app contact list: which accounts you added. The names you give them stay on your device.</li>
       <li>Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.</li>
       <li>A push token for each device, used only for wake-ups that carry no message content.</li>
-      <li>Your IP address, processed transiently to rate-limit requests made before sign-in: held as an unkeyed hash for at most two minutes and never written to the database. A hash of an address can be reversed by brute force, so treat it as your address for that time.</li>
+      <li>Your IP address, processed transiently to rate-limit requests made before sign-in: held as an unkeyed hash for at most two minutes and never written to the database. When you create a one-time link, an unkeyed hash of the day and your IP address (an IPv6 address counts by its /64) is also kept, with that day's link and byte counts, until the next 00:00 UTC to enforce a daily quota. A hash of an address can be reversed by brute force, so treat it as your address for that time.</li>
       <li>The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.</li>
       <li>Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.</li>
     </ul>

@@ -184,8 +184,8 @@ export class AppConfigService {
     if (this.cryptoAuditAttested !== true) {
       errors.push(
         'VEIL_AUDITED_CRYPTO_ATTESTED is not true. Set this only after the ' +
-          'audited crypto adapter has replaced the mock boundary and external ' +
-          'security review has covered the new crypto path. ' +
+          'production crypto path has passed an external security review ' +
+          '(no external audit has taken place yet). ' +
           'See docs/audited-crypto-adapter-execution.md.',
       );
     }

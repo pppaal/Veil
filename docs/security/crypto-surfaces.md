@@ -101,6 +101,7 @@ forward secrecy or cryptographic member removal.
 |-----------|-----------|--------------|-------|
 | `apps/api/src/modules/handles/retired-handles.service.ts` | HMAC-SHA256 of a deleted handle | `VEIL_RETIRED_HANDLE_PEPPER` | 90-day quarantine without storing the handle |
 | `apps/api/src/common/throttler/redis-throttler.storage.ts` | unkeyed SHA-256 of route and client (`ip:` or `dev:`) | — | reversible for IPv4 by brute force; kept at most about two minutes (`metadata-retention.md`) |
+| `apps/api/src/modules/secret/secret.service.ts` — one-time-link quota | unkeyed SHA-256 of the UTC day and the client network (IPv4 address or IPv6 /64) | — | reversible for IPv4 by brute force; kept until the next 00:00 UTC (`metadata-retention.md`) |
 
 ### P2 — push
 

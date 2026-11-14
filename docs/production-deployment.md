@@ -48,6 +48,14 @@ Known limits, accepted for now:
   the API; bound them at the edge if they become a load problem.
 - Unauthenticated buckets use the full client address, so one IPv6 client that
   controls a /64 can spread requests across many buckets.
+- One-time links (`POST /v1/s`, no sign-in) have a daily quota per client
+  network, an IPv4 address or an IPv6 /64: 200 links and 4 MiB per UTC day,
+  then `429 secret_quota_exceeded`. A relay-wide storage budget stays as the
+  backstop (`503 secret_storage_full`). Someone with many addresses or /64s can
+  still fill that budget, and then nobody can create a link until links expire
+  (at most 7 days); that is the accepted trade-off of a guard against disk
+  exhaustion. Users behind one carrier-grade NAT address share a quota, and a
+  wrong `VEIL_CLIENT_IP_SOURCE` puts every client in one network.
 
 The HTTP limiter does not run for realtime (WebSocket) events, so the gateway
 has its own: each device may send a burst of 30 events (typing, call signals),
@@ -75,7 +83,10 @@ seconds.
 
 - Refresh tokens are stored only as SHA-256 hashes and rotate on every use;
   presenting an already rotated token revokes its whole family, and logout
-  revokes every family of the device. Release note: the first deploy of this
+  revokes every family of the device. Every family revocation (reuse, eviction
+  of the least recently used family on a sixth login, or Redis losing the
+  family's keys after a restart) also ends that session's access tokens at
+  once instead of letting them run to expiry. Release note: the first deploy of this
   storage format invalidates every refresh token issued before it, and clients
   recover by signing a fresh challenge with their device key.
 - Keep challenge verification on uploaded device auth public keys only.

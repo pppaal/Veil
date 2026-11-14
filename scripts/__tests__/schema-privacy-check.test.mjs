@@ -165,6 +165,7 @@ const REDIS_SECTION = '### Short-lived keys in the ephemeral store (Redis)';
 const REDIS_TABLE_HEADER = '| Key | Kept for | What it links |';
 const REDIS_KEY_ROWS = [
   'veil:thr:*',
+  'secret:quota:*',
   'budget:*',
   'auth:challenge:*',
   'auth:refresh:*',

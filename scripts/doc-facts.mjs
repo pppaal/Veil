@@ -147,7 +147,11 @@ export const STALE_STATEMENTS = [
     code: [
       {
         file: 'apps/api/src/common/guards/cf-throttler.guard.ts',
-        pattern: /\bswitch \(this\.config\.clientIpSource\)/,
+        pattern: /\bclientAddress\(req, this\.config\.clientIpSource\)/,
+      },
+      {
+        file: 'apps/api/src/common/client-address.ts',
+        pattern: /\bswitch \(source\)/,
       },
     ],
     statements: [/\bCfThrottlerGuard\b.*\b(?:prefers|falls? back)\b/i],

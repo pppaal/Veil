@@ -22,8 +22,8 @@ The caveat is spelled out under "No database backups" in
 Retention is counted from the event that starts the clock (a message reaching
 the server, a prekey being consumed, an account being deleted); the sweeps
 that enforce it are described in [metadata-retention.md](metadata-retention.md).
-Redis keys (rate-limit counters keyed by client address or device,
-key-directory budgets, auth challenges, refresh-token hashes with their user
+Redis keys (rate-limit counters keyed by client address or device, daily
+one-time-link quotas keyed by client network, key-directory budgets, auth challenges, refresh-token hashes with their user
 and device ids and a day-rounded expiry of up to 31 days, sealed group key
 distributions) and encrypted attachment blobs in object storage are not
 database fields and are covered there too.

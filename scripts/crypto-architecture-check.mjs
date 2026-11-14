@@ -270,6 +270,41 @@ for (const successor of appStateSuccessors) {
   }
 }
 
+// Presentation files stay small enough to review whole. Files that were
+// already larger when this rule landed are listed at their size then: they
+// may shrink but not grow, and leave the list once they are under the cap.
+const presentationLineCap = 450;
+const chatRoomScreen = `${mobileSrc}/features/chat/presentation/chat_room_screen.dart`;
+const presentationOversized = new Map([
+  [`${mobileSrc}/features/conversations/presentation/conversation_list_screen.dart`, 1205],
+  [`${mobileSrc}/features/settings/presentation/settings_screen.dart`, 900],
+  [`${mobileSrc}/features/security/presentation/safety_numbers_screen.dart`, 886],
+  [`${mobileSrc}/features/device_transfer/presentation/device_transfer_screen.dart`, 867],
+  [`${mobileSrc}/features/contacts/presentation/contacts_screen.dart`, 523],
+  [`${mobileSrc}/features/stories/presentation/stories_screen.dart`, 469],
+  [`${mobileSrc}/features/stories/presentation/story_viewer_screen.dart`, 464],
+]);
+for (const feature of readdirSync(`${mobileSrc}/features`, { withFileTypes: true })) {
+  const dir = `${mobileSrc}/features/${feature.name}/presentation`;
+  if (!feature.isDirectory() || !existsSync(dir)) continue;
+  for (const file of dartFiles(dir)) {
+    const cap =
+      file === chatRoomScreen ? 400 : (presentationOversized.get(file) ?? presentationLineCap);
+    if (lineCount(file) > cap) {
+      failures.push(
+        `Presentation files must stay at or under ${cap} lines (has ${lineCount(file)}): ${file}`,
+      );
+    }
+  }
+}
+for (const [file] of presentationOversized) {
+  if (!existsSync(file) || lineCount(file) <= presentationLineCap) {
+    failures.push(
+      `No longer over ${presentationLineCap} lines; drop it from presentationOversized: ${file}`,
+    );
+  }
+}
+
 if (failures.length > 0) {
   for (const failure of failures) {
     console.error(failure);

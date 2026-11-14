@@ -29,7 +29,9 @@ const CLEAN = {
     'const plaintext = padMessage(encodeInnerPayload(payload));\n',
   'apps/mobile/lib/src/features/conversations/data/group_sender_key_coordinator.dart':
     'class GroupSenderKeyCoordinator {}\n',
-  'apps/api/src/common/guards/cf-throttler.guard.ts': 'switch (this.config.clientIpSource) {\n}\n',
+  'apps/api/src/common/guards/cf-throttler.guard.ts':
+    'return `ip:${clientAddress(req, this.config.clientIpSource)}`;\n',
+  'apps/api/src/common/client-address.ts': 'switch (source) {\n}\n',
   'apps/web-demo/src/crypto/frame.js': "export const ENVELOPE_VERSION_V2 = 'veil-envelope-v2';\n",
   'apps/api/src/modules/auth/auth.module.ts': '',
   'apps/api/src/modules/users/users.module.ts': '',

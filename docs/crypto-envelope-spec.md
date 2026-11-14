@@ -2,8 +2,9 @@
 
 This document is the canonical wire-format specification for the VEIL production
 crypto adapter (`LibCryptoAdapter`, adapter id `lib-x3dh-x25519-aes256gcm-v4`). It
-exists so external auditors, future re-implementers (the web client ports it
-next), and anyone reasoning about backwards compatibility have a single source of
+exists so external auditors, re-implementers (the web client implements it in
+`apps/web-demo/src/crypto/`, checked by the shared vectors and the web-mobile
+interop test), and anyone reasoning about backwards compatibility have a single source of
 truth that is independent of any specific language or source file.
 
 The adapter speaks two protocols:

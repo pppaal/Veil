@@ -482,8 +482,12 @@ void main() {
 
     test('without its binding, sends to the contact it shows and refuses the old peer', () async {
       // As if the binding was never recorded (an install from before it was)
-      // and the cached preview was lost: only the session is left.
+      // and the cached preview was lost: only the session is left. The
+      // inbound session was written at once, with the conversation's row and
+      // its messages, so those go too (messages first: they reference it).
       await alice.keystore.scoped(SecureScope.conversationPolicy).delete('direct_peers.v1');
+      await (alice.database.delete(alice.database.cachedMessages)..where((row) => row.conversationId.equals('conv-am')))
+          .go();
       await (alice.database.delete(alice.database.cachedConversations)..where((row) => row.id.equals('conv-am'))).go();
       await alice.restart();
       await relistWithCarol();

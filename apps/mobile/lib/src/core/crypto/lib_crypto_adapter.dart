@@ -66,6 +66,9 @@ class LibIdentityKeys {
       LocalIdentity.tryParse(identityPrivateRef)?.ed25519Seed;
 }
 
+/// [LibCryptoAdapter.adapterId]: VEIL's own X3DH and Double Ratchet.
+const String kLibCryptoAdapterId = 'lib-x3dh-x25519-aes256gcm-v4';
+
 class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   /// [random] and [clock] exist for known-answer tests; production uses the
   /// secure RNG and the wall clock.
@@ -88,7 +91,7 @@ class LibCryptoAdapter implements CryptoAdapter, PrekeyManager {
   late final _LibMessageCryptoEngine _messagingEngine;
 
   @override
-  String get adapterId => 'lib-x3dh-x25519-aes256gcm-v4';
+  String get adapterId => kLibCryptoAdapterId;
 
   @override
   DeviceIdentityProvider get identity => _identityProvider;

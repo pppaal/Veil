@@ -29,6 +29,7 @@ class ConversationCryptoRouter {
     required GroupSenderKeyCoordinator? groupCrypto,
     required Future<void> Function() refreshConversations,
     required void Function(String conversationId) onSessionOpened,
+    required Future<void> Function() flush,
   })  : _store = store,
         _session = session,
         _engine = engine,
@@ -38,7 +39,8 @@ class ConversationCryptoRouter {
         _envelopeVersions = envelopeVersions,
         _groupCrypto = groupCrypto,
         _refreshConversations = refreshConversations,
-        _onSessionOpened = onSessionOpened;
+        _onSessionOpened = onSessionOpened,
+        _flush = flush;
 
   final MessengerStateStore _store;
   final MessengerSessionContext _session;
@@ -50,6 +52,8 @@ class ConversationCryptoRouter {
   final GroupSenderKeyCoordinator? _groupCrypto;
   final Future<void> Function() _refreshConversations;
   final void Function(String conversationId) _onSessionOpened;
+  // Writes the messenger state's unwritten changes to the cache now.
+  final Future<void> Function() _flush;
   // Devices and identity keys inbound handshakes proved, by conversation,
   // from the verifier until the session they opened is recorded.
   final Map<String, ({String deviceId, String key})> _handshakeIdentities = {};
@@ -175,7 +179,7 @@ class ConversationCryptoRouter {
     if (decrypted.isOk) {
       await _envelopeVersions.noteAuthenticated(envelope.conversationId, envelope.version);
     }
-    _noteOpenedSession(envelope, decrypted);
+    await _noteOpenedSession(envelope, decrypted);
     return decrypted;
   }
 
@@ -216,10 +220,12 @@ class ConversationCryptoRouter {
 
   /// Records the inbound sessions held back until their conversation was
   /// listed; call after the list was refreshed.
-  void recordUnlistedSessions() {
+  Future<void> recordUnlistedSessions() async {
     final unlisted = Map.of(_unlistedInboundSessions);
     _unlistedInboundSessions.clear();
-    unlisted.forEach(_recordInboundSession);
+    for (final MapEntry(key: conversationId, value: state) in unlisted.entries) {
+      await _recordInboundSession(conversationId, state);
+    }
   }
 
   // Sender Keys mode is pinned the first time a group is listed with it,
@@ -317,7 +323,7 @@ class ConversationCryptoRouter {
   // device or identity is recorded as well (see sessionNames), and the next
   // send confirms that device with the directory before encrypting to it
   // again.
-  void _noteOpenedSession(CryptoEnvelope envelope, DecryptedMessage decrypted) {
+  Future<void> _noteOpenedSession(CryptoEnvelope envelope, DecryptedMessage decrypted) async {
     final conversationId = envelope.conversationId;
     // Taken whatever happens next, so a key proved by a handshake that was
     // not kept is never attributed to a later session.
@@ -337,7 +343,7 @@ class ConversationCryptoRouter {
       if (provenKey.isEmpty || sessionNames(recorded, envelope.senderDeviceId, provenKey)) return;
       _peers.recheckDirectory([conversationId]);
     }
-    _recordInboundSession(
+    await _recordInboundSession(
       conversationId,
       observedInboundSession(envelope, localDeviceId: localDeviceId, remoteIdentityPublicKey: provenKey),
     );
@@ -347,8 +353,10 @@ class ConversationCryptoRouter {
   // Records an inbound session on its conversation, so a reply reuses it
   // instead of bootstrapping a second one the sender would never know about.
   // Only 1:1 conversations carry a pairwise session, and one held back until
-  // its conversation was listed may turn out to belong to a group.
-  void _recordInboundSession(String conversationId, ConversationSessionState state) {
+  // its conversation was listed may turn out to belong to a group. Written
+  // to the cache at once, as an outbound session is (see
+  // PeerSessionResolver).
+  Future<void> _recordInboundSession(String conversationId, ConversationSessionState state) async {
     final conversation = _store.conversationById(conversationId);
     if (conversation == null) {
       _unlistedInboundSessions[conversationId] = state;
@@ -376,5 +384,6 @@ class ConversationCryptoRouter {
     // A session whose handshake this device did not see proved nobody to
     // it; its peer's key is pinned from the directory instead.
     if (provenKey.isEmpty) _peers.learnPeerIdentity(conversation).ignore();
+    await _flush();
   }
 }

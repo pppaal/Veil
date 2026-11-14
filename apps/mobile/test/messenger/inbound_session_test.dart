@@ -1,5 +1,10 @@
+import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/security/local_data_cipher.dart';
+import 'package:veil_mobile/src/core/storage/app_database.dart';
+import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 
 import '../support/async_wait.dart';
@@ -69,6 +74,30 @@ void main() {
     await atlas.sendText(conversationId: conv, body: 'hi back');
     await waitFor(() => atlas.pendingCountFor(conv) == 0);
     expect(relay.clientFor('atlas').directoryLookups, {'selene': 1});
+  });
+
+  test('a session the engine opens while decrypting is in the cache once the frame is open', () async {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
+    final adapter = StrictMockCryptoAdapter(opensSessionOnDecrypt: true);
+    final cache = DriftConversationCacheService(
+      database,
+      envelopeCodec: adapter.envelopeCodec,
+      cipher: LocalDataCipher.forTesting('AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'),
+    );
+    await relayFromSelene('hello');
+    final atlas = mockPartyController(relay, 'atlas', adapter: adapter, cacheService: cache);
+    addTearDown(atlas.dispose);
+    await atlas.applySession(mockPartySession('atlas'));
+    await atlas.loadConversationMessages(conv);
+
+    expect((await atlas.decryptMessage(atlas.messagesFor(conv).single)).isOk, isTrue);
+
+    // What a process killed right now would find on the next start: no
+    // time has passed for a debounced write.
+    final cached = (await cache.readConversations()).where((item) => item.id == conv).singleOrNull;
+    expect(cached?.sessionState?.remoteDeviceId, 'dev-selene');
   });
 
   test('no session is recorded while the engine holds none', () async {

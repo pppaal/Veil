@@ -160,8 +160,7 @@ class AppLocalizationsKo extends AppLocalizations {
       'VEIL은 개인정보보호법(PIPA)을 준수합니다. 서비스 이용 전 아래 내용을 확인하고 동의해 주세요.';
 
   @override
-  String get privacyConsentAgree =>
-      '위 개인정보 수집·이용에 동의합니다. (필수)\nI agree to the collection and use of personal information as described above. (Required)';
+  String get privacyConsentAgree => '위 개인정보 수집·이용에 동의합니다. (필수)';
 
   @override
   String get privacyConsentAccept => '동의하고 계속하기';
@@ -732,7 +731,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get chatScreenshotToast =>
-      '이 대화에서 스크린샷이 감지되었습니다. 이 기기에서는 VEIL이 이를 막을 수 없으며 상대방에게 알림이 전송되었습니다.';
+      '이 대화에서 스크린샷이 감지되었습니다. 이 기기에서는 VEIL이 이를 막을 수 없으며, 상대방에게 알림을 보내는 중입니다.';
 
   @override
   String get chatScreenshotSystemNotice => '상대방이 자신의 기기에서 이 대화를 스크린샷으로 캡처했습니다.';
@@ -1715,4 +1714,354 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get aiDemoBannerBody => '데모: 답변은 이 기기에 미리 정해진 내용입니다. 어디로도 전송되지 않습니다.';
+
+  @override
+  String get securityStatusTitle => '보안 상태';
+
+  @override
+  String get securityStatusEyebrow => '보안 상태';
+
+  @override
+  String get securityStatusHeroTitle => '백업 없음. 복구 없음. 유출 없음.';
+
+  @override
+  String get securityStatusHeroBody =>
+      '신원과 런타임 항목은 이 기기와 이 빌드에서 읽어 옵니다. 제품 규칙은 모든 VEIL 빌드에 똑같이 적용됩니다.';
+
+  @override
+  String get securityStatusPillPrivateBeta => '비공개 베타';
+
+  @override
+  String get securityStatusMetricRuntime => '런타임';
+
+  @override
+  String get securityStatusMetricRelay => '릴레이';
+
+  @override
+  String get securityStatusMetricRelayLinked => '연결됨';
+
+  @override
+  String get securityStatusMetricCache => '캐시';
+
+  @override
+  String get securityStatusMetricCacheOff => '꺼짐';
+
+  @override
+  String get securityStatusSectionIdentity => '신원';
+
+  @override
+  String get securityStatusSectionRuntime => '런타임';
+
+  @override
+  String get securityStatusSectionProductRules => '제품 규칙';
+
+  @override
+  String get securityStatusChecking => '확인 중';
+
+  @override
+  String get securityStatusAvailable => '사용 가능';
+
+  @override
+  String get securityStatusUnavailable => '사용 불가';
+
+  @override
+  String get securityStatusEnabled => '켜짐';
+
+  @override
+  String get securityStatusDisabled => '꺼짐';
+
+  @override
+  String get securityStatusReady => '준비됨';
+
+  @override
+  String get securityStatusStarting => '시작 중';
+
+  @override
+  String get securityStatusBlocked => '차단됨';
+
+  @override
+  String get securityStatusIdle => '대기 중';
+
+  @override
+  String get securityStatusBoundDevice => '연결된 기기';
+
+  @override
+  String get securityStatusBoundDeviceUnbound => '연결 안 됨';
+
+  @override
+  String get securityStatusBoundDeviceNoneDetail => '활성 기기 세션이 없습니다.';
+
+  @override
+  String get securityStatusBoundDeviceDetail =>
+      '이 기기가 현재 활성 VEIL 세션을 보유하고 있습니다.';
+
+  @override
+  String get securityStatusSecretRefs => '로컬 비밀 키 참조';
+
+  @override
+  String get securityStatusSecretRefsPresent => '있음';
+
+  @override
+  String get securityStatusSecretRefsMissing => '없음';
+
+  @override
+  String get securityStatusSecretRefsDetail =>
+      '기기의 비밀 키 자료는 이 기기에만 남습니다. 서버는 이를 받지 않습니다.';
+
+  @override
+  String get securityStatusPin => '앱 잠금 PIN';
+
+  @override
+  String get securityStatusPinConfigured => '설정됨';
+
+  @override
+  String get securityStatusPinUnset => '설정 안 됨';
+
+  @override
+  String get securityStatusPinDetail =>
+      '이 기기에만 적용되는 잠금입니다. VEIL은 앱 잠금을 대신 풀어 줄 수 없습니다.';
+
+  @override
+  String get securityStatusBiometrics => '생체 인식';
+
+  @override
+  String get securityStatusBiometricsDetail =>
+      '기기 자체의 생체 인식 잠금 해제만 지원합니다. 원격 대체 수단은 없습니다.';
+
+  @override
+  String get securityStatusPrivacyShield => '개인정보 보호막';
+
+  @override
+  String get securityStatusPrivacyShieldDetail =>
+      'VEIL이 백그라운드로 가면 미리보기를 가리고 로컬 잠금을 다시 겁니다.';
+
+  @override
+  String get securityStatusAppPreview => '최근 앱 미리보기';
+
+  @override
+  String get securityStatusAppPreviewProtected => '보호됨';
+
+  @override
+  String get securityStatusAppPreviewPartial => '일부만 보호';
+
+  @override
+  String get securityStatusAppPreviewDetail =>
+      'VEIL이 백그라운드에 있는 동안 네이티브와 Flutter 보호막으로 앱 전환 화면의 내용을 가립니다.';
+
+  @override
+  String get securityStatusScreenCapture => '화면 캡처';
+
+  @override
+  String get securityStatusScreenCapturePlatformLimited => '플랫폼 제한';
+
+  @override
+  String get securityStatusScreenCaptureNotBlocked => '차단 안 됨';
+
+  @override
+  String get securityStatusScreenCaptureSupportedDetail =>
+      'Android에서는 켜져 있을 때 보안 창 플래그로 스크린샷을 차단합니다.';
+
+  @override
+  String get securityStatusScreenCaptureUnsupportedDetail =>
+      '이 플랫폼에는 스크린샷을 완전히 막는 공개 API가 없어, VEIL은 미리보기 가림과 빠른 재잠금으로 대신합니다.';
+
+  @override
+  String get securityStatusScreenCaptureCheckingDetail =>
+      '네이티브 화면 캡처 정책을 확인하는 중입니다.';
+
+  @override
+  String get securityStatusClipboard => '클립보드 보호';
+
+  @override
+  String get securityStatusClipboardRestricted => '제한됨';
+
+  @override
+  String get securityStatusClipboardDetail =>
+      '민감한 첨부파일 티켓은 서명된 URL을 그대로 복사·공유하지 않고 기기에서 요약해 보여 줍니다.';
+
+  @override
+  String get securityStatusTransport => '전송 정책';
+
+  @override
+  String get securityStatusTransportCompliant => '준수';
+
+  @override
+  String get securityStatusTransportDetail =>
+      '설정된 엔드포인트가 현재 비공개 베타 전송 정책을 충족합니다.';
+
+  @override
+  String get securityStatusTlsPins => 'TLS 고정';
+
+  @override
+  String get securityStatusTlsPinsPinned => '고정됨';
+
+  @override
+  String get securityStatusTlsPinsUnpinned => '고정 안 됨';
+
+  @override
+  String securityStatusTlsPinsPinnedDetail(int count) {
+    return '이 빌드는 릴레이의 TLS 키를 고정합니다($count개). 어느 키와도 맞지 않는 인증서는 거부됩니다.';
+  }
+
+  @override
+  String get securityStatusTlsPinsUnpinnedDetail =>
+      '이 빌드에는 TLS 고정 값(VEIL_TLS_PINS)이 없어, 릴레이 연결이 플랫폼이 신뢰하는 인증서를 모두 받아들입니다. 릴리스 빌드는 고정 값이 없으면 설정 오류에서 멈춥니다.';
+
+  @override
+  String get securityStatusApiMode => 'API 모드';
+
+  @override
+  String get securityStatusApiAttached => '연결됨';
+
+  @override
+  String get securityStatusApiAttachedDetail => '이 빌드에는 REST API가 설정되어 있습니다.';
+
+  @override
+  String get securityStatusApiUnavailableDetail =>
+      'API 엔드포인트가 설정되지 않아 메시지를 주고받을 수 없습니다.';
+
+  @override
+  String get securityStatusRelayLink => '릴레이 연결';
+
+  @override
+  String get securityStatusRelayConnected => '연결됨';
+
+  @override
+  String get securityStatusRelayConnectedDetail =>
+      '실시간 릴레이에 연결되어 있으며, 이벤트 페이로드는 내용을 드러내지 않습니다.';
+
+  @override
+  String get securityStatusRelayIdleDetail => '실시간 릴레이 연결이 끊겼거나 아직 동기화 중입니다.';
+
+  @override
+  String get securityStatusLocalCache => '로컬 캐시';
+
+  @override
+  String get securityStatusLocalCacheDisabledDetail =>
+      '이 빌드에서는 로컬 메시지 캐시가 꺼져 있습니다.';
+
+  @override
+  String get securityStatusLocalCacheDetail =>
+      '대화와 엔벨로프는 현재 비공개 베타의 저장 시 암호화 계층 뒤에 로컬로 캐시되고, 앱 전환 화면 미리보기에서 가려지며, 기기 데이터를 지우는 이벤트가 일어나면 삭제됩니다.';
+
+  @override
+  String get securityStatusIntegrity => '기기 무결성';
+
+  @override
+  String get securityStatusIntegrityCompromised => '손상됨';
+
+  @override
+  String get securityStatusIntegrityClean => '정상';
+
+  @override
+  String get securityStatusIntegrityCompromisedDetail =>
+      '이 기기에서 루팅 또는 탈옥 징후가 감지되었습니다. 이 상태에서는 VEIL이 로컬 잠금 해제를 막습니다.';
+
+  @override
+  String securityStatusIntegrityCompromisedReasons(String reasons) {
+    return '이 기기에서 루팅 또는 탈옥 징후가 감지되었습니다. $reasons';
+  }
+
+  @override
+  String get securityStatusIntegrityCleanDetail =>
+      '이 기기에서는 네이티브 루팅·탈옥 탐지에 걸린 항목이 없습니다.';
+
+  @override
+  String get securityStatusIntegrityCheckingDetail => '네이티브 무결성 탐지를 확인하는 중입니다.';
+
+  @override
+  String get securityStatusCloudBackup => '클라우드 백업';
+
+  @override
+  String get securityStatusCloudBackupDetail =>
+      'VEIL은 메시지 기록의 복구용 사본을 보관하지 않습니다.';
+
+  @override
+  String get securityStatusAccountRecovery => '계정 복구';
+
+  @override
+  String get securityStatusAccountRecoveryDetail =>
+      '복구 이메일, 재설정 절차, 관리자 복원 경로가 없습니다.';
+
+  @override
+  String get securityStatusDeviceTransfer => '기기 이전';
+
+  @override
+  String get securityStatusDeviceTransferValue => '기존 기기 필요';
+
+  @override
+  String get securityStatusDeviceTransferDetail =>
+      '기존 기기가 승인할 수 있을 때에만 이전이 완료됩니다.';
+
+  @override
+  String get securityStatusLocalWipe => '로컬 초기화';
+
+  @override
+  String get securityStatusLocalWipeDetail =>
+      '이 기기는 복구 경로를 만들지 않고 로컬 세션 상태, 로컬 비밀 키, 암호화된 캐시, 로컬 잠금을 지울 수 있습니다.';
+
+  @override
+  String get securityStatusCryptoAdapter => '암호 어댑터';
+
+  @override
+  String get securityStatusCryptoVeilRatchet => '프로덕션 (감사 전)';
+
+  @override
+  String securityStatusCryptoVeilRatchetDetail(String adapterId) {
+    return 'VEIL 자체 X3DH와 더블 래칫(X25519, AES-256-GCM, Ed25519)이 동작 중입니다($adapterId). 외부 감사는 아직 진행 전입니다.';
+  }
+
+  @override
+  String get securityStatusCryptoLibsignal => 'libsignal 브리지 (감사 전)';
+
+  @override
+  String securityStatusCryptoLibsignalDetail(String adapterId) {
+    return '세션과 메시지 암호화는 VEIL 네이티브 브리지를 거쳐 Signal의 libsignal에서 동작합니다($adapterId). 이 브리지는 아직 감사를 받지 않았습니다.';
+  }
+
+  @override
+  String get securityStatusCryptoDevelopment => '개발용';
+
+  @override
+  String securityStatusCryptoDevelopmentDetail(String adapterId) {
+    return '이 빌드는 프로덕션 암호화가 아닌 개발용 어댑터($adapterId)로 동작합니다. 실제 대화에 쓰지 마세요.';
+  }
+
+  @override
+  String get securityStatusPushPlaintext => '푸시 평문';
+
+  @override
+  String get securityStatusPushPlaintextForbidden => '금지';
+
+  @override
+  String get securityStatusPushPlaintextDetail =>
+      '푸시 페이로드에는 메시지 평문이 절대 담기지 않아야 합니다.';
+
+  @override
+  String get securityStatusPushProvider => '푸시 제공자';
+
+  @override
+  String get securityStatusPushProviderSeam => '연결부만 있음';
+
+  @override
+  String get securityStatusPushProviderSeamDetail =>
+      '메타데이터만 담는 깨우기 경로는 정의되어 있지만, 이 빌드에는 실제 APNs/FCM 제공자가 연결되어 있지 않습니다.';
+
+  @override
+  String get securityStatusPushProviderUnavailableDetail =>
+      'API 엔드포인트가 설정되지 않아 이 빌드에서는 푸시를 받을 수 없습니다.';
+
+  @override
+  String get securityStatusPushPayloads => '푸시 페이로드';
+
+  @override
+  String get securityStatusPushPayloadsMetadata => '메타데이터만';
+
+  @override
+  String get securityStatusPushPayloadsMetadataDetail =>
+      '나중에 푸시가 켜지더라도 깨우기 신호에는 메타데이터만 담아야 합니다. 메시지 본문은 푸시에 담기지 않습니다.';
+
+  @override
+  String get securityStatusPushPayloadsUnavailableDetail =>
+      'API 엔드포인트가 설정되지 않아 이 빌드에서는 푸시 페이로드를 만들지 않습니다.';
 }

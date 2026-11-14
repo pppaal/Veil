@@ -233,7 +233,7 @@ class ConversationSyncService {
       stillCurrent: stillCurrent,
     );
     if (overruled == null || !stillCurrent()) return;
-    _crypto.recordUnlistedSessions();
+    await _crypto.recordUnlistedSessions();
     await _checkAccountHolds(self, stillCurrent);
     for (final conversationId in overruled) {
       await _notices.write(

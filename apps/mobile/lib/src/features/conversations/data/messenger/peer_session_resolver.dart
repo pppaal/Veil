@@ -20,12 +20,14 @@ class PeerSessionResolver {
     required KeysApi keys,
     required IdentityTrust trust,
     required ConversationPeerBindings bindings,
+    required Future<void> Function() flush,
   })  : _store = store,
         _session = session,
         _sessions = sessions,
         _keys = keys,
         _trust = trust,
-        _bindings = bindings;
+        _bindings = bindings,
+        _flush = flush;
 
   final MessengerStateStore _store;
   final MessengerSessionContext _session;
@@ -33,6 +35,8 @@ class PeerSessionResolver {
   final KeysApi _keys;
   final IdentityTrust _trust;
   final ConversationPeerBindings _bindings;
+  // Writes the messenger state's unwritten changes to the cache now.
+  final Future<void> Function() _flush;
   final PeerBundleCache _peerBundles = PeerBundleCache();
   // Conversations whose next send must ask the directory first: a rekey was
   // armed, or a frame arrived from a peer device the session is not bound to.
@@ -170,8 +174,9 @@ class PeerSessionResolver {
             localDeviceId: session.deviceId,
             bundle: bundle,
           );
+    var recorded = false;
     if (action == SessionAction.reuse) {
-      _store.updateConversation(conversationId, (preview) => keepSession(preview, bundle));
+      recorded = _store.updateConversation(conversationId, (preview) => keepSession(preview, bundle));
     } else if (mayBootstrap) {
       final material = await _sessions.bootstrapSession(
         SessionBootstrapRequest(
@@ -187,11 +192,17 @@ class PeerSessionResolver {
       );
       _peerBundles.spendOneTimePrekey(conversation.peerHandle);
       final sessionState = sessionStateFromMaterial(material, remoteIdentityPublicKey: bundle.identityPublicKey);
-      _store.updateConversation(
+      recorded = _store.updateConversation(
         conversationId,
         (preview) => preview.copyWith(recipientBundle: bundle, sessionState: sessionState),
       );
     }
+    // The session and the bundle a conversation records go to the cache at
+    // once, not on the debounced flush. Lost to a crash, they would leave
+    // the next send to ask the directory again, claiming another of the
+    // peer's one-time prekeys, and new-device detection off until the
+    // peer's next frame.
+    if (recorded) await _flush();
     return _store.conversationById(conversationId)?.recipientBundle ?? bundle;
   }
 }

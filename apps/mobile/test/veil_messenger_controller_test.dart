@@ -185,6 +185,110 @@ void main() {
     expect(api.sentPayloads, hasLength(1));
   });
 
+  test('a message goes out under a random UUID v4, the same one on every attempt', () async {
+    // The relay keeps the id and shows it to every member: it must carry
+    // no clock, and a retry must reuse it for the relay to recognise it.
+    final api = _FakeVeilApiClient(failSendAttempts: 1);
+    final crypto = createDefaultCryptoAdapter();
+    final controller = VeilMessengerController(
+      apiClient: api,
+      cryptoEngine: crypto.messaging,
+      keyBundleCodec: crypto.keyBundles,
+      envelopeCodec: crypto.envelopeCodec,
+      sessionBootstrapper: crypto.sessions,
+      realtimeService: _FakeRealtimeService(),
+      cacheService: _MemoryConversationCache(),
+    );
+    addTearDown(controller.dispose);
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+    final uuidV4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+
+    await controller.sendText(conversationId: 'conv-1', body: 'first');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    expect(api.sentPayloads, isEmpty, reason: 'the first attempt failed and stays queued');
+    final queuedId = controller.messagesFor('conv-1').single.clientMessageId!;
+    expect(queuedId, matches(uuidV4));
+
+    await controller.retryPendingMessages('conv-1');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    expect(api.sentPayloads.single['clientMessageId'], queuedId, reason: 'the retry reused the id');
+
+    await controller.sendText(conversationId: 'conv-1', body: 'second');
+    await Future<void>.delayed(const Duration(milliseconds: 25));
+    final secondId = api.sentPayloads.last['clientMessageId'] as String;
+    expect(secondId, matches(uuidV4));
+    expect(secondId, isNot(queuedId));
+  });
+
+  group('a crash at any point after a send keeps the message and the session it opened', () {
+    VeilMessengerController sender(_FakeVeilApiClient api, _MemoryConversationCache cache) {
+      // Tracks sessions, so the first send to conv-1 bootstraps one.
+      final crypto = StrictMockCryptoAdapter();
+      final controller = VeilMessengerController(
+        apiClient: api,
+        cryptoEngine: crypto.messaging,
+        keyBundleCodec: crypto.keyBundles,
+        envelopeCodec: crypto.envelopeCodec,
+        sessionBootstrapper: crypto.sessions,
+        realtimeService: _FakeRealtimeService(),
+        cacheService: cache,
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    const session = AppSessionState(
+      accessToken: 'token',
+      userId: 'user-local',
+      deviceId: 'device-local',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    );
+
+    test('the acked message is in the cache before its outbox record leaves it', () async {
+      final cache = _OutboxRemovalCache();
+      final controller = sender(_FakeVeilApiClient(), cache);
+      await controller.applySession(session);
+
+      await controller.sendText(conversationId: 'conv-1', body: 'hello');
+      await waitFor(() => cache.heldAtRemoval.isNotEmpty, reason: 'the send was acked and its record deleted');
+
+      final held = cache.heldAtRemoval.values.single;
+      expect(held.messages.map((message) => message.id), contains('srv-1'));
+      expect(held.conversation?.sessionState, isNotNull);
+      expect(held.conversation?.recipientBundle.identityPublicKey, isNotEmpty);
+    });
+
+    test('the session a send opened is in the cache as soon as the message is queued', () async {
+      final cache = _MemoryConversationCache();
+      // The relay refuses the send, so no ack writes anything.
+      final controller = sender(_FakeVeilApiClient(failSendAttempts: 1), cache);
+      await controller.applySession(session);
+
+      await controller.sendText(conversationId: 'conv-1', body: 'hello');
+
+      // No time has passed for a debounced write.
+      final cached = (await cache.readConversations()).where((item) => item.id == 'conv-1').singleOrNull;
+      expect(cached?.sessionState?.remoteDeviceId, 'device-selene-primary');
+      expect(cached?.recipientBundle.identityPublicKey, _testKey('pub-selene-primary'));
+      expect(await cache.readPendingMessages(), hasLength(1));
+    });
+  });
+
   test('sendText prefers the active device bundle from the local directory response',
       () async {
     final api = _FakeVeilApiClient();
@@ -1730,6 +1834,24 @@ class _FakeAttachmentTempFileStore implements AttachmentTempFileStore {
   @override
   Future<void> purgeAll() async {
     deletedPaths.add('__purged__');
+  }
+}
+
+/// Records, for each outbox record it deletes, what it held at that
+/// moment: what a process killed right after the delete starts from.
+class _OutboxRemovalCache extends _MemoryConversationCache {
+  final Map<String, ({ConversationPreview? conversation, List<ChatMessage> messages})> heldAtRemoval = {};
+
+  @override
+  Future<void> removePendingMessage(String clientMessageId) async {
+    final conversationId = _pendingMessages[clientMessageId]?.conversationId;
+    if (conversationId != null) {
+      heldAtRemoval[clientMessageId] = (
+        conversation: _conversations[conversationId],
+        messages: List<ChatMessage>.of(_messages[conversationId] ?? const []),
+      );
+    }
+    await super.removePendingMessage(clientMessageId);
   }
 }
 

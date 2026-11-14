@@ -13,6 +13,24 @@ import 'libsignal_bridge_adapter.dart' as libsignal_adapter;
 const String kCryptoAdapterSelection =
     String.fromEnvironment('VEIL_CRYPTO_ADAPTER', defaultValue: 'lib');
 
+/// What protects a build's messages, as a status screen tells the user.
+enum CryptoAdapterKind {
+  /// VEIL's own X3DH and Double Ratchet ([lib_adapter.LibCryptoAdapter]).
+  veilRatchet,
+
+  /// Signal's libsignal through the native bridge.
+  libsignal,
+
+  /// Anything else: a development or test adapter, not production crypto.
+  development,
+}
+
+CryptoAdapterKind cryptoAdapterKindOf(String adapterId) => switch (adapterId) {
+      lib_adapter.kLibCryptoAdapterId => CryptoAdapterKind.veilRatchet,
+      libsignal_adapter.kLibsignalAdapterId => CryptoAdapterKind.libsignal,
+      _ => CryptoAdapterKind.development,
+    };
+
 CryptoAdapter createConfiguredCryptoAdapter() =>
     createCryptoAdapterFor(kCryptoAdapterSelection);
 

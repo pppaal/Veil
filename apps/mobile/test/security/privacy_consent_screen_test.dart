@@ -47,4 +47,20 @@ void main() {
     expect(shown, isNot(contains('연락처, 통화 기록 등 디바이스 개인정보')));
     expect(shown, contains('휴대폰 주소록'));
   });
+
+  testWidgets('states the agreement once, in the screen language', (tester) async {
+    // The agreement sits under the lists, past the first screenful.
+    Future<String> agreement(Locale locale) async {
+      await consentText(tester, locale);
+      await tester.scrollUntilVisible(find.byType(Checkbox), 300, scrollable: find.byType(Scrollable).first);
+      return tester.widgetList<Text>(find.byType(Text)).map((text) => text.data ?? '').join('\n');
+    }
+
+    final english = await agreement(const Locale('en'));
+    expect('I agree to the collection and use'.allMatches(english), hasLength(1));
+
+    final korean = await agreement(const Locale('ko'));
+    expect('위 개인정보 수집·이용에 동의합니다.'.allMatches(korean), hasLength(1));
+    expect(korean, isNot(contains('I agree')));
+  });
 }

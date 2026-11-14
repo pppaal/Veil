@@ -3,10 +3,8 @@
 // a chat.
 
 import { shownHandle } from '../../domain/handles.js';
-import { $, el } from '../dom.js';
+import { $, el, isNarrowLayout } from '../dom.js';
 import { toast } from '../toast.js';
-
-const NARROW_LAYOUT = '(max-width: 720px)';
 
 // stack: src/app/messaging-stack.js (shownPeer names a tab); history:
 // src/app/services/history-sync.js.
@@ -41,7 +39,7 @@ export function createTabs({ store, stack, history }) {
   }
 
   function toggleSplit() {
-    if (window.matchMedia && window.matchMedia(NARROW_LAYOUT).matches) {
+    if (isNarrowLayout()) {
       toast('분할 보기는 데스크탑에서만 사용할 수 있어요', 'error');
       return;
     }

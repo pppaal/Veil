@@ -5,6 +5,11 @@ import { shownHandle } from '../domain/handles.js';
 
 export const $ = (id) => document.getElementById(id);
 
+// Whether the page is in the one-column layout app.css switches to at phone
+// width (its max-width: 720px block).
+const NARROW_LAYOUT = '(max-width: 720px)';
+export const isNarrowLayout = () => Boolean(window.matchMedia && window.matchMedia(NARROW_LAYOUT).matches);
+
 // el('div', { class, dataset, onclick, ...attributes }, children)
 export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);

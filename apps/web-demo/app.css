@@ -1093,6 +1093,11 @@ a { color: var(--accent); text-decoration: none; }
   .icon-btn-only-mobile { display: inline-flex !important; }
   #split-btn { display: none; }
   .panel-msgs { padding: 14px 12px; }
+  /* A frozen composer says why in its placeholder. Beside four buttons that
+     do nothing the reason was cut off after a line and a half: it gets the
+     whole row and two lines. */
+  .panel-input:has(textarea:disabled) > button { display: none; }
+  .panel-input textarea:disabled { min-height: 62px; }
 }
 @media (min-width: 721px) {
   .icon-btn-only-mobile { display: none !important; }

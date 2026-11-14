@@ -10,7 +10,7 @@ import { isGone, isShown } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { muteSecondsFromMinutes } from '../../domain/mute.js';
 import { reactionsByTarget } from '../../domain/reactions.js';
-import { $, avatarFor, el, emptyStateSvg } from '../dom.js';
+import { $, avatarFor, el, emptyStateSvg, isNarrowLayout } from '../dom.js';
 import { toast } from '../toast.js';
 import { holdTextKey } from './key-change-banner.js';
 
@@ -164,7 +164,8 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     const keyChanged = Boolean(directPeer && stack.trust.pendingChange(directPeer.userId));
     const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
     const legacyIdentity = isLegacyIdentity(state.me);
-    let placeholder = '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
+    // A phone has no room for the key hint, and no Enter key to explain.
+    let placeholder = isNarrowLayout() ? '메시지 입력' : '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
     if (!directPeer) placeholder = t('group.composerFrozen');
     if (hold) placeholder = t(holdTextKey(hold, 'composerFrozen'));
     if (legacyIdentity) placeholder = t('legacy.composerFrozen');

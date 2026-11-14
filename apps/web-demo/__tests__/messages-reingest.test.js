@@ -71,6 +71,22 @@ describe('reingestInPlace', () => {
     expect(list[0].editCount).toBe(1);
   });
 
+  it('shows our edit when its relay echo was applied first with the old text', async () => {
+    const { messages, list, raw, opens } = setup();
+    const edited = { ...raw, ciphertext: 'c1', nonce: 'n1', editedAt: new Date().toISOString() };
+
+    // The echo carries the new ciphertext but opens the content stored
+    // before the edit was remembered.
+    const echo = messages.reingestInPlace(MESSAGE_ID, edited, {});
+    await vi.waitFor(() => expect(opens).toHaveLength(1));
+    opens[0].resolve({ content: textContent('original body') });
+    await echo;
+    expect(list[0].displayText).toBe('original body');
+
+    await messages.reingestInPlace(MESSAGE_ID, edited, { content: textContent('edited body'), editCount: 1 });
+    expect(list[0].displayText).toBe('edited body');
+  });
+
   it('applies a re-ingest that nothing newer overtook', async () => {
     const { messages, list, raw, opens } = setup();
     const pending = messages.reingestInPlace(MESSAGE_ID, { ...raw, ciphertext: 'c2', nonce: 'n2' }, {});

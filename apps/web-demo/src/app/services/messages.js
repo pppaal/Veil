@@ -30,9 +30,17 @@ export function createMessages({ store, stack }) {
   const latestReingest = new Map();
 
   // `content` is passed only for our own sends, whose content we already hold.
+  // That content is authoritative, so no earlier view is reused for it: our
+  // own edit's echo from the relay can arrive before the edit is stored and
+  // leave a view with the new ciphertext but the old text.
   async function ingest(raw, { previous = null, content } = {}) {
     const open = content === undefined ? (envelope) => stack.secure.open(envelope) : async () => ({ content });
-    const view = await ingestMessage(raw, { open, retire: (envelope) => stack.secure.retire(envelope), media: stack.media, previous });
+    const view = await ingestMessage(raw, {
+      open,
+      retire: (envelope) => stack.secure.retire(envelope),
+      media: stack.media,
+      previous: content === undefined ? previous : null,
+    });
     if (previous && view.media !== null && view.media === previous.media) {
       for (const field of MEDIA_STATE_FIELDS) if (previous[field] !== undefined) view[field] = previous[field];
     }

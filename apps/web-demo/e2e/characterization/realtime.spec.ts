@@ -86,10 +86,11 @@ test.describe('realtime', () => {
     await rowOf(alice, 'are you there').click({ button: 'right' });
     await alice.page.locator('.msg-action-menu .msg-action-item', { hasText: '수정' }).click();
     await expect(rowOf(bob, 'are you there, really').locator('.msg-edited')).toHaveText('(수정됨)', { timeout: 5_000 });
-
-    // The sender's own bubble is not pinned here: the edit's push can land
-    // before the edited content is stored, and then the sender sees the old
-    // text (marked edited) until the next reload.
+    // The edit's push reaches the sender too, and it must not put the old
+    // text back on the sender's own bubble.
+    const own = alice.page.locator(`.panel-msgs .msg-row[data-msg-id="${messageId}"]`);
+    await expect(own.locator('.msg-edited')).toHaveText('(수정됨)', { timeout: 5_000 });
+    await expect(own.locator('.msg-text')).toHaveText('are you there, really');
     await alice.page.locator(`.panel-msgs .msg-row[data-msg-id="${messageId}"]`).click({ button: 'right' });
     await alice.page.locator('.msg-action-menu .msg-action-item.danger').click();
     await alice.page.click('#confirm-ok');

@@ -178,10 +178,12 @@ function build() {
   const gcmPlain = toHex(Buffer.from('attack at dawn — veil KAT plaintext', 'utf8'));
   const gcm = aes256gcmEncrypt(gcmKey, gcmIv, gcmAad, gcmPlain);
 
-  // --- Protocol-level KATs: the lib-x25519-aes256gcm-v3 derivation schedule ---
+  // --- Protocol-level KATs: the legacy v1 (lib-x25519-aes256gcm-v3) schedule ---
   //
   // These compose the primitives above exactly the way the production adapter
-  // does (docs/crypto-envelope-spec.md; reference lib_crypto_adapter.dart).
+  // still does for legacy v1 sessions (docs/crypto-envelope-spec.md § Legacy
+  // protocol v1; reference lib_crypto_adapter.dart). Protocol v2 has its own
+  // vectors (vectors.protocolV2).
   // Every HKDF label below ("veil-root-v2", "veil-chain-A-v2", ...) is wire
   // format: an implementation that drifts on any label, salt, field order, or
   // counter encoding will fail these vectors — which is the point.

@@ -89,7 +89,7 @@ port publishing except Caddy 80/443), and `.env.prod`-sourced secrets with
 ## Blocker (by design)
 
 **External cryptographic audit is incomplete.** `docs/production-deployment.md`
-and the boot gate both encode this. `LibCryptoAdapter` (`lib-x25519-aes256gcm-v3`)
+and the boot gate both encode this. `LibCryptoAdapter` (`lib-x3dh-x25519-aes256gcm-v4`)
 is wired and pinned by tests but has not had independent review. This is the
 intended gate; do not set `VEIL_AUDITED_CRYPTO_ATTESTED=true` to work around it.
 Nothing in this review changes that recommendation.

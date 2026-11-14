@@ -1,5 +1,6 @@
 # VEIL Caddy front-end. Two upstreams:
-#   - {$CADDY_PUBLIC_HOSTNAME}    → API + web demo + WS
+#   - {$CADDY_PUBLIC_HOSTNAME}    → API + WS + the one-time link viewer under
+#                                   /demo (a production API serves no web demo)
 #   - {$CADDY_S3_HOSTNAME}        → MinIO public endpoint for presigned PUT/GET
 #
 # Caddy auto-renews TLS via Let's Encrypt. Set ACME_EMAIL in .env.prod for
@@ -24,9 +25,8 @@
 	encode zstd gzip
 
 	# Security headers — denies framing, blocks MIME sniffing, opts into
-	# strict referrer policy. CSP is intentionally permissive in this
-	# revision (web demo loads its own JS+CSS); tighten once we ship a
-	# nonce-based pipeline.
+	# strict referrer policy. The CSP comes from the API: helmet's
+	# default-src 'none' in production, and the one-time link viewer's own.
 	#
 	# Referrer-Policy is only a default (`?`): the API answers no-referrer,
 	# and the one-time link viewer (/demo/s.html) depends on it. A plain set

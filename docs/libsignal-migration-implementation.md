@@ -164,8 +164,9 @@ import 'crypto_engine.dart';
 
 const _channel = MethodChannel('io.veil.crypto/bridge');
 
-/// Adapter id surfaced to the registry and metrics. Distinct from the old
-/// 'lib-x25519-aes256gcm-v3' so mixed-version sessions are detectable.
+/// Adapter id surfaced to the registry and metrics. Distinct from
+/// LibCryptoAdapter's 'lib-x3dh-x25519-aes256gcm-v4' (and the retired
+/// 'lib-x25519-aes256gcm-v3') so mixed-version sessions are detectable.
 const kLibsignalAdapterId = 'libsignal-v1';
 
 class LibsignalBridgeAdapter implements CryptoAdapter {
@@ -382,7 +383,8 @@ CryptoAdapter createConfiguredCryptoAdapter() {
 ## 7. Migration (session-state)
 
 - On first launch of a libsignal build, detect the stored adapter id. If it is
-  the old `lib-x25519-aes256gcm-v3`, **drop all persisted session snapshots** and
+  a `LibCryptoAdapter` id (`lib-x3dh-x25519-aes256gcm-v4`, or the retired
+  `lib-x25519-aes256gcm-v3`), **drop all persisted session snapshots** and
   clear the skipped-key stash — do not attempt to convert them.
 - Force re-bootstrap: next outbound message to each conversation runs
   `bootstrapSession`; inbound `PreKeySignalMessage` runs

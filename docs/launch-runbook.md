@@ -69,7 +69,7 @@ All three must finish clean. Any warning in analyze must be resolved, not suppre
 
 - [ ] External crypto audit complete and its findings remediated; the production API boots with `VEIL_ENV=production`, `VEIL_AUDITED_CRYPTO_ATTESTED=true` and `VEIL_AUDIT_REPORT_SHA256` naming the signed report. Before that, only invited testers on internal or closed tracks.
 - [ ] `puro flutter analyze` is clean.
-- [ ] `puro flutter test` is green (78/78 currently).
+- [ ] `puro flutter test` is green.
 - [ ] Privacy policy URL resolves publicly with both KO + EN.
 - [ ] In-app privacy consent screen lists the same categories of stored data as the privacy policy (KO + EN); the field-by-field list is [server-data-inventory.md](server-data-inventory.md), not the consent screen.
 - [ ] Account deletion path in Settings → verified end-to-end against staging DB.

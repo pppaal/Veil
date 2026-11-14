@@ -10,8 +10,9 @@ It does not authorize production release by itself.
 ## Status
 
 The mock-to-real replacement itself is COMPLETE: the production
-`LibCryptoAdapter` (`lib-x25519-aes256gcm-v3` — X25519 + AES-256-GCM +
-Ed25519 Double Ratchet) has shipped and is active in all runtime builds, with
+`LibCryptoAdapter` (`lib-x3dh-x25519-aes256gcm-v4` — protocol v2: X3DH with
+signed and one-time prekeys, then an X25519 + AES-256-GCM Double Ratchet,
+Ed25519 identities) has shipped and is active in all runtime builds, with
 the mock adapter retained for unit tests only. Only the external-audit steps
 (section 7, security review handoff, and the audit itself) remain open;
 production boot stays gated on `VEIL_AUDITED_CRYPTO_ATTESTED` until the

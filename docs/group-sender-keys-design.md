@@ -195,10 +195,11 @@ accepted without the user's approval.
 
 ## Why
 
-Today VEIL handles 1:1 chats with the double ratchet (mobile) or v2
-single-shot ECDH (web). Groups skip the ratchet entirely: every member
-encrypts to the same conversation key, derived once when the group was
-created and never rotated.
+When this design was written, VEIL handled 1:1 chats with the double
+ratchet (mobile) or a single-shot ECDH (web); both clients now speak
+protocol v2. Groups skipped the ratchet entirely, as groups created by older
+clients still do (the shared-key path): every member encrypts to the same
+conversation key, derived once when the group was created and never rotated.
 
 Failure modes:
 
@@ -215,12 +216,13 @@ Failure modes:
 4. **Authorship is implicit.** The conversation key alone does not bind
    a sender — a member could replay another member's ciphertext under
    their own deviceId and the receiver has no cryptographic way to
-   detect it. (Note: the 1:1 AEAD path **does** now bind `senderDeviceId`
-   — along with the ratchet public key and message counter — as associated
-   data, as of mobile adapter `lib-x25519-aes256gcm-v3`; see
-   `crypto-envelope-spec.md` → "AEAD associated data (header binding)". That
-   AAD binding authenticates the 1:1 header fields, but it does **not** by
-   itself give the *group* authorship guarantee described here: in a group,
+   detect it. (Note: the 1:1 AEAD path **does** bind `senderDeviceId`
+   — along with the conversation id, message type, envelope version and the
+   whole frame header — as associated data in protocol v2 (adapter
+   `lib-x3dh-x25519-aes256gcm-v4`; see `crypto-envelope-spec.md` → "AEAD
+   associated data (v4)"). That AAD binding authenticates the 1:1 header
+   fields, but it does **not** by itself give the *group* authorship
+   guarantee described here: in a group,
    every member holds the shared sender key, so binding `senderDeviceId` to a
    ciphertext a member produced does not stop a *different* member from
    re-encrypting content under their own key/header. Per-sender Ed25519

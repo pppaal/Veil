@@ -2,7 +2,7 @@
 
 VEIL is not production-ready yet. This checklist is the minimum path to get there without violating the product philosophy.
 
-The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true` and `VEIL_AUDIT_REPORT_SHA256` must name the signed audit report, and the production crypto adapter (`LibCryptoAdapter`, `lib-x25519-aes256gcm-v3`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
+The current API intentionally blocks `VEIL_ENV=production` at startup because `VEIL_AUDITED_CRYPTO_ATTESTED` is required to be `true` and `VEIL_AUDIT_REPORT_SHA256` must name the signed audit report, and the production crypto adapter (`LibCryptoAdapter`, `lib-x3dh-x25519-aes256gcm-v4`) has not yet completed external audit + remediation. The adapter itself is wired by default — the gate is on the audit, not on the implementation.
 
 ## 1. Complete external crypto audit and attestation
 
@@ -112,7 +112,7 @@ seconds.
 - Add migration automation for Prisma.
 - Publish API images from CI.
 - Add staged deployment with smoke checks against `/v1/health`.
-- Remove the production boot guard only after the mock auth and crypto adapters are fully replaced.
+- Keep the production boot guard. It is never removed: the attestation in section 1 (`VEIL_AUDITED_CRYPTO_ATTESTED=true` with `VEIL_AUDIT_REPORT_SHA256` naming the signed report) is what satisfies it.
 
 ## 7. Security review
 

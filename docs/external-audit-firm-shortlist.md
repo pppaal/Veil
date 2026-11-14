@@ -6,8 +6,8 @@ VEIL 의 production 게이트 (`VEIL_AUDITED_CRYPTO_ATTESTED`) 를 해제하기
 > ⚠️ 가격은 2026-04 기준 추정치. 정식 견적은 회사마다 NDA 후 산출.
 > "범위" 는 우리 입장에서 본 우선순위, 회사가 제안할 범위가 더 넓을 수
 > 있음. RFP 보내기 전에 `docs/external-security-review-packet.md` 와
+> `docs/crypto-envelope-spec.md` (프로토콜 v2 정규 스펙),
 > `docs/forward-secrecy-ratchet-design.md`,
-> `docs/envelope-v3-unified-spec.md`,
 > `docs/group-sender-keys-design.md`,
 > `docs/sealed-sender-design.md` 4종을 미리 첨부할 것.
 
@@ -20,7 +20,7 @@ VEIL 의 production 게이트 (`VEIL_AUDITED_CRYPTO_ATTESTED`) 를 해제하기
 - 추정 비용: $80K-$200K (4-8주)
 - 컨택: services@trailofbits.com 또는 RFP submission form
 - 우리 입장: 베타 단계 단일 dev 라 톱티어가 받을지 불확실. 먼저 작은
-  scoped engagement (envelope v3 spec 만, ratchet impl 만) 가능 여부
+  scoped engagement (프로토콜 v2 스펙만, ratchet impl 만) 가능 여부
   타진.
 
 ### NCC Group
@@ -113,15 +113,17 @@ VEIL 의 production 게이트 (`VEIL_AUDITED_CRYPTO_ATTESTED`) 를 해제하기
 
 ## RFP 핵심 항목
 
-- 우리 한 줄: "Private-beta E2E 메신저, X25519+AES-256-GCM, 모바일 더블
-  래칫 구현 완료, 웹 데모는 단순 envelope (v3 통합 작업 예정), 외부
-  감사 후 production 게이트 해제"
+- 우리 한 줄: "Private-beta E2E 메신저, 프로토콜 v2 (X3DH + 더블 래칫,
+  X25519+AES-256-GCM+Ed25519) 를 모바일과 웹이 구현, 모바일 새 그룹은
+  Sender Keys. 모두 외부 감사 전이며, production 서버는 감사 attestation
+  전까지 부팅을 거부"
 - 검토 범위 우선순위:
   1. `apps/mobile/lib/src/core/crypto/lib_crypto_adapter.dart` (실 구현)
-  2. `docs/forward-secrecy-ratchet-design.md` (현 ratchet 스펙)
-  3. `docs/envelope-v3-unified-spec.md` (다음 wire format)
-  4. `docs/group-sender-keys-design.md` (그룹 미구현, 설계만)
-  5. `docs/sealed-sender-design.md` (메타데이터 감축, 미구현)
+  2. `docs/crypto-envelope-spec.md` (프로토콜 v2 정규 스펙, 현 wire format,
+     웹 포팅은 `apps/web-demo/src/crypto/`)
+  3. `docs/forward-secrecy-ratchet-design.md` (ratchet 설계)
+  4. `docs/group-sender-keys-design.md` (모바일 구현, 감사 전)
+  5. `docs/sealed-sender-design.md` (재설계 중, 미구현)
   6. `apps/api/src/modules/auth` (challenge/verify)
   7. `apps/api/src/modules/device-transfer` (transfer + atomic revoke)
   8. `apps/api/src/modules/messages` (envelope routing)

@@ -424,7 +424,7 @@ describe('DevicesService', () => {
 
     await expect(
       service.updatePushToken('user-1', 'device-1', 'fcm-token-xyz'),
-    ).rejects.toBeInstanceOf(ForbiddenException);
+    ).rejects.toMatchObject({ status: 401, response: { code: 'device_not_active' } });
   });
 
   it("refuses to update a push token on another user's device", async () => {

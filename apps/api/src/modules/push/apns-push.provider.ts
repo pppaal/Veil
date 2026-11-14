@@ -1,7 +1,7 @@
 import { createPrivateKey, createSign } from 'node:crypto';
 import { connect } from 'node:http2';
 
-import { badRequest } from '../../common/errors/api-error';
+import { apiError } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 
 import { PUSH_DELIVERY_TIMEOUT_MS, type MessagePushHint, type PushProvider } from './push.types';
@@ -38,7 +38,7 @@ export class ApnsMetadataPushProvider implements PushProvider {
       !config.apnsKeyId ||
       !config.apnsPrivateKeyPem
     ) {
-      throw badRequest(
+      throw apiError(
         'internal_error',
         'APNs provider selected but required APNs credentials are missing',
       );

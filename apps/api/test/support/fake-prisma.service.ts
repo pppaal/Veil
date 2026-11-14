@@ -1194,6 +1194,8 @@ export class FakePrismaService {
         return one('attachment', (a) => a.id === row.attachmentId);
       case 'message.receipts':
         return many('messageReceipt', (r) => r.messageId === row.id);
+      case 'messageReceipt.message':
+        return one('message', (m) => m.id === row.messageId);
       case 'groupMeta.conversation':
       case 'channelMeta.conversation':
       case 'callRecord.conversation':

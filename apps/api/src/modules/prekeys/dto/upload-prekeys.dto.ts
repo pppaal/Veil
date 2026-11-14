@@ -16,6 +16,10 @@ import {
 // A device replenishes its pool in batches. 100 per call bounds the write and
 // a healthy client keeps ~100 outstanding, topping up when the count drops.
 export const MAX_PREKEYS_PER_UPLOAD = 100;
+// The most unused one-time prekeys a device may hold. Unused ones are never
+// swept, so without a cap one device could add rows without limit. Twice
+// what a client keeps, so a top-up of a pool that is not yet empty fits.
+export const MAX_UNCONSUMED_PREKEYS_PER_DEVICE = 200;
 // Signed base64 X25519 public keys are ~44 chars; allow generous slack for
 // wrapping/format markers without letting the column be abused as blob storage.
 export const MAX_PREKEY_PUBLIC_KEY_LENGTH = 512;

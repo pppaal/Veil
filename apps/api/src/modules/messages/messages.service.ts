@@ -92,11 +92,23 @@ export class MessagesService {
       throw apiError('envelope_context_mismatch', 'Envelope sender context mismatch');
     }
 
-    const { conversation } = await this.access.requireAccess(
-      auth.userId,
-      dto.conversationId,
-      'send',
-    );
+    const access = await this.access.requireMember(auth.userId, dto.conversationId);
+
+    // A retry of a message the relay already stored gets that message back
+    // before any rule a new send must meet: since it was accepted, the group
+    // may have switched to Sender Keys or the peer may have blocked, and the
+    // sender must not be told that a delivered message failed. Only a message
+    // stored in this conversation counts as the retry.
+    const existing = await this.findExistingMessage(auth.deviceId, dto);
+    if (existing) {
+      return {
+        message: toMessageSummary(existing, { viewerUserId: auth.userId }),
+        idempotent: true,
+      };
+    }
+
+    await this.access.authorize(access, 'send');
+    const { conversation } = access;
     assertEnvelopeAccepted(conversation, dto.envelope, this.config.isProduction);
 
     const memberUserIds = await this.memberUserIds(dto.conversationId);
@@ -110,14 +122,6 @@ export class MessagesService {
         'direct_peer_mismatch',
         'Envelope recipient does not match direct conversation peer',
       );
-    }
-
-    const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
-    if (existing) {
-      return {
-        message: toMessageSummary(existing, { viewerUserId: auth.userId }),
-        idempotent: true,
-      };
     }
 
     // Group Sender Keys epoch gate. Runs after the idempotency short-circuit
@@ -439,9 +443,18 @@ export class MessagesService {
       }
       // A concurrent retry of the same (device, clientMessageId) won the
       // insert; hand back the stored message instead of an error.
-      const existing = await this.findExistingMessage(auth.deviceId, dto.clientMessageId);
+      const existing = await this.findExistingMessage(auth.deviceId, dto);
       if (existing) {
         return { message: existing, idempotent: true };
+      }
+      const usedElsewhere = await this.prisma.message.count({
+        where: { senderDeviceId: auth.deviceId, clientMessageId: dto.clientMessageId },
+      });
+      if (usedElsewhere > 0) {
+        throw apiError(
+          'resource_conflict',
+          'This clientMessageId already names a message in another conversation',
+        );
       }
       // The only other unique key is (conversation_id, conversation_order),
       // so the counter is behind a row written without it.
@@ -514,10 +527,10 @@ export class MessagesService {
 
   private findExistingMessage(
     senderDeviceId: string,
-    clientMessageId: string,
+    { conversationId, clientMessageId }: Pick<SendMessageDto, 'conversationId' | 'clientMessageId'>,
   ): Promise<MessageSummaryRow | null> {
     return this.prisma.message.findFirst({
-      where: { senderDeviceId, clientMessageId },
+      where: { senderDeviceId, clientMessageId, conversationId },
       include: MESSAGE_SUMMARY_INCLUDE,
     });
   }

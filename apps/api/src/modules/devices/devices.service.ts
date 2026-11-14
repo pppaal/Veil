@@ -9,7 +9,7 @@ import type {
 import { AppConfigService } from '../../common/config/app-config.service';
 import { utcDayStart } from '../../common/device-activity';
 import { revokeDevice } from '../../common/device-revocation';
-import { forbidden, notFound } from '../../common/errors/api-error';
+import { apiError, forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
@@ -93,7 +93,7 @@ export class DevicesService {
     }
 
     if (!device.isActive || device.revokedAt) {
-      throw forbidden('device_not_active', 'Device is not active');
+      throw apiError('device_not_active', 'Device is not active');
     }
 
     const now = new Date();

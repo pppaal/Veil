@@ -357,14 +357,27 @@ export class GroupsService {
     // deletes the groups it names, so it must name the current owner, never a
     // former one who may since have left.
     await this.prisma.$transaction(async (tx) => {
-      await tx.conversationMember.update({
-        where: { conversationId_userId: { conversationId, userId: dto.userId } },
-        data: { role: 'owner' },
-      });
-      await tx.conversationMember.update({
-        where: { conversationId_userId: { conversationId, userId: auth.userId } },
+      // The owner check above ran outside this transaction. The demotion
+      // matches only while the caller is still the owner, and its row lock
+      // makes a concurrent transfer wait and then match nothing, so two
+      // transfers can never leave the group with two owners.
+      const demoted = await tx.conversationMember.updateMany({
+        where: { conversationId, userId: auth.userId, role: 'owner' },
         data: { role: target.role },
       });
+      if (demoted.count !== 1) {
+        throw apiError('conversation_role_required', 'Only the owner can transfer ownership');
+      }
+      const promoted = await tx.conversationMember.updateMany({
+        where: { conversationId, userId: dto.userId },
+        data: { role: 'owner' },
+      });
+      if (promoted.count !== 1) {
+        throw apiError(
+          'conversation_membership_required',
+          'The new owner must be a current member',
+        );
+      }
       await tx.groupMeta.update({
         where: { conversationId },
         data: { createdByUserId: dto.userId },

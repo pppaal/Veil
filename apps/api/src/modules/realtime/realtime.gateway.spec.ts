@@ -197,6 +197,7 @@ describe('RealtimeGateway handshake', () => {
   const handshakeGateway = (
     userStatus: 'active' | 'locked' | 'revoked',
     expiresInSeconds = 3600,
+    session: { sid?: string; liveFamilies?: readonly string[] } = {},
   ) => {
     const verifyAsync = jest.fn(async () => ({
       sub: 'u1',
@@ -204,6 +205,7 @@ describe('RealtimeGateway handshake', () => {
       handle: 'alice',
       jti: 'j1',
       exp: Math.floor(Date.now() / 1000) + expiresInSeconds,
+      ...(session.sid ? { sid: session.sid } : {}),
     }));
     const { gw } = buildGateway({
       jwtService: { verifyAsync },
@@ -219,7 +221,12 @@ describe('RealtimeGateway handshake', () => {
           }),
         },
       },
-      ephemeralStore: { getJson: async () => null },
+      ephemeralStore: {
+        getJson: async (key: string) => {
+          const family = /^auth:refresh-family:(.+)$/.exec(key)?.[1];
+          return family && session.liveFamilies?.includes(family) ? { deviceId: 'd1' } : null;
+        },
+      },
     });
     return { gw, verifyAsync };
   };
@@ -234,6 +241,22 @@ describe('RealtimeGateway handshake', () => {
     await gw.handleConnection(buildClient({ auth: { token: 'tok' } }, () => (disconnected = true)));
     expect(disconnected).toBe(true);
     expect(gw.connectedDeviceIdsForUser('u1')).toEqual([]);
+  });
+
+  // Logout revokes the device's refresh families; a token issued under one
+  // must not open a new socket for the rest of its lifetime.
+  it('refuses a token whose session (refresh family) has been revoked', async () => {
+    const revoked = handshakeGateway('active', 3600, { sid: 'f1', liveFamilies: [] });
+    let disconnected = false;
+    await revoked.gw.handleConnection(
+      buildClient({ auth: { token: 'tok' } }, () => (disconnected = true)),
+    );
+    expect(disconnected).toBe(true);
+    expect(revoked.gw.hasConnectedUser('u1')).toBe(false);
+
+    const live = handshakeGateway('active', 3600, { sid: 'f1', liveFamilies: ['f1'] });
+    await live.gw.handleConnection(buildClient({ auth: { token: 'tok' } }, jest.fn()));
+    expect(live.gw.hasConnectedUser('u1')).toBe(true);
   });
 
   it('query-string token rejected', async () => {

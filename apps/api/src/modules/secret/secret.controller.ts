@@ -6,10 +6,17 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
+import {
+  clientAddress,
+  clientNetwork,
+  type ClientAddressRequest,
+} from '../../common/client-address';
+import { AppConfigService } from '../../common/config/app-config.service';
 import { Public } from '../../common/guards/public.decorator';
 import { CreateSecretDto } from './dto/create-secret.dto';
 import { SecretService } from './secret.service';
@@ -29,13 +36,22 @@ interface ReadSecretResponse {
 @ApiTags('secret')
 @Controller('s')
 export class SecretController {
-  constructor(private readonly secretService: SecretService) {}
+  constructor(
+    private readonly secretService: SecretService,
+    private readonly config: AppConfigService,
+  ) {}
 
+  // The per-minute limit is per address; the daily quota in SecretService is
+  // per network (an IPv6 /64 counts once), from the same configured source.
   @Public()
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @Post()
-  async create(@Body() dto: CreateSecretDto): Promise<CreateSecretResponse> {
-    const created = await this.secretService.create(dto.ciphertext, dto.ttlSeconds);
+  async create(
+    @Body() dto: CreateSecretDto,
+    @Req() request: ClientAddressRequest,
+  ): Promise<CreateSecretResponse> {
+    const network = clientNetwork(clientAddress(request, this.config.clientIpSource));
+    const created = await this.secretService.create(dto.ciphertext, dto.ttlSeconds, network);
     return { id: created.id, expiresAt: created.expiresAt.toISOString() };
   }
 

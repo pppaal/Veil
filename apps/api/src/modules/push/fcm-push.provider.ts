@@ -1,6 +1,6 @@
 import { createPrivateKey, createSign } from 'node:crypto';
 
-import { badRequest } from '../../common/errors/api-error';
+import { apiError } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 
 import { PUSH_DELIVERY_TIMEOUT_MS, type MessagePushHint, type PushProvider } from './push.types';
@@ -37,7 +37,7 @@ export class FcmMetadataPushProvider implements PushProvider {
 
   constructor(private readonly config: AppConfigService) {
     if (!config.fcmProjectId || !config.fcmServiceAccountJson) {
-      throw badRequest(
+      throw apiError(
         'internal_error',
         'FCM provider selected but required FCM credentials are missing',
       );

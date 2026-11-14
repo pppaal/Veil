@@ -11,6 +11,7 @@ import type { Server, Socket } from 'socket.io';
 import type { RealtimeEventMap } from '@veil/contracts';
 import { isUUID } from 'class-validator';
 
+import { isAccessTokenRevoked } from '../../common/access-token-revocation';
 import { AppConfigService } from '../../common/config/app-config.service';
 import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
@@ -23,6 +24,7 @@ interface AccessTokenPayload {
   handle: string;
   jti?: string;
   exp?: number;
+  sid?: string;
 }
 
 type TypingEvent = 'typing.start' | 'typing.stop';
@@ -37,8 +39,6 @@ export const MAX_INBOUND_FRAME_BYTES = 128 * 1024;
 // Calls that can still be set up or are under way; signals for any other call
 // are dropped.
 const SIGNALLING_CALL_STATUSES = new Set(['ringing', 'active']);
-
-const jtiBlacklistKey = (jti: string): string => `auth:blacklist:${jti}`;
 
 @Injectable()
 @WebSocketGateway({
@@ -102,17 +102,12 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
         issuer: this.config.jwtIssuer,
       });
 
-      // Reject sockets whose access token has been logged out. The same
-      // blacklist key the HTTP guard checks; without this a logged-out
-      // session keeps its WS channel alive until the socket disconnects.
-      if (payload.jti) {
-        const blacklisted = await this.ephemeralStore.getJson<unknown>(
-          jtiBlacklistKey(payload.jti),
-        );
-        if (blacklisted) {
-          client.disconnect(true);
-          return;
-        }
+      // Reject sockets whose access token has been revoked, by the same
+      // check the HTTP guard makes; without it a logged-out session could
+      // open a new realtime channel for the rest of its token's lifetime.
+      if (await isAccessTokenRevoked(this.ephemeralStore, payload)) {
+        client.disconnect(true);
+        return;
       }
 
       const device = await this.prisma.device.findUnique({

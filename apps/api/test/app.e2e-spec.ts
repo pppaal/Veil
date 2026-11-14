@@ -1125,6 +1125,119 @@ describe('VEIL API (e2e)', () => {
     ).toBe(true);
   });
 
+  // A device signed in twice holds two sessions, each with its own access
+  // token. Logout from one ends both, refresh tokens and access tokens alike.
+  it('logout ends the access tokens of every session of the device', async () => {
+    const api = request(app.getHttpServer());
+    const keyPair = keyHelper.createKeyPair();
+    const registered = await api.post('/v1/auth/register').send({
+      handle: 'twosessions',
+      deviceName: 'Pixel',
+      platform: 'android',
+      publicIdentityKey: 'pub-two',
+      signedPrekeyBundle: 'prekey-two',
+      authPublicKey: keyPair.authPublicKey,
+    });
+    expect(registered.status).toBe(201);
+    const login = async () => {
+      const challenge = await api
+        .post('/v1/auth/challenge')
+        .send({ handle: 'twosessions', deviceId: registered.body.deviceId });
+      const verified = await api.post('/v1/auth/verify').send({
+        challengeId: challenge.body.challengeId,
+        deviceId: registered.body.deviceId,
+        signature: keyHelper.createProof({
+          challenge: challenge.body.challenge,
+          authPrivateKey: keyPair.authPrivateKey,
+        }),
+      });
+      expect(verified.status).toBe(201);
+      return verified.body as { accessToken: string; refreshToken: string };
+    };
+    const first = await login();
+    const second = await login();
+    await api.get('/v1/devices').set('Authorization', `Bearer ${second.accessToken}`).expect(200);
+
+    await api
+      .post('/v1/auth/logout')
+      .set('Authorization', `Bearer ${first.accessToken}`)
+      .send({})
+      .expect(201);
+
+    for (const session of [first, second]) {
+      const refused = await api
+        .get('/v1/devices')
+        .set('Authorization', `Bearer ${session.accessToken}`);
+      expect(refused.status).toBe(401);
+      expect(refused.body.code).toBe('token_revoked');
+    }
+    const refresh = await api.post('/v1/auth/refresh').send({ refreshToken: second.refreshToken });
+    expect(refresh.status).toBe(401);
+  });
+
+  it('refuses a mute longer than ten years and malformed safety ids with 400, not 500', async () => {
+    const api = request(app.getHttpServer());
+    const keyPairA = keyHelper.createKeyPair();
+    const keyPairB = keyHelper.createKeyPair();
+    const register = (handle: string, authPublicKey: string) =>
+      api.post('/v1/auth/register').send({
+        handle,
+        deviceName: 'Pixel',
+        platform: 'android',
+        publicIdentityKey: `pub-${handle}`,
+        signedPrekeyBundle: `prekey-${handle}`,
+        authPublicKey,
+      });
+    const registerA = await register('muter', keyPairA.authPublicKey);
+    await register('mutee', keyPairB.authPublicKey);
+    const challenge = await api
+      .post('/v1/auth/challenge')
+      .send({ handle: 'muter', deviceId: registerA.body.deviceId });
+    const verified = await api.post('/v1/auth/verify').send({
+      challengeId: challenge.body.challengeId,
+      deviceId: registerA.body.deviceId,
+      signature: keyHelper.createProof({
+        challenge: challenge.body.challenge,
+        authPrivateKey: keyPairA.authPrivateKey,
+      }),
+    });
+    const bearer = `Bearer ${verified.body.accessToken}`;
+    const conversation = await api
+      .post('/v1/conversations/direct')
+      .set('Authorization', bearer)
+      .send({ peerHandle: 'mutee' });
+    const conversationId = conversation.body.conversation.id;
+
+    const tenYears = 10 * 365 * 24 * 60 * 60;
+    const longest = await api
+      .post(`/v1/safety/mutes/${conversationId}`)
+      .set('Authorization', bearer)
+      .send({ mutedForSeconds: tenYears });
+    expect(longest.status).toBe(201);
+    expect(longest.body.mute.conversationId).toBe(conversationId);
+
+    for (const mutedForSeconds of [tenYears + 1, 9e15]) {
+      const refused = await api
+        .post(`/v1/safety/mutes/${conversationId}`)
+        .set('Authorization', bearer)
+        .send({ mutedForSeconds });
+      expect(refused.status).toBe(400);
+      expect(refused.body.code).toBe('validation_failed');
+    }
+
+    const badMuteId = await api
+      .post('/v1/safety/mutes/not-a-uuid')
+      .set('Authorization', bearer)
+      .send({ mutedForSeconds: 60 });
+    expect(badMuteId.status).toBe(400);
+    expect(badMuteId.body.code).toBe('validation_failed');
+    const badUnblockId = await api
+      .delete('/v1/safety/blocks/not-a-uuid')
+      .set('Authorization', bearer);
+    expect(badUnblockId.status).toBe(400);
+    expect(badUnblockId.body.code).toBe('validation_failed');
+  });
+
   it('accepts an inline-voice-sized message body over 100KB (body limit)', async () => {
     const api = request(app.getHttpServer());
     const keyPairA = keyHelper.createKeyPair();

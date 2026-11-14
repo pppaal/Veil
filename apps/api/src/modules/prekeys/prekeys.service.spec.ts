@@ -1,6 +1,7 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 
 import { DirectoryBudget } from './directory-budget';
+import { MAX_UNCONSUMED_PREKEYS_PER_DEVICE } from './dto/upload-prekeys.dto';
 import { PrekeysService } from './prekeys.service';
 import { FakeEphemeralStoreService, FakeSafetyService } from '../../../test/support/fake-services';
 
@@ -20,6 +21,8 @@ type Mocks = {
 function makePrisma(m: Mocks) {
   const prisma = {
     $transaction: async (run: (tx: unknown) => Promise<unknown>) => run(prisma),
+    // The device row lock an upload takes.
+    $queryRaw: jest.fn(async () => [{ '?column?': 1 }]),
     device: {
       findUnique: m.device?.findUnique ?? jest.fn(),
       findMany: m.device?.findMany ?? jest.fn(),
@@ -35,11 +38,11 @@ function makePrisma(m: Mocks) {
   return prisma as never;
 }
 
-const makeService = (prisma: never) =>
+const makeService = (prisma: never, safety = new FakeSafetyService()) =>
   new PrekeysService(
     prisma,
     new DirectoryBudget(new FakeEphemeralStoreService() as never),
-    new FakeSafetyService() as never,
+    safety as never,
   );
 
 const USER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -70,6 +73,40 @@ describe('PrekeysService.upload', () => {
     expect(createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
   });
 
+  // Unused prekeys are never swept, so the pool a device may hold is capped.
+  it('refuses a batch that would leave the device over the unused-prekey cap', async () => {
+    const createMany = jest.fn(async () => ({ count: 100 }));
+    const count = jest.fn(async () => MAX_UNCONSUMED_PREKEYS_PER_DEVICE + 1);
+    const svc = makeService(
+      makePrisma({
+        device: { findUnique: jest.fn(async () => activeDevice) },
+        oneTimePrekey: { createMany, count },
+      }),
+    );
+
+    await expect(svc.upload(USER, DEVICE, [{ keyId: 1, publicKey: 'pk' }])).rejects.toMatchObject({
+      status: 400,
+      response: { code: 'validation_failed' },
+    });
+  });
+
+  it('accepts a batch that fills the pool exactly to the cap', async () => {
+    const svc = makeService(
+      makePrisma({
+        device: { findUnique: jest.fn(async () => activeDevice) },
+        oneTimePrekey: {
+          createMany: jest.fn(async () => ({ count: 100 })),
+          count: jest.fn(async () => MAX_UNCONSUMED_PREKEYS_PER_DEVICE),
+        },
+      }),
+    );
+
+    await expect(svc.upload(USER, DEVICE, [{ keyId: 1, publicKey: 'pk' }])).resolves.toEqual({
+      uploaded: 100,
+      available: MAX_UNCONSUMED_PREKEYS_PER_DEVICE,
+    });
+  });
+
   it('rejects an upload for a device the caller does not own', async () => {
     const svc = makeService(
       makePrisma({
@@ -87,9 +124,28 @@ describe('PrekeysService.upload', () => {
         device: { findUnique: jest.fn(async () => ({ ...activeDevice, revokedAt: new Date() })) },
       }),
     );
-    await expect(svc.upload(USER, DEVICE, [{ keyId: 1, publicKey: 'pk' }])).rejects.toBeInstanceOf(
-      ForbiddenException,
-    );
+    await expect(svc.upload(USER, DEVICE, [{ keyId: 1, publicKey: 'pk' }])).rejects.toMatchObject({
+      status: 401,
+      response: { code: 'device_not_active' },
+    });
+  });
+
+  // The device row lock re-checks the device: when a revocation committed
+  // while the upload waited for the lock, the locked select finds no active row.
+  it('stores nothing when the device is no longer active once the lock is granted', async () => {
+    const createMany = jest.fn(async () => ({ count: 1 }));
+    const prisma = makePrisma({
+      device: { findUnique: jest.fn(async () => activeDevice) },
+      oneTimePrekey: { createMany, count: jest.fn(async () => 1) },
+    }) as unknown as { $queryRaw: jest.Mock };
+    prisma.$queryRaw.mockResolvedValue([]);
+    const svc = makeService(prisma as never);
+
+    await expect(svc.upload(USER, DEVICE, [{ keyId: 1, publicKey: 'pk' }])).rejects.toMatchObject({
+      status: 401,
+      response: { code: 'device_not_active' },
+    });
+    expect(createMany).not.toHaveBeenCalled();
   });
 });
 
@@ -143,6 +199,31 @@ describe('PrekeysService.claim', () => {
     expect(result).toEqual({ deviceId: DEVICE, prekey: { keyId: 2, publicKey: 'pk2' } });
     expect(updateMany).toHaveBeenCalledTimes(2);
   });
+
+  // A block either way answers exactly like an unknown handle, and spends
+  // none of the blocker's prekeys.
+  it.each(['the target blocked the requester', 'the requester blocked the target'])(
+    'answers like an unknown handle when %s',
+    async (direction) => {
+      const safety = new FakeSafetyService();
+      if (direction === 'the target blocked the requester')
+        safety.setBlocked(USER, REQUESTER.userId);
+      else safety.setBlocked(REQUESTER.userId, USER);
+      const findFirst = jest.fn();
+      const svc = makeService(
+        makePrisma({ ...resolvableUser, oneTimePrekey: { findFirst } }),
+        safety,
+      );
+      const unknown = makeService(makePrisma({ user: { findUnique: jest.fn(async () => null) } }));
+
+      const blockedRefusal = await svc.claim(REQUESTER, 'alice').catch((error) => error);
+      const unknownRefusal = await unknown.claim(REQUESTER, 'ghost').catch((error) => error);
+
+      expect(blockedRefusal.getStatus()).toBe(404);
+      expect(blockedRefusal.getResponse()).toEqual(unknownRefusal.getResponse());
+      expect(findFirst).not.toHaveBeenCalled();
+    },
+  );
 
   it('rejects a claim for an unknown handle', async () => {
     const svc = makeService(makePrisma({ user: { findUnique: jest.fn(async () => null) } }));

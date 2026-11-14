@@ -14,7 +14,7 @@ import { Prisma } from '@prisma/client';
 import { AppConfigService } from '../../common/config/app-config.service';
 import { utcDayStart } from '../../common/device-activity';
 import { revokeDevice } from '../../common/device-revocation';
-import { conflict, forbidden, notFound, unauthorized } from '../../common/errors/api-error';
+import { apiError, forbidden, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from '../auth/device-auth-verifier';
@@ -295,7 +295,7 @@ export class DeviceTransferService {
     );
     if (!isFirstClaim) {
       await this.invalidateSession(dto.sessionId);
-      throw conflict(
+      throw apiError(
         'transfer_claim_invalid',
         'Transfer session was claimed twice and has been invalidated; start a new transfer',
       );

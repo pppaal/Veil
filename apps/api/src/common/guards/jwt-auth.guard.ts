@@ -4,6 +4,7 @@ import { Reflector } from '@nestjs/core';
 
 import type { AuthenticatedRequest } from './authenticated-request';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { isAccessTokenRevoked } from '../access-token-revocation';
 import { AppConfigService } from '../config/app-config.service';
 import { recordDeviceSeen, utcDayStart } from '../device-activity';
 import { EphemeralStoreService } from '../ephemeral-store.service';
@@ -16,6 +17,7 @@ interface AccessTokenPayload {
   handle: string;
   jti?: string;
   exp?: number;
+  sid?: string;
 }
 
 @Injectable()
@@ -79,13 +81,8 @@ export class JwtAuthGuard implements CanActivate {
         issuer: this.config.jwtIssuer,
       });
 
-      if (payload.jti) {
-        const blacklisted = await this.ephemeralStore.getJson<unknown>(
-          `auth:blacklist:${payload.jti}`,
-        );
-        if (blacklisted) {
-          throw unauthorized('token_revoked', 'Access token has been revoked');
-        }
+      if (await isAccessTokenRevoked(this.ephemeralStore, payload)) {
+        throw unauthorized('token_revoked', 'Access token has been revoked');
       }
 
       const device = await this.prisma.device.findUnique({

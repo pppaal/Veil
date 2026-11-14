@@ -78,7 +78,8 @@ export type VeilErrorCode =
   | 'profile_e2e_pending'
   | 'story_audience_invalid'
   | 'origin_not_allowed'
-  | 'secret_storage_full';
+  | 'secret_storage_full'
+  | 'secret_quota_exceeded';
 
 // The single HTTP status of every error code. Clients branch on `code`; the
 // status is derived from this table so one code can never surface with two
@@ -158,6 +159,9 @@ export const ERROR_CATALOG: Readonly<Record<VeilErrorCode, number>> = Object.fre
   // POST /s: one-time links already hold the relay's whole budget for them;
   // a new one fits once others are opened or expire.
   secret_storage_full: 503,
+  // POST /s: the caller's network (an IPv4 address or an IPv6 /64) has used
+  // its one-time-link quota for the UTC day; it renews at 00:00 UTC.
+  secret_quota_exceeded: 429,
 });
 
 export interface RegisterRequest {

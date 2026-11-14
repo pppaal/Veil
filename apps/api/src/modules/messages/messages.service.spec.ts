@@ -221,6 +221,28 @@ describe('MessagesService', () => {
       });
     });
 
+    // The retry lookup is scoped to the conversation: a clientMessageId that
+    // already names the device's message elsewhere is not a retry of this
+    // send, so it neither hands back that message nor skips this
+    // conversation's send rules.
+    it('does not answer a send with the same clientMessageId in another conversation', async () => {
+      const { service, prisma, alice, bob, sendFromAlice } = directFixture();
+      const first = await sendFromAlice({ clientMessageId: 'client-reused' });
+      const groupId = prisma.seedConversation('group', [alice.userId, bob.userId]);
+
+      await expect(
+        service.send(
+          alice,
+          buildSendDto({
+            conversationId: groupId,
+            sender: alice,
+            clientMessageId: 'client-reused',
+          }),
+        ),
+      ).rejects.toMatchObject({ status: 409, response: { code: 'resource_conflict' } });
+      expect(prisma.messages.map((message) => message.id)).toEqual([first.message.id]);
+    });
+
     it('still refuses a retry from someone who is no longer a member', async () => {
       const { prisma, alice, conversationId, sendFromAlice } = directFixture();
       await sendFromAlice({ clientMessageId: 'client-then-left' });

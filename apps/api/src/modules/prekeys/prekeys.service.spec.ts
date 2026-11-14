@@ -129,6 +129,24 @@ describe('PrekeysService.upload', () => {
       response: { code: 'device_not_active' },
     });
   });
+
+  // The device row lock re-checks the device: when a revocation committed
+  // while the upload waited for the lock, the locked select finds no active row.
+  it('stores nothing when the device is no longer active once the lock is granted', async () => {
+    const createMany = jest.fn(async () => ({ count: 1 }));
+    const prisma = makePrisma({
+      device: { findUnique: jest.fn(async () => activeDevice) },
+      oneTimePrekey: { createMany, count: jest.fn(async () => 1) },
+    }) as unknown as { $queryRaw: jest.Mock };
+    prisma.$queryRaw.mockResolvedValue([]);
+    const svc = makeService(prisma as never);
+
+    await expect(svc.upload(USER, DEVICE, [{ keyId: 1, publicKey: 'pk' }])).rejects.toMatchObject({
+      status: 401,
+      response: { code: 'device_not_active' },
+    });
+    expect(createMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('PrekeysService.claim', () => {

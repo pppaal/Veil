@@ -132,6 +132,59 @@ export class EphemeralStoreService implements OnModuleDestroy {
   }
 
   /**
+   * Adds each amount (which may be negative) to its counter in one atomic
+   * step and returns the new totals. The counters are fields of one hash that
+   * expires at an absolute time (PEXPIREAT). Callers pass the same expiry for
+   * every write to a key, such as the end of the UTC day the key counts, so
+   * the expiry records no write time; an expiry already past removes the key.
+   */
+  async incrementFieldsUntil<F extends string>(
+    key: string,
+    amounts: Readonly<Record<F, number>>,
+    expiresAtMs: number,
+  ): Promise<Record<F, number>> {
+    this.purgeExpiredFallbackEntries();
+    const fields = Object.keys(amounts) as F[];
+    const totals = {} as Record<F, number>;
+    if (this.redis) {
+      const transaction = this.redis.multi();
+      for (const field of fields) {
+        transaction.hincrby(key, field, amounts[field]);
+      }
+      transaction.pexpireat(key, expiresAtMs);
+      const results = (await transaction.exec()) ?? [];
+      fields.forEach((field, index) => {
+        const [error, total] = results[index] ?? [new Error('Redis HINCRBY returned no total')];
+        if (error || typeof total !== 'number') {
+          throw error ?? new Error('Redis HINCRBY returned no total');
+        }
+        totals[field] = total;
+      });
+      const [expireError] = results[fields.length] ?? [new Error('Redis PEXPIREAT did not run')];
+      if (expireError) {
+        throw expireError;
+      }
+      return totals;
+    }
+
+    const entry = this.fallback.get(key);
+    const current: Partial<Record<F, number>> =
+      entry && entry.expiresAt > Date.now() ? JSON.parse(entry.value) : {};
+    for (const field of fields) {
+      totals[field] = (current[field] ?? 0) + amounts[field];
+    }
+    if (expiresAtMs > Date.now()) {
+      this.fallback.set(key, {
+        value: JSON.stringify({ ...current, ...totals }),
+        expiresAt: expiresAtMs,
+      });
+    } else {
+      this.fallback.delete(key);
+    }
+    return totals;
+  }
+
+  /**
    * Writes the value only when the key is absent (SET NX EX). Returns false
    * when another writer got there first, so concurrent callers race to a
    * single winner instead of silently overwriting each other.

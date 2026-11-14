@@ -49,8 +49,17 @@ export class PrekeysService {
 
     return this.prisma.$transaction(async (tx) => {
       // One upload per device at a time, so concurrent uploads cannot each
-      // pass the cap below on a count that misses the other's rows.
-      await tx.$queryRaw`SELECT 1 FROM devices WHERE id = ${deviceId}::uuid FOR UPDATE`;
+      // pass the cap below on a count that misses the other's rows. The lock
+      // also orders the upload after a revocation that holds the row: the
+      // device is checked again once the lock is granted, so an upload that
+      // waited behind revokeDevice stores nothing for the revoked device.
+      const locked = await tx.$queryRaw<unknown[]>`
+        SELECT 1 FROM devices
+         WHERE id = ${deviceId}::uuid AND is_active AND revoked_at IS NULL
+           FOR UPDATE`;
+      if (locked.length === 0) {
+        throw apiError('device_not_active', 'Device is not active');
+      }
 
       const result = await tx.oneTimePrekey.createMany({
         data: prekeys.map((prekey) => ({

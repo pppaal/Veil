@@ -36,6 +36,20 @@ export class FakeEphemeralStoreService {
     this.values.set(key, JSON.stringify(value));
     return true;
   }
+
+  async incrementFieldsUntil<F extends string>(
+    key: string,
+    amounts: Readonly<Record<F, number>>,
+    _expiresAtMs: number,
+  ): Promise<Record<F, number>> {
+    const current = JSON.parse(this.values.get(key) ?? '{}') as Partial<Record<F, number>>;
+    const totals = {} as Record<F, number>;
+    for (const field of Object.keys(amounts) as F[]) {
+      totals[field] = (current[field] ?? 0) + amounts[field];
+    }
+    this.values.set(key, JSON.stringify({ ...current, ...totals }));
+    return totals;
+  }
 }
 
 export class FakeConfigService {

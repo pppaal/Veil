@@ -124,6 +124,7 @@ void main() {
                   focusNode: focusNode,
                   enabled: true,
                   onSubmit: () {},
+                  label: 'Type a message',
                   trailing: VeilButton(
                     expanded: false,
                     label: 'Send',

@@ -64,8 +64,9 @@ No demo credentials are needed because **there are no credentials.** The flow:
      offers a safety number the two devices can compare to confirm each other's
      keys.
    - Send a 1:1 message from A to B and confirm it is received and decrypted on B.
-   - Optionally create a group conversation and send an encrypted attachment to
-     confirm group and media paths.
+   - Optionally create a group conversation and send a message in it to confirm
+     the group path. This build sends text only: attachments, voice messages and
+     calls are switched off and have no screen.
 4. **Verify the "no recovery" behavior (optional).** Delete and reinstall the app
    on one device. The previous identity and message history will be gone, and the
    onboarding starts again for a brand-new account. This demonstrates the

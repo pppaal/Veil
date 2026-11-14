@@ -11,6 +11,7 @@ import '../../../core/security/platform_security_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
@@ -182,6 +183,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final isLoadingHistory =
         controller.isLoadingHistoryFor(widget.conversationId);
 
+    // Read when the chat opened; a change that arrives later takes the mark
+    // away at once, before anything is read again.
+    final peerVerified = _peerVerified && !controller.peerIdentityInQuestion(widget.conversationId);
+
     final banners = ChatStatusBanners(
       compact: !widget.embedded,
       controller: controller,
@@ -190,7 +195,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       messages: messages,
       hasMoreHistory: hasMoreHistory,
       isLoadingHistory: isLoadingHistory,
-      peerVerified: _peerVerified,
+      peerVerified: peerVerified,
       hasSearchQuery: hasSearchQuery,
       searching: isSearchingMessages,
       searchHitCount: filteredMessages.length,
@@ -228,7 +233,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       focusNode: _composerFocusNode,
       messageTtl: _messageTtl,
       busy: controller.isBusy,
-      onAttach: widget.embedded ? null : () => context.push('/attachment/${widget.conversationId}'),
+      onAttach: widget.embedded || !kAttachmentsEnabled
+          ? null
+          : () => context.push('/attachment/${widget.conversationId}'),
     );
 
     // A phone shows the conversation first: the bar carries what the header
@@ -237,7 +244,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       return ChatPhoneScaffold(
         conversation: conversation,
         presence: controller.presenceTyping,
-        peerVerified: _peerVerified,
+        peerVerified: peerVerified,
         messageTtl: _messageTtl,
         searchController: searchController,
         searching: isSearchingMessages,

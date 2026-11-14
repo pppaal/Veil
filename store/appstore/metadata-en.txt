@@ -21,7 +21,7 @@ Cryptography
 • HKDF-SHA256 session key derivation
 
 Features
-• 1:1 and group conversations with encrypted attachments
+• 1:1 and group conversations
 • Typing indicators, presence, optional read receipts
 • Local app lock (PIN, biometrics)
 • Encrypted device transfer

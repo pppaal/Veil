@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/attachment_preview_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_header.dart';
@@ -9,6 +10,7 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
 // A chat on a phone: the messages have the screen, and everything the
@@ -129,12 +131,65 @@ void main() {
     });
   });
 
-  testWidgets('opens attachments from the composer', (tester) async {
+  // The attach button is there only in a build that can send a file
+  // (kAttachmentsEnabled); without it the composer shows its lock mark.
+  testWidgets('opens attachments from the composer, in a build that has them', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
+      if (!kAttachmentsEnabled) {
+        expect(find.byTooltip('Attach'), findsNothing);
+        expect(
+          find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline_rounded)),
+          findsOneWidget,
+        );
+        return;
+      }
       await tester.tap(find.byTooltip('Attach'));
       await pumpFrames(tester);
       expect(find.byType(AttachmentPreviewScreen), findsOneWidget);
     });
+  });
+
+  // The mark says the peer is who the user compared numbers with. A key
+  // change of theirs puts exactly that in question, so the mark goes the
+  // moment the change is pending, and stays away until it is settled.
+  testWidgets('shows the verified mark only while no identity change is pending', (tester) async {
+    await withPhoneApp(tester, identities, location: _chat, body: (world) async {
+      expect(find.byTooltip('Verified'), findsOneWidget);
+
+      // The peer's device presents another key while the chat is open.
+      final peer = world.relay.partiesByHandle[peerHandle]!;
+      await tester.runAsync(
+        () => world.trust.admit(chatConversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey),
+      );
+      await pumpFrames(tester, frames: 3);
+      expect(find.text('Safety number changed'), findsOneWidget);
+      expect(find.byTooltip('Verified'), findsNothing);
+    });
+
+    // Opened with the change already pending: the mark never shows.
+    await withPhoneApp(
+      tester,
+      identities,
+      location: _chat,
+      attention: const ChatAttention(identityChanged: true),
+      body: (world) async {
+        expect(find.text('Safety number changed'), findsOneWidget);
+        expect(find.byTooltip('Verified'), findsNothing);
+      },
+    );
+
+    // Nor while the chat is held because it is listed with another account.
+    await withPhoneApp(
+      tester,
+      identities,
+      location: _chat,
+      attention: const ChatAttention(accountHeld: true),
+      body: (world) async {
+        expect(find.byType(VeilInlineBanner), findsOneWidget);
+        expect(find.byTooltip('Verified'), findsNothing);
+        expect(await world.messenger.isPeerVerified(chatConversationId), isFalse);
+      },
+    );
   });
 
   testWidgets('keeps an identity change and failed sends above the messages, each with its action',
@@ -180,7 +235,7 @@ void main() {
           expect(find.byType(VeilNoticeRow), findsNWidgets(2));
           expect(find.byType(VeilInlineBanner), findsNothing, reason: 'the banners are not what is shown');
           for (final title in titles) {
-            final box = tester.renderObject<RenderBox>(find.text(title, findRichText: true));
+            final box = tester.renderObject<RenderBox>(findCopy(title));
             expect(visibleRect(tester, box).size, box.size, reason: '"$title" is whole');
           }
           for (final action in actions) {

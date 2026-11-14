@@ -4,11 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/veil_theme.dart';
+import '../../features/ai/ai_feature.dart';
 import '../../features/app_lock/presentation/app_lock_screen.dart';
+import '../../features/attachments/attachments_feature.dart';
 import '../../features/attachments/presentation/attachment_preview_screen.dart';
 import '../../features/auth/presentation/choose_handle_screen.dart';
 import '../../features/auth/presentation/create_account_screen.dart';
 import '../../features/ai/presentation/ai_chat_screen.dart';
+import '../../features/calls/calls_feature.dart';
 import '../../features/calls/presentation/call_history_screen.dart';
 import '../../features/calls/presentation/call_screen.dart';
 import '../../features/chat/presentation/chat_room_screen.dart';
@@ -19,6 +22,7 @@ import '../../features/conversations/presentation/conversation_list_screen.dart'
 import '../../features/conversations/presentation/start_direct_chat_screen.dart';
 import '../../features/conversations/presentation/start_group_screen.dart';
 import '../../features/device_transfer/presentation/device_transfer_screen.dart';
+import '../../features/media/media_feature.dart';
 import '../../features/media/presentation/media_picker_screen.dart';
 import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
 import '../../features/onboarding/presentation/privacy_consent_screen.dart';
@@ -28,10 +32,12 @@ import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/stickers/presentation/sticker_picker_screen.dart';
+import '../../features/stickers/stickers_feature.dart';
 import '../../features/stories/presentation/stories_screen.dart';
 import '../../features/stories/presentation/story_viewer_screen.dart';
 import '../../features/stories/stories_feature.dart';
 import '../../features/voice/presentation/voice_recorder_screen.dart';
+import '../../features/voice/voice_feature.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../../shared/presentation/veil_ui.dart';
 import '../app_state.dart';
@@ -124,9 +130,10 @@ List<RouteBase> _buildRoutes() {
       builder: (context, state, child) => _VeilMainShell(child: child),
       routes: [
         GoRoute(path: '/conversations', builder: (context, state) => const ConversationListScreen()),
-        GoRoute(path: '/calls', builder: (context, state) => const CallHistoryScreen()),
-        if (kStoriesEnabled) GoRoute(path: '/stories', builder: (context, state) => const StoriesScreen()),
         GoRoute(path: '/contacts', builder: (context, state) => const ContactsScreen()),
+        if (kStoriesEnabled) GoRoute(path: '/stories', builder: (context, state) => const StoriesScreen()),
+        if (kCallsEnabled) GoRoute(path: '/calls', builder: (context, state) => const CallHistoryScreen()),
+        GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
       ],
     ),
     GoRoute(
@@ -156,31 +163,37 @@ List<RouteBase> _buildRoutes() {
         ),
       ),
     ),
-    GoRoute(
-      path: '/attachment/:conversationId',
-      builder: (context, state) => AttachmentPreviewScreen(
-        conversationId: state.pathParameters['conversationId']!,
+    // The routes of a feature this build has switched off are left out, so
+    // no location reaches its screen (see each *_feature.dart).
+    if (kAttachmentsEnabled)
+      GoRoute(
+        path: '/attachment/:conversationId',
+        builder: (context, state) => AttachmentPreviewScreen(
+          conversationId: state.pathParameters['conversationId']!,
+        ),
       ),
-    ),
-    GoRoute(
-      path: '/media/:conversationId',
-      builder: (context, state) => const MediaPickerScreen(),
-    ),
-    GoRoute(
-      path: '/voice/:conversationId',
-      builder: (context, state) => const VoiceRecorderScreen(),
-    ),
-    GoRoute(
-      path: '/stickers/:conversationId',
-      builder: (context, state) => const StickerPickerScreen(),
-    ),
-    GoRoute(
-      path: '/call/:conversationId',
-      builder: (context, state) => CallScreen(
-        contactName: state.extra is Map ? (state.extra as Map)['name'] as String? ?? 'Unknown' : 'Unknown',
-        contactHandle: state.pathParameters['conversationId'],
+    if (kMediaPickerEnabled)
+      GoRoute(
+        path: '/media/:conversationId',
+        builder: (context, state) => const MediaPickerScreen(),
       ),
-    ),
+    if (kVoiceMessagesEnabled)
+      GoRoute(
+        path: '/voice/:conversationId',
+        builder: (context, state) => const VoiceRecorderScreen(),
+      ),
+    if (kStickerPickerEnabled)
+      GoRoute(
+        path: '/stickers/:conversationId',
+        builder: (context, state) => const StickerPickerScreen(),
+      ),
+    if (kCallsEnabled)
+      GoRoute(
+        path: '/call/:conversationId',
+        builder: (context, state) => CallScreen(
+          contactName: switch (state.extra) { {'name': final String name} => name, _ => '' },
+        ),
+      ),
     if (kStoriesEnabled)
       GoRoute(
         path: '/story-viewer/:userId',
@@ -188,17 +201,14 @@ List<RouteBase> _buildRoutes() {
           authorUserId: state.pathParameters['userId']!,
         ),
       ),
-    GoRoute(
-      path: '/ai-chat',
-      pageBuilder: (context, state) => _veilPushPage(state, const AiChatScreen()),
-    ),
+    if (kAssistantEnabled)
+      GoRoute(
+        path: '/ai-chat',
+        pageBuilder: (context, state) => _veilPushPage(state, const AiChatScreen()),
+      ),
     GoRoute(
       path: '/profile',
       pageBuilder: (context, state) => _veilPushPage(state, const ProfileScreen()),
-    ),
-    GoRoute(
-      path: '/settings',
-      pageBuilder: (context, state) => _veilPushPage(state, const SettingsScreen()),
     ),
     GoRoute(
       path: '/lock',
@@ -296,22 +306,27 @@ class _VeilMainShell extends StatelessWidget {
 
   final Widget child;
 
+  // Chats, Contacts and Settings, with the tab of each switched-on feature
+  // between them.
   static const _tabs = <_VeilNavTab>[
     _VeilNavTab(path: '/conversations', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: _chatsLabel),
     _VeilNavTab(path: '/contacts', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: _contactsLabel),
     if (kStoriesEnabled)
       _VeilNavTab(path: '/stories', icon: Icons.amp_stories_outlined, activeIcon: Icons.amp_stories_rounded, label: _storiesLabel),
-    _VeilNavTab(path: '/calls', icon: Icons.call_outlined, activeIcon: Icons.call_rounded, label: _callsLabel),
+    if (kCallsEnabled)
+      _VeilNavTab(path: '/calls', icon: Icons.call_outlined, activeIcon: Icons.call_rounded, label: _callsLabel),
+    _VeilNavTab(path: '/settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded, label: _settingsLabel),
   ];
 
   static String _chatsLabel(AppLocalizations l10n) => l10n.navChats;
   static String _contactsLabel(AppLocalizations l10n) => l10n.navContacts;
   static String _storiesLabel(AppLocalizations l10n) => l10n.navStories;
   static String _callsLabel(AppLocalizations l10n) => l10n.navCalls;
+  static String _settingsLabel(AppLocalizations l10n) => l10n.navSettings;
 
   @override
   Widget build(BuildContext context) {
-    const palette = VeilPalette.dark;
+    final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
     final currentPath = GoRouterState.of(context).fullPath ?? '/conversations';
     var currentIndex = _tabs.indexWhere((tab) => currentPath.startsWith(tab.path));

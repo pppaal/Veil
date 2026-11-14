@@ -81,6 +81,9 @@ jobs:
       - name: Mobile locales match the English ARB
         run: node scripts/arb-parity-check.mjs
 
+      - name: Mobile UI text comes from the ARB files
+        run: node scripts/mobile-ui-strings-check.mjs
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:

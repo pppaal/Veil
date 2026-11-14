@@ -2,22 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:veil_mobile/src/features/ai/ai_feature.dart';
 import 'package:veil_mobile/src/features/ai/presentation/ai_chat_screen.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
+import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/attachment_preview_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/calls/calls_feature.dart';
 import 'package:veil_mobile/src/features/calls/presentation/call_history_screen.dart';
 import 'package:veil_mobile/src/features/calls/presentation/call_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
+import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
+import 'package:veil_mobile/src/features/chat/presentation/typing_indicator.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_group_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
+import 'package:veil_mobile/src/features/media/media_feature.dart';
 import 'package:veil_mobile/src/features/media/presentation/media_picker_screen.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent_screen.dart';
@@ -29,12 +35,15 @@ import 'package:veil_mobile/src/features/security/presentation/safety_numbers_sc
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/features/stickers/presentation/sticker_picker_screen.dart';
+import 'package:veil_mobile/src/features/stickers/stickers_feature.dart';
 import 'package:veil_mobile/src/features/stories/presentation/stories_screen.dart';
 import 'package:veil_mobile/src/features/stories/presentation/story_viewer_screen.dart';
 import 'package:veil_mobile/src/features/stories/stories_feature.dart';
 import 'package:veil_mobile/src/features/voice/presentation/voice_recorder_screen.dart';
+import 'package:veil_mobile/src/features/voice/voice_feature.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import 'layout_seed.dart';
 import 'layout_world.dart';
 import 'phone_layout_probe.dart';
 
@@ -63,10 +72,14 @@ class ScreenCase {
     this.keyboardHeight = 0,
     this.bootstrapping = false,
     this.transferStarted = false,
+    this.withGroup = false,
     this.textScale = 1,
+    this.sizes = phoneSizes,
+    this.tapTargets = true,
     this.primaryExtent,
     this.minPrimaryShare,
     this.minPrimaryExtent,
+    this.primaryAction,
     this.settle,
   }) : assert((minPrimaryShare == null && minPrimaryExtent == null) || primaryExtent != null);
 
@@ -94,11 +107,20 @@ class ScreenCase {
   /// This device already opened a transfer session.
   final bool transferStarted;
 
+  /// The account has a group conversation, the newest of its list.
+  final bool withGroup;
+
   /// The system's text size setting; 1 is the default size.
   final double textScale;
 
+  /// The screen sizes the case is rendered at.
+  final List<PhoneSize> sizes;
+
+  /// False for a case that is not held to tap targets (the wide cases).
+  final bool tapTargets;
+
   /// Whether every control of the case must measure 44x44 or more.
-  bool get holdsTapTargets => !tapTargetExemptScreens.contains(file);
+  bool get holdsTapTargets => tapTargets && !tapTargetExemptScreens.contains(file);
 
   /// How many warning actions the case's chat must show, each wholly on
   /// screen: one per warning of [attention] that asks for a decision.
@@ -114,6 +136,12 @@ class ScreenCase {
 
   /// The height in logical pixels [primaryExtent] must reach, if any.
   final double? minPrimaryExtent;
+
+  /// The control the screen is for: its first input, or its primary button.
+  /// When the case opens with the keyboard closed, it must lie wholly on
+  /// the first screenful, where a tap reaches it, at 390x844 and 412x915;
+  /// at 360x640 its top edge must (see [primaryActionProblem]).
+  final Finder Function()? primaryAction;
 
   /// Brings the screen to the state the case is about, after its first
   /// frames.
@@ -132,9 +160,12 @@ const tapTargetExemptScreens = {
 /// their text choose.
 const double largerText = 1.3;
 
-/// Routes to screens the app's own route table does not reach.
+/// Routes to the screens of the features this build has switched off, which
+/// the app's own route table leaves out (see each `*_feature.dart`). The
+/// gate still renders those screens, and their tests still open them,
+/// through these. A feature that is switched on drops out of this list: its
+/// routes are the app's again.
 final List<RouteBase> layoutOnlyRoutes = [
-  // Stories are switched off (kStoriesEnabled), so no route leads to them.
   if (!kStoriesEnabled) ...[
     GoRoute(path: '/stories', builder: (_, __) => const StoriesScreen()),
     GoRoute(
@@ -142,6 +173,26 @@ final List<RouteBase> layoutOnlyRoutes = [
       builder: (_, state) => StoryViewerScreen(authorUserId: state.pathParameters['userId']!),
     ),
   ],
+  if (!kCallsEnabled) ...[
+    GoRoute(path: '/calls', builder: (_, __) => const CallHistoryScreen()),
+    GoRoute(
+      path: '/call/:conversationId',
+      builder: (_, state) => CallScreen(
+        contactName: switch (state.extra) { {'name': final String name} => name, _ => '' },
+      ),
+    ),
+  ],
+  if (!kAttachmentsEnabled)
+    GoRoute(
+      path: '/attachment/:conversationId',
+      builder: (_, state) => AttachmentPreviewScreen(conversationId: state.pathParameters['conversationId']!),
+    ),
+  if (!kMediaPickerEnabled) GoRoute(path: '/media/:conversationId', builder: (_, __) => const MediaPickerScreen()),
+  if (!kVoiceMessagesEnabled)
+    GoRoute(path: '/voice/:conversationId', builder: (_, __) => const VoiceRecorderScreen()),
+  if (!kStickerPickerEnabled)
+    GoRoute(path: '/stickers/:conversationId', builder: (_, __) => const StickerPickerScreen()),
+  if (!kAssistantEnabled) GoRoute(path: '/ai-chat', builder: (_, __) => const AiChatScreen()),
 ];
 
 const _signedOut = LayoutAccount.signedOut;
@@ -155,23 +206,37 @@ const List<ScreenCase> screenCases = [
       screen: PrivacyConsentScreen,
       file: 'privacy_consent_screen.dart',
       location: '/privacy-consent',
-      account: _signedOut),
+      account: _signedOut,
+      primaryAction: _primaryButton),
   ScreenCase('onboarding-warning',
       screen: OnboardingWarningScreen,
       file: 'onboarding_warning_screen.dart',
       location: '/onboarding',
       account: _signedOut),
   ScreenCase('create-account',
-      screen: CreateAccountScreen, file: 'create_account_screen.dart', location: '/create-account', account: _signedOut),
+      screen: CreateAccountScreen,
+      file: 'create_account_screen.dart',
+      location: '/create-account',
+      account: _signedOut,
+      primaryAction: _primaryButton),
   ScreenCase('choose-handle',
-      screen: ChooseHandleScreen, file: 'choose_handle_screen.dart', location: '/choose-handle', account: _signedOut),
+      screen: ChooseHandleScreen,
+      file: 'choose_handle_screen.dart',
+      location: '/choose-handle',
+      account: _signedOut,
+      primaryAction: _primaryButton),
   ScreenCase('device-transfer-new-device',
       screen: DeviceTransferScreen,
       file: 'device_transfer_screen.dart',
       location: '/device-transfer',
-      account: _signedOut),
+      account: _signedOut,
+      primaryAction: _firstInput),
   ScreenCase('app-lock',
-      screen: AppLockScreen, file: 'app_lock_screen.dart', location: '/lock', account: LayoutAccount.locked),
+      screen: AppLockScreen,
+      file: 'app_lock_screen.dart',
+      location: '/lock',
+      account: LayoutAccount.locked,
+      primaryAction: _primaryButton),
 
   // The conversation list, in the main shell with its bottom bar: with
   // conversations, with none, and while searching.
@@ -382,12 +447,24 @@ const List<ScreenCase> screenCases = [
 
   // Starting a conversation.
   ScreenCase('start-direct-chat',
-      screen: StartDirectChatScreen, file: 'start_direct_chat_screen.dart', location: '/start-chat'),
-  ScreenCase('start-group', screen: StartGroupScreen, file: 'start_group_screen.dart', location: '/start-group'),
-  ScreenCase('one-time-link', screen: OneTimeLinkScreen, file: 'one_time_link_screen.dart', location: '/secret-link'),
+      screen: StartDirectChatScreen,
+      file: 'start_direct_chat_screen.dart',
+      location: '/start-chat',
+      primaryAction: _primaryButton),
+  ScreenCase('start-group',
+      screen: StartGroupScreen,
+      file: 'start_group_screen.dart',
+      location: '/start-group',
+      primaryAction: _primaryButton),
+  ScreenCase('one-time-link',
+      screen: OneTimeLinkScreen,
+      file: 'one_time_link_screen.dart',
+      location: '/secret-link',
+      primaryAction: _primaryButton),
 
   // The other tabs.
-  ScreenCase('contacts', screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts'),
+  ScreenCase('contacts',
+      screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts', primaryAction: _addContact),
   ScreenCase('contacts-add-sheet',
       screen: ContactsScreen,
       file: 'contacts_screen.dart',
@@ -413,9 +490,174 @@ const List<ScreenCase> screenCases = [
       screen: DeviceTransferScreen,
       file: 'device_transfer_screen.dart',
       location: '/device-transfer',
-      transferStarted: true),
+      transferStarted: true,
+      primaryAction: _firstInput),
   ScreenCase('ai-chat', screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat'),
+
+  // States the gate did not open before: a group (its chat, its row in the
+  // list, the safety numbers of its members), a message from a legacy frame
+  // with its badge, reactions under bubbles, the peer typing, a search that
+  // found messages, and the least room a chat ever has with larger text.
+  ScreenCase(
+    'chat-room-group',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$groupConversationId',
+    withGroup: true,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectGroupMessages,
+  ),
+  ScreenCase(
+    'conversation-list-group',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    withGroup: true,
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase('safety-numbers-group',
+      screen: SafetyNumbersScreen,
+      file: 'safety_numbers_screen.dart',
+      location: '/safety-numbers/$groupConversationId',
+      withGroup: true,
+      settle: _awaitSafetyNumber),
+  ScreenCase(
+    'chat-room-legacy-badge',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(legacyMessage: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectLegacyBadge,
+  ),
+  ScreenCase(
+    'chat-room-reactions',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _reactToMessages,
+  ),
+  ScreenCase(
+    'chat-room-typing',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(peerTyping: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectTypingIndicator,
+  ),
+  ScreenCase(
+    'chat-room-search-hits',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _searchChatForHits,
+  ),
+  ScreenCase(
+    'chat-room-warnings-keyboard-larger-text',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(identityChanged: true, failedSends: 2),
+    keyboardHeight: 300,
+    textScale: largerText,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+  ),
 ];
+
+const _wideSizes = [wideSmall, wideLarge];
+const _tablet = [tabletUpright];
+
+/// The cases wider than a phone. From 1120 px the conversations shell shows
+/// the list and the open chat side by side; a tablet held upright is too
+/// narrow for that and opens the chat on top, like a phone. Held to layout
+/// errors and to the messages keeping their share of the height, with and
+/// without the chat's warnings.
+const List<ScreenCase> wideCases = [
+  ScreenCase(
+    'wide-chat',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    sizes: _wideSizes,
+    tapTargets: false,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _openChatPane,
+  ),
+  ScreenCase(
+    'wide-chat-warnings',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    attention: ChatAttention(identityChanged: true, failedSends: 2),
+    sizes: _wideSizes,
+    tapTargets: false,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _openChatPane,
+  ),
+  ScreenCase(
+    'tablet-chat',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    sizes: _tablet,
+    tapTargets: false,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'tablet-chat-warnings',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(identityChanged: true, failedSends: 2),
+    sizes: _tablet,
+    tapTargets: false,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+];
+
+/// Every case of the gate, phone and wide.
+const List<ScreenCase> allCases = [...screenCases, ...wideCases];
+
+// The primary button of a screen: the filled one, the first if a screen has
+// more.
+Finder _primaryButton() => find.byType(FilledButton);
+
+// The first field of a screen.
+Finder _firstInput() => find.byType(TextField);
+
+// What adds a contact, wherever the screen puts it.
+Finder _addContact() => find.byIcon(Icons.person_add_outlined);
+
+/// Why the first control [finder] finds is not on the first screenful, or
+/// null when it is. On the two larger phones all of it must be on screen where a
+/// tap reaches it. A 360x640 screen has room for less: there its top edge
+/// must be on screen and take a tap, so that the control is at least begun
+/// before the fold. A control a lazy list has not built is below the fold.
+String? primaryActionProblem(WidgetTester tester, Finder finder, PhoneSize size) {
+  final found = finder.evaluate();
+  if (found.isEmpty) return 'is not built on the first screenful';
+  final box = found.first.renderObject! as RenderBox;
+  if (size != phoneSmall) return whyNotWhollyTappable(tester, box);
+  final rect = box.localToGlobal(Offset.zero) & box.size;
+  final top = rect.topCenter.translate(0, 1);
+  if (rect.top < 0 || top.dy >= screenHeight(tester)) return 'starts outside the screen at $rect';
+  final hit = tester.hitTestOnBinding(top);
+  return hit.path.any((entry) => entry.target == box) ? null : 'takes no tap at its top edge ($top); it is at $rect';
+}
 
 /// The height the chat's message area has on screen.
 double chatMessagesExtent(WidgetTester tester) {
@@ -444,7 +686,7 @@ Finder chatWarningActions() =>
     find.descendant(of: find.byType(ChatStatusBanners), matching: find.byType(TextButton));
 
 Future<void> _searchConversations(WidgetTester tester) async {
-  await tester.enterText(find.byType(TextField).first, 'se');
+  await tester.enterText(find.byType(TextField).first, conversationSearchQuery);
   // The archive search waits 180 ms for the typing to stop.
   await pumpFrames(tester, frames: 4);
 }
@@ -453,9 +695,64 @@ Future<void> _searchChat(WidgetTester tester) async {
   await tester.tap(find.widgetWithIcon(IconButton, Icons.search_rounded));
   await pumpFrames(tester, frames: 2);
   // Typed where the focus is: opening the search moves it to the bar's field.
-  tester.testTextInput.enterText('lease');
+  tester.testTextInput.enterText(chatSearchQuery);
   // The search waits 180 ms for the typing to stop.
   await pumpFrames(tester, frames: 4);
+}
+
+// The search as it stands once the keyboard is put away: the matches have
+// the whole height.
+Future<void> _searchChatForHits(WidgetTester tester) async {
+  await _searchChat(tester);
+  expect(find.byType(MessageBubble), findsWidgets, reason: 'the search found no message');
+  expect(find.byType(MessageBubble).evaluate().length, lessThan(chatLineCount - 1),
+      reason: 'the search did not narrow the messages');
+}
+
+Future<void> _expectGroupMessages(WidgetTester tester) async {
+  expect(find.byType(MessageBubble), findsNWidgets(groupLineCount), reason: 'the group chat did not open its messages');
+}
+
+Future<void> _expectLegacyBadge(WidgetTester tester) async {
+  // The badge sits on the peer's first message, at the top of the history.
+  await tester.dragUntilVisible(
+    find.descendant(of: find.byType(MessageBubble), matching: find.byType(VeilStatusPill)),
+    find.byType(ChatMessageList),
+    const Offset(0, 200),
+  );
+  await pumpFrames(tester, frames: 2);
+}
+
+// A reaction on two of the messages on screen, given the way a user gives
+// one: a long press, then the emoji.
+Future<void> _reactToMessages(WidgetTester tester) async {
+  for (final (bubble, emoji) in [(0, '\u{1F44D}'), (1, '\u{2764}\u{FE0F}')]) {
+    // The card, not its row: a short message does not reach the middle.
+    // The list is built from its end, so the first cards are the newest.
+    await tester.longPress(find.byType(VeilMessageBubbleCard).at(bubble));
+    await pumpFrames(tester, frames: 4);
+    await tester.tap(find.descendant(of: find.byType(ReactionPickerWidget), matching: find.text(emoji)));
+    await pumpFrames(tester, frames: 6);
+  }
+  expect(find.byType(ReactionChipsRow), findsNWidgets(2), reason: 'the reactions did not show under their messages');
+}
+
+Future<void> _expectTypingIndicator(WidgetTester tester) async {
+  expect(find.descendant(of: find.byType(TypingIndicator), matching: find.byType(Text)), findsOneWidget,
+      reason: 'the typing indicator is not on screen');
+}
+
+// The two-pane shell with the chat of the cases in its second pane.
+Future<void> _openChatPane(WidgetTester tester) async {
+  bool open() => tester
+      .widgetList<ChatRoomScreen>(find.byType(ChatRoomScreen))
+      .any((chat) => chat.conversationId == chatConversationId);
+  await pumpFrames(tester, frames: 4);
+  if (!open()) {
+    await tester.tap(find.text(peerNames[peerHandle]!).first);
+    await pumpFrames(tester, frames: 6);
+  }
+  expect(open(), isTrue, reason: 'the second pane did not open the chat');
 }
 
 Future<void> _openTimerSheet(WidgetTester tester) async {

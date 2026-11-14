@@ -7,6 +7,8 @@ import 'package:veil_mobile/src/features/device_transfer/presentation/device_tra
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
+import '../layout/support/screen_cases.dart' show layoutOnlyRoutes;
+import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
 // What the screens around the chat say on a phone, and in which order: a
@@ -35,14 +37,27 @@ void main() {
   }
 
   group('settings', () {
-    // Names the user or the platform gave, which no locale translates.
-    const names = {'Atlas Moreau', 'Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android', 'macOS', 'iPhone / iPad'};
-
+    // Names the user or the platform gave are no locale's to translate, and
+    // the language check leaves them out (notOwnCopy): nothing else on the
+    // screen may be English.
     testWidgets('in a Korean app only names are not Korean', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final foreign = await otherLanguageTextsOfScreen(tester, 'ko');
-        expect(foreign.difference(names), isEmpty);
-        expect(foreign, contains('Pixel 9 Pro Fold'), reason: 'the device graph was on screen');
+        final shown = <String>{};
+        void collect() {
+          for (final element in find.byType(Text).evaluate()) {
+            if ((element.widget as Text).data case final text?) shown.add(text);
+          }
+        }
+
+        collect();
+        final foreign = otherLanguageTextsOnScreen(tester, 'ko');
+        await scrollToEnd(tester, onPage: (_) async {
+          collect();
+          foreign.addAll(otherLanguageTextsOnScreen(tester, 'ko'));
+        });
+        expect(foreign, isEmpty);
+        expect(shown, containsAll(['Atlas Moreau', 'Pixel 9 Pro Fold', 'MacBook Air', 'Android']),
+            reason: 'the device graph was on screen');
       });
     });
 
@@ -57,6 +72,8 @@ void main() {
 
         collect();
         await scrollToEnd(tester, onPage: (_) async => collect());
+        // What a text says, without the joiners it is drawn with.
+        final said = seen.map(plainCopy).toSet();
         final l10n = lookupAppLocalizations(const Locale('ko'));
         for (final text in [
           '보안',
@@ -71,7 +88,7 @@ void main() {
           l10n.settingsRevokeSubtitle,
           l10n.settingsLogoutSubtitle,
         ]) {
-          expect(seen, contains(text));
+          expect(said, contains(text));
         }
       });
     });
@@ -109,9 +126,9 @@ void main() {
         locale: 'ko',
         transferStarted: true,
         body: (world) async {
-          final foreign = await otherLanguageTextsOfScreen(tester, 'ko');
-          expect(foreign.where((text) => !text.startsWith('VEIL_TRANSFER::')), isEmpty);
-          expect(find.text('이전 세션을 열었습니다. 토큰이 준비되었습니다.', skipOffstage: false), findsOneWidget);
+          // The transfer code is data, which the check leaves out.
+          expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
+          expect(findCopy('이전 세션을 열었습니다. 토큰이 준비되었습니다.', skipOffstage: false), findsOneWidget);
         },
       );
     });
@@ -138,18 +155,21 @@ void main() {
     });
   });
 
+  // The attachment screen's feature is switched off, so the app has no
+  // route to it; the screen is still built and tested through the test-only
+  // routes.
   group('attachment', () {
     testWidgets('speaks Korean, and says what this build sends', (tester) async {
       await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId', locale: 'ko',
-          body: (world) async {
-        final foreign = await otherLanguageTextsOfScreen(tester, 'ko');
-        // The file's name and its type.
-        expect(foreign.difference({'dossier.enc', 'application/octet-stream'}), isEmpty);
+          extraRoutes: layoutOnlyRoutes, body: (world) async {
+        // The file's name and its type are data, which the check leaves out.
+        expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
       });
     });
 
     testWidgets('no longer says the build runs on mock crypto', (tester) async {
-      await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId', body: (world) async {
+      await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId',
+          extraRoutes: layoutOnlyRoutes, body: (world) async {
         final seen = <String>{};
         void collect() {
           for (final element in find.byType(Text).evaluate()) {

@@ -37,8 +37,8 @@ VEIL has NO account recovery. If you lose your device or wipe the app, your
 conversations are gone permanently. There is no backup and no reset. That
 tradeoff is the product: no recovery path means no backdoor.
 
-Messaging: text, voice messages, photos and files, reactions, replies, edits,
-disappearing timers, and block/mute controls.
+Messaging: text messages in 1:1 and group conversations, reactions,
+disappearing timers, and message search that stays on your device.
 ```
 
 ## Description (Korean)
@@ -123,8 +123,9 @@ Source is public under AGPL-3.0 for independent verification.
 
 Test walkthrough: launch → agree to the privacy notice → Create Account →
 Choose Handle (any free handle) → start a conversation with a second device's
-handle → send text/voice/photo → reactions and replies work inline. No
-credentials are required to reach full functionality.
+handle → send a text message → long-press it to react. No credentials are
+required to reach full functionality. Calls, attachments and voice messages are
+not part of this build.
 ```
 
 ## Support / marketing URLs (fill in)
@@ -137,7 +138,8 @@ credentials are required to reach full functionality.
 ## Screenshots checklist
 
 - iOS: 6.7" (iPhone 15/16 Pro Max) and 6.5"/5.5" fallback sets.
-- Suggested shots: onboarding "no recovery" warning, a conversation, voice
-  message, attachment preview, settings/theme. Use fictional content — no real
-  user data.
+- Suggested shots: onboarding "no recovery" warning, a conversation, the
+  safety number screen, settings/theme. Use fictional content — no real
+  user data. Show nothing the build does not have: no call, voice message or
+  attachment screen.
 - Google Play: phone + 7"/10" tablet if declared; feature graphic 1024×500.

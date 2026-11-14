@@ -101,7 +101,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
             focusNode: _focusNode,
             enabled: !_isTyping,
             onSubmit: _sendMessage,
-            helper: 'Ask about privacy, security, or VEIL features.',
+            label: 'Ask about privacy, security, or VEIL features.',
             trailing: VeilButton(
               expanded: false,
               onPressed: _isTyping ? null : _sendMessage,

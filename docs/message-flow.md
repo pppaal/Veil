@@ -5,7 +5,7 @@
 1. Sender fetches recipient public key bundle.
 2. Sender encrypts locally through `CryptoEngine`.
 3. The mobile client assigns a `clientMessageId` and stages the outbound item in the local pending queue.
-4. For attachments, the mobile client first stages an opaque local temp blob, uploads it to object storage, finalizes the attachment record, and only then sends the encrypted envelope with the attachment reference.
+4. For attachments, the mobile client first stages an opaque local temp blob, uploads it to object storage, finalizes the attachment record, and only then sends the encrypted envelope with the attachment reference. (The mobile app's attachment UI is switched off until it has a file picker, see [attachment-flow.md](attachment-flow.md); the path is exercised by its tests and by the web client.)
 5. Mobile sends only the envelope to `POST /v1/messages`.
 6. API authorizes the sender through the conversation policy (see below), checks the envelope version against the conversation, and validates that `recipientUserId` matches the direct conversation peer.
 7. API stores ciphertext, nonce, the envelope version, timestamps, and the outer attachment pointer (`attachmentId` only).

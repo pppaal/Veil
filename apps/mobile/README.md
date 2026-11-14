@@ -15,24 +15,67 @@ flutter run \
   --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000
 ```
 
-## Phone layout gate
+## Switched-off features
+
+A feature this build cannot do end to end is switched off by a constant next
+to it, `lib/src/features/<name>/<name>_feature.dart`:
+
+| Constant | What is missing | What it hides |
+| --- | --- | --- |
+| `kCallsEnabled` | no WebRTC: the call screen only plays timers | the Calls tab, `/calls`, `/call/:id` |
+| `kAttachmentsEnabled` | no file picker; a received file stops at its download ticket | the composer's attach button, `/attachment/:id`, the bubble's download button (a line says this version cannot open it), the "attachments encrypted" pill, the clipboard row of the security status |
+| `kMediaPickerEnabled` | no gallery or camera plugin | `/media/:id` |
+| `kVoiceMessagesEnabled` | no audio plugin | `/voice/:id` |
+| `kStickerPickerEnabled` | picking does nothing | `/stickers/:id` |
+| `kAssistantEnabled` | a scripted preview | `/ai-chat` |
+| `kStoriesEnabled` | stories are not end-to-end encrypted | the Stories tab, `/stories`, `/story-viewer/:id` |
+
+While a constant is false the route table (`lib/src/app/router/app_router.dart`)
+leaves the feature's routes out and nothing in the app leads to it. The
+screens still compile, their tests still run, and the layout gate still
+renders them, through the test-only routes in
+`test/layout/support/screen_cases.dart` (`layoutOnlyRoutes`). To switch a
+feature on: make it work, move its strings to the ARB files, flip the
+constant, and take its lines off the allow-lists below. The bottom bar is
+Chats, Contacts, Settings, with the tab of a switched-on feature between
+Contacts and Settings.
+
+## Layout gate
 
 `flutter test test/layout` opens every screen at three phone sizes
 (360x640, 390x844, 412x915) in English and Korean, with the bundled fonts,
 and scrolls it to its end. Besides each screen's everyday state it opens the
 states that take room away (the keyboard, stacked warnings, a search, larger
-system text) and the sheets and menus that only appear on a tap. A case
-fails
+system text), the sheets and menus that only appear on a tap, and the states
+a chat can be in (a group, reactions, the peer typing, a message from a
+legacy frame, search results). A case fails
 
 - on any layout error the framework reports (an overflowing row or column,
   unbounded constraints),
 - when the messages of a chat or the rows of the conversation list get less
   than 45% of the screen height (96 px under the keyboard or warnings),
 - when a control is smaller than 44x44, on every screen but the sticker
-  picker (the one exception, named in `screen_cases.dart`),
+  picker (the one exception, named in `screen_cases.dart`). A control at an
+  edge of the screen is measured like any other; only a modal's scrim is
+  left out,
 - when a chat does not show the action of each of its warnings whole, where
   a tap reaches it. A button cut off by the area it scrolls in is no layout
-  error, so the gate looks for it.
+  error, so the gate looks for it,
+- when the control a screen is for is not on the first screenful. A case
+  names it (`primaryAction`: the first input or the primary button); with
+  the keyboard closed it must be wholly on screen at 390x844 and 412x915,
+  and begin on screen at 360x640,
+- when a text of the app's own copy is in the other language: Latin words
+  and no Hangul in a Korean run, Hangul in an English run. What is not the
+  app's copy (the brand, fixture names and messages, handles, platform
+  names, PIN, URLs, file names, MIME types) is listed with its reason in
+  `test/layout/support/language_probe.dart` (`notOwnCopy`).
+
+Each case is rendered once more in the light theme (390x844, Korean, first
+screenful), held to layout errors and tap targets. The wide cases open the
+two-pane shell with a chat at 1280x800 and 1440x1000, and the chat on an
+upright tablet (1024x1366, which is under the 1120 px the two panes need),
+with and without warnings, held to layout errors and the messages' share.
 
 It runs with the rest of `flutter test`.
 
@@ -46,9 +89,29 @@ flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=S
 
 `SHOTS_PAGES=all` adds a PNG for every further screenful of a scrolling
 screen. A new screen needs a case in `test/layout/support/screen_cases.dart`,
-and a new sheet or state of an existing screen deserves one. Cases known not
-to fit would be listed in `test/layout/known_phone_layout_failures.dart`,
-which may only shrink; it is empty.
+and a new sheet or state of an existing screen deserves one.
+
+What fails today is listed, and the lists only shrink: the gate fails for a
+listed case that passes, or fails another way, as it does for an unlisted
+one that fails.
+
+- `test/layout/known_phone_layout_failures.dart`: one line per case, with
+  the sizes and languages it fails at and the defects it shows.
+- `test/layout/known_other_language_text.dart`: one line per screen, with
+  how many texts it shows in the other language.
+
+## UI strings gate
+
+`node scripts/mobile-ui-strings-check.mjs` (from the repository root; part
+of `pnpm ci:mobile` and the mobile CI job) reads the Dart files that build UI
+text (every `features/*/presentation` folder, `shared/presentation`, `app/`
+and `core/errors/user_facing_error.dart`) and fails on a user-facing string
+literal that is not an `AppLocalizations` lookup. It catches what no render
+opens: a toast, a dialog, an error. Route paths, keys, map keys, compared
+values, patterns, exception and log messages and identifier-shaped tokens
+are not UI text; there is no comment that silences a finding. Files that
+fail today are in `KNOWN_HARDCODED` at the top of the script with their
+count, which may only go down. `--list` prints every literal it finds.
 
 ## Phone and wide layouts
 

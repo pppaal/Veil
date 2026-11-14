@@ -83,17 +83,17 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   Future<_GroupListData> _loadGroupList(ConversationPreview conversation) async {
-    final resolver = ref.read(identityTrustProvider).resolver;
+    final messenger = ref.read(messengerControllerProvider);
     final session = ref.read(appSessionProvider);
     // You can't verify your own identity number against yourself.
     final members = conversation.members.where((m) => m.userId != session.userId).toList(growable: false);
-    // Verified only when every device of theirs is: any pinned device of a
-    // member may hold this group's chain keys, not just the one compared.
+    // Verified only when every device of theirs is, and no identity change
+    // of theirs waits for review: any pinned device of a member may hold
+    // this group's chain keys, not just the one compared.
+    final pendingUserId = messenger.pendingIdentityChangeFor(conversation.id)?.userId;
     final verified = <String>{
       for (final member in members)
-        if (await resolver.pinsForUser(member.userId) case final pins
-            when pins.isNotEmpty && pins.every((pin) => pin.isVerified))
-          member.userId,
+        if (member.userId != pendingUserId && await messenger.isUserVerified(member.userId)) member.userId,
     };
     return _GroupListData(groupName: conversation.groupMeta?.name, members: members, verifiedUserIds: verified);
   }

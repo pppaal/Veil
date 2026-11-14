@@ -7,10 +7,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+export 'language_probe.dart';
+
 // What the phone layout gate measures on one rendered screen, and how it
 // renders it: the bundled fonts, a phone-sized view with its system insets,
 // every error the framework reports while the screen is built and scrolled,
-// and (only when asked) a PNG of what was on screen.
+// and (only when asked) a PNG of what was on screen. What it reads of a
+// screen's language is in language_probe.dart.
 
 /// Where the suite writes PNGs and its report. Empty unless the run passes
 /// `--dart-define=SHOTS_DIR=<dir>`; without it nothing is written anywhere.
@@ -47,6 +50,14 @@ const phoneSmall = PhoneSize(360, 640, topInset: 24, bottomInset: 0);
 const phoneMedium = PhoneSize(390, 844, topInset: 47, bottomInset: 34);
 const phoneLarge = PhoneSize(412, 915, topInset: 32, bottomInset: 24);
 const phoneSizes = <PhoneSize>[phoneSmall, phoneMedium, phoneLarge];
+
+/// The sizes of the wide cases: two desktop or landscape-tablet windows,
+/// where the conversations shell shows its two panes (from 1120 px), and a
+/// tablet held upright, which is too narrow for them and shows one screen
+/// at a time like a phone.
+const wideSmall = PhoneSize(1280, 800, topInset: 0, bottomInset: 0);
+const wideLarge = PhoneSize(1440, 1000, topInset: 0, bottomInset: 0);
+const tabletUpright = PhoneSize(1024, 1366, topInset: 24, bottomInset: 20);
 
 /// Loads every font the app bundles (Pretendard, the icon fonts), so text is
 /// measured and drawn with real glyphs instead of the test font's boxes.
@@ -116,6 +127,13 @@ enum LayoutDefect {
   /// The action of a chat's warning is missing, or not wholly on screen
   /// where a tap reaches it: cut off by the area it scrolls in, say.
   hiddenAction,
+
+  /// The control a screen is for (its first input or primary button) is
+  /// not on the first screenful.
+  primaryActionBelowFold,
+
+  /// A text of the app's own copy is in the language the run is not in.
+  otherLanguage,
 }
 
 /// The defects of one case, with a line of evidence for each.
@@ -126,10 +144,13 @@ class LayoutFindings {
   double? primaryShare;
 
   /// For the report of a run that writes shots only: the share of the
-  /// screen height the screen's main scrolling list has, tap targets under
-  /// 48x48, and texts in the language the run is not in.
+  /// screen height the screen's main scrolling list has, and tap targets
+  /// under 48x48.
   double? mainListShare;
   final Set<String> smallTapTargets = {};
+
+  /// The app's own texts in the language the run is not in, wherever the
+  /// case showed them.
   final Set<String> otherLanguageTexts = {};
 
   void add(LayoutDefect defect, String evidence) {
@@ -153,7 +174,7 @@ class LayoutFindings {
         if (primaryShare != null) 'primaryShare': double.parse(primaryShare!.toStringAsFixed(3)),
         if (mainListShare != null) 'mainListShare': double.parse(mainListShare!.toStringAsFixed(3)),
         if (smallTapTargets.isNotEmpty) 'smallTapTargets': smallTapTargets.toList(),
-        if (otherLanguageTexts.isNotEmpty) 'otherLanguageTexts': otherLanguageTexts.toList(),
+        if (otherLanguageTexts.isNotEmpty) 'otherLanguageTexts': otherLanguageTexts.toList()..sort(),
       };
 }
 
@@ -289,40 +310,21 @@ Future<void> writeShot(WidgetTester tester, String name) async {
 
 bool get shootsEveryPage => writesShots && _shootEveryPage;
 
-final _hangul = RegExp(r'[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]');
-final _latinWord = RegExp(r'[A-Za-z]{3,}');
-
-/// Texts on screen in the language the run is not in: in a Korean run,
-/// texts with Latin words and no Hangul; in an English run, texts with
-/// Hangul. Names, handles and seeded message bodies show up too; the
-/// report lists them all and a person tells them apart.
-Set<String> otherLanguageTextsOnScreen(WidgetTester tester, String locale) {
-  bool foreign(String text) => locale == 'ko'
-      ? _latinWord.hasMatch(text) && !_hangul.hasMatch(text)
-      : _hangul.hasMatch(text);
-  final texts = <String>{
-    for (final element in find.byType(RichText).evaluate())
-      (element.widget as RichText).text.toPlainText().trim(),
-    for (final element in find.byType(EditableText).evaluate())
-      (element.widget as EditableText).controller.text.trim(),
-  };
-  return {
-    for (final text in texts)
-      if (foreign(text)) text.length > 80 ? '${text.substring(0, 80)}…' : text,
-  };
-}
-
 /// Tap targets on screen smaller than [minimum] logical pixels either way:
 /// Android's 48 for the report, [minimumTapTarget] for the gate.
 ///
 /// What takes a tap or a long press is read from the semantics tree, as the
 /// framework's own tap target guideline reads it, with the same exceptions
 /// (links, hidden nodes). That guideline also passes over every control
-/// that touches any edge of the list it scrolls in, on the grounds that it
-/// may be half scrolled out, which lets through each button set flush left
-/// in a list. Here a control is passed over only when it reaches an edge of
-/// its list along the way the list scrolls, or an edge of the screen (as a
-/// sheet's scrim does, which is whatever the sheet leaves uncovered).
+/// that touches any edge of the list it scrolls in, or of the screen, on
+/// the grounds that it may be half scrolled out, which lets through each
+/// button set flush left in a list and every control at a screen edge. Here
+/// a control is passed over only when it reaches an edge of its list along
+/// the way the list scrolls, where the list may have cut it. A control that
+/// touches an edge of the screen is measured like any other. The one thing
+/// left out there is a modal's scrim (the node that dismisses a sheet, a
+/// menu or a dialog): it is whatever the modal leaves uncovered, not a
+/// control with a size of its own.
 Future<Set<String>> smallTapTargetsOnScreen(WidgetTester tester, {double minimum = 48}) async {
   final handle = tester.ensureSemantics();
   try {
@@ -340,6 +342,7 @@ Future<Set<String>> smallTapTargetsOnScreen(WidgetTester tester, {double minimum
       final data = node.getSemanticsData();
       final takesTaps = data.hasAction(SemanticsAction.tap) || data.hasAction(SemanticsAction.longPress);
       if (!takesTaps || data.flagsCollection.isHidden || data.flagsCollection.isLink) return;
+      if (data.hasAction(SemanticsAction.dismiss)) return;
 
       // The node's rectangle, carried up to the root: physical pixels.
       var rect = node.rect;
@@ -356,13 +359,10 @@ Future<Set<String>> smallTapTargetsOnScreen(WidgetTester tester, {double minimum
         if (vertical && (rect.top <= list.rect.top + _edge || rect.bottom >= list.rect.bottom - _edge)) return;
         if (horizontal && (rect.left <= list.rect.left + _edge || rect.right >= list.rect.right - _edge)) return;
       }
-      if (rect.left <= screen.left + _edge ||
-          rect.top <= screen.top + _edge ||
-          rect.right >= screen.right - _edge ||
-          rect.bottom >= screen.bottom - _edge) {
-        return;
-      }
-      final size = rect.size / view.devicePixelRatio;
+      // What reaches past the screen is measured by the part that is on it:
+      // that part is all there is to tap.
+      if (!rect.overlaps(screen)) return;
+      final size = rect.intersect(screen).size / view.devicePixelRatio;
       if (size.width < minimum - _edge || size.height < minimum - _edge) {
         final label = data.label.isEmpty ? (data.tooltip.isEmpty ? 'unlabelled' : data.tooltip) : data.label;
         small.add('Size(${size.width.toStringAsFixed(1)}, ${size.height.toStringAsFixed(1)}) ($label)');
@@ -397,12 +397,14 @@ class LayoutReport {
     required String locale,
     required LayoutFindings findings,
     required bool knownFailure,
+    bool light = false,
   }) {
     _rows.add({
       'case': caseId,
       'screen': screen,
       'size': size.label,
       'locale': locale,
+      if (light) 'theme': 'light',
       'knownFailure': knownFailure,
       ...findings.toJson(),
     });

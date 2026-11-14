@@ -173,16 +173,13 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
 
         final l10n = AppLocalizations.of(context);
+        // Settings is a tab of the bar below, so the bar above has no
+        // action for it.
         final shellActions = [
           IconButton(
             tooltip: l10n.settingsSecurityStatusTitle,
             onPressed: () => context.push('/security-status'),
             icon: const Icon(Icons.verified_user_outlined),
-          ),
-          IconButton(
-            tooltip: l10n.settingsTitle,
-            onPressed: () => context.push('/settings'),
-            icon: const Icon(Icons.tune),
           ),
         ];
 

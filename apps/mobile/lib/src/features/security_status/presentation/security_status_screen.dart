@@ -9,6 +9,7 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/attachments_feature.dart';
 
 class SecurityStatusScreen extends ConsumerWidget {
   const SecurityStatusScreen({super.key, this.tlsPins = VeilConfig.tlsPins});
@@ -122,12 +123,14 @@ class SecurityStatusScreen extends ConsumerWidget {
           orElse: () => _SignalTone.neutral,
         ),
       ),
-      _SecuritySignal(
-        label: l10n.securityStatusClipboard,
-        value: l10n.securityStatusClipboardRestricted,
-        detail: l10n.securityStatusClipboardDetail,
-        tone: _SignalTone.good,
-      ),
+      // About download tickets, which only a build with attachments issues.
+      if (kAttachmentsEnabled)
+        _SecuritySignal(
+          label: l10n.securityStatusClipboard,
+          value: l10n.securityStatusClipboardRestricted,
+          detail: l10n.securityStatusClipboardDetail,
+          tone: _SignalTone.good,
+        ),
     ];
 
     final runtimeSignals = <_SecuritySignal>[

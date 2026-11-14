@@ -565,7 +565,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authHandleBindCta => 'Bind this device';
 
   @override
+  String get authStageGeneratingKeys => 'Generating local identity';
+
+  @override
+  String get authStageRegistering => 'Registering handle';
+
+  @override
+  String get authStageRequestingChallenge => 'Requesting challenge';
+
+  @override
+  String get authStageVerifying => 'Verifying device';
+
+  @override
+  String get authStageComplete => 'Bound';
+
+  @override
+  String get authDefaultDeviceName => 'VEIL Mobile';
+
+  @override
   String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsProfileTitle => 'Profile';
+
+  @override
+  String get settingsProfileSubtitle =>
+      'Your handle, and the nickname this device calls you by';
 
   @override
   String get settingsEyebrow => 'LOCAL DEVICE';
@@ -1120,6 +1145,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatAttachmentStateBanner => 'Attachment state';
+
+  @override
+  String get chatAttachmentCannotOpen =>
+      'This version cannot open attachments.';
+
+  @override
+  String get reactionsMoreTooltip => 'More reactions';
 
   @override
   String get attachmentTitle => 'Attachment';
@@ -1789,6 +1821,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get navCalls => 'Calls';
+
+  @override
+  String get navSettings => 'Settings';
 
   @override
   String get oneTimeLinkTitle => 'One-time secret link';

@@ -82,6 +82,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
                 await ref.read(appSessionProvider.notifier).registerAndAuthenticate(
                       handle: handle,
                       displayName: displayName?.isEmpty ?? true ? null : displayName,
+                      deviceName: l10n.authDefaultDeviceName,
                     );
                 if (context.mounted && ref.read(appSessionProvider).isAuthenticated) {
                   context.go('/conversations');
@@ -159,9 +160,14 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
   }
 
   String _ctaLabelFor(AppSessionState session, AppLocalizations l10n) {
-    if (_submitting || session.isAuthenticating) {
-      return session.authFlowStage.label;
-    }
-    return l10n.authHandleBindCta;
+    if (!_submitting && !session.isAuthenticating) return l10n.authHandleBindCta;
+    return switch (session.authFlowStage) {
+      AuthFlowStage.idle => l10n.authHandleBindCta,
+      AuthFlowStage.generatingKeys => l10n.authStageGeneratingKeys,
+      AuthFlowStage.registering => l10n.authStageRegistering,
+      AuthFlowStage.requestingChallenge => l10n.authStageRequestingChallenge,
+      AuthFlowStage.verifying => l10n.authStageVerifying,
+      AuthFlowStage.complete => l10n.authStageComplete,
+    };
   }
 }

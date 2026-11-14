@@ -7,6 +7,7 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
@@ -147,7 +148,8 @@ class MessageBubble extends StatelessWidget {
                         attachment: attachment,
                         resolving: attachmentResolving,
                         downloadError: downloadError,
-                        onResolve: () => onResolveAttachment(attachment.attachmentId),
+                        onResolve:
+                            kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
                         onRetry: message.hasFailed ? onRetryMessage : null,
                       ),
                     ],

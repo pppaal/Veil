@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 /// The quick reactions in a row. The "more" button appears only where
@@ -64,7 +65,7 @@ class ReactionPickerWidget extends StatelessWidget {
                     size: VeilIconSize.sm,
                     color: palette.textMuted,
                   ),
-                  tooltip: 'More reactions',
+                  tooltip: AppLocalizations.of(context).reactionsMoreTooltip,
                   onPressed: () {
                     VeilHaptics.selection();
                     onExpandPressed!();

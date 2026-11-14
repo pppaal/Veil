@@ -28,6 +28,7 @@ The backend must never become a plaintext message processor.
 - local app lock hooks via `local_auth`
 - local cache definitions via Drift/SQLite
 - feature-oriented screens: onboarding, chat, contacts, transfer, settings, reactions, and profile
+- features this build cannot do end to end are switched off by a constant next to the feature (`features/<name>/<name>_feature.dart`): calls (no WebRTC), attachments (no file picker), voice messages, the media picker, the sticker picker, stories and the assistant. While a constant is false the route table leaves the feature's routes out and no tab, button or banner leads to it; its screens still compile, and the layout gate renders them through test-only routes
 
 ### Layers (`apps/mobile/lib/src`)
 

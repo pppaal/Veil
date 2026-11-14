@@ -42,10 +42,6 @@ class VeilShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final hasBar = title != null || titleWidget != null;
-    // When a title is shown, the AppBar is translucent and content scrolls
-    // under it — offset the content so the first child isn't obscured.
-    final resolvedPadding =
-        hasBar ? padding.add(const EdgeInsets.only(top: 52)) : padding;
     final leading = this.leading ??
         ((ModalRoute.of(context)?.canPop ?? false) ? const VeilBackButton() : null);
 
@@ -181,9 +177,12 @@ class VeilShell extends StatelessWidget {
               ),
               Align(
                 alignment: Alignment.topCenter,
+                // The bar is translucent and the body runs behind it; the
+                // SafeArea above already keeps the content clear of it, at
+                // any width.
                 child: maxWidth == null
                     ? Padding(
-                        padding: resolvedPadding,
+                        padding: padding,
                         child: child,
                       )
                     : ConstrainedBox(

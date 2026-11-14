@@ -62,7 +62,8 @@ void main() {
     final box = tester.renderObject<RenderBox>(row);
     final shown = visibleRect(tester, box);
     final area = onScreen(tester, find.byType(ChatMessageList));
-    expect(shown.height, box.size.height, reason: '${historyLine(line)} is cut off');
+    // To a hundredth of a pixel: where the row lands is a sum of fractions.
+    expect(shown.height, closeTo(box.size.height, 0.01), reason: '${historyLine(line)} is cut off');
     expect(shown.top, greaterThanOrEqualTo(area.top));
     expect(shown.bottom, lessThanOrEqualTo(area.bottom));
   }

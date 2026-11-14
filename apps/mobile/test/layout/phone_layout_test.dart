@@ -3,23 +3,39 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 
+import 'known_other_language_text.dart';
 import 'known_phone_layout_failures.dart';
 import 'support/layout_seed.dart';
 import 'support/layout_world.dart';
 import 'support/phone_layout_probe.dart';
 import 'support/screen_cases.dart';
 
-// The phone layout gate. Every screen of the app is opened at three phone
-// sizes in both languages, with the bundled fonts, and scrolled to its end.
-// A case fails when the framework reports a layout error (an overflowing
-// flex, unbounded constraints, a build that throws), when the messages of a
-// chat or the rows of the conversation list get less than 45% of the screen
-// height, when a control is smaller than 44x44 (on every screen but the
-// one listed in tapTargetExemptScreens), or when the action of a chat's
-// warning is not wholly on screen where a tap reaches it. Cases known to
-// fail are listed in known_phone_layout_failures.dart, which this gate only
-// lets shrink; it is empty.
+// The layout gate. Every screen of the app is opened at three phone sizes
+// in both languages, with the bundled fonts, and scrolled to its end. A
+// case fails
+// - when the framework reports a layout error (an overflowing flex,
+//   unbounded constraints, a build that throws);
+// - when the messages of a chat or the rows of the conversation list get
+//   less than 45% of the screen height;
+// - when a control is smaller than 44x44 (on every screen but the one
+//   listed in tapTargetExemptScreens);
+// - when the action of a chat's warning is not wholly on screen where a tap
+//   reaches it;
+// - when the control a screen is for (the first input or primary button its
+//   case names) is not on the first screenful;
+// - when a text of the app's own copy is in the other language (see
+//   support/language_probe.dart for what is not the app's own copy).
+//
+// Each case is rendered once more in the light theme (390x844, Korean, the
+// first screenful), held to layout errors and tap targets. The wide cases
+// open the two-pane shell and a tablet, held to layout errors and the
+// messages' share.
+//
+// Cases known to fail are listed in known_phone_layout_failures.dart, and
+// screens known to show the other language in known_other_language_text.dart.
+// The gate only lets both lists shrink.
 //
 //   flutter test test/layout
 //
@@ -31,11 +47,16 @@ import 'support/screen_cases.dart';
 
 const _locales = ['en', 'ko'];
 
+/// The one size and language of the light-theme renders.
+const _lightSize = phoneMedium;
+const _lightLocale = 'ko';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late LayoutIdentities identities;
   final report = LayoutReport();
+  final language = _LanguageLedger();
 
   setUpAll(() async {
     await loadBundledFonts();
@@ -60,18 +81,40 @@ void main() {
         reason: 'these cases name a screen file that no longer exists');
   });
 
-  test('the allow-list names existing cases, once each', () {
-    final caseIds = {for (final screenCase in screenCases) screenCase.id};
-    expect(caseIds, hasLength(screenCases.length), reason: 'case ids must be unique');
+  test('the allow-lists name existing cases and screens, once each', () {
+    final cases = {for (final screenCase in allCases) screenCase.id: screenCase};
+    expect(cases, hasLength(allCases.length), reason: 'case ids must be unique');
     final listed = <String>{};
     for (final known in knownPhoneLayoutFailures) {
-      final key = '${known.caseId} @ ${known.size} ${known.locale}';
-      expect(caseIds, contains(known.caseId), reason: key);
-      expect(phoneSizes, contains(known.size), reason: key);
-      expect(_locales, contains(known.locale), reason: key);
-      expect(known.defects, isNotEmpty, reason: key);
-      expect(known.reason, isNotEmpty, reason: key);
-      expect(listed.add(key), isTrue, reason: '$key is listed twice');
+      final screenCase = cases[known.caseId];
+      expect(screenCase, isNotNull, reason: '${known.caseId} is not a case');
+      expect(known.defects, isNotEmpty, reason: known.caseId);
+      expect(known.reason, isNotEmpty, reason: known.caseId);
+      expect(known.sizes, isNotEmpty, reason: known.caseId);
+      expect(known.locales, isNotEmpty, reason: known.caseId);
+      for (final size in known.sizes) {
+        for (final locale in known.locales) {
+          final key = '${known.caseId} @ $size $locale${known.light ? ' light' : ''}';
+          expect(_locales, contains(locale), reason: key);
+          if (known.light) {
+            expect(screenCases, contains(screenCase), reason: '$key: only the phone cases have a light render');
+            expect((size, locale), (_lightSize, _lightLocale), reason: '$key: the light render is one size and language');
+          } else {
+            expect(screenCase!.sizes, contains(size), reason: '$key: the case is not rendered at that size');
+          }
+          expect(listed.add(key), isTrue, reason: '$key is listed twice');
+        }
+      }
+    }
+
+    final files = {for (final screenCase in allCases) screenCase.file};
+    for (final MapEntry(key: file, value: counts) in knownOtherLanguageText.entries) {
+      expect(files, contains(file), reason: '$file has no case');
+      expect(counts, isNotEmpty, reason: file);
+      for (final MapEntry(key: locale, value: count) in counts.entries) {
+        expect(_locales, contains(locale), reason: file);
+        expect(count, greaterThan(0), reason: '$file $locale: delete the entry instead of listing none');
+      }
     }
   });
 
@@ -80,21 +123,6 @@ void main() {
   // in a scrolling screen went unseen. The gate's check must see it, and
   // must still leave out what the list has half scrolled away.
   testWidgets('the tap target check sees a small control flush with the side of its list', (tester) async {
-    Widget button(String label) => Align(
-          alignment: Alignment.centerLeft,
-          child: SizedBox(
-            width: 120,
-            height: 30,
-            // Its own node, as a button's is.
-            child: Semantics(
-              container: true,
-              button: true,
-              label: label,
-              onTap: () {},
-              child: const ColoredBox(color: Color(0xFF444444)),
-            ),
-          ),
-        );
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: Padding(
@@ -102,7 +130,7 @@ void main() {
           child: ListView(
             children: [
               const SizedBox(height: 60),
-              button('flush left'),
+              Align(alignment: Alignment.centerLeft, child: _smallButton('flush left')),
               const SizedBox(height: 2000),
             ],
           ),
@@ -117,6 +145,82 @@ void main() {
     tester.state<ScrollableState>(find.byType(Scrollable)).position.jumpTo(75);
     await tester.pump();
     expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), isEmpty);
+  });
+
+  // It also passes over whatever touches an edge of the screen, which is
+  // where a bar's last action and a full-width row's button sit. Only a
+  // modal's scrim is left out there: it is what the modal leaves uncovered.
+  testWidgets('the tap target check sees a small control at an edge of the screen', (tester) async {
+    usePhoneView(tester, phoneMedium);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Stack(
+          children: [
+            for (final (label, alignment) in [
+              ('at the top right', Alignment.topRight),
+              ('at the bottom left', Alignment.bottomLeft),
+              ('at the right', Alignment.centerRight),
+            ])
+              Align(alignment: alignment, child: _smallButton(label)),
+          ],
+        ),
+      ),
+    ));
+    expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), {
+      'Size(120.0, 30.0) (at the top right)',
+      'Size(120.0, 30.0) (at the bottom left)',
+      'Size(120.0, 30.0) (at the right)',
+    });
+
+    // A sheet that covers all but a strip: the strip is the scrim, which
+    // dismisses the sheet and has no size of its own to hold to 44 px.
+    final context = tester.element(find.byType(Stack).first);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SizedBox(height: phoneMedium.height - 20, child: const Center(child: Text('sheet'))),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('sheet'), findsOneWidget);
+    expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), isEmpty);
+  });
+
+  test('the language check tells the app\'s copy from what it only shows', () {
+    // Fixtures, data and the brand are nobody's translation.
+    for (final shown in [
+      'VEIL',
+      'Selene Park',
+      'Selene',
+      'S',
+      '@selene',
+      'Maximilian Alexander von Hohenberg-Schwarzenfeld',
+      'lease-signed.pdf',
+      '2.3 MB · application/pdf',
+      'Pixel 9 Pro Fold',
+      'iPhone / iPad',
+      'PIN',
+      'cold.operator',
+      'dev-atlas',
+      'The registry entry is at https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true',
+      '08:49',
+    ]) {
+      expect(isOtherLanguage(shown, 'ko'), isFalse, reason: '"$shown" is not the app\'s copy');
+    }
+    for (final shown in ['한지우', '김', '김서연 (디자인팀)', '주말 등산', '내일 회의 자료는 여기로 보낼게']) {
+      expect(isOtherLanguage(shown, 'en'), isFalse, reason: '"$shown" is not the app\'s copy');
+    }
+
+    // The app's own words are, whatever they stand beside.
+    for (final copy in ['Send', 'Conversation with Selene Park', 'Connected 00:02', 'VEIL Assistant', '2h ago']) {
+      expect(isOtherLanguage(copy, 'ko'), isTrue, reason: '"$copy" is English copy');
+    }
+    for (final copy in ['보내기', 'Selene Park님과의 대화', '2시간 전']) {
+      expect(isOtherLanguage(copy, 'en'), isTrue, reason: '"$copy" is Korean copy');
+    }
+    // A sentence in the run's language may name what is Latin by nature.
+    expect(isOtherLanguage('VEIL 릴레이에 연결됨', 'ko'), isFalse);
+    expect(isOtherLanguage('PIN 입력', 'ko'), isFalse);
+    expect(isOtherLanguage('Relay linked · 8 conversations', 'en'), isFalse);
   });
 
   // The chat cannot show its messages on a phone today, so nothing on
@@ -143,15 +247,28 @@ void main() {
       expect(await messenger.isPeerVerified(chatConversationId), isTrue);
       expect(messenger.messagesFor(emptyChatConversationId), isEmpty);
       world.dispose();
+
+      final withGroup = await LayoutWorld.create(
+        identities: identities,
+        account: LayoutAccount.signedIn,
+        locale: locale,
+        withGroup: true,
+      );
+      final group = withGroup.messenger.conversationById(groupConversationId);
+      expect(group?.type, ConversationType.group);
+      expect(group?.members, hasLength(groupMemberHandles.length + 1));
+      expect(withGroup.messenger.conversations.first.id, groupConversationId, reason: 'the group is the newest');
+      withGroup.dispose();
     }
   });
 
-  for (final screenCase in screenCases) {
+  for (final screenCase in allCases) {
     group(screenCase.id, () {
-      for (final size in phoneSizes) {
+      for (final size in screenCase.sizes) {
         for (final locale in _locales) {
           testWidgets('$size $locale', (tester) async {
             final findings = await _render(tester, screenCase, size, locale, identities);
+            language.record(screenCase, size, locale, findings);
             final known = knownPhoneLayoutFailure(screenCase.id, size, locale);
             report.record(
               caseId: screenCase.id,
@@ -161,22 +278,113 @@ void main() {
               findings: findings,
               knownFailure: known != null,
             );
-
-            if (known == null) {
-              expect(findings.isClean, isTrue,
-                  reason: '${screenCase.id} does not fit a $size phone ($locale):\n${findings.describe()}');
-            } else {
-              expect(findings.isClean, isFalse,
-                  reason: '${screenCase.id} now fits a $size phone ($locale): '
-                      'remove it from knownPhoneLayoutFailures');
-              expect(findings.defects, known.defects,
-                  reason: '${screenCase.id} on a $size phone ($locale) fails in another way than listed '
-                      '("${known.reason}"):\n${findings.describe()}');
-            }
+            _expectAsListed(findings, known, '${screenCase.id} on a $size screen ($locale)');
           });
         }
       }
     });
+  }
+
+  // The light theme shares every layout with the dark one, so one render of
+  // each case is enough to catch what only the theme changes: a control or
+  // a border that takes a different size.
+  group('light theme', () {
+    for (final screenCase in screenCases) {
+      testWidgets(screenCase.id, (tester) async {
+        final findings = await _render(tester, screenCase, _lightSize, _lightLocale, identities, light: true);
+        final known = knownPhoneLayoutFailure(screenCase.id, _lightSize, _lightLocale, light: true);
+        report.record(
+          caseId: screenCase.id,
+          screen: screenCase.file,
+          size: _lightSize,
+          locale: _lightLocale,
+          findings: findings,
+          knownFailure: known != null,
+          light: true,
+        );
+        _expectAsListed(findings, known, '${screenCase.id} in the light theme');
+      });
+    }
+  });
+
+  // After every case: what each screen showed in the other language, added
+  // up over its cases and sizes, against the number listed for it.
+  test('each screen shows the other language exactly as listed', () {
+    final problems = language.problems();
+    expect(problems, isEmpty, reason: problems.join('\n'));
+  });
+}
+
+// A small tap target with a semantics node of its own, as a button's is.
+Widget _smallButton(String label) => SizedBox(
+      width: 120,
+      height: 30,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: label,
+        onTap: () {},
+        child: const ColoredBox(color: Color(0xFF444444)),
+      ),
+    );
+
+void _expectAsListed(LayoutFindings findings, KnownPhoneLayoutFailure? known, String what) {
+  if (known == null) {
+    expect(findings.isClean, isTrue, reason: '$what does not pass the layout gate:\n${findings.describe()}');
+    return;
+  }
+  expect(findings.isClean, isFalse, reason: '$what now passes: remove it from knownPhoneLayoutFailures');
+  expect(findings.defects, known.defects,
+      reason: '$what fails in another way than listed ("${known.reason}"):\n${findings.describe()}');
+}
+
+/// What every screen showed in the other language, over all of its cases.
+class _LanguageLedger {
+  // screen file -> locale -> texts
+  final Map<String, Map<String, Set<String>>> _texts = {};
+  final Set<String> _rendered = {};
+
+  /// Takes the case's texts in the other language. A screen with no entry
+  /// in knownOtherLanguageText fails its case on the spot; a listed one is
+  /// counted over all its cases at the end of the run.
+  void record(ScreenCase screenCase, PhoneSize size, String locale, LayoutFindings findings) {
+    _rendered.add('${screenCase.id} $size $locale');
+    final texts = findings.otherLanguageTexts;
+    final listed = knownOtherLanguageText[screenCase.file]?[locale];
+    if (listed == null) {
+      for (final text in texts) {
+        findings.add(
+          LayoutDefect.otherLanguage,
+          '${locale == 'ko' ? 'not Korean' : 'not English'}: "$text" '
+          '(move it to app_en.arb and app_ko.arb)',
+        );
+      }
+      return;
+    }
+    _texts.putIfAbsent(screenCase.file, () => {}).putIfAbsent(locale, () => {}).addAll(texts);
+  }
+
+  List<String> problems() {
+    final problems = <String>[];
+    for (final MapEntry(key: file, value: counts) in knownOtherLanguageText.entries) {
+      // A run that left out some of the screen's cases (--name) has not
+      // seen all of its texts, and cannot say it shows fewer.
+      final complete = allCases.where((screenCase) => screenCase.file == file).every((screenCase) =>
+          screenCase.sizes.every((size) => _locales.every((locale) => _rendered.contains('${screenCase.id} $size $locale'))));
+      for (final MapEntry(key: locale, value: listed) in counts.entries) {
+        final shown = _texts[file]?[locale] ?? const <String>{};
+        final lines = (shown.toList()..sort()).map((text) => '    "$text"').join('\n');
+        if (shown.length > listed) {
+          problems.add('$file shows ${shown.length} texts in the other language in a $locale run, '
+              'more than the $listed listed in knownOtherLanguageText:\n$lines');
+        } else if (complete && shown.length < listed) {
+          problems.add('$file now shows ${shown.length} texts in the other language in a $locale run, not $listed: '
+              '${shown.isEmpty ? 'delete its $locale entry' : 'lower its number to ${shown.length}'} '
+              'in knownOtherLanguageText${shown.isEmpty ? '' : '\n$lines'}');
+        }
+      }
+    }
+    return problems;
   }
 }
 
@@ -185,11 +393,12 @@ Future<LayoutFindings> _render(
   ScreenCase screenCase,
   PhoneSize size,
   String locale,
-  LayoutIdentities identities,
-) async {
+  LayoutIdentities identities, {
+  bool light = false,
+}) async {
   usePhoneView(tester, size, keyboardHeight: screenCase.keyboardHeight, textScale: screenCase.textScale);
   final findings = LayoutFindings();
-  final name = '${screenCase.id}__${size}__$locale';
+  final name = '${screenCase.id}__${size}__$locale${light ? '__light' : ''}';
   final world = await LayoutWorld.create(
     identities: identities,
     account: screenCase.account,
@@ -197,6 +406,7 @@ Future<LayoutFindings> _render(
     attention: screenCase.attention,
     bootstrapping: screenCase.bootstrapping,
     transferStarted: screenCase.transferStarted,
+    withGroup: screenCase.withGroup,
   );
 
   Future<void> audit() async {
@@ -205,9 +415,10 @@ Future<LayoutFindings> _render(
         findings.add(LayoutDefect.smallTapTarget, 'smaller than 44x44: $target');
       }
     }
-    if (!writesShots) return;
-    findings.smallTapTargets.addAll(await smallTapTargetsOnScreen(tester));
-    findings.otherLanguageTexts.addAll(otherLanguageTextsOnScreen(tester, locale));
+    // The light render is held to layout errors and tap targets only: the
+    // dark renders of the same case already read its language.
+    if (!light) findings.otherLanguageTexts.addAll(otherLanguageTextsOnScreen(tester, locale));
+    if (writesShots) findings.smallTapTargets.addAll(await smallTapTargetsOnScreen(tester));
   }
 
   // A test draws every shadow as a solid block. A shot is for looking at,
@@ -219,13 +430,26 @@ Future<LayoutFindings> _render(
         location: screenCase.location,
         extra: screenCase.extra,
         extraRoutes: layoutOnlyRoutes,
+        themeMode: light ? ThemeMode.light : ThemeMode.dark,
       ));
       await pumpFrames(tester);
+      world.startLiveAttention();
+      await tester.pump();
+
+      // Where the screen opens, before the case taps or types anything.
+      final primaryAction = screenCase.primaryAction;
+      if (!light && primaryAction != null && screenCase.keyboardHeight == 0) {
+        final problem = primaryActionProblem(tester, primaryAction(), size);
+        if (problem != null) {
+          findings.add(LayoutDefect.primaryActionBelowFold, 'the control the screen is for $problem');
+        }
+      }
+
       await screenCase.settle?.call(tester);
       expect(find.byType(screenCase.screen), findsOneWidget, reason: '${screenCase.location} did not open its screen');
 
       final measure = screenCase.primaryExtent;
-      if (measure != null) {
+      if (!light && measure != null) {
         final extent = measure(tester);
         final share = extent / screenHeight(tester);
         findings.primaryShare = share;
@@ -247,7 +471,7 @@ Future<LayoutFindings> _render(
       }
       // A warning is on screen for its action: every one the case's chat
       // carries must be there, whole, where a tap reaches it.
-      final wantedActions = screenCase.warningActionCount;
+      final wantedActions = light ? 0 : screenCase.warningActionCount;
       if (wantedActions > 0) {
         final actions = chatWarningActions().evaluate().toList();
         if (actions.length != wantedActions) {
@@ -269,10 +493,13 @@ Future<LayoutFindings> _render(
       await audit();
 
       // Rows below the fold are only laid out once they scroll into view.
-      await scrollToEnd(tester, onPage: (page) async {
-        if (shootsEveryPage) await writeShot(tester, '$name~$page');
-        await audit();
-      });
+      // The light render stops at the first screenful.
+      if (!light) {
+        await scrollToEnd(tester, onPage: (page) async {
+          if (shootsEveryPage) await writeShot(tester, '$name~$page');
+          await audit();
+        });
+      }
 
       // Inside the collection, so that an error thrown while the screen
       // is disposed counts against it too.

@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
+import '../support/copy_finder.dart';
 import '../support/fake_relay.dart';
 import '../support/memory_secure_store.dart';
 import '../support/mock_relay_parties.dart';
@@ -110,9 +111,10 @@ void main() {
   testWidgets('the screen speaks the user\'s language', (tester) async {
     await pumpStatus(tester, adapter: LibCryptoAdapter(), locale: const Locale('ko'));
 
+    // The rows draw their Korean labels with their words kept whole.
     expect(find.text('보안 상태'), findsWidgets);
-    expect(find.text('암호 어댑터'), findsOneWidget);
-    expect(find.text('TLS 고정'), findsOneWidget);
+    expect(findCopy('암호 어댑터'), findsOneWidget);
+    expect(findCopy('TLS 고정'), findsOneWidget);
     expect(find.text('Crypto adapter'), findsNothing);
   });
 }

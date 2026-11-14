@@ -21,7 +21,7 @@ Veil is an end-to-end encrypted messenger. The server relays ciphertext
 envelopes; it never sees the content of your messages.
 
 **What Veil is**
-- End-to-end encrypted messages and attachments. Server sees ciphertext.
+- End-to-end encrypted messages. Server sees ciphertext.
 - No phone number, no email, no address book upload. You pick a handle.
 - Device-bound identity. No cloud account. No silent sync across devices
   you didn't explicitly add.
@@ -95,13 +95,20 @@ Declared in `AndroidManifest.xml` and surfaced in Play Console:
 | INTERNET                     | network             | no              |
 | ACCESS_NETWORK_STATE         | reconnect logic     | no              |
 | POST_NOTIFICATIONS (33+)     | message wake only   | yes (Android 13+)|
-| CAMERA (feature-gated)       | attachments         | yes             |
-| RECORD_AUDIO (feature-gated) | voice messages/calls| yes             |
-| READ_MEDIA_IMAGES (33+)      | attachments         | yes             |
+| CAMERA                       | attachments (switched off) | never asked |
+| RECORD_AUDIO                 | voice messages, calls (switched off) | never asked |
+| READ_MEDIA_IMAGES/VIDEO/AUDIO (33+) | attachments (switched off) | never asked |
 | USE_BIOMETRIC                | app lock            | no (per-use)    |
-| FOREGROUND_SERVICE (calls)   | active call only    | declared        |
 
 No `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`.
+
+Attachments, voice messages and calls are switched off in the mobile app
+(`apps/mobile/lib/src/features/*/*_feature.dart`), so nothing in the build
+asks for the camera, the microphone or the media library at runtime. The
+manifest still declares those permissions. Remove them (and the matching
+usage strings in `ios/Runner/Info.plist`) before submitting a build that
+ships without those features: a store reviewer reads a declared permission
+as a feature.
 
 ## Support & policy URLs
 

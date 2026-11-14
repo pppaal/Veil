@@ -540,7 +540,31 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleBindCta => '이 기기에 연결';
 
   @override
+  String get authStageGeneratingKeys => '로컬 신원 생성 중';
+
+  @override
+  String get authStageRegistering => '핸들 등록 중';
+
+  @override
+  String get authStageRequestingChallenge => '챌린지 요청 중';
+
+  @override
+  String get authStageVerifying => '기기 확인 중';
+
+  @override
+  String get authStageComplete => '연결됨';
+
+  @override
+  String get authDefaultDeviceName => 'VEIL 모바일';
+
+  @override
   String get settingsTitle => '설정';
+
+  @override
+  String get settingsProfileTitle => '프로필';
+
+  @override
+  String get settingsProfileSubtitle => '내 핸들과 이 기기에서 부르는 닉네임';
 
   @override
   String get settingsEyebrow => '로컬 기기';
@@ -1082,6 +1106,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get chatAttachmentStateBanner => '첨부 상태';
+
+  @override
+  String get chatAttachmentCannotOpen => '이 버전에서는 첨부 파일을 열 수 없습니다.';
+
+  @override
+  String get reactionsMoreTooltip => '반응 더 보기';
 
   @override
   String get attachmentTitle => '첨부';
@@ -1717,6 +1747,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get navCalls => '통화';
+
+  @override
+  String get navSettings => '설정';
 
   @override
   String get oneTimeLinkTitle => '일회성 비밀 링크';

@@ -1100,11 +1100,59 @@ abstract class AppLocalizations {
   /// **'Bind this device'**
   String get authHandleBindCta;
 
+  /// No description provided for @authStageGeneratingKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating local identity'**
+  String get authStageGeneratingKeys;
+
+  /// No description provided for @authStageRegistering.
+  ///
+  /// In en, this message translates to:
+  /// **'Registering handle'**
+  String get authStageRegistering;
+
+  /// No description provided for @authStageRequestingChallenge.
+  ///
+  /// In en, this message translates to:
+  /// **'Requesting challenge'**
+  String get authStageRequestingChallenge;
+
+  /// No description provided for @authStageVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Verifying device'**
+  String get authStageVerifying;
+
+  /// No description provided for @authStageComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Bound'**
+  String get authStageComplete;
+
+  /// No description provided for @authDefaultDeviceName.
+  ///
+  /// In en, this message translates to:
+  /// **'VEIL Mobile'**
+  String get authDefaultDeviceName;
+
   /// No description provided for @settingsTitle.
   ///
   /// In en, this message translates to:
   /// **'Settings'**
   String get settingsTitle;
+
+  /// No description provided for @settingsProfileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get settingsProfileTitle;
+
+  /// No description provided for @settingsProfileSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your handle, and the nickname this device calls you by'**
+  String get settingsProfileSubtitle;
 
   /// No description provided for @settingsEyebrow.
   ///
@@ -2035,6 +2083,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Attachment state'**
   String get chatAttachmentStateBanner;
+
+  /// No description provided for @chatAttachmentCannotOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'This version cannot open attachments.'**
+  String get chatAttachmentCannotOpen;
+
+  /// No description provided for @reactionsMoreTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'More reactions'**
+  String get reactionsMoreTooltip;
 
   /// No description provided for @attachmentTitle.
   ///
@@ -3157,6 +3217,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Calls'**
   String get navCalls;
+
+  /// No description provided for @navSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get navSettings;
 
   /// No description provided for @oneTimeLinkTitle.
   ///

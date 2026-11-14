@@ -10,6 +10,7 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/memory_secure_store.dart';
+import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
 // The lock screen on a phone: unlocking needs no scrolling, and the notice
@@ -65,7 +66,7 @@ void main() {
           // After the buttons: the notice and what the device offers.
           await tester.scrollUntilVisible(find.text(l10n.appLockPillNoRemoteReset), 120, scrollable: screenList);
           expect(find.byType(VeilDestructiveNotice), findsOneWidget);
-          expect(find.text(l10n.appLockNoRecoveryBody), findsOneWidget);
+          expect(findCopy(l10n.appLockNoRecoveryBody), findsOneWidget);
           expect(find.text(l10n.appLockPillPinConfigured), findsOneWidget);
           expect(find.text(l10n.appLockPillBiometricsAvailable), findsOneWidget);
           expect(tester.takeException(), isNull);

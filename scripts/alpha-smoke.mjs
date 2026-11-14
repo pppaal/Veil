@@ -1,4 +1,4 @@
-import { createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
+import { createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { URL } from 'node:url';
@@ -302,8 +302,10 @@ async function run() {
       transferToken: transferInit.transferToken,
       newDeviceName: 'Alpha Transfer Device',
       platform: 'android',
-      publicIdentityKey: `pub-transfer-${suffix}`,
-      signedPrekeyBundle: `prekey-transfer-${suffix}`,
+      // A claim's keys must be canonical base64url, as the claimant
+      // fingerprint covers their bytes.
+      publicIdentityKey: randomBytes(32).toString('base64url'),
+      signedPrekeyBundle: randomBytes(96).toString('base64url'),
       authPublicKey: transferDevice.authPublicKey,
       authProof: signChallenge(
         `transfer-claim:${transferInit.sessionId}:${transferInit.transferToken}`,

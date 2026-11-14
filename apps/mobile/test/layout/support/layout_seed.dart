@@ -176,6 +176,40 @@ Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {requir
   }
 }
 
+/// The body of message [number] of a history made by [seedHistory].
+String historyLine(int number) => 'History line $number';
+
+/// Adds [count] one-line messages from [peer] to the conversation with
+/// them, oldest first, and returns their ids: a history several screens
+/// long, of which a chat builds only the part around what it shows.
+Future<List<String>> seedHistory(FakeRelay relay, {required String peer, required int count}) async {
+  final sealer = createDefaultCryptoAdapter();
+  final ids = <String>[];
+  for (var number = 1; number <= count; number++) {
+    final envelope = await sealer.messaging.encryptMessage(
+      conversationId: 'conv-$peer',
+      senderDeviceId: 'dev-$peer',
+      recipientUserId: 'user-$selfHandle',
+      body: historyLine(number),
+      messageKind: MessageKind.text,
+      recipientBundle: const KeyBundle(
+        userId: 'user-$selfHandle',
+        deviceId: 'dev-$selfHandle',
+        handle: selfHandle,
+        identityPublicKey: 'ik',
+        signedPrekeyBundle: 'spk',
+      ),
+    );
+    final stored = relay.inject(
+      senderHandle: peer,
+      conversationId: 'conv-$peer',
+      envelope: sealer.envelopeCodec.encodeApiEnvelope(envelope),
+    );
+    ids.add(stored['id'] as String);
+  }
+  return ids;
+}
+
 /// The relay as atlas's device reaches it, with the routes the screens
 /// outside the messenger call: contacts, call history, stories, the device
 /// list and the old-device half of a transfer.
@@ -332,6 +366,10 @@ class LayoutRelayClient extends FakeRelayClient {
 class LayoutMemoryCache implements ConversationCacheService, MessageContentStore {
   final InMemoryMessageContentStore _contents = InMemoryMessageContentStore();
 
+  /// What a search of the archive finds, whatever the query: there is no
+  /// index here, so a test names the hits it is about.
+  List<MessageSearchResult> archiveHits = const <MessageSearchResult>[];
+
   @override
   Future<void> put(MessageContentRecord record) => _contents.put(record);
 
@@ -395,7 +433,7 @@ class LayoutMemoryCache implements ConversationCacheService, MessageContentStore
     required MessageSearchQuery query,
     required String currentDeviceId,
   }) async =>
-      const MessageSearchPage(items: <MessageSearchResult>[]);
+      MessageSearchPage(items: archiveHits);
 
   @override
   Future<void> storeConversations(List<ConversationPreview> conversations) async {}

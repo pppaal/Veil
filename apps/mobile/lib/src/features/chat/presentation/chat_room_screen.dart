@@ -78,6 +78,16 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   MessageNavigationTarget? get navigationTarget => widget.navigationTarget;
 
   @override
+  ScrollController get messageScrollController => _scrollController;
+
+  @override
+  List<String> get shownMessageIds {
+    final controller = ref.read(messengerControllerProvider);
+    final shown = _filteredMessages(controller.messagesFor(widget.conversationId), now: controller.expiryNow());
+    return [for (final message in shown) message.id];
+  }
+
+  @override
   void initState() {
     super.initState();
     scheduleMicrotask(() => _loadConversationState());

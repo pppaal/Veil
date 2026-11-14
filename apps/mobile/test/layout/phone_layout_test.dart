@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 
@@ -15,10 +15,11 @@ import 'support/screen_cases.dart';
 // A case fails when the framework reports a layout error (an overflowing
 // flex, unbounded constraints, a build that throws), when the messages of a
 // chat or the rows of the conversation list get less than 45% of the screen
-// height, or when a control of a screen laid out for phones (the chat, the
-// conversation list, the lock) is smaller than 44x44. Cases known to fail
-// are listed in known_phone_layout_failures.dart, which this gate only lets
-// shrink; it is empty.
+// height, when a control of a screen laid out for phones (the chat, the
+// conversation list, the lock) is smaller than 44x44, or when the action of
+// a chat's warning is not wholly on screen where a tap reaches it. Cases
+// known to fail are listed in known_phone_layout_failures.dart, which this
+// gate only lets shrink; it is empty.
 //
 //   flutter test test/layout
 //
@@ -198,6 +199,23 @@ Future<LayoutFindings> _render(
             LayoutDefect.primaryContentSqueezed,
             'primary content gets ${extent.toStringAsFixed(0)} logical px, under ${minExtent.toStringAsFixed(0)}',
           );
+        }
+      }
+      // A warning is on screen for its action: every one the case's chat
+      // carries must be there, whole, where a tap reaches it.
+      final wantedActions = screenCase.warningActionCount;
+      if (wantedActions > 0) {
+        final actions = chatWarningActions().evaluate().toList();
+        if (actions.length != wantedActions) {
+          findings.add(
+            LayoutDefect.hiddenAction,
+            'the chat shows ${actions.length} warning actions, not the $wantedActions its warnings come with',
+          );
+        }
+        for (final action in actions) {
+          final label = switch ((action.widget as TextButton).child) { Text(:final data?) => data, _ => '?' };
+          final problem = whyNotWhollyTappable(tester, action.renderObject! as RenderBox);
+          if (problem != null) findings.add(LayoutDefect.hiddenAction, 'the warning action "$label" $problem');
         }
       }
       if (writesShots) {

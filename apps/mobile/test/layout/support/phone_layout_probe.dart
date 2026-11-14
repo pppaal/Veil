@@ -111,6 +111,10 @@ enum LayoutDefect {
 
   /// Something to tap is smaller than 44x44, on a screen held to that.
   smallTapTarget,
+
+  /// The action of a chat's warning is missing, or not wholly on screen
+  /// where a tap reaches it: cut off by the area it scrolls in, say.
+  hiddenAction,
 }
 
 /// The defects of one case, with a line of evidence for each.
@@ -200,6 +204,39 @@ Rect visibleRect(WidgetTester tester, RenderBox box) {
 }
 
 double screenHeight(WidgetTester tester) => tester.view.physicalSize.height / tester.view.devicePixelRatio;
+
+/// What keeps a tap from reaching all of [box], or null when nothing does:
+/// the whole of it is on screen above the keyboard, and a tap at its centre
+/// and just inside the middle of each edge lands on it. A control that the
+/// edge of a scrolling area cuts off fails this, which no layout error
+/// reports: the part outside is simply not there to tap.
+String? whyNotWhollyTappable(WidgetTester tester, RenderBox box) {
+  final view = tester.view;
+  final screen = view.physicalSize / view.devicePixelRatio;
+  final aboveKeyboard = Rect.fromLTRB(0, 0, screen.width, screen.height - view.viewInsets.bottom / view.devicePixelRatio);
+  final rect = box.localToGlobal(Offset.zero) & box.size;
+  if (rect.isEmpty) return 'has no size';
+  if (rect.left < aboveKeyboard.left ||
+      rect.top < aboveKeyboard.top ||
+      rect.right > aboveKeyboard.right ||
+      rect.bottom > aboveKeyboard.bottom) {
+    return 'reaches outside the screen at $rect';
+  }
+  final probes = {
+    'centre': rect.center,
+    'top edge': rect.topCenter.translate(0, 1),
+    'bottom edge': rect.bottomCenter.translate(0, -1),
+    'left edge': rect.centerLeft.translate(1, 0),
+    'right edge': rect.centerRight.translate(-1, 0),
+  };
+  for (final probe in probes.entries) {
+    final hit = tester.hitTestOnBinding(probe.value);
+    if (!hit.path.any((entry) => entry.target == box)) {
+      return 'takes no tap at its ${probe.key} (${probe.value}); it is at $rect';
+    }
+  }
+  return null;
+}
 
 /// Scrolls the screen's main vertical list to its end one screenful at a
 /// time, so that lazily built rows below the fold are laid out too and can

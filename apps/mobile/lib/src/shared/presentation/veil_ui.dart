@@ -503,38 +503,125 @@ class VeilInlineBanner extends StatelessWidget {
     );
   }
 
-  _BannerPalette _paletteFor(VeilBannerTone tone) {
-    return switch (tone) {
-      VeilBannerTone.info => const _BannerPalette(
-          border: Color(0x660A84FF),
-          fill: Color(0x1F0A84FF),
-          foreground: Color(0xFF4FA6FF),
-        ),
-      VeilBannerTone.good => const _BannerPalette(
-          border: Color(0x6630D158),
-          fill: Color(0x1F30D158),
-          foreground: Color(0xFF30D158),
-        ),
-      VeilBannerTone.warn => const _BannerPalette(
-          border: Color(0x66FF9F0A),
-          fill: Color(0x1FFF9F0A),
-          foreground: Color(0xFFFF9F0A),
-        ),
-      VeilBannerTone.danger => const _BannerPalette(
-          border: Color(0x66FF453A),
-          fill: Color(0x1FFF453A),
-          foreground: Color(0xFFFF453A),
-        ),
-    };
-  }
+}
 
-  IconData _defaultIconFor(VeilBannerTone tone) {
-    return switch (tone) {
-      VeilBannerTone.info => Icons.radar_outlined,
-      VeilBannerTone.good => Icons.verified_outlined,
-      VeilBannerTone.warn => Icons.warning_amber_rounded,
-      VeilBannerTone.danger => Icons.priority_high_rounded,
-    };
+_BannerPalette _paletteFor(VeilBannerTone tone) {
+  return switch (tone) {
+    VeilBannerTone.info => const _BannerPalette(
+        border: Color(0x660A84FF),
+        fill: Color(0x1F0A84FF),
+        foreground: Color(0xFF4FA6FF),
+      ),
+    VeilBannerTone.good => const _BannerPalette(
+        border: Color(0x6630D158),
+        fill: Color(0x1F30D158),
+        foreground: Color(0xFF30D158),
+      ),
+    VeilBannerTone.warn => const _BannerPalette(
+        border: Color(0x66FF9F0A),
+        fill: Color(0x1FFF9F0A),
+        foreground: Color(0xFFFF9F0A),
+      ),
+    VeilBannerTone.danger => const _BannerPalette(
+        border: Color(0x66FF453A),
+        fill: Color(0x1FFF453A),
+        foreground: Color(0xFFFF453A),
+      ),
+  };
+}
+
+IconData _defaultIconFor(VeilBannerTone tone) {
+  return switch (tone) {
+    VeilBannerTone.info => Icons.radar_outlined,
+    VeilBannerTone.good => Icons.verified_outlined,
+    VeilBannerTone.warn => Icons.warning_amber_rounded,
+    VeilBannerTone.danger => Icons.priority_high_rounded,
+  };
+}
+
+/// A [VeilInlineBanner] cut down to one row, for where there is no height
+/// for the banner: the icon, the title and, at the end of the same row, the
+/// action. A row with no action shows as much of its message after the
+/// title as fits the line.
+///
+/// The row is a strip across the full width with no gap around it, 44 px
+/// tall at the default text size, so that two of them fit where one banner
+/// would not.
+class VeilNoticeRow extends StatelessWidget {
+  const VeilNoticeRow({
+    super.key,
+    required this.title,
+    this.message,
+    this.tone = VeilBannerTone.info,
+    this.icon,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  /// The height of a row whose text fits one line at the default size.
+  static const double minHeight = 44;
+
+  final String title;
+  final String? message;
+  final VeilBannerTone tone;
+  final IconData? icon;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = _paletteFor(tone);
+    final theme = Theme.of(context);
+    final titleStyle = theme.textTheme.titleSmall?.copyWith(color: palette.foreground);
+    final hasAction = actionLabel != null;
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: minHeight),
+      padding: EdgeInsets.only(left: VeilSpace.md, right: hasAction ? VeilSpace.xxs : VeilSpace.md),
+      decoration: BoxDecoration(color: palette.fill),
+      // Drawn over the fill, so that the line between two rows costs no
+      // height.
+      foregroundDecoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.border)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon ?? _defaultIconFor(tone), size: VeilIconSize.sm, color: palette.foreground),
+          const SizedBox(width: VeilSpace.xs),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                text: title,
+                style: titleStyle,
+                children: [
+                  if (!hasAction && message != null)
+                    TextSpan(
+                      text: '  $message',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontSize: 13,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                ],
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (hasAction)
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: palette.foreground,
+                minimumSize: const Size(minHeight, minHeight),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm),
+              ),
+              onPressed: onAction,
+              child: Text(actionLabel!),
+            ),
+        ],
+      ),
+    );
   }
 }
 

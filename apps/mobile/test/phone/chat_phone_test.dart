@@ -160,6 +160,98 @@ void main() {
     );
   });
 
+  // The least room a chat has: 360x640 with the keyboard up. The banners
+  // would not fit there, and a strip that scrolls them cuts the first one's
+  // action off, which is the one thing the user must be able to reach.
+  for (final (locale, titles, actions) in [
+    ('en', ['Safety number changed', 'Delivery stalled'], ['Review', 'Retry failed sends']),
+    ('ko', ['안전 번호가 바뀌었습니다', '전송 정지됨'], ['확인하기', '실패한 전송 재시도']),
+  ]) {
+    testWidgets('with the keyboard up, each warning keeps its title and its action on one row ($locale)',
+        (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: _chat,
+        locale: locale,
+        keyboardHeight: 300,
+        attention: const ChatAttention(identityChanged: true, failedSends: 2),
+        body: (world) async {
+          expect(find.byType(VeilNoticeRow), findsNWidgets(2));
+          expect(find.byType(VeilInlineBanner), findsNothing, reason: 'the banners are not what is shown');
+          for (final title in titles) {
+            final box = tester.renderObject<RenderBox>(find.text(title, findRichText: true));
+            expect(visibleRect(tester, box).size, box.size, reason: '"$title" is whole');
+          }
+          for (final action in actions) {
+            final button = tester.renderObject<RenderBox>(find.widgetWithText(TextButton, action));
+            expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
+            expect(button.size.height, greaterThanOrEqualTo(44));
+          }
+          expect(onScreen(tester, find.byType(ChatMessageList)).height, greaterThanOrEqualTo(96));
+          expect(tester.takeException(), isNull);
+
+          await tester.tap(find.text(actions.first));
+          // The composer loses the focus to the screen that opens, and the
+          // keyboard goes with it.
+          tester.view.viewInsets = FakeViewPadding.zero;
+          await pumpFrames(tester);
+          expect(find.byType(SafetyNumbersScreen), findsOneWidget);
+          await awaitSafetyNumber(tester);
+        },
+      );
+    });
+  }
+
+  testWidgets('with room for them again, the warnings are banners with their explanation', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: _chat,
+      attention: const ChatAttention(identityChanged: true, failedSends: 2),
+      body: (world) async {
+        expect(find.byType(VeilInlineBanner), findsNWidgets(2));
+        expect(find.byType(VeilNoticeRow), findsNothing);
+        expect(find.text('Nothing is sent to the new key until you review it.'), findsOneWidget);
+
+        // The keyboard comes up, and goes again.
+        tester.view.viewInsets = const FakeViewPadding(bottom: 600);
+        await pumpFrames(tester, frames: 3);
+        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
+        expect(find.text('Nothing is sent to the new key until you review it.'), findsNothing);
+        tester.view.viewInsets = FakeViewPadding.zero;
+        await pumpFrames(tester, frames: 3);
+        expect(find.byType(VeilInlineBanner), findsNWidgets(2));
+        expect(find.byType(VeilNoticeRow), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
+  testWidgets('more warnings than fit as rows scroll, with the most pressing whole at the top', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: _chat,
+      keyboardHeight: 300,
+      attention: const ChatAttention(identityChanged: true, accountHeld: true, failedSends: 2),
+      body: (world) async {
+        expect(find.byType(VeilNoticeRow), findsNWidgets(3));
+        Finder action(String label) => find.widgetWithText(TextButton, label);
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Review'))), isNull);
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Talk to this account'))), isNull);
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry failed sends'))), isNotNull,
+            reason: 'three rows are more than this screen has room for');
+        expect(onScreen(tester, find.byType(ChatMessageList)).height, greaterThanOrEqualTo(96));
+
+        await tester.ensureVisible(action('Retry failed sends'));
+        await pumpFrames(tester, frames: 2);
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry failed sends'))), isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   testWidgets('shows a held account with the button that releases it', (tester) async {
     await withPhoneApp(
       tester,

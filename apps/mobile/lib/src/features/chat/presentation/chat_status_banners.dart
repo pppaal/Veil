@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
@@ -16,7 +17,9 @@ import 'chat_room_labels.dart';
 /// The wide layout adds the verified mark, the relay/history/search metrics
 /// and the history window around them. [compact], the phone layout, shows
 /// the warnings only, each with its action inside it: the bar above carries
-/// the verified mark, and the messages keep the height.
+/// the verified mark, and the messages keep the height. Given less height
+/// than its banners need, it shows each warning as one row (title and
+/// action), and only when even those do not fit do the rows scroll.
 class ChatStatusBanners extends StatelessWidget {
   const ChatStatusBanners({
     super.key,
@@ -159,43 +162,76 @@ class ChatStatusBanners extends StatelessWidget {
 
   Widget _buildCompact(BuildContext context, AppLocalizations l10n, List<_Notice> notices) {
     if (notices.isEmpty && !hasSearchQuery) return const SizedBox.shrink();
+    return VeilFirstThatFits(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xs, VeilSpace.sm, 0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, notice) in notices.indexed) ...[
+                if (index > 0) const SizedBox(height: VeilSpace.xs),
+                VeilInlineBanner(
+                  dense: true,
+                  title: notice.title,
+                  message: notice.message,
+                  tone: notice.tone,
+                  icon: notice.icon,
+                  actionLabel: notice.actionLabel,
+                  onAction: notice.onAction,
+                ),
+              ],
+              if (hasSearchQuery)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(VeilSpace.xxs, notices.isEmpty ? 0 : VeilSpace.xs, VeilSpace.xxs, 0),
+                  child: _searchLine(context, l10n),
+                ),
+            ],
+          ),
+        ),
+        // With the keyboard up on a small phone the banners above would be
+        // cut off, the action of the first among them: each warning then
+        // keeps its title and its action in one row.
+        _ScrollingRows(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final notice in notices)
+                VeilNoticeRow(
+                  title: notice.title,
+                  message: notice.message,
+                  tone: notice.tone,
+                  icon: notice.icon,
+                  actionLabel: notice.actionLabel,
+                  onAction: notice.onAction,
+                ),
+              if (hasSearchQuery)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xxs),
+                  child: _searchLine(context, l10n),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _searchLine(BuildContext context, AppLocalizations l10n) {
     final palette = context.veilPalette;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xs, VeilSpace.sm, 0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final (index, notice) in notices.indexed) ...[
-            if (index > 0) const SizedBox(height: VeilSpace.xs),
-            VeilInlineBanner(
-              dense: true,
-              title: notice.title,
-              message: notice.message,
-              tone: notice.tone,
-              icon: notice.icon,
-              actionLabel: notice.actionLabel,
-              onAction: notice.onAction,
-            ),
-          ],
-          if (hasSearchQuery)
-            Padding(
-              padding: EdgeInsets.fromLTRB(VeilSpace.xxs, notices.isEmpty ? 0 : VeilSpace.xs, VeilSpace.xxs, 0),
-              child: Row(
-                children: [
-                  Icon(Icons.manage_search_rounded, size: VeilIconSize.sm, color: palette.textMuted),
-                  const SizedBox(width: VeilSpace.xs),
-                  Expanded(
-                    child: Text(
-                      searching ? l10n.chatSearchBannerSearchingTitle : l10n.chatSearchMatchCount(searchHitCount),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
+    return Row(
+      children: [
+        Icon(Icons.manage_search_rounded, size: VeilIconSize.sm, color: palette.textMuted),
+        const SizedBox(width: VeilSpace.xs),
+        Expanded(
+          child: Text(
+            searching ? l10n.chatSearchBannerSearchingTitle : l10n.chatSearchMatchCount(searchHitCount),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          ),
+        ),
+      ],
     );
   }
 
@@ -281,6 +317,36 @@ class ChatStatusBanners extends StatelessWidget {
           actionGap: VeilSpace.xs,
         ),
     ];
+  }
+}
+
+/// The one-row warnings in the height they are given: they scroll, under a
+/// scrollbar that stays in view, when there are more than fit.
+class _ScrollingRows extends StatefulWidget {
+  const _ScrollingRows({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_ScrollingRows> createState() => _ScrollingRowsState();
+}
+
+class _ScrollingRowsState extends State<_ScrollingRows> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      child: SingleChildScrollView(controller: _scroll, child: widget.child),
+    );
   }
 }
 

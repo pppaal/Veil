@@ -92,6 +92,10 @@ class ChatAttention {
   /// The chat is listed under the peer's handle with another account than
   /// the one this device talked to, and waits for the user to say so.
   final bool accountHeld;
+
+  /// How many of the chat's warnings come with an action: reviewing the
+  /// identity change, releasing the held account, retrying failed sends.
+  int get warningActionCount => (identityChanged ? 1 : 0) + (accountHeld ? 1 : 0) + (failedSends > 0 ? 1 : 0);
 }
 
 class LayoutWorld {

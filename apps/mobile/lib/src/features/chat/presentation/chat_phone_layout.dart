@@ -63,7 +63,6 @@ class ChatPhoneScaffold extends StatefulWidget {
 class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
   bool _searchOpened = false;
   final _searchFocus = FocusNode();
-  final _warningsScroll = ScrollController();
 
   // A query that arrived with the screen (a jump from the archive search)
   // shows its field too.
@@ -78,7 +77,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
   @override
   void dispose() {
     _searchFocus.dispose();
-    _warningsScroll.dispose();
     super.dispose();
   }
 
@@ -111,6 +109,8 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
     final peerUserId = conversation?.recipientBundle.userId;
     final timerOn = widget.messageTtl != null;
     final palette = context.veilPalette;
+    // Asked above the shell, whose body no longer knows about the keyboard.
+    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
 
     return VeilShell(
       padding: EdgeInsets.zero,
@@ -170,11 +170,7 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
                 children: [
                   ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: _warningsMaxHeight(constraints.maxHeight)),
-                    child: Scrollbar(
-                      controller: _warningsScroll,
-                      thumbVisibility: true,
-                      child: SingleChildScrollView(controller: _warningsScroll, child: widget.banners),
-                    ),
+                    child: widget.banners,
                   ),
                   Expanded(child: widget.messages),
                 ],
@@ -183,7 +179,9 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
           ),
           widget.typing,
           Padding(
-            padding: const EdgeInsets.all(VeilSpace.xs),
+            // Right above the keyboard the composer needs less room under
+            // it, and the messages and warnings need every pixel.
+            padding: EdgeInsets.fromLTRB(VeilSpace.xs, VeilSpace.xs, VeilSpace.xs, keyboardUp ? VeilSpace.xxs : VeilSpace.xs),
             child: widget.composer,
           ),
         ],
@@ -193,7 +191,8 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
 
   /// Warnings never push the messages off the screen: the messages keep
   /// room for a short one (96 px, or most of what is left when even that is
-  /// scarce), and warnings taller than the rest scroll in place.
+  /// scarce). Given less than they need, the warnings show as one row each
+  /// (see ChatStatusBanners).
   static double _warningsMaxHeight(double available) => math.max(available - 96, available * 0.4);
 }
 

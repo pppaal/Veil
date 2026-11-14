@@ -11,6 +11,7 @@ import 'package:veil_mobile/src/features/calls/presentation/call_history_screen.
 import 'package:veil_mobile/src/features/calls/presentation/call_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
@@ -98,6 +99,10 @@ class ScreenCase {
 
   /// Whether every control of the case must measure 44x44 or more.
   bool get holdsTapTargets => tapTargetScreens.contains(file);
+
+  /// How many warning actions the case's chat must show, each wholly on
+  /// screen: one per warning of [attention] that asks for a decision.
+  int get warningActionCount => screen == ChatRoomScreen ? attention.warningActionCount : 0;
 
   /// Height in logical pixels the screen's primary content has on screen:
   /// the messages of a chat, the rows of the conversation list. Measured
@@ -423,6 +428,10 @@ double conversationRowsExtent(WidgetTester tester) {
   final top = firstRow.localToGlobal(Offset.zero).dy.clamp(list.top, list.bottom);
   return list.bottom - top;
 }
+
+/// The actions of the warnings a chat shows above its messages.
+Finder chatWarningActions() =>
+    find.descendant(of: find.byType(ChatStatusBanners), matching: find.byType(TextButton));
 
 Future<void> _searchConversations(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).first, 'se');

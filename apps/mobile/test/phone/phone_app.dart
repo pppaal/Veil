@@ -13,18 +13,21 @@ export '../layout/support/phone_layout_probe.dart';
 
 /// Opens the app at [location] on a phone of [size], runs [body], and takes
 /// the app down again before the test ends, so no timer of the messenger
-/// outlives it.
+/// outlives it. [prepare] changes the seeded world before the app opens;
+/// [extra] is what the route is opened with.
 Future<void> withPhoneApp(
   WidgetTester tester,
   LayoutIdentities identities, {
   required String location,
   required Future<void> Function(LayoutWorld world) body,
+  Future<Object?> Function(LayoutWorld world)? prepare,
   PhoneSize size = phoneSmall,
+  double keyboardHeight = 0,
   String locale = 'en',
   LayoutAccount account = LayoutAccount.signedIn,
   ChatAttention attention = const ChatAttention(),
 }) async {
-  usePhoneView(tester, size);
+  usePhoneView(tester, size, keyboardHeight: keyboardHeight);
   final world = await LayoutWorld.create(
     identities: identities,
     account: account,
@@ -32,7 +35,8 @@ Future<void> withPhoneApp(
     attention: attention,
   );
   try {
-    await tester.pumpWidget(world.app(location: location));
+    final extra = await prepare?.call(world);
+    await tester.pumpWidget(world.app(location: location, extra: extra));
     await pumpFrames(tester);
     await body(world);
   } finally {

@@ -50,7 +50,7 @@
 - abuse reports throttled to 6/min/user so the moderation queue can't be weaponized as DoS
 - disappearing messages: per-conversation TTL + periodic global cron that hard-deletes expired rows even in idle conversations
 - view-once messages: server hard-deletes the row on first non-sender read and broadcasts `message.consumed` for cache invalidation
-- the 1:1 message AEAD binds the frame header / routing fields (sender ratchet public key, message counter, `senderDeviceId`) as associated data, so altering any of them invalidates the GCM tag (mobile adapter `lib-x25519-aes256gcm-v3`; see `crypto-envelope-spec.md` → "AEAD associated data (header binding)")
+- the 1:1 message AEAD binds, as associated data, every routing field the relay forwards in clear (envelope version, `conversationId`, `senderDeviceId`, `messageType`), the whole frame header (sender ratchet public key, previous-chain length, message counter and, on a PreKey frame, the X3DH header) and both parties' identity keys, so relabelling a frame or altering any of them invalidates the GCM tag; `expiresAt` is deliberately not bound, and the authenticated expiry travels in the encrypted payload (protocol v2, adapter `lib-x3dh-x25519-aes256gcm-v4`; see `crypto-envelope-spec.md` → "AEAD associated data (v4)"). Legacy v1 sessions, spoken only with peers that still publish v1 bundles, bind only the ratchet public key, the message counter and `senderDeviceId`
 
 ## Deliberate exclusions
 

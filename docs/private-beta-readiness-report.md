@@ -95,4 +95,4 @@ These assumptions remain explicit:
 
 Recommendation: `Private beta ready with explicit unaudited-cryptography caveat`.
 
-Do not claim audited security, and do not remove the production boot guard or unblock production boot, until the external cryptographic audit completes.
+Do not claim audited security or unblock production boot until the external cryptographic audit completes and is attested. The production boot guard is never removed: the attestation satisfies it.

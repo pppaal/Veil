@@ -23,7 +23,7 @@ fails the build on any commit that introduces a recovery flow or table, an
 admin message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc
 console logging in mobile.
 
-Three more gates keep the rest of this README honest:
+Four more gates keep the rest of this README honest:
 
 - [`scripts/schema-privacy-check.mjs`](scripts/schema-privacy-check.mjs)
   requires a privacy annotation on every database field and publishes the
@@ -38,6 +38,11 @@ Three more gates keep the rest of this README honest:
   [`store/play/data-safety-answers.md`](store/play/data-safety-answers.md))
   leave out data the database stores, disagree with each other, or are
   contradicted by any other document.
+- [`scripts/doc-facts.mjs`](scripts/doc-facts.mjs) fails CI (through
+  `pnpm scripts:test`) when a document contradicts the code: it names a
+  retired crypto adapter id as the production one, repeats a statement the
+  code makes false, hard-codes a test or migration count, or treats the
+  production boot guard as temporary.
 
 ---
 
@@ -45,9 +50,9 @@ Three more gates keep the rest of this README honest:
 
 | Path | Description |
 |---|---|
-| `apps/api/` | NestJS backend — 23 modules, Jest unit + supertest e2e suites, 18 Prisma migrations |
-| `apps/mobile/` | Flutter app (iOS + Android) with full Signal-style double ratchet (`LibCryptoAdapter`), 32 test files |
-| `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. 47 Vitest unit + 4 Playwright e2e specs |
+| `apps/api/` | NestJS backend — 23 modules, Jest unit + supertest e2e suites, Prisma migrations |
+| `apps/mobile/` | Flutter app (iOS + Android): protocol v2 (X3DH + Double Ratchet, `LibCryptoAdapter`), Sender Keys groups, `flutter test` suite |
+| `apps/web-demo/` | Vanilla-JS web client — voice/image/file messages, reactions, reply/edit/delete, forward, search, @mentions, KakaoTalk import, block/mute. Protocol v2 on WebCrypto. Vitest unit + Playwright browser suites |
 | `packages/contracts/` | Typed API + realtime contracts (single source of truth) |
 | `packages/shared/` | Shared envelope versions and protocol constants |
 | `infra/caddy/` | Production TLS reverse proxy |
@@ -102,12 +107,18 @@ those checks fails the build:
 ## Current implementation status
 
 ### Cryptography
-- Mobile: full Double Ratchet (DH ratchet + symmetric chain) on
-  X25519 ECDH + HKDF-SHA256 + AES-256-GCM, plus Ed25519 device
-  signing. Session state persisted in OS-level encrypted secure
-  storage. Implementation in `apps/mobile/lib/src/core/crypto/`.
-- Web demo: a browser client for the same API; its protocol status is
-  tracked in [`docs/envelope-v3-unified-spec.md`](docs/envelope-v3-unified-spec.md).
+- Mobile: protocol v2 — X3DH with signed and one-time prekeys
+  authenticates both parties, then a full Double Ratchet (DH ratchet +
+  symmetric chain) on X25519 ECDH + HKDF-SHA256 + AES-256-GCM, with
+  Ed25519 identity keys and device signing. Session state persisted in
+  OS-level encrypted secure storage. Implementation in `apps/mobile/lib/src/core/crypto/`.
+- Web demo: a WebCrypto port of the same protocol v2
+  (`apps/web-demo/src/crypto/`), specified in
+  [`docs/crypto-envelope-spec.md`](docs/crypto-envelope-spec.md) § Protocol v2.
+  It reproduces every protocol-v2 known-answer vector
+  (`apps/web-demo/__tests__/kat-v2.test.js`), and
+  `apps/mobile/test/interop/web_mobile_interop_test.dart` has the two clients
+  exchange real frames in both directions.
 - Group chats: new mobile groups use **Sender Keys** (per-member HKDF
   chains, per-epoch Ed25519 authorship, full re-key on every join/leave;
   `veil-group-v1`). Groups created by older clients stay on the legacy
@@ -134,8 +145,10 @@ those checks fails the build:
   `health`
 - JWT with 1-hour TTL, atomic refresh (Redis `GETDEL`), JTI blacklist,
   WS force-disconnect on logout
-- Custom `CfThrottlerGuard` prefers `cf-connecting-ip`, falls back to
-  authenticated `deviceId`, then `x-forwarded-for`
+- Custom `CfThrottlerGuard` keys a signed-in request by its device ID;
+  any other request is keyed by the client address read from the one
+  source `VEIL_CLIENT_IP_SOURCE` names (`socket`, the default,
+  `cf-connecting-ip` or `x-forwarded-for`), and no other header is consulted
 - Atomic device transfer: serializable transaction creates new device
   and revokes old in one shot, then disconnects the old WS
 - Reply / edit / delete on messages, with real-time `message.edited`
@@ -301,8 +314,8 @@ For vulnerability reports see [`SECURITY.md`](SECURITY.md).
 - [Crypto Envelope Spec](docs/crypto-envelope-spec.md) — current wire format
 - [Forward Secrecy Ratchet Design](docs/forward-secrecy-ratchet-design.md) — implemented mobile ratchet
 - [Internal Pre-Audit Crypto Review](docs/internal-precheck-crypto-review.md) — reading-level review, NOT external audit
-- [Envelope v3 Unified Spec](docs/envelope-v3-unified-spec.md) — design only, not implemented
-- [Group Sender Keys Design](docs/group-sender-keys-design.md) — design only
+- [Envelope v3 Unified Spec](docs/envelope-v3-unified-spec.md) — superseded by protocol v2, never implemented
+- [Group Sender Keys Design](docs/group-sender-keys-design.md) — implemented on mobile (new groups), pre-audit
 - [Sealed Sender Design](docs/sealed-sender-design.md) — under revision: the current design does not hide the sender
 - [Crypto Adapter Architecture](docs/crypto-adapter-architecture.md)
 - [Crypto Mobile Bridge Design](docs/crypto-mobile-bridge-design.md)

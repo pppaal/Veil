@@ -81,10 +81,16 @@ prekeys. Size implications (the main cost):
 → Prekey bundles and the first message grow by ~1–2 KB. Acceptable; note
 it in storage/bandwidth budgets and the prekey-replenishment logic.
 
-Versioning (per `crypto-envelope-spec.md` conventions):
+Versioning (per `crypto-envelope-spec.md` conventions). This proposal was
+written against the legacy v1 layout; protocol v2 (adapter
+`lib-x3dh-x25519-aes256gcm-v4`, envelope `veil-envelope-v2`) has shipped since,
+so it must be rebased onto protocol v2 before implementation
+(`crypto-envelope-spec.md` § Post-quantum hybrid):
 
-- Adapter id: `lib-x25519-aes256gcm-v3` → **`lib-mlkem768-x25519-aes256gcm-v3`**
-- Envelope version: `veil-envelope-v1` → **`veil-envelope-v2`** (add to
+- Adapter id: `lib-x25519-aes256gcm-v3` (retired, as written against) →
+  **`lib-mlkem768-x25519-aes256gcm-v3`** (proposed)
+- Envelope version: `veil-envelope-v1` → **`veil-envelope-v3`**, because
+  `veil-envelope-v2` now names protocol v2 (add to
   `SUPPORTED_ENVELOPE_VERSIONS` in `packages/shared/src/domain/protocol.ts`)
 - Session schema version: `2` → `3`
 - Attachment algorithm hint: `x25519-aes256gcm` → `mlkem768-x25519-aes256gcm`

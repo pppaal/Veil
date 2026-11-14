@@ -76,7 +76,7 @@ Goal: production-candidate hardening.
 
 - real crypto is active instead of the mock adapter — DONE (`LibCryptoAdapter` shipped; the mock adapter is test-only)
 - external review findings are either fixed or formally accepted
-- production boot guard can be reevaluated
+- the production boot guard is satisfied: `VEIL_AUDITED_CRYPTO_ATTESTED=true` and `VEIL_AUDIT_REPORT_SHA256` name the signed external audit report (the guard itself stays)
 
 ## 12 to 18 months
 

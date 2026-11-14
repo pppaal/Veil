@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../../app/app_state.dart';
@@ -63,6 +64,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
     final handleController = TextEditingController();
     final nicknameController = TextEditingController();
     final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -79,13 +81,10 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Add contact',
-                    style: Theme.of(sheetContext).textTheme.titleLarge,
-                  ),
+                  Text(l10n.contactsAdd, style: Theme.of(sheetContext).textTheme.titleLarge),
                   const SizedBox(height: VeilSpace.xs),
                   Text(
-                    'Enter the exact handle. VEIL does not scan address books.',
+                    l10n.contactsAddSheetBody,
                     style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(
                           color: palette.textSubtle,
                         ),
@@ -94,23 +93,19 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                   TextField(
                     controller: handleController,
                     autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Handle',
-                      hintText: 'icarus',
-                      prefixText: '@',
-                    ),
+                    decoration: InputDecoration(labelText: l10n.contactsHandleLabel, hintText: 'icarus', prefixText: '@'),
                   ),
                   const SizedBox(height: VeilSpace.md),
                   TextField(
                     controller: nicknameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Nickname (optional)',
-                      hintText: 'Private label',
+                    decoration: InputDecoration(
+                      labelText: l10n.contactsNicknameLabel,
+                      hintText: l10n.contactsNicknameHint,
                     ),
                   ),
                   const SizedBox(height: VeilSpace.xl),
                   VeilButton(
-                    label: 'Save contact',
+                    label: l10n.contactsSave,
                     icon: Icons.person_add_alt_1_outlined,
                     tone: VeilButtonTone.primary,
                     onPressed: () async {
@@ -132,7 +127,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                         if (mounted) {
                           VeilToast.show(
                             context,
-                            message: 'Contact @$handle added',
+                            message: l10n.contactsAdded(handle),
                             tone: VeilBannerTone.good,
                           );
                         }
@@ -154,12 +149,16 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   void _showContactActions(ContactEntry contact) {
     VeilHaptics.medium();
     final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
 
     showModalBottomSheet<void>(
       context: context,
+      // Three buttons under the name are taller than the half screen a sheet
+      // gets by default on a small phone.
+      isScrollControlled: true,
       builder: (sheetContext) {
         return SafeArea(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(VeilSpace.lg),
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -185,22 +184,17 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       ),
                     ),
                     const SizedBox(width: VeilSpace.md),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          contact.label,
-                          style:
-                              Theme.of(sheetContext).textTheme.titleMedium,
-                        ),
-                        Text(
-                          '@${contact.handle}',
-                          style: Theme.of(sheetContext)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: palette.textSubtle),
-                        ),
-                      ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(contact.label, style: Theme.of(sheetContext).textTheme.titleMedium),
+                          Text(
+                            '@${contact.handle}',
+                            style: Theme.of(sheetContext).textTheme.bodySmall?.copyWith(color: palette.textSubtle),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -208,7 +202,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 VeilActionCluster(
                   children: [
                     VeilButton(
-                      label: 'Start chat',
+                      label: l10n.contactsStartChat,
                       icon: Icons.chat_bubble_outline_rounded,
                       tone: VeilButtonTone.primary,
                       onPressed: () async {
@@ -222,14 +216,14 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                         } else {
                           VeilToast.show(
                             context,
-                            message: 'Could not start conversation',
+                            message: l10n.contactsStartChatFailed,
                             tone: VeilBannerTone.warn,
                           );
                         }
                       },
                     ),
                     VeilButton(
-                      label: 'View profile',
+                      label: l10n.contactsViewProfile,
                       icon: Icons.person_outline_rounded,
                       tone: VeilButtonTone.secondary,
                       onPressed: () async {
@@ -238,7 +232,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       },
                     ),
                     VeilButton(
-                      label: 'Remove contact',
+                      label: l10n.contactsRemove,
                       icon: Icons.person_remove_outlined,
                       tone: VeilButtonTone.destructive,
                       onPressed: () async {
@@ -249,9 +243,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                         if (!mounted) return;
                         VeilToast.show(
                           context,
-                          message: success
-                              ? '${contact.label} removed from contacts'
-                              : 'Could not remove contact',
+                          message: success ? l10n.contactsRemoved(contact.label) : l10n.contactsRemoveFailed,
                           tone: success
                               ? VeilBannerTone.danger
                               : VeilBannerTone.warn,
@@ -272,141 +264,114 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final controller = ref.watch(contactsControllerProvider);
     final contacts = _filterContacts(controller.contacts);
     final grouped = _groupByLetter(contacts);
     final letters = grouped.keys.toList()..sort();
 
+    // One scrolling list: the notice, the search and the add button lead it
+    // and scroll away with it, so a phone gives the contacts the screen.
     return VeilShell(
-      title: 'Contacts',
-      child: Column(
-        children: [
-          const VeilInlineBanner(
-            message:
-                'Contacts are stored on this device only. The relay does not maintain a contact list.',
-            icon: Icons.devices_rounded,
-          ),
-          const SizedBox(height: VeilSpace.lg),
-          TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              hintText: 'Search contacts\u2026',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear_rounded),
-                      tooltip: 'Clear search',
-                      onPressed: () => _searchController.clear(),
-                    )
-                  : null,
+      title: l10n.navContacts,
+      child: RefreshIndicator(
+        onRefresh: () => controller.refresh(),
+        child: CustomScrollView(
+          slivers: [
+            SliverList.list(
+              children: [
+                VeilInlineBanner(message: l10n.contactsNotice, icon: Icons.devices_rounded),
+                const SizedBox(height: VeilSpace.md),
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: l10n.contactsSearchHint,
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded),
+                            tooltip: l10n.chatSearchClearTooltip,
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                VeilButton(
+                  label: controller.isMutating ? l10n.contactsWorking : l10n.contactsAdd,
+                  icon: Icons.person_add_outlined,
+                  tone: VeilButtonTone.secondary,
+                  onPressed: controller.isMutating ? null : _showAddContactSheet,
+                ),
+                if (controller.errorMessage != null) ...[
+                  const SizedBox(height: VeilSpace.md),
+                  VeilInlineBanner(
+                    title: l10n.contactsErrorTitle,
+                    message: controller.errorMessage!,
+                    tone: VeilBannerTone.danger,
+                  ),
+                ],
+                const SizedBox(height: VeilSpace.xs),
+              ],
             ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilButton(
-            label: controller.isMutating ? 'Working\u2026' : 'Add contact',
-            icon: Icons.person_add_outlined,
-            tone: VeilButtonTone.secondary,
-            onPressed: controller.isMutating ? null : _showAddContactSheet,
-          ),
-          if (controller.errorMessage != null) ...[
-            const SizedBox(height: VeilSpace.md),
-            VeilInlineBanner(
-              title: 'Contacts error',
-              message: controller.errorMessage!,
-              tone: VeilBannerTone.danger,
-            ),
-          ],
-          const SizedBox(height: VeilSpace.lg),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () => controller.refresh(),
-              child: controller.isLoading && controller.contacts.isEmpty
-                  ? ListView(
-                      children: const [
-                        SizedBox(height: VeilSpace.xl),
-                        Center(child: CircularProgressIndicator()),
-                      ],
-                    )
-                  : contacts.isEmpty
-                      ? ListView(
-                          children: [
-                            VeilEmptyState(
-                              title: 'No contacts found',
-                              body: _searchQuery.isNotEmpty
-                                  ? 'No contacts match your search.'
-                                  : 'Add contacts to start messaging securely.',
-                              icon: Icons.people_outline_rounded,
-                            ),
-                          ],
-                        )
-                      : ListView.builder(
-                          itemCount: letters.length,
-                          itemBuilder: (context, sectionIndex) {
-                            final letter = letters[sectionIndex];
-                            final sectionContacts = grouped[letter]!;
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: VeilSpace.md,
-                                    bottom: VeilSpace.xs,
-                                  ),
-                                  child: Text(
-                                    letter,
-                                    style: theme.textTheme.labelLarge
-                                        ?.copyWith(
-                                      color: palette.textSubtle,
-                                    ),
-                                  ),
-                                ),
-                                ...sectionContacts.map((contact) {
-                                  final glyph = contact.label.isEmpty
-                                      ? '#'
-                                      : contact.label.characters.first
-                                          .toUpperCase();
-                                  return Padding(
-                                    padding: const EdgeInsets.only(
-                                      bottom: VeilSpace.sm,
-                                    ),
-                                    child: VeilListTileCard(
-                                      title: contact.label,
-                                      subtitle: '@${contact.handle}',
-                                      leading: Container(
-                                        width: 44,
-                                        height: 44,
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: palette.primarySoft,
-                                          border: Border.all(
-                                            color: palette.stroke,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          glyph,
-                                          style: theme.textTheme.titleMedium
-                                              ?.copyWith(
-                                            color: palette.primary,
-                                          ),
-                                        ),
-                                      ),
-                                      trailing: Icon(
-                                        Icons.more_horiz_rounded,
-                                        color: palette.textSubtle,
-                                      ),
-                                      onTap: () =>
-                                          _showContactActions(contact),
-                                    ),
-                                  );
-                                }),
-                              ],
-                            );
-                          },
+            if (controller.isLoading && controller.contacts.isEmpty)
+              const SliverPadding(
+                padding: EdgeInsets.only(top: VeilSpace.xl),
+                sliver: SliverToBoxAdapter(child: Center(child: CircularProgressIndicator())),
+              )
+            else if (contacts.isEmpty)
+              SliverToBoxAdapter(
+                child: VeilEmptyState(
+                  title: l10n.contactsEmptyTitle,
+                  body: _searchQuery.isNotEmpty ? l10n.contactsEmptySearchBody : l10n.contactsEmptyBody,
+                  icon: Icons.people_outline_rounded,
+                ),
+              )
+            else
+              SliverList.builder(
+                itemCount: letters.length,
+                itemBuilder: (context, sectionIndex) {
+                  final letter = letters[sectionIndex];
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: VeilSpace.md, bottom: VeilSpace.xs),
+                        child: Text(
+                          letter,
+                          style: theme.textTheme.labelLarge?.copyWith(color: palette.textSubtle),
                         ),
-            ),
-          ),
-        ],
+                      ),
+                      for (final contact in grouped[letter]!)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: VeilSpace.sm),
+                          child: VeilListTileCard(
+                            title: contact.label,
+                            subtitle: '@${contact.handle}',
+                            leading: Container(
+                              width: 44,
+                              height: 44,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: palette.primarySoft,
+                                border: Border.all(color: palette.stroke),
+                              ),
+                              child: Text(
+                                contact.label.isEmpty ? '#' : contact.label.characters.first.toUpperCase(),
+                                style: theme.textTheme.titleMedium?.copyWith(color: palette.primary),
+                              ),
+                            ),
+                            trailing: Icon(Icons.more_horiz_rounded, color: palette.textSubtle),
+                            onTap: () => _showContactActions(contact),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -418,8 +383,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
     if (!mounted) return;
 
     final palette = context.veilPalette;
-    final displayName =
-        (profile?['displayName'] as String?) ?? contact.displayName;
+    final l10n = AppLocalizations.of(context);
+    final displayName = (profile?['displayName'] as String?) ?? contact.displayName;
     final bio = profile?['bio'] as String?;
     final statusMessage = profile?['statusMessage'] as String?;
     final statusEmoji = profile?['statusEmoji'] as String?;
@@ -505,7 +470,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                     contact.nickname!.isNotEmpty) ...[
                   const SizedBox(height: VeilSpace.sm),
                   Text(
-                    'Your nickname: ${contact.nickname}',
+                    l10n.contactsYourNickname(contact.nickname!),
                     style: Theme.of(sheetContext)
                         .textTheme
                         .bodySmall

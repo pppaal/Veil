@@ -19,6 +19,7 @@ class ChatComposerBar extends ConsumerStatefulWidget {
     required this.focusNode,
     required this.messageTtl,
     required this.busy,
+    this.onAttach,
   });
 
   final String conversationId;
@@ -31,6 +32,10 @@ class ChatComposerBar extends ConsumerStatefulWidget {
 
   /// Whether the messenger is busy, which disables sending.
   final bool busy;
+
+  /// Opens the attachment flow from a button before the draft. Without it
+  /// the composer shows its lock mark there.
+  final VoidCallback? onAttach;
 
   @override
   ConsumerState<ChatComposerBar> createState() => _ChatComposerBarState();
@@ -92,6 +97,15 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
       focusNode: widget.focusNode,
       enabled: !widget.busy,
       onSubmit: _sendMessage,
+      label: l10n.chatComposeHint,
+      leading: widget.onAttach == null
+          ? null
+          : IconButton(
+              tooltip: l10n.chatAttachAction,
+              style: IconButton.styleFrom(backgroundColor: Colors.transparent),
+              onPressed: widget.onAttach,
+              icon: const Icon(Icons.attach_file_rounded),
+            ),
       helper: messageTtl == null
           ? l10n.chatComposerExpiryOff
           : l10n.chatComposerExpiryOn(formatDurationLabel(l10n, messageTtl)),
@@ -102,6 +116,7 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
         child: GradientSendButton(
           onPressed: widget.busy ? null : _sendMessage,
           busy: widget.busy,
+          semanticLabel: l10n.chatSendAction,
         ),
       ),
     );

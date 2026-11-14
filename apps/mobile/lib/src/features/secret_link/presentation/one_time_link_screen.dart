@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 import '../data/one_time_link_service.dart';
 
 /// Compose a one-time secret link: type a secret, encrypt on-device, store
@@ -24,7 +28,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
   bool _usePass = false;
   bool _busy = false;
   String? _link;
-  String? _error;
+  bool _failed = false;
 
   @override
   void dispose() {
@@ -38,7 +42,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
     if (secret.isEmpty) return;
     setState(() {
       _busy = true;
-      _error = null;
+      _failed = false;
       _link = null;
     });
     try {
@@ -48,9 +52,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
       );
       if (mounted) setState(() => _link = link);
     } catch (_) {
-      if (mounted) {
-        setState(() => _error = '링크 생성에 실패했습니다. 잠시 후 다시 시도하세요.');
-      }
+      if (mounted) setState(() => _failed = true);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -59,44 +61,41 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('일회성 비밀 링크')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
+    final l10n = AppLocalizations.of(context);
+    final palette = context.veilPalette;
+    return VeilShell(
+      title: l10n.oneTimeLinkTitle,
+      child: ListView(
         children: [
           Text(
-            '한 번 읽히면 사라지는 메시지를 만듭니다. 받는 사람은 앱이 없어도 됩니다. '
-            '복호화 키는 링크에만 담겨 서버로 전송되지 않습니다.',
-            style: theme.textTheme.bodySmall,
+            l10n.oneTimeLinkIntro,
+            style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           TextField(
             controller: _secret,
             maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: '비밀 내용',
-              hintText: '비밀번호, 계좌, 민감한 메모…',
-              border: OutlineInputBorder(),
+            decoration: InputDecoration(
+              labelText: l10n.oneTimeLinkSecretLabel,
+              hintText: l10n.oneTimeLinkSecretHint,
+              alignLabelWithHint: true,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: VeilSpace.xs),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
             value: _usePass,
             onChanged: _busy ? null : (v) => setState(() => _usePass = v ?? false),
-            title: const Text('암호문구 추가 (링크에 키를 넣지 않음 — 더 안전)'),
+            title: Text(l10n.oneTimeLinkUsePassphrase, style: theme.textTheme.bodyMedium),
           ),
           if (_usePass)
             TextField(
               controller: _pass,
               obscureText: true,
-              decoration: const InputDecoration(
-                labelText: '암호문구',
-                border: OutlineInputBorder(),
-              ),
+              decoration: InputDecoration(labelText: l10n.oneTimeLinkPassphraseLabel),
             ),
-          const SizedBox(height: 16),
+          const SizedBox(height: VeilSpace.md),
           FilledButton(
             onPressed: _busy ? null : _generate,
             child: _busy
@@ -105,14 +104,24 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
                     width: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('보안 링크 생성'),
+                : Text(l10n.oneTimeLinkCreate),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+          const SizedBox(height: VeilSpace.md),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              VeilStatusPill(label: l10n.oneTimeLinkPillEncrypted),
+              VeilStatusPill(label: l10n.oneTimeLinkPillServerBlind),
+              VeilStatusPill(label: l10n.oneTimeLinkPillBurns),
+            ],
+          ),
+          if (_failed) ...[
+            const SizedBox(height: VeilSpace.md),
+            VeilInlineBanner(message: l10n.oneTimeLinkFailed, tone: VeilBannerTone.danger),
           ],
           if (_link != null) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: VeilSpace.xl),
             Center(
               child: QrImageView(
                 data: _link!,
@@ -120,31 +129,19 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
                 backgroundColor: Colors.white,
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: VeilSpace.md),
             SelectableText(_link!, style: theme.textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: _link!));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('링크를 복사했습니다')),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.copy, size: 18),
-                    label: const Text('링크 복사'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '🔒 종단간 암호화 · 🙈 서버는 평문·키를 못 봄 · 💨 읽으면 소멸',
-              style: theme.textTheme.bodySmall,
+            const SizedBox(height: VeilSpace.xs),
+            VeilButton(
+              tone: VeilButtonTone.secondary,
+              icon: Icons.copy,
+              label: l10n.oneTimeLinkCopy,
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: _link!));
+                if (context.mounted) {
+                  VeilToast.show(context, message: l10n.oneTimeLinkCopied);
+                }
+              },
             ),
           ],
         ],

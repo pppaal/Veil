@@ -30,14 +30,12 @@ class MessageAttachmentCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return Container(
       padding: const EdgeInsets.all(12),
+      // Dark and neutral, so it reads on the violet of the user's own
+      // bubbles as well as on a peer's.
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: Theme.of(context)
-            .colorScheme
-            .surfaceContainerHighest
-            .withValues(alpha: 0.24),
-        border: Border.all(
-            color: Theme.of(context).colorScheme.outline),
+        color: Colors.black.withValues(alpha: 0.26),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -47,7 +45,7 @@ class MessageAttachmentCard extends StatelessWidget {
               Icon(
                 attachmentIcon(attachment.contentType),
                 size: 28,
-                color: Theme.of(context).colorScheme.primary,
+                color: Theme.of(context).colorScheme.onSurface,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -65,7 +63,7 @@ class MessageAttachmentCard extends StatelessWidget {
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
-                                .withValues(alpha: 0.5),
+                                .withValues(alpha: 0.72),
                           ),
                     ),
                   ],

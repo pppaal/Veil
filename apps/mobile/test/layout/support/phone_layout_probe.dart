@@ -77,7 +77,12 @@ Future<void> loadBundledFonts() async {
 
 /// Makes the test view a phone of [size] at 2x. [keyboardHeight] opens the
 /// software keyboard, which takes over the bottom inset as on a device.
-void usePhoneView(WidgetTester tester, PhoneSize size, {double keyboardHeight = 0}) {
+/// [textScale] is the system's text size setting (1 is the default size).
+void usePhoneView(WidgetTester tester, PhoneSize size, {double keyboardHeight = 0, double textScale = 1}) {
+  if (textScale != 1) {
+    tester.platformDispatcher.textScaleFactorTestValue = textScale;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+  }
   final view = tester.view;
   view.devicePixelRatio = _pixelRatio;
   view.physicalSize = Size(size.width, size.height) * _pixelRatio;
@@ -103,6 +108,9 @@ enum LayoutDefect {
   /// The messages or conversations got less of the screen than the gate
   /// asks for.
   primaryContentSqueezed,
+
+  /// Something to tap is smaller than 44x44, on a screen held to that.
+  smallTapTarget,
 }
 
 /// The defects of one case, with a line of evidence for each.
@@ -266,13 +274,17 @@ Set<String> otherLanguageTextsOnScreen(WidgetTester tester, String locale) {
   };
 }
 
-/// Tap targets smaller than Android's 48x48 guideline, as the framework's
-/// own accessibility check reports them.
-Future<Set<String>> smallTapTargetsOnScreen(WidgetTester tester) async {
+/// Tap targets on screen smaller than [guideline] asks, as the framework's
+/// own accessibility check reports them: Android's 48x48 for the report,
+/// [minimumTapTarget] for the screens the gate holds to it.
+Future<Set<String>> smallTapTargetsOnScreen(
+  WidgetTester tester, {
+  AccessibilityGuideline guideline = androidTapTargetGuideline,
+}) async {
   final handle = tester.ensureSemantics();
   try {
     await tester.pump();
-    final evaluation = await androidTapTargetGuideline.evaluate(tester);
+    final evaluation = await guideline.evaluate(tester);
     if (evaluation.passed) return const {};
     return {
       for (final line in (evaluation.reason ?? '').split('\n'))
@@ -283,6 +295,10 @@ Future<Set<String>> smallTapTargetsOnScreen(WidgetTester tester) async {
     handle.dispose();
   }
 }
+
+/// The least a control may measure on the screens the gate holds to it: 44
+/// logical pixels each way, Apple's minimum, which Android's 48 also meets.
+const AccessibilityGuideline minimumTapTarget = iOSTapTargetGuideline;
 
 final _tapTargetLine = RegExp(r'(?:label: "([^"]*)".*)?but found (Size\([\d., ]+\))');
 

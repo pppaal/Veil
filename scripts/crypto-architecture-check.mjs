@@ -276,11 +276,10 @@ for (const successor of appStateSuccessors) {
 const presentationLineCap = 450;
 const chatRoomScreen = `${mobileSrc}/features/chat/presentation/chat_room_screen.dart`;
 const presentationOversized = new Map([
-  [`${mobileSrc}/features/conversations/presentation/conversation_list_screen.dart`, 1205],
   [`${mobileSrc}/features/settings/presentation/settings_screen.dart`, 900],
   [`${mobileSrc}/features/security/presentation/safety_numbers_screen.dart`, 886],
   [`${mobileSrc}/features/device_transfer/presentation/device_transfer_screen.dart`, 867],
-  [`${mobileSrc}/features/contacts/presentation/contacts_screen.dart`, 523],
+  [`${mobileSrc}/features/contacts/presentation/contacts_screen.dart`, 488],
   [`${mobileSrc}/features/stories/presentation/stories_screen.dart`, 469],
   [`${mobileSrc}/features/stories/presentation/story_viewer_screen.dart`, 464],
 ]);

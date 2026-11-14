@@ -6,15 +6,19 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../chat/presentation/chat_room_screen.dart';
-import '../../chat/presentation/message_expiration.dart';
 import '../data/conversation_models.dart';
-import '../data/veil_messenger_controller.dart';
+import 'conversation_list_logic.dart';
+import 'conversation_list_pane.dart';
+import 'conversation_list_parts.dart';
+import 'conversation_list_phone.dart';
+
+// These were declared here before the screen was split up.
+export 'conversation_list_logic.dart';
 
 class ConversationListScreen extends ConsumerStatefulWidget {
   const ConversationListScreen({super.key});
@@ -92,50 +96,6 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
     );
   }
 
-  String _subtitleForConversation(
-    ConversationPreview item,
-    VeilMessengerController controller,
-  ) {
-    final pendingCount = controller.pendingCountFor(item.id);
-    if (pendingCount > 0) {
-      return pendingCount == 1 ? '1 message queued locally' : '$pendingCount messages queued locally';
-    }
-
-    final envelope = item.lastEnvelope;
-    if (envelope == null) {
-      return 'No messages yet';
-    }
-
-    if (isMessageExpired(envelope.expiresAt, now: controller.expiryNow())) {
-      return 'Expired locally';
-    }
-
-    final previewBody = controller.lastMessagePreviewFor(item.id);
-    if (previewBody != null) {
-      return previewBody;
-    }
-
-    // Labelled by the decrypted kind only; the envelope's is unauthenticated.
-    switch (controller.lastMessageKindFor(item.id) ?? MessageKind.text) {
-      case MessageKind.image:
-        return 'Encrypted image';
-      case MessageKind.file:
-        return 'Encrypted attachment';
-      case MessageKind.system:
-        return 'System envelope';
-      case MessageKind.text:
-        return 'Encrypted message';
-      case MessageKind.voice:
-        return 'Encrypted voice note';
-      case MessageKind.sticker:
-        return 'Encrypted sticker';
-      case MessageKind.reaction:
-        return 'Encrypted reaction';
-      case MessageKind.call:
-        return 'Encrypted call event';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(appSessionProvider);
@@ -157,7 +117,7 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           });
         }
 
-        final listPane = _ConversationListPane(
+        final view = ConversationListView(
           session: session,
           controller: controller,
           conversations: filteredConversations,
@@ -169,9 +129,8 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           senderFilter: _senderFilter,
           typeFilter: _typeFilter,
           dateFilter: _dateFilter,
-          subtitleForConversation: _subtitleForConversation,
           timeFormat: _timeFormat,
-          selectedConversationId: _selectedConversationId,
+          selectedConversationId: isWideLayout ? _selectedConversationId : null,
           onSelectConversation: (conversationId) {
             if (isWideLayout) {
               setState(() {
@@ -214,23 +173,27 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
 
         final l10n = AppLocalizations.of(context);
+        final shellActions = [
+          IconButton(
+            tooltip: l10n.settingsSecurityStatusTitle,
+            onPressed: () => context.push('/security-status'),
+            icon: const Icon(Icons.verified_user_outlined),
+          ),
+          IconButton(
+            tooltip: l10n.settingsTitle,
+            onPressed: () => context.push('/settings'),
+            icon: const Icon(Icons.tune),
+          ),
+        ];
 
+        // A phone shows the conversations first: starting one moves from the
+        // end of the list into the bar.
         if (!isWideLayout) {
           return VeilShell(
             title: 'VEIL',
-            actions: [
-              IconButton(
-                tooltip: l10n.settingsSecurityStatusTitle,
-                onPressed: () => context.push('/security-status'),
-                icon: const Icon(Icons.verified_user_outlined),
-              ),
-              IconButton(
-                tooltip: l10n.settingsTitle,
-                onPressed: () => context.push('/settings'),
-                icon: const Icon(Icons.tune),
-              ),
-            ],
-            child: listPane,
+            padding: EdgeInsets.zero,
+            actions: [const _NewConversationButton(), ...shellActions],
+            child: ConversationListPhone(view: view),
           );
         }
 
@@ -250,51 +213,38 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
 
         return VeilShell(
           title: 'VEIL',
-          actions: [
-            IconButton(
-              tooltip: l10n.settingsSecurityStatusTitle,
-              onPressed: () => context.push('/security-status'),
-              icon: const Icon(Icons.verified_user_outlined),
-            ),
-            IconButton(
-              tooltip: l10n.settingsTitle,
-              onPressed: () => context.push('/settings'),
-              icon: const Icon(Icons.tune),
-            ),
-          ],
+          actions: shellActions,
           maxWidth: null,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Flexible(
                 flex: 8,
-                child: listPane,
+                child: ConversationListPane(view: view),
               ),
               const SizedBox(width: VeilSpace.lg),
               Expanded(
                 flex: 10,
                 child: selectedConversation == null
-                    ? const VeilEmptyState(
-                        title: 'Choose a direct conversation',
-                        body:
-                            'Wide layout keeps your conversation list visible while you read and send locally.',
+                    ? VeilEmptyState(
+                        title: l10n.conversationsChoosePaneTitle,
+                        body: l10n.conversationsChoosePaneBody,
                         icon: Icons.forum_outlined,
                       )
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           VeilHeroPanel(
-                            eyebrow: 'ACTIVE CONVERSATION',
+                            eyebrow: l10n.conversationsActiveEyebrow,
                             title: selectedConversation.peerDisplayName ??
                                 '@${selectedConversation.peerHandle}',
-                            body:
-                                'Adaptive layout keeps conversation context and message flow visible at the same time.',
+                            body: l10n.conversationsActiveBody,
                             bottom: Wrap(
                               spacing: 8,
                               runSpacing: 8,
-                              children: const [
-                                VeilStatusPill(label: 'Local search only'),
-                                VeilStatusPill(label: 'Opaque relay'),
+                              children: [
+                                VeilStatusPill(label: l10n.chatPillLocalSearchOnly),
+                                VeilStatusPill(label: l10n.conversationsPillOpaqueRelay),
                               ],
                             ),
                           ),
@@ -443,763 +393,51 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
   }
 }
 
-bool shouldUseWideConversationLayout(double width) {
-  return width >= 1120;
-}
-
 const String _conversationListViewStateStorageKey = 'conversation-list-view-state';
 
-class ConversationListViewState {
-  const ConversationListViewState({
-    required this.query,
-    required this.senderFilter,
-    required this.typeFilter,
-    required this.dateFilter,
-    this.selectedConversationId,
-    this.lastNavigationRequestId = 0,
-  });
-
-  final String query;
-  final String? selectedConversationId;
-  final MessageSearchSenderFilter senderFilter;
-  final MessageSearchTypeFilter typeFilter;
-  final MessageSearchDateFilter dateFilter;
-  final int lastNavigationRequestId;
-}
-
-MessageNavigationTarget issueMessageNavigationTarget({
-  required String messageId,
-  required String query,
-  required int requestId,
-}) {
-  return MessageNavigationTarget(
-    messageId: messageId,
-    requestId: requestId,
-    query: query.trim(),
-  );
-}
-
-List<MessageSearchResult> mergeArchiveSearchResults(
-  List<MessageSearchResult> existing,
-  List<MessageSearchResult> incoming,
-) {
-  final merged = <MessageSearchResult>[];
-  final seenMessageIds = <String>{};
-
-  for (final item in [...existing, ...incoming]) {
-    if (!seenMessageIds.add(item.messageId)) {
-      continue;
-    }
-    merged.add(item);
-  }
-
-  return merged;
-}
-
-Map<String, Object?> encodeConversationListViewState(
-  ConversationListViewState state,
-) {
-  return <String, Object?>{
-    'query': state.query.trim(),
-    'selectedConversationId': state.selectedConversationId,
-    'senderFilter': state.senderFilter.name,
-    'typeFilter': state.typeFilter.name,
-    'dateFilter': state.dateFilter.name,
-    'lastNavigationRequestId': state.lastNavigationRequestId,
-  };
-}
-
-ConversationListViewState? decodeConversationListViewState(Object? raw) {
-  if (raw is! Map) {
-    return null;
-  }
-  final query = raw['query'];
-  final senderFilter = _messageSearchSenderFilterByName(raw['senderFilter']);
-  final typeFilter = _messageSearchTypeFilterByName(raw['typeFilter']);
-  final dateFilter = _messageSearchDateFilterByName(raw['dateFilter']);
-  if (query is! String ||
-      senderFilter == null ||
-      typeFilter == null ||
-      dateFilter == null) {
-    return null;
-  }
-  final selectedConversationId = raw['selectedConversationId'];
-  final lastNavigationRequestId = raw['lastNavigationRequestId'];
-  return ConversationListViewState(
-    query: query,
-    selectedConversationId:
-        selectedConversationId is String ? selectedConversationId : null,
-    senderFilter: senderFilter,
-    typeFilter: typeFilter,
-    dateFilter: dateFilter,
-    lastNavigationRequestId:
-        lastNavigationRequestId is int ? lastNavigationRequestId : 0,
-  );
-}
-
-MessageSearchSenderFilter? _messageSearchSenderFilterByName(Object? value) {
-  return _enumByName(MessageSearchSenderFilter.values, value);
-}
-
-MessageSearchTypeFilter? _messageSearchTypeFilterByName(Object? value) {
-  return _enumByName(MessageSearchTypeFilter.values, value);
-}
-
-MessageSearchDateFilter? _messageSearchDateFilterByName(Object? value) {
-  return _enumByName(MessageSearchDateFilter.values, value);
-}
-
-T? _enumByName<T extends Enum>(List<T> values, Object? value) {
-  if (value is! String) {
-    return null;
-  }
-  for (final candidate in values) {
-    if (candidate.name == value) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-List<ConversationPreview> filterConversationPreviews(
-  List<ConversationPreview> conversations,
-  String query,
-) {
-  final normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.isEmpty) {
-    return conversations;
-  }
-
-  final ranked = <({int score, ConversationPreview conversation})>[];
-  for (final conversation in conversations) {
-    final handle = conversation.peerHandle.toLowerCase();
-    final displayName = (conversation.peerDisplayName ?? '').toLowerCase();
-    final matchScore = _conversationSearchScore(
-      query: normalizedQuery,
-      handle: handle,
-      displayName: displayName,
-    );
-    if (matchScore == null) {
-      continue;
-    }
-    ranked.add((score: matchScore, conversation: conversation));
-  }
-
-  ranked.sort((a, b) {
-    final scoreCompare = a.score.compareTo(b.score);
-    if (scoreCompare != 0) {
-      return scoreCompare;
-    }
-    final updatedAtCompare =
-        b.conversation.updatedAt.compareTo(a.conversation.updatedAt);
-    if (updatedAtCompare != 0) {
-      return updatedAtCompare;
-    }
-    return a.conversation.peerHandle.compareTo(b.conversation.peerHandle);
-  });
-
-  return ranked.map((entry) => entry.conversation).toList(growable: false);
-}
-
-int? _conversationSearchScore({
-  required String query,
-  required String handle,
-  required String displayName,
-}) {
-  if (handle == query) {
-    return 0;
-  }
-  if (displayName == query) {
-    return 10;
-  }
-  if (handle.startsWith(query)) {
-    return 20;
-  }
-  if (displayName.startsWith(query)) {
-    return 30;
-  }
-
-  final handleIndex = handle.indexOf(query);
-  if (handleIndex >= 0) {
-    return 40 + handleIndex;
-  }
-
-  final displayIndex = displayName.indexOf(query);
-  if (displayIndex >= 0) {
-    return 80 + displayIndex;
-  }
-
-  return null;
-}
-
-class _ConversationListPane extends StatelessWidget {
-  const _ConversationListPane({
-    required this.session,
-    required this.controller,
-    required this.conversations,
-    required this.archiveResults,
-    required this.searchingArchive,
-    required this.archiveHasMore,
-    required this.searchController,
-    required this.senderFilter,
-    required this.typeFilter,
-    required this.dateFilter,
-    required this.subtitleForConversation,
-    required this.timeFormat,
-    required this.selectedConversationId,
-    required this.onSelectConversation,
-    required this.onSelectMessageResult,
-    required this.onLoadMoreMessageResults,
-    required this.onSenderFilterChanged,
-    required this.onTypeFilterChanged,
-    required this.onDateFilterChanged,
-  });
-
-  final AppSessionState session;
-  final VeilMessengerController controller;
-  final List<ConversationPreview> conversations;
-  final List<MessageSearchResult> archiveResults;
-  final bool searchingArchive;
-  final bool archiveHasMore;
-  final TextEditingController searchController;
-  final MessageSearchSenderFilter senderFilter;
-  final MessageSearchTypeFilter typeFilter;
-  final MessageSearchDateFilter dateFilter;
-  final String Function(ConversationPreview item, VeilMessengerController controller)
-      subtitleForConversation;
-  final DateFormat timeFormat;
-  final String? selectedConversationId;
-  final ValueChanged<String> onSelectConversation;
-  final ValueChanged<MessageSearchResult> onSelectMessageResult;
-  final VoidCallback onLoadMoreMessageResults;
-  final ValueChanged<MessageSearchSenderFilter> onSenderFilterChanged;
-  final ValueChanged<MessageSearchTypeFilter> onTypeFilterChanged;
-  final ValueChanged<MessageSearchDateFilter> onDateFilterChanged;
+/// Starts a conversation from the phone list's bar: a 1:1 by handle, or a
+/// group.
+class _NewConversationButton extends StatelessWidget {
+  const _NewConversationButton();
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
-    final hasSearchQuery = searchController.text.trim().isNotEmpty;
-    final children = <Widget>[
-      VeilHeroPanel(
-        eyebrow: 'DIRECT CONVERSATIONS',
-        title: session.displayName?.isNotEmpty == true
-            ? session.displayName!
-            : '@${session.handle ?? 'unbound'}',
-        body: controller.realtimeConnected
-            ? 'Relay connected. Opaque envelopes only.'
-            : 'Relay idle. Pulling the latest encrypted state.',
-        bottom: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            VeilStatusPill(
-              label: controller.realtimeConnected ? 'Relay linked' : 'Relay idle',
-              tone:
-                  controller.realtimeConnected ? VeilBannerTone.good : VeilBannerTone.warn,
-            ),
-            VeilStatusPill(
-              label: conversations.isEmpty
-                  ? '0 conversations'
-                  : '${conversations.length} conversations',
-            ),
-            const VeilStatusPill(label: 'No backup'),
-          ],
+    return PopupMenuButton<String>(
+      tooltip: l10n.conversationsNewTooltip,
+      position: PopupMenuPosition.under,
+      color: palette.surfaceRaised,
+      onSelected: (route) => context.push(route),
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: '/start-chat',
+          child: _NewConversationItem(icon: Icons.add_comment_outlined, label: l10n.conversationsNewChat),
         ),
-      ),
-      const SizedBox(height: VeilSpace.md),
-      VeilMetricStrip(
-        items: [
-          VeilMetricItem(
-            label: 'Relay',
-            value: controller.realtimeConnected ? 'Linked' : 'Idle',
-          ),
-          VeilMetricItem(
-            label: 'Local search',
-            value: hasSearchQuery ? 'Active' : 'Ready',
-          ),
-          VeilMetricItem(
-            label: 'Conversations',
-            value: '${conversations.length}',
-          ),
-        ],
-      ),
-      if (controller.isBusy && controller.errorMessage == null) ...[
-        const SizedBox(height: VeilSpace.md),
-        const VeilInlineBanner(
-          title: 'Refreshing locally',
-          message:
-              'Pulling the latest opaque conversation state while preserving local search context.',
-          tone: VeilBannerTone.info,
-          icon: Icons.sync_rounded,
+        PopupMenuItem(
+          value: '/start-group',
+          child: _NewConversationItem(icon: Icons.group_add_outlined, label: l10n.conversationsNewGroup),
         ),
       ],
-      if (controller.errorMessage != null) ...[
-        const SizedBox(height: VeilSpace.md),
-        VeilInlineBanner(
-          title: 'Sync issue',
-          message: controller.errorMessage!,
-          tone: VeilBannerTone.danger,
-        ),
-      ],
-      const SizedBox(height: VeilSpace.md),
-      VeilFieldBlock(
-        label: 'LOCAL SEARCH INDEX',
-        caption:
-            'Search stays on this device. Handles, cached previews, and decrypted local index entries only.',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(
-              controller: searchController,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.search_rounded),
-                hintText: 'Search conversations and cached messages',
-                suffixIcon: searchController.text.trim().isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear search',
-                        onPressed: searchController.clear,
-                        icon: const Icon(Icons.close_rounded),
-                      ),
-              ),
-            ),
-            if (hasSearchQuery) ...[
-              const SizedBox(height: VeilSpace.sm),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _SearchChip<MessageSearchSenderFilter>(
-                    value: MessageSearchSenderFilter.all,
-                    groupValue: senderFilter,
-                    label: 'All senders',
-                    onSelected: onSenderFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchSenderFilter>(
-                    value: MessageSearchSenderFilter.mine,
-                    groupValue: senderFilter,
-                    label: 'Mine',
-                    onSelected: onSenderFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchSenderFilter>(
-                    value: MessageSearchSenderFilter.theirs,
-                    groupValue: senderFilter,
-                    label: 'Theirs',
-                    onSelected: onSenderFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchTypeFilter>(
-                    value: MessageSearchTypeFilter.all,
-                    groupValue: typeFilter,
-                    label: 'All types',
-                    onSelected: onTypeFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchTypeFilter>(
-                    value: MessageSearchTypeFilter.text,
-                    groupValue: typeFilter,
-                    label: 'Text',
-                    onSelected: onTypeFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchTypeFilter>(
-                    value: MessageSearchTypeFilter.media,
-                    groupValue: typeFilter,
-                    label: 'Media',
-                    onSelected: onTypeFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchDateFilter>(
-                    value: MessageSearchDateFilter.any,
-                    groupValue: dateFilter,
-                    label: 'Any date',
-                    onSelected: onDateFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchDateFilter>(
-                    value: MessageSearchDateFilter.last7Days,
-                    groupValue: dateFilter,
-                    label: 'Last 7d',
-                    onSelected: onDateFilterChanged,
-                  ),
-                  _SearchChip<MessageSearchDateFilter>(
-                    value: MessageSearchDateFilter.last30Days,
-                    groupValue: dateFilter,
-                    label: 'Last 30d',
-                    onSelected: onDateFilterChanged,
-                  ),
-                ],
-              ),
-            ],
-          ],
-        ),
-      ),
-      if (hasSearchQuery) ...[
-        const SizedBox(height: VeilSpace.md),
-        VeilInlineBanner(
-          title: searchingArchive ? 'Searching locally' : 'Local search active',
-          message: searchingArchive
-              ? 'Scanning cached conversation labels and device-local message text.'
-              : 'Found ${conversations.length} conversation match(es) and ${archiveResults.length} message result(s) on this device. Search never leaves local state.',
-          tone: VeilBannerTone.info,
-          icon: Icons.manage_search_rounded,
-        ),
-      ],
-      const SizedBox(height: VeilSpace.md),
-      VeilSectionLabel(
-        'CONVERSATIONS',
-        trailing: hasSearchQuery
-            ? Text(
-                '${conversations.length} match${conversations.length == 1 ? '' : 'es'}',
-                style: Theme.of(context).textTheme.bodySmall,
-              )
-            : null,
-      ),
-      const SizedBox(height: VeilSpace.sm),
-    ];
-
-    if (conversations.isEmpty && controller.isBusy) {
-      children.addAll(const [
-        SizedBox(height: VeilSpace.xl),
-        VeilSurfaceCard(
-          toned: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              VeilSkeletonLine(width: 96),
-              SizedBox(height: VeilSpace.md),
-              VeilSkeletonLine(width: 220, height: 18),
-              SizedBox(height: VeilSpace.sm),
-              VeilSkeletonLine(width: double.infinity),
-              SizedBox(height: VeilSpace.sm),
-              VeilSkeletonLine(width: 180),
-            ],
-          ),
-        ),
-        SizedBox(height: VeilSpace.sm),
-        VeilSurfaceCard(
-          toned: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              VeilSkeletonLine(width: 84),
-              SizedBox(height: VeilSpace.md),
-              VeilSkeletonLine(width: 200, height: 18),
-              SizedBox(height: VeilSpace.sm),
-              VeilSkeletonLine(width: double.infinity),
-            ],
-          ),
-        ),
-      ]);
-    } else if (conversations.isEmpty) {
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 72),
-          child: VeilEmptyState(
-            title: hasSearchQuery
-                ? 'No matching conversations'
-                : 'No direct conversations yet',
-            body: hasSearchQuery
-                ? 'This device did not find a matching handle or display label.'
-                : 'Start with a handle. VEIL keeps discovery manual and private.',
-            icon: hasSearchQuery ? Icons.search_off_rounded : Icons.forum_outlined,
-            action: VeilButton(
-              onPressed: () => context.push('/start-chat'),
-              label: 'Start direct chat',
-              tone: VeilButtonTone.secondary,
-            ),
-          ),
-        ),
-      );
-    } else {
-      children.addAll(
-        conversations.map((item) {
-          final isSelected = item.id == selectedConversationId;
-          final pendingCount = controller.pendingCountFor(item.id);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-            child: RepaintBoundary(
-              child: AnimatedContainer(
-                duration: VeilMotion.normal,
-                curve: Curves.easeOutCubic,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(VeilRadius.lg),
-                  boxShadow: isSelected ? VeilElevation.raised : null,
-                ),
-                child: Theme(
-                  data: Theme.of(context).copyWith(
-                    cardTheme: Theme.of(context).cardTheme.copyWith(
-                          color: isSelected
-                              ? palette.surfaceRaised
-                              : Theme.of(context).cardTheme.color,
-                        ),
-                  ),
-                  child: VeilConversationCard(
-                    title: item.peerDisplayName ?? item.peerHandle,
-                    handle: item.peerHandle,
-                    subtitle: subtitleForConversation(item, controller),
-                    timestamp: timeFormat.format(item.updatedAt),
-                    selected: isSelected,
-                    meta: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        const VeilStatusPill(label: 'Direct'),
-                        if (pendingCount > 0)
-                          VeilStatusPill(
-                            label: pendingCount == 1
-                                ? '1 queued'
-                                : '$pendingCount queued',
-                            tone: VeilBannerTone.warn,
-                          ),
-                      ],
-                    ),
-                    expiryLabel: item.lastEnvelope?.expiresAt == null
-                        ? null
-                        : formatMessageExpiry(item.lastEnvelope!.expiresAt!, now: controller.expiryNow()),
-                    onTap: () => onSelectConversation(item.id),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      );
-    }
-
-    if (hasSearchQuery) {
-      children.addAll([
-        const SizedBox(height: VeilSpace.md),
-        VeilSectionLabel(
-          'MESSAGES',
-          trailing: searchingArchive
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : Text(
-                  '${archiveResults.length} result${archiveResults.length == 1 ? '' : 's'}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-        ),
-        const SizedBox(height: VeilSpace.sm),
-      ]);
-
-      if (!searchingArchive && archiveResults.isEmpty) {
-        children.add(
-          const VeilEmptyState(
-            title: 'No local message matches',
-            body: 'This device did not find matching cached message text for the current filters.',
-            icon: Icons.manage_search_rounded,
-          ),
-        );
-      } else {
-        children.addAll(
-          archiveResults.map(
-            (result) => Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-              child: RepaintBoundary(
-                child: VeilListTileCard(
-                  eyebrow: '${result.isMine ? 'You' : 'Peer'} | ${_messageTypeLabel(result.messageKind)}',
-                  leading: Icon(
-                    switch (result.messageKind) {
-                      MessageKind.text => Icons.chat_bubble_outline_rounded,
-                      MessageKind.image => Icons.image_outlined,
-                      MessageKind.file => Icons.attach_file_rounded,
-                      MessageKind.system => Icons.info_outline_rounded,
-                      MessageKind.voice => Icons.mic_none_rounded,
-                      MessageKind.sticker => Icons.emoji_emotions_outlined,
-                      MessageKind.reaction => Icons.favorite_border_rounded,
-                      MessageKind.call => Icons.call_outlined,
-                    },
-                  ),
-                  title: result.title,
-                  subtitle: result.bodySnippet,
-                  subtitleWidget: _MessageSearchResultSubtitle(
-                    result: result,
-                    query: searchController.text,
-                    timeFormat: timeFormat,
-                  ),
-                  trailing: const Icon(Icons.north_east_rounded, size: 18),
-                  onTap: () => onSelectMessageResult(result),
-                ),
-              ),
-            ),
-          ),
-        );
-        if (archiveHasMore) {
-          children.add(
-            Padding(
-              padding: const EdgeInsets.only(top: VeilSpace.xs, bottom: VeilSpace.sm),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: VeilButton(
-                  expanded: false,
-                  onPressed: searchingArchive ? null : onLoadMoreMessageResults,
-                  tone: VeilButtonTone.secondary,
-                  label: searchingArchive ? 'Loading more' : 'Load more results',
-                  icon: Icons.expand_more_rounded,
-                ),
-              ),
-            ),
-          );
-        }
-      }
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: controller.refreshConversations,
-            child: ListView(
-              key: const PageStorageKey<String>('conversation-list-scroll'),
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              children: [
-                ...children,
-                const SizedBox(height: VeilSpace.sm),
-                VeilButton(
-                  onPressed: () => context.push('/start-chat'),
-                  label: 'Start direct chat',
-                  tone: VeilButtonTone.secondary,
-                  icon: Icons.add_comment_outlined,
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                VeilButton(
-                  onPressed: () => context.push('/start-group'),
-                  label: 'Start group chat',
-                  tone: VeilButtonTone.secondary,
-                  icon: Icons.group_add_outlined,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+      icon: const Icon(Icons.edit_square),
     );
   }
 }
 
-String _messageTypeLabel(MessageKind kind) {
-  return switch (kind) {
-    MessageKind.text => 'Text',
-    MessageKind.image => 'Image',
-    MessageKind.file => 'Attachment',
-    MessageKind.system => 'System',
-    MessageKind.voice => 'Voice',
-    MessageKind.sticker => 'Sticker',
-    MessageKind.reaction => 'Reaction',
-    MessageKind.call => 'Call',
-  };
-}
+class _NewConversationItem extends StatelessWidget {
+  const _NewConversationItem({required this.icon, required this.label});
 
-String _messageDateLabel(DateTime sentAt, DateFormat timeFormat) {
-  final now = DateTime.now();
-  if (sentAt.year == now.year && sentAt.month == now.month && sentAt.day == now.day) {
-    return timeFormat.format(sentAt);
-  }
-  return DateFormat('MMM d').format(sentAt);
-}
-
-class _SearchChip<T> extends StatelessWidget {
-  const _SearchChip({
-    required this.value,
-    required this.groupValue,
-    required this.label,
-    required this.onSelected,
-  });
-
-  final T value;
-  final T groupValue;
+  final IconData icon;
   final String label;
-  final ValueChanged<T> onSelected;
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
-      selected: value == groupValue,
-      onSelected: (_) => onSelected(value),
-    );
-  }
-}
-
-class _MessageSearchResultSubtitle extends StatelessWidget {
-  const _MessageSearchResultSubtitle({
-    required this.result,
-    required this.query,
-    required this.timeFormat,
-  });
-
-  final MessageSearchResult result;
-  final String query;
-  final DateFormat timeFormat;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final palette = context.veilPalette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Text(
-          '${result.isMine ? 'You' : 'Peer'} | ${_messageTypeLabel(result.messageKind)} | ${_messageDateLabel(result.sentAt, timeFormat)}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: palette.textSubtle,
-          ),
-        ),
-        const SizedBox(height: VeilSpace.xxs),
-        RichText(
-          text: TextSpan(
-            style: theme.textTheme.bodyMedium,
-            children: buildSearchHighlightTextSpans(
-              text: result.bodySnippet,
-              query: query,
-              highlightStyle: theme.textTheme.bodyMedium?.copyWith(
-                color: palette.text,
-                fontWeight: FontWeight.w700,
-              ),
-              baseStyle: theme.textTheme.bodyMedium,
-            ),
-          ),
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-        ),
+        Icon(icon, size: VeilIconSize.md),
+        const SizedBox(width: VeilSpace.sm),
+        Text(label, style: Theme.of(context).textTheme.titleSmall),
       ],
     );
   }
-}
-
-List<TextSpan> buildSearchHighlightTextSpans({
-  required String text,
-  required String query,
-  TextStyle? baseStyle,
-  TextStyle? highlightStyle,
-}) {
-  final normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.isEmpty) {
-    return <TextSpan>[TextSpan(text: text, style: baseStyle)];
-  }
-
-  final spans = <TextSpan>[];
-  final lowerText = text.toLowerCase();
-  var cursor = 0;
-  while (cursor < text.length) {
-    final matchIndex = lowerText.indexOf(normalizedQuery, cursor);
-    if (matchIndex < 0) {
-      spans.add(TextSpan(text: text.substring(cursor), style: baseStyle));
-      break;
-    }
-    if (matchIndex > cursor) {
-      spans.add(
-        TextSpan(text: text.substring(cursor, matchIndex), style: baseStyle),
-      );
-    }
-    spans.add(
-      TextSpan(
-        text: text.substring(matchIndex, matchIndex + normalizedQuery.length),
-        style: highlightStyle ?? baseStyle,
-      ),
-    );
-    cursor = matchIndex + normalizedQuery.length;
-  }
-  return spans;
 }

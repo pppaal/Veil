@@ -9,6 +9,11 @@ enum VeilButtonTone { primary, secondary, destructive, ghost }
 extension VeilThemeContext on BuildContext {
   VeilPalette get veilPalette =>
       VeilPalette.forBrightness(Theme.of(this).brightness);
+
+  /// Whether the screen is as narrow as a phone held upright. Panels tighten
+  /// and decorative tiles step aside there, so that what the screen is for
+  /// stays on the first screenful.
+  bool get veilPhoneWidth => MediaQuery.sizeOf(this).width < 600;
 }
 
 class VeilButton extends StatelessWidget {
@@ -271,11 +276,13 @@ class _VeilHeroPanelState extends State<VeilHeroPanel>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
+    // On a phone the panel introduces the screen without taking it over.
+    final compact = context.veilPhoneWidth;
 
     return Container(
-      padding: const EdgeInsets.all(VeilSpace.xl),
+      padding: EdgeInsets.all(compact ? VeilSpace.lg : VeilSpace.xl),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(VeilRadius.xl),
+        borderRadius: BorderRadius.circular(compact ? VeilRadius.lg : VeilRadius.xl),
         border: Border.all(color: palette.stroke),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -301,7 +308,7 @@ class _VeilHeroPanelState extends State<VeilHeroPanel>
                 ),
               ),
             ),
-            const SizedBox(height: VeilSpace.md),
+            SizedBox(height: compact ? VeilSpace.sm : VeilSpace.md),
           ],
           _staggered(
             1,
@@ -314,28 +321,31 @@ class _VeilHeroPanelState extends State<VeilHeroPanel>
                     children: [
                       Text(
                         widget.title,
-                        style: theme.textTheme.headlineLarge
-                            ?.copyWith(height: 1.04),
+                        style: compact
+                            ? theme.textTheme.headlineMedium
+                            : theme.textTheme.headlineLarge?.copyWith(height: 1.04),
                       ),
-                      const SizedBox(height: VeilSpace.sm),
+                      SizedBox(height: compact ? VeilSpace.xs : VeilSpace.sm),
                       Text(
                         widget.body,
-                        style: theme.textTheme.bodyLarge?.copyWith(
+                        style: (compact ? theme.textTheme.bodyMedium : theme.textTheme.bodyLarge)?.copyWith(
                           color: palette.textMuted,
                         ),
                       ),
                     ],
                   ),
                 ),
+                // Sized by itself: as a flexible child it took half the row
+                // from the title whatever its own width.
                 if (widget.trailing != null) ...[
                   const SizedBox(width: VeilSpace.md),
-                  Flexible(child: widget.trailing!),
+                  widget.trailing!,
                 ],
               ],
             ),
           ),
           if (widget.bottom != null) ...[
-            const SizedBox(height: VeilSpace.lg),
+            SizedBox(height: compact ? VeilSpace.md : VeilSpace.lg),
             _staggered(2, widget.bottom!),
           ],
         ],
@@ -404,6 +414,9 @@ class VeilInlineBanner extends StatelessWidget {
     this.title,
     this.tone = VeilBannerTone.info,
     this.icon,
+    this.dense = false,
+    this.actionLabel,
+    this.onAction,
   });
 
   final String? title;
@@ -411,16 +424,31 @@ class VeilInlineBanner extends StatelessWidget {
   final VeilBannerTone tone;
   final IconData? icon;
 
+  /// Tighter padding and smaller body text, for a phone screen whose
+  /// content must keep most of the height.
+  final bool dense;
+
+  /// A button inside the banner, under its message, that acts on it.
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
   @override
   Widget build(BuildContext context) {
     final palette = _paletteFor(tone);
+    final theme = Theme.of(context);
+    final hasAction = actionLabel != null;
+    final messageStyle = dense
+        ? theme.textTheme.bodyMedium?.copyWith(fontSize: 13, height: 1.4)
+        : theme.textTheme.bodyMedium;
 
     return AnimatedContainer(
       duration: VeilMotion.normal,
       curve: VeilMotion.emphasize,
-      padding: const EdgeInsets.all(VeilSpace.md),
+      padding: dense
+          ? EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.sm - 2, VeilSpace.sm, hasAction ? 0 : VeilSpace.sm - 2)
+          : const EdgeInsets.all(VeilSpace.md),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(VeilRadius.md),
+        borderRadius: BorderRadius.circular(dense ? VeilRadius.sm : VeilRadius.md),
         border: Border.all(color: palette.border),
         color: palette.fill,
       ),
@@ -435,7 +463,7 @@ class VeilInlineBanner extends StatelessWidget {
               color: palette.foreground,
             ),
           ),
-          const SizedBox(width: VeilSpace.sm),
+          SizedBox(width: dense ? VeilSpace.xs : VeilSpace.sm),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -443,18 +471,30 @@ class VeilInlineBanner extends StatelessWidget {
                 if (title != null) ...[
                   Text(
                     title!,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: palette.foreground,
-                        ),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: palette.foreground,
+                    ),
                   ),
-                  const SizedBox(height: VeilSpace.xxs),
+                  SizedBox(height: dense ? 2 : VeilSpace.xxs),
                 ],
                 Text(
                   message,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
+                  style: messageStyle?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.9),
+                  ),
                 ),
+                if (hasAction)
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: palette.foreground,
+                        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm),
+                      ),
+                      onPressed: onAction,
+                      child: Text(actionLabel!),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -848,6 +888,10 @@ class VeilConversationCard extends StatelessWidget {
     this.selected = false,
     this.meta,
     this.onTap,
+    this.semanticLabel,
+    this.dense = false,
+    this.titleIcon,
+    this.titleIconLabel,
   });
 
   final String title;
@@ -858,6 +902,16 @@ class VeilConversationCard extends StatelessWidget {
   final bool selected;
   final Widget? meta;
   final VoidCallback? onTap;
+
+  /// What a screen reader says for the row, in the user's language.
+  final String? semanticLabel;
+
+  /// A lower row with a smaller avatar, for a phone's list.
+  final bool dense;
+
+  /// A small mark before the title (a group), with what it stands for.
+  final IconData? titleIcon;
+  final String? titleIconLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -873,35 +927,38 @@ class VeilConversationCard extends StatelessWidget {
       [const Color(0xFF06B6D4), const Color(0xFF6C8CFF)],
     ][avatarHash.abs() % 6];
 
+    final radius = dense ? VeilRadius.md : VeilRadius.lg;
+    final avatarSize = dense ? 46.0 : 52.0;
+
     return Semantics(
       button: true,
-      label: 'Conversation with $title',
+      label: semanticLabel ?? 'Conversation with $title',
       child: AnimatedContainer(
         duration: VeilMotion.normal,
         curve: VeilMotion.emphasize,
-        margin: const EdgeInsets.symmetric(vertical: 3),
+        margin: EdgeInsets.symmetric(vertical: dense ? 2 : 3),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(VeilRadius.lg),
+          borderRadius: BorderRadius.circular(radius),
           boxShadow: selected ? VeilElevation.raised : null,
         ),
         child: Material(
           color: selected ? palette.surfaceRaised : palette.surface,
-          borderRadius: BorderRadius.circular(VeilRadius.lg),
+          borderRadius: BorderRadius.circular(radius),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
-            borderRadius: BorderRadius.circular(VeilRadius.lg),
+            borderRadius: BorderRadius.circular(radius),
             onTap: onTap,
             splashColor: palette.primarySoft,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: VeilSpace.md,
-                vertical: VeilSpace.sm + 2,
+              padding: EdgeInsets.symmetric(
+                horizontal: dense ? VeilSpace.sm : VeilSpace.md,
+                vertical: dense ? VeilSpace.sm : VeilSpace.sm + 2,
               ),
               child: Row(
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: avatarSize,
+                    height: avatarSize,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -935,6 +992,15 @@ class VeilConversationCard extends StatelessWidget {
                       children: [
                         Row(
                           children: [
+                            if (titleIcon != null) ...[
+                              Icon(
+                                titleIcon,
+                                size: VeilIconSize.xs + 2,
+                                color: palette.textMuted,
+                                semanticLabel: titleIconLabel,
+                              ),
+                              const SizedBox(width: VeilSpace.xxs),
+                            ],
                             Expanded(
                               child: Text(
                                 title,
@@ -1075,6 +1141,7 @@ class VeilComposer extends StatelessWidget {
     required this.enabled,
     required this.onSubmit,
     required this.trailing,
+    this.leading,
     this.helper,
     this.label = 'Send opaque text',
   });
@@ -1084,6 +1151,9 @@ class VeilComposer extends StatelessWidget {
   final bool enabled;
   final VoidCallback onSubmit;
   final Widget trailing;
+
+  /// A control before the draft (attach), in place of the lock mark.
+  final Widget? leading;
   final String? helper;
   final String label;
 
@@ -1095,7 +1165,12 @@ class VeilComposer extends StatelessWidget {
       borderRadius: BorderRadius.circular(VeilRadius.xl),
       clipBehavior: Clip.antiAlias,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xs, VeilSpace.xs, VeilSpace.xs),
+        padding: EdgeInsets.fromLTRB(
+          leading == null ? VeilSpace.sm : VeilSpace.xxs,
+          VeilSpace.xs,
+          VeilSpace.xs,
+          VeilSpace.xs,
+        ),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(VeilRadius.xl),
           border: Border.all(color: palette.stroke, width: 0.5),
@@ -1103,15 +1178,16 @@ class VeilComposer extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-              child: Icon(
-                Icons.lock_outline_rounded,
-                size: VeilIconSize.sm,
-                color: palette.textSubtle,
-              ),
-            ),
-            const SizedBox(width: VeilSpace.xs),
+            leading ??
+                Padding(
+                  padding: const EdgeInsets.only(bottom: VeilSpace.sm),
+                  child: Icon(
+                    Icons.lock_outline_rounded,
+                    size: VeilIconSize.sm,
+                    color: palette.textSubtle,
+                  ),
+                ),
+            SizedBox(width: leading == null ? VeilSpace.xs : VeilSpace.xxs),
             Expanded(
               child: TextField(
                 controller: controller,

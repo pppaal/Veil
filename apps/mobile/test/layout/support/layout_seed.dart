@@ -184,6 +184,16 @@ class LayoutRelayClient extends FakeRelayClient {
 
   final String locale;
 
+  /// The disappearing timer of each conversation that has one, in seconds,
+  /// as the relay keeps it: seeded for one conversation, set by the chat.
+  final Map<String, int?> timers = {timerChatConversationId: 86400};
+
+  @override
+  Future<Map<String, dynamic>> setDisappearingTimer(String accessToken, String conversationId, int? seconds) async {
+    timers[conversationId] = seconds;
+    return const {};
+  }
+
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
     final response = await super.getConversations(accessToken);
@@ -193,6 +203,7 @@ class LayoutRelayClient extends FakeRelayClient {
         for (final conversation in (response['items'] as List).cast<Map<String, dynamic>>())
           {
             ...conversation,
+            if (timers.containsKey(conversation['id'])) 'disappearingTimerSeconds': timers[conversation['id']],
             'members': [
               for (final member in (conversation['members'] as List).cast<Map<String, dynamic>>())
                 <String, dynamic>{

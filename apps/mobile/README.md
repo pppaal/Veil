@@ -19,10 +19,19 @@ flutter run \
 
 `flutter test test/layout` opens every screen at three phone sizes
 (360x640, 390x844, 412x915) in English and Korean, with the bundled fonts,
-and scrolls it to its end. A case fails on any layout error the framework
-reports (an overflowing row or column, unbounded constraints) and when the
-messages of a chat or the rows of the conversation list get less than 45% of
-the screen height. It runs with the rest of `flutter test`.
+and scrolls it to its end. Besides each screen's everyday state it opens the
+states that take room away (the keyboard, stacked warnings, a search, larger
+system text) and the sheets and menus that only appear on a tap. A case
+fails
+
+- on any layout error the framework reports (an overflowing row or column,
+  unbounded constraints),
+- when the messages of a chat or the rows of the conversation list get less
+  than 45% of the screen height (96 px under the keyboard or warnings),
+- when a control of a screen laid out for phones (the chat, the conversation
+  list, the lock screen) is smaller than 44x44.
+
+It runs with the rest of `flutter test`.
 
 To look at the screens, pass a directory: the run then also writes one PNG
 per case and a `report.json`.
@@ -33,9 +42,21 @@ flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=S
 ```
 
 `SHOTS_PAGES=all` adds a PNG for every further screenful of a scrolling
-screen. A new screen needs a case in `test/layout/support/screen_cases.dart`;
-cases known not to fit yet are listed in
-`test/layout/known_phone_layout_failures.dart`, which may only shrink.
+screen. A new screen needs a case in `test/layout/support/screen_cases.dart`,
+and a new sheet or state of an existing screen deserves one. Cases known not
+to fit would be listed in `test/layout/known_phone_layout_failures.dart`,
+which may only shrink; it is empty.
+
+## Phone and wide layouts
+
+Under 1120 px the conversation list is the whole screen and a chat opens on
+top of it (`conversation_list_phone.dart`, `chat_phone_layout.dart`): content
+first, with the bar carrying what the header cards carry in the wide,
+two-pane layout (`conversation_list_pane.dart`, `chat_header.dart`). Other
+screens tighten under 600 px (`context.veilPhoneWidth`): hero panels shrink,
+decorative stat tiles step aside, and the field a screen is for comes before
+its explanations. `test/phone` holds the behaviour that moved with the
+layouts (search, timer, safety number, back).
 
 ## Release builds
 

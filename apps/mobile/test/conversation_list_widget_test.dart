@@ -128,7 +128,12 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('DIRECT CONVERSATIONS'), findsOneWidget);
+    // Under the wide layout's width the list is the phone's: the empty state
+    // itself, with no hero card before it.
+    expect(find.text('No direct conversations yet'), findsOneWidget);
+    expect(find.text('Start direct chat'), findsOneWidget);
+    expect(find.textContaining('0 conversations'), findsOneWidget);
+    expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
   });
 
   testWidgets('conversation list previews the latest decrypted text body', (tester) async {

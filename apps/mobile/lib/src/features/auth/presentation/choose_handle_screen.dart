@@ -32,6 +32,85 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
     final handle = _handleController.text.trim();
     final l10n = AppLocalizations.of(context);
 
+    final bindingFlow = VeilSurfaceCard(
+      toned: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          VeilSectionLabel(l10n.authHandleBindingSection),
+          const SizedBox(height: VeilSpace.md),
+          VeilStepRow(
+            step: 1,
+            title: l10n.authHandleStep1Title,
+            body: l10n.authHandleStep1Body,
+            active: session.authFlowStage == AuthFlowStage.generatingKeys,
+            complete: session.authFlowStage.index > AuthFlowStage.generatingKeys.index,
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          VeilStepRow(
+            step: 2,
+            title: l10n.authHandleStep2Title,
+            body: l10n.authHandleStep2Body,
+            active: session.authFlowStage == AuthFlowStage.registering,
+            complete: session.authFlowStage.index > AuthFlowStage.registering.index,
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          VeilStepRow(
+            step: 3,
+            title: l10n.authHandleStep3Title,
+            body: l10n.authHandleStep3Body,
+            active: session.authFlowStage == AuthFlowStage.requestingChallenge,
+            complete: session.authFlowStage.index > AuthFlowStage.requestingChallenge.index,
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          VeilStepRow(
+            step: 4,
+            title: l10n.authHandleStep4Title,
+            body: l10n.authHandleStep4Body,
+            active: session.authFlowStage == AuthFlowStage.verifying,
+            complete: session.authFlowStage == AuthFlowStage.complete,
+          ),
+        ],
+      ),
+    );
+    final submit = VeilButton(
+      onPressed: _submitting || handle.isEmpty
+          ? null
+          : () async {
+              setState(() => _submitting = true);
+              try {
+                await ref.read(appSessionProvider.notifier).registerAndAuthenticate(
+                      handle: handle,
+                      displayName: displayName?.isEmpty ?? true ? null : displayName,
+                    );
+                if (context.mounted && ref.read(appSessionProvider).isAuthenticated) {
+                  context.go('/conversations');
+                }
+              } catch (_) {
+              } finally {
+                if (mounted) {
+                  setState(() => _submitting = false);
+                }
+              }
+            },
+      label: _ctaLabelFor(session, l10n),
+      icon: Icons.shield_outlined,
+    );
+    final failure = <Widget>[
+      if (session.errorMessage != null) ...[
+        const SizedBox(height: VeilSpace.md),
+        VeilInlineBanner(
+          title: l10n.authHandleFailedTitle,
+          message: session.errorMessage!,
+          tone: VeilBannerTone.danger,
+        ),
+      ],
+    ];
+    // The button follows the field on a phone, where the binding steps
+    // would otherwise push it off the first screenful; the steps then show
+    // their progress under it.
+    final phone = context.veilPhoneWidth;
+
     return VeilShell(
       title: l10n.authHandleTitle,
       child: ListView(
@@ -70,80 +149,10 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
               ),
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilSurfaceCard(
-            toned: true,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                VeilSectionLabel(l10n.authHandleBindingSection),
-                const SizedBox(height: VeilSpace.md),
-                VeilStepRow(
-                  step: 1,
-                  title: l10n.authHandleStep1Title,
-                  body: l10n.authHandleStep1Body,
-                  active: session.authFlowStage == AuthFlowStage.generatingKeys,
-                  complete: session.authFlowStage.index > AuthFlowStage.generatingKeys.index,
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                VeilStepRow(
-                  step: 2,
-                  title: l10n.authHandleStep2Title,
-                  body: l10n.authHandleStep2Body,
-                  active: session.authFlowStage == AuthFlowStage.registering,
-                  complete: session.authFlowStage.index > AuthFlowStage.registering.index,
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                VeilStepRow(
-                  step: 3,
-                  title: l10n.authHandleStep3Title,
-                  body: l10n.authHandleStep3Body,
-                  active: session.authFlowStage == AuthFlowStage.requestingChallenge,
-                  complete: session.authFlowStage.index > AuthFlowStage.requestingChallenge.index,
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                VeilStepRow(
-                  step: 4,
-                  title: l10n.authHandleStep4Title,
-                  body: l10n.authHandleStep4Body,
-                  active: session.authFlowStage == AuthFlowStage.verifying,
-                  complete: session.authFlowStage == AuthFlowStage.complete,
-                ),
-              ],
-            ),
-          ),
-          if (session.errorMessage != null) ...[
-            const SizedBox(height: VeilSpace.md),
-            VeilInlineBanner(
-              title: l10n.authHandleFailedTitle,
-              message: session.errorMessage!,
-              tone: VeilBannerTone.danger,
-            ),
-          ],
-          const SizedBox(height: VeilSpace.xl),
-          VeilButton(
-            onPressed: _submitting || handle.isEmpty
-                ? null
-                : () async {
-                    setState(() => _submitting = true);
-                    try {
-                      await ref.read(appSessionProvider.notifier).registerAndAuthenticate(
-                            handle: handle,
-                            displayName: displayName?.isEmpty ?? true ? null : displayName,
-                          );
-                      if (context.mounted && ref.read(appSessionProvider).isAuthenticated) {
-                        context.go('/conversations');
-                      }
-                    } catch (_) {
-                    } finally {
-                      if (mounted) {
-                        setState(() => _submitting = false);
-                      }
-                    }
-                  },
-            label: _ctaLabelFor(session, l10n),
-            icon: Icons.shield_outlined,
-          ),
+          if (!phone) ...[const SizedBox(height: VeilSpace.md), bindingFlow],
+          ...failure,
+          SizedBox(height: phone ? VeilSpace.md : VeilSpace.xl),
+          if (phone) ...[submit, const SizedBox(height: VeilSpace.md), bindingFlow] else submit,
         ],
       ),
     );

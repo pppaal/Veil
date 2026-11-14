@@ -63,33 +63,42 @@ Future<({Duration? ttl})?> showDisappearingTimerSheet(
   final sentinel = const Duration(microseconds: -1);
   final selected = await showModalBottomSheet<Duration?>(
     context: context,
+    // Six options with their captions are taller than the half screen a
+    // sheet gets by default: this one takes the height it needs, up to most
+    // of the screen, and scrolls beyond that.
+    isScrollControlled: true,
     builder: (sheetContext) {
       return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(VeilSpace.lg),
-              child: Text(
-                l10n.chatTtlSheetTitle,
-                style: Theme.of(sheetContext).textTheme.titleLarge,
-              ),
-            ),
-            for (final option in options)
-              ListTile(
-                leading: Icon(
-                  current() == option.duration
-                      ? Icons.check_circle_rounded
-                      : Icons.circle_outlined,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(VeilSpace.lg),
+                  child: Text(
+                    l10n.chatTtlSheetTitle,
+                    style: Theme.of(sheetContext).textTheme.titleLarge,
+                  ),
                 ),
-                title: Text(option.label),
-                subtitle: option.caption == null ? null : Text(option.caption!),
-                onTap: () =>
-                    Navigator.of(sheetContext).pop<Duration?>(option.duration ?? sentinel),
-              ),
-            const SizedBox(height: VeilSpace.sm),
-          ],
+                for (final option in options)
+                  ListTile(
+                    leading: Icon(
+                      current() == option.duration
+                          ? Icons.check_circle_rounded
+                          : Icons.circle_outlined,
+                    ),
+                    title: Text(option.label),
+                    subtitle: option.caption == null ? null : Text(option.caption!),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop<Duration?>(option.duration ?? sentinel),
+                  ),
+                const SizedBox(height: VeilSpace.sm),
+              ],
+            ),
+          ),
         ),
       );
     },

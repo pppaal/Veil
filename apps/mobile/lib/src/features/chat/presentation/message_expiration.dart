@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import '../../../l10n/generated/app_localizations.dart';
+
 // [now] is the messenger's expiry clock (VeilMessengerController.expiryNow),
 // not the device clock: a device whose clock runs fast would otherwise hide a
 // message the relay still keeps.
@@ -11,23 +13,24 @@ bool isMessageExpired(DateTime? expiresAt, {required DateTime now}) {
   return !expiresAt.isAfter(now);
 }
 
-String formatMessageExpiry(DateTime expiresAt, {required DateTime now}) {
+/// "Expires in 5m", in the user's language, or "Expired".
+String formatMessageExpiry(AppLocalizations l10n, DateTime expiresAt, {required DateTime now}) {
   if (isMessageExpired(expiresAt, now: now)) {
-    return 'Expired';
+    return l10n.chatExpiryExpired;
   }
 
   final remaining = expiresAt.difference(now);
   if (remaining.inSeconds < 60) {
-    return 'Expires in ${max(1, remaining.inSeconds)}s';
+    return l10n.chatExpirySeconds(max(1, remaining.inSeconds));
   }
 
   if (remaining.inMinutes < 60) {
-    return 'Expires in ${remaining.inMinutes}m';
+    return l10n.chatExpiryMinutes(remaining.inMinutes);
   }
 
   if (remaining.inHours < 24) {
-    return 'Expires in ${remaining.inHours}h';
+    return l10n.chatExpiryHours(remaining.inHours);
   }
 
-  return 'Expires in ${remaining.inDays}d';
+  return l10n.chatExpiryDays(remaining.inDays);
 }

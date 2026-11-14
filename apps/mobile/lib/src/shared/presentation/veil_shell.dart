@@ -3,11 +3,19 @@ import 'package:flutter/material.dart';
 import '../../core/theme/veil_theme.dart';
 import 'veil_ui.dart';
 
+/// The frame of a screen: the translucent top bar, the canvas behind the
+/// content and the system insets.
+///
+/// The bar shows [title], or [titleWidget] in its place (a chat's name with
+/// its marks, a search field). A screen that was pushed on top of another
+/// gets a back button, unless [leading] takes its place.
 class VeilShell extends StatelessWidget {
   const VeilShell({
     super.key,
     required this.child,
     this.title,
+    this.titleWidget,
+    this.leading,
     this.actions,
     this.maxWidth = 840,
     this.padding = const EdgeInsets.fromLTRB(
@@ -20,6 +28,12 @@ class VeilShell extends StatelessWidget {
 
   final Widget child;
   final String? title;
+
+  /// Shown in the bar instead of [title].
+  final Widget? titleWidget;
+
+  /// Shown before the title instead of the back button.
+  final Widget? leading;
   final List<Widget>? actions;
   final double? maxWidth;
   final EdgeInsetsGeometry padding;
@@ -27,15 +41,17 @@ class VeilShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
+    final hasBar = title != null || titleWidget != null;
     // When a title is shown, the AppBar is translucent and content scrolls
     // under it — offset the content so the first child isn't obscured.
-    final resolvedPadding = title == null
-        ? padding
-        : padding.add(const EdgeInsets.only(top: 52));
+    final resolvedPadding =
+        hasBar ? padding.add(const EdgeInsets.only(top: 52)) : padding;
+    final leading = this.leading ??
+        ((ModalRoute.of(context)?.canPop ?? false) ? const VeilBackButton() : null);
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: title == null
+      appBar: !hasBar
           ? null
           : PreferredSize(
               preferredSize: const Size.fromHeight(52),
@@ -46,8 +62,9 @@ class VeilShell extends StatelessWidget {
                   bottom: false,
                   child: Container(
                     height: 52,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: VeilSpace.lg,
+                    padding: EdgeInsets.only(
+                      left: leading == null ? VeilSpace.lg : VeilSpace.xxs,
+                      right: actions == null ? VeilSpace.lg : VeilSpace.sm,
                     ),
                     decoration: BoxDecoration(
                       border: Border(
@@ -57,23 +74,33 @@ class VeilShell extends StatelessWidget {
                         ),
                       ),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title!,
-                            style: VeilTypography.headline.copyWith(
-                              color: palette.text,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                    // The bar has one fixed height: past this size its text
+                    // would not fit it, so it stops growing there.
+                    child: MediaQuery.withClampedTextScaling(
+                      maxScaleFactor: 1.3,
+                      child: Row(
+                        children: [
+                          if (leading != null) ...[
+                            leading,
+                            const SizedBox(width: VeilSpace.xxs),
+                          ],
+                          Expanded(
+                            child: titleWidget ??
+                                Text(
+                                  title!,
+                                  style: VeilTypography.headline.copyWith(
+                                    color: palette.text,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                           ),
-                        ),
-                        if (actions != null) ...[
-                          const SizedBox(width: VeilSpace.sm),
-                          ...actions!,
+                          if (actions != null) ...[
+                            const SizedBox(width: VeilSpace.xs),
+                            ...actions!,
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -171,6 +198,24 @@ class VeilShell extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The back button of a [VeilShell] bar. It pops the screen, or runs
+/// [onPressed] in its place (closing a search, leaving for a fixed screen).
+class VeilBackButton extends StatelessWidget {
+  const VeilBackButton({super.key, this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+      style: IconButton.styleFrom(backgroundColor: Colors.transparent),
+      onPressed: onPressed ?? () => Navigator.maybePop(context),
+      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
     );
   }
 }

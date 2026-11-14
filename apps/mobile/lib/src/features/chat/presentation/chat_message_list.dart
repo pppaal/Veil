@@ -36,6 +36,7 @@ class ChatMessageList extends ConsumerWidget {
     required this.onResolveAttachment,
     required this.onReply,
     required this.onReact,
+    this.padding = EdgeInsets.zero,
   });
 
   final String conversationId;
@@ -60,73 +61,61 @@ class ChatMessageList extends ConsumerWidget {
   final void Function(ChatMessage message) onReply;
   final void Function(ChatMessage message) onReact;
 
+  /// Space around the messages, inside the area they scroll in.
+  final EdgeInsets padding;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
 
     if (messages.isEmpty && controller.isBusy) {
-      return VeilLoadingBlock(
-        title: l10n.chatLoadingTitle,
-        body: l10n.chatLoadingBody,
+      return _CenteredState(
+        child: VeilLoadingBlock(
+          title: l10n.chatLoadingTitle,
+          body: l10n.chatLoadingBody,
+        ),
       );
     }
 
     if (messages.isEmpty) {
-      return VeilEmptyState(
-        title: l10n.chatEmptyTitle,
-        body: l10n.chatEmptyBody,
-        icon: Icons.chat_bubble_outline_rounded,
-        action: FilledButton.tonal(
-          onPressed: onStartMessage,
-          child: Text(l10n.chatSendAction),
+      return _CenteredState(
+        child: VeilEmptyState(
+          title: l10n.chatEmptyTitle,
+          body: l10n.chatEmptyBody,
+          icon: Icons.chat_bubble_outline_rounded,
+          action: FilledButton.tonal(
+            onPressed: onStartMessage,
+            child: Text(l10n.chatSendAction),
+          ),
         ),
       );
     }
 
     if (hasSearchQuery && filteredMessages.isEmpty) {
-      return VeilEmptyState(
-        title: l10n.chatSearchEmptyTitle,
-        body: l10n.chatSearchEmptyBody,
-        icon: Icons.search_off_rounded,
+      return _CenteredState(
+        child: VeilEmptyState(
+          title: l10n.chatSearchEmptyTitle,
+          body: l10n.chatSearchEmptyBody,
+          icon: Icons.search_off_rounded,
+        ),
       );
     }
 
     final validIds = filteredMessages.map((message) => message.id).toSet();
     messageKeys.removeWhere((messageId, _) => !validIds.contains(messageId));
 
-    final useBottomAnchoredLayout =
-        !hasSearchQuery && !hasMoreHistory && filteredMessages.length <= 6;
-
-    if (useBottomAnchoredLayout) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            controller: scrollController,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: List<Widget>.generate(
-                  filteredMessages.length,
-                  (index) => _buildMessageEntry(context, ref, index),
-                  growable: false,
-                ),
-              ),
-            ),
-          );
-        },
-      );
-    }
-
-    return ListView.separated(
+    // Newest at the bottom, where the chat opens and stays as messages
+    // arrive: the list runs upwards from the composer, so a short
+    // conversation sits against it and a long one starts at its end.
+    final count = filteredMessages.length;
+    return ListView.builder(
       controller: scrollController,
       key: PageStorageKey<String>('chat-$conversationId'),
+      reverse: true,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      itemCount: filteredMessages.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
-      padding: EdgeInsets.zero,
-      itemBuilder: (context, index) => _buildMessageEntry(context, ref, index),
+      itemCount: count,
+      padding: padding,
+      itemBuilder: (context, index) => _buildMessageEntry(context, ref, count - 1 - index),
     );
   }
 
@@ -160,13 +149,13 @@ class ChatMessageList extends ConsumerWidget {
         ),
       ),
     );
-    final padding = EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : 12);
+    final gap = EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : VeilSpace.sm);
     if (!showLoadOlder) {
-      return Padding(padding: padding, child: entry);
+      return Padding(padding: gap, child: entry);
     }
 
     return Padding(
-      padding: padding,
+      padding: gap,
       child: Column(
         children: [
           VeilButton(
@@ -236,6 +225,27 @@ class ChatMessageList extends ConsumerWidget {
           onChipTap: (emoji) => controller.toggleReaction(message, emoji),
         ),
       ],
+    );
+  }
+}
+
+/// A loading or empty state in the middle of the message area. It scrolls
+/// when the area is shorter than it is, as with the keyboard open.
+class _CenteredState extends StatelessWidget {
+  const _CenteredState({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+          child: child,
+        ),
+      ),
     );
   }
 }

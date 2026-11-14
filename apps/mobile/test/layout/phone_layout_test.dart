@@ -13,10 +13,12 @@ import 'support/screen_cases.dart';
 // The phone layout gate. Every screen of the app is opened at three phone
 // sizes in both languages, with the bundled fonts, and scrolled to its end.
 // A case fails when the framework reports a layout error (an overflowing
-// flex, unbounded constraints, a build that throws) or when the messages of
-// a chat or the rows of the conversation list get less than 45% of the
-// screen height. Cases known to fail are listed in
-// known_phone_layout_failures.dart, which this gate only lets shrink.
+// flex, unbounded constraints, a build that throws), when the messages of a
+// chat or the rows of the conversation list get less than 45% of the screen
+// height, or when a control of a screen laid out for phones (the chat, the
+// conversation list, the lock) is smaller than 44x44. Cases known to fail
+// are listed in known_phone_layout_failures.dart, which this gate only lets
+// shrink; it is empty.
 //
 //   flutter test test/layout
 //
@@ -140,7 +142,7 @@ Future<LayoutFindings> _render(
   String locale,
   LayoutIdentities identities,
 ) async {
-  usePhoneView(tester, size, keyboardHeight: screenCase.keyboardHeight);
+  usePhoneView(tester, size, keyboardHeight: screenCase.keyboardHeight, textScale: screenCase.textScale);
   final findings = LayoutFindings();
   final name = '${screenCase.id}__${size}__$locale';
   final world = await LayoutWorld.create(
@@ -153,11 +155,19 @@ Future<LayoutFindings> _render(
   );
 
   Future<void> audit() async {
+    if (screenCase.holdsTapTargets) {
+      for (final target in await smallTapTargetsOnScreen(tester, guideline: minimumTapTarget)) {
+        findings.add(LayoutDefect.smallTapTarget, 'smaller than 44x44: $target');
+      }
+    }
     if (!writesShots) return;
     findings.smallTapTargets.addAll(await smallTapTargetsOnScreen(tester));
     findings.otherLanguageTexts.addAll(otherLanguageTextsOnScreen(tester, locale));
   }
 
+  // A test draws every shadow as a solid block. A shot is for looking at,
+  // so it gets the real ones; the binding wants its setting back.
+  if (writesShots) debugDisableShadows = false;
   try {
     await collectingLayoutErrors(findings, () async {
       await tester.pumpWidget(world.app(
@@ -212,6 +222,7 @@ Future<LayoutFindings> _render(
     // world (the messenger's timers) go before it ends, whatever happened.
     await tester.pumpWidget(const SizedBox.shrink());
     world.dispose();
+    debugDisableShadows = true;
   }
   return findings;
 }

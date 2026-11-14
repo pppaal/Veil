@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 
+import '../../../l10n/generated/app_localizations.dart';
 import 'message_expiration.dart';
 
 /// "Expires in …" for one message, kept current by a one-shot timer armed
@@ -63,7 +64,7 @@ class _MessageExpiryLabelState extends State<MessageExpiryLabel> {
   @override
   Widget build(BuildContext context) {
     return Text(
-      formatMessageExpiry(widget.expiresAt, now: widget.now()),
+      formatMessageExpiry(AppLocalizations.of(context), widget.expiresAt, now: widget.now()),
       style: widget.style,
       overflow: TextOverflow.ellipsis,
     );

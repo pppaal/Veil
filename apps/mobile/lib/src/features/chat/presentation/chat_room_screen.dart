@@ -10,7 +10,6 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/security/platform_security_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
@@ -20,6 +19,7 @@ import 'chat_composer_bar.dart';
 import 'chat_header.dart';
 import 'chat_message_list.dart';
 import 'chat_message_search.dart';
+import 'chat_phone_layout.dart';
 import 'chat_room_dialogs.dart';
 import 'chat_status_banners.dart';
 import 'disappearing_timer_sheet.dart';
@@ -172,16 +172,82 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final isLoadingHistory =
         controller.isLoadingHistoryFor(widget.conversationId);
 
+    final banners = ChatStatusBanners(
+      compact: !widget.embedded,
+      controller: controller,
+      conversationId: widget.conversationId,
+      conversation: conversation,
+      messages: messages,
+      hasMoreHistory: hasMoreHistory,
+      isLoadingHistory: isLoadingHistory,
+      peerVerified: _peerVerified,
+      hasSearchQuery: hasSearchQuery,
+      searching: isSearchingMessages,
+      searchHitCount: filteredMessages.length,
+      onReviewIdentity: _openSafetyNumbers,
+      onAcknowledgeHold: _acknowledgePeerAccount,
+      onRetryFailed: () => ref.read(messengerControllerProvider).retryPendingMessages(widget.conversationId),
+    );
+    final messageList = ChatMessageList(
+      conversationId: widget.conversationId,
+      controller: controller,
+      messages: messages,
+      filteredMessages: filteredMessages,
+      hasMoreHistory: hasMoreHistory,
+      isLoadingHistory: isLoadingHistory,
+      hasSearchQuery: hasSearchQuery,
+      scrollController: _scrollController,
+      messageKeys: messageKeys,
+      highlightedMessageId: highlightedMessageId,
+      sentAtFormat: _sentAtFormat,
+      onStartMessage: () => _composerFocusNode.requestFocus(),
+      onResolveAttachment: _showAttachmentTicket,
+      onReply: _handleReplyGesture,
+      onReact: _showReactionPicker,
+      padding: widget.embedded
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
+    );
+    final typing = PresenceSelector<String?>(
+      presence: controller.presenceTyping,
+      select: (presence) => presence.typingHandleFor(widget.conversationId),
+      builder: (context, handle) => TypingIndicator(handle: handle),
+    );
+    final composer = ChatComposerBar(
+      conversationId: widget.conversationId,
+      focusNode: _composerFocusNode,
+      messageTtl: _messageTtl,
+      busy: controller.isBusy,
+      onAttach: widget.embedded ? null : () => context.push('/attachment/${widget.conversationId}'),
+    );
+
+    // A phone shows the conversation first: the bar carries what the header
+    // cards carry in the wide layout.
+    if (!widget.embedded) {
+      return ChatPhoneScaffold(
+        conversation: conversation,
+        presence: controller.presenceTyping,
+        peerVerified: _peerVerified,
+        messageTtl: _messageTtl,
+        searchController: searchController,
+        searching: isSearchingMessages,
+        onPickTimer: _pickDisappearTtl,
+        onOpenSafetyNumbers: _openSafetyNumbers,
+        banners: banners,
+        messages: messageList,
+        typing: typing,
+        composer: composer,
+      );
+    }
+
     final peerUserId = conversation?.recipientBundle.userId;
-    final content = Column(
+    return Column(
       children: [
         PresenceSelector<bool>(
           presence: controller.presenceTyping,
           select: (presence) => peerUserId != null && presence.isUserOnline(peerUserId),
           builder: (context, peerOnline) => ChatHeader(
-            embedded: widget.embedded,
-            title: conversation?.peerDisplayName ??
-                '@${conversation?.peerHandle ?? 'unknown'}',
+            title: conversation?.peerDisplayName ?? '@${conversation?.peerHandle ?? 'unknown'}',
             searchController: searchController,
             searching: isSearchingMessages,
             ttlLabel: disappearingTimerLabel(l10n, _messageTtl),
@@ -190,81 +256,13 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
             peerOnline: peerOnline,
           ),
         ),
-        ChatStatusBanners(
-          controller: controller,
-          conversationId: widget.conversationId,
-          conversation: conversation,
-          messages: messages,
-          hasMoreHistory: hasMoreHistory,
-          isLoadingHistory: isLoadingHistory,
-          peerVerified: _peerVerified,
-          hasSearchQuery: hasSearchQuery,
-          searching: isSearchingMessages,
-          searchHitCount: filteredMessages.length,
-          onReviewIdentity: _openSafetyNumbers,
-          onAcknowledgeHold: _acknowledgePeerAccount,
-          onRetryFailed: () => ref
-              .read(messengerControllerProvider)
-              .retryPendingMessages(widget.conversationId),
-        ),
+        banners,
         const SizedBox(height: VeilSpace.md),
-        Expanded(
-          child: ChatMessageList(
-            conversationId: widget.conversationId,
-            controller: controller,
-            messages: messages,
-            filteredMessages: filteredMessages,
-            hasMoreHistory: hasMoreHistory,
-            isLoadingHistory: isLoadingHistory,
-            hasSearchQuery: hasSearchQuery,
-            scrollController: _scrollController,
-            messageKeys: messageKeys,
-            highlightedMessageId: highlightedMessageId,
-            sentAtFormat: _sentAtFormat,
-            onStartMessage: () => _composerFocusNode.requestFocus(),
-            onResolveAttachment: _showAttachmentTicket,
-            onReply: _handleReplyGesture,
-            onReact: _showReactionPicker,
-          ),
-        ),
-        PresenceSelector<String?>(
-          presence: controller.presenceTyping,
-          select: (presence) => presence.typingHandleFor(widget.conversationId),
-          builder: (context, handle) => TypingIndicator(handle: handle),
-        ),
+        Expanded(child: messageList),
+        typing,
         const SizedBox(height: VeilSpace.md),
-        ChatComposerBar(
-          conversationId: widget.conversationId,
-          focusNode: _composerFocusNode,
-          messageTtl: _messageTtl,
-          busy: controller.isBusy,
-        ),
+        composer,
       ],
-    );
-
-    if (widget.embedded) {
-      return content;
-    }
-
-    final isDirect = conversation?.type == ConversationType.direct;
-    return VeilShell(
-      title: conversation?.peerDisplayName ??
-          conversation?.peerHandle ??
-          l10n.chatTitleFallback,
-      actions: [
-        if (isDirect)
-          IconButton(
-            tooltip: 'Safety number',
-            onPressed: _openSafetyNumbers,
-            icon: const Icon(Icons.verified_user_outlined),
-          ),
-        IconButton(
-          tooltip: 'Attachments',
-          onPressed: () => context.push('/attachment/${widget.conversationId}'),
-          icon: const Icon(Icons.attach_file),
-        ),
-      ],
-      child: content,
     );
   }
 

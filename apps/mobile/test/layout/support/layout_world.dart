@@ -15,6 +15,7 @@ import 'package:veil_mobile/src/core/security/app_lock_service.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_providers.dart';
@@ -37,6 +38,10 @@ const chatConversationId = 'conv-selene';
 /// A peer nobody has written to yet, and the conversation with them.
 const emptyChatPeerHandle = 'mira';
 const emptyChatConversationId = 'conv-$emptyChatPeerHandle';
+
+/// The conversation whose messages disappear after a day.
+const timerChatPeerHandle = 'rowan';
+const timerChatConversationId = 'conv-$timerChatPeerHandle';
 
 /// Real identity keys, generated once per run: safety numbers take 32-byte
 /// keys, and generating them costs real time no single case should pay.
@@ -76,13 +81,17 @@ enum LayoutAccount {
 
 /// Things a chat can be asked to show on top of its messages.
 class ChatAttention {
-  const ChatAttention({this.identityChanged = false, this.failedSends = 0});
+  const ChatAttention({this.identityChanged = false, this.failedSends = 0, this.accountHeld = false});
 
   /// The peer's identity key changed and the user has not reviewed it.
   final bool identityChanged;
 
   /// Messages of ours that did not go out.
   final int failedSends;
+
+  /// The chat is listed under the peer's handle with another account than
+  /// the one this device talked to, and waits for the user to say so.
+  final bool accountHeld;
 }
 
 class LayoutWorld {
@@ -306,6 +315,15 @@ class _LayoutMessenger extends VeilMessengerController {
               requiresReverification: true,
             )
           : super.pendingIdentityChangeFor(conversationId);
+
+  @override
+  PeerAccountHold? peerAccountHoldFor(String conversationId) =>
+      attention.accountHeld && conversationId == chatConversationId
+          ? PeerAccountHold(
+              PeerAccountHoldReason.otherAccount,
+              known: ConversationPeer(userId: 'user-earlier', handle: peer.handle),
+            )
+          : super.peerAccountHoldFor(conversationId);
 
   @override
   int pendingCountFor(String conversationId) =>

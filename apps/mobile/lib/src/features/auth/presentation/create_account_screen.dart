@@ -52,23 +52,27 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
             title: l10n.authCreateRestoreTitle,
             body: l10n.authCreateRestoreBody,
           ),
-          const SizedBox(height: VeilSpace.lg),
-          VeilMetricStrip(
-            items: [
-              VeilMetricItem(
-                label: l10n.authCreateMetricIdentity,
-                value: l10n.authCreateMetricIdentityValue,
-              ),
-              VeilMetricItem(
-                label: l10n.authCreateMetricRecovery,
-                value: l10n.authCreateMetricRecoveryValue,
-              ),
-              VeilMetricItem(
-                label: l10n.authCreateMetricTransfer,
-                value: l10n.authCreateMetricTransferValue,
-              ),
-            ],
-          ),
+          // Fixed facts the panel, the notice and the transfer button already
+          // state: on a phone they would only push the name field further down.
+          if (!context.veilPhoneWidth) ...[
+            const SizedBox(height: VeilSpace.lg),
+            VeilMetricStrip(
+              items: [
+                VeilMetricItem(
+                  label: l10n.authCreateMetricIdentity,
+                  value: l10n.authCreateMetricIdentityValue,
+                ),
+                VeilMetricItem(
+                  label: l10n.authCreateMetricRecovery,
+                  value: l10n.authCreateMetricRecoveryValue,
+                ),
+                VeilMetricItem(
+                  label: l10n.authCreateMetricTransfer,
+                  value: l10n.authCreateMetricTransferValue,
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: VeilSpace.lg),
           VeilFieldBlock(
             label: l10n.authCreateFieldLabel,

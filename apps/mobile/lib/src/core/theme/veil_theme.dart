@@ -473,12 +473,15 @@ class VeilTheme {
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
+        // A selected chip sits on primarySoft, a tint of the surface: its
+        // label has to stay a text colour, not the canvas.
         secondaryLabelStyle: TextStyle(
           fontFamily: _fontFamily,
-          color: palette.canvas,
+          color: palette.primaryStrong,
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
+        checkmarkColor: palette.primaryStrong,
         padding: const EdgeInsets.symmetric(
           horizontal: VeilSpace.sm,
           vertical: VeilSpace.xs,

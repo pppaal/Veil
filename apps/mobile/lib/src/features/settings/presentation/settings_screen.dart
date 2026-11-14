@@ -167,18 +167,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     segments: [
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.light,
-                        icon: const Icon(Icons.light_mode_outlined),
-                        label: Text(l10n.themeModeLight),
+                        icon: context.veilPhoneWidth ? null : const Icon(Icons.light_mode_outlined),
+                        label: Text(l10n.themeModeLight, maxLines: 1, softWrap: false),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.dark,
-                        icon: const Icon(Icons.dark_mode_outlined),
-                        label: Text(l10n.themeModeDark),
+                        icon: context.veilPhoneWidth ? null : const Icon(Icons.dark_mode_outlined),
+                        label: Text(l10n.themeModeDark, maxLines: 1, softWrap: false),
                       ),
                       ButtonSegment<ThemeMode>(
                         value: ThemeMode.system,
-                        icon: const Icon(Icons.brightness_auto_outlined),
-                        label: Text(l10n.themeModeSystem),
+                        icon: context.veilPhoneWidth ? null : const Icon(Icons.brightness_auto_outlined),
+                        label: Text(l10n.themeModeSystem, maxLines: 1, softWrap: false),
                       ),
                     ],
                     selected: {themeMode},
@@ -243,8 +243,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 onTap: () => context.push('/security-status'),
               ),
               VeilListTileCard(
-                title: '일회성 비밀 링크',
-                subtitle: '한 번 읽히면 사라지는 암호화 메시지 — 받는 사람은 앱 없이 열람',
+                title: l10n.oneTimeLinkTitle,
+                subtitle: l10n.oneTimeLinkSettingsSubtitle,
                 leading: const Icon(Icons.link_outlined),
                 onTap: () => context.push('/secret-link'),
               ),

@@ -88,6 +88,180 @@ class AppLocalizationsKo extends AppLocalizations {
       '최근 앱 미리보기가 가려지고, 앱이 포그라운드를 떠나면 로컬 잠금이 다시 걸립니다.';
 
   @override
+  String get appLockTitle => '앱 잠금';
+
+  @override
+  String get appLockLoadingTitle => '로컬 잠금 확인 중';
+
+  @override
+  String get appLockLoadingBody => '저장된 PIN과 생체 인식 사용 가능 여부를 확인합니다.';
+
+  @override
+  String get appLockHeroEyebrow => '로컬 잠금';
+
+  @override
+  String get appLockHeroTitle => 'VEIL은 원격으로 잠금을 풀지 않습니다.';
+
+  @override
+  String get appLockHeroBody =>
+      'PIN과 생체 인식은 이 기기에서만 확인합니다. 원격 재설정도, 복구 수단도, 서버의 개입도 없습니다.';
+
+  @override
+  String get appLockPillLocalOnly => '이 기기 전용';
+
+  @override
+  String get appLockPillNoRemoteReset => '원격 재설정 없음';
+
+  @override
+  String get appLockNoRecoveryBody =>
+      'PIN을 잊고 사용 중인 기기까지 잃으면 VEIL은 접근 권한을 되살릴 수 없습니다.';
+
+  @override
+  String get appLockCompromisedTitle => '변조된 기기에서는 차단됩니다';
+
+  @override
+  String get appLockCompromisedBody =>
+      '이 기기는 루팅 또는 탈옥된 것으로 보입니다. VEIL은 변조된 기기에서 잠금 해제를 막습니다.';
+
+  @override
+  String appLockCompromisedReasons(String reasons) {
+    return '이 기기는 루팅 또는 탈옥된 것으로 보입니다. $reasons';
+  }
+
+  @override
+  String get appLockLockoutTitle => 'PIN이 잠시 잠겼습니다';
+
+  @override
+  String appLockLockoutBody(String retry) {
+    return '이 기기에서 PIN을 너무 여러 번 틀렸습니다. $retry';
+  }
+
+  @override
+  String get appLockRetryNow => '지금 다시 시도하세요.';
+
+  @override
+  String appLockRetrySeconds(int seconds) {
+    return '$seconds초 후에 다시 시도하세요.';
+  }
+
+  @override
+  String appLockRetryMinutes(int minutes) {
+    return '$minutes분 후에 다시 시도하세요.';
+  }
+
+  @override
+  String get appLockPinLabel => 'PIN';
+
+  @override
+  String get appLockMetricConfigured => '설정됨';
+
+  @override
+  String get appLockMetricRequired => '설정 필요';
+
+  @override
+  String get appLockMetricBiometrics => '생체 인식';
+
+  @override
+  String get appLockMetricAvailable => '사용 가능';
+
+  @override
+  String get appLockMetricUnavailable => '사용 불가';
+
+  @override
+  String get appLockMetricPreview => '미리보기';
+
+  @override
+  String get appLockMetricProtected => '보호됨';
+
+  @override
+  String get appLockMetricShielded => '가려짐';
+
+  @override
+  String get appLockPillPinConfigured => 'PIN 설정됨';
+
+  @override
+  String get appLockPillPinRequired => 'PIN 설정 필요';
+
+  @override
+  String get appLockPillBiometricsAvailable => '생체 인식 사용 가능';
+
+  @override
+  String get appLockPillBiometricsUnavailable => '생체 인식 사용 불가';
+
+  @override
+  String get appLockPillCaptureBlocked => '화면 캡처 차단됨';
+
+  @override
+  String get appLockPillPreviewShield => '미리보기만 가림';
+
+  @override
+  String get appLockCaptionSet =>
+      '계속하려면 이 기기에서만 쓰는 숫자 PIN을 정하세요. VEIL은 이 PIN을 대신 재설정해 줄 수 없습니다.';
+
+  @override
+  String get appLockCaptionUnlock =>
+      '이 기기의 PIN이나 생체 인식으로 잠금을 해제하세요. 서버와는 통신하지 않습니다.';
+
+  @override
+  String get appLockFieldSetPin => 'PIN 설정';
+
+  @override
+  String get appLockFieldPinHint => '숫자 6~12자리';
+
+  @override
+  String get appLockFieldPinError => '숫자 6~12자리만 사용하세요.';
+
+  @override
+  String get appLockFieldConfirm => 'PIN 확인';
+
+  @override
+  String get appLockFieldConfirmHint => '같은 PIN을 다시 입력하세요';
+
+  @override
+  String get appLockConfirmMismatch => '확인용 PIN이 일치하지 않습니다.';
+
+  @override
+  String get appLockStatusTitle => '잠금 상태';
+
+  @override
+  String get appLockStatusUnlockedTitle => '잠금 해제됨';
+
+  @override
+  String get appLockStatusUnlocked => '잠금이 해제되었습니다.';
+
+  @override
+  String get appLockStatusBiometricFailed => '생체 인식에 실패했습니다.';
+
+  @override
+  String get appLockStatusEnterPin => '먼저 PIN을 입력하세요.';
+
+  @override
+  String get appLockStatusPinFormat => 'PIN은 숫자 6~12자리여야 합니다.';
+
+  @override
+  String get appLockStatusPinMismatch => 'PIN이 일치하지 않습니다.';
+
+  @override
+  String appLockStatusPinMismatchAttempts(int count) {
+    return 'PIN이 일치하지 않습니다. $count번 더 틀리면 잠시 잠깁니다.';
+  }
+
+  @override
+  String get appLockStatusLocked => 'PIN이 잠시 잠겼습니다.';
+
+  @override
+  String get appLockStatusCompromised => '변조된 기기에서는 잠금을 해제할 수 없습니다.';
+
+  @override
+  String get appLockUseBiometrics => '생체 인식 사용';
+
+  @override
+  String get appLockSetAndUnlock => 'PIN 설정 후 잠금 해제';
+
+  @override
+  String get appLockUnlock => 'VEIL 잠금 해제';
+
+  @override
   String get splashEyebrow => '비공개 베타';
 
   @override
@@ -506,13 +680,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatTitleFallback => '보안 대화';
 
   @override
-  String get chatHeroEyebrow => '보안 대화';
-
-  @override
-  String get chatHeroBody =>
-      '1:1 직접 교환만 가능합니다. 메시지 본문은 서버에서 읽을 수 없으며, 설정한 경우 로컬에서 만료됩니다.';
-
-  @override
   String get chatSubtitleOnline => '온라인';
 
   @override
@@ -520,14 +687,24 @@ class AppLocalizationsKo extends AppLocalizations {
       '로컬 검색은 이 기기에만 남습니다. 메시지 본문은 릴레이에서 읽을 수 없습니다.';
 
   @override
-  String get chatSubtitleStandalone =>
-      '1:1 직접 교환만 가능합니다. 메시지 본문은 서버에서 읽을 수 없습니다.';
-
-  @override
   String get chatSearchHint => '이 기기의 캐시된 메시지 검색';
 
   @override
   String get chatSearchClearTooltip => '검색 지우기';
+
+  @override
+  String get chatSearchTooltip => '메시지 검색';
+
+  @override
+  String chatSearchMatchCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '이 기기에서 $count건 일치',
+      zero: '이 기기에서 일치하는 메시지가 없습니다',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get chatPillAttachmentsEncrypted => '첨부파일 암호화됨';
@@ -959,6 +1136,29 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String get chatExpiryExpired => '만료됨';
+
+  @override
+  String chatExpirySeconds(int count) {
+    return '$count초 후 만료';
+  }
+
+  @override
+  String chatExpiryMinutes(int count) {
+    return '$count분 후 만료';
+  }
+
+  @override
+  String chatExpiryHours(int count) {
+    return '$count시간 후 만료';
+  }
+
+  @override
+  String chatExpiryDays(int count) {
+    return '$count일 후 만료';
+  }
+
+  @override
   String get conversationsTitle => '대화';
 
   @override
@@ -989,6 +1189,409 @@ class AppLocalizationsKo extends AppLocalizations {
   String conversationsQueuedMany(int count) {
     return '로컬에 메시지 $count개 대기 중';
   }
+
+  @override
+  String get conversationsPreviewEmpty => '아직 메시지가 없습니다';
+
+  @override
+  String get conversationsPreviewExpired => '이 기기에서 만료됨';
+
+  @override
+  String get conversationsPreviewMessage => '암호화된 메시지';
+
+  @override
+  String get conversationsPreviewImage => '암호화된 이미지';
+
+  @override
+  String get conversationsPreviewAttachment => '암호화된 첨부 파일';
+
+  @override
+  String get conversationsPreviewSystem => '시스템 알림';
+
+  @override
+  String get conversationsPreviewVoice => '암호화된 음성 메모';
+
+  @override
+  String get conversationsPreviewSticker => '암호화된 스티커';
+
+  @override
+  String get conversationsPreviewReaction => '암호화된 반응';
+
+  @override
+  String get conversationsPreviewCall => '암호화된 통화 기록';
+
+  @override
+  String get conversationsHeroEyebrow => '1:1 대화';
+
+  @override
+  String get conversationsRelayConnectedBody =>
+      '릴레이에 연결되었습니다. 서버가 읽을 수 없는 봉투만 오갑니다.';
+
+  @override
+  String get conversationsRelayIdleBody => '릴레이 대기 중입니다. 최신 암호화 상태를 가져오고 있습니다.';
+
+  @override
+  String get conversationsRelayLinked => '릴레이 연결됨';
+
+  @override
+  String get conversationsRelayIdle => '릴레이 대기 중';
+
+  @override
+  String conversationsCount(int count) {
+    return '대화 $count개';
+  }
+
+  @override
+  String get conversationsNoBackup => '백업 없음';
+
+  @override
+  String get conversationsMetricIdle => '대기 중';
+
+  @override
+  String get conversationsMetricLocalSearch => '로컬 검색';
+
+  @override
+  String get conversationsMetricSearchActive => '사용 중';
+
+  @override
+  String get conversationsMetricSearchReady => '준비됨';
+
+  @override
+  String get conversationsRefreshingTitle => '새로 고치는 중';
+
+  @override
+  String get conversationsRefreshingBody => '로컬 검색 상태는 그대로 두고 최신 대화 상태를 가져옵니다.';
+
+  @override
+  String get conversationsSyncIssueTitle => '동기화 문제';
+
+  @override
+  String get conversationsSearchIndexLabel => '로컬 검색 색인';
+
+  @override
+  String get conversationsSearchIndexCaption =>
+      '검색은 이 기기 안에서만 이루어집니다. 핸들, 캐시된 미리보기, 복호화된 로컬 색인만 대상으로 합니다.';
+
+  @override
+  String get conversationsSearchFieldHint => '대화와 캐시된 메시지 검색';
+
+  @override
+  String get conversationsSearchHintCompact => '대화와 메시지 검색';
+
+  @override
+  String get conversationsSearchLocalNote => '검색은 이 기기 안에서만 이루어집니다.';
+
+  @override
+  String get conversationsFilterAllSenders => '모든 발신자';
+
+  @override
+  String get conversationsFilterMine => '내가 보낸';
+
+  @override
+  String get conversationsFilterTheirs => '상대가 보낸';
+
+  @override
+  String get conversationsFilterAllTypes => '모든 유형';
+
+  @override
+  String get conversationsFilterText => '텍스트';
+
+  @override
+  String get conversationsFilterMedia => '미디어';
+
+  @override
+  String get conversationsFilterAnyDate => '전체 기간';
+
+  @override
+  String get conversationsFilterLast7Days => '최근 7일';
+
+  @override
+  String get conversationsFilterLast30Days => '최근 30일';
+
+  @override
+  String get conversationsSearchActiveTitle => '로컬 검색 결과';
+
+  @override
+  String get conversationsSearchScanningBody =>
+      '캐시된 대화 이름과 이 기기에 저장된 메시지 텍스트를 살펴봅니다.';
+
+  @override
+  String conversationsSearchFoundBody(int conversations, int messages) {
+    return '이 기기에서 대화 $conversations건, 메시지 $messages건을 찾았습니다. 검색은 기기 밖으로 나가지 않습니다.';
+  }
+
+  @override
+  String get conversationsSectionLabel => '대화';
+
+  @override
+  String conversationsMatchCount(int count) {
+    return '$count건 일치';
+  }
+
+  @override
+  String get conversationsNoMatchTitle => '일치하는 대화가 없습니다';
+
+  @override
+  String get conversationsNoneYetTitle => '아직 1:1 대화가 없습니다';
+
+  @override
+  String get conversationsNoMatchBody => '이 기기에서 일치하는 핸들이나 표시 이름을 찾지 못했습니다.';
+
+  @override
+  String get conversationsNoneYetBody =>
+      '핸들로 시작하세요. VEIL에서는 상대의 핸들을 직접 입력해 찾으며, 그 과정은 비공개입니다.';
+
+  @override
+  String get conversationsStartDirect => '1:1 대화 시작';
+
+  @override
+  String get conversationsStartGroup => '그룹 대화 시작';
+
+  @override
+  String get conversationsPillDirect => '1:1';
+
+  @override
+  String conversationsPillQueued(int count) {
+    return '$count개 대기 중';
+  }
+
+  @override
+  String get conversationsMessagesSection => '메시지';
+
+  @override
+  String conversationsResultCount(int count) {
+    return '결과 $count건';
+  }
+
+  @override
+  String get conversationsNoMessageMatchTitle => '일치하는 메시지가 없습니다';
+
+  @override
+  String get conversationsNoMessageMatchBody =>
+      '현재 필터로는 이 기기에 캐시된 메시지에서 일치하는 내용을 찾지 못했습니다.';
+
+  @override
+  String get conversationsResultFromYou => '나';
+
+  @override
+  String get conversationsResultFromPeer => '상대';
+
+  @override
+  String get conversationsKindImage => '이미지';
+
+  @override
+  String get conversationsKindAttachment => '첨부 파일';
+
+  @override
+  String get conversationsKindSystem => '시스템';
+
+  @override
+  String get conversationsKindVoice => '음성';
+
+  @override
+  String get conversationsKindSticker => '스티커';
+
+  @override
+  String get conversationsKindReaction => '반응';
+
+  @override
+  String get conversationsKindCall => '통화';
+
+  @override
+  String get conversationsLoadingMore => '더 불러오는 중';
+
+  @override
+  String get conversationsLoadMore => '결과 더 보기';
+
+  @override
+  String get conversationsChoosePaneTitle => '대화를 선택하세요';
+
+  @override
+  String get conversationsChoosePaneBody =>
+      '넓은 화면에서는 대화 목록을 옆에 둔 채로 메시지를 읽고 보낼 수 있습니다.';
+
+  @override
+  String get conversationsActiveEyebrow => '현재 대화';
+
+  @override
+  String get conversationsActiveBody => '넓은 화면에서는 대화 목록과 메시지를 함께 볼 수 있습니다.';
+
+  @override
+  String get conversationsPillOpaqueRelay => '내용을 읽지 못하는 릴레이';
+
+  @override
+  String get conversationsNewTooltip => '새 대화';
+
+  @override
+  String conversationsRowSemantics(String name) {
+    return '$name님과의 대화';
+  }
+
+  @override
+  String get conversationsGroupMark => '그룹';
+
+  @override
+  String get navChats => '채팅';
+
+  @override
+  String get navContacts => '연락처';
+
+  @override
+  String get navStories => '스토리';
+
+  @override
+  String get navCalls => '통화';
+
+  @override
+  String get oneTimeLinkTitle => '일회성 비밀 링크';
+
+  @override
+  String get oneTimeLinkSettingsSubtitle =>
+      '한 번 읽히면 사라지는 암호화 메시지 — 받는 사람은 앱 없이 열람';
+
+  @override
+  String get oneTimeLinkIntro =>
+      '한 번 읽히면 사라지는 메시지를 만듭니다. 받는 사람은 앱이 없어도 됩니다. 복호화 키는 링크에만 담겨 서버로 전송되지 않습니다.';
+
+  @override
+  String get oneTimeLinkSecretLabel => '비밀 내용';
+
+  @override
+  String get oneTimeLinkSecretHint => '비밀번호, 계좌, 민감한 메모…';
+
+  @override
+  String get oneTimeLinkUsePassphrase => '암호문구 추가 (링크에 키를 넣지 않음 — 더 안전)';
+
+  @override
+  String get oneTimeLinkPassphraseLabel => '암호문구';
+
+  @override
+  String get oneTimeLinkCreate => '보안 링크 생성';
+
+  @override
+  String get oneTimeLinkFailed => '링크 생성에 실패했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get oneTimeLinkCopy => '링크 복사';
+
+  @override
+  String get oneTimeLinkCopied => '링크를 복사했습니다';
+
+  @override
+  String get oneTimeLinkPillEncrypted => '종단간 암호화';
+
+  @override
+  String get oneTimeLinkPillServerBlind => '서버는 평문·키를 못 봄';
+
+  @override
+  String get oneTimeLinkPillBurns => '읽으면 소멸';
+
+  @override
+  String get contactsNotice =>
+      '어떤 계정을 추가했는지는 릴레이에 저장됩니다. 직접 붙인 이름은 이 기기에만 남습니다.';
+
+  @override
+  String get contactsSearchHint => '연락처 검색…';
+
+  @override
+  String get contactsAdd => '연락처 추가';
+
+  @override
+  String get contactsWorking => '처리 중…';
+
+  @override
+  String get contactsErrorTitle => '연락처 오류';
+
+  @override
+  String get contactsEmptyTitle => '연락처가 없습니다';
+
+  @override
+  String get contactsEmptySearchBody => '검색과 일치하는 연락처가 없습니다.';
+
+  @override
+  String get contactsEmptyBody => '연락처를 추가하고 안전하게 대화를 시작하세요.';
+
+  @override
+  String get contactsAddSheetBody => '정확한 핸들을 입력하세요. VEIL은 주소록을 읽지 않습니다.';
+
+  @override
+  String get contactsHandleLabel => '핸들';
+
+  @override
+  String get contactsNicknameLabel => '별명 (선택)';
+
+  @override
+  String get contactsNicknameHint => '나만 보는 이름';
+
+  @override
+  String get contactsSave => '연락처 저장';
+
+  @override
+  String contactsAdded(String handle) {
+    return '@$handle 님을 연락처에 추가했습니다';
+  }
+
+  @override
+  String get contactsStartChat => '대화 시작';
+
+  @override
+  String get contactsStartChatFailed => '대화를 시작하지 못했습니다';
+
+  @override
+  String get contactsViewProfile => '프로필 보기';
+
+  @override
+  String get contactsRemove => '연락처 삭제';
+
+  @override
+  String contactsRemoved(String name) {
+    return '$name 님을 연락처에서 삭제했습니다';
+  }
+
+  @override
+  String get contactsRemoveFailed => '연락처를 삭제하지 못했습니다';
+
+  @override
+  String contactsYourNickname(String nickname) {
+    return '내가 붙인 별명: $nickname';
+  }
+
+  @override
+  String get callsMissed => '부재중';
+
+  @override
+  String get callsDeclined => '거절함';
+
+  @override
+  String get callsRinging => '연결 중';
+
+  @override
+  String get callsIncoming => '수신';
+
+  @override
+  String get callsOutgoing => '발신';
+
+  @override
+  String callsToday(String time) {
+    return '오늘 $time';
+  }
+
+  @override
+  String callsYesterday(String time) {
+    return '어제 $time';
+  }
+
+  @override
+  String get callsUnavailableTitle => '통화 기록을 불러올 수 없습니다';
+
+  @override
+  String get callsEmptyTitle => '통화 기록이 없습니다';
+
+  @override
+  String get callsEmptyBody => '걸거나 받은 통화가 여기에 표시됩니다.';
+
+  @override
+  String get callsNotAvailable => '이 빌드에서는 아직 통화를 사용할 수 없습니다.';
 
   @override
   String get notificationNewMessageTitle => 'VEIL';

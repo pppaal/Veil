@@ -1,0 +1,47 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../layout/support/layout_world.dart';
+import '../layout/support/phone_layout_probe.dart';
+
+export '../layout/support/layout_world.dart';
+export '../layout/support/phone_layout_probe.dart';
+
+// The app on a phone-sized screen for behaviour tests: the layout gate's
+// world (real routes, theme and strings over the fake relay) with a body
+// that taps through it.
+
+/// Opens the app at [location] on a phone of [size], runs [body], and takes
+/// the app down again before the test ends, so no timer of the messenger
+/// outlives it.
+Future<void> withPhoneApp(
+  WidgetTester tester,
+  LayoutIdentities identities, {
+  required String location,
+  required Future<void> Function(LayoutWorld world) body,
+  PhoneSize size = phoneSmall,
+  String locale = 'en',
+  LayoutAccount account = LayoutAccount.signedIn,
+  ChatAttention attention = const ChatAttention(),
+}) async {
+  usePhoneView(tester, size);
+  final world = await LayoutWorld.create(
+    identities: identities,
+    account: account,
+    locale: locale,
+    attention: attention,
+  );
+  try {
+    await tester.pumpWidget(world.app(location: location));
+    await pumpFrames(tester);
+    await body(world);
+  } finally {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    world.dispose();
+  }
+}
+
+/// The part of [finder]'s first widget that is on screen.
+Rect onScreen(WidgetTester tester, Finder finder) =>
+    visibleRect(tester, tester.renderObject<RenderBox>(finder.first));

@@ -11,6 +11,7 @@ import 'package:veil_mobile/src/features/calls/presentation/call_history_screen.
 import 'package:veil_mobile/src/features/calls/presentation/call_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
@@ -21,6 +22,7 @@ import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warn
 import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent_screen.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/features/profile/presentation/profile_screen.dart';
+import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
@@ -60,6 +62,7 @@ class ScreenCase {
     this.keyboardHeight = 0,
     this.bootstrapping = false,
     this.transferStarted = false,
+    this.textScale = 1,
     this.primaryExtent,
     this.minPrimaryShare,
     this.minPrimaryExtent,
@@ -90,6 +93,12 @@ class ScreenCase {
   /// This device already opened a transfer session.
   final bool transferStarted;
 
+  /// The system's text size setting; 1 is the default size.
+  final double textScale;
+
+  /// Whether every control of the case must measure 44x44 or more.
+  bool get holdsTapTargets => tapTargetScreens.contains(file);
+
   /// Height in logical pixels the screen's primary content has on screen:
   /// the messages of a chat, the rows of the conversation list. Measured
   /// and reported whether or not the case sets a minimum.
@@ -105,6 +114,19 @@ class ScreenCase {
   /// frames.
   final Future<void> Function(WidgetTester tester)? settle;
 }
+
+/// The screens whose controls the gate holds to 44x44: the ones laid out
+/// for a phone. The others are measured too, into report.json; add a screen
+/// here once its controls are up to it.
+const tapTargetScreens = {
+  'app_lock_screen.dart',
+  'chat_room_screen.dart',
+  'conversation_list_screen.dart',
+};
+
+/// The text size of the larger-text cases: the step most people who enlarge
+/// their text choose.
+const double largerText = 1.3;
 
 /// Routes to screens the app's own route table does not reach.
 final List<RouteBase> layoutOnlyRoutes = [
@@ -210,11 +232,119 @@ const List<ScreenCase> screenCases = [
     minPrimaryExtent: minSqueezedMessagesExtent,
   ),
 
+  // The states the first gate left out: nothing sent yet and the keyboard
+  // up, warnings and the keyboard together (the least room a chat ever
+  // has), a held account (the longest warning), search open in the bar, a
+  // disappearing timer, and the timer's sheet.
+  ScreenCase(
+    'chat-room-empty-keyboard',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$emptyChatConversationId',
+    keyboardHeight: 300,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+  ),
+  ScreenCase(
+    'chat-room-warnings-keyboard',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(identityChanged: true, failedSends: 2),
+    keyboardHeight: 300,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+  ),
+  ScreenCase(
+    'chat-room-account-hold',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(accountHeld: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+  ),
+  ScreenCase(
+    'chat-room-search',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    keyboardHeight: 300,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+    settle: _searchChat,
+  ),
+  ScreenCase(
+    'chat-room-timer',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$timerChatConversationId',
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'chat-room-timer-sheet',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    settle: _openTimerSheet,
+  ),
+
+  ScreenCase(
+    'chat-room-reaction-sheet',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    settle: _openReactionSheet,
+  ),
+  ScreenCase(
+    'conversation-list-new-menu',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    settle: _openNewConversationMenu,
+  ),
+
+  // The three screens a user spends the day in, with larger text.
+  ScreenCase(
+    'chat-room-larger-text',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(identityChanged: true),
+    textScale: largerText,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryExtent: minSqueezedMessagesExtent,
+  ),
+  ScreenCase(
+    'conversation-list-larger-text',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    textScale: largerText,
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'app-lock-larger-text',
+    screen: AppLockScreen,
+    file: 'app_lock_screen.dart',
+    location: '/lock',
+    account: LayoutAccount.locked,
+    textScale: largerText,
+  ),
+
   // Reached from a chat.
   ScreenCase('safety-numbers',
       screen: SafetyNumbersScreen,
       file: 'safety_numbers_screen.dart',
       location: '/safety-numbers/$chatConversationId',
+      settle: _awaitSafetyNumber),
+  ScreenCase('safety-numbers-identity-change',
+      screen: SafetyNumbersScreen,
+      file: 'safety_numbers_screen.dart',
+      location: '/safety-numbers/$chatConversationId',
+      attention: ChatAttention(identityChanged: true),
       settle: _awaitSafetyNumber),
   ScreenCase('attachment-preview',
       screen: AttachmentPreviewScreen,
@@ -243,6 +373,17 @@ const List<ScreenCase> screenCases = [
 
   // The other tabs.
   ScreenCase('contacts', screen: ContactsScreen, file: 'contacts_screen.dart', location: '/contacts'),
+  ScreenCase('contacts-add-sheet',
+      screen: ContactsScreen,
+      file: 'contacts_screen.dart',
+      location: '/contacts',
+      keyboardHeight: 300,
+      settle: _openAddContactSheet),
+  ScreenCase('contacts-actions-sheet',
+      screen: ContactsScreen,
+      file: 'contacts_screen.dart',
+      location: '/contacts',
+      settle: _openContactActionsSheet),
   ScreenCase('call-history', screen: CallHistoryScreen, file: 'call_history_screen.dart', location: '/calls'),
   ScreenCase('stories', screen: StoriesScreen, file: 'stories_screen.dart', location: '/stories'),
   ScreenCase('story-viewer',
@@ -287,6 +428,46 @@ Future<void> _searchConversations(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).first, 'se');
   // The archive search waits 180 ms for the typing to stop.
   await pumpFrames(tester, frames: 4);
+}
+
+Future<void> _searchChat(WidgetTester tester) async {
+  await tester.tap(find.widgetWithIcon(IconButton, Icons.search_rounded));
+  await pumpFrames(tester, frames: 2);
+  // Typed where the focus is: opening the search moves it to the bar's field.
+  tester.testTextInput.enterText('lease');
+  // The search waits 180 ms for the typing to stop.
+  await pumpFrames(tester, frames: 4);
+}
+
+Future<void> _openTimerSheet(WidgetTester tester) async {
+  // A disappearing message carries the same icon: the bar's is the button.
+  await tester.tap(find.widgetWithIcon(IconButton, Icons.timer_outlined));
+  await pumpFrames(tester, frames: 4);
+  expect(find.byType(BottomSheet), findsOneWidget, reason: 'the timer sheet did not open');
+}
+
+Future<void> _openReactionSheet(WidgetTester tester) async {
+  await tester.longPress(find.byType(MessageBubble).first);
+  await pumpFrames(tester, frames: 4);
+  expect(find.byType(ReactionPickerWidget), findsOneWidget, reason: 'the reaction sheet did not open');
+}
+
+Future<void> _openNewConversationMenu(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.edit_square));
+  await pumpFrames(tester, frames: 3);
+  expect(find.byType(PopupMenuItem<String>), findsNWidgets(2), reason: 'the menu did not open');
+}
+
+Future<void> _openAddContactSheet(WidgetTester tester) async {
+  await tester.tap(find.byIcon(Icons.person_add_outlined));
+  await pumpFrames(tester, frames: 4);
+  expect(find.byType(BottomSheet), findsOneWidget, reason: 'the add-contact sheet did not open');
+}
+
+Future<void> _openContactActionsSheet(WidgetTester tester) async {
+  await tester.tap(find.byType(VeilListTileCard).first);
+  await pumpFrames(tester, frames: 4);
+  expect(find.byType(BottomSheet), findsOneWidget, reason: 'the contact sheet did not open');
 }
 
 // The safety number is derived on a background isolate, which only real

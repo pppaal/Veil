@@ -88,6 +88,182 @@ class AppLocalizationsEn extends AppLocalizations {
       'Recent-app previews are obscured and the local barrier is re-armed when the app leaves the foreground.';
 
   @override
+  String get appLockTitle => 'App Lock';
+
+  @override
+  String get appLockLoadingTitle => 'Checking local barrier';
+
+  @override
+  String get appLockLoadingBody =>
+      'Looking for a stored PIN and biometric availability.';
+
+  @override
+  String get appLockHeroEyebrow => 'LOCAL BARRIER';
+
+  @override
+  String get appLockHeroTitle => 'VEIL never unlocks itself remotely.';
+
+  @override
+  String get appLockHeroBody =>
+      'PIN and biometrics are local only. No remote reset. No recovery fallback. No server override.';
+
+  @override
+  String get appLockPillLocalOnly => 'Local only';
+
+  @override
+  String get appLockPillNoRemoteReset => 'No remote reset';
+
+  @override
+  String get appLockNoRecoveryBody =>
+      'If you forget the local barrier and lose the active device, VEIL cannot restore access.';
+
+  @override
+  String get appLockCompromisedTitle => 'Compromised device blocked';
+
+  @override
+  String get appLockCompromisedBody =>
+      'This device appears rooted or jailbroken. VEIL blocks local unlock on compromised devices.';
+
+  @override
+  String appLockCompromisedReasons(String reasons) {
+    return 'This device appears rooted or jailbroken. $reasons';
+  }
+
+  @override
+  String get appLockLockoutTitle => 'PIN temporarily locked';
+
+  @override
+  String appLockLockoutBody(String retry) {
+    return 'Too many failed PIN attempts on this device. $retry';
+  }
+
+  @override
+  String get appLockRetryNow => 'Try again now.';
+
+  @override
+  String appLockRetrySeconds(int seconds) {
+    return 'Try again in ${seconds}s.';
+  }
+
+  @override
+  String appLockRetryMinutes(int minutes) {
+    return 'Try again in ${minutes}m.';
+  }
+
+  @override
+  String get appLockPinLabel => 'PIN';
+
+  @override
+  String get appLockMetricConfigured => 'Configured';
+
+  @override
+  String get appLockMetricRequired => 'Required';
+
+  @override
+  String get appLockMetricBiometrics => 'Biometrics';
+
+  @override
+  String get appLockMetricAvailable => 'Available';
+
+  @override
+  String get appLockMetricUnavailable => 'Unavailable';
+
+  @override
+  String get appLockMetricPreview => 'Preview';
+
+  @override
+  String get appLockMetricProtected => 'Protected';
+
+  @override
+  String get appLockMetricShielded => 'Shielded';
+
+  @override
+  String get appLockPillPinConfigured => 'PIN configured';
+
+  @override
+  String get appLockPillPinRequired => 'PIN required';
+
+  @override
+  String get appLockPillBiometricsAvailable => 'Biometrics available';
+
+  @override
+  String get appLockPillBiometricsUnavailable => 'Biometrics unavailable';
+
+  @override
+  String get appLockPillCaptureBlocked => 'Capture blocked';
+
+  @override
+  String get appLockPillPreviewShield => 'Preview shield only';
+
+  @override
+  String get appLockCaptionSet =>
+      'Set a local numeric barrier before continuing. VEIL cannot reset it for you.';
+
+  @override
+  String get appLockCaptionUnlock =>
+      'Unlock with your local PIN or biometrics. This never contacts the server.';
+
+  @override
+  String get appLockFieldSetPin => 'Set PIN';
+
+  @override
+  String get appLockFieldPinHint => '6 to 12 digits';
+
+  @override
+  String get appLockFieldPinError => 'Use 6 to 12 digits only.';
+
+  @override
+  String get appLockFieldConfirm => 'Confirm PIN';
+
+  @override
+  String get appLockFieldConfirmHint => 'Repeat the same PIN';
+
+  @override
+  String get appLockConfirmMismatch => 'PIN confirmation does not match.';
+
+  @override
+  String get appLockStatusTitle => 'Lock status';
+
+  @override
+  String get appLockStatusUnlockedTitle => 'Unlocked';
+
+  @override
+  String get appLockStatusUnlocked => 'Unlocked.';
+
+  @override
+  String get appLockStatusBiometricFailed => 'Biometric unlock failed.';
+
+  @override
+  String get appLockStatusEnterPin => 'Enter a PIN first.';
+
+  @override
+  String get appLockStatusPinFormat => 'PIN must be 6 to 12 digits.';
+
+  @override
+  String get appLockStatusPinMismatch => 'PIN mismatch.';
+
+  @override
+  String appLockStatusPinMismatchAttempts(int count) {
+    return 'PIN mismatch. $count attempt(s) left before temporary lock.';
+  }
+
+  @override
+  String get appLockStatusLocked => 'PIN locked temporarily.';
+
+  @override
+  String get appLockStatusCompromised =>
+      'Unlock blocked on compromised device.';
+
+  @override
+  String get appLockUseBiometrics => 'Use biometrics';
+
+  @override
+  String get appLockSetAndUnlock => 'Set PIN and unlock';
+
+  @override
+  String get appLockUnlock => 'Unlock VEIL';
+
+  @override
   String get splashEyebrow => 'PRIVATE BETA';
 
   @override
@@ -534,13 +710,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTitleFallback => 'Secure conversation';
 
   @override
-  String get chatHeroEyebrow => 'SECURE CONVERSATION';
-
-  @override
-  String get chatHeroBody =>
-      'Direct 1:1 exchange only. Message bodies remain opaque to the server and expire locally when configured.';
-
-  @override
   String get chatSubtitleOnline => 'Online now';
 
   @override
@@ -548,14 +717,25 @@ class AppLocalizationsEn extends AppLocalizations {
       'Local search stays on this device. Message bodies remain opaque to the relay.';
 
   @override
-  String get chatSubtitleStandalone =>
-      'Direct 1:1 exchange only. Message bodies remain opaque to the server.';
-
-  @override
   String get chatSearchHint => 'Search cached messages on this device';
 
   @override
   String get chatSearchClearTooltip => 'Clear search';
+
+  @override
+  String get chatSearchTooltip => 'Search messages';
+
+  @override
+  String chatSearchMatchCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matches on this device',
+      one: '1 match on this device',
+      zero: 'No matches on this device',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get chatPillAttachmentsEncrypted => 'Attachments encrypted';
@@ -1000,6 +1180,29 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get chatExpiryExpired => 'Expired';
+
+  @override
+  String chatExpirySeconds(int count) {
+    return 'Expires in ${count}s';
+  }
+
+  @override
+  String chatExpiryMinutes(int count) {
+    return 'Expires in ${count}m';
+  }
+
+  @override
+  String chatExpiryHours(int count) {
+    return 'Expires in ${count}h';
+  }
+
+  @override
+  String chatExpiryDays(int count) {
+    return 'Expires in ${count}d';
+  }
+
+  @override
   String get conversationsTitle => 'Conversations';
 
   @override
@@ -1031,6 +1234,436 @@ class AppLocalizationsEn extends AppLocalizations {
   String conversationsQueuedMany(int count) {
     return '$count messages queued locally';
   }
+
+  @override
+  String get conversationsPreviewEmpty => 'No messages yet';
+
+  @override
+  String get conversationsPreviewExpired => 'Expired locally';
+
+  @override
+  String get conversationsPreviewMessage => 'Encrypted message';
+
+  @override
+  String get conversationsPreviewImage => 'Encrypted image';
+
+  @override
+  String get conversationsPreviewAttachment => 'Encrypted attachment';
+
+  @override
+  String get conversationsPreviewSystem => 'System envelope';
+
+  @override
+  String get conversationsPreviewVoice => 'Encrypted voice note';
+
+  @override
+  String get conversationsPreviewSticker => 'Encrypted sticker';
+
+  @override
+  String get conversationsPreviewReaction => 'Encrypted reaction';
+
+  @override
+  String get conversationsPreviewCall => 'Encrypted call event';
+
+  @override
+  String get conversationsHeroEyebrow => 'DIRECT CONVERSATIONS';
+
+  @override
+  String get conversationsRelayConnectedBody =>
+      'Relay connected. Opaque envelopes only.';
+
+  @override
+  String get conversationsRelayIdleBody =>
+      'Relay idle. Pulling the latest encrypted state.';
+
+  @override
+  String get conversationsRelayLinked => 'Relay linked';
+
+  @override
+  String get conversationsRelayIdle => 'Relay idle';
+
+  @override
+  String conversationsCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count conversations',
+      one: '1 conversation',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get conversationsNoBackup => 'No backup';
+
+  @override
+  String get conversationsMetricIdle => 'Idle';
+
+  @override
+  String get conversationsMetricLocalSearch => 'Local search';
+
+  @override
+  String get conversationsMetricSearchActive => 'Active';
+
+  @override
+  String get conversationsMetricSearchReady => 'Ready';
+
+  @override
+  String get conversationsRefreshingTitle => 'Refreshing locally';
+
+  @override
+  String get conversationsRefreshingBody =>
+      'Pulling the latest opaque conversation state while preserving local search context.';
+
+  @override
+  String get conversationsSyncIssueTitle => 'Sync issue';
+
+  @override
+  String get conversationsSearchIndexLabel => 'LOCAL SEARCH INDEX';
+
+  @override
+  String get conversationsSearchIndexCaption =>
+      'Search stays on this device. Handles, cached previews, and decrypted local index entries only.';
+
+  @override
+  String get conversationsSearchFieldHint =>
+      'Search conversations and cached messages';
+
+  @override
+  String get conversationsSearchHintCompact => 'Search chats and messages';
+
+  @override
+  String get conversationsSearchLocalNote => 'Search stays on this device.';
+
+  @override
+  String get conversationsFilterAllSenders => 'All senders';
+
+  @override
+  String get conversationsFilterMine => 'Mine';
+
+  @override
+  String get conversationsFilterTheirs => 'Theirs';
+
+  @override
+  String get conversationsFilterAllTypes => 'All types';
+
+  @override
+  String get conversationsFilterText => 'Text';
+
+  @override
+  String get conversationsFilterMedia => 'Media';
+
+  @override
+  String get conversationsFilterAnyDate => 'Any date';
+
+  @override
+  String get conversationsFilterLast7Days => 'Last 7d';
+
+  @override
+  String get conversationsFilterLast30Days => 'Last 30d';
+
+  @override
+  String get conversationsSearchActiveTitle => 'Local search active';
+
+  @override
+  String get conversationsSearchScanningBody =>
+      'Scanning cached conversation labels and device-local message text.';
+
+  @override
+  String conversationsSearchFoundBody(int conversations, int messages) {
+    return 'Found $conversations conversation match(es) and $messages message result(s) on this device. Search never leaves local state.';
+  }
+
+  @override
+  String get conversationsSectionLabel => 'CONVERSATIONS';
+
+  @override
+  String conversationsMatchCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count matches',
+      one: '1 match',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get conversationsNoMatchTitle => 'No matching conversations';
+
+  @override
+  String get conversationsNoneYetTitle => 'No direct conversations yet';
+
+  @override
+  String get conversationsNoMatchBody =>
+      'This device did not find a matching handle or display label.';
+
+  @override
+  String get conversationsNoneYetBody =>
+      'Start with a handle. VEIL keeps discovery manual and private.';
+
+  @override
+  String get conversationsStartDirect => 'Start direct chat';
+
+  @override
+  String get conversationsStartGroup => 'Start group chat';
+
+  @override
+  String get conversationsPillDirect => 'Direct';
+
+  @override
+  String conversationsPillQueued(int count) {
+    return '$count queued';
+  }
+
+  @override
+  String get conversationsMessagesSection => 'MESSAGES';
+
+  @override
+  String conversationsResultCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count results',
+      one: '1 result',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get conversationsNoMessageMatchTitle => 'No local message matches';
+
+  @override
+  String get conversationsNoMessageMatchBody =>
+      'This device did not find matching cached message text for the current filters.';
+
+  @override
+  String get conversationsResultFromYou => 'You';
+
+  @override
+  String get conversationsResultFromPeer => 'Peer';
+
+  @override
+  String get conversationsKindImage => 'Image';
+
+  @override
+  String get conversationsKindAttachment => 'Attachment';
+
+  @override
+  String get conversationsKindSystem => 'System';
+
+  @override
+  String get conversationsKindVoice => 'Voice';
+
+  @override
+  String get conversationsKindSticker => 'Sticker';
+
+  @override
+  String get conversationsKindReaction => 'Reaction';
+
+  @override
+  String get conversationsKindCall => 'Call';
+
+  @override
+  String get conversationsLoadingMore => 'Loading more';
+
+  @override
+  String get conversationsLoadMore => 'Load more results';
+
+  @override
+  String get conversationsChoosePaneTitle => 'Choose a direct conversation';
+
+  @override
+  String get conversationsChoosePaneBody =>
+      'Wide layout keeps your conversation list visible while you read and send locally.';
+
+  @override
+  String get conversationsActiveEyebrow => 'ACTIVE CONVERSATION';
+
+  @override
+  String get conversationsActiveBody =>
+      'Adaptive layout keeps conversation context and message flow visible at the same time.';
+
+  @override
+  String get conversationsPillOpaqueRelay => 'Opaque relay';
+
+  @override
+  String get conversationsNewTooltip => 'New conversation';
+
+  @override
+  String conversationsRowSemantics(String name) {
+    return 'Conversation with $name';
+  }
+
+  @override
+  String get conversationsGroupMark => 'Group';
+
+  @override
+  String get navChats => 'Chats';
+
+  @override
+  String get navContacts => 'Contacts';
+
+  @override
+  String get navStories => 'Stories';
+
+  @override
+  String get navCalls => 'Calls';
+
+  @override
+  String get oneTimeLinkTitle => 'One-time secret link';
+
+  @override
+  String get oneTimeLinkSettingsSubtitle =>
+      'An encrypted message that disappears once read. The recipient opens it without the app.';
+
+  @override
+  String get oneTimeLinkIntro =>
+      'Create a message that disappears once it is read. The recipient does not need the app. The decryption key travels only in the link and is not sent to the server.';
+
+  @override
+  String get oneTimeLinkSecretLabel => 'Secret';
+
+  @override
+  String get oneTimeLinkSecretHint =>
+      'A password, an account number, a sensitive note…';
+
+  @override
+  String get oneTimeLinkUsePassphrase =>
+      'Add a passphrase (the key is kept out of the link: safer)';
+
+  @override
+  String get oneTimeLinkPassphraseLabel => 'Passphrase';
+
+  @override
+  String get oneTimeLinkCreate => 'Create secure link';
+
+  @override
+  String get oneTimeLinkFailed =>
+      'The link could not be created. Try again in a moment.';
+
+  @override
+  String get oneTimeLinkCopy => 'Copy link';
+
+  @override
+  String get oneTimeLinkCopied => 'Link copied';
+
+  @override
+  String get oneTimeLinkPillEncrypted => 'End-to-end encrypted';
+
+  @override
+  String get oneTimeLinkPillServerBlind => 'Server sees no text or key';
+
+  @override
+  String get oneTimeLinkPillBurns => 'Gone once read';
+
+  @override
+  String get contactsNotice =>
+      'The relay keeps which accounts you added. The names you give them stay on this device.';
+
+  @override
+  String get contactsSearchHint => 'Search contacts…';
+
+  @override
+  String get contactsAdd => 'Add contact';
+
+  @override
+  String get contactsWorking => 'Working…';
+
+  @override
+  String get contactsErrorTitle => 'Contacts error';
+
+  @override
+  String get contactsEmptyTitle => 'No contacts found';
+
+  @override
+  String get contactsEmptySearchBody => 'No contacts match your search.';
+
+  @override
+  String get contactsEmptyBody => 'Add contacts to start messaging securely.';
+
+  @override
+  String get contactsAddSheetBody =>
+      'Enter the exact handle. VEIL does not scan address books.';
+
+  @override
+  String get contactsHandleLabel => 'Handle';
+
+  @override
+  String get contactsNicknameLabel => 'Nickname (optional)';
+
+  @override
+  String get contactsNicknameHint => 'Private label';
+
+  @override
+  String get contactsSave => 'Save contact';
+
+  @override
+  String contactsAdded(String handle) {
+    return 'Contact @$handle added';
+  }
+
+  @override
+  String get contactsStartChat => 'Start chat';
+
+  @override
+  String get contactsStartChatFailed => 'Could not start conversation';
+
+  @override
+  String get contactsViewProfile => 'View profile';
+
+  @override
+  String get contactsRemove => 'Remove contact';
+
+  @override
+  String contactsRemoved(String name) {
+    return '$name removed from contacts';
+  }
+
+  @override
+  String get contactsRemoveFailed => 'Could not remove contact';
+
+  @override
+  String contactsYourNickname(String nickname) {
+    return 'Your nickname: $nickname';
+  }
+
+  @override
+  String get callsMissed => 'Missed';
+
+  @override
+  String get callsDeclined => 'Declined';
+
+  @override
+  String get callsRinging => 'Ringing';
+
+  @override
+  String get callsIncoming => 'Incoming';
+
+  @override
+  String get callsOutgoing => 'Outgoing';
+
+  @override
+  String callsToday(String time) {
+    return 'Today, $time';
+  }
+
+  @override
+  String callsYesterday(String time) {
+    return 'Yesterday, $time';
+  }
+
+  @override
+  String get callsUnavailableTitle => 'Call history unavailable';
+
+  @override
+  String get callsEmptyTitle => 'No call history';
+
+  @override
+  String get callsEmptyBody => 'Calls you make or receive will appear here.';
+
+  @override
+  String get callsNotAvailable => 'Calls are not available in this build yet.';
 
   @override
   String get notificationNewMessageTitle => 'VEIL';

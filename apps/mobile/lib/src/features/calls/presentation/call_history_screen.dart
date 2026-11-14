@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/call_history_providers.dart';
@@ -26,19 +28,19 @@ class CallHistoryScreen extends ConsumerWidget {
     };
   }
 
-  String _directionLabel(CallDirection direction, CallOutcome outcome) {
+  String _directionLabel(AppLocalizations l10n, CallDirection direction, CallOutcome outcome) {
     if (outcome == CallOutcome.missed) {
-      return 'Missed';
+      return l10n.callsMissed;
     }
     if (outcome == CallOutcome.declined) {
-      return 'Declined';
+      return l10n.callsDeclined;
     }
     if (outcome == CallOutcome.ringing) {
-      return 'Ringing';
+      return l10n.callsRinging;
     }
     return switch (direction) {
-      CallDirection.incoming => 'Incoming',
-      CallDirection.outgoing => 'Outgoing',
+      CallDirection.incoming => l10n.callsIncoming,
+      CallDirection.outgoing => l10n.callsOutgoing,
     };
   }
 
@@ -51,33 +53,30 @@ class CallHistoryScreen extends ConsumerWidget {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  String _formatTimestamp(DateTime startedAt) {
+  String _formatTimestamp(AppLocalizations l10n, DateTime startedAt) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final callDay = DateTime(startedAt.year, startedAt.month, startedAt.day);
     final hh = startedAt.hour.toString().padLeft(2, '0');
     final mm = startedAt.minute.toString().padLeft(2, '0');
     if (callDay == today) {
-      return 'Today, $hh:$mm';
+      return l10n.callsToday('$hh:$mm');
     }
     final yesterday = today.subtract(const Duration(days: 1));
     if (callDay == yesterday) {
-      return 'Yesterday, $hh:$mm';
+      return l10n.callsYesterday('$hh:$mm');
     }
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
-    return '${months[startedAt.month - 1]} ${startedAt.day}, $hh:$mm';
+    return '${DateFormat.MMMd(l10n.localeName).format(startedAt)}, $hh:$mm';
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
     final callsAsync = ref.watch(callHistoryProvider);
 
     return VeilShell(
-      title: 'Calls',
+      title: l10n.navCalls,
       child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(callHistoryProvider);
@@ -94,7 +93,7 @@ class CallHistoryScreen extends ConsumerWidget {
             children: [
               const SizedBox(height: VeilSpace.md),
               VeilInlineBanner(
-                title: 'Call history unavailable',
+                title: l10n.callsUnavailableTitle,
                 message: error.toString(),
                 tone: VeilBannerTone.danger,
               ),
@@ -103,10 +102,10 @@ class CallHistoryScreen extends ConsumerWidget {
           data: (calls) {
             if (calls.isEmpty) {
               return ListView(
-                children: const [
+                children: [
                   VeilEmptyState(
-                    title: 'No call history',
-                    body: 'Calls you make or receive will appear here.',
+                    title: l10n.callsEmptyTitle,
+                    body: l10n.callsEmptyBody,
                     icon: Icons.phone_outlined,
                   ),
                 ],
@@ -121,14 +120,23 @@ class CallHistoryScreen extends ConsumerWidget {
                 final isMissed = call.outcome == CallOutcome.missed;
                 final titleColor = isMissed ? palette.danger : null;
                 final durationLabel = _formatDuration(call.duration);
-                final subtitle =
-                    '${_directionLabel(call.direction, call.outcome)}'
-                    '${durationLabel.isNotEmpty ? '  \u00b7  $durationLabel' : ''}'
-                    '  \u00b7  ${_formatTimestamp(call.startedAt)}';
+                // Two phrases that each stay whole: on a narrow screen the
+                // time moves to its own line instead of breaking in two.
+                final outcome = '${_directionLabel(l10n, call.direction, call.outcome)}'
+                    '${durationLabel.isNotEmpty ? '  \u00b7  $durationLabel' : ''}';
+                final when = _formatTimestamp(l10n, call.startedAt);
+                final subtitleStyle = Theme.of(context).textTheme.bodyMedium;
 
                 return VeilListTileCard(
                   title: call.counterparty,
-                  subtitle: subtitle,
+                  subtitle: '$outcome  \u00b7  $when',
+                  subtitleWidget: Wrap(
+                    spacing: VeilSpace.sm,
+                    children: [
+                      Text(outcome, style: subtitleStyle),
+                      Text(when, style: subtitleStyle),
+                    ],
+                  ),
                   destructive: isMissed,
                   leading: Container(
                     width: 44,
@@ -165,7 +173,7 @@ class CallHistoryScreen extends ConsumerWidget {
                   onTap: () {
                     VeilToast.show(
                       context,
-                      message: 'Call feature requires WebRTC integration',
+                      message: l10n.callsNotAvailable,
                       tone: VeilBannerTone.warn,
                     );
                   },

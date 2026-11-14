@@ -7,6 +7,7 @@ import {
   openMenuItem,
   register,
   relay,
+  relayState,
   reload,
   stamp,
   toast,
@@ -48,6 +49,14 @@ test.describe('session lifecycle', () => {
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeHidden();
     await expect(toast(device, `환영합니다 @${device.handle}`)).toBeVisible();
+    // The relay stores the device's name and platform and can read them:
+    // both are the same for every browser, never the browser's platform
+    // string (navigator.platform), which names the operating system. The
+    // relay has no platform value for a browser; 'android' stands in.
+    const browserPlatform = await page.evaluate(() => navigator.platform);
+    const stored = await relayState<{ deviceName: string; platform: string }[]>(`/__test/devices/${device.handle}`);
+    expect(stored).toEqual([{ deviceName: 'VEIL Web', platform: 'android' }]);
+    expect(stored[0].deviceName).not.toContain(browserPlatform);
     await expect(page.locator('#sidebar-me')).toContainText(`@${device.handle}`);
     await expect(page.locator('#sidebar-me')).toContainText(/기기 [0-9a-f]{8}/);
     await expect(page.locator('#legacy-banner')).toBeHidden();

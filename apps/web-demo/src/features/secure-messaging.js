@@ -6,10 +6,12 @@
 //          exactly once and stores the result before the session moves on
 //   retire drops what was kept of a message that was deleted or expired
 // Nothing is ever sealed to an identity the pins do not admit, and a change
-// waiting for the user's review (accept, verify or decline) never stops a
-// conversation whose session still sends to an admitted identity: a refused
-// frame, which a relay can forge at will, stops nothing by itself. Nothing
-// in this module ever refetches keys because a message failed to decrypt.
+// waiting for the user's review (accept, verify or decline) stops no
+// conversation by itself: one whose session sends to an admitted identity
+// goes on sending, and one without a session starts it to whatever key the
+// directory serves once the pins admit that key. A refused frame, which a
+// relay can forge at will, therefore stops nothing. Nothing in this module
+// ever refetches keys because a message failed to decrypt.
 
 import { effectiveExpiry, isPast } from '../core/expiry.js';
 import { BundleError } from '../crypto/bundle.js';
@@ -105,15 +107,18 @@ export function createSecureMessaging({ cipher, trust, lookupPeer, contentStore,
   // Resolves to the peer once a session exists. A conversation with a
   // session sends while the pins admit the identity it sends to, which
   // encrypt asks for every frame, whatever change waits for review. One
-  // without a session asks the directory only once no change waits: that
-  // lookup would claim a one-time prekey for a key the pins refuse.
+  // without a session asks the directory, and starts a session only to a
+  // key the pins admit (bootstrap's admit), whatever change waits for
+  // review too: a pending change may be about a device the directory does
+  // not serve, raised by a handshake the relay forged, and must not hold
+  // back a first send to the device it does serve. A directory answer the
+  // pins refuse costs the claimed one-time prekey of the device it names.
   // Concurrent sends share one bootstrap, so they do not each claim one.
   async function prepare(conversationId) {
     if (isLegacyIdentity(getSelf())) throw new LegacyIdentityError();
     const peer = getPeer(conversationId);
     if (!peer) throw new PeerUnavailableError('no-peer');
     if (await cipher.hasSession(conversationId)) return peer;
-    if (trust.pendingChange(peer.userId)) throw new PeerKeyChangedError(peer.userId);
     if (!bootstrapping.has(conversationId)) {
       const run = bootstrap(conversationId, peer).finally(() => bootstrapping.delete(conversationId));
       bootstrapping.set(conversationId, run);

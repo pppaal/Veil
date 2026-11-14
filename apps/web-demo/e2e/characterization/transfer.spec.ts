@@ -9,6 +9,7 @@ import {
   openMenuItem,
   register,
   relay,
+  relayState,
   send,
   stamp,
   startChat,
@@ -60,7 +61,8 @@ test.describe('device transfer', () => {
     await page.click('#transfer-new-btn');
     const newDialog = page.locator('#transfer-new-dialog');
     await expect(newDialog).toBeVisible();
-    await expect(page.locator('#transfer-new-name')).toHaveValue(/^web-/);
+    // The same name for every browser, never its platform string.
+    await expect(page.locator('#transfer-new-name')).toHaveValue('VEIL Web');
     await page.click('#transfer-new-claim');
     await expect(page.locator('#transfer-new-error')).toHaveText('코드가 필요합니다');
     await page.fill('#transfer-new-token', 'not a code');
@@ -98,6 +100,12 @@ test.describe('device transfer', () => {
     await page.reload();
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#sidebar-me')).toContainText(`@${alice.handle}`);
+    // What the relay stored for the handle's devices: the old one scrubbed
+    // with its revocation, the new one under the name the dialog offered.
+    expect(await relayState(`/__test/devices/${alice.handle}`)).toEqual([
+      { deviceName: 'Removed device', platform: 'android' },
+      { deviceName: 'VEIL Web', platform: 'android' },
+    ]);
     expectNoErrors(alice, bob, spare);
   });
 

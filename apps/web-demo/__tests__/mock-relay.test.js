@@ -3,7 +3,7 @@
 // the same status and error code, or a break between the demo and the API
 // would pass there unnoticed. Each case below mirrors an API rule:
 // KeysService.rotateSignedPrekey (contract C-SPK), PrekeysService.upload,
-// FileAbuseReportDto and CreateUploadTicketDto under the global
+// RegisterDto, FileAbuseReportDto and CreateUploadTicketDto under the global
 // ValidationPipe ({ whitelist, forbidNonWhitelisted }), MessagesService.markRead,
 // DeviceTransferService and SecretController.
 
@@ -17,6 +17,7 @@ import { encodeBase64Url } from '../src/core/base64url.js';
 import { signBundle } from '../src/crypto/bundle.js';
 import { generateIdentity, publishedKeys, signChallenge } from '../src/crypto/identity.js';
 import { createKeySource } from '../src/crypto/keys.js';
+import { WEB_DEVICE_NAME, WEB_DEVICE_PLATFORM } from '../src/domain/web-device.js';
 
 const { subtle } = webcrypto;
 const MINUTE_MS = 60 * 1000;
@@ -63,7 +64,7 @@ beforeAll(async () => {
   const registered = await call('/v1/auth/register', {
     method: 'POST',
     auth: false,
-    body: { handle, ...(await publishedKeys(subtle, identity)) },
+    body: { handle, deviceName: WEB_DEVICE_NAME, platform: WEB_DEVICE_PLATFORM, ...(await publishedKeys(subtle, identity)) },
   });
   deviceId = registered.body.deviceId;
   token = (await signIn(handle, deviceId, identity)).body.accessToken;
@@ -117,6 +118,26 @@ describe('the mock relay refuses what the API refuses', () => {
     expect(await upload(prekeys)).toMatchObject({ status: 200, body: { uploaded: 1, available: 1 } });
     expect(await upload(prekeys)).toMatchObject({ status: 200, body: { uploaded: 0, available: 1 } });
     expect(await upload([])).toMatchObject({ status: 400 });
+  });
+
+  it('registers a device only in the shape of RegisterDto', async () => {
+    const keys = await publishedKeys(subtle, await generateIdentity(subtle));
+    const register = (body) => call('/v1/auth/register', { method: 'POST', auth: false, body });
+    const fresh = () => `reg${webcrypto.randomUUID().slice(0, 8)}`;
+    const device = { deviceName: WEB_DEVICE_NAME, platform: WEB_DEVICE_PLATFORM };
+    const refused = { status: 400, body: { code: 'validation_failed' } };
+    // No device name or platform, as the mock used to take it.
+    const bare = await register({ handle: fresh(), ...keys });
+    expect(bare).toMatchObject(refused);
+    expect(bare.body.message).toContain('deviceName');
+    expect(bare.body.message).toContain('platform');
+    // DevicePlatform has no value for a browser.
+    expect(await register({ handle: fresh(), ...device, platform: 'web', ...keys })).toMatchObject(refused);
+    expect(await register({ handle: fresh(), ...device, deviceName: 'x'.repeat(81), ...keys })).toMatchObject(refused);
+    expect(await register({ handle: fresh(), ...device, ...keys, profile: 'text' })).toMatchObject(refused);
+    expect(await register({ handle: 'Bob', ...device, ...keys })).toMatchObject(refused);
+    expect(await register({ handle: fresh(), ...device, ...keys }))
+      .toMatchObject({ status: 200, body: { deviceId: expect.any(String), status: 'active' } });
   });
 
   it('takes an abuse report only in the shape of FileAbuseReportDto', async () => {

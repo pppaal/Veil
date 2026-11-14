@@ -8,6 +8,7 @@
 // next claim (contract C-TRANSFER-RETRY): the dialog offers to try the same
 // code again.
 
+import { WEB_DEVICE_NAME } from '../../domain/web-device.js';
 import { parseTransferCode } from '../../features/device-transfer.js';
 import { isAuthRejection } from '../../platform/api-client.js';
 import { $ } from '../dom.js';
@@ -115,7 +116,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
       dialogs.open('transfer-new-dialog', 'transfer-new-claim');
       return;
     }
-    $('transfer-new-name').value = 'web-' + (navigator.platform || 'browser');
+    $('transfer-new-name').value = WEB_DEVICE_NAME;
     $('transfer-new-token').value = '';
     setText('transfer-new-error', '');
     setText('transfer-new-status', '');

@@ -1,0 +1,982 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/crypto/lib_crypto_adapter.dart';
+import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/prekey_maintenance.dart';
+import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+
+import '../support/async_wait.dart';
+import '../support/fake_relay.dart';
+import '../support/injected_device.dart';
+import '../support/messenger_party.dart';
+
+// Two real controllers, each with its own LibCryptoAdapter, identity and
+// encrypted Drift cache, talking through the fake relay. Every regression
+// here was invisible to the idempotent MockCryptoAdapter: ratchet message
+// keys are single-use and a sender cannot open its own frames.
+
+const conv = 'conv-ab';
+
+void main() {
+  late FakeRelay relay;
+  late MessengerParty alice;
+  late MessengerParty bob;
+
+  setUp(() async {
+    relay = FakeRelay();
+    alice = await MessengerParty.join(relay, handle: 'alice', userId: 'user-alice', deviceId: 'dev-alice');
+    bob = await MessengerParty.join(relay, handle: 'bob', userId: 'user-bob', deviceId: 'dev-bob');
+    relay.addDirect(conv, 'alice', 'bob');
+    await alice.signIn();
+    await bob.signIn();
+  });
+
+  tearDown(() async {
+    await alice.dispose();
+    await bob.dispose();
+  });
+
+  Future<void> deliver(
+    MessengerParty from,
+    MessengerParty to,
+    String body, {
+    String conversationId = conv,
+  }) async {
+    await from.controller.sendText(conversationId: conversationId, body: body);
+    await waitFor(
+      () => from.controller.pendingCountFor(conversationId) == 0,
+      reason: '"$body" was not acked',
+    );
+    await waitFor(
+      () async => (await to.bodies(conversationId)).contains(body),
+      reason: '"$body" is not readable by ${to.device.handle}',
+    );
+  }
+
+  // Syncs [party]'s copy of the conversation and opens the row that carries
+  // [envelope].
+  Future<DecryptedMessage> openRelayed(MessengerParty party, Map<String, dynamic> envelope) async {
+    await party.controller.loadConversationMessages(conv);
+    final row = party.controller.messagesFor(conv).firstWhere((m) => m.envelope.ciphertext == envelope['ciphertext']);
+    final opened = await party.controller.decryptMessage(row);
+    await settle();
+    return opened;
+  }
+
+  test('refresh between sends keeps the session', () async {
+    await deliver(alice, bob, 'm1');
+    await alice.controller.refreshConversations();
+    await deliver(alice, bob, 'm2');
+
+    expect(await bob.bodies(conv), ['m1', 'm2']);
+    expect(alice.crypto.counts.bootstrap, 1);
+  });
+
+  test('receiving a message between sends keeps the session', () async {
+    await deliver(alice, bob, 'm1');
+    await deliver(bob, alice, 'r1');
+    // Lets the conversation.sync hint the reply triggers refresh alice's list.
+    await settle();
+    await deliver(alice, bob, 'm2');
+
+    expect(await alice.bodies(conv), ['m1', 'r1', 'm2']);
+    expect(await bob.bodies(conv), ['m1', 'r1', 'm2']);
+    expect(alice.crypto.counts.bootstrap + bob.crypto.counts.bootstrap, 1);
+  });
+
+  test('app resume between sends keeps the session', () async {
+    await deliver(alice, bob, 'm1');
+    await alice.controller.handleAppResumed();
+    await settle();
+    await deliver(alice, bob, 'm2');
+
+    expect(await bob.bodies(conv), ['m1', 'm2']);
+  });
+
+  test('token refresh keeps history and does not refetch conversations', () async {
+    await deliver(alice, bob, 'kept');
+    // Let the sync hint that delivery raised finish before taking a baseline.
+    await settle();
+    final message = bob.controller.messagesFor(conv).single;
+    final shown = bob.controller.decryptMessage(message);
+    final conversationFetches = bob.api.conversationFetches;
+    final connects = bob.realtime.connectCount;
+    bob.crypto.counts.reset();
+
+    await bob.refreshToken();
+    await settle();
+
+    expect(bob.realtime.authUpdates, 1, reason: 'the socket takes the new token in place');
+    expect(bob.realtime.connectCount, connects + 1);
+    expect(bob.realtime.lastAccessToken, bob.session().accessToken);
+    expect(bob.api.conversationFetches, conversationFetches);
+    expect(identical(bob.controller.decryptMessage(message), shown), isTrue);
+    expect(await bob.bodies(conv), ['kept']);
+    expect(bob.crypto.counts.decrypt, 0);
+
+    await deliver(alice, bob, 'after refresh');
+    expect(await bob.bodies(conv), ['kept', 'after refresh']);
+  });
+
+  test('twenty alternating messages all decrypt', () async {
+    final expected = <String>[];
+    for (var round = 0; round < 10; round++) {
+      await deliver(alice, bob, 'a$round');
+      expected.add('a$round');
+      await deliver(bob, alice, 'b$round');
+      expected.add('b$round');
+    }
+
+    expect(await alice.bodies(conv), expected);
+    expect(await bob.bodies(conv), expected);
+  });
+
+  test('own sent message renders after controller restart over the same database', () async {
+    await deliver(alice, bob, 'hello from alice');
+    expect(await alice.bodies(conv), ['hello from alice']);
+
+    await alice.restart();
+    await settle();
+
+    expect(await alice.bodies(conv), ['hello from alice']);
+    expect(alice.crypto.counts.decrypt, 0);
+    await deliver(alice, bob, 'ratchet survived');
+    expect(await bob.bodies(conv), ['hello from alice', 'ratchet survived']);
+  });
+
+  test('received body survives restart with zero crypto calls', () async {
+    await deliver(alice, bob, 'remember me');
+
+    await bob.restart();
+    await settle();
+
+    expect(await bob.bodies(conv), ['remember me']);
+    expect(bob.crypto.counts.decrypt, 0);
+  });
+
+  test('group key change leaves direct bodies intact', () async {
+    relay.addGroup('grp', ['alice', 'bob']);
+    await alice.controller.refreshConversations();
+    await bob.controller.refreshConversations();
+    await deliver(alice, bob, 'direct before');
+    alice.crypto.counts.reset();
+    bob.crypto.counts.reset();
+
+    // Alice's first group send creates and distributes her chain key; bob
+    // picks it up when the frame arrives. Both fire a group key event.
+    await deliver(alice, bob, 'group hello', conversationId: 'grp');
+
+    expect(await bob.bodies('grp'), ['group hello']);
+    expect(await alice.bodies(conv), ['direct before']);
+    expect(await bob.bodies(conv), ['direct before']);
+    expect(alice.crypto.counts.decrypt + bob.crypto.counts.decrypt, 0);
+  });
+
+  test('oldest of 700 messages readable after cache eviction', () async {
+    await deliver(alice, bob, 'm0');
+    // Lets m0's sync hints run first; otherwise alice would also pull the
+    // injected frames, which never went through her outbox, and spend the
+    // run failing to open her own envelopes.
+    await settle();
+    final bobBundle = KeyBundle(
+      userId: bob.device.userId,
+      deviceId: bob.device.deviceId,
+      handle: bob.device.handle,
+      identityPublicKey: bob.device.identity.identityPublicKey,
+      signedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+    );
+    // Sealed with alice's live ratchet and relayed in order, without paying
+    // for 699 round trips through her outbox.
+    for (var index = 1; index < 700; index++) {
+      final envelope = await alice.crypto.messaging.encryptMessage(
+        conversationId: conv,
+        senderDeviceId: alice.device.deviceId,
+        recipientUserId: bob.device.userId,
+        body: 'm$index',
+        messageKind: MessageKind.text,
+        recipientBundle: bobBundle,
+      );
+      relay.inject(
+        senderHandle: 'alice',
+        conversationId: conv,
+        envelope: alice.crypto.envelopeCodec.encodeApiEnvelope(envelope),
+      );
+    }
+    bob.crypto.counts.reset();
+
+    await bob.controller.loadConversationMessages(conv);
+    await waitFor(
+      () => bob.crypto.counts.decrypt == 699,
+      timeout: const Duration(seconds: 20),
+      reason: 'history was not ingested',
+    );
+    final messages = bob.controller.messagesFor(conv);
+
+    expect(messages, hasLength(700));
+    expect((await bob.controller.decryptMessage(messages.first)).body, 'm0');
+    expect((await bob.controller.decryptMessage(messages.last)).body, 'm699');
+    expect(bob.crypto.counts.decrypt, 699);
+  });
+
+  group('a disappearing message between devices whose clocks are off', () {
+    // Both devices learn the relay's clock from a response first.
+    Future<void> learnRelayClock() async {
+      await deliver(alice, bob, 'hello');
+      await deliver(bob, alice, 'hi');
+      await alice.controller.fetchPeerKeyBundle('bob');
+      await bob.controller.fetchPeerKeyBundle('alice');
+    }
+
+    // Each device has its own clock. The sender's runs 30 s behind the
+    // relay's; the recipient's agrees with the relay.
+    test('is stamped on the relay\'s clock by a sender whose clock runs slow', () async {
+      relay.clockSkew = const Duration(seconds: 30);
+      relay.deviceClockSkew['bob'] = const Duration(seconds: 30);
+      await learnRelayClock();
+
+      await alice.controller.sendText(conversationId: conv, body: 'vanish', disappearAfter: const Duration(seconds: 10));
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'not acked');
+      final stamped = DateTime.parse(relay.conversations[conv]!.messages.last['expiresAt'] as String);
+      final expected = relay.now().add(const Duration(seconds: 10));
+      expect(stamped.difference(expected).inSeconds.abs(), lessThan(3), reason: 'stamped $stamped, relay expects $expected');
+      await waitFor(() async => (await bob.bodies(conv)).contains('vanish'), reason: 'bob never saw it');
+    });
+
+    // The recipient's clock runs 30 s ahead of the relay's; the sender's
+    // agrees with the relay. The recipient's is the process clock, so code
+    // that read the device clock directly would retire the message.
+    test('is not retired early by a recipient whose clock runs fast', () async {
+      relay.clockSkew = const Duration(seconds: -30);
+      relay.deviceClockSkew['alice'] = const Duration(seconds: -30);
+      await learnRelayClock();
+
+      // Alice's 10 s message, sealed with the expiry her correct clock
+      // gives it: 10 s after the relay's now.
+      final sealed = await alice.lib.messaging.encryptMessage(
+        conversationId: conv,
+        senderDeviceId: alice.device.deviceId,
+        recipientUserId: bob.device.userId,
+        body: 'vanish',
+        messageKind: MessageKind.text,
+        recipientBundle: alice.controller.conversationById(conv)!.recipientBundle,
+        expiresAt: relay.now().add(const Duration(seconds: 10)),
+      );
+      relay.inject(senderHandle: 'alice', conversationId: conv, envelope: alice.lib.envelopeCodec.encodeApiEnvelope(sealed));
+      await bob.controller.loadConversationMessages(conv);
+      await waitFor(() async => (await bob.bodies(conv)).contains('vanish'), reason: 'bob retired it unseen');
+      await settle();
+      expect(await bob.bodies(conv), contains('vanish'));
+    });
+  });
+
+  test('expiry removes content row at inner time when outer expiresAt is removed', () async {
+    relay.stripOuterExpiresAt = true;
+    await alice.controller.sendText(
+      conversationId: conv,
+      body: 'self-destruct',
+      disappearAfter: const Duration(seconds: 1),
+    );
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0);
+    await waitFor(() async => (await bob.bodies(conv)).contains('self-destruct'));
+    final received = bob.controller.messagesFor(conv).single;
+    final sent = alice.controller.messagesFor(conv).single;
+    expect(relay.conversations[conv]!.messages.single['expiresAt'], isNull);
+    expect(sent.id, received.id);
+    // Both copies carry the authenticated expiry, the sender's from the
+    // content it stored before sealing.
+    expect(received.expiresAt, isNotNull);
+    expect(sent.expiresAt, isNotNull);
+    expect(await bob.cache.get(received.id), isNotNull);
+    expect(await alice.cache.get(sent.id), isNotNull);
+
+    await waitFor(
+      () async =>
+          bob.controller.messagesFor(conv).isEmpty &&
+          await bob.cache.get(received.id) == null &&
+          alice.controller.messagesFor(conv).isEmpty &&
+          await alice.cache.get(sent.id) == null,
+      reason: 'message outlived its authenticated expiry',
+    );
+    expect(alice.crypto.counts.decrypt, 0);
+
+    // The relay still serves the frame, without an expiry. After a restart
+    // neither side brings it back or spends a decrypt on it.
+    final fetches = alice.api.messageFetches + bob.api.messageFetches;
+    await alice.restart();
+    await bob.restart();
+    await waitFor(() => alice.api.messageFetches + bob.api.messageFetches >= fetches + 2);
+    // A copy that came back would be merged within moments of the fetch.
+    await settle(const Duration(milliseconds: 100));
+    expect(alice.controller.messagesFor(conv), isEmpty);
+    expect(bob.controller.messagesFor(conv), isEmpty);
+    expect(alice.crypto.counts.decrypt + bob.crypto.counts.decrypt, 0);
+  });
+
+  test('search returns hits without calling decrypt', () async {
+    await deliver(alice, bob, 'needle in the haystack');
+    await deliver(alice, bob, 'unrelated chatter');
+    await settle();
+    alice.crypto.counts.reset();
+    bob.crypto.counts.reset();
+
+    final needle = bob.controller.messagesFor(conv).first;
+    expect(await bob.controller.searchLoadedMessageIds(conv, query: 'NEEDLE'), [needle.id]);
+    expect(
+      await alice.controller.searchLoadedMessageIds(conv, query: 'needle'),
+      [alice.controller.messagesFor(conv).first.id],
+    );
+    final archive = await bob.controller.searchMessageArchive(
+      query: const MessageSearchQuery(query: 'needle'),
+    );
+    expect(archive.items.single.messageId, needle.id);
+    expect(archive.items.single.bodySnippet, contains('needle'));
+    expect(alice.crypto.counts.decrypt + bob.crypto.counts.decrypt, 0);
+  });
+
+  test('leaving the chat stops auto read receipts and restores notifications', () async {
+    bob.controller.setActiveConversation(conv);
+    await deliver(alice, bob, 'seen');
+    await waitFor(() => bob.api.markReadCalls.length == 1);
+    expect(bob.notifications.shownForConversations, isEmpty);
+
+    bob.controller.setActiveConversation(null);
+    await deliver(alice, bob, 'unseen');
+    await settle();
+
+    expect(bob.api.markReadCalls, hasLength(1));
+    expect(bob.notifications.shownForConversations, [conv]);
+  });
+
+  test('key bundle fetched at most once per session setup', () async {
+    for (var index = 0; index < 3; index++) {
+      await deliver(alice, bob, 'a$index');
+    }
+    await alice.controller.refreshConversations();
+    await deliver(bob, alice, 'b0');
+    await alice.controller.handleAppResumed();
+    await settle();
+    await deliver(alice, bob, 'a3');
+
+    expect(alice.api.directoryLookups, {'bob': 1});
+    // The responder pins the identity alice's handshake proved, so it never
+    // asks the directory about her.
+    expect(bob.api.directoryLookups, isEmpty);
+    final bobView = bob.controller.conversations.firstWhere((item) => item.id == conv);
+    expect(bobView.recipientBundle.identityPublicKey, alice.device.identity.identityPublicKey);
+  });
+
+  test('server identity swap blocked', () async {
+    await deliver(alice, bob, 'pinned');
+    // The pin outlives the app; the directory answer it was made from does not.
+    await alice.restart();
+    // A second conversation needs a fresh session, and the server answers
+    // the lookup with a key of its own for bob's very device.
+    relay.addDirect('conv-ab-2', 'alice', 'bob');
+    await alice.controller.refreshConversations();
+    final impostor = await LibCryptoAdapter().identity.generateDeviceIdentity(bob.device.deviceId);
+    relay.bundleOverrides['bob'] = {
+      ...bob.device.bundleJson,
+      'identityPublicKey': impostor.identityPublicKey,
+      'signedPrekeyBundle': impostor.signedPrekeyBundle,
+    };
+    alice.crypto.counts.reset();
+
+    await alice.controller.sendText(conversationId: 'conv-ab-2', body: 'for bob only');
+    await settle();
+
+    expect(alice.crypto.counts.bootstrap, 0);
+    expect(relay.conversations['conv-ab-2']!.messages, isEmpty);
+    final change = alice.controller.pendingIdentityChangeFor('conv-ab-2')!;
+    expect(change.presentedKey, impostor.identityPublicKey);
+    expect(change.previousKey, bob.device.identity.identityPublicKey);
+    expect(alice.controller.errorMessage, isNull, reason: 'the issue belongs to the conversation');
+    expect(alice.controller.messagesFor('conv-ab-2').single.isLocalNotice, isTrue);
+    // The established conversation keeps working with the pinned key.
+    await deliver(alice, bob, 'still you');
+  });
+
+  test('forged inbound session rejected', () async {
+    await deliver(alice, bob, 'hello bob');
+    // The server opens a session to bob in alice's name, from an identity it
+    // controls on alice's device id.
+    final forger = LibCryptoAdapter();
+    final forged = await forger.identity.generateDeviceIdentity(alice.device.deviceId);
+    forger.setLocalIdentityLoader(() async => forged.identityPrivateKeyRef);
+    await forger.sessions.bootstrapSession(SessionBootstrapRequest(
+      conversationId: conv,
+      localDeviceId: alice.device.deviceId,
+      localUserId: alice.device.userId,
+      remoteUserId: bob.device.userId,
+      remoteDeviceId: bob.device.deviceId,
+      remoteIdentityPublicKey: bob.device.identity.identityPublicKey,
+      remoteSignedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+    ));
+    final envelope = await forger.messaging.encryptMessage(
+      conversationId: conv,
+      senderDeviceId: alice.device.deviceId,
+      recipientUserId: bob.device.userId,
+      body: 'trust me',
+      messageKind: MessageKind.text,
+      recipientBundle: KeyBundle(
+        userId: bob.device.userId,
+        deviceId: bob.device.deviceId,
+        handle: 'bob',
+        identityPublicKey: bob.device.identity.identityPublicKey,
+        signedPrekeyBundle: bob.device.identity.signedPrekeyBundle,
+      ),
+    );
+    relay.inject(senderHandle: 'alice', conversationId: conv, envelope: forger.envelopeCodec.encodeApiEnvelope(envelope));
+
+    await bob.controller.loadConversationMessages(conv);
+    await waitFor(() => bob.controller.pendingIdentityChangeFor(conv) != null, reason: 'the forgery was not caught');
+
+    final forgedRow = bob.controller.messagesFor(conv).firstWhere((m) => m.envelope.ciphertext == envelope.ciphertext);
+    final opened = await bob.controller.decryptMessage(forgedRow);
+    expect(opened.status, DecryptStatus.identityRejected);
+    expect(opened.body, isEmpty);
+    expect(bob.controller.pendingIdentityChangeFor(conv)!.presentedKey, forged.identityPublicKey);
+    // Nothing was installed: alice's real session still reads.
+    await deliver(alice, bob, 'the real alice');
+    expect(await bob.bodies(conv), containsAllInOrder(['hello bob', 'the real alice']));
+    expect(await bob.bodies(conv), isNot(contains('trust me')));
+  });
+
+  test('OPK claimed and consumed exactly once', () async {
+    final carol = await MessengerParty.join(
+      relay,
+      handle: 'carol',
+      userId: 'user-carol',
+      deviceId: 'dev-carol',
+      maintainPrekeys: true,
+    );
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-ac', 'alice', 'carol');
+    await carol.signIn();
+    await waitFor(
+      () => (relay.oneTimePrekeys['dev-carol']?.length ?? 0) == PrekeyMaintenance.oneTimePrekeyPoolSize,
+      timeout: const Duration(seconds: 10),
+      reason: 'carol never published her one-time prekeys',
+    );
+    await alice.controller.refreshConversations();
+
+    await deliver(alice, carol, 'first contact', conversationId: 'conv-ac');
+    await deliver(alice, carol, 'second', conversationId: 'conv-ac');
+    await deliver(carol, alice, 'reply', conversationId: 'conv-ac');
+
+    final claimed = relay.claimedOneTimePrekeys['dev-carol']!;
+    expect(claimed, hasLength(1), reason: 'one session, one claim');
+    expect(relay.oneTimePrekeys['dev-carol'], hasLength(PrekeyMaintenance.oneTimePrekeyPoolSize - 1));
+    // Carol's handshake used it up: the private half is gone.
+    expect(await carol.prekeyStore.loadOneTimePrekey(claimed.single), isNull);
+    expect(await carol.prekeyStore.loadOneTimePrekey(claimed.single + 1), isNotNull);
+  });
+
+  test('a reaction travels end to end and lands on its target', () async {
+    await deliver(alice, bob, 'react to me');
+    await settle();
+    final target = bob.controller.messagesFor(conv).single;
+    final relayedBefore = relay.conversations[conv]!.messages.length;
+
+    await bob.controller.toggleReaction(target, '🔥');
+    await waitFor(() => alice.controller.messagesFor(conv).first.reactions.isNotEmpty);
+
+    final reacted = alice.controller.messagesFor(conv).first;
+    expect(reacted.reactions.single.emoji, '🔥');
+    expect(reacted.reactions.single.userId, bob.device.userId);
+    // The relay saw one more encrypted message and nothing it could read.
+    final relayed = relay.conversations[conv]!.messages.last;
+    expect(relay.conversations[conv]!.messages, hasLength(relayedBefore + 1));
+    expect(relayed['messageType'], 'reaction');
+    expect(jsonEncode(relayed), isNot(contains('🔥')));
+    final row = alice.controller.messagesFor(conv).last;
+    expect((await alice.controller.decryptMessage(row)).messageKind, MessageKind.reaction);
+    expect(alice.notifications.shownForConversations, isEmpty, reason: 'a reaction is not a new message');
+  });
+
+  test('a frame for a conversation not listed yet still records the responder session', () async {
+    // Carol creates a conversation with bob and writes at once; bob's first
+    // word of it is her frame.
+    final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-bc', 'carol', 'bob');
+    await carol.signIn();
+    await deliver(carol, bob, 'hi, new here', conversationId: 'conv-bc');
+    await waitFor(
+      () =>
+          bob.controller.conversations
+              .where((item) => item.id == 'conv-bc')
+              .firstOrNull
+              ?.sessionState
+              ?.remoteIdentityPublicKey ==
+          carol.device.identity.identityPublicKey,
+      reason: 'the inbound session was never recorded on the conversation',
+    );
+
+    await deliver(bob, carol, 'welcome', conversationId: 'conv-bc');
+    expect(bob.crypto.counts.bootstrap, 0);
+    expect(await carol.bodies('conv-bc'), ['hi, new here', 'welcome']);
+  });
+
+  test('restarted device accepts a session from a new contact', () async {
+    // The relaunched adapter must still hold the identity and prekeys bob
+    // published, or carol's first frame cannot be answered.
+    await bob.restart();
+    final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
+    addTearDown(carol.dispose);
+    relay.addDirect('conv-bc', 'carol', 'bob');
+    await carol.signIn();
+
+    await deliver(carol, bob, 'hello after your relaunch', conversationId: 'conv-bc');
+    await waitFor(
+      () => bob.controller.conversations.any((item) => item.id == 'conv-bc'),
+      reason: 'the new conversation was never listed',
+    );
+    await deliver(bob, carol, 'welcome back', conversationId: 'conv-bc');
+    expect(bob.crypto.counts.bootstrap, 0);
+  });
+
+  test('peer device change moves the next send to the new device', () async {
+    await deliver(alice, bob, 'before the move');
+    // Answered, so alice's handshake is settled and the new device's one
+    // replaces it (see SessionRecord.installingInbound).
+    await deliver(bob, alice, 'packing up');
+    final newPhone = await MessengerParty.join(
+      relay,
+      handle: 'bob',
+      userId: 'user-bob',
+      deviceId: 'dev-bob-2',
+    );
+    addTearDown(newPhone.dispose);
+    await newPhone.signIn();
+
+    // The first frame from a device alice's session is not bound to is the
+    // only sign she gets that bob moved.
+    await newPhone.controller.sendText(conversationId: conv, body: 'new phone');
+    await waitFor(() => newPhone.controller.pendingCountFor(conv) == 0);
+    List<ChatMessage> relayed() => alice.controller.messagesFor(conv).where((m) => !m.isLocalNotice).toList();
+    await waitFor(() => relayed().length == 3);
+    await alice.controller.decryptMessage(relayed().last);
+    // bob was not verified, so his new device is admitted and announced.
+    await waitFor(() => alice.controller.messagesFor(conv).any((m) => m.isLocalNotice));
+    await deliver(alice, newPhone, 'after the move');
+
+    // The directory confirms the device the new session is bound to, so
+    // alice answers on that session instead of forking it.
+    expect(alice.api.directoryLookups, {'bob': 2});
+    expect(alice.crypto.counts.bootstrap, 1);
+    final session = alice.controller.conversations.firstWhere((item) => item.id == conv).sessionState!;
+    expect(session.remoteDeviceId, 'dev-bob-2');
+    expect(session.remoteIdentityPublicKey, newPhone.device.identity.identityPublicKey);
+  });
+
+  test('a device injected into an established conversation never gets a reply', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final ghost = await InjectedDevice.mint('dev-ghost', owner: bob);
+    ConversationSessionState session() => alice.controller.conversationById(conv)!.sessionState!;
+
+    // bob is not verified, so a new device of his is admitted on first use
+    // and announced. The conversation names it from then on: the safety
+    // numbers describe the identity the engine now holds a session with.
+    final injected = await ghost.handshake(relay, alice, 'ghost hello', conversationId: conv);
+    expect((await openRelayed(alice, injected)).status, DecryptStatus.ok);
+    expect(alice.controller.messagesFor(conv).where((m) => m.isLocalNotice), hasLength(1));
+    expect(session().remoteDeviceId, 'dev-ghost');
+    expect(session().remoteIdentityPublicKey, ghost.identityKey);
+
+    // The reply goes to the device the directory serves, which is bob's.
+    await deliver(alice, bob, 'secret for bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(session().remoteDeviceId, 'dev-bob');
+
+    // Once alice verified that device, the injected one, admitted before and
+    // never compared, is held like any new device of a verified contact:
+    // its fresh session opens nothing and waits for a re-verification.
+    final served = await alice.controller.fetchPeerKeyBundle('bob');
+    expect(served.deviceId, 'dev-bob');
+    await alice.pins.markVerified(bob.device.userId, served.deviceId, served.identityPublicKey);
+    final again = await ghost.handshake(relay, alice, 'ghost again', conversationId: conv);
+    expect((await openRelayed(alice, again)).status, DecryptStatus.identityRejected);
+    final held = alice.controller.pendingIdentityChangeFor(conv)!;
+    expect(held.deviceId, 'dev-ghost');
+    expect(held.requiresReverification, isTrue);
+    expect(alice.controller.messagesFor(conv).where((m) => m.isLocalNotice), hasLength(2));
+    expect(session().remoteDeviceId, 'dev-bob');
+    // Replies keep going to the verified device it is no threat to.
+    await deliver(alice, bob, 'after verifying bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(await bob.bodies(conv), containsAllInOrder(['secret for bob', 'after verifying bob']));
+  });
+
+  test('the engine never seals to an identity the conversation did not choose', () async {
+    await deliver(alice, bob, 'hello bob');
+    await deliver(bob, alice, 'hi alice');
+    final ghost = await InjectedDevice.mint('dev-ghost', owner: bob);
+    // The injected handshake reaches alice's engine between a send choosing
+    // its recipient and sealing: the engine installs it as the sending
+    // state before the conversation hears of it.
+    final injected = await ghost.handshake(relay, alice, 'ghost hello', conversationId: conv);
+    final opened = await alice.lib.messaging.decryptMessage(alice.lib.envelopeCodec.decodeApiEnvelope(injected));
+    expect(opened.status, DecryptStatus.ok);
+    expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-bob');
+
+    await deliver(alice, bob, 'secret for bob');
+    expect((await ghost.open(relay.conversations[conv]!.messages.last)).isOk, isFalse);
+    expect(alice.controller.conversationById(conv)!.sessionState!.remoteDeviceId, 'dev-bob');
+  });
+
+  // Opens alice's latest message on bob's side, then the blob the relay
+  // stored under the attachment id it names.
+  Future<(AttachmentReference, List<int>)> openLatestAttachment() async {
+    final received = await bob.controller.decryptMessage(bob.controller.messagesFor(conv).last);
+    expect(received.messageKind, MessageKind.file);
+    final reference = received.attachment!;
+    final plaintext = await bob.crypto.messaging.decryptAttachment(
+      reference: reference,
+      ciphertext: relay.uploadedBlobs[reference.attachmentId]!,
+      localIdentityPrivateRef: bob.device.identity.identityPrivateKeyRef,
+    );
+    return (reference, plaintext);
+  }
+
+  group('a message whose plaintext could not be stored at once', () {
+    test('is not lost when the ratchet snapshot cannot be written', () async {
+      await deliver(alice, bob, 'm1');
+      bob.failSnapshotWrites = 1;
+      await deliver(alice, bob, 'm2');
+      expect(bob.failSnapshotWrites, 0, reason: 'the failing write was never attempted');
+      await deliver(alice, bob, 'm3');
+
+      expect(await bob.bodies(conv), containsAllInOrder(['m1', 'm2', 'm3']));
+      await bob.restart();
+      expect(await bob.bodies(conv), containsAllInOrder(['m1', 'm2', 'm3']));
+    });
+
+    test('is decrypted again when its content could not be written', () async {
+      await deliver(alice, bob, 'm1');
+      bob.cache.failContentPuts = 1;
+      await alice.controller.sendText(conversationId: conv, body: 'm2');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'm2 was not acked');
+      await waitFor(() => bob.cache.failContentPuts == 0, reason: 'bob never tried to store m2');
+
+      // The next read decrypts it again: nothing was committed.
+      await waitFor(() async => (await bob.bodies(conv)).contains('m2'), reason: 'm2 stayed unreadable');
+      await deliver(alice, bob, 'm3');
+      await bob.restart();
+      expect(await bob.bodies(conv), containsAllInOrder(['m1', 'm2', 'm3']));
+    });
+
+    test('that opened the session is decrypted again when its content could not be written', () async {
+      bob.cache.failContentPuts = 1;
+      await alice.controller.sendText(conversationId: conv, body: 'first');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'first was not acked');
+      await waitFor(() => bob.cache.failContentPuts == 0, reason: 'bob never tried to store the first message');
+
+      await waitFor(() async => (await bob.bodies(conv)).contains('first'), reason: 'the handshake message was lost');
+      await deliver(bob, alice, 'reply on the same session');
+    });
+
+    test('in a Sender Keys group is decrypted again when its content could not be written', () async {
+      relay.addGroup('grp', ['alice', 'bob']);
+      await alice.controller.refreshConversations();
+      await bob.controller.refreshConversations();
+      await deliver(alice, bob, 'g1', conversationId: 'grp');
+      bob.cache.failContentPuts = 1;
+      await alice.controller.sendText(conversationId: 'grp', body: 'g2');
+      await waitFor(() => alice.controller.pendingCountFor('grp') == 0, reason: 'g2 was not acked');
+      await waitFor(() => bob.cache.failContentPuts == 0, reason: 'bob never tried to store g2');
+
+      await waitFor(() async => (await bob.bodies('grp')).contains('g2'), reason: 'g2 stayed unreadable');
+      await bob.restart();
+      expect(await bob.bodies('grp'), containsAllInOrder(['g1', 'g2']));
+    });
+  });
+
+  group('a backlog longer than one history page', () {
+    // bob is offline while alice writes [count] messages; the relay serves
+    // its history five messages a page.
+    Future<int> backlog(int count) async {
+      await deliver(alice, bob, 'before the backlog');
+      // Lets the sync that message hinted finish before bob goes offline.
+      await settle();
+      bob.realtime.disconnect();
+      for (var i = 0; i < count; i++) {
+        await alice.controller.sendText(conversationId: conv, body: 'backlog $i');
+      }
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the backlog was not acked');
+      relay.messagePageSize = 5;
+      return bob.api.messageFetches;
+    }
+
+    Future<int> backlogRead() async => (await bob.bodies(conv)).where((body) => body.startsWith('backlog ')).length;
+
+    // The same backlog sealed by alice's engine and handed to the relay
+    // directly, which keeps long ones cheap.
+    Future<int> sealedBacklog(int count, {String prefix = 'backlog', bool sendFirst = true}) async {
+      if (sendFirst) {
+        await deliver(alice, bob, 'before the backlog');
+        await settle();
+        bob.realtime.disconnect();
+      }
+      final recipient = alice.controller.conversationById(conv)!.recipientBundle;
+      for (var i = 0; i < count; i++) {
+        final envelope = await alice.lib.messaging.encryptMessage(
+          conversationId: conv,
+          senderDeviceId: alice.device.deviceId,
+          recipientUserId: bob.device.userId,
+          body: '$prefix $i',
+          messageKind: MessageKind.text,
+          recipientBundle: recipient,
+        );
+        relay.inject(senderHandle: 'alice', conversationId: conv, envelope: alice.lib.envelopeCodec.encodeApiEnvelope(envelope));
+      }
+      return bob.api.messageFetches;
+    }
+
+    test('is fetched back to the newest message the device holds', () async {
+      final fetchesBefore = await backlog(23);
+
+      await bob.controller.loadConversationMessages(conv);
+
+      await waitFor(() async => await backlogRead() == 23, reason: 'part of the backlog was skipped');
+      expect(bob.api.messageFetches - fetchesBefore, 5, reason: 'pages down to "before the backlog", no further');
+    });
+
+    test('beyond the pages one refresh fetches is left to loading older history', () async {
+      final fetchesBefore = await sealedBacklog(210);
+      relay.messagePageSize = 5;
+
+      await bob.controller.loadConversationMessages(conv);
+      await waitFor(() async => await backlogRead() == 200,
+          timeout: const Duration(seconds: 20), reason: 'the newest forty pages were not read');
+      expect(bob.api.messageFetches - fetchesBefore, 40);
+      expect(bob.controller.hasMoreHistoryFor(conv), isTrue);
+
+      await bob.controller.loadOlderConversationMessages(conv);
+      await bob.controller.loadOlderConversationMessages(conv);
+      await waitFor(() async => await backlogRead() == 210, reason: 'the rest of the backlog was not read');
+    });
+
+    test('of more than 700 messages on one chain is read in full after one resume', () async {
+      await sealedBacklog(720);
+      relay.messagePageSize = 50;
+
+      await bob.controller.handleAppResumed();
+      await waitFor(() async => await backlogRead() == 720,
+          timeout: const Duration(seconds: 60), reason: 'part of the backlog stayed unreadable');
+      // The chain is caught up, so what alice sends next reads too.
+      await deliver(alice, bob, 'after the backlog');
+    });
+
+    test('a live frame that beats the resync opens once the backlog before it has', () async {
+      await sealedBacklog(210);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      // The live frame reaches the fresh socket before the debounced resync
+      // has fetched the 210 frames sealed before it.
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+
+      await waitFor(() async => (await bob.bodies(conv)).contains('live 0'),
+          timeout: const Duration(seconds: 20), reason: 'the live frame stayed unreadable');
+      // The resync does not stop at the live frame: it pages back to the
+      // history it already held, so the whole backlog opens without loading
+      // older history.
+      await waitFor(() async => await backlogRead() == 210,
+          timeout: const Duration(seconds: 20), reason: 'part of the backlog stayed unreadable');
+    });
+
+    // What the backlog test above needs from bob after one resume: every
+    // frame alice sealed opened, without loading older history, and the
+    // chain caught up for what she sends next.
+    Future<void> expectBacklogCaughtUp(int count, {List<String> alsoRead = const []}) async {
+      await waitFor(
+        () async {
+          final bodies = await bob.bodies(conv);
+          return bodies.where((body) => body.startsWith('backlog ')).length == count && bodies.toSet().containsAll(alsoRead);
+        },
+        timeout: const Duration(seconds: 20),
+        reason: 'part of the backlog stayed unreadable',
+      );
+      await deliver(alice, bob, 'fresh after the backlog');
+    }
+
+    test('of 400 behind a live frame that beats the resync is read in full after one resume', () async {
+      await sealedBacklog(400);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+
+      await expectBacklogCaughtUp(400, alsoRead: ['live 0']);
+    });
+
+    test('of 400 behind a reply bob wrote offline, sent before the resync, is read in full after one resume', () async {
+      await sealedBacklog(400);
+      relay.messagePageSize = 50;
+      bob.api.unreachable = true;
+      await bob.controller.sendText(conversationId: conv, body: 'written offline');
+      expect(bob.controller.pendingCountFor(conv), 1);
+
+      // Back online: the outbox sends the reply as the socket connects, so
+      // the relay has acked it, newest of all, before the resync runs.
+      bob.api.unreachable = false;
+      await bob.controller.handleAppResumed();
+      await waitFor(() => bob.controller.pendingCountFor(conv) == 0, reason: 'the reply was not sent');
+
+      await expectBacklogCaughtUp(400, alsoRead: ['written offline']);
+    });
+
+    test('already read is not paged through again after a restart', () async {
+      await sealedBacklog(30);
+      relay.messagePageSize = 5;
+      await bob.controller.handleAppResumed();
+      await waitFor(() async => await backlogRead() == 30, reason: 'the backlog was not read');
+      await settle();
+
+      final fetchesBefore = bob.api.messageFetches;
+      await bob.restart();
+      await settle();
+      // The resync after the start stops at the newest message the cache
+      // held opened: one page, not the 32 messages back to the oldest.
+      expect(bob.api.messageFetches - fetchesBefore, 1);
+      expect(await backlogRead(), 30);
+    });
+
+    // A first contact: bob holds nothing of the 1:1, and every frame alice
+    // sends until he answers is a handshake frame.
+    Future<void> firstContactBacklog(int count) async {
+      bob.realtime.disconnect();
+      await alice.controller.sendText(conversationId: conv, body: 'first contact');
+      await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the first message was not acked');
+      await sealedBacklog(count, sendFirst: false);
+      relay.messagePageSize = 50;
+    }
+
+    test('of 400 in a new 1:1 is read in full when the chat opens, without loading older history', () async {
+      await firstContactBacklog(400);
+
+      await bob.controller.handleAppResumed();
+      await bob.controller.loadConversationMessages(conv);
+
+      await expectBacklogCaughtUp(400, alsoRead: ['first contact']);
+    });
+
+    test('in a new 1:1, a live handshake frame that beats the resync waits for the frames before it', () async {
+      await firstContactBacklog(210);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+
+      final resumed = bob.controller.handleAppResumed();
+      await waitFor(() => bob.realtime.isConnected, reason: 'bob did not reconnect');
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await resumed;
+      await bob.controller.loadConversationMessages(conv);
+
+      await expectBacklogCaughtUp(210, alsoRead: ['first contact', 'live 0']);
+    });
+
+    test('of 400 behind a live frame that arrived before a restart is read in full after it', () async {
+      await sealedBacklog(400);
+      await sealedBacklog(1, prefix: 'live', sendFirst: false);
+      final live = relay.conversations[conv]!.messages.last;
+      relay.messagePageSize = 50;
+
+      // The live frame lands, too far ahead to open, and the app stops
+      // before any resync fetched history.
+      final gate = bob.api.messageFetchGate = Completer<void>();
+      await bob.controller.handleAppResumed();
+      bob.realtime.deliver('message.new', Map<String, dynamic>.of(live));
+      await waitFor(() async {
+        final row = bob.controller.messagesFor(conv).where((m) => m.id == live['id']).firstOrNull;
+        return row != null && (await bob.controller.decryptMessage(row)).status == DecryptStatus.awaitingKey;
+      }, reason: 'the live frame was not ingested');
+      // Lets the cache write the row before the app stops.
+      await settle();
+      await bob.restart();
+      bob.api.messageFetchGate = null;
+      gate.complete();
+
+      await expectBacklogCaughtUp(400, alsoRead: ['live 0']);
+    });
+  });
+
+  test('attachment upload carries ciphertext the peer can decrypt', () async {
+    await deliver(alice, bob, 'file incoming');
+
+    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
+    await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+    final (reference, plaintext) = await openLatestAttachment();
+
+    // The blob was sealed under the id alice proposed, and that is the id
+    // the relay ticketed.
+    expect(relay.uploadTickets, [reference.attachmentId]);
+    final uploaded = relay.uploadedBlobs[reference.attachmentId]!;
+    expect(plaintext, hasLength(2048));
+    // What went up is sealed: longer than the file by at least the AEAD tag,
+    // and not the file itself. Sizes are compared this loosely because the
+    // reference's sizeBytes means ciphertext length in v1, plaintext in v2.
+    expect(uploaded.length, greaterThan(plaintext.length));
+    expect(uploaded.sublist(0, plaintext.length), isNot(equals(plaintext)));
+    final sent = await alice.controller.decryptMessage(alice.controller.messagesFor(conv).last);
+    expect(sent.attachment!.attachmentId, reference.attachmentId);
+    // The relay is told nothing about the file's type; only the sealed
+    // reference carries it.
+    expect(relay.uploadTicketContentTypes, ['application/octet-stream']);
+    expect(reference.contentType, 'application/pdf');
+  });
+
+  test('attachment after a restart over an established session skips the key directory', () async {
+    await deliver(alice, bob, 'session up');
+    await alice.restart();
+    await settle();
+    final fetches = Map<String, int>.of(alice.api.directoryLookups);
+
+    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
+    await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+
+    final (_, plaintext) = await openLatestAttachment();
+    expect(plaintext, hasLength(2048));
+    // A lookup would tell the relay whom alice is about to message.
+    expect(alice.api.directoryLookups, fetches);
+  });
+
+  test('re-ticketing after the upload ticket expired reuses the sealed attachment id', () async {
+    await deliver(alice, bob, 'file incoming');
+    await settle();
+    // The first attempt uploads but is not acknowledged, so the draft keeps
+    // a ticket that has expired by the time the send is retried.
+    relay.uploadTicketLifetime = Duration.zero;
+    relay.failUploadCompletions = 1;
+
+    await alice.controller.sendAttachmentPlaceholder(conv, filename: 'brief.pdf');
+    final clientMessageId = alice.controller.messagesFor(conv).last.clientMessageId!;
+    await waitFor(
+      () => alice.controller.attachmentTransferForMessage(clientMessageId)?.phase ==
+          AttachmentTransferPhase.failed,
+      reason: 'first upload attempt did not fail',
+    );
+    relay.uploadTicketLifetime = const Duration(minutes: 10);
+    await alice.controller.retryPendingMessages(conv);
+    await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'attachment not sent');
+    await waitFor(() => bob.controller.messagesFor(conv).length == 2);
+
+    final (reference, plaintext) = await openLatestAttachment();
+    expect(relay.uploadTickets, [reference.attachmentId, reference.attachmentId]);
+    expect(relay.attachments[reference.attachmentId]!.uploadStatus, 'uploaded');
+    expect(plaintext, hasLength(2048));
+  });
+}

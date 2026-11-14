@@ -297,6 +297,20 @@ a { color: var(--accent); text-decoration: none; }
   margin-bottom: 18px;
 }
 .restore-info { min-width: 0; }
+.restore-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.restore-actions .link-btn { padding: 2px 0; font-size: 12px; }
+.restore-rejected {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--warn);
+}
 .restore-label { font-size: 11px; color: var(--fg-dim); margin-bottom: 2px; }
 .restore-handle {
   font-size: 14px;
@@ -669,6 +683,13 @@ a { color: var(--accent); text-decoration: none; }
 }
 .panel-title .sub.online { color: var(--good); }
 .panel-title .sub.typing { color: var(--accent-strong); }
+.verified-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--good);
+  white-space: nowrap;
+}
+.verified-badge[hidden] { display: none; }
 
 .panel-msgs {
   flex: 1;
@@ -809,6 +830,70 @@ a { color: var(--accent); text-decoration: none; }
   background: var(--bg-elev);
 }
 
+.key-change-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 12px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.1);
+  border-radius: var(--r);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.key-change-text { flex: 1; min-width: 0; }
+
+/* Out of the grid: fixed above the composer while the identity is legacy. */
+.legacy-banner {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(560px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: var(--bg-elev-2);
+  border-radius: var(--r);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.msg-legacy-badge {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+.safety-number {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  line-height: 1.7;
+  margin: 12px 0 8px;
+  word-spacing: 0.4em;
+}
+.safety-code {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px;
+  resize: none;
+  margin-bottom: 8px;
+}
+
+.msg-file-chip-ext { font-weight: 600; text-transform: uppercase; margin-right: 6px; }
+
 .reply-banner {
   display: flex;
   align-items: center;
@@ -924,6 +1009,11 @@ a { color: var(--accent); text-decoration: none; }
   animation: fade-in 0.12s ease-out;
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+/* A confirmation can be asked from inside another dialog. At the shared
+   z-index the dialogs would stack by DOM order, which would put it behind
+   any dialog that comes later in the page (#transfer-new-dialog, the ones
+   app.js appends), hidden and unclickable while it holds keyboard focus. */
+#confirm-dialog { z-index: 110; }
 .dialog {
   background: var(--bg-elev);
   border: 1px solid var(--line);
@@ -980,11 +1070,17 @@ a { color: var(--accent); text-decoration: none; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 720px) {
+  /* One column: the list and the chat take turns in the same cell. With two
+     columns the chat sat in the second one, off the right edge of the phone. */
   .app {
-    grid-template-columns: 100vw 100vw;
+    grid-template-columns: 100%;
     grid-template-areas:
-      "topbar topbar"
-      "sidebar main";
+      "topbar"
+      "content";
+  }
+  .sidebar,
+  .main {
+    grid-area: content;
   }
   .main {
     transform: translateX(0);
@@ -997,7 +1093,474 @@ a { color: var(--accent); text-decoration: none; }
   .icon-btn-only-mobile { display: inline-flex !important; }
   #split-btn { display: none; }
   .panel-msgs { padding: 14px 12px; }
+  /* A frozen composer says why in its placeholder. Beside four buttons that
+     do nothing the reason was cut off after a line and a half: it gets the
+     whole row and two lines. */
+  .panel-input:has(textarea:disabled) > button { display: none; }
+  .panel-input textarea:disabled { min-height: 62px; }
 }
 @media (min-width: 721px) {
   .icon-btn-only-mobile { display: none !important; }
 }
+
+/* ---------- message actions and reactions ---------- */
+.msg-action-menu {
+  position: fixed; z-index: 1000;
+  background: #1c1d22; border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px; padding: 6px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  display: flex; flex-direction: column; min-width: 160px;
+}
+.msg-action-row { display: flex; gap: 4px; padding: 4px 6px; }
+.msg-action-row button {
+  background: transparent; border: 0; color: inherit; cursor: pointer;
+  font-size: 20px; padding: 4px 8px; border-radius: 8px;
+}
+.msg-action-row button:hover { background: rgba(255,255,255,0.08); }
+.msg-action-item {
+  background: transparent; border: 0; color: inherit; cursor: pointer;
+  text-align: left; padding: 8px 12px; border-radius: 8px; font-size: 14px;
+}
+.msg-action-item:hover { background: rgba(255,255,255,0.08); }
+.msg-action-item.danger { color: #ff7676; }
+.msg-action-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0; }
+.msg-reactions {
+  display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px;
+  padding: 0 8px;
+}
+.msg-reaction-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  background: rgba(255,255,255,0.08); border-radius: 12px;
+  padding: 2px 8px; font-size: 12px; cursor: pointer;
+  border: 1px solid transparent;
+}
+.msg-reaction-chip.mine { border-color: rgba(108,142,255,0.4); background: rgba(108,142,255,0.15); }
+.msg-deleted-bubble { opacity: 0.5; font-style: italic; }
+
+/* ---------- voice notes ---------- */
+.voice-btn {
+  background: transparent; border: 0; color: inherit;
+  cursor: pointer; font-size: 18px; padding: 0 8px;
+  user-select: none; -webkit-user-select: none;
+}
+.voice-btn:hover { color: var(--accent, #6c8eff); }
+.voice-btn.recording {
+  background: rgba(255, 80, 80, 0.18); border-radius: 50%;
+  animation: voice-pulse 1.2s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 80, 80, 0.6); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 80, 80, 0); }
+}
+.voice-recording-indicator {
+  position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+  background: #1c1d22; color: #fff; padding: 6px 14px;
+  border-radius: 999px; font-size: 13px; z-index: 1100;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+/* ---------- message text, empty states, notification prompt, connection pill, skeleton, inline images ---------- */
+/* Polished link rendering inside messages */
+.msg-text a {
+  color: var(--accent, #6c8eff);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+.msg-text a:hover { color: var(--accent-strong, #9bb3ff); }
+
+/* Inline code + bold/italic from minimal markdown */
+.msg-text code {
+  background: rgba(255,255,255,0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+.msg-text strong { font-weight: 600; }
+.msg-text em { font-style: italic; opacity: 0.95; }
+
+/* Refined empty-state SVG container */
+.empty-svg {
+  width: 96px;
+  height: 96px;
+  opacity: 0.55;
+  margin-bottom: 4px;
+}
+
+/* Notification permission banner */
+.notif-prompt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(108, 142, 255, 0.08);
+  border: 1px solid rgba(108, 142, 255, 0.18);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px;
+  font-size: 13px;
+}
+.notif-prompt button {
+  background: var(--accent, #6c8eff);
+  border: 0;
+  color: white;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.notif-prompt .dismiss {
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  padding: 5px 8px;
+}
+
+/* Better connection pill with retry indicator */
+#conn-pill { transition: background-color 0.2s ease; }
+#conn-pill.is-disconnected {
+  background: rgba(255, 80, 80, 0.18);
+  color: #ffb3b3;
+}
+#conn-pill.is-connecting {
+  background: rgba(255, 180, 80, 0.18);
+  color: #ffd9a3;
+}
+
+/* Loading skeleton for sidebar while conversations are fetching */
+.conv-skeleton {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  align-items: center;
+}
+.conv-skeleton-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
+}
+.conv-skeleton-line {
+  height: 10px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
+  margin-bottom: 6px;
+}
+.conv-skeleton-line.w-60 { width: 60%; }
+.conv-skeleton-line.w-40 { width: 40%; }
+@keyframes skeleton-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Inline image preview inside bubble */
+.msg-inline-image {
+  max-width: 280px;
+  max-height: 320px;
+  border-radius: 10px;
+  margin-top: 4px;
+  cursor: zoom-in;
+  display: block;
+}
+.image-zoom-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 1500;
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.image-zoom-backdrop img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 6px;
+}
+
+/* ---------- skeleton text, shortcuts dialog, focus outline ---------- */
+/* Skeleton row in sidebar before first /conversations response. */
+.conv-skeleton-text { flex: 1; }
+
+/* Help / shortcuts dialog body */
+.help-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  font-size: 13px;
+}
+.help-grid kbd {
+  display: inline-block;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.help-grid .seq { white-space: nowrap; }
+
+/* Visible focus outline for keyboard navigation. The default browser
+   ring is suppressed across the dark theme; we add a clear one back
+   for any control that lands focus via Tab. */
+.app *:focus-visible,
+.auth-screen *:focus-visible,
+.dialog *:focus-visible {
+  outline: 2px solid var(--accent, #6c8eff);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- conversation search and mentions ---------- */
+/* In-conversation search bar slides in below the panel header */
+.panel-search {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.panel-search input {
+  flex: 1;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 5px 10px;
+  color: inherit;
+  font-size: 13px;
+}
+.panel-search button {
+  background: transparent; border: 0; color: inherit; cursor: pointer;
+  padding: 4px 8px; border-radius: 4px; font-size: 13px;
+}
+.panel-search button:hover { background: rgba(255,255,255,0.08); }
+.panel-search .count {
+  font-size: 11px; opacity: 0.6;
+  min-width: 36px; text-align: center;
+}
+/* Highlight match inside bubble */
+.msg-text mark {
+  background: rgba(255, 220, 100, 0.4);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.msg-row.search-active { box-shadow: 0 0 0 2px rgba(255, 220, 100, 0.45); border-radius: 8px; }
+
+/* @mention chip */
+.msg-text .mention {
+  background: rgba(108, 142, 255, 0.15);
+  border-radius: 4px;
+  padding: 0 4px;
+  color: var(--accent, #6c8eff);
+  font-weight: 500;
+}
+
+/* @mention autocomplete dropdown */
+.mention-pop {
+  position: absolute;
+  background: #1c1d22;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  padding: 4px;
+  z-index: 1100;
+  min-width: 200px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.mention-pop-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.mention-pop-item:hover, .mention-pop-item.active {
+  background: rgba(108, 142, 255, 0.18);
+}
+.mention-pop-empty { padding: 10px; opacity: 0.6; font-size: 12px; text-align: center; }
+
+/* ---------- image attachments ---------- */
+.image-btn {
+  background: transparent; border: 0; color: inherit;
+  cursor: pointer; font-size: 18px; padding: 0 6px;
+}
+.image-btn:hover { color: var(--accent, #6c8eff); }
+.panel-input.drag-over {
+  background: rgba(108, 142, 255, 0.08);
+  outline: 2px dashed rgba(108, 142, 255, 0.4);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.image-uploading {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; opacity: 0.7;
+}
+.image-uploading::before {
+  content: '';
+  display: inline-block;
+  width: 10px; height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- code blocks, file chips, forward dialog, reconnect count ---------- */
+/* Multiline code block */
+.msg-text pre.msg-codeblock {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 6px 0 4px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+html.theme-light .msg-text pre.msg-codeblock {
+  background: rgba(0,0,0,0.04);
+  border-color: rgba(0,0,0,0.08);
+}
+.msg-text pre.msg-codeblock code {
+  background: transparent;
+  padding: 0; border: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; line-height: 1.5;
+  white-space: pre; color: inherit;
+}
+.msg-text pre.msg-codeblock[data-lang]::before {
+  content: attr(data-lang);
+  display: block; font-size: 10px; opacity: 0.5;
+  margin-bottom: 4px; text-transform: lowercase;
+  font-family: var(--font);
+}
+
+/* Generic file chip */
+.msg-file-chip {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin-top: 4px;
+  text-decoration: none;
+  color: inherit; cursor: pointer;
+  font: inherit; text-align: left;
+  max-width: 280px;
+}
+.msg-file-chip:hover { background: rgba(255,255,255,0.1); }
+html.theme-light .msg-file-chip { background: rgba(0,0,0,0.03); border-color: rgba(0,0,0,0.06); }
+.msg-file-chip-icon {
+  width: 36px; height: 36px; flex-shrink: 0;
+  background: rgba(108, 142, 255, 0.18); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+}
+.msg-file-chip-meta { display: flex; flex-direction: column; min-width: 0; }
+.msg-file-chip-name {
+  font-size: 13px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.msg-file-chip-size { font-size: 11px; opacity: 0.6; }
+
+/* Forward dialog */
+.forward-list {
+  max-height: 300px; overflow-y: auto;
+  margin: 8px 0;
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+}
+.forward-list-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; cursor: pointer;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.forward-list-item:last-child { border-bottom: 0; }
+.forward-list-item:hover { background: rgba(108, 142, 255, 0.12); }
+.forward-list-item.selected { background: rgba(108, 142, 255, 0.22); }
+
+/* Connection retry counter inside the conn pill */
+#conn-pill .retry-count {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* ---------- kakao import ---------- */
+.kakao-import-summary {
+  background: rgba(255,205,80,0.08);
+  border: 1px solid rgba(255,205,80,0.18);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.kakao-import-summary strong { color: #ffd25c; }
+.kakao-archive-banner {
+  background: rgba(255,205,80,0.06);
+  border-bottom: 1px solid rgba(255,205,80,0.2);
+  padding: 8px 16px;
+  font-size: 12px;
+  text-align: center;
+}
+.kakao-archive-banner strong { color: #ffd25c; }
+.kakao-conv-prefix { color: #ffd25c; margin-right: 4px; }
+
+/* ---------- blocked users and mute ---------- */
+.blocked-list {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  margin-top: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.blocked-list:empty::before {
+  content: '차단된 사용자 없음';
+  display: block;
+  padding: 12px;
+  opacity: 0.55;
+  font-size: 12px;
+  text-align: center;
+}
+.blocked-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.blocked-row:last-child { border-bottom: 0; }
+.blocked-row .grow { flex: 1; min-width: 0; }
+.blocked-row .unblock {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: inherit; padding: 3px 10px;
+  border-radius: 6px; font-size: 12px;
+  cursor: pointer;
+}
+.blocked-row .unblock:hover { background: rgba(255,255,255,0.12); }
+html.theme-light .blocked-list { border-color: rgba(0,0,0,0.06); }
+html.theme-light .blocked-row { border-bottom-color: rgba(0,0,0,0.04); }
+.panel-header .mute-toggle {
+  background: transparent; border: 0; color: inherit;
+  cursor: pointer; padding: 4px 8px; opacity: 0.7;
+  margin-left: 6px; font-size: 14px;
+}
+.panel-header .mute-toggle:hover { opacity: 1; }
+.conv-item.muted .conv-meta { opacity: 0.5; }
+.conv-item.muted .conv-name::after { content: ' 🔕'; }
+
+/* ---------- settings dialog ---------- */
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06);
+}
+.settings-row:first-of-type { border-top: 0; }
+.settings-label { font-size: 13px; }
+.settings-select {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: inherit; padding: 4px 8px;
+  border-radius: 6px; font-size: 13px;
+}
+.settings-toggle { width: 18px; height: 18px; }

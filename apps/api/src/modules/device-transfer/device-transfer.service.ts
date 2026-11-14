@@ -12,7 +12,9 @@ import { createHash, randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 
 import { AppConfigService } from '../../common/config/app-config.service';
-import { forbidden, notFound, unauthorized } from '../../common/errors/api-error';
+import { utcDayStart } from '../../common/device-activity';
+import { revokeDevice } from '../../common/device-revocation';
+import { apiError, forbidden, notFound, unauthorized } from '../../common/errors/api-error';
 import { EphemeralStoreService } from '../../common/ephemeral-store.service';
 import { PrismaService } from '../../common/prisma.service';
 import { DEVICE_AUTH_VERIFIER, type DeviceAuthVerifier } from '../auth/device-auth-verifier';
@@ -40,14 +42,43 @@ interface PendingTransferClaim {
 const buildClaimChallenge = (sessionId: string, transferToken: string): string =>
   `transfer-claim:${sessionId}:${transferToken}`;
 
-const claimFingerprint = (authPublicKey: string): string =>
-  authPublicKey.length <= 12
-    ? authPublicKey
-    : `${authPublicKey.substring(0, 6)}...${authPublicKey.substring(authPublicKey.length - 4)}`;
+// What the old device signs to approve a claim. It names the claim and the
+// fingerprint of exactly the keys the user compared on both screens.
+export const buildApprovalChallenge = (
+  sessionId: string,
+  claimId: string,
+  claimantFingerprint: string,
+): string => `transfer-approve:${sessionId}:${claimId}:${claimantFingerprint}`;
+
+// 'invalidated' is not yet part of the shared DeviceTransferStatus contract.
+export type TransferSessionStatus = DeviceTransferStatus | 'invalidated';
+export type TransferSessionStatusResponse = Omit<DeviceTransferSessionStatusResponse, 'status'> & {
+  status: TransferSessionStatus;
+};
+
+// Full SHA-256 over both keys the new device will be trusted with, in 16
+// groups of 4 so the two screens can be compared group by group. A truncated
+// fingerprint is cheap to collide. The auth key has already been verified as
+// a 32-byte Ed25519 key, so the concatenation is unambiguous.
+const claimFingerprint = (authPublicKey: string, publicIdentityKey: string): string =>
+  createHash('sha256')
+    .update(Buffer.from(authPublicKey, 'base64url'))
+    .update(Buffer.from(publicIdentityKey, 'base64url'))
+    .digest('hex')
+    .replace(/(.{4})(?!$)/g, '$1 ');
 
 const claimKey = (sessionId: string): string => `transfer:claim:${sessionId}`;
 
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
+
+// A session that ends without a transfer keeps one of these in place of its
+// token hash: the token can never match again, and the state stays durable
+// (unlike an ephemeral marker) so the old device is never told 'completed' —
+// which makes it log itself out — for a transfer that did not happen.
+// Killed by a competing claim:
+const INVALIDATED_TOKEN_HASH = 'invalidated';
+// Closed after it expired, or superseded by a newer transfer:
+const CLOSED_TOKEN_HASH = 'closed';
 
 @Injectable()
 export class DeviceTransferService {
@@ -152,6 +183,8 @@ export class DeviceTransferService {
       );
     }
 
+    await this.verifyApproval(auth.deviceId, dto, pendingClaim.claimantFingerprint);
+
     await this.ephemeralStore.setJson<PendingTransferClaim>(
       claimKey(dto.sessionId),
       {
@@ -168,6 +201,37 @@ export class DeviceTransferService {
       claimId: dto.claimId,
       approved: true,
     };
+  }
+
+  // The approval moves the account to the claimant's keys for good, so it
+  // must come from the old device itself, not only from whoever holds its
+  // bearer token: the old device signs the claim with the auth key it logs in
+  // with. Every relay requires the proof, whatever VEIL_ENV says (see
+  // AuthService.verifyDeviceStepUp).
+  private async verifyApproval(
+    oldDeviceId: string,
+    dto: DeviceTransferApproveDto,
+    claimantFingerprint: string,
+  ): Promise<void> {
+    if (!dto.approvalProof) {
+      throw unauthorized('invalid_device_signature', 'The old device must sign the approval');
+    }
+    const oldDevice = await this.prisma.device.findUnique({
+      where: { id: oldDeviceId },
+      select: { authPublicKey: true, isActive: true, revokedAt: true },
+    });
+    if (!oldDevice || !oldDevice.isActive || oldDevice.revokedAt) {
+      throw forbidden('device_forbidden', 'Old device is not part of the trusted device graph');
+    }
+    const valid = await this.deviceAuthVerifier.verifyChallengeResponse({
+      challenge: buildApprovalChallenge(dto.sessionId, dto.claimId, claimantFingerprint),
+      proof: dto.approvalProof,
+      authPublicKey: oldDevice.authPublicKey,
+      deviceId: oldDeviceId,
+    });
+    if (!valid) {
+      throw unauthorized('invalid_device_signature', 'Approval signature is invalid');
+    }
   }
 
   async claim(dto: DeviceTransferClaimDto): Promise<DeviceTransferClaimResponse> {
@@ -217,15 +281,25 @@ export class DeviceTransferService {
       publicIdentityKey: dto.publicIdentityKey,
       signedPrekeyBundle: dto.signedPrekeyBundle,
       authPublicKey: dto.authPublicKey,
-      claimantFingerprint: claimFingerprint(dto.authPublicKey),
+      claimantFingerprint: claimFingerprint(dto.authPublicKey, dto.publicIdentityKey),
       claimProofVerifiedAt: new Date().toISOString(),
     };
 
-    await this.ephemeralStore.setJson<PendingTransferClaim>(
+    // First claim wins. Anyone who saw the QR code holds a valid token, so a
+    // second valid claim means the code leaked: kill the whole session rather
+    // than let a later claim replace the one the user is about to approve.
+    const isFirstClaim = await this.ephemeralStore.setJsonIfAbsent<PendingTransferClaim>(
       claimKey(dto.sessionId),
       pendingClaim,
       this.config.transferTokenTtlSeconds,
     );
+    if (!isFirstClaim) {
+      await this.invalidateSession(dto.sessionId);
+      throw apiError(
+        'transfer_claim_invalid',
+        'Transfer session was claimed twice and has been invalidated; start a new transfer',
+      );
+    }
 
     this.countTransfer('claim');
 
@@ -243,7 +317,7 @@ export class DeviceTransferService {
   async getSessionStatus(args: {
     sessionId: string;
     auth: { userId: string; deviceId: string };
-  }): Promise<DeviceTransferSessionStatusResponse> {
+  }): Promise<TransferSessionStatusResponse> {
     const session = await this.prisma.deviceTransferSession.findUnique({
       where: { id: args.sessionId },
     });
@@ -256,12 +330,21 @@ export class DeviceTransferService {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
     }
 
-    const pendingClaim = await this.ephemeralStore.getJson<PendingTransferClaim>(
-      claimKey(args.sessionId),
-    );
+    // A claim racing the invalidation can be rewritten after it, so a session
+    // that ended without a transfer never shows one.
+    const invalidated = session.tokenHash === INVALIDATED_TOKEN_HASH;
+    const closed = session.tokenHash === CLOSED_TOKEN_HASH;
+    const pendingClaim =
+      invalidated || closed
+        ? null
+        : await this.ephemeralStore.getJson<PendingTransferClaim>(claimKey(args.sessionId));
 
-    let status: DeviceTransferStatus;
-    if (session.completedAt) {
+    let status: TransferSessionStatus;
+    if (invalidated) {
+      status = 'invalidated';
+    } else if (closed) {
+      status = 'expired';
+    } else if (session.completedAt) {
       status = 'completed';
     } else if (session.expiresAt.getTime() <= Date.now()) {
       status = 'expired';
@@ -277,7 +360,8 @@ export class DeviceTransferService {
       sessionId: session.id,
       status,
       expiresAt: session.expiresAt.toISOString(),
-      completedAt: session.completedAt ? session.completedAt.toISOString() : null,
+      completedAt:
+        session.completedAt && status === 'completed' ? session.completedAt.toISOString() : null,
       pendingClaim: pendingClaim
         ? {
             claimId: pendingClaim.claimId,
@@ -301,6 +385,25 @@ export class DeviceTransferService {
 
     if (!session) {
       throw notFound('transfer_session_not_found', 'Transfer session not found');
+    }
+
+    // A retry of a completion that already went through: its first response
+    // may have been lost after the transfer committed, and the new device has
+    // no other way to learn its id, while the old one is already revoked.
+    // The ended-session markers can never equal a token hash, so only a
+    // transfer that really happened is answered.
+    if (
+      session.completedAt &&
+      session.newDeviceId &&
+      hashToken(dto.transferToken) === session.tokenHash
+    ) {
+      return this.replayCompletion(dto, {
+        sessionId: session.id,
+        oldDeviceId: session.oldDeviceId,
+        newDeviceId: session.newDeviceId,
+        handle: session.user.handle,
+        completedAt: session.completedAt,
+      });
     }
 
     if (await this.closeIfInactive(session.id, session.completedAt, session.expiresAt)) {
@@ -391,6 +494,7 @@ export class DeviceTransferService {
             authPublicKey: pendingClaim.authPublicKey,
             isActive: true,
             trustedAt: completedAt,
+            lastSeenAt: utcDayStart(completedAt),
             joinedFromDeviceId: session.oldDeviceId,
           },
         });
@@ -400,14 +504,7 @@ export class DeviceTransferService {
         // new one being created. Without this, the old device's access
         // token keeps working until natural expiry — bad if the user is
         // transferring because the old device was lost or compromised.
-        await tx.device.update({
-          where: { id: session.oldDeviceId },
-          data: {
-            isActive: false,
-            revokedAt: completedAt,
-            pushToken: null,
-          },
-        });
+        await revokeDevice(tx, session.oldDeviceId, completedAt);
 
         await tx.user.update({
           where: { id: session.userId },
@@ -416,7 +513,7 @@ export class DeviceTransferService {
 
         await tx.deviceTransferSession.update({
           where: { id: session.id },
-          data: { completedAt },
+          data: { completedAt, newDeviceId: newDevice.id },
         });
 
         return newDevice;
@@ -443,9 +540,62 @@ export class DeviceTransferService {
       revokedDeviceId: session.oldDeviceId,
       preferredDeviceId: result.id,
       handle: session.user.handle,
-      displayName: session.user.displayName,
       completedAt: completedAt.toISOString(),
     };
+  }
+
+  // Answers a repeated completion exactly as the first one was answered, and
+  // changes nothing: no device is created, revoked or disconnected again. It
+  // grants nothing new either: the proof needs the new device's auth key,
+  // which can already log in once it knows its id. A proof by any other key,
+  // or a new device that has since been revoked, gets the refusal a finished
+  // session always got.
+  private async replayCompletion(
+    dto: DeviceTransferCompleteDto,
+    completion: {
+      sessionId: string;
+      oldDeviceId: string;
+      newDeviceId: string;
+      handle: string;
+      completedAt: Date;
+    },
+  ): Promise<DeviceTransferCompleteResponse> {
+    const newDevice = await this.prisma.device.findUnique({
+      where: { id: completion.newDeviceId },
+      select: { authPublicKey: true, isActive: true, revokedAt: true },
+    });
+    if (!newDevice || !newDevice.isActive || newDevice.revokedAt) {
+      throw forbidden('transfer_session_inactive', 'Transfer session already completed');
+    }
+
+    const validCompletionProof = await this.deviceAuthVerifier.verifyChallengeResponse({
+      challenge: `transfer-complete:${dto.sessionId}:${dto.claimId}:${dto.transferToken}`,
+      proof: dto.authProof,
+      authPublicKey: newDevice.authPublicKey,
+      deviceId: dto.claimId,
+    });
+    if (!validCompletionProof) {
+      throw unauthorized('transfer_completion_invalid', 'New device completion proof is invalid');
+    }
+
+    return {
+      sessionId: completion.sessionId,
+      claimId: dto.claimId,
+      newDeviceId: completion.newDeviceId,
+      revokedDeviceId: completion.oldDeviceId,
+      preferredDeviceId: completion.newDeviceId,
+      handle: completion.handle,
+      completedAt: completion.completedAt.toISOString(),
+    };
+  }
+
+  private async invalidateSession(sessionId: string): Promise<void> {
+    // Only an open session: a completed transfer must keep reporting completed.
+    await this.prisma.deviceTransferSession.updateMany({
+      where: { id: sessionId, completedAt: null },
+      data: { tokenHash: INVALIDATED_TOKEN_HASH, completedAt: new Date() },
+    });
+    await this.ephemeralStore.delete(claimKey(sessionId));
   }
 
   private async invalidateExistingSessions(userId: string, oldDeviceId: string): Promise<void> {
@@ -470,6 +620,7 @@ export class DeviceTransferService {
           completedAt: null,
         },
         data: {
+          tokenHash: CLOSED_TOKEN_HASH,
           completedAt: new Date(),
         },
       });
@@ -506,8 +657,10 @@ export class DeviceTransferService {
         id: {
           in: expired.map((session) => session.id),
         },
+        completedAt: null,
       },
       data: {
+        tokenHash: CLOSED_TOKEN_HASH,
         completedAt: now,
       },
     });
@@ -528,9 +681,9 @@ export class DeviceTransferService {
     }
 
     await this.ephemeralStore.delete(claimKey(sessionId));
-    await this.prisma.deviceTransferSession.update({
-      where: { id: sessionId },
-      data: { completedAt: new Date() },
+    await this.prisma.deviceTransferSession.updateMany({
+      where: { id: sessionId, completedAt: null },
+      data: { tokenHash: CLOSED_TOKEN_HASH, completedAt: new Date() },
     });
     return true;
   }

@@ -4,7 +4,7 @@ VEIL private beta uses a trusted-device graph, not cloud recovery and not Telegr
 
 ## Core rules
 
-- A user can have multiple concurrently trusted devices.
+- The graph can hold several trusted devices, but the only way to add one is a transfer (below), which revokes the device it came from, so an account is active on one device at a time.
 - Joining a new device requires an already trusted old device to initiate and approve the handoff.
 - Losing every trusted device still means account and message access are unrecoverable.
 - Sensitive key material remains device-side.
@@ -24,12 +24,13 @@ VEIL private beta uses a trusted-device graph, not cloud recovery and not Telegr
 3. The old device approves the exact `claimId`.
 4. The new device completes the join with a second proof.
 5. The new device is added to the trusted graph with `joined_from_device_id` pointing at the approving device.
-6. The old device remains trusted until it is explicitly revoked.
+6. In the same transaction the old device is revoked and preferred routing moves to the new device (`device-transfer-flow.md`, step 9): a transfer moves the account, it does not add a second device. Message history is not transferred.
 
 ## Revoke flow
 
 - Revoking a device invalidates that device's bearer usage and websocket session.
 - If the revoked device was the preferred device, VEIL selects another trusted device as the preferred device when available.
+- Revoking (or transferring away from) a device replaces its label with "Removed device" and deletes its push token, unclaimed one-time prekeys and sync cursors at once. The device list shows it as `revoked` until the row is deleted, once it has been revoked for 30 days and no message, attachment or call record references it (`docs/metadata-retention.md`).
 - Revoke does not create a recovery path.
 
 ## Per-device sync state
@@ -52,8 +53,8 @@ These values are metadata only. Message bodies remain ciphertext-like payloads.
 ## What stays unchanged for real crypto
 
 - Join still requires an existing trusted device.
-- Device graph metadata can remain server-side.
-- Per-device sync cursors can remain server-side.
+- Device graph metadata of active devices can remain server-side; revoked devices are deleted as described under "Revoke flow".
+- Per-device sync cursors can remain server-side, as conversation orders without timestamps.
 - Ciphertext-only message relay architecture stays intact.
 
 ## What must change for audited real crypto

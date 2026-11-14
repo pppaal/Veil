@@ -5,14 +5,14 @@ VEIL Messenger
 Encrypted privacy messenger
 
 [Promotional Text]
-A cold, encrypted messenger with no accounts, no phone numbers, and no recovery path. Conversations live only on your device.
+A cold, encrypted messenger with no phone number, no email, no real name and no recovery path. Only you and the people you talk to can read your conversations.
 
 [Description]
 VEIL is a messenger designed with privacy as the first principle.
 
 Core principles
 • No phone number. No email. No real name required.
-• Every message is end-to-end encrypted on-device. Servers never see plaintext.
+• Every message is end-to-end encrypted on-device. Servers never see your messages in plaintext.
 • No recovery path. If you lose the device, the conversations go with it. This is the VEIL safety model.
 
 Cryptography

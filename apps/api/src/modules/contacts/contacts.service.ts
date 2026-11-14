@@ -1,48 +1,33 @@
 import { Injectable } from '@nestjs/common';
+import type { ContactSummary } from '@veil/contracts';
 
 import { PrismaService } from '../../common/prisma.service';
 import { badRequest, conflict, notFound } from '../../common/errors/api-error';
-import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { AddContactDto } from './dto/add-contact.dto';
 
+// The server keeps only who added whom. What users call their contacts stays
+// on their devices.
 @Injectable()
 export class ContactsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly realtimeGateway: RealtimeGateway,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async listContacts(auth: { userId: string }) {
+  async listContacts(auth: { userId: string }): Promise<ContactSummary[]> {
     const contacts = await this.prisma.userContact.findMany({
       where: { userId: auth.userId },
-      include: {
-        contactUser: {
-          select: {
-            id: true,
-            handle: true,
-            displayName: true,
-            profile: {
-              select: { avatarPath: true },
-            },
-          },
-        },
-      },
+      include: { contactUser: { select: { handle: true } } },
       orderBy: { createdAt: 'asc' },
     });
 
     return contacts.map((entry) => ({
       handle: entry.contactUser.handle,
-      displayName: entry.contactUser.displayName,
-      nickname: entry.nickname,
-      avatarPath: entry.contactUser.profile?.avatarPath ?? null,
       addedAt: entry.createdAt.toISOString(),
     }));
   }
 
-  async addContact(auth: { userId: string }, dto: AddContactDto) {
+  async addContact(auth: { userId: string }, dto: AddContactDto): Promise<ContactSummary> {
     const targetUser = await this.prisma.user.findUnique({
       where: { handle: dto.handle.toLowerCase() },
-      select: { id: true, handle: true, displayName: true },
+      select: { id: true, handle: true },
     });
 
     if (!targetUser) {
@@ -67,19 +52,10 @@ export class ContactsService {
     }
 
     const contact = await this.prisma.userContact.create({
-      data: {
-        userId: auth.userId,
-        contactUserId: targetUser.id,
-        nickname: dto.nickname ?? null,
-      },
+      data: { userId: auth.userId, contactUserId: targetUser.id },
     });
 
-    return {
-      handle: targetUser.handle,
-      displayName: targetUser.displayName,
-      nickname: contact.nickname,
-      addedAt: contact.createdAt.toISOString(),
-    };
+    return { handle: targetUser.handle, addedAt: contact.createdAt.toISOString() };
   }
 
   async removeContact(auth: { userId: string }, handle: string) {

@@ -58,6 +58,15 @@ Model B fits VEIL's existing stack: the `apps/api` envelope/attachment
 storage already does encrypted-blob handling, and `veil://` deep links can
 carry the fragment into the app when it *is* installed.
 
+The app shares links as `<relay>/demo/s.html#<id>.<key>`. The relay serves that
+viewer page in production too: `apps/api/src/web-assets.ts` serves exactly
+`s.html`, `s.js` and the two modules it imports under `/demo`, with the page's
+own CSP, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`; the rest
+of the web demo is served only outside production. Caddy forwards `/demo/*`
+unstripped (`handle`, not `handle_path`), and its site-wide `Referrer-Policy`
+is only a default (`?Referrer-Policy`), so it never replaces the viewer's
+`no-referrer`; `scripts/policy-check.mjs` fails on either regression.
+
 ## Threat model / limits (be honest in the UI)
 
 - A malicious recipient can screenshot or copy before "burn" — one-time
@@ -65,7 +74,10 @@ carry the fragment into the app when it *is* installed.
 - Key-in-link mode trusts the sharing channel: anyone who sees the full
   link can read it once. Passphrase mode removes that assumption.
 - Model B's server learns metadata (size, timing, IP) but never plaintext
-  or keys. Document retention = "until first read or TTL, then purged."
+  or keys. Document retention = "until first read or TTL, then deleted from
+  the database"; until Postgres reuses that space, the ciphertext can stay in
+  its write-ahead log and table files (`metadata-retention.md`, "No database
+  backups").
 
 ## Why this first (growth)
 

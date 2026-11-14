@@ -1,17 +1,28 @@
+import 'dart:io' show HttpDate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
+import 'package:veil_mobile/src/core/identity/identity_key_value_backend.dart';
+import 'package:veil_mobile/src/core/identity/trusted_identity_resolver.dart';
+import 'package:veil_mobile/src/core/identity/trusted_identity_store.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
+import 'package:veil_mobile/src/core/storage/in_memory_message_content_store.dart';
+import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
+import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+
+import 'support/memory_secure_store.dart';
 
 void main() {
   testWidgets('chat room shows delivery badge and local search context', (tester) async {
@@ -38,6 +49,21 @@ void main() {
       ),
     );
     final api = _FakeChatApiClient(envelope);
+    // This device cannot open what it sealed: its own messages render from
+    // the content it stored before sending, which the ack moved under the
+    // relay's id.
+    final cache = _MemoryConversationCache();
+    final storedAt = DateTime.utc(2026, 4, 7, 9, 29);
+    await cache.put(MessageContentRecord(
+      messageKey: 'msg-1',
+      conversationId: 'conv-1',
+      serverMessageId: 'msg-1',
+      body: 'Orbit relay window',
+      kind: MessageKind.text,
+      status: MessageContentStatus.ok,
+      createdAt: storedAt,
+      updatedAt: storedAt,
+    ));
     final controller = VeilMessengerController(
       apiClient: api,
       cryptoEngine: adapter.messaging,
@@ -45,7 +71,7 @@ void main() {
       envelopeCodec: adapter.envelopeCodec,
       sessionBootstrapper: adapter.sessions,
       realtimeService: _FakeRealtimeService(),
-      cacheService: _MemoryConversationCache(),
+      cacheService: cache,
     );
     addTearDown(() async {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -108,8 +134,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final newerEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Newest relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -122,8 +148,8 @@ void main() {
     );
     final olderEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Older relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -196,6 +222,217 @@ void main() {
     expect(find.text('Complete'), findsOneWidget);
     expect(find.text('Conversation window complete'), findsOneWidget);
   });
+
+  group('a disappearing message on a device whose clock runs 15 minutes fast', () {
+    const deviceClockAhead = Duration(minutes: 15);
+
+    testWidgets('is shown, with the time the relay leaves it, while the relay keeps it', (tester) async {
+      // Past by the device clock; ten minutes left by the relay's.
+      final controller = await _pumpExpiringChat(
+        tester,
+        expiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 5)),
+        deviceClockAhead: deviceClockAhead,
+      );
+
+      expect(controller.messagesFor('conv-1'), hasLength(1));
+      expect(find.text('Orbit relay window'), findsOneWidget);
+      expect(find.textContaining(RegExp(r'^Expires in (9|10)m$')), findsOneWidget);
+    });
+
+    testWidgets('is hidden once the relay counts it expired too', (tester) async {
+      await _pumpExpiringChat(
+        tester,
+        expiresAt: DateTime.now().toUtc().subtract(const Duration(minutes: 20)),
+        deviceClockAhead: deviceClockAhead,
+      );
+
+      expect(find.text('Orbit relay window'), findsNothing);
+    });
+  });
+
+  // trust-5: what the user sees is a handle; pins and verification are about
+  // an account.
+  testWidgets('a 1:1 listed under a handle this device knows as another account is held until acknowledged',
+      (tester) async {
+    // In the keystore, as in the app: signing in reads the bindings again.
+    final bindings = ConversationPeerBindings(
+      store: SecureStorageService(MemorySecureStore()).scoped(SecureScope.conversationPolicy),
+    );
+    await bindings.bindAll({'conv-earlier': const ConversationPeer(userId: 'user-earlier', handle: 'selene')});
+    final controller = await _pumpExpiringChat(tester, peerBindings: bindings);
+
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
+    expect(find.text('A different account'), findsOneWidget);
+    expect(find.text('Verified'), findsNothing);
+
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+
+    expect(controller.peerAccountHoldFor('conv-1'), isNull);
+    expect(find.text('A different account'), findsNothing);
+  });
+
+  testWidgets('an acknowledgement the keystore refuses is shown in the chat, and the 1:1 stays held', (tester) async {
+    final keystore = _RefusingWrites();
+    final bindings = ConversationPeerBindings(
+      store: SecureStorageService(keystore).scoped(SecureScope.conversationPolicy),
+    );
+    await bindings.bindAll({'conv-earlier': const ConversationPeer(userId: 'user-earlier', handle: 'selene')});
+    final controller = await _pumpExpiringChat(tester, peerBindings: bindings);
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
+
+    keystore.refuse = true;
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+
+    expect(controller.errorMessage, contains('keystore unavailable'));
+    expect(find.text('Conversation issue'), findsOneWidget);
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
+    expect(find.text('A different account'), findsOneWidget);
+    final listed = controller.conversationById('conv-1')!;
+    final held = await tester.runAsync(() => bindings.holdFor(
+          'conv-1',
+          ConversationPeer(userId: listed.recipientBundle.userId, handle: listed.peerHandle),
+          self: const ConversationPeer(userId: 'user-local', handle: 'atlas'),
+        ));
+    expect(held?.reason, PeerAccountHoldReason.otherAccount);
+  });
+
+  // closing F4: another account listed under the user's own handle.
+  testWidgets('a 1:1 listed under this device\'s own handle as another account is held until confirmed',
+      (tester) async {
+    final controller = await _pumpExpiringChat(tester, peerHandle: 'atlas');
+
+    expect(controller.conversationById('conv-1')!.recipientBundle.userId, 'user-peer');
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
+    expect(find.text('Another account under your name'), findsOneWidget);
+    expect(find.textContaining('listed under your own name, @atlas'), findsOneWidget);
+
+    // Acknowledging it asks first; backing out keeps it held.
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+    expect(find.text('Talk to this other @atlas?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.ownHandle);
+    expect(find.text('Another account under your name'), findsOneWidget);
+
+    await tester.tap(find.text('Talk to this account'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(AlertDialog), matching: find.text('Talk to this account')));
+    await tester.pumpAndSettle();
+
+    expect(controller.peerAccountHoldFor('conv-1'), isNull);
+    expect(find.text('Another account under your name'), findsNothing);
+  });
+
+  testWidgets('a contact whose every device was verified is marked verified', (tester) async {
+    final resolver = TrustedIdentityResolver(store: TrustedIdentityStore(InMemoryIdentityKeyValueBackend()));
+    await resolver.adoptVerified('user-peer', 'device-peer', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+        verifiedAt: DateTime.utc(2026, 4, 1));
+    await _pumpExpiringChat(tester, identityTrust: IdentityTrust(resolver));
+
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('A different account'), findsNothing);
+  });
+
+  testWidgets('a contact never verified carries no mark', (tester) async {
+    await _pumpExpiringChat(tester);
+
+    expect(find.text('Verified'), findsNothing);
+  });
+}
+
+// Opens the chat room over one message of ours, 'Orbit relay window', that
+// expires at [expiresAt], on a device whose clock runs [deviceClockAhead] of
+// the relay's: the relay's Date header said so.
+Future<VeilMessengerController> _pumpExpiringChat(
+  WidgetTester tester, {
+  DateTime? expiresAt,
+  Duration deviceClockAhead = Duration.zero,
+  ConversationPeerBindings? peerBindings,
+  IdentityTrust? identityTrust,
+  String peerHandle = 'selene',
+}) async {
+  tester.view.physicalSize = const Size(1400, 1600);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(() {
+    tester.view.resetPhysicalSize();
+    tester.view.resetDevicePixelRatio();
+  });
+  final adapter = createDefaultCryptoAdapter();
+  final envelope = await adapter.messaging.encryptMessage(
+    conversationId: 'conv-1',
+    senderDeviceId: 'device-local',
+    recipientUserId: 'user-peer',
+    body: 'Orbit relay window',
+    messageKind: MessageKind.text,
+    recipientBundle: const KeyBundle(
+      userId: 'user-peer',
+      deviceId: 'device-peer',
+      handle: 'selene',
+      identityPublicKey: 'pub-peer',
+      signedPrekeyBundle: 'bundle-peer',
+    ),
+  );
+  final api = _FakeChatApiClient(envelope, expiresAt: expiresAt, peerHandle: peerHandle);
+  api.serverClock.observe(HttpDate.format(DateTime.now().toUtc().subtract(deviceClockAhead)));
+  final cache = _MemoryConversationCache();
+  final storedAt = DateTime.utc(2026, 4, 7, 9, 29);
+  await cache.put(MessageContentRecord(
+    messageKey: 'msg-1',
+    conversationId: 'conv-1',
+    serverMessageId: 'msg-1',
+    senderDeviceId: 'device-local',
+    body: 'Orbit relay window',
+    kind: MessageKind.text,
+    status: MessageContentStatus.ok,
+    createdAt: storedAt,
+    updatedAt: storedAt,
+  ));
+  final controller = VeilMessengerController(
+    apiClient: api,
+    cryptoEngine: adapter.messaging,
+    keyBundleCodec: adapter.keyBundles,
+    envelopeCodec: adapter.envelopeCodec,
+    sessionBootstrapper: adapter.sessions,
+    realtimeService: _FakeRealtimeService(),
+    cacheService: cache,
+    peerBindings: peerBindings,
+    identityTrust: identityTrust,
+  );
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+  await controller.applySession(
+    const AppSessionState(
+      accessToken: 'token',
+      userId: 'user-local',
+      deviceId: 'device-local',
+      handle: 'atlas',
+      displayName: 'Atlas',
+      onboardingAccepted: true,
+      locked: false,
+      initializing: false,
+    ),
+  );
+  await controller.loadConversationMessages('conv-1');
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        messengerControllerProvider.overrideWith((ref) => controller),
+      ],
+      child: const _TestApp(
+        child: ChatRoomScreen(
+          conversationId: 'conv-1',
+          embedded: true,
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return controller;
 }
 
 class _TestApp extends StatelessWidget {
@@ -237,12 +474,41 @@ class _FakeRealtimeService extends RealtimeService {
   }
 }
 
-class _MemoryConversationCache implements ConversationCacheService {
+// Durable content, as the Drift cache keeps it: a sign-in does not wipe it.
+class _MemoryConversationCache implements ConversationCacheService, MessageContentStore {
+  final InMemoryMessageContentStore _contents = InMemoryMessageContentStore();
+
+  @override
+  Future<void> put(MessageContentRecord record) => _contents.put(record);
+
+  @override
+  Future<MessageContentRecord?> get(String messageKey) => _contents.get(messageKey);
+
+  @override
+  Future<Map<String, MessageContentRecord>> getMany(Iterable<String> messageKeys) => _contents.getMany(messageKeys);
+
+  @override
+  Future<Map<String, DateTime>> innerExpiries(Iterable<String> messageKeys) => _contents.innerExpiries(messageKeys);
+
+  @override
+  Future<void> rekeyLocalToServer({required String clientMessageId, required String serverMessageId}) =>
+      _contents.rekeyLocalToServer(clientMessageId: clientMessageId, serverMessageId: serverMessageId);
+
+  @override
+  Future<void> deleteConversation(String conversationId) => _contents.deleteConversation(conversationId);
+
+  @override
+  Future<void> deleteExpired(DateTime now, {Iterable<String> messageKeys = const []}) =>
+      _contents.deleteExpired(now, messageKeys: messageKeys);
+
+  @override
+  Future<Set<String>> retiredAmong(Iterable<String> messageKeys) => _contents.retiredAmong(messageKeys);
+
   @override
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -300,9 +566,13 @@ class _MemoryConversationCache implements ConversationCacheService {
 }
 
 class _FakeChatApiClient extends VeilApiClient {
-  _FakeChatApiClient(this._envelope) : super(baseUrl: 'http://localhost:3000/v1');
+  _FakeChatApiClient(this._envelope, {this.expiresAt, this.peerHandle = 'selene'})
+      : super(baseUrl: 'http://localhost:3000/v1');
 
   final CryptoEnvelope _envelope;
+  final DateTime? expiresAt;
+  // The handle the list shows the peer's account under.
+  final String peerHandle;
 
   @override
   Future<Map<String, dynamic>> getConversations(String accessToken) async {
@@ -319,7 +589,7 @@ class _FakeChatApiClient extends VeilApiClient {
             },
             {
               'userId': 'user-peer',
-              'handle': 'selene',
+              'handle': peerHandle,
               'displayName': 'Selene',
             },
           ],
@@ -338,6 +608,7 @@ class _FakeChatApiClient extends VeilApiClient {
             'conversationOrder': 1,
             'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
             'readAt': null,
+            if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
           },
         },
       ],
@@ -368,6 +639,7 @@ class _FakeChatApiClient extends VeilApiClient {
           'conversationOrder': 1,
           'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
           'readAt': null,
+          if (expiresAt != null) 'expiresAt': expiresAt!.toIso8601String(),
         },
       ],
       'nextCursor': null,
@@ -415,8 +687,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
             'id': 'msg-2',
             'clientMessageId': null,
             'conversationId': 'conv-1',
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': latestEnvelope.senderDeviceId,
+            'recipientUserId': latestEnvelope.recipientUserId,
             'ciphertext': latestEnvelope.ciphertext,
             'nonce': latestEnvelope.nonce,
             'version': latestEnvelope.version,
@@ -448,8 +720,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
             'id': 'msg-1',
             'clientMessageId': null,
             'conversationId': 'conv-1',
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': olderEnvelope.senderDeviceId,
+            'recipientUserId': olderEnvelope.recipientUserId,
             'ciphertext': olderEnvelope.ciphertext,
             'nonce': olderEnvelope.nonce,
             'version': olderEnvelope.version,
@@ -470,8 +742,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
           'id': 'msg-2',
           'clientMessageId': null,
           'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
+          'senderDeviceId': latestEnvelope.senderDeviceId,
+          'recipientUserId': latestEnvelope.recipientUserId,
           'ciphertext': latestEnvelope.ciphertext,
           'nonce': latestEnvelope.nonce,
           'version': latestEnvelope.version,
@@ -492,5 +764,16 @@ class _FakePagedChatApiClient extends VeilApiClient {
     String messageId,
   ) async {
     return const <String, dynamic>{};
+  }
+}
+
+/// A keystore that refuses writes while [refuse] is set.
+class _RefusingWrites extends MemorySecureStore {
+  bool refuse = false;
+
+  @override
+  Future<void> write({required String key, required String? value}) {
+    if (refuse) throw StateError('keystore unavailable');
+    return super.write(key: key, value: value);
   }
 }

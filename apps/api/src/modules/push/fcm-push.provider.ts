@@ -1,9 +1,9 @@
 import { createPrivateKey, createSign } from 'node:crypto';
 
-import { badRequest } from '../../common/errors/api-error';
+import { apiError } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 
-import type { MessagePushHint, PushProvider } from './push.types';
+import { PUSH_DELIVERY_TIMEOUT_MS, type MessagePushHint, type PushProvider } from './push.types';
 
 type FcmRequestShape = {
   endpoint: string;
@@ -37,7 +37,7 @@ export class FcmMetadataPushProvider implements PushProvider {
 
   constructor(private readonly config: AppConfigService) {
     if (!config.fcmProjectId || !config.fcmServiceAccountJson) {
-      throw badRequest(
+      throw apiError(
         'internal_error',
         'FCM provider selected but required FCM credentials are missing',
       );
@@ -85,10 +85,12 @@ export class FcmMetadataPushProvider implements PushProvider {
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(request.body),
+      signal: AbortSignal.timeout(PUSH_DELIVERY_TIMEOUT_MS),
     });
     if (!response.ok) {
-      throw new Error(
-        `FCM delivery failed with status ${response.status}: ${await response.text()}`,
+      throw Object.assign(
+        new Error(`FCM delivery failed with status ${response.status}: ${await response.text()}`),
+        { code: `fcm_status_${response.status}` },
       );
     }
   }
@@ -121,10 +123,14 @@ export class FcmMetadataPushProvider implements PushProvider {
         grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
         assertion,
       }),
+      signal: AbortSignal.timeout(PUSH_DELIVERY_TIMEOUT_MS),
     });
     if (!response.ok) {
-      throw new Error(
-        `FCM token request failed with status ${response.status}: ${await response.text()}`,
+      throw Object.assign(
+        new Error(
+          `FCM token request failed with status ${response.status}: ${await response.text()}`,
+        ),
+        { code: `fcm_token_status_${response.status}` },
       );
     }
     const payload = (await response.json()) as {

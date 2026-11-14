@@ -195,6 +195,10 @@ class VeilPalette {
 }
 
 class VeilTheme {
+  // Bundled (pubspec.yaml fonts:), so Korean and Latin text look the same on
+  // iOS and Android.
+  static const String _fontFamily = 'Pretendard';
+
   static ThemeData dark() => _build(VeilPalette.dark, Brightness.dark);
 
   static ThemeData light() => _build(VeilPalette.light, Brightness.light);
@@ -226,10 +230,7 @@ class VeilTheme {
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      // Pretendard gives identical KO+EN rendering on iOS and Android.
-      // Falls back to the platform default until the font files are
-      // bundled (see pubspec.yaml fonts: section + assets/fonts/).
-      fontFamily: 'Pretendard',
+      fontFamily: _fontFamily,
       scaffoldBackgroundColor: palette.canvas,
       canvasColor: palette.canvas,
       dividerColor: palette.stroke,
@@ -314,6 +315,10 @@ class VeilTheme {
           letterSpacing: 0.4,
         ),
       ).apply(
+        // This text theme replaces the one `base` built, so the family set
+        // there has to be applied again or every style here falls back to
+        // the platform font.
+        fontFamily: _fontFamily,
         bodyColor: palette.text,
         displayColor: palette.text,
       ),
@@ -326,6 +331,7 @@ class VeilTheme {
       ).copyWith(
         foregroundColor: palette.text,
         titleTextStyle: const TextStyle(
+          fontFamily: _fontFamily,
           fontSize: 18,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.3,
@@ -345,6 +351,7 @@ class VeilTheme {
       snackBarTheme: SnackBarThemeData(
         backgroundColor: palette.surfaceRaised,
         contentTextStyle: TextStyle(
+          fontFamily: _fontFamily,
           color: palette.text,
           fontSize: 14,
           height: 1.45,
@@ -402,6 +409,7 @@ class VeilTheme {
           disabledBackgroundColor: palette.surfaceOverlay,
           disabledForegroundColor: palette.textSubtle,
           textStyle: const TextStyle(
+            fontFamily: _fontFamily,
             fontWeight: FontWeight.w700,
             fontSize: 14,
             letterSpacing: 0.1,
@@ -419,6 +427,7 @@ class VeilTheme {
             borderRadius: BorderRadius.circular(VeilRadius.md),
           ),
           textStyle: const TextStyle(
+            fontFamily: _fontFamily,
             fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
@@ -432,6 +441,7 @@ class VeilTheme {
             borderRadius: BorderRadius.circular(VeilRadius.sm),
           ),
           textStyle: const TextStyle(
+            fontFamily: _fontFamily,
             fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
@@ -458,11 +468,13 @@ class VeilTheme {
           borderRadius: BorderRadius.circular(VeilRadius.pill),
         ),
         labelStyle: TextStyle(
+          fontFamily: _fontFamily,
           color: palette.text,
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
         secondaryLabelStyle: TextStyle(
+          fontFamily: _fontFamily,
           color: palette.canvas,
           fontSize: 13,
           fontWeight: FontWeight.w600,
@@ -530,6 +542,7 @@ class VeilTheme {
           border: Border.all(color: palette.stroke),
         ),
         textStyle: TextStyle(
+          fontFamily: _fontFamily,
           color: palette.text,
           fontSize: 12,
           height: 1.35,
@@ -712,8 +725,10 @@ class VeilBlur extends StatelessWidget {
       filter: ImageFilter.blur(sigmaX: intensity, sigmaY: intensity),
       child: Container(color: overlay, child: child),
     );
+    // A backdrop filter blurs everything inside the nearest clip, which
+    // without one is the whole screen: the bar's own bounds must clip it.
     if (borderRadius == null) {
-      return filtered;
+      return ClipRect(child: filtered);
     }
     return ClipRRect(borderRadius: borderRadius!, child: filtered);
   }

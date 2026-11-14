@@ -4,7 +4,9 @@ import { Reflector } from '@nestjs/core';
 
 import type { AuthenticatedRequest } from './authenticated-request';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { isAccessTokenRevoked } from '../access-token-revocation';
 import { AppConfigService } from '../config/app-config.service';
+import { recordDeviceSeen, utcDayStart } from '../device-activity';
 import { EphemeralStoreService } from '../ephemeral-store.service';
 import { unauthorized } from '../errors/api-error';
 import { PrismaService } from '../prisma.service';
@@ -15,6 +17,7 @@ interface AccessTokenPayload {
   handle: string;
   jti?: string;
   exp?: number;
+  sid?: string;
 }
 
 @Injectable()
@@ -49,6 +52,28 @@ export class JwtAuthGuard implements CanActivate {
       throw unauthorized('unauthorized', 'Missing bearer token');
     }
 
+    const { payload, device } = await this.authenticate(token);
+
+    // Runs after authentication and outside its catch: a failed bookkeeping
+    // write is a server error, not a reason to send the client back through
+    // sign-in. Checked against the loaded row first, so a device already seen
+    // today costs no write at all.
+    const now = new Date();
+    if (device.lastSeenAt.getTime() !== utcDayStart(now).getTime()) {
+      await recordDeviceSeen(this.prisma, device.id, now);
+    }
+
+    request.auth = {
+      userId: payload.sub,
+      deviceId: payload.deviceId,
+      handle: payload.handle,
+      jti: payload.jti,
+      exp: payload.exp,
+    };
+    return true;
+  }
+
+  private async authenticate(token: string) {
     try {
       const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
         secret: this.config.jwtSecret,
@@ -56,13 +81,8 @@ export class JwtAuthGuard implements CanActivate {
         issuer: this.config.jwtIssuer,
       });
 
-      if (payload.jti) {
-        const blacklisted = await this.ephemeralStore.getJson<unknown>(
-          `auth:blacklist:${payload.jti}`,
-        );
-        if (blacklisted) {
-          throw unauthorized('token_revoked', 'Access token has been revoked');
-        }
+      if (await isAccessTokenRevoked(this.ephemeralStore, payload)) {
+        throw unauthorized('token_revoked', 'Access token has been revoked');
       }
 
       const device = await this.prisma.device.findUnique({
@@ -80,14 +100,7 @@ export class JwtAuthGuard implements CanActivate {
         throw unauthorized('device_not_active', 'Device is not active');
       }
 
-      request.auth = {
-        userId: payload.sub,
-        deviceId: payload.deviceId,
-        handle: payload.handle,
-        jti: payload.jti,
-        exp: payload.exp,
-      };
-      return true;
+      return { payload, device };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;

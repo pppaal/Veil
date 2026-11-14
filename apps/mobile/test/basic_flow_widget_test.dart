@@ -145,6 +145,12 @@ void main() {
     expect(find.text('This device'), findsOneWidget);
     expect(find.text('Revoked'), findsOneWidget);
     expect(find.text('Revoke'), findsOneWidget);
+    // The server keeps only the UTC day of device activity: it is shown as
+    // that day, with no time of day that never happened.
+    expect(find.text('Seen Apr 2 (UTC)'), findsOneWidget);
+    expect(find.text('Synced Mar 30 (UTC)'), findsOneWidget);
+    expect(find.text('Recent trusted activity Apr 2 (UTC)'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^(Seen|Synced|Activity) .*\d\d:\d\d')), findsNothing);
   });
 }
 
@@ -202,7 +208,7 @@ class _MemoryConversationCache implements ConversationCacheService {
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -283,10 +289,10 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'joinedFromDeviceName': null,
           'joinedFromPlatform': null,
           'createdAt': DateTime.utc(2026, 4, 1, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 2, 8, 0, 0).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
+          'lastSeenAt': DateTime.utc(2026, 4, 2).toIso8601String(),
+          'lastSyncAt': DateTime.utc(2026, 4, 2).toIso8601String(),
           'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 2, 8, 10, 0).toIso8601String(),
+              DateTime.utc(2026, 4, 2).toIso8601String(),
         },
         {
           'id': 'device-old',
@@ -300,10 +306,10 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'joinedFromDeviceName': null,
           'joinedFromPlatform': null,
           'createdAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
+          'lastSeenAt': DateTime.utc(2026, 4, 1).toIso8601String(),
           'lastSyncAt': null,
           'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 1, 8, 30, 0).toIso8601String(),
+              DateTime.utc(2026, 4, 1).toIso8601String(),
         },
         {
           'id': 'device-laptop',
@@ -317,10 +323,10 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'joinedFromDeviceName': 'Pixel Fold',
           'joinedFromPlatform': 'android',
           'createdAt': DateTime.utc(2026, 3, 20, 8, 0, 0).toIso8601String(),
-          'lastSeenAt': DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
-          'lastSyncAt': DateTime.utc(2026, 3, 30, 7, 45, 0).toIso8601String(),
+          'lastSeenAt': DateTime.utc(2026, 4, 1).toIso8601String(),
+          'lastSyncAt': DateTime.utc(2026, 3, 30).toIso8601String(),
           'lastTrustedActivityAt':
-              DateTime.utc(2026, 4, 1, 7, 45, 0).toIso8601String(),
+              DateTime.utc(2026, 4, 1).toIso8601String(),
         },
       ],
     };

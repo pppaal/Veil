@@ -39,18 +39,17 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       (the `cydia` entry) from `apps/mobile/ios/Runner/Info.plist` (lines ~29-32). The README
       already claims it was removed; the plist still has it. Apple rejects jailbreak-probe schemes.
 - [ ] **Add the export-compliance key.** Add to `apps/mobile/ios/Runner/Info.plist`:
-      ```xml
-      <key>ITSAppUsesNonExemptEncryption</key>
-      <true/>
-      ```
-      VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
-      **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
-      the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
-      boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
-      VEIL uses only standard published algorithms, so no CCATS/ERN is required.
-- [ ] **Fix the EN subtitle (30-char limit).** `store/appstore/metadata-en.txt` subtitle
-      "End-to-end encrypted privacy messenger" is 38 chars. Rewrite to ≤30, e.g.
-      "Encrypted privacy messenger" (27) or "E2E encrypted private chat" (26). KO subtitle is fine.
+  ```xml
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <true/>
+  ```
+  VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
+  **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
+  the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
+  boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
+  VEIL uses only standard published algorithms, so no CCATS/ERN is required.
+- [x] **Fix the EN subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` now
+      uses "Encrypted privacy messenger" (27 chars). KO subtitle is fine.
 - [ ] **(Optional, cosmetic) Align CFBundleURLName.** `Info.plist` `CFBundleURLName` is
       `app.veil.messenger` but the bundle id is `io.veil.mobile`. Align or leave; not a blocker.
 - [ ] **Author the two missing source docs** referenced by this checklist (they do not exist yet):
@@ -92,12 +91,12 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
       stale `iPhone Developer`. Set `DEVELOPMENT_TEAM` to your Team ID; let Xcode manage the identity.
 - [ ] First-build bootstrap on the Mac (the project has never been built — no `Generated.xcconfig`,
       no `Pods/`):
-      ```bash
-      cd apps/mobile
-      flutter pub get
-      cd ios && pod install && cd ..
-      flutter build ios --config-only
-      ```
+  ```bash
+  cd apps/mobile
+  flutter pub get
+  cd ios && pod install && cd ..
+  flutter build ios --config-only
+  ```
 
 ## 4. Create the App Store Connect app record  · owner: human-account
 
@@ -179,9 +178,12 @@ Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/m
 Transcribe `store/appstore/app-privacy-answers.md` into App Store Connect → **App Privacy**:
 
 - [ ] Data collected: **User ID** (linked, App Functionality, not tracking), **Device ID**
-      (linked, App Functionality, not tracking), **User Content / encrypted payloads**
-      (NOT linked — server holds only ciphertext, App Functionality, not tracking),
-      **Crash Data** (opt-in Sentry, NOT linked, App Functionality, not tracking).
+      (linked, App Functionality, not tracking), **Contacts** (the in-app contact list,
+      a social graph: linked, App Functionality, not tracking), **User Content / encrypted
+      payloads** (NOT linked — server holds only ciphertext, App Functionality, not
+      tracking), **Other User Content** (group and channel names and descriptions, device
+      labels and delivery metadata: linked, App Functionality, not tracking).
+      **Crash Data: not collected** (no crash-reporting SDK ships).
 - [ ] **Tracking: No.** Mark the long "Data Not Collected" list accordingly.
 
 ## 11. Content rights  · owner: human-account
@@ -208,14 +210,16 @@ In App Store Connect export-compliance flow (or at TestFlight upload):
 ## 13. Review notes  · owner: code-today (draft) → human-account (paste)
 
 - [ ] Author `store/appstore/app-review-notes.md` if missing, then paste into the version's
-      **App Review Information → Notes**. **Critical** because VEIL has no accounts, no phone number,
-      and no recovery, so reviewers cannot "log in." The notes must explain:
-      - No demo credentials are needed and none exist — there is **no login**.
-      - How an identity is created on **first launch** (device-bound, no account/phone/email).
-      - How to test **1:1 and group messaging** using **two devices/simulators** (you exchange
-        the on-screen identity to start a conversation).
+      **App Review Information → Notes**. **Critical** because VEIL asks for no phone number, no
+      email and no real name, and has no recovery, so reviewers cannot "log in." The notes must explain:
+      - No demo credentials are needed and none exist — there is **no password login**.
+      - How an account is created on **first launch**: privacy notice, product rules, **Create
+        Account**, **Choose Handle**; the identity keys are created locally (no phone number,
+        no email, no real name).
+      - How to test **1:1 and group messaging** using **two devices/simulators** (start a
+        conversation with the other device's handle and compare safety numbers).
       - That **no account recovery exists by design** (losing the device loses the chats).
-      - The **opt-in Sentry crash toggle** (off by default).
+      - That **no crash-reporting SDK** ships, so no diagnostics leave the device.
       - Contact: `privacy@veil.app`.
 - [ ] Provide an App Review **contact name + phone + email**.
 

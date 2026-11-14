@@ -1,8 +1,11 @@
+import { MAX_SIGNED_PREKEY_BUNDLE_LENGTH } from '@veil/shared';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { DevicePlatform } from '@prisma/client';
 import { IsEnum, IsOptional, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 import type { RegisterRequest } from '@veil/contracts';
+
+import { BASE64URL, BASE64URL_UNPADDED } from '../../../common/dto/base64url';
 
 export class RegisterDto implements RegisterRequest {
   // Handles must start and end with a letter/digit and may not contain
@@ -15,7 +18,8 @@ export class RegisterDto implements RegisterRequest {
   @Matches(/^[a-z0-9](?!.*[._]{2})[a-z0-9._]*[a-z0-9]$/)
   handle!: string;
 
-  @ApiPropertyOptional()
+  /** @deprecated Accepted so older clients can still register; never stored. */
+  @ApiPropertyOptional({ deprecated: true })
   @IsOptional()
   @IsString()
   @MaxLength(80)
@@ -33,19 +37,21 @@ export class RegisterDto implements RegisterRequest {
   @ApiProperty()
   @IsString()
   @MaxLength(1024)
-  @Matches(/^[A-Za-z0-9_-]+={0,2}$/)
+  @Matches(BASE64URL)
   publicIdentityKey!: string;
 
   @ApiProperty()
   @IsString()
-  @MaxLength(2048)
-  @Matches(/^[A-Za-z0-9_-]+={0,2}$/)
+  // libsignal bundles carry a Kyber-1024 prekey (1568 raw bytes) alongside the
+  // signed prekey, so they exceed the 2 KiB that fit the X25519-only bundle.
+  @MaxLength(MAX_SIGNED_PREKEY_BUNDLE_LENGTH)
+  @Matches(BASE64URL)
   signedPrekeyBundle!: string;
 
   @ApiProperty()
   @IsString()
   @MaxLength(512)
-  @Matches(/^[A-Za-z0-9_-]+$/)
+  @Matches(BASE64URL_UNPADDED)
   authPublicKey!: string;
 
   @ApiPropertyOptional()

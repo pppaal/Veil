@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, normalize, relative, sep } from 'node:path';
 
 const failures = [];
 
@@ -16,29 +17,55 @@ const assertMatch = (file, pattern, message) => {
   }
 };
 
-assertNoMatch(
-  'apps/mobile/lib/src/app/app_state.dart',
-  /mock_crypto_engine\.dart/,
-  'App state must not depend on the mock crypto implementation directly',
-);
+const mobileSrc = 'apps/mobile/lib/src';
+const messengerFacade = `${mobileSrc}/features/conversations/data/veil_messenger_controller.dart`;
+const messengerServicesDir = `${mobileSrc}/features/conversations/data/messenger`;
 
-assertNoMatch(
-  'apps/mobile/lib/src/app/app_state.dart',
-  /device_auth_signer\.dart/,
-  'App state must not depend on a concrete auth signer implementation directly',
-);
+// What app_state.dart used to declare now lives in these files; app_state.dart
+// only re-exports them. None may reach for a mock or concrete implementation.
+const appStateSuccessors = [
+  `${mobileSrc}/app/app_state.dart`,
+  `${mobileSrc}/core/di/core_providers.dart`,
+  `${mobileSrc}/app/session/app_session_controller.dart`,
+  `${mobileSrc}/app/session/session_providers.dart`,
+  `${mobileSrc}/features/conversations/data/messenger_providers.dart`,
+];
+
+for (const file of appStateSuccessors) {
+  assertNoMatch(
+    file,
+    /mock_crypto_engine\.dart/,
+    'App wiring must not depend on the mock crypto implementation directly',
+  );
+  assertNoMatch(
+    file,
+    /device_auth_signer\.dart/,
+    'App wiring must not depend on a concrete auth signer implementation directly',
+  );
+}
 
 assertMatch(
-  'apps/mobile/lib/src/app/app_state.dart',
+  `${mobileSrc}/core/di/core_providers.dart`,
   /crypto_adapter_registry\.dart/,
-  'App state must bootstrap crypto through the adapter registry',
+  'Core providers must bootstrap crypto through the adapter registry',
 );
 
-assertNoMatch(
-  'apps/mobile/lib/src/features/conversations/data/veil_messenger_controller.dart',
-  /MockCryptoEngine|createDefaultCryptoAdapter|devEnvelopeVersion|devAttachmentWrapAlgorithmHint/,
-  'Messaging controller must not depend on mock protocol internals',
-);
+const dartFiles = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return dartFiles(path);
+    return entry.name.endsWith('.dart') ? [path] : [];
+  });
+
+const lineCount = (file) => (read(file).match(/\n/g) ?? []).length;
+
+for (const file of [messengerFacade, ...dartFiles(messengerServicesDir)]) {
+  assertNoMatch(
+    file,
+    /MockCryptoEngine|createDefaultCryptoAdapter|devEnvelopeVersion|devAttachmentWrapAlgorithmHint/,
+    'Messaging controller and services must not depend on mock protocol internals',
+  );
+}
 
 assertNoMatch(
   'apps/mobile/lib/src/core/storage/conversation_cache_service.dart',
@@ -111,6 +138,172 @@ assertNoMatch(
   /mock-engine/,
   'Shared package root must not export the mock crypto adapter by default',
 );
+
+// ---------------------------------------------------------------------------
+// Mobile layering: core is the bottom layer, the messenger stays decomposed.
+// ---------------------------------------------------------------------------
+
+const packagePrefix = 'package:veil_mobile/';
+
+// Every import, export and part of [file] inside the app, as repo paths,
+// whichever quotes the URI uses. A `part of` names its own library and is
+// no dependency.
+const directivesOf = (file) =>
+  [...read(file).matchAll(/^\s*(import|export|part)\s+(['"])(.+?)\2/gm)].flatMap(
+    ([, kind, , uri]) => {
+      if (uri.startsWith(packagePrefix))
+        return [{ kind, target: join('apps/mobile/lib', uri.slice(packagePrefix.length)) }];
+      if (uri.includes(':')) return [];
+      return [{ kind, target: normalize(join(dirname(file), uri)) }];
+    },
+  );
+
+const layerOf = (path) => relative(mobileSrc, path).split(sep)[0];
+
+// Nothing in core may reach up, re-exports included.
+for (const file of dartFiles(`${mobileSrc}/core`)) {
+  for (const { kind, target } of directivesOf(file)) {
+    const layer = layerOf(target);
+    if (layer !== 'features' && layer !== 'app') continue;
+    failures.push(
+      `lib/src/core must not reach ${layer}/ (${kind} ${relative(mobileSrc, target)}): ${file}`,
+    );
+  }
+}
+
+if (lineCount(messengerFacade) > 400) {
+  failures.push(
+    `Messenger facade must stay at or under 400 lines (has ${lineCount(messengerFacade)}): ${messengerFacade}`,
+  );
+}
+
+for (const file of dartFiles(messengerServicesDir)) {
+  if (lineCount(file) > 450) {
+    failures.push(
+      `Messenger service files must stay at or under 450 lines (has ${lineCount(file)}): ${file}`,
+    );
+  }
+}
+
+// The libsignal bridge is opt-in on both platforms: a default store build must
+// neither compile it nor link Signal's native libraries (it has never been
+// built into an app on a real toolchain, and one wrong symbol broke the
+// default Android build).
+const kotlinFiles = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return kotlinFiles(path);
+    return entry.name.endsWith('.kt') ? [path] : [];
+  });
+const androidApp = 'apps/mobile/android/app';
+for (const dir of [`${androidApp}/src/main`, `${androidApp}/src/nolibsignal`]) {
+  for (const file of kotlinFiles(dir)) {
+    assertNoMatch(
+      file,
+      /org\.signal\.libsignal|\bVeilCryptoBridge\b/,
+      'Default Android builds must not compile the libsignal bridge (it lives in src/libsignal)',
+    );
+  }
+}
+const androidBuild = read(`${androidApp}/build.gradle.kts`);
+const libsignalDependencies =
+  androidBuild.match(/implementation\("org\.signal:libsignal-android:/g) ?? [];
+const guardedDependencies =
+  androidBuild.match(
+    /if \(veilLibsignal\) \{(?:\s*\/\/[^\n]*)*\s*implementation\("org\.signal:libsignal-android:/g,
+  ) ?? [];
+if (
+  libsignalDependencies.length !== guardedDependencies.length ||
+  !/srcDir\(if \(veilLibsignal\) "src\/libsignal\/kotlin" else "src\/nolibsignal\/kotlin"\)/.test(
+    androidBuild,
+  )
+) {
+  failures.push(
+    `The libsignal dependency and bridge sources must sit behind the veil.libsignal opt-in: ${androidApp}/build.gradle.kts`,
+  );
+}
+const appDelegate = 'apps/mobile/ios/Runner/AppDelegate.swift';
+if (
+  read(appDelegate)
+    .split('\n')
+    .some((line) => /VeilCryptoBridgePlugin/.test(line) && !/^\s*\/\//.test(line))
+) {
+  failures.push(
+    `Default iOS builds must not register the libsignal bridge, which is not in the Runner target: ${appDelegate}`,
+  );
+}
+
+// No backup exists, and there is to be no place for one.
+if (existsSync(`${mobileSrc}/core/backup`)) {
+  failures.push(`Mobile must not ship a backup module: ${mobileSrc}/core/backup`);
+}
+
+// The facade must lie on no import cycle, above all not with app_state.dart
+// or the provider files that replaced it, which import the facade.
+const importGraph = new Map(
+  dartFiles('apps/mobile/lib').map((file) => [
+    file,
+    directivesOf(file).map(({ target }) => target),
+  ]),
+);
+const reachableFrom = (start) => {
+  const seen = new Set();
+  const pending = [...(importGraph.get(start) ?? [])];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (seen.has(next)) continue;
+    seen.add(next);
+    pending.push(...(importGraph.get(next) ?? []));
+  }
+  return seen;
+};
+const facadeReaches = reachableFrom(messengerFacade);
+if (facadeReaches.has(messengerFacade)) {
+  const onCycle = [...facadeReaches].filter((file) => reachableFrom(file).has(messengerFacade));
+  failures.push(`Messenger facade is on an import cycle through ${onCycle.join(', ')}`);
+}
+for (const successor of appStateSuccessors) {
+  if (facadeReaches.has(successor)) {
+    failures.push(
+      `Messenger facade must not depend on app wiring (${successor}): ${messengerFacade}`,
+    );
+  }
+}
+
+// Presentation files stay small enough to review whole. Files that were
+// already larger when this rule landed are listed at their size then: they
+// may shrink but not grow, and leave the list once they are under the cap.
+const presentationLineCap = 450;
+const chatRoomScreen = `${mobileSrc}/features/chat/presentation/chat_room_screen.dart`;
+const presentationOversized = new Map([
+  [`${mobileSrc}/features/conversations/presentation/conversation_list_screen.dart`, 1205],
+  [`${mobileSrc}/features/settings/presentation/settings_screen.dart`, 900],
+  [`${mobileSrc}/features/security/presentation/safety_numbers_screen.dart`, 886],
+  [`${mobileSrc}/features/device_transfer/presentation/device_transfer_screen.dart`, 867],
+  [`${mobileSrc}/features/contacts/presentation/contacts_screen.dart`, 523],
+  [`${mobileSrc}/features/stories/presentation/stories_screen.dart`, 469],
+  [`${mobileSrc}/features/stories/presentation/story_viewer_screen.dart`, 464],
+]);
+for (const feature of readdirSync(`${mobileSrc}/features`, { withFileTypes: true })) {
+  const dir = `${mobileSrc}/features/${feature.name}/presentation`;
+  if (!feature.isDirectory() || !existsSync(dir)) continue;
+  for (const file of dartFiles(dir)) {
+    const cap =
+      file === chatRoomScreen ? 400 : (presentationOversized.get(file) ?? presentationLineCap);
+    if (lineCount(file) > cap) {
+      failures.push(
+        `Presentation files must stay at or under ${cap} lines (has ${lineCount(file)}): ${file}`,
+      );
+    }
+  }
+}
+for (const [file] of presentationOversized) {
+  if (!existsSync(file) || lineCount(file) <= presentationLineCap) {
+    failures.push(
+      `No longer over ${presentationLineCap} lines; drop it from presentationOversized: ${file}`,
+    );
+  }
+}
 
 if (failures.length > 0) {
   for (const failure of failures) {

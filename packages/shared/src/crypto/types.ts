@@ -6,14 +6,11 @@ export interface PublicKeyBundle {
   handle: string;
   identityPublicKey: string;
   signedPrekeyBundle: string;
-  platform: DevicePlatform;
+  // Optional because the key directory does not disclose a device's platform
+  // or the account's last-update time.
+  platform?: DevicePlatform;
   isActive: boolean;
-  updatedAt: string;
-  // Unconsumed X3DH one-time prekeys the server still holds for this device.
-  // Advisory only — reading a bundle never consumes a prekey; claiming happens
-  // exclusively via POST /v1/prekeys/claim/:handle. Optional because bundles
-  // are also constructed in contexts with no prekey store (e.g. transfers).
-  oneTimePrekeyAvailable?: number;
+  updatedAt?: string;
 }
 
 export interface AttachmentUploadTicket {

@@ -1,8 +1,10 @@
+import { randomUUID } from 'node:crypto';
+
+import { Prisma } from '@prisma/client';
+
 type UserRecord = {
   id: string;
   handle: string;
-  displayName: string | null;
-  avatarPath: string | null;
   status: 'active' | 'locked' | 'revoked';
   activeDeviceId: string | null;
   createdAt: Date;
@@ -27,6 +29,10 @@ type DeviceRecord = {
   lastSyncAt: Date | null;
 };
 
+type MemberRole = 'owner' | 'admin' | 'member' | 'subscriber';
+
+// Optional fields mirror schema defaults so specs can seed rows tersely;
+// FakePrismaService fills them in (see ROW_DEFAULTS) before any query.
 type ConversationRecord = {
   id: string;
   type: 'direct' | 'group' | 'channel';
@@ -34,13 +40,59 @@ type ConversationRecord = {
   directKey?: string | null;
   currentEpoch?: number;
   groupUseSenderKeys?: boolean;
+  disappearingTimerSeconds?: number | null;
+  lastOrder?: number;
 };
 
 type ConversationMemberRecord = {
   id: string;
   conversationId: string;
   userId: string;
+  role?: MemberRole;
   joinedAt: Date;
+};
+
+type GroupMetaRecord = {
+  id: string;
+  conversationId: string;
+  name: string;
+  description: string | null;
+  createdByUserId: string;
+  isPublic: boolean;
+  memberLimit: number;
+  link: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type ChannelMetaRecord = {
+  id: string;
+  conversationId: string;
+  name: string;
+  description: string | null;
+  createdByUserId: string;
+  isPublic: boolean;
+  subscriberCount: number;
+  link: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type GroupMemberEpochRecord = {
+  conversationId: string;
+  userId: string;
+  joinedEpoch: number;
+};
+
+type CallRecordRecord = {
+  id: string;
+  conversationId: string;
+  initiatorDeviceId: string;
+  callType: 'voice' | 'video';
+  status: 'ringing' | 'active' | 'ended' | 'missed' | 'declined';
+  startedAt: Date;
+  endedAt: Date | null;
+  duration: number | null;
 };
 
 type AttachmentRecord = {
@@ -60,9 +112,10 @@ type MessageRecord = {
   senderDeviceId: string;
   clientMessageId: string;
   conversationOrder: number;
+  envelopeVersion?: string;
   ciphertext: string;
   nonce: string;
-  messageType: 'text' | 'image' | 'file' | 'system';
+  messageType: 'text' | 'image' | 'file' | 'system' | 'voice' | 'sticker' | 'reaction' | 'call';
   attachmentId: string | null;
   attachmentRef: unknown | null;
   serverReceivedAt: Date;
@@ -90,35 +143,25 @@ type DeviceConversationStateRecord = {
   conversationId: string;
   lastSyncedConversationOrder: number | null;
   lastReadConversationOrder: number | null;
-  updatedAt: Date;
+};
+
+type ConversationMuteRecord = {
+  userId: string;
+  conversationId: string;
+  mutedUntil: Date | null;
+  createdAt: Date;
 };
 
 type UserContactRecord = {
   id: string;
   userId: string;
   contactUserId: string;
-  nickname: string | null;
   createdAt: Date;
 };
 
-type UserProfileRecord = {
-  id: string;
-  userId: string;
-  bio: string | null;
-  statusMessage: string | null;
-  statusEmoji: string | null;
-  lastStatusAt: Date | null;
-  avatarPath: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-type ReactionRecord = {
-  id: string;
-  messageId: string;
-  userId: string;
-  emoji: string;
-  createdAt: Date;
+type RetiredHandleRecord = {
+  handleHmac: string;
+  retiredUntil: Date;
 };
 
 type OneTimePrekeyRecord = {
@@ -137,10 +180,74 @@ type DeviceTransferSessionRecord = {
   tokenHash: string;
   expiresAt: Date;
   completedAt: Date | null;
+  newDeviceId?: string | null;
   createdAt: Date;
 };
 
 const makeId = (_prefix: string) => randomUUID();
+
+type Row = Record<string, any>;
+
+// Models served by the generic query engine below. It evaluates the subset of
+// Prisma's where/select/include/orderBy/take semantics the conversation and
+// message domain uses, so specs exercise the services' real queries instead
+// of hand-rolled return values.
+type ModelName =
+  | 'user'
+  | 'device'
+  | 'attachment'
+  | 'conversation'
+  | 'conversationMember'
+  | 'message'
+  | 'messageReceipt'
+  | 'retiredHandle'
+  | 'groupMeta'
+  | 'channelMeta'
+  | 'groupMemberEpoch'
+  | 'callRecord'
+  | 'userContact'
+  | 'deviceTransferSession'
+  | 'oneTimePrekey'
+  | 'deviceConversationState'
+  | 'conversationMute';
+
+type RelationRows = { model: ModelName; many: boolean; rows: Row[] };
+
+const ROW_DEFAULTS: Partial<Record<ModelName, Row>> = {
+  conversation: {
+    directKey: null,
+    disappearingTimerSeconds: null,
+    currentEpoch: 0,
+    groupUseSenderKeys: false,
+  },
+  conversationMember: { role: 'member' },
+  message: {
+    envelopeVersion: 'veil-envelope-v1',
+    replyToMessageId: null,
+    editedAt: null,
+    editCount: 0,
+    viewOnce: false,
+  },
+};
+
+const isPlainObject = (value: unknown): value is Row =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) && !(value instanceof Date);
+
+const uniqueViolation = (fields: string): Error =>
+  Object.assign(new Error(`Unique constraint failed on the fields: (${fields})`), {
+    code: 'P2002',
+    clientVersion: 'fake',
+  });
+
+const recordNotFound = (model: ModelName): Error =>
+  Object.assign(new Error(`No ${model} record found`), { code: 'P2025', clientVersion: 'fake' });
+
+const compareValues = (left: unknown, right: unknown): number => {
+  if (left instanceof Date && right instanceof Date) return left.getTime() - right.getTime();
+  if (typeof left === 'number' && typeof right === 'number') return left - right;
+  if (typeof left === 'boolean' && typeof right === 'boolean') return Number(left) - Number(right);
+  return String(left).localeCompare(String(right));
+};
 
 export class FakePrismaService {
   users: UserRecord[] = [];
@@ -151,16 +258,32 @@ export class FakePrismaService {
   messages: MessageRecord[] = [];
   messageReceipts: MessageReceiptRecord[] = [];
   deviceConversationStates: DeviceConversationStateRecord[] = [];
+  conversationMutes: ConversationMuteRecord[] = [];
   transferSessions: DeviceTransferSessionRecord[] = [];
   oneTimePrekeys: OneTimePrekeyRecord[] = [];
-  reactions: ReactionRecord[] = [];
+  retiredHandles: RetiredHandleRecord[] = [];
   userContacts: UserContactRecord[] = [];
-  userProfiles: UserProfileRecord[] = [];
+  groupMetas: GroupMetaRecord[] = [];
+  channelMetas: ChannelMetaRecord[] = [];
+  groupMemberEpochs: GroupMemberEpochRecord[] = [];
+  callRecords: CallRecordRecord[] = [];
 
   user = {
     findUnique: async (_args: any) => undefined as any,
+    findMany: async (args: any = {}) =>
+      this.findRows('user', args).map((row) => this.project('user', row, args)),
     create: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
+    updateMany: async ({ where, data }: any) => {
+      const rows = this.findRows('user', { where });
+      for (const row of rows) this.applyData(row, data);
+      return { count: rows.length };
+    },
+    delete: async ({ where }: any) => {
+      const row = this.requireRow('user', where);
+      this.removeRows('user', [row]);
+      return { ...row };
+    },
   };
 
   device = {
@@ -169,18 +292,46 @@ export class FakePrismaService {
     findMany: async (_args: any) => [] as any[],
     create: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
+    updateMany: async ({ where, data }: any) => {
+      const rows = this.findRows('device', { where });
+      for (const row of rows) this.applyData(row, data);
+      return { count: rows.length };
+    },
+    deleteMany: async ({ where }: any) => this.deleteWhere('device', where),
   };
 
-  conversation = {
-    findUnique: async (_args: any) => undefined as any,
-    findMany: async (_args: any) => [] as any[],
-    create: async (_args: any) => undefined as any,
-  };
+  conversation = this.delegate('conversation', (data) => this.insertConversation(data));
 
-  conversationMember = {
-    findMany: async (_args: any) => [] as any[],
-    findUnique: async (_args: any) => undefined as any,
-  };
+  conversationMember = this.delegate('conversationMember', (data) => this.insertMember(data));
+
+  groupMeta = this.delegate('groupMeta', (data) => this.insertGroupMeta(data));
+
+  channelMeta = this.delegate('channelMeta', (data) => this.insertChannelMeta(data));
+
+  groupMemberEpoch = this.delegate('groupMemberEpoch', (data) => {
+    const record: GroupMemberEpochRecord = {
+      conversationId: data.conversationId,
+      userId: data.userId,
+      joinedEpoch: data.joinedEpoch,
+    };
+    this.groupMemberEpochs.push(record);
+    return record;
+  });
+
+  callRecord = this.delegate('callRecord', (data) => {
+    const record: CallRecordRecord = {
+      id: makeId('call'),
+      conversationId: data.conversationId,
+      initiatorDeviceId: data.initiatorDeviceId,
+      callType: data.callType,
+      status: data.status ?? 'ringing',
+      startedAt: data.startedAt ?? new Date(),
+      endedAt: data.endedAt ?? null,
+      duration: data.duration ?? null,
+    };
+    this.callRecords.push(record);
+    return record;
+  });
 
   // Stubs for the safety-related tables — returning empty defaults is enough
   // for the e2e suite, which exercises the happy path through createDirect /
@@ -193,13 +344,16 @@ export class FakePrismaService {
     deleteMany: async (_args: any) => ({ count: 0 }),
   };
 
-  conversationMute = {
-    findFirst: async (_args: any) => null,
-    findUnique: async (_args: any) => null,
-    findMany: async (_args: any) => [] as any[],
-    upsert: async (_args: any) => undefined as any,
-    delete: async (_args: any) => undefined as any,
-  };
+  conversationMute = this.delegate('conversationMute', (data) => {
+    const record: ConversationMuteRecord = {
+      userId: data.userId,
+      conversationId: data.conversationId,
+      mutedUntil: data.mutedUntil ?? null,
+      createdAt: new Date(),
+    };
+    this.conversationMutes.push(record);
+    return record;
+  });
 
   abuseReport = {
     create: async (_args: any) => undefined as any,
@@ -213,58 +367,48 @@ export class FakePrismaService {
     delete: async (_args: any) => undefined as any,
   };
 
-  message = {
-    create: async (_args: any) => undefined as any,
-    findMany: async (_args: any) => [] as any[],
-    findFirst: async (_args: any) => undefined as any,
-    findUnique: async (_args: any) => undefined as any,
-    update: async (_args: any) => undefined as any,
-    deleteMany: async (_args: any) => ({ count: 0 }),
-  };
+  message = this.delegate('message', (data) => this.insertMessage(data));
 
-  messageReceipt = {
-    findUnique: async (_args: any) => undefined as any,
-    upsert: async (_args: any) => undefined as any,
-  };
+  messageReceipt = this.delegate('messageReceipt', (data) => {
+    const record: MessageReceiptRecord = {
+      id: makeId('receipt'),
+      messageId: data.messageId,
+      userId: data.userId,
+      deliveredAt: data.deliveredAt ?? null,
+      readAt: data.readAt ?? null,
+    };
+    this.messageReceipts.push(record);
+    return record;
+  });
 
   deviceConversationState = {
     findUnique: async (_args: any) => undefined as any,
     upsert: async (_args: any) => undefined as any,
+    deleteMany: async ({ where }: any) => this.deleteWhere('deviceConversationState', where),
   };
 
-  reaction = {
-    upsert: async (_args: any) => undefined as any,
-    deleteMany: async (_args: any) => ({ count: 0 }),
-    findMany: async (_args: any) => [] as any[],
+  oneTimePrekey = {
+    deleteMany: async ({ where }: any) => this.deleteWhere('oneTimePrekey', where),
   };
+
+  retiredHandle = this.delegate('retiredHandle', (data) => {
+    if (this.retiredHandles.some((item) => item.handleHmac === data.handleHmac)) {
+      throw uniqueViolation('handle_hmac');
+    }
+    const record: RetiredHandleRecord = {
+      handleHmac: data.handleHmac,
+      retiredUntil: data.retiredUntil,
+    };
+    this.retiredHandles.push(record);
+    return record;
+  });
 
   userContact = {
     findMany: async (_args: any) => [] as any[],
     findUnique: async (_args: any) => undefined as any,
     create: async (_args: any) => undefined as any,
     delete: async (_args: any) => undefined as any,
-  };
-
-  userProfile = {
-    findUnique: async (_args: any) => undefined as any,
-    upsert: async (_args: any) => undefined as any,
-  };
-
-  oneTimePrekey = {
-    // Only the groupBy shape getKeyBundle uses: count of unconsumed prekeys
-    // per device, restricted to a deviceId in-list.
-    groupBy: async ({ where }: any) => {
-      const counts = new Map<string, number>();
-      for (const item of this.oneTimePrekeys) {
-        if (where?.deviceId?.in && !where.deviceId.in.includes(item.deviceId)) continue;
-        if (where?.consumedAt === null && item.consumedAt !== null) continue;
-        counts.set(item.deviceId, (counts.get(item.deviceId) ?? 0) + 1);
-      }
-      return [...counts.entries()].map(([deviceId, total]) => ({
-        deviceId,
-        _count: { _all: total },
-      }));
-    },
+    deleteMany: async ({ where }: any) => this.deleteWhere('userContact', where),
   };
 
   deviceTransferSession = {
@@ -273,6 +417,7 @@ export class FakePrismaService {
     findUnique: async (_args: any) => undefined as any,
     update: async (_args: any) => undefined as any,
     updateMany: async (_args: any) => ({ count: 0 }),
+    deleteMany: async ({ where }: any) => this.deleteWhere('deviceTransferSession', where),
   };
 
   constructor() {
@@ -301,8 +446,6 @@ export class FakePrismaService {
       const record: UserRecord = {
         id: makeId('user'),
         handle: data.handle,
-        displayName: data.displayName ?? null,
-        avatarPath: null,
         status: data.status ?? 'active',
         activeDeviceId: data.activeDeviceId ?? null,
         createdAt: new Date(),
@@ -354,8 +497,14 @@ export class FakePrismaService {
 
     this.device.findMany = async ({ where, orderBy, select, include }: any) => {
       let records = [...this.devices];
-      if (where?.userId) {
+      if (typeof where?.userId === 'string') {
         records = records.filter((item) => item.userId === where.userId);
+      }
+      if (where?.userId?.in) {
+        records = records.filter((item) => where.userId.in.includes(item.userId));
+      }
+      if (where?.id?.in) {
+        records = records.filter((item) => where.id.in.includes(item.id));
       }
       if (where?.isActive !== undefined) {
         records = records.filter((item) => item.isActive === where.isActive);
@@ -443,95 +592,13 @@ export class FakePrismaService {
       return record;
     };
 
-    this.conversation.findUnique = async ({ where, select, include }: any) => {
-      const record = where?.directKey
-        ? this.conversations.find((item) => item.directKey === where.directKey)
-        : this.conversations.find((item) => item.id === where.id);
-      if (!record) {
-        return null;
-      }
-      if (include) return this.hydrateConversation(record, include);
-      return select ? this.pick(record, select) : record;
-    };
-
-    this.conversation.findMany = async ({ where, include }: any) => {
-      let records = [...this.conversations];
-      if (where?.id?.in) {
-        records = records.filter((item) => where.id.in.includes(item.id));
-      }
-      if (where?.type) {
-        records = records.filter((item) => item.type === where.type);
-      }
-      return records.map((record) => this.hydrateConversation(record, include));
-    };
-
-    this.conversation.create = async ({ data, include }: any) => {
-      // Mirror the unique index on direct_key — a duplicate insert from
-      // concurrent createDirect calls should surface as P2002 so the
-      // service's catch-and-lookup branch behaves the same in tests.
-      if (data.directKey) {
-        const conflict = this.conversations.find((c) => c.directKey === data.directKey);
-        if (conflict) {
-          throw Object.assign(new Error('Unique constraint failed on direct_key'), {
-            code: 'P2002',
-            clientVersion: 'fake',
-          });
-        }
-      }
-      const record: ConversationRecord = {
-        id: makeId('conv'),
-        type: data.type,
-        createdAt: new Date(),
-        directKey: data.directKey ?? null,
-      };
-      this.conversations.push(record);
-      for (const member of data.members.create as Array<{ userId: string }>) {
-        this.conversationMembers.push({
-          id: makeId('member'),
-          conversationId: record.id,
-          userId: member.userId,
-          joinedAt: new Date(),
-        });
-      }
-      return this.hydrateConversation(record, include);
-    };
-
-    this.conversationMember.findMany = async ({ where, include }: any) => {
-      let records = [...this.conversationMembers];
-      if (where?.userId) {
-        records = records.filter((item) => item.userId === where.userId);
-      }
-      if (where?.conversationId) {
-        records = records.filter((item) => item.conversationId === where.conversationId);
-      }
-      return records.map((record) =>
-        include?.conversation
-          ? {
-              ...record,
-              conversation: this.hydrateConversation(
-                this.conversations.find((item) => item.id === record.conversationId)!,
-                include.conversation.include,
-              ),
-            }
-          : record,
-      );
-    };
-
-    this.conversationMember.findUnique = async ({ where, select }: any) => {
-      const record = this.conversationMembers.find(
-        (item) =>
-          item.conversationId === where.conversationId_userId.conversationId &&
-          item.userId === where.conversationId_userId.userId,
-      );
-      if (!record) {
-        return null;
-      }
-      return select ? this.pick(record, select) : record;
-    };
-
     this.attachment.create = async ({ data }: any) => {
+      // Clients may propose the id; a duplicate hits the primary key.
+      if (data.id !== undefined && this.attachments.some((item) => item.id === data.id)) {
+        throw uniqueViolation('id');
+      }
       const record: AttachmentRecord = {
-        id: makeId('attachment'),
+        id: data.id ?? makeId('attachment'),
         uploaderDeviceId: data.uploaderDeviceId,
         storageKey: data.storageKey,
         contentType: data.contentType,
@@ -544,12 +611,9 @@ export class FakePrismaService {
       return record;
     };
 
-    this.attachment.findUnique = async ({ where, select }: any) => {
-      const record = this.attachments.find((item) => item.id === where.id);
-      if (!record) {
-        return null;
-      }
-      return select ? this.pick(record, select) : record;
+    this.attachment.findUnique = async (args: any) => {
+      const [row] = this.findRows('attachment', { where: args.where });
+      return row ? this.project('attachment', row, args) : null;
     };
 
     this.attachment.findMany = async ({ where, select }: any = {}) => {
@@ -572,191 +636,11 @@ export class FakePrismaService {
       return record;
     };
 
-    this.message.create = async ({ data, include }: any) => {
-      const record: MessageRecord = {
-        id: makeId('msg'),
-        conversationId: data.conversationId,
-        senderDeviceId: data.senderDeviceId,
-        clientMessageId: data.clientMessageId,
-        conversationOrder: data.conversationOrder,
-        ciphertext: data.ciphertext,
-        nonce: data.nonce,
-        messageType: data.messageType,
-        attachmentId: data.attachmentId ?? null,
-        attachmentRef: data.attachmentRef ?? null,
-        serverReceivedAt: new Date(),
-        deletedAt: null,
-        expiresAt: data.expiresAt ?? null,
-      };
-      this.messages.push(record);
-      for (const receipt of (data.receipts?.create ?? []) as Array<any>) {
-        this.messageReceipts.push({
-          id: makeId('receipt'),
-          messageId: record.id,
-          userId: receipt.userId,
-          deliveredAt: receipt.deliveredAt ?? null,
-          readAt: receipt.readAt ?? null,
-        });
-      }
-      return this.hydrateMessage(record, include);
-    };
-
-    this.message.findMany = async ({ where, take, cursor, include, select }: any) => {
-      const now = new Date();
-      const matchesNotExpired = (item: MessageRecord): boolean => {
-        if (!where?.OR) return true;
-        const clauses = where.OR as Array<any>;
-        return clauses.some((clause) => {
-          if (clause.expiresAt === null) return item.expiresAt === null;
-          if (clause.expiresAt?.gt)
-            return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
-          return false;
-        });
-      };
-      let records = this.messages
-        .filter((item) => !where?.conversationId || item.conversationId === where.conversationId)
-        .filter((item) =>
-          where?.conversationOrder?.lt === undefined
-            ? true
-            : item.conversationOrder < where.conversationOrder.lt,
-        )
-        .filter((item) =>
-          where?.expiresAt?.lte === undefined
-            ? true
-            : item.expiresAt !== null && item.expiresAt <= where.expiresAt.lte,
-        )
-        .filter((item) => (where?.id?.in === undefined ? true : where.id.in.includes(item.id)))
-        .filter(matchesNotExpired)
-        .sort((a, b) => b.conversationOrder - a.conversationOrder);
-      if (cursor?.id) {
-        const index = records.findIndex((item) => item.id === cursor.id);
-        records = index >= 0 ? records.slice(index + 1) : records;
-      }
-      const sliced = records.slice(0, take ?? records.length);
-      if (select) {
-        return sliced.map((record) => this.pick(record as unknown as Record<string, any>, select));
-      }
-      return sliced.map((record) => this.hydrateMessage(record, include));
-    };
-
-    this.message.deleteMany = async ({ where }: any) => {
-      let removed = 0;
-      this.messages = this.messages.filter((item) => {
-        const match =
-          (!where?.id?.in || where.id.in.includes(item.id)) &&
-          (!where?.conversationId || item.conversationId === where.conversationId);
-        if (match) removed += 1;
-        return !match;
-      });
-      return { count: removed };
-    };
-
     this.attachment.delete = async ({ where }: any) => {
       const index = this.attachments.findIndex((item) => item.id === where.id);
       if (index < 0) return null;
       const [removed] = this.attachments.splice(index, 1);
       return removed;
-    };
-
-    this.message.findUnique = async ({ where, include, select }: any) => {
-      const record = this.messages.find((item) => item.id === where.id);
-      if (!record) {
-        return null;
-      }
-      if (select) {
-        return this.pick(record as unknown as Record<string, any>, select);
-      }
-      const conversation = this.conversations.find((item) => item.id === record.conversationId)!;
-      return {
-        ...record,
-        conversation: include?.conversation
-          ? {
-              ...conversation,
-              members: this.conversationMembers.filter(
-                (item) => item.conversationId === conversation.id,
-              ),
-            }
-          : undefined,
-      };
-    };
-
-    this.message.update = async ({ where, data, include }: any) => {
-      const record = this.messages.find((item) => item.id === where.id);
-      if (!record) throw Object.assign(new Error('Record not found'), { code: 'P2025' });
-      // Apply scalar updates and the {increment: n} sugar Prisma uses
-      // for atomic counters.
-      for (const [key, value] of Object.entries(data ?? {})) {
-        if (value && typeof value === 'object' && 'increment' in (value as any)) {
-          (record as any)[key] = ((record as any)[key] ?? 0) + (value as any).increment;
-        } else {
-          (record as any)[key] = value;
-        }
-      }
-      if (include) return this.hydrateMessage(record, include);
-      return { ...record };
-    };
-
-    this.message.findFirst = async ({ where, select }: any) => {
-      const records = this.messages.filter((item) => {
-        if (where?.senderDeviceId && item.senderDeviceId !== where.senderDeviceId) {
-          return false;
-        }
-        if (where?.clientMessageId && item.clientMessageId !== where.clientMessageId) {
-          return false;
-        }
-        if (where?.conversationId && item.conversationId !== where.conversationId) {
-          return false;
-        }
-        if (where?.attachmentId && item.attachmentId !== where.attachmentId) {
-          return false;
-        }
-        if (where?.conversation?.members?.some?.userId) {
-          return this.conversationMembers.some(
-            (member) =>
-              member.conversationId === item.conversationId &&
-              member.userId === where.conversation.members.some.userId,
-          );
-        }
-        return true;
-      });
-      const record = records.sort((a, b) => b.conversationOrder - a.conversationOrder)[0];
-
-      if (!record) {
-        return null;
-      }
-
-      return select ? this.pick(record, select) : record;
-    };
-
-    this.messageReceipt.upsert = async ({ where, update, create }: any) => {
-      const record = this.messageReceipts.find(
-        (item) =>
-          item.messageId === where.messageId_userId.messageId &&
-          item.userId === where.messageId_userId.userId,
-      );
-      if (record) {
-        Object.assign(record, update);
-        return record;
-      }
-      const created: MessageReceiptRecord = {
-        id: makeId('receipt'),
-        messageId: create.messageId,
-        userId: create.userId,
-        deliveredAt: create.deliveredAt ?? null,
-        readAt: create.readAt ?? null,
-      };
-      this.messageReceipts.push(created);
-      return created;
-    };
-
-    this.messageReceipt.findUnique = async ({ where }: any) => {
-      return (
-        this.messageReceipts.find(
-          (item) =>
-            item.messageId === where.messageId_userId.messageId &&
-            item.userId === where.messageId_userId.userId,
-        ) ?? null
-      );
     };
 
     this.deviceConversationState.findUnique = async ({ where }: any) => {
@@ -777,7 +661,7 @@ export class FakePrismaService {
       );
 
       if (record) {
-        Object.assign(record, update, { updatedAt: new Date() });
+        Object.assign(record, update);
         return record;
       }
 
@@ -787,7 +671,6 @@ export class FakePrismaService {
         conversationId: create.conversationId,
         lastSyncedConversationOrder: create.lastSyncedConversationOrder ?? null,
         lastReadConversationOrder: create.lastReadConversationOrder ?? null,
-        updatedAt: new Date(),
       };
       this.deviceConversationStates.push(createdRecord);
       return createdRecord;
@@ -813,16 +696,7 @@ export class FakePrismaService {
         if (!user) {
           return { ...record, contactUser: null };
         }
-        const select = include.contactUser.select ?? {};
-        const contactUser: any = {};
-        if (select.id) contactUser.id = user.id;
-        if (select.handle) contactUser.handle = user.handle;
-        if (select.displayName) contactUser.displayName = user.displayName;
-        if (select.profile) {
-          const profile = this.userProfiles.find((item) => item.userId === user.id);
-          contactUser.profile = profile ? this.pick(profile, select.profile.select) : null;
-        }
-        return { ...record, contactUser };
+        return { ...record, contactUser: this.pick(user, include.contactUser.select ?? {}) };
       });
     };
 
@@ -840,7 +714,6 @@ export class FakePrismaService {
         id: makeId('contact'),
         userId: data.userId,
         contactUserId: data.contactUserId,
-        nickname: data.nickname ?? null,
         createdAt: new Date(),
       };
       this.userContacts.push(record);
@@ -855,76 +728,6 @@ export class FakePrismaService {
       if (index < 0) return null;
       const [removed] = this.userContacts.splice(index, 1);
       return removed;
-    };
-
-    this.userProfile.findUnique = async ({ where, select }: any) => {
-      const record = this.userProfiles.find((item) => item.userId === where.userId);
-      if (!record) return null;
-      return select ? this.pick(record, select) : record;
-    };
-
-    this.userProfile.upsert = async ({ where, update, create }: any) => {
-      const record = this.userProfiles.find((item) => item.userId === where.userId);
-      if (record) {
-        Object.assign(record, update, { updatedAt: new Date() });
-        return record;
-      }
-      const created: UserProfileRecord = {
-        id: makeId('profile'),
-        userId: create.userId ?? where.userId,
-        bio: create.bio ?? null,
-        statusMessage: create.statusMessage ?? null,
-        statusEmoji: create.statusEmoji ?? null,
-        lastStatusAt: create.lastStatusAt ?? null,
-        avatarPath: create.avatarPath ?? null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      this.userProfiles.push(created);
-      return created;
-    };
-
-    this.reaction.upsert = async ({ where, update, create }: any) => {
-      const key = where.messageId_userId;
-      const record = this.reactions.find(
-        (item) => item.messageId === key.messageId && item.userId === key.userId,
-      );
-      if (record) {
-        Object.assign(record, update);
-        return record;
-      }
-      const created: ReactionRecord = {
-        id: makeId('reaction'),
-        messageId: create.messageId,
-        userId: create.userId,
-        emoji: create.emoji,
-        createdAt: new Date(),
-      };
-      this.reactions.push(created);
-      return created;
-    };
-
-    this.reaction.deleteMany = async ({ where }: any) => {
-      let removed = 0;
-      this.reactions = this.reactions.filter((item) => {
-        const match =
-          (!where.messageId || item.messageId === where.messageId) &&
-          (!where.userId || item.userId === where.userId);
-        if (match) removed += 1;
-        return !match;
-      });
-      return { count: removed };
-    };
-
-    this.reaction.findMany = async ({ where }: any = {}) => {
-      let records = [...this.reactions];
-      if (where?.messageId) {
-        records = records.filter((item) => item.messageId === where.messageId);
-      }
-      if (where?.userId) {
-        records = records.filter((item) => item.userId === where.userId);
-      }
-      return records;
     };
 
     this.deviceTransferSession.create = async ({ data }: any) => {
@@ -1013,67 +816,577 @@ export class FakePrismaService {
     };
   }
 
+  // Fixture helpers: a user with one active device.
+  seedUser(handle: string, options: { pushToken?: string | null } = {}) {
+    const userId = randomUUID();
+    const deviceId = this.seedDevice(userId, options);
+    const now = new Date();
+    this.users.push({
+      id: userId,
+      handle,
+      status: 'active',
+      activeDeviceId: deviceId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return { userId, deviceId };
+  }
+
+  seedDevice(
+    userId: string,
+    options: { pushToken?: string | null; isActive?: boolean; revokedAt?: Date | null } = {},
+  ): string {
+    const deviceId = randomUUID();
+    const now = new Date();
+    this.devices.push({
+      id: deviceId,
+      userId,
+      platform: 'ios',
+      deviceName: 'Test device',
+      publicIdentityKey: 'pub-id',
+      signedPrekeyBundle: 'prekey',
+      authPublicKey: 'auth-pub',
+      pushToken: options.pushToken ?? null,
+      isActive: options.isActive ?? true,
+      revokedAt: options.revokedAt ?? null,
+      trustedAt: now,
+      joinedFromDeviceId: null,
+      createdAt: now,
+      lastSeenAt: now,
+      lastSyncAt: null,
+    });
+    return deviceId;
+  }
+
+  // A conversation with its members (a bare userId joins as 'member') and,
+  // for groups and channels, the meta row.
+  seedConversation(
+    type: ConversationRecord['type'],
+    members: Array<string | { userId: string; role?: MemberRole; joinedAt?: Date }>,
+    options: {
+      groupUseSenderKeys?: boolean;
+      currentEpoch?: number;
+      disappearingTimerSeconds?: number | null;
+      isPublic?: boolean;
+      memberLimit?: number;
+    } = {},
+  ): string {
+    const conversation = this.insertConversation({
+      type,
+      groupUseSenderKeys: options.groupUseSenderKeys,
+      currentEpoch: options.currentEpoch,
+      disappearingTimerSeconds: options.disappearingTimerSeconds,
+    });
+    for (const member of members) {
+      this.insertMember({
+        conversationId: conversation.id,
+        ...(typeof member === 'string' ? { userId: member } : member),
+      });
+    }
+    const createdByUserId = typeof members[0] === 'string' ? members[0] : members[0]?.userId;
+    const meta = {
+      conversationId: conversation.id,
+      name: `${type} ${conversation.id.slice(0, 8)}`,
+      createdByUserId,
+      isPublic: options.isPublic,
+      memberLimit: options.memberLimit,
+    };
+    if (type === 'group') this.insertGroupMeta(meta);
+    if (type === 'channel') this.insertChannelMeta(meta);
+    return conversation.id;
+  }
+
+  // Interactive transactions run the callback against the fake directly.
+  // There is no rollback. Increments ({ increment: n }) apply synchronously,
+  // so concurrent transactions see the same per-row serialization that the
+  // Postgres row lock gives conversations.last_order.
   async $transaction<T>(callback: (tx: this) => Promise<T>, _options?: unknown): Promise<T> {
     return callback(this);
   }
 
-  private hydrateConversation(record: ConversationRecord, include?: any): any {
+  private deleteWhere(model: ModelName, where: Row): { count: number } {
+    const rows = this.findRows(model, { where });
+    this.removeRows(model, rows);
+    return { count: rows.length };
+  }
+
+  private delegate(model: ModelName, insert: (data: any) => Row) {
+    const create = async ({ data, select, include }: any) =>
+      this.project(model, insert(data), { select, include });
+    const findFirst = async (args: any = {}) => {
+      const [row] = this.findRows(model, { ...args, take: 1 });
+      return row ? this.project(model, row, args) : null;
+    };
     return {
-      ...record,
-      members: include?.members
-        ? this.conversationMembers
-            .filter((item) => item.conversationId === record.id)
-            .map((member) => ({
-              ...member,
-              user: include.members.include?.user
-                ? this.users.find((item) => item.id === member.userId)
-                : undefined,
-            }))
-        : undefined,
-      messages: include?.messages
-        ? this.messages
-            .filter((item) => item.conversationId === record.id)
-            .filter((item) => {
-              const whereOr = include.messages.where?.OR as Array<any> | undefined;
-              if (!whereOr) return true;
-              return whereOr.some((clause) => {
-                if (clause.expiresAt === null) return item.expiresAt === null;
-                if (clause.expiresAt?.gt)
-                  return item.expiresAt !== null && item.expiresAt > clause.expiresAt.gt;
-                return false;
-              });
-            })
-            .sort((a, b) => b.conversationOrder - a.conversationOrder)
-            .slice(0, include.messages.take ?? Number.MAX_SAFE_INTEGER)
-            .map((message) => this.hydrateMessage(message, include.messages.include))
-        : undefined,
+      create,
+      createMany: async ({ data }: any) => {
+        for (const item of data) insert(item);
+        return { count: data.length };
+      },
+      findMany: async (args: any = {}) =>
+        this.findRows(model, args).map((row) => this.project(model, row, args)),
+      findFirst,
+      findUnique: findFirst,
+      count: async (args: any = {}) => this.findRows(model, args).length,
+      update: async ({ where, data, select, include }: any) => {
+        const row = this.requireRow(model, where);
+        this.applyData(row, data);
+        return this.project(model, row, { select, include });
+      },
+      updateMany: async ({ where, data }: any) => {
+        const rows = this.findRows(model, { where });
+        for (const row of rows) this.applyData(row, data);
+        return { count: rows.length };
+      },
+      upsert: async ({ where, update, create: createData, select, include }: any) => {
+        const [row] = this.findRows(model, { where });
+        if (!row) return create({ data: createData, select, include });
+        this.applyData(row, update);
+        return this.project(model, row, { select, include });
+      },
+      delete: async ({ where }: any) => {
+        const row = this.requireRow(model, where);
+        this.removeRows(model, [row]);
+        return { ...row };
+      },
+      deleteMany: async ({ where }: any = {}) => {
+        const rows = this.findRows(model, { where });
+        this.removeRows(model, rows);
+        return { count: rows.length };
+      },
     };
   }
 
-  private hydrateMessage(record: MessageRecord, include?: any): any {
-    return {
-      ...record,
-      senderDevice: include?.senderDevice
-        ? this.pick(
-            this.devices.find((item) => item.id === record.senderDeviceId)!,
-            include.senderDevice.select,
-          )
-        : undefined,
-      attachment:
-        include?.attachment && record.attachmentId
-          ? (this.attachments.find((item) => item.id === record.attachmentId) ?? null)
-          : null,
-      receipts: include?.receipts
-        ? this.messageReceipts.filter((item) => item.messageId === record.id)
-        : undefined,
-      reactions: include?.reactions
-        ? this.reactions
-            .filter((item) => item.messageId === record.id)
-            .map((reaction) =>
-              include.reactions.select ? this.pick(reaction, include.reactions.select) : reaction,
-            )
-        : undefined,
+  private insertConversation(data: any): ConversationRecord {
+    // Mirror the unique index on direct_key — a duplicate insert from
+    // concurrent createDirect calls should surface as P2002 so the
+    // service's catch-and-lookup branch behaves the same in tests.
+    if (data.directKey && this.conversations.some((c) => c.directKey === data.directKey)) {
+      throw uniqueViolation('direct_key');
+    }
+    const record: ConversationRecord = {
+      id: makeId('conv'),
+      type: data.type ?? 'direct',
+      createdAt: new Date(),
+      directKey: data.directKey ?? null,
+      currentEpoch: data.currentEpoch ?? 0,
+      groupUseSenderKeys: data.groupUseSenderKeys ?? false,
+      disappearingTimerSeconds: data.disappearingTimerSeconds ?? null,
+      lastOrder: 0,
     };
+    this.conversations.push(record);
+    for (const member of data.members?.create ?? []) {
+      this.insertMember({ ...member, conversationId: record.id });
+    }
+    if (data.groupMeta?.create) {
+      this.insertGroupMeta({ ...data.groupMeta.create, conversationId: record.id });
+    }
+    if (data.channelMeta?.create) {
+      this.insertChannelMeta({ ...data.channelMeta.create, conversationId: record.id });
+    }
+    return record;
+  }
+
+  private insertMember(data: any): ConversationMemberRecord {
+    if (
+      this.conversationMembers.some(
+        (m) => m.conversationId === data.conversationId && m.userId === data.userId,
+      )
+    ) {
+      throw uniqueViolation('conversation_id, user_id');
+    }
+    const record: ConversationMemberRecord = {
+      id: makeId('member'),
+      conversationId: data.conversationId,
+      userId: data.userId,
+      role: data.role ?? 'member',
+      joinedAt: data.joinedAt ?? new Date(),
+    };
+    this.conversationMembers.push(record);
+    return record;
+  }
+
+  private insertGroupMeta(data: any): GroupMetaRecord {
+    const record: GroupMetaRecord = {
+      id: makeId('group-meta'),
+      conversationId: data.conversationId,
+      name: data.name,
+      description: data.description ?? null,
+      createdByUserId: data.createdByUserId,
+      isPublic: data.isPublic ?? false,
+      memberLimit: data.memberLimit ?? 500,
+      link: data.link ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.groupMetas.push(record);
+    return record;
+  }
+
+  private insertChannelMeta(data: any): ChannelMetaRecord {
+    const record: ChannelMetaRecord = {
+      id: makeId('channel-meta'),
+      conversationId: data.conversationId,
+      name: data.name,
+      description: data.description ?? null,
+      createdByUserId: data.createdByUserId,
+      isPublic: data.isPublic ?? false,
+      subscriberCount: data.subscriberCount ?? 0,
+      link: data.link ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.channelMetas.push(record);
+    return record;
+  }
+
+  private insertMessage(data: any): MessageRecord {
+    // Both unique indexes of the messages table: idempotency per sending
+    // device, and one message per (conversation, order).
+    if (
+      this.messages.some(
+        (m) =>
+          m.senderDeviceId === data.senderDeviceId && m.clientMessageId === data.clientMessageId,
+      )
+    ) {
+      throw uniqueViolation('sender_device_id, client_message_id');
+    }
+    if (
+      this.messages.some(
+        (m) =>
+          m.conversationId === data.conversationId &&
+          m.conversationOrder === data.conversationOrder,
+      )
+    ) {
+      throw uniqueViolation('conversation_id, conversation_order');
+    }
+    const record: MessageRecord = {
+      id: makeId('msg'),
+      conversationId: data.conversationId,
+      senderDeviceId: data.senderDeviceId,
+      clientMessageId: data.clientMessageId,
+      conversationOrder: data.conversationOrder,
+      envelopeVersion: data.envelopeVersion ?? 'veil-envelope-v1',
+      ciphertext: data.ciphertext,
+      nonce: data.nonce,
+      messageType: data.messageType,
+      attachmentId: data.attachmentId ?? null,
+      attachmentRef: this.toStoredValue(data.attachmentRef) ?? null,
+      serverReceivedAt: data.serverReceivedAt ?? new Date(),
+      deletedAt: null,
+      expiresAt: data.expiresAt ?? null,
+      replyToMessageId: data.replyToMessageId ?? null,
+      editedAt: null,
+      editCount: 0,
+      viewOnce: data.viewOnce ?? false,
+    };
+    this.messages.push(record);
+    for (const receipt of data.receipts?.create ?? []) {
+      this.messageReceipts.push({
+        id: makeId('receipt'),
+        messageId: record.id,
+        userId: receipt.userId,
+        deliveredAt: receipt.deliveredAt ?? null,
+        readAt: receipt.readAt ?? null,
+      });
+    }
+    return record;
+  }
+
+  private table(model: ModelName): Row[] {
+    switch (model) {
+      case 'user':
+        return this.users;
+      case 'device':
+        return this.devices;
+      case 'attachment':
+        return this.attachments;
+      case 'conversation':
+        return this.conversations;
+      case 'conversationMember':
+        return this.conversationMembers;
+      case 'message':
+        return this.messages;
+      case 'messageReceipt':
+        return this.messageReceipts;
+      case 'retiredHandle':
+        return this.retiredHandles;
+      case 'groupMeta':
+        return this.groupMetas;
+      case 'channelMeta':
+        return this.channelMetas;
+      case 'groupMemberEpoch':
+        return this.groupMemberEpochs;
+      case 'callRecord':
+        return this.callRecords;
+      case 'userContact':
+        return this.userContacts;
+      case 'deviceTransferSession':
+        return this.transferSessions;
+      case 'oneTimePrekey':
+        return this.oneTimePrekeys;
+      case 'deviceConversationState':
+        return this.deviceConversationStates;
+      case 'conversationMute':
+        return this.conversationMutes;
+    }
+  }
+
+  // Rows of a model with schema defaults filled in. A seeded conversation
+  // without lastOrder starts from its highest message order, as the 0017
+  // backfill does for existing rows.
+  private rows(model: ModelName): Row[] {
+    const rows = this.table(model);
+    const defaults = ROW_DEFAULTS[model] ?? {};
+    for (const row of rows) {
+      for (const [key, value] of Object.entries(defaults)) {
+        if (row[key] === undefined) row[key] = value;
+      }
+      if (model === 'conversation' && row.lastOrder === undefined) {
+        row.lastOrder = this.messages
+          .filter((message) => message.conversationId === row.id)
+          .reduce((max, message) => Math.max(max, message.conversationOrder), 0);
+      }
+    }
+    return rows;
+  }
+
+  private relation(model: ModelName, row: Row, name: string): RelationRows | undefined {
+    const many = (target: ModelName, matches: (candidate: Row) => boolean): RelationRows => ({
+      model: target,
+      many: true,
+      rows: this.rows(target).filter(matches),
+    });
+    const one = (target: ModelName, matches: (candidate: Row) => boolean): RelationRows => ({
+      model: target,
+      many: false,
+      rows: this.rows(target).filter(matches).slice(0, 1),
+    });
+
+    switch (`${model}.${name}`) {
+      case 'user.conversationRefs':
+        return many('conversationMember', (m) => m.userId === row.id);
+      case 'user.devices':
+        return many('device', (d) => d.userId === row.id);
+      case 'device.user':
+        return one('user', (u) => u.id === row.userId);
+      case 'attachment.uploaderDevice':
+        return one('device', (d) => d.id === row.uploaderDeviceId);
+      case 'conversation.members':
+        return many('conversationMember', (m) => m.conversationId === row.id);
+      case 'conversation.messages':
+        return many('message', (m) => m.conversationId === row.id);
+      case 'conversation.groupMeta':
+        return one('groupMeta', (g) => g.conversationId === row.id);
+      case 'conversation.channelMeta':
+        return one('channelMeta', (c) => c.conversationId === row.id);
+      case 'conversation.callRecords':
+        return many('callRecord', (c) => c.conversationId === row.id);
+      case 'conversationMember.conversation':
+        return one('conversation', (c) => c.id === row.conversationId);
+      case 'conversationMember.user':
+        return one('user', (u) => u.id === row.userId);
+      case 'message.conversation':
+        return one('conversation', (c) => c.id === row.conversationId);
+      case 'message.senderDevice':
+        return one('device', (d) => d.id === row.senderDeviceId);
+      case 'message.attachment':
+        return one('attachment', (a) => a.id === row.attachmentId);
+      case 'message.receipts':
+        return many('messageReceipt', (r) => r.messageId === row.id);
+      case 'messageReceipt.message':
+        return one('message', (m) => m.id === row.messageId);
+      case 'groupMeta.conversation':
+      case 'channelMeta.conversation':
+      case 'callRecord.conversation':
+        return one('conversation', (c) => c.id === row.conversationId);
+      case 'callRecord.initiatorDevice':
+        return one('device', (d) => d.id === row.initiatorDeviceId);
+      case 'deviceConversationState.device':
+        return one('device', (d) => d.id === row.deviceId);
+      default:
+        return undefined;
+    }
+  }
+
+  private findRows(model: ModelName, args: Row): Row[] {
+    return this.applyListArgs(model, this.rows(model), args);
+  }
+
+  private applyListArgs(model: ModelName, rows: Row[], args: Row): Row[] {
+    let result = args.where
+      ? rows.filter((row) => this.matches(model, row, args.where))
+      : [...rows];
+    if (args.orderBy) {
+      const rules: Row[] = Array.isArray(args.orderBy) ? args.orderBy : [args.orderBy];
+      result.sort((left, right) => {
+        for (const rule of rules) {
+          const [field, direction] = Object.entries(rule)[0]!;
+          const comparison = compareValues(left[field], right[field]);
+          if (comparison !== 0) return direction === 'desc' ? -comparison : comparison;
+        }
+        return 0;
+      });
+    }
+    if (args.skip) result = result.slice(args.skip);
+    if (args.take !== undefined) result = result.slice(0, args.take);
+    return result;
+  }
+
+  private matches(model: ModelName, row: Row, where: Row): boolean {
+    return Object.entries(where).every(([key, filter]) => {
+      if (filter === undefined) return true;
+      if (key === 'OR') return (filter as Row[]).some((clause) => this.matches(model, row, clause));
+      if (key === 'AND') {
+        return ([] as Row[]).concat(filter).every((clause) => this.matches(model, row, clause));
+      }
+      if (key === 'NOT') {
+        return !([] as Row[]).concat(filter).some((clause) => this.matches(model, row, clause));
+      }
+      const relation = this.relation(model, row, key);
+      if (relation) return this.matchesRelation(relation, filter);
+      // Compound unique selectors such as conversationId_userId.
+      if (key.includes('_') && !(key in row) && isPlainObject(filter)) {
+        return Object.entries(filter).every(([field, value]) =>
+          this.matchesScalar(row[field], value),
+        );
+      }
+      return this.matchesScalar(row[key], filter);
+    });
+  }
+
+  private matchesRelation(relation: RelationRows, filter: any): boolean {
+    const matchesTarget = (target: Row, clause: Row) =>
+      this.matches(relation.model, target, clause);
+    if (relation.many) {
+      if (filter.some) return relation.rows.some((target) => matchesTarget(target, filter.some));
+      if (filter.every) return relation.rows.every((target) => matchesTarget(target, filter.every));
+      if (filter.none) return !relation.rows.some((target) => matchesTarget(target, filter.none));
+      throw new Error(
+        `FakePrismaService: unsupported list relation filter ${JSON.stringify(filter)}`,
+      );
+    }
+    if (filter === null) return relation.rows.length === 0;
+    const [target] = relation.rows;
+    return target !== undefined && matchesTarget(target, filter);
+  }
+
+  private matchesScalar(value: any, filter: any): boolean {
+    if (filter === null) return value === null || value === undefined;
+    if (filter instanceof Date)
+      return value instanceof Date && value.getTime() === filter.getTime();
+    if (!isPlainObject(filter)) return value === filter;
+    return Object.entries(filter).every(([operator, operand]) => {
+      switch (operator) {
+        case 'equals':
+          return this.matchesScalar(value, operand);
+        case 'not':
+          return !this.matchesScalar(value, operand);
+        case 'in':
+          return (operand as unknown[]).includes(value);
+        case 'notIn':
+          return !(operand as unknown[]).includes(value);
+        case 'lt':
+          return value != null && value < operand;
+        case 'lte':
+          return value != null && value <= operand;
+        case 'gt':
+          return value != null && value > operand;
+        case 'gte':
+          return value != null && value >= operand;
+        case 'startsWith':
+          return typeof value === 'string' && value.startsWith(operand as string);
+        case 'endsWith':
+          return typeof value === 'string' && value.endsWith(operand as string);
+        default:
+          throw new Error(`FakePrismaService: unsupported filter operator "${operator}"`);
+      }
+    });
+  }
+
+  private project(model: ModelName, row: Row, args?: Row): Row {
+    if (args?.select) return this.projectFields(model, row, args.select, {});
+    return args?.include ? this.projectFields(model, row, args.include, { ...row }) : { ...row };
+  }
+
+  private projectFields(model: ModelName, row: Row, fields: Row, base: Row): Row {
+    for (const [key, spec] of Object.entries(fields)) {
+      if (!spec) continue;
+      if (key === '_count') {
+        base._count = this.countRelations(model, row, spec.select);
+        continue;
+      }
+      const relation = this.relation(model, row, key);
+      base[key] = relation
+        ? this.projectRelation(relation, spec === true ? undefined : spec)
+        : row[key];
+    }
+    return base;
+  }
+
+  private projectRelation(relation: RelationRows, spec?: Row): Row | Row[] | null {
+    if (!relation.many) {
+      const [target] = relation.rows;
+      return target ? this.project(relation.model, target, spec) : null;
+    }
+    return this.applyListArgs(relation.model, relation.rows, spec ?? {}).map((target) =>
+      this.project(relation.model, target, spec),
+    );
+  }
+
+  private countRelations(model: ModelName, row: Row, select: Row): Row {
+    return Object.fromEntries(
+      Object.entries(select)
+        .filter(([, spec]) => spec)
+        .map(([key, spec]) => {
+          const relation = this.relation(model, row, key)!;
+          const where = spec === true ? undefined : spec.where;
+          return [key, this.applyListArgs(relation.model, relation.rows, { where }).length];
+        }),
+    );
+  }
+
+  private requireRow(model: ModelName, where: Row): Row {
+    const [row] = this.findRows(model, { where });
+    if (!row) throw recordNotFound(model);
+    return row;
+  }
+
+  private toStoredValue(value: unknown): unknown {
+    return value === Prisma.JsonNull || value === Prisma.DbNull ? null : value;
+  }
+
+  private applyData(row: Row, data: Row): void {
+    for (const [key, value] of Object.entries(data ?? {})) {
+      if (value === undefined) continue;
+      if (isPlainObject(value) && 'increment' in value) {
+        row[key] = (row[key] ?? 0) + value.increment;
+      } else if (isPlainObject(value) && 'decrement' in value) {
+        row[key] = (row[key] ?? 0) - value.decrement;
+      } else {
+        row[key] = this.toStoredValue(value);
+      }
+    }
+    if ('updatedAt' in row) row.updatedAt = new Date();
+  }
+
+  // Deletes rows in place and applies the schema's referential actions for
+  // the relations the services rely on.
+  private removeRows(model: ModelName, rows: Row[]): void {
+    const table = this.table(model);
+    for (const row of rows) {
+      const index = table.indexOf(row);
+      if (index >= 0) table.splice(index, 1);
+    }
+    if (model === 'message') {
+      const removedIds = new Set(rows.map((row) => row.id));
+      this.messageReceipts = this.messageReceipts.filter((r) => !removedIds.has(r.messageId));
+      for (const message of this.messages) {
+        if (message.replyToMessageId && removedIds.has(message.replyToMessageId)) {
+          message.replyToMessageId = null;
+        }
+      }
+    }
   }
 
   private pick(record: Record<string, any>, select: Record<string, boolean>): Record<string, any> {
@@ -1084,4 +1397,3 @@ export class FakePrismaService {
     );
   }
 }
-import { randomUUID } from 'node:crypto';

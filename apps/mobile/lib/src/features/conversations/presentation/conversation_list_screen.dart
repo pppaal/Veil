@@ -106,11 +106,17 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
       return 'No messages yet';
     }
 
-    if (isMessageExpired(envelope.expiresAt)) {
+    if (isMessageExpired(envelope.expiresAt, now: controller.expiryNow())) {
       return 'Expired locally';
     }
 
-    switch (envelope.messageKind) {
+    final previewBody = controller.lastMessagePreviewFor(item.id);
+    if (previewBody != null) {
+      return previewBody;
+    }
+
+    // Labelled by the decrypted kind only; the envelope's is unauthenticated.
+    switch (controller.lastMessageKindFor(item.id) ?? MessageKind.text) {
       case MessageKind.image:
         return 'Encrypted image';
       case MessageKind.file:
@@ -946,7 +952,7 @@ class _ConversationListPane extends StatelessWidget {
                     ),
                     expiryLabel: item.lastEnvelope?.expiresAt == null
                         ? null
-                        : formatMessageExpiry(item.lastEnvelope!.expiresAt!),
+                        : formatMessageExpiry(item.lastEnvelope!.expiresAt!, now: controller.expiryNow()),
                     onTap: () => onSelectConversation(item.id),
                   ),
                 ),

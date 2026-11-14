@@ -1,8 +1,13 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:crypto/crypto.dart' as hash;
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../crypto/crypto_engine.dart';
+import '../crypto/ratchet/session_lock.dart';
+import '../identity/identity_key_value_backend.dart';
 
 abstract class SecureKeyValueStore {
   Future<void> write({required String key, required String? value});
@@ -62,6 +67,11 @@ class SecureStorageService {
   static const _identityKey = 'veil.identity.private_ref';
   static const _authPrivateKey = 'veil.auth.private_key';
   static const _authPublicKey = 'veil.auth.public_key';
+  // A new device's transfer between its claim and its first login: the
+  // keys it claimed with and, once the relay committed the transfer, the
+  // device id it got. Kept so neither a lost response nor an app kill can
+  // throw away the only keys the account now trusts.
+  static const _pendingTransferKey = 'veil.transfer.pending';
   static const _pinKey = 'veil.app_lock.pin_verifier';
   static const _pinFailuresKey = 'veil.app_lock.pin_failures';
   static const _pinLockoutUntilKey = 'veil.app_lock.pin_lockout_until';
@@ -82,21 +92,50 @@ class SecureStorageService {
   // 'system'). Non-sensitive, but kept in the same store so the app does not
   // depend on an additional plain key-value plugin.
   static const _themeModeKey = 'veil.settings.theme_mode';
-  // Double Ratchet per-conversation session snapshots, stored as a single
-  // JSON blob {conversationId: <snapshot json string>}. Stored as one key so
-  // we don't depend on backend enumeration, which FlutterSecureStorage can't
-  // do portably.
-  static const _sessionSnapshotsKey = 'veil.crypto.session_snapshots';
-  // Safety-number verification attestations — records that a conversation's
-  // peer identity key was human-verified at a point in time. Single-blob
-  // layout for the same portability reason as session snapshots.
+  // Pre-v4 layout: every conversation's session snapshot in ONE blob, so
+  // concurrent writers lost each other's updates. Migrated once into the
+  // per-conversation layout below, then deleted.
+  static const _legacySessionSnapshotsKey = 'veil.crypto.session_snapshots';
+  // One entry per conversation under 'veil.crypto.session.<sha256hex(id)>'
+  // (the id is hashed so key names never carry it), plus an index listing
+  // the ids, because FlutterSecureStorage cannot enumerate keys portably.
+  static const _sessionIndexKey = 'veil.crypto.session_index';
+  static const _sessionKeyPrefix = 'veil.crypto.session.';
+  // Group Sender Keys per-group chain state, single-blob layout:
+  // {groupId: <snapshot json>}. Wiped together with session snapshots.
+  static const _groupSenderKeysKey = 'veil.crypto.group_sender_keys';
+  // Prekey private halves: 'veil.crypto.opk.<id>' / 'veil.crypto.spk.<id>'
+  // plus an index of ids and the next one-time prekey id.
+  static const _prekeyIndexKey = 'veil.crypto.prekey_index';
+  static const _oneTimePrekeyPrefix = 'veil.crypto.opk.';
+  static const _signedPrekeyPrefix = 'veil.crypto.spk.';
+  static const _cryptoQueueKey = 'crypto-state';
+  // Safety-number verifications of earlier builds, keyed by conversation
+  // ("conversationId" or "conversationId:memberUserId"). Only read once, to
+  // carry them into the identity pin table, then deleted.
   static const _safetyVerificationsKey = 'veil.security.safety_verifications';
 
+  // Every crypto-state read-modify-write goes through this one serial queue,
+  // so index updates never interleave and a slower older write cannot land
+  // after a newer one.
+  final SessionLock _cryptoQueue = SessionLock();
+  final Map<String, int> _sessionRevs = {};
+  bool _legacySessionsMigrated = false;
+
+  Future<T> _serialCrypto<T>(Future<T> Function() action) => _cryptoQueue.synchronized(_cryptoQueueKey, action);
+
+  /// Read/write/delete confined to [scope]'s keys.
+  ScopedSecureStore scoped(SecureScope scope) => ScopedSecureStore._(this, scope);
+
+  /// Stores a new device identity. Prekeys of an earlier identity are
+  /// dropped with it: once rotations fill the prekey store it takes
+  /// precedence over the signed prekey embedded in the identity ref.
   Future<void> persistDeviceSecretRefs({
     required String identityPrivateRef,
     required String authPrivateKey,
     required String authPublicKey,
   }) async {
+    await clearPrekeys();
     await _storage.write(key: _identityKey, value: identityPrivateRef);
     await _storage.write(key: _authPrivateKey, value: authPrivateKey);
     await _storage.write(key: _authPublicKey, value: authPublicKey);
@@ -108,6 +147,11 @@ class SecureStorageService {
     return (identityPrivateRef?.isNotEmpty ?? false) &&
         (authPrivateKey?.isNotEmpty ?? false);
   }
+
+  /// Replaces the identity ref with the same identity in a newer encoding
+  /// (a v1 ref upgraded by its first signed-prekey rotation).
+  Future<void> replaceIdentityPrivateRef(String identityPrivateRef) =>
+      _storage.write(key: _identityKey, value: identityPrivateRef);
 
   Future<String?> readIdentityPrivateRef() async {
     return _storage.read(key: _identityKey);
@@ -274,6 +318,21 @@ class SecureStorageService {
     );
   }
 
+  /// The user's own nickname. Local only: the relay never stores one.
+  Future<void> persistLocalNickname(String? nickname) => nickname == null || nickname.isEmpty
+      ? _storage.delete(key: _displayNameKey)
+      : _storage.write(key: _displayNameKey, value: nickname);
+
+  Future<void> persistPendingTransfer(PendingTransferRecord record) =>
+      _storage.write(key: _pendingTransferKey, value: jsonEncode(record.toJson()));
+
+  Future<PendingTransferRecord?> readPendingTransfer() async {
+    final json = _decodeJsonObject(await _storage.read(key: _pendingTransferKey));
+    return json == null ? null : PendingTransferRecord.fromJson(json);
+  }
+
+  Future<void> clearPendingTransfer() => _storage.delete(key: _pendingTransferKey);
+
   Future<void> clearSession() async {
     await _storage.delete(key: _accessTokenKey);
     await _storage.delete(key: _refreshTokenKey);
@@ -289,38 +348,152 @@ class SecureStorageService {
     await _storage.delete(key: _authPublicKey);
   }
 
-  Future<Map<String, Map<String, dynamic>>> readAllSessionSnapshots() async {
-    final raw = await _storage.read(key: _sessionSnapshotsKey);
-    if (raw == null || raw.isEmpty) return const {};
-    try {
-      final decoded = json.decode(raw) as Map<String, dynamic>;
-      final result = <String, Map<String, dynamic>>{};
-      decoded.forEach((key, value) {
-        if (value is Map<String, dynamic>) {
-          result[key] = value;
+  Future<Map<String, Map<String, dynamic>>> readAllSessionSnapshots() => _serialCrypto(() async {
+        await _migrateLegacySessionsOnce();
+        final result = <String, Map<String, dynamic>>{};
+        for (final conversationId in await _readSessionIndex()) {
+          final snapshot = _decodeJsonObject(await _storage.read(key: _sessionKey(conversationId)));
+          if (snapshot == null) continue;
+          result[conversationId] = snapshot;
+          final rev = (snapshot['rev'] as num?)?.toInt();
+          if (rev != null) _sessionRevs[conversationId] = rev;
         }
+        return result;
       });
-      return result;
-    } catch (_) {
-      return const {};
-    }
-  }
 
+  /// Refuses (throws [StateError]) when the stored snapshot already has a
+  /// higher `rev`, so an older ratchet state can never overwrite a newer
+  /// one. The refusal is loud because the caller treats completion as
+  /// durability and would otherwise publish state that is not on disk.
   Future<void> writeSessionSnapshot(
     String conversationId,
     Map<String, dynamic> snapshot,
-  ) async {
-    final all = await readAllSessionSnapshots();
-    final next = Map<String, Map<String, dynamic>>.from(all);
-    next[conversationId] = snapshot;
-    await _storage.write(
-      key: _sessionSnapshotsKey,
-      value: json.encode(next),
-    );
+  ) =>
+      _serialCrypto(() async {
+        await _migrateLegacySessionsOnce();
+        final incomingRev = (snapshot['rev'] as num?)?.toInt();
+        final storedRev = await _storedSessionRev(conversationId);
+        if (incomingRev != null && storedRev != null && incomingRev < storedRev) {
+          throw StateError('Session snapshot rev $incomingRev is older than the stored rev $storedRev.');
+        }
+        final index = await _readSessionIndex();
+        if (!index.contains(conversationId)) {
+          await _writeSessionIndex([...index, conversationId]);
+        }
+        await _storage.write(key: _sessionKey(conversationId), value: json.encode(snapshot));
+        if (incomingRev != null) _sessionRevs[conversationId] = incomingRev;
+      });
+
+  Future<void> clearSessionSnapshots() => _serialCrypto(() async {
+        for (final conversationId in await _readSessionIndex()) {
+          await _storage.delete(key: _sessionKey(conversationId));
+        }
+        await _storage.delete(key: _sessionIndexKey);
+        await _storage.delete(key: _legacySessionSnapshotsKey);
+        _sessionRevs.clear();
+        _legacySessionsMigrated = true;
+      });
+
+  Future<void> _migrateLegacySessionsOnce() async {
+    if (_legacySessionsMigrated) return;
+    final legacy = _decodeJsonObject(await _storage.read(key: _legacySessionSnapshotsKey));
+    if (legacy != null) {
+      final index = await _readSessionIndex();
+      for (final entry in legacy.entries) {
+        if (entry.value is! Map<String, dynamic> || index.contains(entry.key)) continue;
+        index.add(entry.key);
+        await _writeSessionIndex(index);
+        await _storage.write(key: _sessionKey(entry.key), value: json.encode(entry.value));
+      }
+      await _storage.delete(key: _legacySessionSnapshotsKey);
+    }
+    _legacySessionsMigrated = true;
   }
 
-  Future<void> clearSessionSnapshots() async {
-    await _storage.delete(key: _sessionSnapshotsKey);
+  Future<int?> _storedSessionRev(String conversationId) async {
+    final cached = _sessionRevs[conversationId];
+    if (cached != null) return cached;
+    final stored = _decodeJsonObject(await _storage.read(key: _sessionKey(conversationId)));
+    return (stored?['rev'] as num?)?.toInt();
+  }
+
+  Future<List<String>> _readSessionIndex() async {
+    final raw = await _storage.read(key: _sessionIndexKey);
+    if (raw == null || raw.isEmpty) return <String>[];
+    try {
+      return (json.decode(raw) as List<dynamic>).cast<String>().toList();
+    } catch (_) {
+      return <String>[];
+    }
+  }
+
+  Future<void> _writeSessionIndex(List<String> index) =>
+      _storage.write(key: _sessionIndexKey, value: json.encode(index));
+
+  static String _sessionKey(String conversationId) =>
+      '$_sessionKeyPrefix${hash.sha256.convert(utf8.encode(conversationId))}';
+
+  Future<Map<String, Map<String, dynamic>>> readAllGroupSenderKeySnapshots() =>
+      _serialCrypto(_readGroupSenderKeySnapshots);
+
+  Future<Map<String, Map<String, dynamic>>> _readGroupSenderKeySnapshots() async {
+    final decoded = _decodeJsonObject(await _storage.read(key: _groupSenderKeysKey));
+    if (decoded == null) return const {};
+    final result = <String, Map<String, dynamic>>{};
+    decoded.forEach((key, value) {
+      if (value is Map<String, dynamic>) {
+        result[key] = value;
+      }
+    });
+    return result;
+  }
+
+  /// `snapshot == null` deletes the group's entry (member left / wiped).
+  Future<void> writeGroupSenderKeySnapshot(
+    String groupId,
+    Map<String, dynamic>? snapshot,
+  ) =>
+      _serialCrypto(() async {
+        final next = Map<String, Map<String, dynamic>>.from(await _readGroupSenderKeySnapshots());
+        if (snapshot == null) {
+          next.remove(groupId);
+        } else {
+          next[groupId] = snapshot;
+        }
+        if (next.isEmpty) {
+          await _storage.delete(key: _groupSenderKeysKey);
+          return;
+        }
+        await _storage.write(key: _groupSenderKeysKey, value: json.encode(next));
+      });
+
+  Future<void> clearGroupSenderKeySnapshots() => _serialCrypto(() => _storage.delete(key: _groupSenderKeysKey));
+
+  Future<void> clearPrekeys() => _serialCrypto(() async {
+        final index = await _readPrekeyIndex();
+        for (final keyId in index.oneTimeIds) {
+          await _storage.delete(key: '$_oneTimePrekeyPrefix$keyId');
+        }
+        for (final keyId in index.signedIds) {
+          await _storage.delete(key: '$_signedPrekeyPrefix$keyId');
+        }
+        await _storage.delete(key: _prekeyIndexKey);
+      });
+
+  Future<_PrekeyIndex> _readPrekeyIndex() async =>
+      _PrekeyIndex.fromJson(_decodeJsonObject(await _storage.read(key: _prekeyIndexKey)));
+
+  Future<void> _writePrekeyIndex(_PrekeyIndex index) =>
+      _storage.write(key: _prekeyIndexKey, value: json.encode(index.toJson()));
+
+  static Map<String, dynamic>? _decodeJsonObject(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = json.decode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<Map<String, SafetyVerificationRecord>>
@@ -339,77 +512,6 @@ class SecureStorageService {
       return result;
     } catch (_) {
       return const {};
-    }
-  }
-
-  // Composite key format: direct conversations use the raw conversationId;
-  // group per-member attestations use "$conversationId:$memberUserId". The
-  // colon is safe because both halves are opaque server-generated IDs with
-  // no colons of their own. Direct reads stay source-compatible.
-  String _safetyVerificationKey(String conversationId, String? memberUserId) {
-    if (memberUserId == null || memberUserId.isEmpty) return conversationId;
-    return '$conversationId:$memberUserId';
-  }
-
-  Future<SafetyVerificationRecord?> readSafetyVerification(
-    String conversationId, {
-    String? memberUserId,
-  }) async {
-    final all = await readAllSafetyVerifications();
-    return all[_safetyVerificationKey(conversationId, memberUserId)];
-  }
-
-  // Returns a map of memberUserId -> record for every per-member attestation
-  // stashed against [conversationId]. Useful for rendering the group safety-
-  // numbers list without N round-trips.
-  Future<Map<String, SafetyVerificationRecord>>
-      readSafetyVerificationsForGroup(String conversationId) async {
-    final all = await readAllSafetyVerifications();
-    final prefix = '$conversationId:';
-    final result = <String, SafetyVerificationRecord>{};
-    all.forEach((key, value) {
-      if (key.startsWith(prefix)) {
-        result[key.substring(prefix.length)] = value;
-      }
-    });
-    return result;
-  }
-
-  Future<void> writeSafetyVerification(
-    String conversationId,
-    SafetyVerificationRecord record, {
-    String? memberUserId,
-  }) async {
-    final all = await readAllSafetyVerifications();
-    final next = <String, Map<String, dynamic>>{};
-    all.forEach((key, value) {
-      next[key] = value.toJson();
-    });
-    next[_safetyVerificationKey(conversationId, memberUserId)] = record.toJson();
-    await _storage.write(
-      key: _safetyVerificationsKey,
-      value: json.encode(next),
-    );
-  }
-
-  Future<void> clearSafetyVerification(
-    String conversationId, {
-    String? memberUserId,
-  }) async {
-    final all = await readAllSafetyVerifications();
-    final target = _safetyVerificationKey(conversationId, memberUserId);
-    if (!all.containsKey(target)) return;
-    final next = <String, Map<String, dynamic>>{};
-    all.forEach((key, value) {
-      if (key != target) next[key] = value.toJson();
-    });
-    if (next.isEmpty) {
-      await _storage.delete(key: _safetyVerificationsKey);
-    } else {
-      await _storage.write(
-        key: _safetyVerificationsKey,
-        value: json.encode(next),
-      );
     }
   }
 
@@ -505,10 +607,16 @@ class SecureStorageService {
   }) async {
     await clearSession();
     await clearDeviceSecrets();
+    await clearPendingTransfer();
     await clearCacheKey();
     await clearPinThrottleState();
     await clearSessionSnapshots();
+    await clearGroupSenderKeySnapshots();
+    await clearPrekeys();
     await clearAllSafetyVerifications();
+    for (final scope in SecureScope.values) {
+      await scoped(scope).clear();
+    }
     if (!preservePin) {
       await clearPin();
     }
@@ -582,6 +690,205 @@ class SecureStorageService {
   }
 }
 
+/// Namespaces that features keep their own small documents under. Every one
+/// is forgotten when the device's local state is wiped.
+enum SecureScope {
+  /// Contact identity pins (trust on first use).
+  identity('veil.identity'),
+
+  /// Per-conversation security policy, such as accepted envelope versions.
+  conversationPolicy('veil.conversation_policy'),
+
+  /// Privacy switches the user set on this device.
+  privacy('veil.settings.privacy'),
+
+  /// Private nicknames for contacts.
+  contacts('veil.contacts');
+
+  const SecureScope(this.namespace);
+
+  final String namespace;
+}
+
+/// The keystore seen through one [SecureScope]. FlutterSecureStorage cannot
+/// enumerate keys, so the scope records every key it writes in an index;
+/// that is what lets [clear] forget all of them.
+class ScopedSecureStore implements IdentityKeyValueBackend {
+  ScopedSecureStore._(this._service, this._scope);
+
+  final SecureStorageService _service;
+  final SecureScope _scope;
+
+  SecureKeyValueStore get _storage => _service._storage;
+
+  String _qualified(String key) => '${_scope.namespace}.$key';
+
+  String get _indexKey => '${_scope.namespace}#keys';
+
+  Future<T> _serial<T>(Future<T> Function() action) =>
+      _service._cryptoQueue.synchronized(_scope.namespace, action);
+
+  @override
+  Future<String?> read(String key) => _storage.read(key: _qualified(key));
+
+  @override
+  Future<void> write(String key, String value) => _serial(() async {
+        final keys = await _readIndex();
+        if (keys.add(key)) await _writeIndex(keys);
+        await _storage.write(key: _qualified(key), value: value);
+      });
+
+  @override
+  Future<void> delete(String key) => _serial(() async {
+        await _storage.delete(key: _qualified(key));
+        final keys = await _readIndex();
+        if (keys.remove(key)) await _writeIndex(keys);
+      });
+
+  Future<void> clear() => _serial(() async {
+        for (final key in await _readIndex()) {
+          await _storage.delete(key: _qualified(key));
+        }
+        await _storage.delete(key: _indexKey);
+      });
+
+  Future<Set<String>> _readIndex() async {
+    final raw = await _storage.read(key: _indexKey);
+    final decoded = raw == null ? null : json.decode(raw);
+    return {if (decoded is List) ...decoded.whereType<String>()};
+  }
+
+  Future<void> _writeIndex(Set<String> keys) =>
+      _storage.write(key: _indexKey, value: json.encode(keys.toList()));
+}
+
+/// [LocalPrekeyStore] backed by the device keystore. Shares
+/// [SecureStorageService]'s serial crypto queue so prekey index updates
+/// never race session or group writes.
+class SecureStorageLocalPrekeyStore implements LocalPrekeyStore {
+  SecureStorageLocalPrekeyStore(this._service);
+
+  final SecureStorageService _service;
+
+  SecureKeyValueStore get _storage => _service._storage;
+
+  static String _oneTimeKey(int keyId) => '${SecureStorageService._oneTimePrekeyPrefix}$keyId';
+
+  static String _signedKey(int keyId) => '${SecureStorageService._signedPrekeyPrefix}$keyId';
+
+  @override
+  Future<int> reserveOneTimePrekeyIds(int count) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        final first = index.nextOneTimeId;
+        index.nextOneTimeId += count;
+        await _service._writePrekeyIndex(index);
+        return first;
+      });
+
+  @override
+  Future<void> saveOneTimePrekey(int keyId, List<int> privateKey) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        index.oneTimeIds.add(keyId);
+        await _service._writePrekeyIndex(index);
+        await _storage.write(key: _oneTimeKey(keyId), value: SecureStorageService._encodeBytes(privateKey));
+      });
+
+  @override
+  Future<List<int>?> loadOneTimePrekey(int keyId) => _service._serialCrypto(() async {
+        final raw = await _storage.read(key: _oneTimeKey(keyId));
+        return raw == null || raw.isEmpty ? null : SecureStorageService._decodeBytes(raw);
+      });
+
+  @override
+  Future<void> deleteOneTimePrekey(int keyId) => _service._serialCrypto(() async {
+        await _storage.delete(key: _oneTimeKey(keyId));
+        final index = await _service._readPrekeyIndex();
+        if (index.oneTimeIds.remove(keyId)) await _service._writePrekeyIndex(index);
+      });
+
+  @override
+  Future<void> saveSignedPrekey(StoredSignedPrekey prekey) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        index.signedIds.add(prekey.keyId);
+        await _service._writePrekeyIndex(index);
+        await _storage.write(
+          key: _signedKey(prekey.keyId),
+          value: json.encode({
+            'priv': SecureStorageService._encodeBytes(prekey.privateKey),
+            'ts': prekey.createdAt.millisecondsSinceEpoch,
+          }),
+        );
+      });
+
+  @override
+  Future<List<StoredSignedPrekey>> loadSignedPrekeys() => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        final prekeys = <StoredSignedPrekey>[];
+        for (final keyId in index.signedIds) {
+          final entry = SecureStorageService._decodeJsonObject(await _storage.read(key: _signedKey(keyId)));
+          if (entry == null) continue;
+          prekeys.add(StoredSignedPrekey(
+            keyId: keyId,
+            privateKey: SecureStorageService._decodeBytes(entry['priv'] as String),
+            createdAt: DateTime.fromMillisecondsSinceEpoch((entry['ts'] as num).toInt(), isUtc: true),
+          ));
+        }
+        return prekeys;
+      });
+
+  @override
+  Future<void> deleteSignedPrekey(int keyId) => _service._serialCrypto(() async {
+        await _storage.delete(key: _signedKey(keyId));
+        final index = await _service._readPrekeyIndex();
+        if (index.signedIds.remove(keyId)) await _service._writePrekeyIndex(index);
+      });
+
+  @override
+  Future<SignedPrekeyPublication?> loadSignedPrekeyPublication() =>
+      _service._serialCrypto(() async => (await _service._readPrekeyIndex()).publication);
+
+  @override
+  Future<void> saveSignedPrekeyPublication(SignedPrekeyPublication publication) => _service._serialCrypto(() async {
+        final index = await _service._readPrekeyIndex();
+        index.publication = publication;
+        await _service._writePrekeyIndex(index);
+      });
+}
+
+// Kept with the prekeys it describes, so a new identity, which clears them,
+// also forgets which signed prekey the directory served for the old one.
+class _PrekeyIndex {
+  _PrekeyIndex(this.nextOneTimeId, this.oneTimeIds, this.signedIds, this.publication);
+
+  factory _PrekeyIndex.fromJson(Map<String, dynamic>? json) {
+    final published = json?['published'];
+    return _PrekeyIndex(
+      (json?['nextOpk'] as num?)?.toInt() ?? 1,
+      {...(json?['opk'] as List<dynamic>? ?? const []).cast<int>()},
+      {...(json?['spk'] as List<dynamic>? ?? const []).cast<int>()},
+      published is Map<String, dynamic>
+          ? SignedPrekeyPublication(
+              spkId: (published['id'] as num).toInt(),
+              publishedAt: DateTime.fromMillisecondsSinceEpoch((published['ts'] as num).toInt(), isUtc: true),
+            )
+          : null,
+    );
+  }
+
+  int nextOneTimeId;
+  final Set<int> oneTimeIds;
+  final Set<int> signedIds;
+  SignedPrekeyPublication? publication;
+
+  Map<String, dynamic> toJson() => {
+        'nextOpk': nextOneTimeId,
+        'opk': oneTimeIds.toList(),
+        'spk': signedIds.toList(),
+        if (publication case final published?)
+          'published': {'id': published.spkId, 'ts': published.publishedAt.millisecondsSinceEpoch},
+      };
+}
+
 class StoredSession {
   const StoredSession({
     required this.accessToken,
@@ -600,6 +907,138 @@ class StoredSession {
   final String? displayName;
 }
 
+/// A device transfer this new device claimed and has not finished yet.
+/// [newDeviceId] and [handle] are set once the relay committed the transfer:
+/// from then on the account trusts these keys and no other device.
+///
+/// Until then only the relay knows whether it committed: the answer to a
+/// /device-transfer/complete can be lost after the commit
+/// ([completionOutcomeUnknown]), and the relay answers a retry with that
+/// completion however long ago the claim window ([expiresAt]) closed. So the
+/// window decides only for a claim with no /complete left unanswered; any
+/// other claim is the relay's to end, which it does by answering
+/// `transfer_session_inactive` ([ended]).
+class PendingTransferRecord {
+  const PendingTransferRecord({
+    required this.sessionId,
+    required this.transferToken,
+    required this.claimId,
+    required this.claimantFingerprint,
+    required this.expiresAt,
+    required this.identity,
+    required this.authKey,
+    this.newDeviceId,
+    this.handle,
+    this.completionOutcomeUnknown = false,
+    this.ended = false,
+  });
+
+  factory PendingTransferRecord.fromJson(Map<String, dynamic> json) {
+    return PendingTransferRecord(
+      sessionId: json['sessionId'] as String,
+      transferToken: json['transferToken'] as String,
+      claimId: json['claimId'] as String,
+      claimantFingerprint: json['claimantFingerprint'] as String,
+      expiresAt: DateTime.parse(json['expiresAt'] as String),
+      identity: DeviceIdentityMaterial(
+        identityPublicKey: json['identityPublicKey'] as String,
+        identityPrivateKeyRef: json['identityPrivateKeyRef'] as String,
+        signedPrekeyBundle: json['signedPrekeyBundle'] as String,
+      ),
+      authKey: DeviceAuthKeyMaterial(
+        publicKey: json['authPublicKey'] as String,
+        privateKey: json['authPrivateKey'] as String,
+      ),
+      newDeviceId: json['newDeviceId'] as String?,
+      handle: json['handle'] as String?,
+      // A record kept before this flag was may have sent /complete: the
+      // relay is asked rather than the window trusted.
+      completionOutcomeUnknown: json['completionOutcomeUnknown'] as bool? ?? true,
+      ended: json['ended'] as bool? ?? false,
+    );
+  }
+
+  final String sessionId;
+  final String transferToken;
+  final String claimId;
+  final String claimantFingerprint;
+  final DateTime expiresAt;
+  final DeviceIdentityMaterial identity;
+  final DeviceAuthKeyMaterial authKey;
+  final String? newDeviceId;
+  final String? handle;
+
+  /// Set just before this device sends /complete for the claim, and cleared
+  /// only by an answer that shows the relay did not commit it (the old device
+  /// has not approved, say). A lost answer, a 5xx or the app stopping
+  /// mid-request leave it set: the relay may have committed the transfer to
+  /// these keys, and only another /complete can tell.
+  final bool completionOutcomeUnknown;
+
+  /// The relay refused to complete this claim with `transfer_session_inactive`:
+  /// it never moved the account to these keys (or has revoked them since),
+  /// and never will. The keys stay until the next claim replaces them.
+  final bool ended;
+
+  bool get isCompleted => newDeviceId != null && handle != null;
+
+  /// Whether the relay may have moved the account to these keys: it did, or
+  /// a /complete went out whose answer this device never got. Such a claim is
+  /// finished, never replaced by another claim.
+  bool get mayBeCommitted => isCompleted || (completionOutcomeUnknown && !ended);
+
+  /// Whether this claim can no longer be completed at [now]: the relay said
+  /// so, or the window closed with no /complete left unanswered (only a
+  /// /complete signed with [authKey] can commit the claim, so none did).
+  bool expiredAt(DateTime now) =>
+      !isCompleted && (ended || (!completionOutcomeUnknown && !expiresAt.isAfter(now)));
+
+  PendingTransferRecord completedAs({required String newDeviceId, required String handle}) =>
+      _copy(newDeviceId: newDeviceId, handle: handle, completionOutcomeUnknown: false);
+
+  PendingTransferRecord withCompletionOutcomeUnknown(bool unknown) => _copy(completionOutcomeUnknown: unknown);
+
+  PendingTransferRecord endedByRelay() => _copy(completionOutcomeUnknown: false, ended: true);
+
+  PendingTransferRecord _copy({
+    String? newDeviceId,
+    String? handle,
+    bool? completionOutcomeUnknown,
+    bool? ended,
+  }) {
+    return PendingTransferRecord(
+      sessionId: sessionId,
+      transferToken: transferToken,
+      claimId: claimId,
+      claimantFingerprint: claimantFingerprint,
+      expiresAt: expiresAt,
+      identity: identity,
+      authKey: authKey,
+      newDeviceId: newDeviceId ?? this.newDeviceId,
+      handle: handle ?? this.handle,
+      completionOutcomeUnknown: completionOutcomeUnknown ?? this.completionOutcomeUnknown,
+      ended: ended ?? this.ended,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'sessionId': sessionId,
+        'transferToken': transferToken,
+        'claimId': claimId,
+        'claimantFingerprint': claimantFingerprint,
+        'expiresAt': expiresAt.toUtc().toIso8601String(),
+        'identityPublicKey': identity.identityPublicKey,
+        'identityPrivateKeyRef': identity.identityPrivateKeyRef,
+        'signedPrekeyBundle': identity.signedPrekeyBundle,
+        'authPublicKey': authKey.publicKey,
+        'authPrivateKey': authKey.privateKey,
+        if (newDeviceId != null) 'newDeviceId': newDeviceId,
+        if (handle != null) 'handle': handle,
+        'completionOutcomeUnknown': completionOutcomeUnknown,
+        if (ended) 'ended': true,
+      };
+}
+
 class StoredAuthKeyMaterial {
   const StoredAuthKeyMaterial({
     required this.privateKey,
@@ -610,43 +1049,28 @@ class StoredAuthKeyMaterial {
   final String publicKey;
 }
 
+/// A safety-number verification as earlier builds stored it, before the
+/// identity pin table recorded verifications itself.
 class SafetyVerificationRecord {
   const SafetyVerificationRecord({
     required this.peerIdentityPublicKey,
-    required this.safetyNumber,
     required this.verifiedAt,
   });
 
-  /// Base64url (no padding) Ed25519 public key the user verified against.
-  /// If the peer later rotates identity, the stored value won't match and
-  /// the UI must warn.
+  /// Base64url (no padding) Ed25519 public key the user verified.
   final String peerIdentityPublicKey;
-
-  /// 60-digit safety number the user compared.
-  final String safetyNumber;
 
   final DateTime verifiedAt;
 
-  Map<String, dynamic> toJson() => {
-        'peerIdentityPublicKey': peerIdentityPublicKey,
-        'safetyNumber': safetyNumber,
-        'verifiedAt': verifiedAt.toUtc().toIso8601String(),
-      };
-
   static SafetyVerificationRecord? tryFromJson(Map<String, dynamic> json) {
     final peer = json['peerIdentityPublicKey'] as String?;
-    final number = json['safetyNumber'] as String?;
     final verifiedAtRaw = json['verifiedAt'] as String?;
-    if (peer == null || number == null || verifiedAtRaw == null) {
+    if (peer == null || verifiedAtRaw == null) {
       return null;
     }
     final verifiedAt = DateTime.tryParse(verifiedAtRaw);
     if (verifiedAt == null) return null;
-    return SafetyVerificationRecord(
-      peerIdentityPublicKey: peer,
-      safetyNumber: number,
-      verifiedAt: verifiedAt.toUtc(),
-    );
+    return SafetyVerificationRecord(peerIdentityPublicKey: peer, verifiedAt: verifiedAt.toUtc());
   }
 }
 

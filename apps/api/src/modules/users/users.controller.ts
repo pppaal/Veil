@@ -1,32 +1,27 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Req } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import type { KeyBundleResponse, UserProfileResponse } from '@veil/contracts';
+import type { UserProfileResponse } from '@veil/contracts';
 
-import { Public } from '../../common/guards/public.decorator';
+import type { AuthenticatedRequest } from '../../common/guards/authenticated-request';
 import { UsersService } from './users.service';
 
+// Key material comes from the authenticated GET /keys/:handle; nothing about a
+// user is served without a bearer token.
 @ApiTags('users')
 @ApiBearerAuth()
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // These endpoints take a handle and reveal whether it exists, so an
-  // attacker can enumerate the namespace by spraying lookups. The CF tracker
-  // makes 10/min per ingress IP a tight ceiling for unauthed lookups while
-  // still being workable for legitimate "who is @bob" probes from a client.
-  @Public()
+  // Takes a handle and reveals whether it exists, so it is limited even for
+  // signed-in devices to keep namespace enumeration slow.
   @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Get(':handle')
-  getByHandle(@Param('handle') handle: string): Promise<UserProfileResponse> {
-    return this.usersService.getUserByHandle(handle);
-  }
-
-  @Public()
-  @Throttle({ default: { ttl: 60_000, limit: 10 } })
-  @Get(':handle/key-bundle')
-  getKeyBundle(@Param('handle') handle: string): Promise<KeyBundleResponse> {
-    return this.usersService.getKeyBundle(handle);
+  getByHandle(
+    @Req() request: AuthenticatedRequest,
+    @Param('handle') handle: string,
+  ): Promise<UserProfileResponse> {
+    return this.usersService.getUserByHandle(request.auth.userId, handle);
   }
 }

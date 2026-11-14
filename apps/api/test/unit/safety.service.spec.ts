@@ -21,7 +21,7 @@ describe('SafetyService.block', () => {
 
   it('upserts a block for a real target', async () => {
     const svc = make({
-      user: { findUnique: async () => ({ id: 'u2', handle: 'bob', displayName: 'Bob' }) },
+      user: { findUnique: async () => ({ id: 'u2', handle: 'bob' }) },
       userBlock: { upsert: async () => ({ createdAt: new Date('2026-05-01T00:00:00.000Z') }) },
     });
     const res = await svc.block(USER, 'u2');
@@ -63,6 +63,21 @@ describe('SafetyService.fileReport', () => {
     });
     const res = await svc.fileReport(USER, dto());
     expect(res.reportId).toBe('r1');
+  });
+
+  it('accepts a free-text note but never stores it', async () => {
+    const create = jest.fn(async (_args: { data: Record<string, unknown> }) => ({
+      id: 'r1',
+      createdAt: new Date(),
+    }));
+    const svc = make({ user: { findUnique: async () => ({ id: 'u2' }) }, abuseReport: { create } });
+
+    await svc.fileReport(USER, dto({ note: 'they sent me their home address' }));
+
+    // The column is gone, so the note is not even passed along as null.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0]![0].data).not.toHaveProperty('note');
+    expect(JSON.stringify(create.mock.calls)).not.toContain('home address');
   });
 });
 

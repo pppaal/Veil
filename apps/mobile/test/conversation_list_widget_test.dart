@@ -1,3 +1,5 @@
+import 'dart:io' show HttpDate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +10,7 @@ import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
@@ -25,8 +28,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final envelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer',
+      senderDeviceId: 'device-peer',
+      recipientUserId: 'user-local',
       body: 'Orbit relay window',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -128,6 +131,194 @@ void main() {
     expect(find.text('DIRECT CONVERSATIONS'), findsOneWidget);
   });
 
+  testWidgets('conversation list previews the latest decrypted text body', (tester) async {
+    // Phone width, tall enough that both cards are laid out.
+    tester.view.physicalSize = const Size(600, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+    final adapter = createDefaultCryptoAdapter();
+    const peerBundle = KeyBundle(
+      userId: 'user-peer',
+      deviceId: 'device-peer',
+      handle: 'peer',
+      identityPublicKey: 'pub-peer',
+      signedPrekeyBundle: 'bundle-peer',
+    );
+    final textEnvelope = await adapter.messaging.encryptMessage(
+      conversationId: 'conv-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
+      body: 'Meet at the north gate',
+      messageKind: MessageKind.text,
+      recipientBundle: peerBundle,
+    );
+    final noticeEnvelope = await adapter.messaging.encryptMessage(
+      conversationId: 'conv-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
+      body: 'Screenshot taken',
+      messageKind: MessageKind.system,
+      recipientBundle: peerBundle,
+    );
+    final controller = _buildController(
+      adapter: adapter,
+      apiClient: _FakeConversationApiClient.multiple(
+        conversations: [
+          _conversationMap(id: 'conv-1', peerHandle: 'selene', peerDisplayName: 'Selene', envelope: textEnvelope),
+          _conversationMap(id: 'conv-2', peerHandle: 'rowan', peerDisplayName: 'Rowan', envelope: noticeEnvelope),
+        ],
+        messagesByConversation: {
+          'conv-1': [
+            _messageMap(
+              id: 'msg-1',
+              conversationId: 'conv-1',
+              envelope: textEnvelope,
+              conversationOrder: 1,
+              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+            ),
+          ],
+          'conv-2': [
+            _messageMap(
+              id: 'msg-2',
+              conversationId: 'conv-2',
+              envelope: noticeEnvelope,
+              conversationOrder: 1,
+              sentAt: DateTime.utc(2026, 4, 7, 9, 40),
+            ),
+          ],
+        },
+      ),
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+    await controller.loadConversationMessages('conv-1');
+    await controller.loadConversationMessages('conv-2');
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+        child: const _TestApp(child: ConversationListScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Meet at the north gate'), findsOneWidget);
+    // Only text is previewed; other kinds keep their generic label.
+    expect(find.text('Screenshot taken'), findsNothing);
+    expect(find.text('System envelope'), findsOneWidget);
+  });
+
+  group('a disappearing last message on a device whose clock runs 15 minutes fast', () {
+    // The preview of one conversation whose last message expires at
+    // [expiresAt]; the relay's Date header put its clock 15 minutes behind
+    // this device's.
+    Future<void> pumpList(WidgetTester tester, DateTime expiresAt) async {
+      tester.view.physicalSize = const Size(600, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final adapter = createDefaultCryptoAdapter();
+      final envelope = await adapter.messaging.encryptMessage(
+        conversationId: 'conv-1',
+        senderDeviceId: 'device-peer-1',
+        recipientUserId: 'user-local',
+        body: 'Meet at the north gate',
+        messageKind: MessageKind.text,
+        recipientBundle: const KeyBundle(
+          userId: 'user-peer',
+          deviceId: 'device-peer',
+          handle: 'peer',
+          identityPublicKey: 'pub-peer',
+          signedPrekeyBundle: 'bundle-peer',
+        ),
+      );
+      final apiClient = _FakeConversationApiClient.multiple(
+        conversations: [
+          _conversationMap(
+            id: 'conv-1',
+            peerHandle: 'selene',
+            peerDisplayName: 'Selene',
+            envelope: envelope,
+            expiresAt: expiresAt,
+          ),
+        ],
+        messagesByConversation: {
+          'conv-1': [
+            _messageMap(
+              id: 'msg-1',
+              conversationId: 'conv-1',
+              envelope: envelope,
+              conversationOrder: 1,
+              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+              expiresAt: expiresAt,
+            ),
+          ],
+        },
+      );
+      apiClient.serverClock
+          .observe(HttpDate.format(DateTime.now().toUtc().subtract(const Duration(minutes: 15))));
+      final controller = _buildController(adapter: adapter, apiClient: apiClient);
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump();
+      });
+      await controller.applySession(
+        const AppSessionState(
+          accessToken: 'token',
+          userId: 'user-local',
+          deviceId: 'device-local',
+          handle: 'atlas',
+          displayName: 'Atlas',
+          onboardingAccepted: true,
+          locked: false,
+          initializing: false,
+        ),
+      );
+      await controller.loadConversationMessages('conv-1');
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+          child: const _TestApp(child: ConversationListScreen()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('is previewed, with the time the relay leaves it, while the relay keeps it', (tester) async {
+      // Past by the device clock; ten minutes left by the relay's.
+      await pumpList(tester, DateTime.now().toUtc().subtract(const Duration(minutes: 5)));
+
+      expect(find.text('Meet at the north gate'), findsOneWidget);
+      expect(find.text('Expired locally'), findsNothing);
+      expect(find.textContaining(RegExp(r'^Expires in (9|10)m$')), findsOneWidget);
+    });
+
+    testWidgets('is not previewed once the relay counts it expired too', (tester) async {
+      await pumpList(tester, DateTime.now().toUtc().subtract(const Duration(minutes: 20)));
+
+      expect(find.text('Meet at the north gate'), findsNothing);
+    });
+  });
+
   testWidgets('wide layout selection updates the active conversation pane', (tester) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;
@@ -139,8 +330,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final firstEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
       body: 'Selene relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -153,8 +344,8 @@ void main() {
     );
     final secondEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-2',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
       body: 'Rowan relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -236,13 +427,13 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Selene relay note'), findsOneWidget);
-    expect(find.text('Rowan relay note'), findsNothing);
+    expect(_inChatPane(find.text('Selene relay note')), findsOneWidget);
+    expect(_inChatPane(find.text('Rowan relay note')), findsNothing);
 
     await tester.tap(find.text('Rowan').first);
     await tester.pumpAndSettle();
 
-    expect(find.text('Rowan relay note'), findsOneWidget);
+    expect(_inChatPane(find.text('Rowan relay note')), findsOneWidget);
   });
 
   testWidgets('wide layout search result tap switches the active conversation', (tester) async {
@@ -256,8 +447,8 @@ void main() {
     final adapter = createDefaultCryptoAdapter();
     final firstEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-1',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-1',
+      senderDeviceId: 'device-peer-1',
+      recipientUserId: 'user-local',
       body: 'Selene relay note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -270,8 +461,8 @@ void main() {
     );
     final secondEnvelope = await adapter.messaging.encryptMessage(
       conversationId: 'conv-2',
-      senderDeviceId: 'device-local',
-      recipientUserId: 'user-peer-2',
+      senderDeviceId: 'device-peer-2',
+      recipientUserId: 'user-local',
       body: 'Anchor handoff note',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
@@ -368,7 +559,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Selene relay note'), findsOneWidget);
+    expect(_inChatPane(find.text('Selene relay note')), findsOneWidget);
 
     await tester.enterText(
       find.widgetWithText(TextField, 'Search conversations and cached messages'),
@@ -386,6 +577,11 @@ void main() {
     expect(find.text('Anchor handoff note'), findsWidgets);
   });
 }
+
+// The list also previews each conversation's latest decrypted text, so
+// assertions about the open conversation look inside the chat pane only.
+Finder _inChatPane(Finder finder) =>
+    find.descendant(of: find.byType(ChatRoomScreen), matching: finder);
 
 class _TestApp extends StatelessWidget {
   const _TestApp({required this.child});
@@ -453,7 +649,7 @@ class _ConversationListCache implements ConversationCacheService {
   Future<void> clearAll() async {}
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -582,8 +778,8 @@ class _FakeConversationApiClient extends VeilApiClient {
           'id': 'msg-1',
           'clientMessageId': null,
           'conversationId': 'conv-1',
-          'senderDeviceId': 'device-local',
-          'recipientUserId': 'user-peer',
+          'senderDeviceId': envelope.senderDeviceId,
+          'recipientUserId': envelope.recipientUserId,
           'ciphertext': envelope.ciphertext,
           'nonce': envelope.nonce,
           'version': envelope.version,
@@ -612,6 +808,7 @@ Map<String, dynamic> _conversationMap({
   required String peerHandle,
   required String peerDisplayName,
   CryptoEnvelope? envelope,
+  DateTime? expiresAt,
 }) {
   return {
     'id': id,
@@ -634,8 +831,8 @@ Map<String, dynamic> _conversationMap({
             'id': 'msg-1',
             'clientMessageId': null,
             'conversationId': id,
-            'senderDeviceId': 'device-local',
-            'recipientUserId': 'user-peer',
+            'senderDeviceId': envelope.senderDeviceId,
+            'recipientUserId': envelope.recipientUserId,
             'ciphertext': envelope.ciphertext,
             'nonce': envelope.nonce,
             'version': envelope.version,
@@ -644,6 +841,7 @@ Map<String, dynamic> _conversationMap({
             'conversationOrder': 1,
             'deliveredAt': DateTime.utc(2026, 4, 7, 9, 31).toIso8601String(),
             'readAt': null,
+            if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
           },
   };
 }
@@ -654,13 +852,14 @@ Map<String, dynamic> _messageMap({
   required CryptoEnvelope envelope,
   required int conversationOrder,
   required DateTime sentAt,
+  DateTime? expiresAt,
 }) {
   return {
     'id': id,
     'clientMessageId': null,
     'conversationId': conversationId,
-    'senderDeviceId': 'device-local',
-    'recipientUserId': 'user-peer',
+    'senderDeviceId': envelope.senderDeviceId,
+    'recipientUserId': envelope.recipientUserId,
     'ciphertext': envelope.ciphertext,
     'nonce': envelope.nonce,
     'version': envelope.version,
@@ -669,5 +868,6 @@ Map<String, dynamic> _messageMap({
     'conversationOrder': conversationOrder,
     'deliveredAt': sentAt.add(const Duration(minutes: 1)).toIso8601String(),
     'readAt': null,
+    if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
   };
 }

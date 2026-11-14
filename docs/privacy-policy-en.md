@@ -1,7 +1,7 @@
 # VEIL Privacy Policy
 
 Effective: 2026-04-20
-Last updated: 2026-04-20
+Last updated: 2026-11-12
 
 VEIL ("the service") collects the absolute minimum data required to operate an end-to-end encrypted messenger. This policy describes what we collect, why, how long we keep it, and the rights users hold. It is written to satisfy Korea's Personal Information Protection Act (PIPA) alongside general privacy expectations.
 
@@ -9,14 +9,23 @@ VEIL ("the service") collects the absolute minimum data required to operate an e
 
 The service collects only:
 
-- An anonymous user ID and device ID generated on the device.
-- A user-chosen handle and optional display name.
+- A random account ID and device ID that the server assigns when you register, linked to your handle.
+- A user-chosen handle.
 - End-to-end encrypted message payloads that the server cannot decrypt.
+- The metadata needed to deliver them (who is in which conversation, when a message arrived, delivery and read receipts, the day a device was last seen).
+- Your in-app contact list: which accounts you added. The names you give them stay on your device.
+- Call records: the conversation, the device that started the call, voice or video, its status (ringing, in progress, ended, missed or declined), when it started and ended, and its duration. They are deleted after 30 days.
+- A push token for each device, used only for wake-ups that carry no message content.
+- Your IP address, processed transiently to rate-limit requests made before sign-in: held as an unkeyed hash for at most two minutes and never written to the database. When you create a one-time link, an unkeyed hash of the day and your IP address (an IPv6 address counts by its /64) is also kept, with that day's link and byte counts, until the next 00:00 UTC to enforce a daily quota. A hash of an address can be reversed by brute force, so treat it as your address for that time ([details](metadata-retention.md)).
+- The accounts you block, the conversations you mute, and the abuse reports you file. Reports are deleted after 90 days.
+- Group and channel names and descriptions, and the label of each of your devices. Unlike message content, these are stored in readable form.
+
+Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form. Every field the server stores, how long it is kept and who can see it is listed in [What a seized VEIL server reveals](server-data-inventory.md), which is generated from the database schema and checked on every change.
 
 The service does **not** collect:
 
 - Phone numbers, email addresses, or real names.
-- National ID numbers, address books, or location data.
+- National ID numbers, your phone's address book or call log, or location data.
 - Payment information or purchase history.
 - Advertising identifiers (IDFA/AAID) or third-party analytics identifiers.
 
@@ -31,7 +40,9 @@ We do **not** use data for advertising, marketing, or profiling.
 ## 3. Retention
 
 - Account identifiers and device records are deleted immediately when an account is deleted.
-- Ciphertext message payloads are held briefly until the recipient device fetches them, then deleted — and in any case purged after at most 30 days.
+- Message payloads are stored encrypted until they expire, at most 30 days after the server received them, and sooner when a disappearing-message timer or view-once applies.
+- Delivery metadata is deleted on a schedule: read receipts after 7 days, call records and abuse reports after 30 and 90 days, stories after 24 hours. See [metadata retention](metadata-retention.md).
+- Deleted data leaves the database at once, but its bytes can remain in the database's log and data files, and a deleted file in the disk's free space, until that space is reused, which on a quiet server can take days. See [metadata retention](metadata-retention.md).
 - Anything retained for legal reasons is kept only for the period that law requires.
 
 ## 4. Third parties and cross-border transfers
@@ -52,7 +63,7 @@ Users may at any time:
     Standard turnaround: 3 business days. See
     [`docs/ops/data-subject-request.md`](ops/data-subject-request.md).
 
-Deleting an account purges all associated server-side identifiers and queued ciphertext.
+Deleting an account purges all associated server-side identifiers and stored ciphertext. To stop someone else from registering the same handle and being mistaken for you, a keyed hash of the handle (not the handle itself) is kept for 90 days.
 
 ## 6. No-recovery posture
 
@@ -61,7 +72,7 @@ VEIL has **no account recovery path by design.** If a device is lost or wiped, c
 ## 7. Security controls
 
 - End-to-end encryption: X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256.
-- The server cannot decrypt message content, attachments, or metadata payloads.
+- The server cannot decrypt message content, attachments, reactions or stories.
 - On-device storage is protected by OS-level keychain / secure storage.
 - The app supports local lock via PIN and biometrics.
 

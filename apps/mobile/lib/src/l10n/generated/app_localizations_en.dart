@@ -166,7 +166,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentAgree =>
-      'I agree to the collection and use of personal information above. (Required)\nI agree to the collection and use of personal information as described above. (Required)';
+      'I agree to the collection and use of personal information as described above. (Required)';
 
   @override
   String get privacyConsentAccept => 'Agree and continue';
@@ -175,15 +175,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get privacyConsentCollectTitle => 'Information we collect';
 
   @override
-  String get privacyConsentCollectItem1 => 'User handle (unique identifier)';
+  String get privacyConsentCollectItem1 =>
+      'User handle, and the random account and device IDs linked to it';
 
   @override
   String get privacyConsentCollectItem2 =>
-      'Device info (platform, device name)';
+      'Device info (platform, device label) and push token; push wake-ups carry no message content';
 
   @override
   String get privacyConsentCollectItem3 =>
-      'Public key (for encrypted communication)';
+      'Public identity key and prekeys (for encrypted communication)';
+
+  @override
+  String get privacyConsentCollectItem4 =>
+      'Your in-app contact list: which accounts you added (the names you give them stay on this device)';
+
+  @override
+  String get privacyConsentCollectItem5 =>
+      'Conversation membership and delivery metadata: when messages arrived, delivery and read-receipt times, the day a device was last seen';
+
+  @override
+  String get privacyConsentCollectItem6 =>
+      'Call records: conversation, who started the call, call type, start and end time, duration (kept 30 days)';
+
+  @override
+  String get privacyConsentCollectItem7 =>
+      'Group and channel names and descriptions (stored readable), and the blocks, mutes and abuse reports you make (reports kept 90 days)';
 
   @override
   String get privacyConsentPurposeTitle => 'Purpose of collection';
@@ -209,7 +226,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentRetentionItem2 =>
-      'Device data removed when device is unpaired';
+      'Device data is removed when the device is unpaired, and its device record within about 30 days';
 
   @override
   String get privacyConsentRetentionItem3 =>
@@ -242,7 +259,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentNotCollectedItem3 =>
-      'Contacts, call logs, or other device personal data';
+      'Your phone\'s address book, its call log, or other personal data stored on your device';
 
   @override
   String get privacyConsentThirdPartyTitle => 'Third-party disclosure';
@@ -427,6 +444,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsNoRecoveryPath => 'No recovery path';
+
+  @override
+  String get settingsSectionPrivacy => 'PRIVACY';
+
+  @override
+  String get settingsReadReceiptsTitle => 'Send read receipts';
+
+  @override
+  String get settingsReadReceiptsSubtitle =>
+      'When off, contacts don\'t learn what you read, and you see their reads only as delivered.';
+
+  @override
+  String get settingsTypingIndicatorsTitle => 'Send typing indicators';
+
+  @override
+  String get settingsTypingIndicatorsSubtitle =>
+      'Lets contacts see while you type. Off unless you turn it on.';
 
   @override
   String get settingsLockNow => 'Lock now';
@@ -730,7 +764,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatScreenshotToast =>
-      'Screenshot detected in this conversation. Veil cannot prevent it on this device — the other side has been notified.';
+      'Screenshot detected in this conversation. Veil cannot prevent it on this device — a notice is being sent to the other side.';
 
   @override
   String get chatScreenshotSystemNotice =>
@@ -740,7 +774,91 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatDecryptingEnvelope => 'Decrypting envelope...';
 
   @override
-  String get chatDecryptingSystemNotice => 'Decrypting system notice...';
+  String get chatDecryptFailed => 'Couldn\'t decrypt this message';
+
+  @override
+  String get chatDecryptReplayed => 'Repeated or expired message';
+
+  @override
+  String get chatDecryptAwaitingKey => 'Waiting for the sender\'s key';
+
+  @override
+  String get chatDecryptSessionMissing => 'Waiting for a secure session';
+
+  @override
+  String get chatDecryptIdentityRejected =>
+      'Held back: the sender\'s identity changed';
+
+  @override
+  String get chatLegacyUnverifiedBadge => 'Unverified sender (legacy)';
+
+  @override
+  String get chatNoticeIdentityChanged =>
+      'A contact\'s safety number changed. Review it before trusting it again.';
+
+  @override
+  String get chatNoticeIdentityNewDevice =>
+      'This contact started using a new device.';
+
+  @override
+  String get chatNoticeSenderKeysKept =>
+      'The server listed this group without its group encryption keys. This device keeps using them.';
+
+  @override
+  String get chatNoticeGroupMemberAdded =>
+      'Someone was added to this group. They can read messages sent from now on. Check the members in Safety number.';
+
+  @override
+  String get chatNoticeGroupMemberRemoved =>
+      'Someone left this group or was removed from it.';
+
+  @override
+  String get chatIdentityChangedTitle => 'Safety number changed';
+
+  @override
+  String get chatIdentityChangedBody =>
+      'Nothing is sent to the new key until you review it.';
+
+  @override
+  String get chatIdentityChangedReview => 'Review';
+
+  @override
+  String get chatAccountHoldOtherTitle => 'A different account';
+
+  @override
+  String chatAccountHoldOtherBody(String handle) {
+    return 'This chat is listed as @$handle, but it is not the account you talked to as @$handle before. Nothing is sent or opened here until you confirm you want to talk to this account.';
+  }
+
+  @override
+  String get chatAccountHoldUnissuedTitle => 'Name no VEIL server gives out';
+
+  @override
+  String get chatAccountHoldUnissuedBody =>
+      'This chat is listed under a name no VEIL server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.';
+
+  @override
+  String get chatAccountHoldOwnTitle => 'Another account under your name';
+
+  @override
+  String chatAccountHoldOwnBody(String handle) {
+    return 'This chat is listed under your own name, @$handle, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.';
+  }
+
+  @override
+  String chatAccountHoldOwnConfirmTitle(String handle) {
+    return 'Talk to this other @$handle?';
+  }
+
+  @override
+  String get chatAccountHoldOwnConfirmBody =>
+      'No other VEIL account can have your name: the server showed this account under it. Continue only if you confirmed another way (in person, a call) whose account this is.';
+
+  @override
+  String get chatAccountHoldAcknowledge => 'Talk to this account';
+
+  @override
+  String get chatPeerVerified => 'Verified';
 
   @override
   String get chatRetrySend => 'Retry send';
@@ -919,4 +1037,1097 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get notificationNewMessageBody => 'New encrypted message';
+
+  @override
+  String get startDirectTitle => 'Find by Handle';
+
+  @override
+  String get startDirectEyebrow => 'DIRECT DISCOVERY';
+
+  @override
+  String get startDirectHeroTitle => 'No contact sync.';
+
+  @override
+  String get startDirectHeroBody =>
+      'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.';
+
+  @override
+  String get startDirectPillManual => 'Manual discovery';
+
+  @override
+  String get startDirectPillNoGraph => 'No social graph';
+
+  @override
+  String get startDirectPillDirectOnly => 'Direct only';
+
+  @override
+  String get startDirectBannerTitle => 'Deliberate discovery';
+
+  @override
+  String get startDirectBannerBody =>
+      'Conversations open only when you know the exact handle. There is no graph expansion layer here.';
+
+  @override
+  String get startDirectMetricDiscovery => 'Discovery';
+
+  @override
+  String get startDirectMetricDiscoveryValue => 'Manual';
+
+  @override
+  String get startDirectMetricGraph => 'Graph';
+
+  @override
+  String get startDirectMetricGraphValue => 'None';
+
+  @override
+  String get startDirectMetricMode => 'Mode';
+
+  @override
+  String get startDirectMetricModeValue => 'Direct 1:1';
+
+  @override
+  String get startDirectFieldLabel => 'TARGET HANDLE';
+
+  @override
+  String get startDirectAwaitingInput => 'Awaiting input';
+
+  @override
+  String get startDirectFieldCaption =>
+      'Discovery stays manual. Direct conversations only.';
+
+  @override
+  String get startDirectInputLabel => 'Handle';
+
+  @override
+  String get startDirectErrorTitle => 'Unable to open conversation';
+
+  @override
+  String get startDirectOpening => 'Opening conversation';
+
+  @override
+  String get startDirectOpenButton => 'Open direct conversation';
+
+  @override
+  String get startGroupTitle => 'Start Group Chat';
+
+  @override
+  String get startGroupEyebrow => 'GROUP CREATION';
+
+  @override
+  String get startGroupHeroTitle => 'Private by invitation.';
+
+  @override
+  String get startGroupHeroBody =>
+      'Groups are explicit. Add members by handle — VEIL never expands invites through contact graphs.';
+
+  @override
+  String get startGroupPillInviteOnly => 'Invite-only';
+
+  @override
+  String get startGroupPillManualRoster => 'Manual roster';
+
+  @override
+  String get startGroupPillE2E => 'E2E encrypted';
+
+  @override
+  String get startGroupNameLabel => 'GROUP NAME';
+
+  @override
+  String get startGroupRequired => 'Required';
+
+  @override
+  String get startGroupNameCaption =>
+      'Visible to members. You can rename later.';
+
+  @override
+  String get startGroupNameInput => 'Name';
+
+  @override
+  String get startGroupDescriptionLabel => 'DESCRIPTION';
+
+  @override
+  String get startGroupDescriptionCaption =>
+      'Optional. Purpose, charter, or context for members.';
+
+  @override
+  String get startGroupDescriptionInput => 'Description';
+
+  @override
+  String get startGroupDescriptionHint => 'What is this group for?';
+
+  @override
+  String get startGroupMembersLabel => 'INITIAL MEMBERS';
+
+  @override
+  String get startGroupNoneYet => 'None yet';
+
+  @override
+  String startGroupMembersCount(int count) {
+    return '$count handle(s)';
+  }
+
+  @override
+  String get startGroupMembersCaption =>
+      'Comma or space separated handles. You can add more after creation.';
+
+  @override
+  String get startGroupMembersInput => 'Member handles';
+
+  @override
+  String get startGroupPublicTitle => 'Public directory';
+
+  @override
+  String get startGroupPublicSubtitle =>
+      'Public groups are discoverable by handle. Keep off for invite-only groups.';
+
+  @override
+  String get startGroupErrorTitle => 'Unable to create group';
+
+  @override
+  String get startGroupCreating => 'Creating group';
+
+  @override
+  String get startGroupCreateButton => 'Create group';
+
+  @override
+  String get safetyNumbersTitle => 'Safety Number';
+
+  @override
+  String get safetyNumbersLoadingTitle => 'Deriving safety number';
+
+  @override
+  String get safetyNumbersLoadingBody => 'Hashing identity keys locally.';
+
+  @override
+  String get safetyNumbersMarkedVerified => 'Marked as verified';
+
+  @override
+  String get safetyNumbersRotateDialogTitle => 'Start a new session?';
+
+  @override
+  String get safetyNumbersRotateDialogBody =>
+      'This runs a fresh key agreement with your contact\'s current keys, and your next message starts the new session. Messages already on their way still open. Use this if you suspect this device or your contact\'s device was briefly exposed: a stolen copy of the old session cannot read what the new one carries.';
+
+  @override
+  String get safetyNumbersCancel => 'Cancel';
+
+  @override
+  String get safetyNumbersRotate => 'Start';
+
+  @override
+  String get safetyNumbersSessionRotated =>
+      'New session ready. Your next message starts it.';
+
+  @override
+  String get safetyNumbersNoSessionYet =>
+      'No session yet — send a message first';
+
+  @override
+  String safetyNumbersRotationFailed(String error) {
+    return 'Could not start a new session: $error';
+  }
+
+  @override
+  String get safetyNumbersErrorTitle => 'Could not load safety number';
+
+  @override
+  String get safetyNumbersRetry => 'Retry';
+
+  @override
+  String get safetyNumbersNoMembersTitle => 'No other members';
+
+  @override
+  String get safetyNumbersNoMembersBody =>
+      'This group has no other participants yet — invite someone to verify.';
+
+  @override
+  String get safetyNumbersGroupEyebrow => 'VERIFY GROUP MEMBERS';
+
+  @override
+  String get safetyNumbersGroupTitleGeneric =>
+      'Verify each member of this group';
+
+  @override
+  String safetyNumbersGroupTitleNamed(String groupName) {
+    return 'Verify each member of $groupName';
+  }
+
+  @override
+  String get safetyNumbersGroupBody =>
+      'Tap a member to see their 60-digit safety number. Compare it on a channel you trust — read it aloud over a call or scan the QR. A mismatch means that specific member\'s device may be compromised.';
+
+  @override
+  String get safetyNumbersUnverified => 'Unverified';
+
+  @override
+  String get safetyNumbersVerified => 'Verified';
+
+  @override
+  String get safetyNumbersDetailEyebrow => 'VERIFY IDENTITY';
+
+  @override
+  String safetyNumbersDetailTitle(String peer) {
+    return 'Make sure you\'re talking to $peer';
+  }
+
+  @override
+  String get safetyNumbersDetailBody =>
+      'Both of you should see the same 60-digit number. Compare on a channel you trust — read it aloud over a call, or scan the QR. If the numbers don\'t match, someone is in the middle of your conversation.';
+
+  @override
+  String get safetyNumbersKeyChangedTitle => 'Peer identity key changed';
+
+  @override
+  String safetyNumbersKeyChangedMessage(String date) {
+    return 'The identity key for this peer is different from the one you verified on $date. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.';
+  }
+
+  @override
+  String safetyNumbersVerifiedOn(String date) {
+    return 'Verified on $date';
+  }
+
+  @override
+  String get safetyNumbersVerifiedNote =>
+      'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.';
+
+  @override
+  String get safetyNumbersReVerify => 'Re-verify with new key';
+
+  @override
+  String get safetyNumbersMarkVerified => 'Mark as verified';
+
+  @override
+  String get safetyNumbersRotateEyebrow => 'NEW SESSION';
+
+  @override
+  String get safetyNumbersRotateBody =>
+      'Runs a fresh key agreement with your contact\'s current keys; your next message starts the new session, and messages already on their way still open. Use if this device or your contact\'s was briefly exposed.';
+
+  @override
+  String get safetyNumbersRotating => 'Starting…';
+
+  @override
+  String get safetyNumbersRotateButton => 'Start a new session';
+
+  @override
+  String get safetyNumbersCardLabel => 'SAFETY NUMBER';
+
+  @override
+  String get safetyNumbersScanLabel => 'SCAN TO COMPARE';
+
+  @override
+  String get safetyNumbersQrNote =>
+      'This QR holds both public identity keys and user ids, nothing secret.';
+
+  @override
+  String get safetyNumbersNoPinTitle => 'No identity pinned yet';
+
+  @override
+  String get safetyNumbersNoPinBody =>
+      'Exchange a message first: this device pins the identity it talks to.';
+
+  @override
+  String get safetyNumbersDirectoryMismatchTitle =>
+      'The key server lists a different key';
+
+  @override
+  String get safetyNumbersDirectoryMismatchBody =>
+      'The key server now serves another identity key for this device than the one pinned here. Nothing is sent to that key unless you compare and accept it.';
+
+  @override
+  String get safetyNumbersDirectoryOtherDeviceTitle =>
+      'The key server lists another device';
+
+  @override
+  String get safetyNumbersDirectoryOtherDeviceBody =>
+      'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.';
+
+  @override
+  String get safetyNumbersPendingBody =>
+      'This contact presents a new identity key. Compare the new safety number below before accepting it.';
+
+  @override
+  String get safetyNumbersAcceptNewKey => 'Accept the new key';
+
+  @override
+  String get safetyNumbersKeepCurrentKey => 'Keep the current key';
+
+  @override
+  String get safetyNumbersScanAction => 'Compare a scanned code';
+
+  @override
+  String get safetyNumbersScanFieldLabel => 'Scanned code';
+
+  @override
+  String get safetyNumbersScanVerify => 'Compare';
+
+  @override
+  String get safetyNumbersScanMismatchTitle => 'The codes do not match';
+
+  @override
+  String get safetyNumbersScanMismatchBody =>
+      'Someone may be in the middle of this conversation. Do not mark it verified; compare again in person.';
+
+  @override
+  String get safetyNumbersScanInvalid => 'That is not a VEIL safety code.';
+
+  @override
+  String get safetyNumbersScanUnsupported =>
+      'That code uses a safety-number version this app does not support.';
+
+  @override
+  String get safetyNumbersReverifyDialogTitle =>
+      'Compare the new safety number';
+
+  @override
+  String safetyNumbersReverifyDialogBody(String peer) {
+    return 'You had verified $peer. Accept the new key as verified only after comparing this number with $peer in person or on a call you trust.';
+  }
+
+  @override
+  String safetyNumbersReverifyAffirm(String peer) {
+    return 'I compared this number with $peer and it matches';
+  }
+
+  @override
+  String get safetyNumbersReverifyAccept => 'Accept as verified';
+
+  @override
+  String get safetyNumbersChangeReplaced =>
+      'The safety number changed again while you were reviewing it. Compare the new number before accepting it.';
+
+  @override
+  String get profileTitle => 'Profile';
+
+  @override
+  String get profileNicknameSaved => 'Nickname saved on this device';
+
+  @override
+  String get profileHandleLabel => 'HANDLE';
+
+  @override
+  String get profileHandleCaption => 'Your handle cannot be changed.';
+
+  @override
+  String get profileNicknameLabel => 'NICKNAME';
+
+  @override
+  String get profileNicknameCaption =>
+      'Only this device knows it. Peers see your handle.';
+
+  @override
+  String get profileNicknameHint => 'How this device greets you';
+
+  @override
+  String get profileNicknameNotSet => 'Not set';
+
+  @override
+  String get profilePrivacyEyebrow => 'PRIVACY';
+
+  @override
+  String get profilePrivacyTitle => 'Nothing about you on the relay';
+
+  @override
+  String get profilePrivacyBody =>
+      'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.';
+
+  @override
+  String get profileSaveNickname => 'Save nickname';
+
+  @override
+  String get profileEditNickname => 'Edit nickname';
+
+  @override
+  String get profileCancel => 'Cancel';
+
+  @override
+  String get deviceTransferTitle => 'Device Transfer';
+
+  @override
+  String get deviceTransferHeroEyebrow => 'TRANSFER';
+
+  @override
+  String get deviceTransferHeroTitle => 'Old device required.';
+
+  @override
+  String get deviceTransferHeroBody =>
+      'Transfer moves your handle to a new device. The old device issues the session and approves the exact new-device claim, and is signed out when the transfer completes. Conversation history is not transferred. VEIL does not create recovery.';
+
+  @override
+  String get deviceTransferPillTrustedJoin => 'Trusted-device join';
+
+  @override
+  String get deviceTransferPillNoFallback => 'No fallback';
+
+  @override
+  String get deviceTransferPillNoCloud => 'No cloud recovery';
+
+  @override
+  String get deviceTransferChipOldDevice => 'Old device';
+
+  @override
+  String get deviceTransferChipNewDevice => 'New device';
+
+  @override
+  String get deviceTransferNoFallbackTitle => 'No fallback path';
+
+  @override
+  String get deviceTransferNoFallbackBody =>
+      'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.';
+
+  @override
+  String get deviceTransferWindowExpiredTitle => 'Transfer window expired';
+
+  @override
+  String get deviceTransferSessionExpiredMessage =>
+      'The old-device transfer session expired. Issue a fresh session from the old device.';
+
+  @override
+  String get deviceTransferClaimExpiredMessage =>
+      'This new-device claim expired. Register a fresh claim and request approval again.';
+
+  @override
+  String get deviceTransferMetricMode => 'Mode';
+
+  @override
+  String get deviceTransferMetricModeOld => 'Old device';
+
+  @override
+  String get deviceTransferMetricModeNew => 'New device';
+
+  @override
+  String get deviceTransferMetricSession => 'Session';
+
+  @override
+  String get deviceTransferSessionExpired => 'Expired';
+
+  @override
+  String get deviceTransferSessionIdle => 'Idle';
+
+  @override
+  String get deviceTransferSessionLive => 'Live';
+
+  @override
+  String get deviceTransferMetricClaim => 'Claim';
+
+  @override
+  String get deviceTransferClaimMissing => 'Missing';
+
+  @override
+  String get deviceTransferClaimExpired => 'Expired';
+
+  @override
+  String get deviceTransferClaimIssued => 'Issued';
+
+  @override
+  String get deviceTransferPayloadCopied => 'Transfer payload copied.';
+
+  @override
+  String get deviceTransferReturnToConversations => 'Return to conversations';
+
+  @override
+  String get deviceTransferPayloadInvalid =>
+      'Transfer payload format is invalid.';
+
+  @override
+  String get deviceTransferPayloadImported =>
+      'Transfer payload imported. Register this new device before the transfer window closes.';
+
+  @override
+  String get deviceTransferImportFirst =>
+      'Import a valid transfer payload first.';
+
+  @override
+  String get deviceTransferClaimRegistered =>
+      'Claim registered. Give this claim code to the old device and request approval before it expires.';
+
+  @override
+  String get deviceTransferClaimFailed => 'Claim failed.';
+
+  @override
+  String get deviceTransferRegisterBeforeComplete =>
+      'Register this new-device claim before completion.';
+
+  @override
+  String get deviceTransferClaimExpiredRegisterFresh =>
+      'This new-device claim has expired. Register a fresh claim first.';
+
+  @override
+  String get deviceTransferFinishStartedFirst =>
+      'This device already started completing a transfer that the relay may have finished. Complete that transfer on this device before importing another.';
+
+  @override
+  String get deviceTransferComplete =>
+      'Transfer complete. Your handle is now on this device and the old device has been signed out.';
+
+  @override
+  String get deviceTransferFailed => 'Transfer failed.';
+
+  @override
+  String get deviceTransferOldRequiredTitle => 'Old device session required';
+
+  @override
+  String get deviceTransferOldRequiredBody =>
+      'Sign in on a currently trusted device to issue and approve a transfer.';
+
+  @override
+  String get deviceTransferStep1Title => '1. Initiate on old device';
+
+  @override
+  String get deviceTransferStep1BodyReady =>
+      'Generate a short-lived session and token for the next device.';
+
+  @override
+  String deviceTransferStep1BodyExpires(String when) {
+    return 'This transfer session expires $when.';
+  }
+
+  @override
+  String get deviceTransferStatusReady => 'Ready';
+
+  @override
+  String get deviceTransferStatusExpired => 'Expired';
+
+  @override
+  String get deviceTransferStatusIssued => 'Issued';
+
+  @override
+  String get deviceTransferIssuingToken => 'Issuing token';
+
+  @override
+  String get deviceTransferIssueToken => 'Issue transfer token';
+
+  @override
+  String get deviceTransferStep2Title => '2. Approve on old device';
+
+  @override
+  String get deviceTransferStep2BodyWaiting =>
+      'No transfer session exists yet.';
+
+  @override
+  String get deviceTransferStep2BodyExpired =>
+      'This transfer session expired. Clear it and issue a fresh one.';
+
+  @override
+  String get deviceTransferStep2BodyAwaiting =>
+      'Wait for the new device to register its claim, then approve that specific claim code here.';
+
+  @override
+  String get deviceTransferStatusWaiting => 'Waiting';
+
+  @override
+  String get deviceTransferStatusAwaitingClaim => 'Awaiting claim';
+
+  @override
+  String get deviceTransferClaimFieldLabel => 'NEW-DEVICE CLAIM';
+
+  @override
+  String get deviceTransferClaimFieldCaption =>
+      'Approve only the exact claim code shown on the new device you trust.';
+
+  @override
+  String get deviceTransferClaimInputLabel => 'New-device claim code';
+
+  @override
+  String get deviceTransferClaimInputHint =>
+      'Paste the claim code shown on the new device';
+
+  @override
+  String get deviceTransferApproveClaim => 'Approve this claim';
+
+  @override
+  String get deviceTransferStep3Title => '3. Hand payload to new device';
+
+  @override
+  String get deviceTransferReadyToCopy => 'Ready to copy';
+
+  @override
+  String get deviceTransferIssueTokenFirst => 'Issue a transfer token first.';
+
+  @override
+  String get deviceTransferPayloadExpiredNote =>
+      'This payload is no longer valid. Clear it and issue a fresh transfer session.';
+
+  @override
+  String get deviceTransferCompleteOnNewNote =>
+      'Complete on the new device. When it completes, this device is signed out and its local history is erased. Conversation history does not move to the new device.';
+
+  @override
+  String get deviceTransferCopyPayload => 'Copy payload';
+
+  @override
+  String get deviceTransferClear => 'Clear';
+
+  @override
+  String get deviceTransferStatusTitle => 'Transfer status';
+
+  @override
+  String get deviceTransferFailedTitle => 'Transfer failed';
+
+  @override
+  String get deviceTransferPayloadFieldLabel => 'TRANSFER PAYLOAD';
+
+  @override
+  String get deviceTransferPayloadFieldCaption =>
+      'Import the short-lived session and token issued by the trusted old device.';
+
+  @override
+  String get deviceTransferPayloadInputLabel => 'Paste transfer payload';
+
+  @override
+  String get deviceTransferImportPayload => 'Import payload';
+
+  @override
+  String get deviceTransferNewDeviceLabel => 'NEW DEVICE';
+
+  @override
+  String get deviceTransferNewDeviceCaption =>
+      'This device proves its own claim. The old device only approves that exact claim.';
+
+  @override
+  String get deviceTransferDeviceNameLabel => 'Device name';
+
+  @override
+  String get deviceTransferSessionIdLabel => 'Session id';
+
+  @override
+  String get deviceTransferTokenLabel => 'Transfer token';
+
+  @override
+  String get deviceTransferClaimNotRegistered => 'Claim not registered';
+
+  @override
+  String get deviceTransferClaimExpiredPill => 'Claim expired';
+
+  @override
+  String get deviceTransferClaimRegisteredPill => 'Claim registered';
+
+  @override
+  String get deviceTransferOldApprovesExact =>
+      'Old device approves exact claim';
+
+  @override
+  String deviceTransferClaimCode(String claimId) {
+    return 'Claim code $claimId';
+  }
+
+  @override
+  String deviceTransferClaimFingerprint(String fingerprint) {
+    return 'Claim fingerprint $fingerprint';
+  }
+
+  @override
+  String get deviceTransferFingerprintUnavailable => 'Unavailable';
+
+  @override
+  String deviceTransferExpires(String when) {
+    return 'Expires $when';
+  }
+
+  @override
+  String get deviceTransferRegisteringClaim => 'Registering claim';
+
+  @override
+  String get deviceTransferRegisterNewDevice => 'Register this new device';
+
+  @override
+  String get deviceTransferCompleting => 'Completing transfer';
+
+  @override
+  String get deviceTransferCompleteOnDevice => 'Complete on this device';
+
+  @override
+  String get deviceTransferExpiryNow => 'now';
+
+  @override
+  String deviceTransferExpiryInSeconds(int seconds) {
+    return 'in ${seconds}s';
+  }
+
+  @override
+  String deviceTransferExpiryInMinutes(int minutes) {
+    return 'in ${minutes}m';
+  }
+
+  @override
+  String deviceTransferExpiryAt(String time) {
+    return 'at $time';
+  }
+
+  @override
+  String get themeModeTitle => 'Theme';
+
+  @override
+  String get themeModeSubtitle => 'Choose how VEIL appears on this device.';
+
+  @override
+  String get themeModeLight => 'Light';
+
+  @override
+  String get themeModeDark => 'Dark';
+
+  @override
+  String get themeModeSystem => 'System';
+
+  @override
+  String get aiDemoBannerTitle => 'Scripted demo';
+
+  @override
+  String get aiDemoBannerBody =>
+      'Demo: replies are scripted on this device. Nothing is sent anywhere.';
+
+  @override
+  String get securityStatusTitle => 'Security Status';
+
+  @override
+  String get securityStatusEyebrow => 'SECURITY STATUS';
+
+  @override
+  String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
+
+  @override
+  String get securityStatusHeroBody =>
+      'The identity and runtime rows are read from this device and this build. The product rules hold for every VEIL build.';
+
+  @override
+  String get securityStatusPillPrivateBeta => 'Private beta';
+
+  @override
+  String get securityStatusMetricRuntime => 'Runtime';
+
+  @override
+  String get securityStatusMetricRelay => 'Relay';
+
+  @override
+  String get securityStatusMetricRelayLinked => 'Linked';
+
+  @override
+  String get securityStatusMetricCache => 'Cache';
+
+  @override
+  String get securityStatusMetricCacheOff => 'Off';
+
+  @override
+  String get securityStatusSectionIdentity => 'Identity';
+
+  @override
+  String get securityStatusSectionRuntime => 'Runtime';
+
+  @override
+  String get securityStatusSectionProductRules => 'Product Rules';
+
+  @override
+  String get securityStatusChecking => 'Checking';
+
+  @override
+  String get securityStatusAvailable => 'Available';
+
+  @override
+  String get securityStatusUnavailable => 'Unavailable';
+
+  @override
+  String get securityStatusEnabled => 'Enabled';
+
+  @override
+  String get securityStatusDisabled => 'Disabled';
+
+  @override
+  String get securityStatusReady => 'Ready';
+
+  @override
+  String get securityStatusStarting => 'Starting';
+
+  @override
+  String get securityStatusBlocked => 'Blocked';
+
+  @override
+  String get securityStatusIdle => 'Idle';
+
+  @override
+  String get securityStatusBoundDevice => 'Bound device';
+
+  @override
+  String get securityStatusBoundDeviceUnbound => 'Unbound';
+
+  @override
+  String get securityStatusBoundDeviceNoneDetail =>
+      'No active device session is present.';
+
+  @override
+  String get securityStatusBoundDeviceDetail =>
+      'This device currently holds the active VEIL session.';
+
+  @override
+  String get securityStatusSecretRefs => 'Local secret refs';
+
+  @override
+  String get securityStatusSecretRefsPresent => 'Present';
+
+  @override
+  String get securityStatusSecretRefsMissing => 'Missing';
+
+  @override
+  String get securityStatusSecretRefsDetail =>
+      'Private device material stays on the device. The server never receives it.';
+
+  @override
+  String get securityStatusPin => 'App lock PIN';
+
+  @override
+  String get securityStatusPinConfigured => 'Configured';
+
+  @override
+  String get securityStatusPinUnset => 'Unset';
+
+  @override
+  String get securityStatusPinDetail =>
+      'Local barrier only. VEIL cannot unlock the app for you.';
+
+  @override
+  String get securityStatusBiometrics => 'Biometrics';
+
+  @override
+  String get securityStatusBiometricsDetail =>
+      'Device-level biometric unlock only. No remote fallback exists.';
+
+  @override
+  String get securityStatusPrivacyShield => 'Privacy shield';
+
+  @override
+  String get securityStatusPrivacyShieldDetail =>
+      'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.';
+
+  @override
+  String get securityStatusAppPreview => 'Recent-app preview';
+
+  @override
+  String get securityStatusAppPreviewProtected => 'Protected';
+
+  @override
+  String get securityStatusAppPreviewPartial => 'Partial';
+
+  @override
+  String get securityStatusAppPreviewDetail =>
+      'Native and Flutter privacy shields are used to hide app-switcher content while VEIL is backgrounded.';
+
+  @override
+  String get securityStatusScreenCapture => 'Screen capture';
+
+  @override
+  String get securityStatusScreenCapturePlatformLimited => 'Platform-limited';
+
+  @override
+  String get securityStatusScreenCaptureNotBlocked => 'Not blocked';
+
+  @override
+  String get securityStatusScreenCaptureSupportedDetail =>
+      'Android blocks screenshots with secure-window flags when enabled.';
+
+  @override
+  String get securityStatusScreenCaptureUnsupportedDetail =>
+      'This platform has no public API for full screenshot blocking, so VEIL relies on preview shielding and rapid relocking instead.';
+
+  @override
+  String get securityStatusScreenCaptureCheckingDetail =>
+      'Checking native screen-capture policy.';
+
+  @override
+  String get securityStatusClipboard => 'Clipboard hygiene';
+
+  @override
+  String get securityStatusClipboardRestricted => 'Restricted';
+
+  @override
+  String get securityStatusClipboardDetail =>
+      'Sensitive attachment tickets are summarized locally instead of exposing raw signed URLs for copy/share.';
+
+  @override
+  String get securityStatusTransport => 'Transport policy';
+
+  @override
+  String get securityStatusTransportCompliant => 'Compliant';
+
+  @override
+  String get securityStatusTransportDetail =>
+      'Configured endpoints satisfy the current private-beta transport policy.';
+
+  @override
+  String get securityStatusTlsPins => 'TLS pinning';
+
+  @override
+  String get securityStatusTlsPinsPinned => 'Pinned';
+
+  @override
+  String get securityStatusTlsPinsUnpinned => 'Not pinned';
+
+  @override
+  String securityStatusTlsPinsPinnedDetail(int count) {
+    return 'This build pins the relay\'s TLS keys ($count). A certificate whose key matches none of them is refused.';
+  }
+
+  @override
+  String get securityStatusTlsPinsUnpinnedDetail =>
+      'This build sets no TLS pins (VEIL_TLS_PINS), so the relay connection accepts any certificate the platform trusts. Release builds stop at a configuration error without them.';
+
+  @override
+  String get securityStatusApiMode => 'API mode';
+
+  @override
+  String get securityStatusApiAttached => 'Attached';
+
+  @override
+  String get securityStatusApiAttachedDetail =>
+      'REST API is configured for this build.';
+
+  @override
+  String get securityStatusApiUnavailableDetail =>
+      'No API endpoint is configured. Messaging is unavailable.';
+
+  @override
+  String get securityStatusRelayLink => 'Relay link';
+
+  @override
+  String get securityStatusRelayConnected => 'Connected';
+
+  @override
+  String get securityStatusRelayConnectedDetail =>
+      'Realtime relay is connected with opaque event payloads.';
+
+  @override
+  String get securityStatusRelayIdleDetail =>
+      'Realtime relay is disconnected or still syncing.';
+
+  @override
+  String get securityStatusLocalCache => 'Local cache';
+
+  @override
+  String get securityStatusLocalCacheDisabledDetail =>
+      'Local message cache is disabled in this build.';
+
+  @override
+  String get securityStatusLocalCacheDetail =>
+      'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer, scrubbed from app-switcher previews, and wiped on destructive local lifecycle events.';
+
+  @override
+  String get securityStatusIntegrity => 'Device integrity';
+
+  @override
+  String get securityStatusIntegrityCompromised => 'Compromised';
+
+  @override
+  String get securityStatusIntegrityClean => 'Clean';
+
+  @override
+  String get securityStatusIntegrityCompromisedDetail =>
+      'This device matched rooted or jailbroken heuristics. VEIL blocks local unlock in this state.';
+
+  @override
+  String securityStatusIntegrityCompromisedReasons(String reasons) {
+    return 'This device matched rooted or jailbroken heuristics. $reasons';
+  }
+
+  @override
+  String get securityStatusIntegrityCleanDetail =>
+      'Native rooted and jailbroken heuristics did not trigger on this device.';
+
+  @override
+  String get securityStatusIntegrityCheckingDetail =>
+      'Checking native integrity heuristics.';
+
+  @override
+  String get securityStatusCloudBackup => 'Cloud backup';
+
+  @override
+  String get securityStatusCloudBackupDetail =>
+      'VEIL does not keep a recovery copy of your message history.';
+
+  @override
+  String get securityStatusAccountRecovery => 'Account recovery';
+
+  @override
+  String get securityStatusAccountRecoveryDetail =>
+      'No recovery email, reset flow, or admin restore path exists.';
+
+  @override
+  String get securityStatusDeviceTransfer => 'Device transfer';
+
+  @override
+  String get securityStatusDeviceTransferValue => 'Old device required';
+
+  @override
+  String get securityStatusDeviceTransferDetail =>
+      'Transfer succeeds only while the old device can approve it.';
+
+  @override
+  String get securityStatusLocalWipe => 'Local wipe';
+
+  @override
+  String get securityStatusLocalWipeDetail =>
+      'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.';
+
+  @override
+  String get securityStatusCryptoAdapter => 'Crypto adapter';
+
+  @override
+  String get securityStatusCryptoVeilRatchet => 'Production (unaudited)';
+
+  @override
+  String securityStatusCryptoVeilRatchetDetail(String adapterId) {
+    return 'VEIL\'s own X3DH and Double Ratchet (X25519, AES-256-GCM, Ed25519) is active ($adapterId). An external audit is still pending.';
+  }
+
+  @override
+  String get securityStatusCryptoLibsignal => 'libsignal bridge (unaudited)';
+
+  @override
+  String securityStatusCryptoLibsignalDetail(String adapterId) {
+    return 'Sessions and message encryption run in Signal\'s libsignal through VEIL\'s native bridge ($adapterId). The bridge has not been audited.';
+  }
+
+  @override
+  String get securityStatusCryptoDevelopment => 'Development only';
+
+  @override
+  String securityStatusCryptoDevelopmentDetail(String adapterId) {
+    return 'This build runs a development adapter ($adapterId), not production cryptography. Do not use it for real conversations.';
+  }
+
+  @override
+  String get securityStatusPushPlaintext => 'Push plaintext';
+
+  @override
+  String get securityStatusPushPlaintextForbidden => 'Forbidden';
+
+  @override
+  String get securityStatusPushPlaintextDetail =>
+      'Push payloads must never contain plaintext message content.';
+
+  @override
+  String get securityStatusPushProvider => 'Push provider';
+
+  @override
+  String get securityStatusPushProviderSeam => 'Seam only';
+
+  @override
+  String get securityStatusPushProviderSeamDetail =>
+      'The metadata-only wake-up path is defined, but a real APNs/FCM provider is not wired in this build.';
+
+  @override
+  String get securityStatusPushProviderUnavailableDetail =>
+      'No API endpoint is configured, so push delivery is unavailable in this build.';
+
+  @override
+  String get securityStatusPushPayloads => 'Push payloads';
+
+  @override
+  String get securityStatusPushPayloadsMetadata => 'Metadata only';
+
+  @override
+  String get securityStatusPushPayloadsMetadataDetail =>
+      'If push is enabled later, wake-up hints must stay metadata-only. Message bodies remain out of push.';
+
+  @override
+  String get securityStatusPushPayloadsUnavailableDetail =>
+      'No API endpoint is configured, so push payload generation is unavailable in this build.';
 }

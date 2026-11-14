@@ -14,7 +14,6 @@ test.describe('VEIL web demo — auth', () => {
 
     // Fresh handle so reruns don't collide.
     const handle = `e2e${Date.now().toString(36).slice(-7)}`;
-    await page.fill('#reg-name', 'E2E Tester');
     await page.fill('#reg-handle', handle);
     await page.click('#reg-btn');
 
@@ -31,7 +30,6 @@ test.describe('VEIL web demo — auth', () => {
 
   test('rejects invalid handle shapes client-side', async ({ page }) => {
     await page.goto('./');
-    await page.fill('#reg-name', 'E2E');
     // Uppercase + dash — invalid by the input pattern attribute.
     await page.fill('#reg-handle', 'BadHandle-1');
     await page.click('#reg-btn');

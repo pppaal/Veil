@@ -7,7 +7,7 @@ import 'package:crypto/crypto.dart' as crypto_hash;
 import '../security/device_auth_signer.dart';
 import 'crypto_engine.dart';
 
-class MockCryptoAdapter implements CryptoAdapter {
+class MockCryptoAdapter implements CryptoAdapter, PrekeyManager {
   MockCryptoAdapter({
     Random? random,
     DeviceAuthChallengeSigner? deviceAuthSigner,
@@ -22,6 +22,44 @@ class MockCryptoAdapter implements CryptoAdapter {
 
   final Random _random;
   final DeviceAuthChallengeSigner _deviceAuthSigner;
+  int _nextOneTimePrekeyId = 1;
+  int _signedPrekeyId = 1;
+  SignedPrekeyRotation? _signedPrekey;
+  int? _publishedSignedPrekeyId;
+
+  @override
+  Future<List<OneTimePrekey>> generateOneTimePrekeys({int count = 100}) async {
+    final first = _nextOneTimePrekeyId;
+    _nextOneTimePrekeyId += count;
+    return [
+      for (var keyId = first; keyId < first + count; keyId++)
+        OneTimePrekey(keyId: keyId, publicKey: _opaqueToken(_random, 32)),
+    ];
+  }
+
+  @override
+  Future<SignedPrekeyRotation> rotateSignedPrekey({DateTime? createdAt}) async {
+    _signedPrekeyId += 1;
+    return _signedPrekey = SignedPrekeyRotation(
+      signedPrekeyBundle: _opaqueToken(_random, 32),
+      spkId: _signedPrekeyId,
+      createdAt: createdAt ?? DateTime.now().toUtc(),
+    );
+  }
+
+  @override
+  Future<SignedPrekeyRotation?> currentSignedPrekey() async => _signedPrekey;
+
+  @override
+  Future<int?> publishedSignedPrekeyId() async => _publishedSignedPrekeyId;
+
+  @override
+  Future<void> markSignedPrekeyPublished(int spkId) async {
+    _publishedSignedPrekeyId = spkId;
+  }
+
+  @override
+  Future<int> pruneSignedPrekeys({Duration grace = const Duration(days: 14)}) async => 0;
 
   @override
   String get adapterId => 'mock-dev-adapter';
@@ -221,26 +259,31 @@ class _MockMessageCryptoEngine implements MessageCryptoEngine {
   }
 
   @override
-  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope) async {
+  Future<DecryptedMessage> decryptMessage(CryptoEnvelope envelope, {BeforeCommit? beforeCommit}) async {
     final cached = _plaintextRegistry[envelope.ciphertext];
     if (cached != null) {
+      try {
+        await beforeCommit?.call(cached);
+      } catch (_) {
+        return DecryptedMessage(
+          status: DecryptStatus.failed,
+          failureReason: 'persist_failed',
+          body: '',
+          messageKind: envelope.messageKind,
+        );
+      }
       return cached;
     }
 
+    // Not produced by this process: the mock cannot "decrypt" it, so it
+    // reports a failure with no body and, like the real adapters, never
+    // trusts the unauthenticated outer attachment.
     return DecryptedMessage(
-      body: switch (envelope.messageKind) {
-        MessageKind.file => 'Encrypted attachment',
-        MessageKind.image => 'Encrypted image',
-        MessageKind.system => 'Encrypted system envelope',
-        MessageKind.text => 'Encrypted message',
-        MessageKind.voice => 'Encrypted voice note',
-        MessageKind.sticker => 'Encrypted sticker',
-        MessageKind.reaction => 'Encrypted reaction',
-        MessageKind.call => 'Encrypted call event',
-      },
+      status: DecryptStatus.failed,
+      failureReason: 'mock_unknown_ciphertext',
+      body: '',
       messageKind: envelope.messageKind,
       expiresAt: envelope.expiresAt,
-      attachment: envelope.attachment,
     );
   }
 
@@ -325,9 +368,6 @@ class _MockConversationSessionBootstrapper
 
   @override
   bool hasSessionFor(String conversationId) => true;
-
-  @override
-  Future<bool> forceRekeyNextSend(String conversationId) async => false;
 
   @override
   Future<SessionBootstrapMaterial> bootstrapSessionFromInbound(

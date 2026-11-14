@@ -6,13 +6,11 @@ import { test, expect, Browser, BrowserContext, Page } from '@playwright/test';
 
 async function registerAndOpen(
   browser: Browser,
-  displayName: string,
   handle: string,
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto('./');
-  await page.fill('#reg-name', displayName);
   await page.fill('#reg-handle', handle);
   await page.click('#reg-btn');
   await expect(page.locator('#app')).toBeVisible();
@@ -28,8 +26,8 @@ test.describe('VEIL web demo — messaging', () => {
     const aliceHandle = `alice${stamp}`;
     const bobHandle = `bob${stamp}`;
 
-    const alice = await registerAndOpen(browser, 'Alice', aliceHandle);
-    const bob = await registerAndOpen(browser, 'Bob', bobHandle);
+    const alice = await registerAndOpen(browser, aliceHandle);
+    const bob = await registerAndOpen(browser, bobHandle);
 
     // Alice opens a new chat with Bob.
     await alice.page.click('#new-chat-btn');

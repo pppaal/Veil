@@ -1,7 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import type { EnvConfig } from './env.schema';
+import type { ClientIpSource, EnvConfig } from './env.schema';
+
+// Development stand-in for VEIL_RETIRED_HANDLE_PEPPER. Production refuses to
+// boot with it, because a published pepper makes the quarantine table
+// reversible by hashing candidate handles.
+export const DEV_RETIRED_HANDLE_PEPPER = 'veil-dev-retired-handle-pepper-not-for-production';
+
+// The privacy policy, the store listings and docs/claims.yaml promise that
+// message ciphertext and call records are gone within 30 days. Operators may
+// shorten these windows, but production refuses to boot with a setting that
+// would break the published promise (0 means "keep forever").
+export const PUBLISHED_RETENTION_CAP_DAYS = 30;
 
 @Injectable()
 export class AppConfigService {
@@ -35,8 +46,12 @@ export class AppConfigService {
     return this.configService.get('VEIL_REDIS_URL', { infer: true });
   }
 
-  get trustProxy(): boolean {
-    return this.configService.get('VEIL_TRUST_PROXY', { infer: true });
+  get clientIpSource(): ClientIpSource {
+    return this.configService.get('VEIL_CLIENT_IP_SOURCE', { infer: true });
+  }
+
+  get trustedProxyHops(): number {
+    return this.configService.get('VEIL_TRUSTED_PROXY_HOPS', { infer: true });
   }
 
   get swaggerEnabled(): boolean {
@@ -129,8 +144,23 @@ export class AppConfigService {
     return this.configService.get('VEIL_PREKEY_CONSUMED_RETENTION_DAYS', { infer: true });
   }
 
+  get messageMaxAgeDays(): number {
+    return this.configService.get('VEIL_MESSAGE_MAX_AGE_DAYS', { infer: true });
+  }
+
+  get retiredHandlePepper(): string {
+    return (
+      this.configService.get('VEIL_RETIRED_HANDLE_PEPPER', { infer: true }) ??
+      DEV_RETIRED_HANDLE_PEPPER
+    );
+  }
+
   get cryptoAuditAttested(): boolean {
     return this.configService.get('VEIL_AUDITED_CRYPTO_ATTESTED', { infer: true });
+  }
+
+  get auditReportSha256(): string | undefined {
+    return this.configService.get('VEIL_AUDIT_REPORT_SHA256', { infer: true });
   }
 
   get metricsAuthToken(): string | undefined {
@@ -149,12 +179,21 @@ export class AppConfigService {
     if (!this.isProduction) return;
     const errors: string[] = [];
 
-    if (!this.cryptoAuditAttested) {
+    // Strict identity check: only a parsed boolean true opens the gate, never
+    // a truthy string that slipped past the schema.
+    if (this.cryptoAuditAttested !== true) {
       errors.push(
         'VEIL_AUDITED_CRYPTO_ATTESTED is not true. Set this only after the ' +
-          'audited crypto adapter has replaced the mock boundary and external ' +
-          'security review has covered the new crypto path. ' +
+          'production crypto path has passed an external security review ' +
+          '(no external audit has taken place yet). ' +
           'See docs/audited-crypto-adapter-execution.md.',
+      );
+    }
+
+    if (!this.auditReportSha256) {
+      errors.push(
+        'VEIL_AUDIT_REPORT_SHA256 is not set. Production attestation must name ' +
+          'the SHA-256 of the signed external audit report it rests on.',
       );
     }
 
@@ -178,6 +217,25 @@ export class AppConfigService {
         'VEIL_JWT_SECRET is a placeholder or shorter than 32 chars. ' +
           'Generate a real one with `openssl rand -base64 32`.',
       );
+    }
+
+    if (this.retiredHandlePepper === DEV_RETIRED_HANDLE_PEPPER) {
+      errors.push(
+        'VEIL_RETIRED_HANDLE_PEPPER is not set. Generate one with ' +
+          '`openssl rand -base64 32`; it keys the quarantine of deleted handles.',
+      );
+    }
+
+    for (const [name, days] of [
+      ['VEIL_MESSAGE_MAX_AGE_DAYS', this.messageMaxAgeDays],
+      ['VEIL_CALL_RECORD_RETENTION_DAYS', this.callRecordRetentionDays],
+    ] as const) {
+      if (days < 1 || days > PUBLISHED_RETENTION_CAP_DAYS) {
+        errors.push(
+          `${name} is ${days}. Production must delete within 1 to ` +
+            `${PUBLISHED_RETENTION_CAP_DAYS} days, as the privacy policy promises.`,
+        );
+      }
     }
 
     // The S3 public endpoint is what the browser hits for presigned PUTs;
@@ -209,6 +267,15 @@ export class AppConfigService {
           'VEIL_PUSH_ENABLE_DELIVERY=true but no APNs, FCM, or UnifiedPush provider is set.',
         );
       }
+    }
+
+    // Every UnifiedPush endpoint is a client-chosen URL the server POSTs to;
+    // without an allowlist any public host is reachable from the API.
+    if (this.pushProvider === 'unifiedpush' && this.unifiedPushAllowedHosts.length === 0) {
+      errors.push(
+        'VEIL_PUSH_PROVIDER=unifiedpush requires VEIL_UNIFIEDPUSH_ALLOWED_HOSTS ' +
+          '(comma-separated distributor hosts).',
+      );
     }
 
     // The ephemeral store falls back to an in-memory Map when no Redis URL

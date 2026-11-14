@@ -6,9 +6,15 @@ import type {
   UpdatePushTokenResponse,
 } from '@veil/contracts';
 
-import { forbidden, notFound } from '../../common/errors/api-error';
+import { AppConfigService } from '../../common/config/app-config.service';
+import { utcDayStart } from '../../common/device-activity';
+import { revokeDevice } from '../../common/device-revocation';
+import { apiError, forbidden, notFound } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
+import { AuthService } from '../auth/auth.service';
+import { validatePushTokenOnRegistration } from '../push/push-endpoint.validator';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { RevokeDeviceDto } from './dto/revoke-device.dto';
 
 const STALE_DEVICE_WINDOW_MS = 1000 * 60 * 60 * 24 * 30;
 
@@ -17,6 +23,8 @@ export class DevicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
+    private readonly config: AppConfigService,
+    private readonly authService: AuthService,
   ) {}
 
   async list(userId: string, currentDeviceId?: string): Promise<ListDevicesResponse> {
@@ -73,6 +81,8 @@ export class DevicesService {
     deviceId: string,
     pushToken: string,
   ): Promise<UpdatePushTokenResponse> {
+    validatePushTokenOnRegistration(pushToken, this.config);
+
     const device = await this.prisma.device.findUnique({
       where: { id: deviceId },
       select: { id: true, userId: true, isActive: true, revokedAt: true },
@@ -83,13 +93,13 @@ export class DevicesService {
     }
 
     if (!device.isActive || device.revokedAt) {
-      throw forbidden('device_not_active', 'Device is not active');
+      throw apiError('device_not_active', 'Device is not active');
     }
 
     const now = new Date();
     await this.prisma.device.update({
       where: { id: deviceId },
-      data: { pushToken, lastSeenAt: now },
+      data: { pushToken, lastSeenAt: utcDayStart(now) },
     });
 
     return {
@@ -119,7 +129,11 @@ export class DevicesService {
     };
   }
 
-  async revoke(userId: string, dto: { deviceId: string }): Promise<RevokeDeviceResponse> {
+  async revoke(
+    userId: string,
+    dto: RevokeDeviceDto,
+    callerDeviceId: string,
+  ): Promise<RevokeDeviceResponse> {
     const device = await this.prisma.device.findUnique({
       where: { id: dto.deviceId },
     });
@@ -132,16 +146,24 @@ export class DevicesService {
       throw forbidden('device_forbidden', 'Device does not belong to actor');
     }
 
+    // Revoking the calling device, or the last active one, locks the owner
+    // out for good (there is no recovery), so a bearer token alone is not
+    // enough: the calling device signs a fresh challenge.
+    const othersActive = await this.prisma.device.findMany({
+      where: { userId, isActive: true, revokedAt: null, id: { notIn: [dto.deviceId] } },
+      select: { id: true },
+    });
+    if (dto.deviceId === callerDeviceId || othersActive.length === 0) {
+      await this.authService.verifyDeviceStepUp(
+        callerDeviceId,
+        `device-revoke:${dto.deviceId}`,
+        dto,
+      );
+    }
+
     const revokedAt = new Date();
     await this.prisma.$transaction(async (tx) => {
-      await tx.device.update({
-        where: { id: dto.deviceId },
-        data: {
-          isActive: false,
-          revokedAt,
-          pushToken: null,
-        },
-      });
+      await revokeDevice(tx, dto.deviceId, revokedAt);
 
       const user = await tx.user.findUnique({
         where: { id: userId },

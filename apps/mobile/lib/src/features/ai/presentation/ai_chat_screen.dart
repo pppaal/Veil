@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -19,9 +20,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   final _focusNode = FocusNode();
   final List<_AiMessage> _messages = [
     _AiMessage(
-      text: 'I am VEIL Assistant. I can help with privacy questions, '
-          'device security, and messenger features. All conversations '
-          'stay on this device.',
+      text: 'This is a scripted preview of VEIL Assistant. It answers a few '
+          'privacy and security questions from fixed replies, and the whole '
+          'conversation stays on this device.',
       isUser: false,
       timestamp: DateTime.now().subtract(const Duration(minutes: 1)),
     ),
@@ -38,7 +39,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = Theme.of(context).extension<VeilPalette>()!;
+    final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
 
     return VeilShell(
       title: 'VEIL Assistant',
@@ -55,10 +57,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
       ],
       child: Column(
         children: [
+          // Outside the scrolling list on purpose: the disclosure must stay
+          // visible however long the conversation gets.
           VeilInlineBanner(
-            title: 'Local AI assistant',
-            message: 'Responses are generated on-device or through an encrypted '
-                'relay. No conversation data is stored on the server.',
+            title: l10n.aiDemoBannerTitle,
+            message: l10n.aiDemoBannerBody,
             tone: VeilBannerTone.info,
             icon: Icons.smart_toy_outlined,
           ),
@@ -66,7 +69,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           VeilMetricStrip(
             items: [
               VeilMetricItem(label: 'Messages', value: '${_messages.length}'),
-              VeilMetricItem(label: 'Model', value: 'Scaffold'),
+              VeilMetricItem(label: 'Model', value: 'Scripted'),
               VeilMetricItem(label: 'Privacy', value: 'Local'),
             ],
           ),
@@ -232,37 +235,28 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
+  // Canned replies picked by keyword. They must only state what the current
+  // build actually does: this screen is a scripted demo, not a model.
   String _generateResponse(String query) {
     final lower = query.toLowerCase();
     if (lower.contains('privacy') || lower.contains('secure')) {
-      return 'VEIL is built on a no-backup, no-recovery model. Your '
-          'messages are encrypted on-device before reaching the relay. '
-          'The server never stores plaintext content.';
+      return 'VEIL has no backup and no account recovery. Messages are '
+          'encrypted on this device before they reach the relay.';
     }
     if (lower.contains('transfer') || lower.contains('device')) {
-      return 'Device transfer requires your old device to be active. '
-          'This ensures that identity keys never leave device-side '
-          'storage. No cloud recovery path exists by design.';
+      return 'Moving to a new device needs your old device to approve it. '
+          'There is no cloud recovery path, by design.';
     }
     if (lower.contains('group') || lower.contains('chat')) {
-      return 'Group chats use the same envelope encryption model as '
-          'direct messages. Each member receives an individually '
-          'encrypted copy of the message through the relay.';
+      return 'Group messages are encrypted on the sending device before '
+          'they reach the relay.';
     }
     if (lower.contains('call') || lower.contains('voice') || lower.contains('video')) {
-      return 'Voice and video calls are routed peer-to-peer when '
-          'possible. When a direct connection cannot be established, '
-          'an encrypted relay fallback is used. Call metadata is minimal.';
+      return 'Calls in this build are a preview screen only. No audio or '
+          'video connection is made yet.';
     }
-    if (lower.contains('story') || lower.contains('moment')) {
-      return 'Stories expire after 24 hours and are stored locally. '
-          'View counts are tracked on-device. The relay only handles '
-          'encrypted content distribution.';
-    }
-    return 'AI assistant integration requires an LLM API connection. '
-        'This is currently a scaffold. When connected, all queries '
-        'will be processed through an encrypted relay to preserve '
-        'VEIL privacy guarantees.';
+    return 'This is a scripted demo with a few fixed replies. Nothing you '
+        'type here leaves this device.';
   }
 }
 

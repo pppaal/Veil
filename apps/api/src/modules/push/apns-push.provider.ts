@@ -1,10 +1,10 @@
 import { createPrivateKey, createSign } from 'node:crypto';
 import { connect } from 'node:http2';
 
-import { badRequest } from '../../common/errors/api-error';
+import { apiError } from '../../common/errors/api-error';
 import { AppConfigService } from '../../common/config/app-config.service';
 
-import type { MessagePushHint, PushProvider } from './push.types';
+import { PUSH_DELIVERY_TIMEOUT_MS, type MessagePushHint, type PushProvider } from './push.types';
 
 type ApnsRequestShape = {
   endpoint: string;
@@ -28,14 +28,17 @@ export class ApnsMetadataPushProvider implements PushProvider {
       }
     | undefined;
 
-  constructor(private readonly config: AppConfigService) {
+  constructor(
+    private readonly config: AppConfigService,
+    private readonly deliveryTimeoutMs = PUSH_DELIVERY_TIMEOUT_MS,
+  ) {
     if (
       !config.apnsBundleId ||
       !config.apnsTeamId ||
       !config.apnsKeyId ||
       !config.apnsPrivateKeyPem
     ) {
-      throw badRequest(
+      throw apiError(
         'internal_error',
         'APNs provider selected but required APNs credentials are missing',
       );
@@ -68,14 +71,42 @@ export class ApnsMetadataPushProvider implements PushProvider {
     }
 
     const endpoint = new URL(request.endpoint);
+    const authorization = `bearer ${this.issueBearerToken()}`;
     const client = connect(endpoint.origin);
 
+    // Settles exactly once, and always ends the session: closed after a
+    // finished exchange, destroyed on any failure, so a peer that accepts the
+    // connection and then stalls cannot hold it, or this promise, open.
     await new Promise<void>((resolve, reject) => {
-      client.on('error', reject);
+      let settled = false;
+      let deadline: NodeJS.Timeout | undefined;
+      const finish = (error?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
+        if (error) {
+          client.destroy();
+          reject(error);
+        } else {
+          client.close();
+          resolve();
+        }
+      };
+      deadline = setTimeout(
+        () =>
+          finish(
+            Object.assign(new Error('APNs delivery timed out'), {
+              code: 'apns_timeout',
+            }),
+          ),
+        this.deliveryTimeoutMs,
+      );
+      deadline.unref();
+      client.on('error', finish);
       const stream = client.request({
         ':method': 'POST',
         ':path': endpoint.pathname,
-        authorization: `bearer ${this.issueBearerToken()}`,
+        authorization,
         'content-type': 'application/json',
         ...request.headers,
       });
@@ -90,21 +121,20 @@ export class ApnsMetadataPushProvider implements PushProvider {
         responseBody += chunk;
       });
       stream.on('end', () => {
-        client.close();
         if (statusCode >= 200 && statusCode < 300) {
-          resolve();
+          finish();
           return;
         }
-        reject(
-          new Error(
-            `APNs delivery failed with status ${statusCode}: ${responseBody || 'empty body'}`,
+        finish(
+          Object.assign(
+            new Error(
+              `APNs delivery failed with status ${statusCode}: ${responseBody || 'empty body'}`,
+            ),
+            { code: `apns_status_${statusCode}` },
           ),
         );
       });
-      stream.on('error', (error) => {
-        client.close();
-        reject(error);
-      });
+      stream.on('error', finish);
       stream.end(JSON.stringify(request.body));
     });
   }

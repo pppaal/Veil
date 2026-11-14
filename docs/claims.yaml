@@ -1,0 +1,466 @@
+# Claims-as-code ledger. Every privacy or security claim VEIL makes in public
+# copy (README, privacy policies, site/, store/, the store listing drafts in
+# docs/launch/ and docs/app-store-listing-metadata.md, the security roadmap,
+# the Korean guides docs/사용설명서.md and docs/tester-guide-ko.md) is
+# listed here with the sentences that make it and the tests or CI gates that
+# back it.
+# scripts/claims-check.mjs fails CI when a claim loses its evidence, a quoted
+# sentence changes, or a source gains a claim sentence this ledger does not quote.
+#
+# Format (a YAML subset): each claim has an id, the claim in plain words, the
+# exact sentences that make it ({file, quote}, as the checker normalises them),
+# and evidence: {test: <file>, name: <test title>} or {gate: <script CI runs>}.
+claims:
+  - id: e2e-message-content
+    text: "Message content is end-to-end encrypted on the sending device; the server relays and stores only ciphertext it cannot decrypt. In a group, the messages are readable by the members the devices were shown: the server decides membership, so a server that adds a member gives that member the keys for later messages, and the mobile app shows a notice in the chat whenever a member is added."
+    sources:
+      - file: README.md
+        quote: "Open-source, end-to-end encrypted messenger — no phone number, no email, no plaintext messages on the server."
+      - file: README.md
+        quote: "License: AGPL v3 End-to-end encrypted Privacy invariants: CI-enforced"
+      - file: docs/privacy-policy-en.md
+        quote: "VEIL (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
+      - file: docs/privacy-policy-en.md
+        quote: "End-to-end encrypted message payloads that the server cannot decrypt."
+      - file: docs/privacy-policy-ko.md
+        quote: "종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)"
+      - file: site/index.html
+        quote: "종단간 암호화된 메시지 페이로드(서버는 평문을 복호화할 수 없습니다)"
+      - file: site/index.html
+        quote: "VEIL (\"the service\") collects the absolute minimum data required to operate an end-to-end encrypted messenger."
+      - file: site/index.html
+        quote: "End-to-end encrypted message payloads that the server cannot decrypt."
+      - file: store/appstore/app-privacy-answers.md
+        quote: "Messages, media, photos, and audio are encrypted end-to-end."
+      - file: store/appstore/app-review-notes.md
+        quote: "Veil is a privacy-first, end-to-end encrypted messenger."
+      - file: store/appstore/app-review-notes.md
+        quote: "End-to-end encryption."
+      - file: store/appstore/app-review-notes.md
+        quote: "Messages, media, and attachments are end-to-end encrypted."
+      - file: store/appstore/app-review-notes.md
+        quote: "The server only ever relays message ciphertext and never has access to message plaintext."
+      - file: store/appstore/app-review-notes.md
+        quote: "Because Veil is end-to-end encrypted, server-relayed messaging, the realistic way to exercise it is with two devices or two simulators (Device A and Device B), each with its own account created as in step 1:"
+      - file: store/appstore/metadata-en.txt
+        quote: "Every message is end-to-end encrypted on-device."
+      - file: store/appstore/metadata-en.txt
+        quote: "Servers never see your messages in plaintext."
+      - file: store/appstore/metadata-ko.txt
+        quote: "종단간 암호화 프라이버시 메신저"
+      - file: store/appstore/metadata-ko.txt
+        quote: "모든 메시지는 기기에서 종단간 암호화됩니다."
+      - file: store/appstore/metadata-ko.txt
+        quote: "서버는 메시지 평문을 볼 수 없습니다."
+      - file: store/appstore/metadata-ko.txt
+        quote: "메신저,암호화,프라이버시,E2EE,보안,채팅,익명,PIN,개인정보"
+      - file: store/appstore/screenshot-spec.md
+        quote: "3 | Encrypted chat with attachments | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | \"End-to-end encrypted. Servers never see your messages in plaintext.\" | \"종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다.\""
+      - file: store/appstore/submission-checklist.md
+        quote: "VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is YES/true."
+      - file: store/play/full-en.txt
+        quote: "An end-to-end encrypted messenger with no phone number, no email and no real name."
+      - file: store/play/full-en.txt
+        quote: "Every message is end-to-end encrypted on-device."
+      - file: store/play/full-en.txt
+        quote: "Servers never see your messages in plaintext."
+      - file: store/play/full-ko.txt
+        quote: "종단간 암호화로 서버조차 내 대화를 볼 수 없는 암호화 채팅 앱입니다."
+      - file: store/play/full-ko.txt
+        quote: "모든 메시지는 기기에서 종단간 암호화됩니다."
+      - file: store/play/full-ko.txt
+        quote: "서버는 메시지 평문을 절대 볼 수 없습니다."
+      - file: store/play/full-ko.txt
+        quote: "서버는 메시지 평문을 볼 수 없습니다."
+      - file: store/play/screenshot-captions-ko.md
+        quote: "보조: 모든 대화는 기기에서 종단간 암호화됩니다"
+      - file: store/play/screenshot-captions-ko.md
+        quote: "1 | \"내 메시지, 나만 봅니다\" / \"종단간 암호화, 기본값\""
+      - file: store/play/short-en.txt
+        quote: "End-to-end encrypted messenger."
+      - file: store/play/short-ko.txt
+        quote: "종단간 암호화로 서버도 내 대화를 볼 수 없습니다."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number, no email and no real name."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; mention client-side block/report)."
+      - file: docs/launch/app-store-listing.md
+        quote: "End-to-end encrypted."
+      - file: docs/launch/app-store-listing.md
+        quote: "Veil is an end-to-end encrypted messenger built around a single idea: what you say on Veil never leaves your device in a form the server can read."
+      - file: docs/launch/app-store-listing.md
+        quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content — this is the honest rating even though we ship a reporting path)."
+      - file: docs/launch/play-store-listing.md
+        quote: "End-to-end encrypted messenger."
+      - file: docs/launch/play-store-listing.md
+        quote: "Veil is an end-to-end encrypted messenger."
+      - file: docs/launch/play-store-listing.md
+        quote: "End-to-end encrypted messages and attachments."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Collected and not linked: Other User Content for the encrypted message payloads, photos and other attachments, which the server holds only as ciphertext it cannot decrypt."
+      - file: docs/launch/app-store-listing.md
+        quote: "Ciphertext-only relay."
+      - file: docs/사용설명서.md
+        quote: "서버는 메시지 내용을 암호문으로만 저장합니다."
+      - file: store/appstore/app-review-notes.md
+        quote: "User content (message payloads): transited as ciphertext only."
+      - file: store/appstore/submission-checklist.md
+        quote: "[ ] Data collected: User ID (linked, App Functionality, not tracking), Device ID (linked, App Functionality, not tracking), Contacts (the in-app contact list, a social graph: linked, App Functionality, not tracking), User Content / encrypted payloads (NOT linked — server holds only ciphertext, App Functionality, not tracking), Other User Content (group and channel names and descriptions, device labels and delivery metadata: linked, App Functionality, not tracking)."
+      - file: store/play/data-safety-answers.md
+        quote: "Other in-app messages | Yes | No | No | App functionality | Message payloads, held only as ciphertext the server cannot decrypt, and when each was sent, delivered and read."
+      - file: store/play/data-safety-answers.md
+        quote: "Photos | Yes | No | Yes | App functionality | Photo attachments, held only as ciphertext the server cannot decrypt, until they expire."
+      - file: store/play/data-safety-answers.md
+        quote: "Videos | Yes | No | Yes | App functionality | Video attachments, held only as ciphertext the server cannot decrypt, until they expire."
+      - file: store/play/data-safety-answers.md
+        quote: "Voice or sound recordings | Yes | No | Yes | App functionality | Voice messages, held only as ciphertext the server cannot decrypt, until they expire."
+      - file: store/play/data-safety-answers.md
+        quote: "Files and docs | Yes | No | Yes | App functionality | File attachments, held only as ciphertext the server cannot decrypt, until they expire."
+      - file: store/play/data-safety-answers.md
+        quote: "The rows for messages, photos, videos, voice recordings and files declare content the server holds only as ciphertext."
+    evidence:
+      - gate: scripts/crypto-test-vectors.mjs
+      - gate: scripts/schema-privacy-check.mjs
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "reaction envelope accepted and no push sent"
+      - test: apps/mobile/test/integration/hostile_relay_test.dart
+        name: "is announced in the chat once, across refreshes and a restart, and so is its removal"
+  - id: no-plaintext-on-server
+    text: "The server stores no plaintext message content: messages, reactions and stories are ciphertext, and display names, profile text, contact names and report notes are not stored. Group and channel names and descriptions and device labels are still stored in readable form; the schema privacy gate allowlists exactly these, and the privacy policy lists them."
+    sources:
+      - file: README.md
+        quote: "Open-source, end-to-end encrypted messenger — no phone number, no email, no plaintext messages on the server."
+      - file: README.md
+        quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext messages on the server."
+      - file: README.md
+        quote: "This keeps the privacy invariants — no plaintext messages on the server, no recovery path, no admin override — from being silently stripped out of a hosted fork."
+      - file: README.md
+        quote: "The server stores no plaintext message content: messages, reactions and stories are ciphertext, and display names, profile text and contact names are not stored."
+      - file: README.md
+        quote: "Group and channel names and descriptions and device labels are still stored in readable form until their encryption ships."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Message content is never stored in plaintext."
+      - file: README.md
+        quote: "They are the only entries on the allowlist of scripts/schema-privacy-check.mjs, which fails CI when any other field named like user-written text (body, caption, bio, name, note and the like) is not ciphertext"
+      - file: docs/privacy-policy-en.md
+        quote: "Group and channel names and descriptions, and the label of each of your devices."
+      - file: docs/privacy-policy-en.md
+        quote: "Unlike message content, these are stored in readable form."
+      - file: docs/privacy-policy-en.md
+        quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
+      - file: docs/privacy-policy-ko.md
+        quote: "그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)"
+      - file: docs/privacy-policy-ko.md
+        quote: "표시 이름, 프로필 문구, 반응, 스토리 내용, 이용자가 연락처에 붙인 이름은 서버에 읽을 수 있는 형태로 저장되지 않습니다."
+      - file: docs/security-hardening-roadmap.md
+        quote: "No plaintext message content on the server | ✅ CI-enforced | schema-privacy-check.mjs, server-data-inventory.md; group and channel names and descriptions and device labels are still readable and are the gate's only allowlisted fields"
+      - file: docs/security-hardening-roadmap.md
+        quote: "VEIL is already genuinely strong — the ratchet, no-recovery, a server that stores no plaintext message content, message padding and manual key verification are all real and measured above."
+      - file: docs/security-hardening-roadmap.md
+        quote: "The server does still store group and channel names and descriptions and device labels in readable form until their encryption ships."
+      - file: site/index.html
+        quote: "그룹·채널의 이름과 설명, 이용자 기기의 이름(메시지 내용과 달리 읽을 수 있는 형태로 저장됩니다)"
+      - file: site/index.html
+        quote: "표시 이름, 프로필 문구, 반응, 스토리 내용, 이용자가 연락처에 붙인 이름은 서버에 읽을 수 있는 형태로 저장되지 않습니다."
+      - file: site/index.html
+        quote: "Group and channel names and descriptions, and the label of each of your devices."
+      - file: site/index.html
+        quote: "Unlike message content, these are stored in readable form."
+      - file: site/index.html
+        quote: "Display names, profile text, reactions, story content and the names you give your contacts are not stored on the server in readable form."
+      - file: store/appstore/app-privacy-answers.md
+        quote: "The names, descriptions and labels are stored in readable form, and all of it is tied to the account."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Privacy Policy URL: https://… (required — must state no-plaintext-on-server, metadata retention windows, no third-party sharing)"
+      - file: docs/사용설명서.md
+        quote: "그룹·채널의 이름과 설명, 기기 이름은 아직 읽을 수 있는 형태로 저장되고, 핸들·연락처 목록·대화 멤버·통화 기록 같은 메타데이터도 서버가 봅니다 (서버 데이터 목록)."
+      - file: docs/사용설명서.md
+        quote: "서버에 메시지 평문 저장 | ❌ 안 함 (그룹·채널 이름·설명, 기기 이름은 읽을 수 있는 형태) | ✅ 함"
+      - file: docs/사용설명서.md
+        quote: "압수수색 시 | 메시지 내용은 암호문, 핸들·연락처·멤버·통화 기록·그룹 이름은 읽힘 (목록) | 평문 제공 가능"
+    evidence:
+      - gate: scripts/schema-privacy-check.mjs
+      - test: scripts/__tests__/schema-privacy-check.test.mjs
+        name: "plaintext-named String without ciphertext fails"
+      - test: scripts/__tests__/schema-privacy-check.test.mjs
+        name: "the allowlist holds only group and channel names and descriptions and device labels"
+      - test: apps/api/test/unit/plaintext-free-api.spec.ts
+        name: "no response contains displayName, nickname, emoji or avatarPath"
+      - test: apps/api/src/modules/auth/auth.service.spec.ts
+        name: "register ignores displayName"
+      - test: apps/api/test/unit/plaintext-free-api.spec.ts
+        name: "POST /messages/:id/reactions 410 reactions_e2e_only"
+      - test: apps/api/src/modules/profile/profile.service.spec.ts
+        name: "profile PATCH 410"
+      - test: apps/api/src/modules/stories/stories.service.spec.ts
+        name: "story listed only to audience"
+  - id: message-retention-cap
+    text: "Message ciphertext is stored until it expires, at most 30 days after the server received it, delivered or not."
+    sources:
+      - file: docs/privacy-policy-en.md
+        quote: "Message payloads are stored encrypted until they expire, at most 30 days after the server received them, and sooner when a disappearing-message timer or view-once applies."
+      - file: docs/privacy-policy-ko.md
+        quote: "메시지 페이로드: 만료될 때까지 암호화된 상태로 보관하며, 서버 수신 후 최대 30일입니다."
+      - file: site/index.html
+        quote: "메시지 페이로드: 만료될 때까지 암호화된 상태로 보관하며, 서버 수신 후 최대 30일입니다."
+      - file: site/index.html
+        quote: "Message payloads are stored encrypted until they expire, at most 30 days after the server received them, and sooner when a disappearing-message timer or view-once applies."
+      - file: store/play/full-en.txt
+        quote: "Messages are encrypted on your device and stored on the server only as ciphertext until they expire, at most 30 days."
+      - file: store/play/full-ko.txt
+        quote: "메시지는 기기에서 암호화되며, 서버에는 만료될 때까지(최대 30일) 암호문으로만 보관됩니다."
+    evidence:
+      - test: apps/api/test/unit/retention.service.spec.ts
+        name: "31-day-old message deleted regardless of expiresAt"
+      - test: apps/api/test/unit/retention.service.spec.ts
+        name: "VEIL_MESSAGE_MAX_AGE_DAYS sets the age cap, and 0 disables it"
+      - test: apps/api/test/unit/app-config.service.spec.ts
+        name: "production keeps message and call-record retention within the published 30 days"
+  - id: no-backup-no-recovery
+    text: "There is no backup, no account recovery, no password reset and no admin override; losing every device loses the account."
+    sources:
+      - file: README.md
+        quote: "No backup."
+      - file: README.md
+        quote: "No recovery."
+      - file: README.md
+        quote: "The design premise is the inverse of mainstream messengers: there is no backup path, no password reset, no admin override, and no plaintext messages on the server."
+      - file: README.md
+        quote: "The \"no recovery\" rule is not just documentation — it is encoded in scripts/policy-check.mjs as a CI gate that fails the build on any commit that introduces a recovery flow or table, an admin message viewer, plaintext in push payloads, wildcard CORS, or ad-hoc console logging in mobile."
+      - file: README.md
+        quote: "No cloud backup exists"
+      - file: README.md
+        quote: "No account recovery, password reset, or admin override"
+      - file: README.md
+        quote: "No Recovery rationale"
+      - file: README.md
+        quote: "This keeps the privacy invariants — no plaintext messages on the server, no recovery path, no admin override — from being silently stripped out of a hosted fork."
+      - file: docs/privacy-policy-en.md
+        quote: "VEIL has no account recovery path by design."
+      - file: docs/privacy-policy-ko.md
+        quote: "복구 불가 정책"
+      - file: docs/privacy-policy-ko.md
+        quote: "VEIL은 설계상 계정 복구 경로가 없습니다."
+      - file: docs/privacy-policy-ko.md
+        quote: "기기를 분실하거나 초기화하면 대화 내용은 복구할 수 없습니다."
+      - file: docs/security-hardening-roadmap.md
+        quote: "No backup / no recovery / device-bound identity | ✅ strong | enforced by policy-check.mjs (routes, modules, schema models, contracts, mobile backup code)"
+      - file: site/index.html
+        quote: "복구 불가 정책"
+      - file: site/index.html
+        quote: "VEIL은 설계상 계정 복구 경로가 없습니다."
+      - file: site/index.html
+        quote: "기기를 분실하거나 초기화하면 대화 내용은 복구할 수 없습니다."
+      - file: site/index.html
+        quote: "VEIL has no account recovery path by design."
+      - file: store/appstore/app-review-notes.md
+        quote: "Please read the \"No recovery by design\" and \"How to test without a phone number or email\" sections before testing — Veil intentionally has no password, no phone number, no email and no account recovery, and that is the expected behavior, not a bug."
+      - file: store/appstore/app-review-notes.md
+        quote: "Accept the privacy notice (\"Agree and continue\") and read the product rules (no backup, no recovery)."
+      - file: store/appstore/app-review-notes.md
+        quote: "(a) What the app does + \"No recovery by design\""
+      - file: store/appstore/app-review-notes.md
+        quote: "No recovery path — by design."
+      - file: store/appstore/app-review-notes.md
+        quote: "Verify the \"no recovery\" behavior (optional)."
+      - file: store/appstore/metadata-en.txt
+        quote: "A cold, encrypted messenger with no phone number, no email, no real name and no recovery path."
+      - file: store/appstore/metadata-en.txt
+        quote: "No recovery path."
+      - file: store/appstore/metadata-en.txt
+        quote: "Safety note VEIL deliberately has no account recovery."
+      - file: store/appstore/metadata-ko.txt
+        quote: "번호도, 이메일도, 실명도, 복구 경로도 없는 차가운 암호화 메신저."
+      - file: store/appstore/metadata-ko.txt
+        quote: "복구 경로가 없습니다."
+      - file: store/appstore/metadata-ko.txt
+        quote: "안전 주의 VEIL은 의도적으로 계정 복구 기능이 없습니다."
+      - file: store/appstore/metadata-ko.txt
+        quote: "기기 손실 시 대화가 복구되지 않습니다."
+      - file: store/appstore/screenshot-spec.md
+        quote: "1 | Onboarding / sign-up | No phone number, no email, no real name. Device-bound identity. | \"No phone number. No email. No recovery.\" | \"전화번호도, 이메일도, 복구도 없이.\""
+      - file: store/appstore/screenshot-spec.md
+        quote: "6 | Settings / privacy posture | No ads, no tracking, no third-party analytics; theme + language; the \"no recovery\" safety model. | \"No ads. No tracking. By design.\" | \"광고 없음. 추적 없음. 설계 원칙입니다.\""
+      - file: store/appstore/submission-checklist.md
+        quote: "Critical because VEIL asks for no phone number, no email and no real name, and has no recovery, so reviewers cannot \"log in.\" The notes must explain:"
+      - file: store/appstore/submission-checklist.md
+        quote: "That no account recovery exists by design (losing the device loses the chats)."
+      - file: store/play/full-en.txt
+        quote: "No recovery path."
+      - file: store/play/full-en.txt
+        quote: "VEIL deliberately has no account recovery."
+      - file: store/play/full-ko.txt
+        quote: "복구 경로가 없습니다."
+      - file: store/play/full-ko.txt
+        quote: "VEIL은 의도적으로 계정 복구 기능이 없습니다."
+      - file: store/play/full-ko.txt
+        quote: "기기 손실 시 대화가 복구되지 않습니다."
+      - file: store/play/screenshot-captions-ko.md
+        quote: "헤드라인: 복구 불가."
+      - file: store/play/screenshot-captions-ko.md
+        quote: "\"복구 불가\"를 약점이 아닌 가치로 재정의."
+      - file: store/play/screenshots/README.md
+        quote: "06-no-recovery.png | 복구 불가. 그게 안전입니다"
+      - file: docs/app-store-listing-metadata.md
+        quote: "No backup."
+      - file: docs/app-store-listing-metadata.md
+        quote: "Suggested shots: onboarding \"no recovery\" warning, a conversation, voice message, attachment preview, settings/theme."
+      - file: docs/launch/app-store-listing.md
+        quote: "No backup."
+      - file: docs/launch/play-store-listing.md
+        quote: "No backups, local or cloud."
+      - file: docs/launch/play-store-listing.md
+        quote: "No account recovery."
+      - file: store/appstore/app-review-notes.md
+        quote: "There is no password reset, no \"forgot account\" flow, no server-side backup of messages, and no administrator who can read or restore content."
+      - file: store/appstore/screenshot-spec.md
+        quote: "Do not imply backup or recovery — VEIL has none, and that is the product."
+      - file: store/appstore/screenshot-spec.md
+        quote: "Misleading \"restore/backup\" framing risks App Review rejection and contradicts the metadata."
+      - file: store/appstore/screenshot-spec.md
+        quote: "[ ] Device-transfer shot does not imply backup/recovery."
+      - file: docs/사용설명서.md
+        quote: "백업 없음 · 복구 없음 을 핵심 가치로 하는 종단간 암호화 메신저입니다."
+      - file: docs/사용설명서.md
+        quote: "백업·복구·비밀번호 재설정이 없습니다."
+      - file: docs/사용설명서.md
+        quote: "이 원칙들은 문서로만 적힌 게 아니라 scripts/policy-check.mjs 가 CI 에서 강제합니다 — 누가 복구 기능을 코드에 추가하면 빌드가 빨강이 됩니다."
+      - file: docs/사용설명서.md
+        quote: "백업/복구 | ❌ 없음 | ✅ 톡서랍"
+      - file: docs/사용설명서.md
+        quote: "복구 없음 철학: docs/no-recovery.md"
+      - file: docs/tester-guide-ko.md
+        quote: "백업 없음, 복구 없음"
+      - file: docs/tester-guide-ko.md
+        quote: "서버에 키가 없어서 우리가 복구해줄 수가 없어요."
+    evidence:
+      - gate: scripts/policy-check.mjs
+      - test: scripts/__tests__/policy-check.test.mjs
+        name: "recovery model in schema fails"
+      - test: apps/api/test/unit/route-auth-matrix.spec.ts
+        name: "no route offers recovery or backup"
+  - id: one-device-at-a-time
+    text: "An account is active on one device at a time: a device transfer, approved on the old device, moves the handle to keys created on the new device, revokes the old device in the same transaction, and moves no message history."
+    sources:
+      - file: store/play/full-en.txt
+        quote: "VEIL runs on one device at a time: the built-in device transfer moves your handle to a new phone and signs the old one out, and your message history is not transferred."
+      - file: store/play/full-ko.txt
+        quote: "VEIL은 한 번에 한 기기에서만 쓸 수 있습니다."
+      - file: store/play/full-ko.txt
+        quote: "앱 내 기기 이전은 핸들을 새 기기로 옮기고 이전 기기를 로그아웃시키며, 대화 기록은 옮겨지지 않습니다."
+      - file: store/appstore/screenshot-spec.md
+        quote: "4 | Encrypted device transfer | Device transfer — the old device must be present and approve; the handle moves to keys generated on the new phone, the old phone is signed out, and message history does not move. | \"Move your handle to a new phone. The old one signs out.\" | \"핸들을 새 기기로 옮기고, 이전 기기는 로그아웃됩니다.\""
+    evidence:
+      - test: apps/api/src/modules/device-transfer/device-transfer.service.spec.ts
+        name: "requires the old trusted device, adds the new one, and revokes the old device atomically"
+  - id: handle-quarantine
+    text: "A deleted account's handle cannot be registered again for 90 days, and the server keeps only a keyed hash of it."
+    sources:
+      - file: docs/privacy-policy-en.md
+        quote: "To stop someone else from registering the same handle and being mistaken for you, a keyed hash of the handle (not the handle itself) is kept for 90 days."
+      - file: docs/privacy-policy-ko.md
+        quote: "다른 사람이 같은 핸들을 등록해 이용자로 오인되지 않도록, 핸들 자체가 아닌 핸들의 키 해시만 90일간 보관합니다."
+      - file: site/index.html
+        quote: "다른 사람이 같은 핸들을 등록해 이용자로 오인되지 않도록, 핸들 자체가 아닌 핸들의 키 해시만 90일간 보관합니다."
+      - file: site/index.html
+        quote: "To stop someone else from registering the same handle and being mistaken for you, a keyed hash of the handle (not the handle itself) is kept for 90 days."
+    evidence:
+      - test: apps/api/src/modules/auth/auth.service.spec.ts
+        name: "quarantined handle register 409"
+      - test: apps/api/src/modules/account/account.service.spec.ts
+        name: "quarantines the handle for 90 days in the transaction that deletes the user"
+  - id: wake-only-push
+    text: "Push notifications only wake the app: they carry no message content, no envelope fields and no conversation metadata, and reactions send none at all."
+    sources:
+      - file: README.md
+        quote: "Push payloads carry no plaintext or envelope fields"
+    evidence:
+      - gate: scripts/policy-check.mjs
+      - test: apps/api/test/unit/push.service.spec.ts
+        name: "builds opaque wake-only APNs requests with no conversation metadata"
+      - test: apps/api/test/unit/push.service.spec.ts
+        name: "builds opaque wake-only FCM requests with no conversation metadata"
+      - test: apps/api/test/unit/unifiedpush-push.provider.spec.ts
+        name: "builds an opaque, wake-only request to the device endpoint"
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "reaction envelope accepted and no push sent"
+  - id: crypto-primitives
+    text: "The message crypto is built on X25519, Ed25519, HKDF-SHA256 and AES-256-GCM, pinned in CI by known-answer vectors."
+    sources:
+      - file: docs/privacy-policy-en.md
+        quote: "End-to-end encryption: X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256."
+      - file: docs/privacy-policy-ko.md
+        quote: "종단간 암호화: X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256"
+      - file: docs/security-hardening-roadmap.md
+        quote: "E2E (X25519 + AES-256-GCM + Ed25519, Double Ratchet) | ✅ strong | lib_crypto_adapter.dart, crypto-envelope-spec.md"
+      - file: site/index.html
+        quote: "종단간 암호화: X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256"
+      - file: site/index.html
+        quote: "End-to-end encryption: X25519 + AES-256-GCM + Ed25519 + HKDF-SHA256."
+      - file: store/appstore/app-review-notes.md
+        quote: "Veil implements its own end-to-end encryption (a Double Ratchet over X25519, AES-256-GCM, Ed25519, and HKDF-SHA256)."
+      - file: docs/launch/app-store-listing.md
+        quote: "Veil uses end-to-end encryption with only standard, published algorithms (X25519, AES-256-GCM, Ed25519, HKDF-SHA256 — see docs/crypto-envelope-spec.md)."
+    evidence:
+      - gate: scripts/crypto-test-vectors.mjs
+  - id: message-padding
+    text: "Both clients pad every message to a size bucket before AES-GCM (ISO/IEC 7816-4, 256 B up to 64 KiB, then 64 KiB steps) and every attachment to a Padmé length, so a ciphertext's size reveals only its bucket. The protocol-v2 known-answer vectors pin the padded plaintext."
+    sources:
+      - file: docs/security-hardening-roadmap.md
+        quote: "Message-length padding | ✅ shipped (mobile and web) | every message is ISO/IEC 7816-4 padded to a size bucket before AES-GCM, attachments to a Padmé length: message_padding.dart (1:1 and Sender Keys groups), web padding.js; pinned by the protocol-v2 known-answer vectors (crypto-test-vectors.mjs, kat-v2.test.js)"
+    evidence:
+      - gate: scripts/crypto-test-vectors.mjs
+      - test: apps/web-demo/__tests__/kat-v2.test.js
+        name: "inner payload and its padding"
+      - test: apps/mobile/test/message_padding_test.dart
+        name: "pads to the expected bucket and always adds the delimiter"
+  - id: forward-secrecy-ratchet
+    text: "One-to-one sessions in the mobile app use a Double Ratchet: each message has its own key from a one-way KDF chain and the DH ratchet steps on every turn, so the session keys a device holds today cannot decrypt messages it already received. CI pins the ratchet's key schedule with known-answer vectors."
+    sources:
+      - file: README.md
+        quote: "Forward Secrecy Ratchet Design — implemented mobile ratchet"
+    evidence:
+      - gate: scripts/crypto-test-vectors.mjs
+  - id: sealed-sender-not-implemented
+    text: "Sealed sender is not implemented, and its current design is under revision because it would not hide the sender: the server authenticates the sending device of every message."
+    sources:
+      - file: README.md
+        quote: "Sealed sender is under revision: the current design in docs/sealed-sender-design.md does not hide the sender from the server."
+      - file: README.md
+        quote: "Sealed Sender Design — under revision: the current design does not hide the sender"
+      - file: docs/security-hardening-roadmap.md
+        quote: "Sealed sender (metadata) | 📝 under revision | sealed-sender-design.md: the current design does not hide the sender"
+    evidence:
+      - test: apps/api/src/modules/messages/messages.service.spec.ts
+        name: "rejects when envelope senderDeviceId does not match auth device"
+  - id: key-transparency-not-implemented
+    text: "Key transparency is not implemented; safety numbers are compared by hand. Until it ships, deleted handles are quarantined so a re-registered handle cannot pass as its old owner."
+    sources:
+      - file: docs/security-hardening-roadmap.md
+        quote: "Key transparency | ❌ absent | safety numbers are manual; nothing auto-detects a malicious server swapping keys. Deleted handles are quarantined for 90 days, so a re-registered handle cannot pass as its old owner right away"
+      - file: docs/security-hardening-roadmap.md
+        quote: "Key transparency."
+      - file: docs/security-hardening-roadmap.md
+        quote: "Key transparency (an append-only, publicly-verifiable log of identity-key→user bindings, CONIKS / Parakeet / Signal-KT style) lets clients *automatically* detect a server that serves a forged key, closing the last server-trust hole (active MITM via key substitution)."
+      - file: docs/security-hardening-roadmap.md
+        quote: "Key transparency (C) as the flagship Tier-2 spec — it's the one capability that would put VEIL's server-trust model *ahead* of most messengers."
+    evidence:
+      - test: apps/api/src/modules/auth/auth.service.spec.ts
+        name: "quarantined handle register 409"
+  - id: post-quantum-not-shipped
+    text: "Post-quantum protection is specified but not shipped: the message crypto CI pins is classical (X25519, Ed25519, HKDF-SHA256, AES-256-GCM)."
+    sources:
+      - file: docs/security-hardening-roadmap.md
+        quote: "Post-quantum | 📝 specced (#6/#7) | post-quantum-migration-spec.md"
+    evidence:
+      - gate: scripts/crypto-test-vectors.mjs
+  - id: crypto-work-audit-gated
+    text: "Protocol v2, its web port, message padding and Sender Keys shipped before any external audit; the crypto work still open waits for it, and a production server refuses to boot until an audited crypto report is attested."
+    sources:
+      - file: docs/security-hardening-roadmap.md
+        quote: "The crypto-heavy items still open (C, D, post-quantum, sealed sender) wait for the audit; build work (A) can proceed in parallel now."
+      - file: docs/tester-guide-ko.md
+        quote: "종단간 암호화는 동작하지만 외부 보안 감사가 아직 안 끝났어요"
+    evidence:
+      - test: apps/api/test/unit/app-config.service.spec.ts
+        name: "production requires VEIL_AUDIT_REPORT_SHA256"

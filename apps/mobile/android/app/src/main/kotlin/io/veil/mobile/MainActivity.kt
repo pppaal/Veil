@@ -6,6 +6,7 @@ import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import io.veil.mobile.crypto.LibsignalBridgeRegistrar
 import java.io.File
 
 class MainActivity : FlutterActivity() {
@@ -18,6 +19,10 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // The libsignal bridge is compiled in only by the opt-in build
+        // (-Pveil.libsignal=true, see app/build.gradle.kts); in the default
+        // build this registers nothing.
+        LibsignalBridgeRegistrar.register(flutterEngine.dartExecutor.binaryMessenger, applicationContext)
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             channelName,

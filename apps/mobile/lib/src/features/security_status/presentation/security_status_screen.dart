@@ -3,18 +3,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
 import '../../../core/config/veil_config.dart';
+import '../../../core/crypto/crypto_adapter_registry.dart';
+import '../../../core/network/pinned_http_client.dart' show parsePinList;
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 class SecurityStatusScreen extends ConsumerWidget {
-  const SecurityStatusScreen({super.key});
+  const SecurityStatusScreen({super.key, this.tlsPins = VeilConfig.tlsPins});
+
+  /// The relay's TLS pins as this build sets them (VEIL_TLS_PINS).
+  final String tlsPins;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
     final messenger = ref.watch(messengerControllerProvider);
     final localSecurity = ref.watch(localSecuritySnapshotProvider);
+    final crypto = _cryptoSignal(l10n, ref.watch(cryptoAdapterProvider).adapterId);
+    final pinCount = parsePinList(tlsPins).length;
+    final runtimeError = VeilConfig.runtimeConfigurationError;
     final cacheConfigured = VeilConfig.enableLocalCache;
     final cacheReady = ref.watch(conversationCacheProvider).maybeWhen(
           data: (cache) => cache != null,
@@ -23,94 +33,85 @@ class SecurityStatusScreen extends ConsumerWidget {
 
     final identitySignals = <_SecuritySignal>[
       _SecuritySignal(
-        label: 'Bound device',
-        value:
-            session.deviceId == null ? 'Unbound' : _shortId(session.deviceId!),
+        label: l10n.securityStatusBoundDevice,
+        value: session.deviceId == null ? l10n.securityStatusBoundDeviceUnbound : _shortId(session.deviceId!),
         detail: session.deviceId == null
-            ? 'No active device session is present.'
-            : 'This device currently holds the active VEIL session.',
+            ? l10n.securityStatusBoundDeviceNoneDetail
+            : l10n.securityStatusBoundDeviceDetail,
         tone: session.deviceId == null ? _SignalTone.warn : _SignalTone.good,
       ),
       _SecuritySignal(
-        label: 'Local secret refs',
+        label: l10n.securityStatusSecretRefs,
         value: localSecurity.maybeWhen(
-          data: (state) => state.hasDeviceSecretRefs ? 'Present' : 'Missing',
-          orElse: () => 'Checking',
-        ),
-        detail:
-            'Private device material stays on the device. The server never receives it.',
-        tone: localSecurity.maybeWhen(
           data: (state) =>
-              state.hasDeviceSecretRefs ? _SignalTone.good : _SignalTone.warn,
+              state.hasDeviceSecretRefs ? l10n.securityStatusSecretRefsPresent : l10n.securityStatusSecretRefsMissing,
+          orElse: () => l10n.securityStatusChecking,
+        ),
+        detail: l10n.securityStatusSecretRefsDetail,
+        tone: localSecurity.maybeWhen(
+          data: (state) => state.hasDeviceSecretRefs ? _SignalTone.good : _SignalTone.warn,
           orElse: () => _SignalTone.neutral,
         ),
       ),
       _SecuritySignal(
-        label: 'App lock PIN',
+        label: l10n.securityStatusPin,
         value: localSecurity.maybeWhen(
-          data: (state) => state.hasPin ? 'Configured' : 'Unset',
-          orElse: () => 'Checking',
+          data: (state) => state.hasPin ? l10n.securityStatusPinConfigured : l10n.securityStatusPinUnset,
+          orElse: () => l10n.securityStatusChecking,
         ),
-        detail: 'Local barrier only. VEIL cannot unlock the app for you.',
+        detail: l10n.securityStatusPinDetail,
         tone: localSecurity.maybeWhen(
           data: (state) => state.hasPin ? _SignalTone.good : _SignalTone.warn,
           orElse: () => _SignalTone.neutral,
         ),
       ),
       _SecuritySignal(
-        label: 'Biometrics',
+        label: l10n.securityStatusBiometrics,
         value: localSecurity.maybeWhen(
-          data: (state) =>
-              state.biometricsAvailable ? 'Available' : 'Unavailable',
-          orElse: () => 'Checking',
+          data: (state) => state.biometricsAvailable ? l10n.securityStatusAvailable : l10n.securityStatusUnavailable,
+          orElse: () => l10n.securityStatusChecking,
         ),
-        detail:
-            'Device-level biometric unlock only. No remote fallback exists.',
+        detail: l10n.securityStatusBiometricsDetail,
         tone: localSecurity.maybeWhen(
-          data: (state) => state.biometricsAvailable
-              ? _SignalTone.good
-              : _SignalTone.neutral,
+          data: (state) => state.biometricsAvailable ? _SignalTone.good : _SignalTone.neutral,
           orElse: () => _SignalTone.neutral,
         ),
       ),
-      const _SecuritySignal(
-        label: 'Privacy shield',
-        value: 'Enabled',
-        detail:
-            'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.',
+      _SecuritySignal(
+        label: l10n.securityStatusPrivacyShield,
+        value: l10n.securityStatusEnabled,
+        detail: l10n.securityStatusPrivacyShieldDetail,
         tone: _SignalTone.good,
       ),
       _SecuritySignal(
-        label: 'Recent-app preview',
+        label: l10n.securityStatusAppPreview,
         value: localSecurity.maybeWhen(
-          data: (state) =>
-              state.appPreviewProtectionEnabled ? 'Protected' : 'Partial',
-          orElse: () => 'Checking',
-        ),
-        detail:
-            'Native and Flutter privacy shields are used to hide app-switcher content while VEIL is backgrounded.',
-        tone: localSecurity.maybeWhen(
           data: (state) => state.appPreviewProtectionEnabled
-              ? _SignalTone.good
-              : _SignalTone.warn,
+              ? l10n.securityStatusAppPreviewProtected
+              : l10n.securityStatusAppPreviewPartial,
+          orElse: () => l10n.securityStatusChecking,
+        ),
+        detail: l10n.securityStatusAppPreviewDetail,
+        tone: localSecurity.maybeWhen(
+          data: (state) => state.appPreviewProtectionEnabled ? _SignalTone.good : _SignalTone.warn,
           orElse: () => _SignalTone.neutral,
         ),
       ),
       _SecuritySignal(
-        label: 'Screen capture',
+        label: l10n.securityStatusScreenCapture,
         value: localSecurity.maybeWhen(
           data: (state) => !state.screenCaptureProtectionSupported
-              ? 'Platform-limited'
+              ? l10n.securityStatusScreenCapturePlatformLimited
               : state.screenCaptureProtectionEnabled
-                  ? 'Blocked'
-                  : 'Not blocked',
-          orElse: () => 'Checking',
+                  ? l10n.securityStatusBlocked
+                  : l10n.securityStatusScreenCaptureNotBlocked,
+          orElse: () => l10n.securityStatusChecking,
         ),
         detail: localSecurity.maybeWhen(
           data: (state) => state.screenCaptureProtectionSupported
-              ? 'Android blocks screenshots with secure-window flags when enabled.'
-              : 'This platform has no public API for full screenshot blocking, so VEIL relies on preview shielding and rapid relocking instead.',
-          orElse: () => 'Checking native screen-capture policy.',
+              ? l10n.securityStatusScreenCaptureSupportedDetail
+              : l10n.securityStatusScreenCaptureUnsupportedDetail,
+          orElse: () => l10n.securityStatusScreenCaptureCheckingDetail,
         ),
         tone: localSecurity.maybeWhen(
           data: (state) => !state.screenCaptureProtectionSupported
@@ -121,56 +122,52 @@ class SecurityStatusScreen extends ConsumerWidget {
           orElse: () => _SignalTone.neutral,
         ),
       ),
-      const _SecuritySignal(
-        label: 'Clipboard hygiene',
-        value: 'Restricted',
-        detail:
-            'Sensitive attachment tickets are summarized locally instead of exposing raw signed URLs for copy/share.',
+      _SecuritySignal(
+        label: l10n.securityStatusClipboard,
+        value: l10n.securityStatusClipboardRestricted,
+        detail: l10n.securityStatusClipboardDetail,
         tone: _SignalTone.good,
       ),
     ];
 
     final runtimeSignals = <_SecuritySignal>[
       _SecuritySignal(
-        label: 'Transport policy',
-        value: VeilConfig.runtimeConfigurationError == null
-            ? 'Compliant'
-            : 'Blocked',
-        detail: VeilConfig.runtimeConfigurationError == null
-            ? 'Configured endpoints satisfy the current private-beta transport policy.'
-            : VeilConfig.runtimeConfigurationError!,
-        tone: VeilConfig.runtimeConfigurationError == null
-            ? _SignalTone.good
-            : _SignalTone.warn,
+        label: l10n.securityStatusTransport,
+        value: runtimeError == null ? l10n.securityStatusTransportCompliant : l10n.securityStatusBlocked,
+        // The configuration error is the build's own diagnostic, in English.
+        detail: runtimeError ?? l10n.securityStatusTransportDetail,
+        tone: runtimeError == null ? _SignalTone.good : _SignalTone.warn,
       ),
       _SecuritySignal(
-        label: 'API mode',
-        value: VeilConfig.hasApi ? 'Attached' : 'Unavailable',
-        detail: VeilConfig.hasApi
-            ? 'REST API is configured for this build.'
-            : 'No API endpoint is configured. Messaging is unavailable.',
+        label: l10n.securityStatusTlsPins,
+        value: pinCount > 0 ? l10n.securityStatusTlsPinsPinned : l10n.securityStatusTlsPinsUnpinned,
+        detail: pinCount > 0
+            ? l10n.securityStatusTlsPinsPinnedDetail(pinCount)
+            : l10n.securityStatusTlsPinsUnpinnedDetail,
+        tone: pinCount > 0 ? _SignalTone.good : _SignalTone.warn,
+      ),
+      _SecuritySignal(
+        label: l10n.securityStatusApiMode,
+        value: VeilConfig.hasApi ? l10n.securityStatusApiAttached : l10n.securityStatusUnavailable,
+        detail: VeilConfig.hasApi ? l10n.securityStatusApiAttachedDetail : l10n.securityStatusApiUnavailableDetail,
         tone: VeilConfig.hasApi ? _SignalTone.good : _SignalTone.warn,
       ),
       _SecuritySignal(
-        label: 'Relay link',
-        value: messenger.realtimeConnected ? 'Connected' : 'Idle',
+        label: l10n.securityStatusRelayLink,
+        value: messenger.realtimeConnected ? l10n.securityStatusRelayConnected : l10n.securityStatusIdle,
         detail: messenger.realtimeConnected
-            ? 'Realtime relay is connected with opaque event payloads.'
-            : 'Realtime relay is disconnected or still syncing.',
-        tone: messenger.realtimeConnected
-            ? _SignalTone.good
-            : _SignalTone.neutral,
+            ? l10n.securityStatusRelayConnectedDetail
+            : l10n.securityStatusRelayIdleDetail,
+        tone: messenger.realtimeConnected ? _SignalTone.good : _SignalTone.neutral,
       ),
       _SecuritySignal(
-        label: 'Local cache',
+        label: l10n.securityStatusLocalCache,
         value: !cacheConfigured
-            ? 'Disabled'
+            ? l10n.securityStatusDisabled
             : cacheReady
-                ? 'Ready'
-                : 'Starting',
-        detail: !cacheConfigured
-            ? 'Local message cache is disabled in this build.'
-            : 'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer, scrubbed from app-switcher previews, and wiped on destructive local lifecycle events.',
+                ? l10n.securityStatusReady
+                : l10n.securityStatusStarting,
+        detail: !cacheConfigured ? l10n.securityStatusLocalCacheDisabledDetail : l10n.securityStatusLocalCacheDetail,
         tone: !cacheConfigured
             ? _SignalTone.warn
             : cacheReady
@@ -178,22 +175,22 @@ class SecurityStatusScreen extends ConsumerWidget {
                 : _SignalTone.neutral,
       ),
       _SecuritySignal(
-        label: 'Device integrity',
+        label: l10n.securityStatusIntegrity,
         value: localSecurity.maybeWhen(
-          data: (state) => state.integrityCompromised ? 'Compromised' : 'Clean',
-          orElse: () => 'Checking',
+          data: (state) =>
+              state.integrityCompromised ? l10n.securityStatusIntegrityCompromised : l10n.securityStatusIntegrityClean,
+          orElse: () => l10n.securityStatusChecking,
         ),
         detail: localSecurity.maybeWhen(
           data: (state) => state.integrityCompromised
               ? state.integrityReasons.isEmpty
-                  ? 'This device matched rooted or jailbroken heuristics. VEIL blocks local unlock in this state.'
-                  : 'This device matched rooted or jailbroken heuristics. ${state.integrityReasons.join(' | ')}'
-              : 'Native rooted and jailbroken heuristics did not trigger on this device.',
-          orElse: () => 'Checking native integrity heuristics.',
+                  ? l10n.securityStatusIntegrityCompromisedDetail
+                  : l10n.securityStatusIntegrityCompromisedReasons(state.integrityReasons.join(' | '))
+              : l10n.securityStatusIntegrityCleanDetail,
+          orElse: () => l10n.securityStatusIntegrityCheckingDetail,
         ),
         tone: localSecurity.maybeWhen(
-          data: (state) =>
-              state.integrityCompromised ? _SignalTone.warn : _SignalTone.good,
+          data: (state) => state.integrityCompromised ? _SignalTone.warn : _SignalTone.good,
           orElse: () => _SignalTone.neutral,
         ),
       ),
@@ -201,78 +198,71 @@ class SecurityStatusScreen extends ConsumerWidget {
 
     final productSignals = <_SecuritySignal>[
       _SecuritySignal(
-        label: 'Cloud backup',
-        value: 'Disabled',
-        detail: 'VEIL does not keep a recovery copy of your message history.',
+        label: l10n.securityStatusCloudBackup,
+        value: l10n.securityStatusDisabled,
+        detail: l10n.securityStatusCloudBackupDetail,
         tone: _SignalTone.good,
       ),
       _SecuritySignal(
-        label: 'Account recovery',
-        value: 'Unavailable',
-        detail: 'No recovery email, reset flow, or admin restore path exists.',
+        label: l10n.securityStatusAccountRecovery,
+        value: l10n.securityStatusUnavailable,
+        detail: l10n.securityStatusAccountRecoveryDetail,
         tone: _SignalTone.good,
       ),
       _SecuritySignal(
-        label: 'Device transfer',
-        value: 'Old device required',
-        detail: 'Transfer succeeds only while the old device can approve it.',
-        tone: _SignalTone.good,
-      ),
-      const _SecuritySignal(
-        label: 'Local wipe',
-        value: 'Available',
-        detail:
-            'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.',
+        label: l10n.securityStatusDeviceTransfer,
+        value: l10n.securityStatusDeviceTransferValue,
+        detail: l10n.securityStatusDeviceTransferDetail,
         tone: _SignalTone.good,
       ),
       _SecuritySignal(
-        label: 'Crypto adapter',
-        value: 'Production (unaudited)',
-        detail:
-            'Real X25519 + AES-256-GCM + Ed25519 Double Ratchet crypto is active. An external audit is still pending.',
-        tone: _SignalTone.neutral,
+        label: l10n.securityStatusLocalWipe,
+        value: l10n.securityStatusAvailable,
+        detail: l10n.securityStatusLocalWipeDetail,
+        tone: _SignalTone.good,
       ),
+      crypto,
       _SecuritySignal(
-        label: 'Push plaintext',
-        value: 'Forbidden',
-        detail: 'Push payloads must never contain plaintext message content.',
+        label: l10n.securityStatusPushPlaintext,
+        value: l10n.securityStatusPushPlaintextForbidden,
+        detail: l10n.securityStatusPushPlaintextDetail,
         tone: _SignalTone.good,
       ),
       _SecuritySignal(
-        label: 'Push provider',
-        value: VeilConfig.hasApi ? 'Seam only' : 'Unavailable',
+        label: l10n.securityStatusPushProvider,
+        value: VeilConfig.hasApi ? l10n.securityStatusPushProviderSeam : l10n.securityStatusUnavailable,
         detail: VeilConfig.hasApi
-            ? 'The metadata-only wake-up path is defined, but a real APNs/FCM provider is not wired in this build.'
-            : 'No API endpoint is configured, so push delivery is unavailable in this build.',
+            ? l10n.securityStatusPushProviderSeamDetail
+            : l10n.securityStatusPushProviderUnavailableDetail,
         tone: VeilConfig.hasApi ? _SignalTone.warn : _SignalTone.neutral,
       ),
       _SecuritySignal(
-        label: 'Push payloads',
-        value: VeilConfig.hasApi ? 'Metadata only' : 'Unavailable',
+        label: l10n.securityStatusPushPayloads,
+        value: VeilConfig.hasApi ? l10n.securityStatusPushPayloadsMetadata : l10n.securityStatusUnavailable,
         detail: VeilConfig.hasApi
-            ? 'If push is enabled later, wake-up hints must stay metadata-only. Message bodies remain out of push.'
-            : 'No API endpoint is configured, so push payload generation is unavailable in this build.',
+            ? l10n.securityStatusPushPayloadsMetadataDetail
+            : l10n.securityStatusPushPayloadsUnavailableDetail,
         tone: VeilConfig.hasApi ? _SignalTone.good : _SignalTone.neutral,
       ),
     ];
 
     return VeilShell(
-      title: 'Security Status',
+      title: l10n.securityStatusTitle,
       child: ListView(
         children: [
-          const VeilHeroPanel(
-            eyebrow: 'SECURITY STATUS',
-            title: 'No backup. No recovery. No leaks.',
-            body:
-                'This panel reflects the current device and runtime state. If a guardrail is missing here, it is missing on the device.',
+          VeilHeroPanel(
+            eyebrow: l10n.securityStatusEyebrow,
+            title: l10n.securityStatusHeroTitle,
+            body: l10n.securityStatusHeroBody,
             bottom: Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
-                VeilStatusPill(label: 'Private beta'),
+                VeilStatusPill(label: l10n.securityStatusPillPrivateBeta),
                 VeilStatusPill(
-                    label: 'Production crypto (unaudited)',
-                    tone: VeilBannerTone.info),
+                  label: crypto.value,
+                  tone: crypto.tone == _SignalTone.warn ? VeilBannerTone.warn : VeilBannerTone.info,
+                ),
               ],
             ),
           ),
@@ -280,36 +270,61 @@ class SecurityStatusScreen extends ConsumerWidget {
           VeilMetricStrip(
             items: [
               VeilMetricItem(
-                label: 'Runtime',
-                value: VeilConfig.runtimeConfigurationError == null ? 'Ready' : 'Blocked',
+                label: l10n.securityStatusMetricRuntime,
+                value: runtimeError == null ? l10n.securityStatusReady : l10n.securityStatusBlocked,
               ),
               VeilMetricItem(
-                label: 'Relay',
-                value: messenger.realtimeConnected ? 'Linked' : 'Idle',
+                label: l10n.securityStatusMetricRelay,
+                value: messenger.realtimeConnected ? l10n.securityStatusMetricRelayLinked : l10n.securityStatusIdle,
               ),
               VeilMetricItem(
-                label: 'Cache',
+                label: l10n.securityStatusMetricCache,
                 value: !cacheConfigured
-                    ? 'Off'
+                    ? l10n.securityStatusMetricCacheOff
                     : cacheReady
-                        ? 'Ready'
-                        : 'Starting',
+                        ? l10n.securityStatusReady
+                        : l10n.securityStatusStarting,
               ),
             ],
           ),
           const SizedBox(height: VeilSpace.md),
-          const _SecuritySection(title: 'Identity'),
+          _SecuritySection(title: l10n.securityStatusSectionIdentity),
           ...identitySignals.map((signal) => _SecurityRow(signal: signal)),
           const SizedBox(height: VeilSpace.md),
-          const _SecuritySection(title: 'Runtime'),
+          _SecuritySection(title: l10n.securityStatusSectionRuntime),
           ...runtimeSignals.map((signal) => _SecurityRow(signal: signal)),
           const SizedBox(height: VeilSpace.md),
-          const _SecuritySection(title: 'Product Rules'),
+          _SecuritySection(title: l10n.securityStatusSectionProductRules),
           ...productSignals.map((signal) => _SecurityRow(signal: signal)),
         ],
       ),
     );
   }
+
+  // What protects this build's messages, read from the adapter it runs:
+  // the libsignal bridge and a development adapter must not be shown as
+  // VEIL's own ratchet.
+  static _SecuritySignal _cryptoSignal(AppLocalizations l10n, String adapterId) =>
+      switch (cryptoAdapterKindOf(adapterId)) {
+        CryptoAdapterKind.veilRatchet => _SecuritySignal(
+            label: l10n.securityStatusCryptoAdapter,
+            value: l10n.securityStatusCryptoVeilRatchet,
+            detail: l10n.securityStatusCryptoVeilRatchetDetail(adapterId),
+            tone: _SignalTone.neutral,
+          ),
+        CryptoAdapterKind.libsignal => _SecuritySignal(
+            label: l10n.securityStatusCryptoAdapter,
+            value: l10n.securityStatusCryptoLibsignal,
+            detail: l10n.securityStatusCryptoLibsignalDetail(adapterId),
+            tone: _SignalTone.neutral,
+          ),
+        CryptoAdapterKind.development => _SecuritySignal(
+            label: l10n.securityStatusCryptoAdapter,
+            value: l10n.securityStatusCryptoDevelopment,
+            detail: l10n.securityStatusCryptoDevelopmentDetail(adapterId),
+            tone: _SignalTone.warn,
+          ),
+      };
 
   static String _shortId(String value) {
     if (value.length <= 12) {

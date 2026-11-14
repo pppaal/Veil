@@ -146,7 +146,10 @@ void main() {
   });
 
   test(
-      'transfer failure clears the pending claim and requires a fresh registration',
+      // C-TRANSFER-RETRY: a refusal stops the completion but never drops
+      // the claimed keys (they are the account's if the relay committed);
+      // completing again sends the identical request.
+      'transfer refusal stops and keeps the claim for an identical retry',
       () async {
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final api = _FakeSessionApiClient()
@@ -181,6 +184,8 @@ void main() {
       controller.state.errorMessage,
       'This new device could not prove the final transfer handoff.',
     );
+    expect(api.completeTransferBodies, hasLength(1));
+    expect(await storage.readPendingTransfer(), isNotNull);
 
     await expectLater(
       controller.completeTransferAndAuthenticate(
@@ -188,8 +193,10 @@ void main() {
         transferToken: 'token-1',
         claimId: claim.claimId,
       ),
-      throwsA(isA<StateError>()),
+      throwsA(isA<VeilApiException>()),
     );
+    expect(api.completeTransferBodies, hasLength(2));
+    expect(api.completeTransferBodies.last, api.completeTransferBodies.first);
   });
 }
 
@@ -223,7 +230,7 @@ class _MemoryConversationCache implements ConversationCacheService {
   }
 
   @override
-  Future<void> purgeExpiredMessages() async {}
+  Future<void> purgeExpiredMessages({DateTime? now}) async {}
 
   @override
   Future<List<ConversationPreview>> readConversations() async => const [];
@@ -291,6 +298,7 @@ class _FakeSessionApiClient extends VeilApiClient {
   final List<String> challengeDeviceIds = <String>[];
   final List<String> verifyDeviceIds = <String>[];
   VeilApiException? completeTransferError;
+  final List<Map<String, dynamic>> completeTransferBodies = [];
 
   @override
   Future<Map<String, dynamic>> register(Map<String, dynamic> body) async {
@@ -332,6 +340,7 @@ class _FakeSessionApiClient extends VeilApiClient {
   @override
   Future<Map<String, dynamic>> completeTransfer(
       Map<String, dynamic> body) async {
+    completeTransferBodies.add(body);
     final error = completeTransferError;
     if (error != null) {
       throw error;

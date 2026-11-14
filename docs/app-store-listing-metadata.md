@@ -17,8 +17,8 @@ localize the primary fields for each store locale.
 - **App name:** VEIL — Private Messenger
 - **Subtitle (iOS, ≤30 chars):** No number. No backup. No leaks.
 - **Promotional text (iOS, ≤170 chars, updatable without review):**
-  End-to-end encrypted messages with no phone number and no account. Nothing is
-  stored in plaintext, ever. Your device is your identity.
+  End-to-end encrypted messages with no phone number, no email and no real name.
+  Message content is never stored in plaintext. Your device is your identity.
 
 ## Description (English)
 
@@ -26,7 +26,7 @@ localize the primary fields for each store locale.
 VEIL is an open-source, end-to-end encrypted messenger built on one idea:
 the server should never be able to read your messages — and neither should we.
 
-• No phone number, no email, no account. Your device is your identity.
+• No phone number, no email, no real name. Your device is your identity.
 • End-to-end encryption (X25519 + AES-256-GCM, Double Ratchet forward secrecy).
 • No cloud backup, no password reset, no admin override — by design.
 • The server only ever relays ciphertext. It cannot decrypt your conversations.
@@ -47,7 +47,7 @@ disappearing timers, and block/mute controls.
 VEIL은 오픈소스 종단간 암호화 메신저입니다. 서버가 당신의 메시지를 절대 읽을
 수 없도록 설계되었습니다.
 
-• 전화번호도, 이메일도, 계정도 없습니다. 기기 자체가 신원입니다.
+• 전화번호도, 이메일도, 실명도 필요 없습니다. 기기 자체가 신원입니다.
 • 종단간 암호화 (X25519 + AES-256-GCM, Double Ratchet 순방향 비밀성).
 • 클라우드 백업 없음, 비밀번호 재설정 없음, 관리자 우회 없음 — 의도된 설계입니다.
 • 서버는 암호문만 중계하며, 대화를 복호화할 수 없습니다.
@@ -73,17 +73,28 @@ VEIL에는 계정 복구가 없습니다. 기기를 잃거나 앱을 지우면 �
 
 ## Privacy "nutrition label" (App Store Connect) — answer precisely
 
-VEIL cannot read message content, so most "linked to you" data does not apply.
-Declare only what the server actually retains — cross-check against
-`apps/api/src/common/config/env.schema.ts` and the threat model:
+Transcribe `store/appstore/app-privacy-answers.md` (App Store) and
+`store/play/data-safety-answers.md` (Google Play). They are the only source of
+the answers, and `scripts/store-label-check.mjs` fails CI when this page or any
+other document contradicts them. VEIL cannot read message content, but the
+server does keep metadata linked to the account. In short:
 
-- **Data NOT collected:** message content, contacts, precise location, browsing
-  history, photos (transit only, encrypted).
-- **Data that MAY be collected (not linked to identity where possible):**
-  - Coarse diagnostics / crash data — only if a crash reporter is enabled
-    (currently none wired; keep it that way or declare it).
-  - Device/push identifiers — only once APNs/FCM is enabled
-    (`VEIL_PUSH_PROVIDER` is `none` today).
+- **Collected and linked to the user, App Functionality only, no tracking:**
+  - User ID and Device ID. The server also stores the push token a device
+    registers with, next to its Device ID, and uses it only for wake-ups
+    that carry no message content.
+  - Contacts: the in-app contact list (which accounts the user added), a
+    social graph. The phone's address book is never read.
+  - Other User Content: group and channel names and descriptions and device
+    labels (stored readable), and the metadata needed to deliver messages
+    (who is in which conversation, message and receipt times, call records).
+- **Collected and not linked:** Other User Content for the encrypted message
+  payloads, photos and other attachments, which the server holds only as
+  ciphertext it cannot decrypt.
+- **Not collected:** precise or coarse location, browsing and search history,
+  contact info (name, email address, phone number), purchases, usage data,
+  and diagnostics: no crash reporter is wired, and adding one changes the
+  answers.
 - **Metadata retention (server):** terminal call records and consumed prekeys
   are swept after `VEIL_CALL_RECORD_RETENTION_DAYS` /
   `VEIL_PREKEY_CONSUMED_RETENTION_DAYS` (default 30 days). Reflect this honestly.
@@ -94,8 +105,10 @@ Declare only what the server actually retains — cross-check against
 VEIL is an end-to-end encrypted messenger. Two behaviors commonly mistaken for
 bugs are intentional privacy design — please read before testing:
 
-1. NO ACCOUNT / NO PHONE NUMBER. There is no sign-up form. Identity is bound to
-   the device on first launch. This is not a broken onboarding flow.
+1. NO PHONE NUMBER / NO EMAIL. There is no password, email or SMS sign-up.
+   After a privacy notice, the app creates an account bound to the device
+   (Create Account) and asks for a handle (Choose Handle). This is not a broken
+   onboarding flow.
 
 2. NO RECOVERY. There is deliberately no password reset, no cloud backup, and no
    way to restore a conversation on a new device without the original device.
@@ -104,12 +117,13 @@ bugs are intentional privacy design — please read before testing:
 
 Encryption: uses standard cryptography (X25519, AES-256-GCM, Ed25519). Export
 compliance is declared (ITSAppUsesNonExemptEncryption=true) and the annual
-self-classification is on file.
+self-classification report will be filed before distribution.
 
 Source is public under AGPL-3.0 for independent verification.
 
-Test walkthrough: launch → device identity is created automatically → start a
-conversation → send text/voice/photo → reactions and replies work inline. No
+Test walkthrough: launch → agree to the privacy notice → Create Account →
+Choose Handle (any free handle) → start a conversation with a second device's
+handle → send text/voice/photo → reactions and replies work inline. No
 credentials are required to reach full functionality.
 ```
 

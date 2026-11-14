@@ -7,6 +7,14 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// The libsignal bridge (app/src/libsignal) and Signal's prebuilt native
+// libraries are compiled in only when asked for:
+//   flutter build apk --dart-define=VEIL_CRYPTO_ADAPTER=libsignal --android-project-arg=veil.libsignal=true
+// Default builds leave both out; the Dart side then finds no bridge and the
+// libsignal adapter, if selected, reports it unavailable. The bridge has not
+// been built into an app on a real toolchain yet.
+val veilLibsignal = providers.gradleProperty("veil.libsignal").orNull == "true"
+
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("keystore.properties")
 if (keystorePropertiesFile.exists()) {
@@ -25,6 +33,12 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDir(if (veilLibsignal) "src/libsignal/kotlin" else "src/nolibsignal/kotlin")
+        }
     }
 
     defaultConfig {
@@ -78,4 +92,13 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    if (veilLibsignal) {
+        // Signal's audited protocol implementation (Rust core + JNI, prebuilt
+        // AAR from Maven Central). Pinned exactly; bump together with the iOS
+        // LibSignalClient package and docs/reproducible-builds.md.
+        implementation("org.signal:libsignal-android:0.86.5")
+    }
 }

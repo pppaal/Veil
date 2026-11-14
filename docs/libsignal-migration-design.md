@@ -11,8 +11,9 @@ battle-tested rather than a solo re-implementation.
 
 Today the ratchet, key agreement, and AEAD framing are a VEIL-authored Dart
 implementation on top of the pure-Dart `cryptography` package
-(`lib_crypto_adapter.dart`, adapter id `lib-x25519-aes256gcm-v3`). It is
-CI-tested and has AEAD header binding (v3), but:
+(`lib_crypto_adapter.dart`, adapter id `lib-x3dh-x25519-aes256gcm-v4`,
+protocol v2). It is CI-tested and binds every routing field and the frame
+header as AEAD associated data, but:
 
 - an external audit would have to cover the **entire** crypto implementation,
   not just the integration — the most expensive kind of audit;

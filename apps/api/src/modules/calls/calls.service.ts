@@ -1,39 +1,40 @@
 import { Injectable } from '@nestjs/common';
+import type { CallStatus } from '@prisma/client';
+import { isUUID } from 'class-validator';
 
+import { ConversationAccessService } from '../../common/conversation-access/conversation-access.service';
+import { apiError } from '../../common/errors/api-error';
 import { PrismaService } from '../../common/prisma.service';
-import { conflict, forbidden, notFound } from '../../common/errors/api-error';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
-import { SafetyService } from '../safety/safety.service';
 import { InitiateCallDto } from './dto/initiate-call.dto';
+
+type CallTransition = 'accept' | 'decline' | 'end';
+
+// The only legal call state changes. declined, missed and ended are
+// terminal: re-ending a finished call must not recompute its duration.
+const CALL_TRANSITIONS: Readonly<
+  Record<CallTransition, { from: readonly CallStatus[]; to: CallStatus }>
+> = {
+  accept: { from: ['ringing'], to: 'active' },
+  decline: { from: ['ringing'], to: 'declined' },
+  end: { from: ['ringing', 'active'], to: 'ended' },
+};
 
 @Injectable()
 export class CallsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtimeGateway: RealtimeGateway,
-    private readonly safety: SafetyService,
+    private readonly access: ConversationAccessService,
   ) {}
 
   async initiateCall(auth: { userId: string; deviceId: string }, dto: InitiateCallDto) {
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: dto.conversationId },
-      select: { type: true, members: { select: { userId: true } } },
-    });
-
-    if (!conversation || !conversation.members.some((m) => m.userId === auth.userId)) {
-      throw forbidden('conversation_membership_required', 'Conversation membership required');
+    const access = await this.access.requireMember(auth.userId, dto.conversationId);
+    // Calls are 1:1 only; group and channel calls would ring every member.
+    if (access.conversation.type !== 'direct') {
+      throw apiError('call_not_allowed', 'Calls are only available in direct conversations');
     }
-
-    // Mirror the direct-message block gate: an either-direction block makes the
-    // peer unreachable, so a blocked/blocking pair can't ring each other even
-    // through a pre-existing direct conversation. Opaque "unreachable" framing
-    // hides block state from the caller.
-    if (conversation.type === 'direct') {
-      const peer = conversation.members.find((m) => m.userId !== auth.userId);
-      if (peer && (await this.safety.isBlockedEitherWay(auth.userId, peer.userId))) {
-        throw forbidden('peer_unreachable', 'Peer is unreachable');
-      }
-    }
+    await this.access.authorize(access, 'call');
 
     const callRecord = await this.prisma.callRecord.create({
       data: {
@@ -51,7 +52,7 @@ export class CallsService {
     });
 
     this.realtimeGateway.emitConversationMembers(
-      conversation.members.filter((m) => m.userId !== auth.userId),
+      await this.members(dto.conversationId, { excludeUserId: auth.userId }),
       'call.incoming',
       {
         callId: callRecord.id,
@@ -64,113 +65,50 @@ export class CallsService {
     return { callId: callRecord.id, status: callRecord.status };
   }
 
-  async endCall(auth: { userId: string }, callId: string) {
-    const callRecord = await this.prisma.callRecord.findUnique({
-      where: { id: callId },
-      include: {
-        conversation: { include: { members: true } },
-      },
-    });
-
-    if (!callRecord) {
-      throw notFound('message_not_found', 'Call record not found');
-    }
-
-    if (!callRecord.conversation.members.some((m) => m.userId === auth.userId)) {
-      throw forbidden('conversation_membership_required', 'Conversation membership required');
-    }
-
-    const now = new Date();
-    const duration = Math.floor((now.getTime() - callRecord.startedAt.getTime()) / 1000);
-
-    const updated = await this.prisma.callRecord.update({
-      where: { id: callId },
-      data: {
-        status: 'ended',
-        endedAt: now,
-        duration,
-      },
-    });
-
-    this.realtimeGateway.emitConversationMembers(callRecord.conversation.members, 'call.ended', {
-      callId: updated.id,
-      conversationId: updated.conversationId,
-      duration,
-    });
-
-    return { callId: updated.id, status: updated.status, duration };
-  }
-
   async acceptCall(auth: { userId: string }, callId: string) {
-    const callRecord = await this.prisma.callRecord.findUnique({
-      where: { id: callId },
-      include: {
-        conversation: { include: { members: true } },
-        initiatorDevice: { select: { userId: true } },
-      },
-    });
-
-    if (!callRecord) {
-      throw notFound('call_not_found', 'Call record not found');
+    const call = await this.findCall(callId);
+    // Accepting reaches the peer, so it is subject to the full call policy
+    // (including blocks); declining and hanging up only need membership.
+    await this.access.requireAccess(auth.userId, call.conversationId, 'call');
+    if (call.initiatorDevice.userId === auth.userId) {
+      throw apiError('call_initiator_forbidden', 'Call initiator cannot accept the call');
     }
 
-    if (!callRecord.conversation.members.some((m) => m.userId === auth.userId)) {
-      throw forbidden('conversation_membership_required', 'Conversation membership required');
-    }
-
-    // The initiator can't accept their own outgoing call; only the callee can.
-    if (callRecord.initiatorDevice?.userId === auth.userId) {
-      throw forbidden('call_initiator_forbidden', 'Call initiator cannot accept the call');
-    }
-
-    if (callRecord.status !== 'ringing') {
-      throw conflict('call_invalid_state', 'Call is not ringing');
-    }
-
-    const updated = await this.prisma.callRecord.update({
-      where: { id: callId },
-      data: { status: 'active' },
-    });
-
-    this.realtimeGateway.emitConversationMembers(callRecord.conversation.members, 'call.accepted', {
-      callId: updated.id,
-      conversationId: updated.conversationId,
-    });
-
-    return { callId: updated.id, status: updated.status };
+    const status = await this.transition(call, 'accept');
+    this.realtimeGateway.emitConversationMembers(
+      await this.members(call.conversationId),
+      'call.accepted',
+      { callId: call.id, conversationId: call.conversationId },
+    );
+    return { callId: call.id, status };
   }
 
   async declineCall(auth: { userId: string }, callId: string) {
-    const callRecord = await this.prisma.callRecord.findUnique({
-      where: { id: callId },
-      include: {
-        conversation: { include: { members: true } },
-      },
-    });
+    const call = await this.findCall(callId);
+    await this.access.requireMember(auth.userId, call.conversationId);
 
-    if (!callRecord) {
-      throw notFound('call_not_found', 'Call record not found');
-    }
+    const status = await this.transition(call, 'decline', { endedAt: new Date() });
+    this.realtimeGateway.emitConversationMembers(
+      await this.members(call.conversationId),
+      'call.declined',
+      { callId: call.id, conversationId: call.conversationId },
+    );
+    return { callId: call.id, status };
+  }
 
-    if (!callRecord.conversation.members.some((m) => m.userId === auth.userId)) {
-      throw forbidden('conversation_membership_required', 'Conversation membership required');
-    }
+  async endCall(auth: { userId: string }, callId: string) {
+    const call = await this.findCall(callId);
+    await this.access.requireMember(auth.userId, call.conversationId);
 
-    if (callRecord.status !== 'ringing') {
-      throw conflict('call_invalid_state', 'Call is not ringing');
-    }
-
-    const updated = await this.prisma.callRecord.update({
-      where: { id: callId },
-      data: { status: 'declined', endedAt: new Date() },
-    });
-
-    this.realtimeGateway.emitConversationMembers(callRecord.conversation.members, 'call.declined', {
-      callId: updated.id,
-      conversationId: updated.conversationId,
-    });
-
-    return { callId: updated.id, status: updated.status };
+    const endedAt = new Date();
+    const duration = Math.floor((endedAt.getTime() - call.startedAt.getTime()) / 1000);
+    const status = await this.transition(call, 'end', { endedAt, duration });
+    this.realtimeGateway.emitConversationMembers(
+      await this.members(call.conversationId),
+      'call.ended',
+      { callId: call.id, conversationId: call.conversationId, duration },
+    );
+    return { callId: call.id, status, duration };
   }
 
   async listCalls(auth: { userId: string }) {
@@ -187,13 +125,18 @@ export class CallsService {
       take: 50,
       include: {
         conversation: {
-          include: {
-            members: {
-              include: {
-                user: { select: { id: true, handle: true, displayName: true } },
-              },
-            },
+          select: {
+            type: true,
             groupMeta: { select: { name: true } },
+            channelMeta: { select: { name: true } },
+            // Only a direct conversation has a person on the other end; at
+            // most one other member is loaded so a large group or channel
+            // costs nothing and never names an arbitrary member.
+            members: {
+              where: { userId: { not: auth.userId } },
+              take: 1,
+              select: { user: { select: { handle: true } } },
+            },
           },
         },
         initiatorDevice: { select: { userId: true } },
@@ -201,13 +144,10 @@ export class CallsService {
     });
 
     return calls.map((call) => {
-      const otherMember = call.conversation.members.find((m) => m.userId !== auth.userId);
-      const counterparty =
-        call.conversation.groupMeta?.name ??
-        otherMember?.user.displayName ??
-        otherMember?.user.handle ??
-        'Unknown';
-      const counterpartyHandle = otherMember?.user.handle ?? null;
+      const { type, groupMeta, channelMeta, members } = call.conversation;
+      const peer = type === 'direct' ? members[0]?.user : undefined;
+      const counterparty = groupMeta?.name ?? channelMeta?.name ?? peer?.handle ?? 'Unknown';
+      const counterpartyHandle = peer?.handle ?? null;
 
       return {
         id: call.id,
@@ -221,6 +161,55 @@ export class CallsService {
         counterparty,
         counterpartyHandle,
       };
+    });
+  }
+
+  private async findCall(callId: string) {
+    const call = isUUID(callId)
+      ? await this.prisma.callRecord.findUnique({
+          where: { id: callId },
+          select: {
+            id: true,
+            conversationId: true,
+            status: true,
+            startedAt: true,
+            initiatorDevice: { select: { userId: true } },
+          },
+        })
+      : null;
+    if (!call) {
+      throw apiError('call_not_found', 'Call record not found');
+    }
+    return call;
+  }
+
+  // Compare-and-set on the current status, so two racing requests (both
+  // parties hanging up at once) cannot both apply a transition.
+  private async transition(
+    call: { id: string; status: CallStatus },
+    transition: CallTransition,
+    data: { endedAt?: Date; duration?: number } = {},
+  ): Promise<CallStatus> {
+    const rule = CALL_TRANSITIONS[transition];
+    const { count } = rule.from.includes(call.status)
+      ? await this.prisma.callRecord.updateMany({
+          where: { id: call.id, status: { in: [...rule.from] } },
+          data: { status: rule.to, ...data },
+        })
+      : { count: 0 };
+    if (count === 0) {
+      throw apiError('call_invalid_state', `Cannot ${transition} a call that is ${call.status}`);
+    }
+    return rule.to;
+  }
+
+  private members(
+    conversationId: string,
+    { excludeUserId }: { excludeUserId?: string } = {},
+  ): Promise<Array<{ userId: string }>> {
+    return this.prisma.conversationMember.findMany({
+      where: { conversationId, ...(excludeUserId ? { userId: { not: excludeUserId } } : {}) },
+      select: { userId: true },
     });
   }
 }

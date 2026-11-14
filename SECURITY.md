@@ -45,9 +45,19 @@ for high-severity issues.
 
 In scope:
 
-- Cryptographic flaws in `apps/mobile/lib/src/core/crypto/` or
-  `apps/web-demo/app.js` envelope handling
-- Authentication bypass (`apps/api/src/modules/auth`)
+- Cryptographic flaws in protocol v2 (`docs/crypto-envelope-spec.md`) as
+  implemented in `apps/mobile/lib/src/core/crypto/` or
+  `apps/web-demo/src/crypto/` and the web envelope handling in
+  `apps/web-demo/src/app/messaging-stack.js` and `apps/web-demo/src/features/`
+- Identity-trust bypass: a session installed, opened or sealed for an
+  identity key the user did not accept
+  (`apps/mobile/lib/src/features/conversations/data/messenger/`,
+  `apps/web-demo/src/crypto/pins.js`, `apps/web-demo/src/domain/peer-bindings.js`)
+- Key directory and Sender Keys distribution flaws
+  (`apps/api/src/modules/prekeys`, `apps/api/src/modules/groups`)
+- Authentication bypass (`apps/api/src/modules/auth`), including the
+  device-signed step-up proofs for account deletion, device revocation and
+  transfer approval
 - Device transfer race conditions
   (`apps/api/src/modules/device-transfer`)
 - Server-side acceptance of plaintext or non-ciphertext message bodies

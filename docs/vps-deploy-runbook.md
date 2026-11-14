@@ -1,7 +1,8 @@
 # VPS 프로덕션 배포 런북
 
-베타 단계의 노트북 + Cloudflare Tunnel 에서 24/7 VPS 운영으로
-넘어가는 절차. 약 90분 소요.
+외부 크립토 감사가 끝난 뒤의 production 배포 절차. 약 90분 소요.
+`VEIL_ENV=production` 은 `VEIL_AUDITED_CRYPTO_ATTESTED=true` 와 서명된 감사
+보고서의 `VEIL_AUDIT_REPORT_SHA256` 없이는 부팅이 거부됩니다 (부록 A).
 
 ## 0. 사전 준비물
 
@@ -78,6 +79,9 @@ sed -i "s|^REDIS_PASSWORD=.*|REDIS_PASSWORD=$(openssl rand -base64 32 | tr -d '/
 sed -i "s|^MINIO_ROOT_USER=.*|MINIO_ROOT_USER=veil-$(openssl rand -hex 4)|" .env.prod
 sed -i "s|^MINIO_ROOT_PASSWORD=.*|MINIO_ROOT_PASSWORD=$(openssl rand -base64 32)|" .env.prod
 sed -i "s|^VEIL_JWT_SECRET=.*|VEIL_JWT_SECRET=$(openssl rand -base64 32)|" .env.prod
+# 삭제된 계정 핸들의 격리용 HMAC 키. 한 번 만들고 절대 바꾸지 마세요:
+# 바꾸면 격리 중인 핸들이 일찍 다시 등록 가능해집니다.
+sed -i "s|^VEIL_RETIRED_HANDLE_PEPPER=.*|VEIL_RETIRED_HANDLE_PEPPER=$(openssl rand -base64 32)|" .env.prod
 sed -i "s|^VEIL_METRICS_AUTH_TOKEN=.*|VEIL_METRICS_AUTH_TOKEN=$(openssl rand -hex 24)|" .env.prod
 sed -i "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 24)|" .env.prod
 
@@ -108,10 +112,10 @@ curl -s https://veil.example.com/v1/health
 
 Caddy 가 첫 요청 시 Let's Encrypt 인증서 자동 발급. 1-2분 소요.
 
-> ⚠️ `VEIL_AUDITED_CRYPTO_ATTESTED=false` 이라 production 모드 부팅이
-> 거부됩니다. 외부 감사 전까지는 `VEIL_ENV=development` 로 임시 운영하거나,
-> private beta 면 `docker-compose.demo.yml` 을 그대로 쓰면서 Caddy 만
-> 별도로 띄우는 방법도 있습니다 (런북 부록 A).
+> ⚠️ `VEIL_AUDITED_CRYPTO_ATTESTED=false` 이면 production 모드 부팅이
+> 거부됩니다. 이 런북은 감사 후의 production 배포용입니다. 감사 전에는
+> 공개 대상 운영을 하지 마세요. 초대한 소수 테스터 대상 비공개 리허설만
+> 가능하고, 그 방법은 부록 A 에 있습니다.
 
 ## 5. 관측 (Prometheus + Grafana)
 
@@ -143,37 +147,30 @@ ssh -L 3001:localhost:3001 veil@VPS_IP
 > Alertmanager 와 페이저는 별도 운영자 결정. 무료 Pushover ($5/월) +
 > Pushcut, 또는 Discord/Slack 웹훅이 1인 베타 운영에 충분합니다.
 
-## 6. DB 백업
+## 6. DB 백업은 없습니다
 
-프로덕션 스택(`docker-compose.prod.yml`)에는 `postgres-backup` 서비스가
-포함되어 있어 **호스트 cron 없이도 자동으로 매일 덤프**를 남깁니다. DB 와
-동일한 `postgres:16-alpine` 이미지를 사용해 `pg_dump -F c` 로 덤프하고,
-`BACKUP_RETENTION_DAYS`(기본 14일)보다 오래된 파일은 정리합니다. 덤프는
-`veil_prod_backups` 볼륨에 저장됩니다.
+production 스택은 데이터베이스 덤프를 만들지 않습니다. 덤프는 삭제된 계정과
+핸들, 이미 열린 일회성 링크, 만료되거나 한 번 보기로 사라진 암호문, 수신
+확인, 연락처 그래프를 [metadata-retention.md](metadata-retention.md) 가
+공개한 보관 기간보다 오래, 이 호스트와 복사된 모든 곳에 남깁니다. Redis
+AOF 를 끈 것과 같은 이유입니다.
 
-주기·보관 조정은 `.env.prod` 에서:
+그 결과: Postgres 볼륨을 잃으면 모든 사용자가 새로 가입합니다. 복구 없음
+원칙이 원래 뜻하는 바와 같습니다. 디스크 고장은 미러(RAID1)로 대비할 수
+있지만, 덤프·볼륨 스냅샷·오프사이트 복사는 만들지 마세요: 지난 상태를
+보관하는 것은 모두 같은 문제를 만듭니다. `scripts/policy-check.mjs` 의 `no-database-dumps` 규칙이
+compose 파일과 `infra/` 에 덤프 도구가 들어오면 CI 를 실패시킵니다.
+
+이전 릴리스로 운영하던 스택은 한 번만:
+
 ```bash
-BACKUP_RETENTION_DAYS=14      # 보관 일수
-BACKUP_INTERVAL_SECONDS=86400 # 덤프 간격(초). 기본 24h
+# postgres-backup 서비스가 남긴 덤프 볼륨 삭제 (프로젝트 이름이 다르면 맞게)
+docker volume rm veil_veil_prod_backups
+# 호스트 cron 으로 뜨던 덤프가 있었다면 cron 항목과 파일 삭제
+crontab -l | grep -v pg_dump | crontab -
+# R2 등 오프사이트로 복사했다면 그쪽 버킷도 비우기
+rclone purge r2:veil-prod-backups
 ```
-
-백업 목록 / 로그 확인:
-```bash
-docker compose --env-file .env.prod -f docker-compose.prod.yml logs postgres-backup | tail
-docker run --rm -v veil_prod_backups:/backups alpine ls -lh /backups
-```
-
-복구 시뮬 (월 1회 권장) — 볼륨의 덤프를 Postgres 로 복원:
-```bash
-docker run --rm -v veil_prod_backups:/backups alpine ls /backups   # 파일명 확인
-docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
-  sh -c 'pg_restore -U veil -d veil --clean --if-exists' < ./veil-YYYYMMDD-HHMMSS.dump
-```
-
-오프사이트(권장): 볼륨을 호스트 경로로 마운트했거나 `docker cp` 로 꺼낸 뒤
-`rclone sync ./veil-backups r2:veil-prod-backups/` (Cloudflare R2,
-$0.015/GB·월, 베타 백업 100GB = 월 $1.50). 오프사이트 복사는 여전히 운영자
-단계입니다 — 온박스 볼륨만으로는 호스트 유실에 대비할 수 없습니다.
 
 ## 7. 헬스체크
 
@@ -199,6 +196,67 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml exec api \
 
 마이그레이션은 멱등이므로 재실행 안전.
 
+### 8.1 업그레이드 주의: 마이그레이션 0018 (plaintext 제거) 이 들어간 릴리스
+
+이미 운영 중인 스택을 이 릴리스로 올릴 때는 `git pull` 전에 아래를 순서대로
+하세요.
+
+1. **`VEIL_RETIRED_HANDLE_PEPPER` 추가.** 없으면 compose 가 어떤 컨테이너도
+   띄우지 않고 (`VEIL_RETIRED_HANDLE_PEPPER required`) 멈춥니다. 마이그레이션
+   전에 멈추므로 데이터는 그대로입니다. 값이 비어 있을 때만 채우므로 이미 있는
+   pepper 는 바뀌지 않습니다 (바꾸면 격리 중인 핸들이 일찍 풀립니다):
+
+   ```bash
+   grep -q '^VEIL_RETIRED_HANDLE_PEPPER=' .env.prod || echo 'VEIL_RETIRED_HANDLE_PEPPER=' >> .env.prod
+   sed -i "s|^VEIL_RETIRED_HANDLE_PEPPER=$|VEIL_RETIRED_HANDLE_PEPPER=$(openssl rand -base64 32)|" .env.prod
+   ```
+
+2. **마이그레이션 0018–0020 은 되돌릴 수 없습니다.** 0018 은 `reactions`,
+   `user_profiles`, `recovery_blobs` 테이블과 표시 이름·아바타·연락처 별명·신고
+   메모 컬럼을 지우고, 모든 스토리를 삭제합니다. 0019 와 0020 은 서버가 필요
+   없이 들고 있던 메타데이터를 지웁니다: 대화별 마지막 활동 시각, 나간 멤버의
+   에포크·동기화 커서·음소거 행, 해제된 기기의 이름과 one-time prekey, 그리고
+   더 이상 그 대화의 멤버가 아닌 사람의 id 가 남아 있던 1:1 대화 키
+   (`direct_key`: 삭제된 계정, 이전 릴리스에서 삭제가 중간에 멈춘 계정, 예전
+   그룹 나가기 경로로 1:1 대화를 나간 사용자. 아무도 남지 않은 1:1 대화는
+   통째로 삭제). 진행 중인 계정 삭제는 1:1 멤버십이 남아 있으므로 키도 그대로
+   두고, 삭제를 다시 실행하면 그때 지워집니다. 이전 이미지는 마이그레이션된 스키마에서
+   돌지 않으므로, 롤백은 덤프 복원뿐입니다. 업그레이드 직전에 이 한 번만 덤프를
+   뜨고 (상시 백업은 없습니다, 6절):
+
+   ```bash
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T postgres \
+     pg_dump -U veil -d veil -F c > ./veil-pre-upgrade-$(date +%Y%m%d-%H%M%S).dump
+   chmod 600 ./veil-pre-upgrade-*.dump
+   ```
+
+   이 덤프에는 0018–0020 이 지우는 평문과 메타데이터, 그리고 덤프 시점의
+   모든 계정이 남아 있습니다. 호스트 밖으로 복사하지 말고, 업그레이드가
+   확인되는 즉시 지우세요 (`shred -u ./veil-pre-upgrade-*.dump`). 이전
+   릴리스의 `veil_prod_backups` 볼륨은 6절대로 삭제하세요.
+
+3. **Redis append-only 파일 끄기.** 이 릴리스의 compose 는 Redis 를
+   `--appendonly no --save "60 1"` 로 띄웁니다 (이유는
+   [metadata-retention.md](metadata-retention.md)). 그냥 재배포하면 Redis 가
+   AOF 를 읽지 않고 빈 상태로 떠서 모든 모바일 기기가 로그아웃됩니다. 재배포
+   전에 살아 있는 키를 스냅샷으로 옮기고, 재배포 후 AOF 를 지우세요:
+
+   ```bash
+   REDIS_PASSWORD=$(grep '^REDIS_PASSWORD=' .env.prod | cut -d= -f2-)
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     redis-cli -a "$REDIS_PASSWORD" --no-auth-warning CONFIG SET appendonly no
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     redis-cli -a "$REDIS_PASSWORD" --no-auth-warning SAVE
+   # 여기서 위의 업데이트 절차 (git pull, up -d --build) 진행.
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     rm -rf /data/appendonlydir
+   docker compose --env-file .env.prod -f docker-compose.prod.yml exec redis \
+     redis-cli -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence | grep aof_enabled
+   # aof_enabled:0 이어야 합니다.
+   ```
+
+   `appendonlydir` 를 지우지 않으면 만료된 키의 기록이 볼륨에 그대로 남습니다.
+
 ## 9. 사고 대응 (1인 베타 운영용)
 
 | 증상 | 1차 점검 | 2차 점검 |
@@ -220,13 +278,21 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml down
 
 ---
 
-## 부록 A — 베타 단계 임시 운영 (audit 게이트 우회 X)
+## 부록 A — 외부 감사 전: 초대 테스터 비공개 리허설만
 
 `VEIL_AUDITED_CRYPTO_ATTESTED=false` 면 production 부팅이 거부됩니다.
-이건 **버그가 아니라** 외부 감사 전 정식 production 출시를 막는 정책
-게이트입니다. 사적 베타 (5-50명 친구) 면 `VEIL_ENV=development` 로
-운영하고, 감사 끝나면 production 으로 승격하세요. 사용자 화면에
-`PRIVATE BETA` 배너가 그대로 떠야 합니다.
+이건 **버그가 아니라** 외부 감사 전 공개 출시를 막는 정책 게이트이고,
+우회 방법은 없습니다. `VEIL_ENV=development` 로 이 런북의 스택을 공개
+대상으로 돌리는 것은 우회입니다: development 모드는 CSP·HSTS 를 끄고,
+개발용 envelope 를 받고, 감사·JWT·CORS·pepper·보관 기간·Swagger 검사를
+모두 건너뜁니다.
+
+감사 전에 할 수 있는 것은 직접 초대한 소수 테스터 대상의 비공개 리허설
+뿐입니다. `apps/api/.env.alpha.example` 과
+`infra/docker/docker-compose.alpha.yml` 로 띄우고 (`VEIL_ENV=development`,
+`PRIVATE BETA` 배너 표시), 테스터에게 미감사 상태를 알리세요.
+`docker-compose.demo.yml` 은 고정 자격증명으로 Postgres·Redis·MinIO 를
+공개하므로 Caddy 뒤에 두더라도 인터넷에 노출하지 마세요 (파일 머리말 참고).
 
 ## 부록 B — Cloudflare Tunnel 변형
 

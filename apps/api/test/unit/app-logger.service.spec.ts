@@ -30,11 +30,9 @@ describe('AppLoggerService', () => {
     expect(redacted.ciphertext).toBe('[REDACTED]');
     expect((redacted.nested as { transferToken: string }).transferToken).toBe('[REDACTED]');
     expect((redacted.nested as { authPublicKey: string }).authPublicKey).toBe('[REDACTED]');
-    expect(
-      ((redacted.nested as { attachment: { storageKey: string } }).attachment.storageKey),
-    ).toBe('[REDACTED]');
-    expect(
-      ((redacted.events as Array<{ uploadUrl: string }>)[0]!.uploadUrl),
-    ).toBe('[REDACTED]');
+    expect((redacted.nested as { attachment: { storageKey: string } }).attachment.storageKey).toBe(
+      '[REDACTED]',
+    );
+    expect((redacted.events as Array<{ uploadUrl: string }>)[0]!.uploadUrl).toBe('[REDACTED]');
   });
 });

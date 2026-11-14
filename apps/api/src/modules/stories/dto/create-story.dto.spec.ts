@@ -1,28 +1,63 @@
-import 'reflect-metadata';
-import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
+import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 import { CreateStoryDto } from './create-story.dto';
 
-const make = (contentUrl: string, contentType = 'image') =>
-  plainToInstance(CreateStoryDto, { contentType, contentUrl });
-const urlErrors = async (contentUrl: string, contentType = 'image') =>
-  (await validate(make(contentUrl, contentType))).filter((e) => e.property === 'contentUrl');
+const validateBody = (body: Record<string, unknown>) =>
+  new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true }).transform(
+    body,
+    { type: 'body', metatype: CreateStoryDto },
+  );
 
-describe('CreateStoryDto.contentUrl', () => {
-  it('accepts an https media URL and the text:// sentinel', async () => {
-    expect(await urlErrors('https://cdn.veil.app/stories/abc.jpg')).toHaveLength(0);
-    expect(await urlErrors('text://inline', 'text')).toHaveLength(0);
+const validStory = (overrides: Record<string, unknown> = {}) => ({
+  ciphertext: 'sealed-story',
+  envelopeVersion: 'veil-envelope-v2',
+  audienceUserIds: [randomUUID()],
+  ...overrides,
+});
+
+describe('CreateStoryDto', () => {
+  it('accepts a sealed envelope addressed to an explicit audience', async () => {
+    await expect(validateBody(validStory())).resolves.toBeInstanceOf(CreateStoryDto);
   });
 
-  it('rejects dangerous schemes at the persistence boundary', async () => {
-    expect((await urlErrors('javascript:alert(1)')).length).toBeGreaterThan(0);
-    expect((await urlErrors('data:text/html;base64,AAAA')).length).toBeGreaterThan(0);
-    expect((await urlErrors('file:///etc/passwd')).length).toBeGreaterThan(0);
+  it('bounds the ciphertext to 65536 characters', async () => {
+    await expect(
+      validateBody(validStory({ ciphertext: 'a'.repeat(65536) })),
+    ).resolves.toBeDefined();
+    for (const ciphertext of ['', 'a'.repeat(65537)]) {
+      await expect(validateBody(validStory({ ciphertext }))).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    }
   });
 
-  it('rejects an over-length value (> 2048 chars)', async () => {
-    const huge = 'https://cdn.veil.app/' + 'a'.repeat(2100);
-    expect((await urlErrors(huge)).length).toBeGreaterThan(0);
+  it('requires 1 to 500 unique audience user ids', async () => {
+    const id = randomUUID();
+    const tooMany = Array.from({ length: 501 }, () => randomUUID());
+    for (const audienceUserIds of [[], [id, id], tooMany, ['not-a-uuid']]) {
+      await expect(validateBody(validStory({ audienceUserIds }))).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    }
+    await expect(
+      validateBody(validStory({ audienceUserIds: tooMany.slice(0, 500) })),
+    ).resolves.toBeDefined();
+  });
+
+  it('accepts only known envelope versions', async () => {
+    await expect(validateBody(validStory({ envelopeVersion: 'rot13-v1' }))).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+  });
+
+  it('rejects the plaintext fields stories used to carry', async () => {
+    for (const plaintext of [
+      { contentType: 'text' },
+      { caption: 'hello' },
+      { contentUrl: 'text://inline' },
+    ]) {
+      await expect(validateBody(validStory(plaintext))).rejects.toBeInstanceOf(BadRequestException);
+    }
   });
 });

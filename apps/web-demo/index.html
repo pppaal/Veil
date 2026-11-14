@@ -71,15 +71,15 @@
       <div class="restore-info">
         <div class="restore-label" data-i18n="auth.restore.label">저장된 세션</div>
         <div class="restore-handle" id="restore-handle">@…</div>
+        <div id="restore-rejected" class="restore-rejected hidden" role="alert" data-i18n="auth.restore.rejected">서버가 이 기기의 세션을 거부했어요. 기기가 해지되었을 수 있어요. 키는 이 브라우저에 그대로 남아 있어요.</div>
       </div>
-      <button id="restore-btn" class="btn btn-primary btn-compact" data-i18n="auth.restore.continue">계속</button>
+      <div class="restore-actions">
+        <button id="restore-btn" class="btn btn-primary btn-compact" data-i18n="auth.restore.continue">계속</button>
+        <button id="restore-delete-btn" class="link-btn link-danger" data-i18n="auth.restore.delete">이 신원 삭제</button>
+      </div>
     </div>
 
     <form id="register-form" class="auth-form" autocomplete="off" novalidate>
-      <label class="field">
-        <span class="field-label" data-i18n="auth.form.displayName">표시 이름</span>
-        <input id="reg-name" type="text" placeholder="Alice" maxlength="40" />
-      </label>
       <label class="field">
         <span class="field-label" data-i18n="auth.form.handle">핸들</span>
         <input id="reg-handle" type="text" placeholder="alice" pattern="[a-z0-9_]+" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" />
@@ -119,6 +119,12 @@
     </div>
   </header>
 
+  <!-- An identity from before protocol v2 reads its history but cannot send. -->
+  <div id="legacy-banner" class="legacy-banner hidden" role="alert">
+    <span data-i18n="legacy.banner">이 브라우저의 신원은 이전 데모 형식이에요. 기록은 읽을 수 있지만 보낼 수 없어요. 계속 대화하려면 새 신원을 만드세요.</span>
+    <button id="legacy-new-identity" class="btn btn-secondary btn-compact" data-i18n="legacy.createNew">새 신원 만들기</button>
+  </div>
+
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-me" id="sidebar-me"></div>
     <div class="sidebar-actions">
@@ -157,6 +163,10 @@
     <button class="menu-item" data-action="copy-handle" role="menuitem" data-i18n="menu.copyHandle">내 핸들 복사</button>
     <button class="menu-item" data-action="ws-info" role="menuitem" data-i18n="menu.connectionStatus">연결 상태</button>
     <button class="menu-item" data-action="transfer-start" role="menuitem" data-i18n="menu.transferStart">다른 기기로 이전</button>
+    <button class="menu-item" data-action="toggle-sounds" role="menuitem">🔔 사운드 토글</button>
+    <button class="menu-item" data-action="show-help" role="menuitem">⌨️ 단축키</button>
+    <button class="menu-item" data-action="open-settings" role="menuitem">⚙️ 설정</button>
+    <button class="menu-item" data-action="kakao-import" role="menuitem">📥 카카오톡 가져오기</button>
     <div class="menu-sep"></div>
     <button class="menu-item menu-danger" data-action="wipe" role="menuitem" data-i18n="menu.wipe">로그아웃 + 키 삭제</button>
   </div>

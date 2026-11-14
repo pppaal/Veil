@@ -15,6 +15,28 @@ flutter run \
   --dart-define=VEIL_REALTIME_URL=http://10.0.2.2:3000
 ```
 
+## Phone layout gate
+
+`flutter test test/layout` opens every screen at three phone sizes
+(360x640, 390x844, 412x915) in English and Korean, with the bundled fonts,
+and scrolls it to its end. A case fails on any layout error the framework
+reports (an overflowing row or column, unbounded constraints) and when the
+messages of a chat or the rows of the conversation list get less than 45% of
+the screen height. It runs with the rest of `flutter test`.
+
+To look at the screens, pass a directory: the run then also writes one PNG
+per case and a `report.json`.
+
+```bash
+flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots
+flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=SHOTS_PAGES=all
+```
+
+`SHOTS_PAGES=all` adds a PNG for every further screenful of a scrolling
+screen. A new screen needs a case in `test/layout/support/screen_cases.dart`;
+cases known not to fit yet are listed in
+`test/layout/known_phone_layout_failures.dart`, which may only shrink.
+
 ## Release builds
 
 A release build must name its relay and pin its TLS keys. With the

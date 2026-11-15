@@ -24,7 +24,7 @@ class KnownPhoneLayoutFailure {
   final Set<LayoutDefect> defects;
   final String reason;
 
-  /// Whether this is the case's light-theme render (390x844, ko).
+  /// Whether this is the case's light-theme render (390x844, en).
   final bool light;
 }
 

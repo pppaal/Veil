@@ -891,7 +891,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatEmptyBody =>
-      'Send the first message — it\'s encrypted end-to-end.';
+      'What you send here is encrypted on this device, for the people in this chat only.';
+
+  @override
+  String get chatEmptyVerifyAction => 'Compare safety numbers';
+
+  @override
+  String get chatLoadFailedTitle => 'Could not load messages';
+
+  @override
+  String get chatLoadFailedBody =>
+      'The relay did not answer. Nothing is lost: try again.';
 
   @override
   String get chatComposeHint => 'Type a message';
@@ -903,10 +913,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAttachAction => 'Attach';
 
   @override
-  String get chatLoadingTitle => 'Opening session';
+  String get chatLoadingTitle => 'Loading messages';
 
   @override
-  String get chatLoadingBody => 'Preparing encrypted channel…';
+  String get chatLoadingBody =>
+      'Fetching what was sent to this device and opening it.';
 
   @override
   String get chatConversationNotFound => 'Conversation not found';
@@ -924,11 +935,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSubtitleOnline => 'Online now';
 
   @override
-  String get chatSubtitleEmbedded =>
-      'Local search stays on this device. Message bodies remain opaque to the relay.';
+  String chatGroupMemberCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count members',
+      one: '1 member',
+    );
+    return '$_temp0';
+  }
 
   @override
-  String get chatSearchHint => 'Search cached messages on this device';
+  String chatTimerTooltip(String value) {
+    return 'Disappearing messages: $value';
+  }
+
+  @override
+  String get chatSearchHint => 'Search this chat';
 
   @override
   String get chatSearchClearTooltip => 'Clear search';
@@ -949,59 +972,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get chatPillAttachmentsEncrypted => 'Attachments encrypted';
-
-  @override
-  String get chatPillLocalSearchOnly => 'Local search only';
-
-  @override
-  String get chatMetricRelay => 'Relay';
-
-  @override
-  String get chatMetricRelayLinked => 'Linked';
-
-  @override
-  String get chatMetricRelayRecovering => 'Recovering';
-
-  @override
-  String get chatMetricLoaded => 'Loaded';
-
-  @override
-  String get chatMetricHistory => 'History';
-
-  @override
-  String get chatMetricHistoryLoading => 'Loading older';
-
-  @override
-  String get chatMetricHistoryPaged => 'Paged';
-
-  @override
-  String get chatMetricHistoryComplete => 'Complete';
-
-  @override
-  String get chatMetricSearch => 'Search';
-
-  @override
-  String get chatMetricSearchIdle => 'Idle';
-
-  @override
-  String chatMetricSearchHits(int count) {
-    return '$count hits';
-  }
-
-  @override
-  String get chatBannerHistoryLoadingTitle => 'Syncing older history';
-
-  @override
-  String get chatBannerHistoryLoadingBody =>
-      'Pulling older encrypted history from the relay for this trusted device.';
-
-  @override
-  String get chatBannerHistoryCompleteTitle => 'Conversation window complete';
-
-  @override
-  String get chatBannerHistoryCompleteBody =>
-      'The currently trusted device-local window is fully loaded. Older history is not pending right now.';
+  String get chatSearchSearching => 'Searching this device…';
 
   @override
   String get chatBannerConversationIssue => 'Conversation issue';
@@ -1013,53 +984,43 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatBannerDeliveryStalled => 'Delivery stalled';
 
   @override
-  String get chatBannerQueuedLocally => 'Queued locally';
+  String get chatBannerQueuedLocally => 'Waiting to be sent';
 
   @override
   String chatBannerFailedSends(int count) {
-    return '$count message(s) failed to send. Retry when the relay is reachable.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages were not sent.',
+      one: '1 message was not sent.',
+    );
+    return '$_temp0 Retry once the relay is reachable.';
   }
 
   @override
   String chatBannerUploadingAttachments(int count) {
-    return '$count attachment message(s) are uploading opaque blobs before send.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count attachments are',
+      one: '1 attachment is',
+    );
+    return '$_temp0 being uploaded, encrypted, before sending.';
   }
 
   @override
   String chatBannerQueuedMessages(int count) {
-    return '$count message(s) are staged locally and will retry after reconnect.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages are',
+      one: '1 message is',
+    );
+    return '$_temp0 waiting on this device and will be sent after reconnecting.';
   }
 
   @override
   String get chatRetryFailedSendsAction => 'Retry failed sends';
-
-  @override
-  String get chatSearchBannerSearchingTitle => 'Searching locally';
-
-  @override
-  String get chatSearchBannerIdleTitle => 'Local message search';
-
-  @override
-  String get chatSearchBannerSearchingBody =>
-      'Scanning cached message text on this device. Relay state does not change.';
-
-  @override
-  String get chatSearchBannerEmptyBody =>
-      'No cached message text matched this query in the current conversation.';
-
-  @override
-  String chatSearchBannerResultBody(int count) {
-    return 'Showing $count cached match(es). Clear search to return to full conversation context.';
-  }
-
-  @override
-  String get chatComposerExpiryOff =>
-      'This send does not expire unless you change the rule.';
-
-  @override
-  String chatComposerExpiryOn(String duration) {
-    return 'This send expires in $duration on every device that sees it.';
-  }
 
   @override
   String get chatLoadOlder => 'Load older';
@@ -1068,11 +1029,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatLoadingOlder => 'Loading older';
 
   @override
-  String get chatSearchEmptyTitle => 'No local matches';
+  String get chatSearchEmptyTitle => 'No matches';
 
   @override
   String get chatSearchEmptyBody =>
-      'This device did not find a matching cached message in the current conversation.';
+      'Nothing in this chat on this device matches. Only messages loaded here are searched.';
 
   @override
   String get chatTtlSheetTitle => 'Disappearing messages';
@@ -1081,14 +1042,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlOff => 'Off';
 
   @override
-  String get chatTtlOffCaption => 'Messages remain until manually deleted.';
+  String get chatTtlOffCaption => 'Messages do not disappear.';
 
   @override
   String get chatTtl10s => '10 seconds';
 
   @override
   String get chatTtl10sCaption =>
-      'Strongest ephemerality. Expect the recipient to be looking.';
+      'Gone almost at once. For when the other person is looking.';
 
   @override
   String get chatTtl1m => '1 minute';
@@ -1103,10 +1064,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtl1d => '1 day';
 
   @override
-  String get chatTtl1dCaption => 'Default for casual private conversations.';
+  String get chatTtl1dCaption => 'A good default for everyday chats.';
 
   @override
-  String get chatTtlCustom => 'Custom TTL';
+  String get chatTtlCustom => 'Custom timer';
 
   @override
   String get chatTtlDisabledLabel => 'Disappear off';
@@ -1256,7 +1217,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Peer took a screenshot of this conversation on their device.';
 
   @override
-  String get chatDecryptingEnvelope => 'Decrypting envelope...';
+  String get chatDecryptingEnvelope => 'Decrypting…';
 
   @override
   String get chatDecryptFailed => 'Couldn\'t decrypt this message';
@@ -1275,7 +1236,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Held back: the sender\'s identity changed';
 
   @override
-  String get chatLegacyUnverifiedBadge => 'Unverified sender (legacy)';
+  String get chatLegacyUnverifiedBadge => 'Sender not verified (old format)';
 
   @override
   String get chatNoticeIdentityChanged =>
@@ -1306,6 +1267,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatIdentityChangedReview => 'Review';
+
+  @override
+  String get chatIdentityChangedElsewhereTitle =>
+      'Safety number changed in another chat';
+
+  @override
+  String get chatIdentityChangedElsewhereBody =>
+      'They showed a new key in a group you share. Until you review it there, they are not marked as verified.';
 
   @override
   String get chatAccountHoldOtherTitle => 'A different account';
@@ -1422,7 +1391,21 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String chatTypingSuffix(String handle) {
-    return '@$handle is typing';
+    return '@$handle is typing…';
+  }
+
+  @override
+  String get chatTypingUnnamed => 'typing…';
+
+  @override
+  String chatReactionSemantics(String emoji, int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count reactions',
+      one: '1 reaction',
+    );
+    return '$emoji, $_temp0';
   }
 
   @override
@@ -1443,45 +1426,102 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String chatNetworkRecoveryFailed(int count, String retryLabel) {
-    return '$count message(s) are waiting on relay recovery. $retryLabel';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages are',
+      one: '1 message is',
+    );
+    return '$_temp0 waiting for the relay to come back. $retryLabel';
   }
 
   @override
   String chatNetworkRecoveryUploading(int count, String retryLabel) {
-    return '$count attachment message(s) are paused while the relay reconnects. $retryLabel';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count attachments are',
+      one: '1 attachment is',
+    );
+    return '$_temp0 paused while the relay reconnects. $retryLabel';
   }
 
   @override
   String chatNetworkRecoveryQueued(int count, String retryLabel) {
-    return '$count message(s) remain queued on this device. $retryLabel';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages stay',
+      one: '1 message stays',
+    );
+    return '$_temp0 queued on this device. $retryLabel';
   }
 
   @override
-  String get chatRetryResumes => 'Retry resumes when the relay reconnects.';
+  String get chatRetryResumes => 'Sending resumes when the relay reconnects.';
 
   @override
   String chatRetryNextIn(String countdown) {
-    return 'Next retry in $countdown.';
+    return 'Next try in $countdown.';
+  }
+
+  @override
+  String chatCountdownSeconds(int seconds) {
+    return '${seconds}s';
+  }
+
+  @override
+  String chatCountdownMinutes(int minutes) {
+    return '${minutes}m';
+  }
+
+  @override
+  String chatCountdownMinutesSeconds(int minutes, int seconds) {
+    return '${minutes}m ${seconds}s';
   }
 
   @override
   String chatDurationDays(int count) {
-    return '$count day(s)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
   }
 
   @override
   String chatDurationHours(int count) {
-    return '$count hour(s)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
   }
 
   @override
   String chatDurationMinutes(int count) {
-    return '$count minute(s)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return '$_temp0';
   }
 
   @override
   String chatDurationSeconds(int count) {
-    return '$count second(s)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count seconds',
+      one: '1 second',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -1508,7 +1548,55 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get conversationsTitle => 'Conversations';
+  String get errorSessionRequired =>
+      'This device no longer has a trusted VEIL session.';
+
+  @override
+  String get errorTransferNeedsApi =>
+      'Device transfer is available only while connected to the VEIL API.';
+
+  @override
+  String get errorClaimBeforeCompletion =>
+      'Register this new device first, then wait for approval from the old device.';
+
+  @override
+  String get errorUnexpectedResponse =>
+      'The relay returned an unexpected response. Try again.';
+
+  @override
+  String get errorUploadFailed =>
+      'The encrypted upload failed. Check the connection and try again.';
+
+  @override
+  String get errorSessionInvalid =>
+      'This session is no longer valid on this device.';
+
+  @override
+  String get errorNotAllowed =>
+      'This action is not allowed on the current device.';
+
+  @override
+  String get errorNotFound => 'The relay could not find what was asked for.';
+
+  @override
+  String get errorConflict =>
+      'This request conflicts with the current state. Refresh and try again.';
+
+  @override
+  String get errorRejected =>
+      'The submitted values were rejected. Review them and try again.';
+
+  @override
+  String get errorRelayFailed =>
+      'The VEIL relay could not complete the request. Try again shortly.';
+
+  @override
+  String get errorApiNeedsTls =>
+      'The VEIL API endpoint must use TLS outside local development.';
+
+  @override
+  String get errorRealtimeNeedsTls =>
+      'The VEIL realtime endpoint must use TLS outside local development.';
 
   @override
   String get conversationsEmptyTitle => 'No conversations yet';
@@ -1533,18 +1621,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsLoadingArchive => 'Searching archive…';
 
   @override
-  String get conversationsQueuedOne => '1 message queued locally';
-
-  @override
-  String conversationsQueuedMany(int count) {
-    return '$count messages queued locally';
-  }
-
-  @override
   String get conversationsPreviewEmpty => 'No messages yet';
 
   @override
-  String get conversationsPreviewExpired => 'Expired locally';
+  String conversationsQueued(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages waiting to be sent',
+      one: '1 message waiting to be sent',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get conversationsPreviewExpired => 'Message expired';
 
   @override
   String get conversationsPreviewMessage => 'Encrypted message';
@@ -1556,7 +1647,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsPreviewAttachment => 'Encrypted attachment';
 
   @override
-  String get conversationsPreviewSystem => 'System envelope';
+  String get conversationsPreviewSystem => 'Security notice';
 
   @override
   String get conversationsPreviewVoice => 'Encrypted voice note';
@@ -1571,21 +1662,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsPreviewCall => 'Encrypted call event';
 
   @override
-  String get conversationsHeroEyebrow => 'DIRECT CONVERSATIONS';
-
-  @override
-  String get conversationsRelayConnectedBody =>
-      'Relay connected. Opaque envelopes only.';
-
-  @override
-  String get conversationsRelayIdleBody =>
-      'Relay idle. Pulling the latest encrypted state.';
-
-  @override
   String get conversationsRelayLinked => 'Relay linked';
 
   @override
-  String get conversationsRelayIdle => 'Relay idle';
+  String get conversationsRelayIdle => 'Relay not connected';
 
   @override
   String conversationsCount(int count) {
@@ -1602,37 +1682,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsNoBackup => 'No backup';
 
   @override
-  String get conversationsMetricIdle => 'Idle';
-
-  @override
-  String get conversationsMetricLocalSearch => 'Local search';
-
-  @override
-  String get conversationsMetricSearchActive => 'Active';
-
-  @override
-  String get conversationsMetricSearchReady => 'Ready';
-
-  @override
-  String get conversationsRefreshingTitle => 'Refreshing locally';
-
-  @override
-  String get conversationsRefreshingBody =>
-      'Pulling the latest opaque conversation state while preserving local search context.';
-
-  @override
   String get conversationsSyncIssueTitle => 'Sync issue';
 
   @override
-  String get conversationsSearchIndexLabel => 'LOCAL SEARCH INDEX';
-
-  @override
-  String get conversationsSearchIndexCaption =>
-      'Search stays on this device. Handles, cached previews, and decrypted local index entries only.';
-
-  @override
-  String get conversationsSearchFieldHint =>
-      'Search conversations and cached messages';
+  String get conversationsRelayInterruptedBody =>
+      'The connection to the relay dropped. Messages waiting to be sent go out once it is back.';
 
   @override
   String get conversationsSearchHintCompact => 'Search chats and messages';
@@ -1668,18 +1722,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsFilterLast30Days => 'Last 30d';
 
   @override
-  String get conversationsSearchActiveTitle => 'Local search active';
-
-  @override
-  String get conversationsSearchScanningBody =>
-      'Scanning cached conversation labels and device-local message text.';
-
-  @override
-  String conversationsSearchFoundBody(int conversations, int messages) {
-    return 'Found $conversations conversation match(es) and $messages message result(s) on this device. Search never leaves local state.';
-  }
-
-  @override
   String get conversationsSectionLabel => 'CONVERSATIONS';
 
   @override
@@ -1697,29 +1739,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsNoMatchTitle => 'No matching conversations';
 
   @override
-  String get conversationsNoneYetTitle => 'No direct conversations yet';
+  String get conversationsNoneYetTitle => 'No conversations yet';
 
   @override
   String get conversationsNoMatchBody =>
-      'This device did not find a matching handle or display label.';
+      'No name or handle on this device matches.';
 
   @override
   String get conversationsNoneYetBody =>
-      'Start with a handle. VEIL keeps discovery manual and private.';
+      'Start one with someone\'s handle. VEIL does not look through your contacts: you find people by the handle they give you.';
 
   @override
   String get conversationsStartDirect => 'Start direct chat';
-
-  @override
-  String get conversationsStartGroup => 'Start group chat';
-
-  @override
-  String get conversationsPillDirect => 'Direct';
-
-  @override
-  String conversationsPillQueued(int count) {
-    return '$count queued';
-  }
 
   @override
   String get conversationsMessagesSection => 'MESSAGES';
@@ -1736,17 +1767,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get conversationsNoMessageMatchTitle => 'No local message matches';
+  String get conversationsNoMessageMatchTitle => 'No matching messages';
 
   @override
   String get conversationsNoMessageMatchBody =>
-      'This device did not find matching cached message text for the current filters.';
+      'No message on this device matches with these filters.';
 
   @override
   String get conversationsResultFromYou => 'You';
 
   @override
-  String get conversationsResultFromPeer => 'Peer';
+  String get conversationsResultFromPeer => 'Them';
 
   @override
   String get conversationsKindImage => 'Image';
@@ -1776,21 +1807,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsLoadMore => 'Load more results';
 
   @override
-  String get conversationsChoosePaneTitle => 'Choose a direct conversation';
+  String get conversationsChoosePaneTitle => 'Select a conversation';
 
   @override
   String get conversationsChoosePaneBody =>
-      'Wide layout keeps your conversation list visible while you read and send locally.';
-
-  @override
-  String get conversationsActiveEyebrow => 'ACTIVE CONVERSATION';
-
-  @override
-  String get conversationsActiveBody =>
-      'Adaptive layout keeps conversation context and message flow visible at the same time.';
-
-  @override
-  String get conversationsPillOpaqueRelay => 'Opaque relay';
+      'Pick one from the list, or start a new one from the bar above it.';
 
   @override
   String get conversationsNewTooltip => 'New conversation';
@@ -1798,6 +1819,11 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String conversationsRowSemantics(String name) {
     return 'Conversation with $name';
+  }
+
+  @override
+  String conversationsGroupRowSemantics(String names) {
+    return 'Group conversation with $names';
   }
 
   @override

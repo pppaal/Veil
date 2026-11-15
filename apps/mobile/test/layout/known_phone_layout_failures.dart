@@ -57,29 +57,6 @@ const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[
   // --- Chat and conversation list (phone and wide), starting a chat or a group.
   KnownPhoneLayoutFailure('start-group', _phones, _both, {LayoutDefect.primaryActionBelowFold},
       'Create comes after the hero and three field cards'),
-  KnownPhoneLayoutFailure('chat-room-warnings-keyboard-larger-text', _small, _both, {LayoutDefect.hiddenAction},
-      'at 360x640 with the keyboard, two warnings and 1.3x text the second warning row is cut off'),
-  KnownPhoneLayoutFailure('wide-chat', [wideSmall], _both,
-      {LayoutDefect.overflow, LayoutDefect.primaryContentSqueezed},
-      'the second pane stacks a hero, a header card, a search card and tiles above the messages and overflows'),
-  KnownPhoneLayoutFailure('wide-chat', [wideLarge], _both, {LayoutDefect.primaryContentSqueezed},
-      'the second pane stacks a hero, a header card, a search card and tiles above the messages'),
-  KnownPhoneLayoutFailure('wide-chat-warnings', [wideSmall], _both,
-      {LayoutDefect.overflow, LayoutDefect.primaryContentSqueezed, LayoutDefect.hiddenAction},
-      'with two warnings under the cards the second pane overflows, the messages get no height, and '
-          'both warning actions (Review, Retry failed sends) are pushed below the screen'),
-  KnownPhoneLayoutFailure(
-      'wide-chat-warnings',
-      [wideLarge],
-      _both,
-      {
-        LayoutDefect.overflow,
-        LayoutDefect.primaryContentSqueezed,
-        LayoutDefect.hiddenAction,
-        LayoutDefect.smallTapTarget,
-      },
-      'with two warnings under the cards the second pane overflows, the messages get no height, and '
-          'Retry failed sends is cut to a 9 px strip under the composer'),
 
   // --- Settings, security status, safety numbers, contacts, one-time link.
   KnownPhoneLayoutFailure('settings', _phones, _both, {LayoutDefect.primaryActionBelowFold},

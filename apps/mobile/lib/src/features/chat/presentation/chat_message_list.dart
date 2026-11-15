@@ -15,10 +15,10 @@ import 'message_bubble.dart';
 import 'reaction_chips_row.dart';
 import 'system_notice_bubble.dart';
 
-/// The message area of a chat: a loading or empty state, or the messages
-/// with their reactions and, above the first, a button that loads older
-/// history. Each message is built under its key in [messageKeys], so the
-/// screen can scroll one into view.
+/// The message area of a chat: a loading, failed or empty state, or the
+/// messages with their reactions and, above the first, a button that loads
+/// older history. Each message is built under its key in [messageKeys], so
+/// the screen can scroll one into view.
 class ChatMessageList extends ConsumerWidget {
   const ChatMessageList({
     super.key,
@@ -33,9 +33,12 @@ class ChatMessageList extends ConsumerWidget {
     required this.messageKeys,
     required this.highlightedMessageId,
     required this.sentAtFormat,
-    required this.onStartMessage,
     required this.onResolveAttachment,
     required this.onReact,
+    this.loadFailed = false,
+    this.onRetryLoad,
+    this.onVerifyPeer,
+    this.senderNameOf,
     this.padding = EdgeInsets.zero,
   });
 
@@ -56,9 +59,22 @@ class ChatMessageList extends ConsumerWidget {
   final Map<String, GlobalKey> messageKeys;
   final String? highlightedMessageId;
   final DateFormat sentAtFormat;
-  final VoidCallback onStartMessage;
   final Future<void> Function(String attachmentId) onResolveAttachment;
   final void Function(ChatMessage message) onReact;
+
+  /// Whether the history could not be fetched; with nothing loaded the area
+  /// then says so and offers [onRetryLoad].
+  final bool loadFailed;
+  final VoidCallback? onRetryLoad;
+
+  /// Opens the peer's safety number from the empty chat, before the first
+  /// message; null where there is nothing to compare (a contact already
+  /// verified, a group).
+  final VoidCallback? onVerifyPeer;
+
+  /// Who of a group wrote a message, as far as this device knows; null in
+  /// a 1:1, where the side a bubble is on says it.
+  final String? Function(ChatMessage message)? senderNameOf;
 
   /// Space around the messages, inside the area they scroll in.
   final EdgeInsets padding;
@@ -76,18 +92,45 @@ class ChatMessageList extends ConsumerWidget {
       );
     }
 
+    if (messages.isEmpty && loadFailed) {
+      return _CenteredState(
+        child: VeilEmptyState(
+          title: l10n.chatLoadFailedTitle,
+          body: l10n.chatLoadFailedBody,
+          icon: Icons.cloud_off_rounded,
+          action: onRetryLoad == null
+              ? null
+              : VeilButton(
+                  expanded: false,
+                  tone: VeilButtonTone.secondary,
+                  icon: Icons.refresh_rounded,
+                  label: l10n.commonRetry,
+                  onPressed: onRetryLoad,
+                ),
+        ),
+      );
+    }
+
     if (messages.isEmpty) {
+      // Nothing to read yet, and the composer is right below: the state says
+      // what is true of whatever is sent here, and offers the one thing
+      // worth doing before the first message, comparing safety numbers.
       // Above an open keyboard there is no room for the icon and the space
       // around it: the same words and button then show without them.
       Widget emptyState({required bool compact}) => VeilEmptyState(
             compact: compact,
             title: l10n.chatEmptyTitle,
             body: l10n.chatEmptyBody,
-            icon: Icons.chat_bubble_outline_rounded,
-            action: FilledButton.tonal(
-              onPressed: onStartMessage,
-              child: Text(l10n.chatSendAction),
-            ),
+            icon: Icons.lock_outline_rounded,
+            action: onVerifyPeer == null
+                ? null
+                : VeilButton(
+                    expanded: false,
+                    tone: VeilButtonTone.secondary,
+                    icon: Icons.verified_user_outlined,
+                    label: l10n.chatEmptyVerifyAction,
+                    onPressed: onVerifyPeer,
+                  ),
           );
       return Center(
         child: VeilFirstThatFits(
@@ -154,7 +197,7 @@ class ChatMessageList extends ConsumerWidget {
               SystemNoticeBubble(message: message, notice: snapshot.data!),
             _ => AnimatedBubbleEntry(
                 fromRight: message.isMine,
-                child: _buildBubbleWithReactions(ref, message, decryptFuture),
+                child: _buildBubbleWithReactions(ref, message, decryptFuture, _senderNameAt(index)),
               ),
           },
         ),
@@ -185,13 +228,25 @@ class ChatMessageList extends ConsumerWidget {
     );
   }
 
+  // Named on the first of a sender's messages in a row, as far as the rows
+  // tell: the one before is someone else's.
+  String? _senderNameAt(int index) {
+    final message = filteredMessages[index];
+    final name = message.isMine ? null : senderNameOf?.call(message);
+    if (name == null || index == 0) return name;
+    final previous = filteredMessages[index - 1];
+    return previous.senderDeviceId == message.senderDeviceId && !previous.isLocalNotice ? null : name;
+  }
+
   Widget _buildBubbleWithReactions(
     WidgetRef ref,
     ChatMessage message,
     Future<DecryptedMessage> decryptFuture,
+    String? senderName,
   ) {
     final bubble = MessageBubble(
       message: message,
+      senderName: senderName,
       highlighted: message.id == highlightedMessageId,
       sentAtFormat: sentAtFormat,
       decryptFuture: decryptFuture,
@@ -226,7 +281,6 @@ class ChatMessageList extends ConsumerWidget {
           message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
         reactive,
-        const SizedBox(height: VeilSpace.xs),
         ReactionChipsRow(
           message: message,
           // Watched only where a message has reactions to mark as this

@@ -4,8 +4,26 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 
-// The words and formats the chat screen shows for delivery, history,
-// timers and attachments. Pure functions of their arguments.
+// The words and formats the chat screen shows for who a chat is with,
+// delivery, timers and attachments. Pure functions of their arguments.
+
+/// What a conversation is called. A 1:1 by its peer's name, or their handle
+/// when they set none. A group by its name when this device knows one, and
+/// otherwise by its other members: the relay's conversation list names the
+/// members of a group, not the group. [localUserId] is this user, who is
+/// left out of that list of names.
+String conversationTitle(AppLocalizations l10n, ConversationPreview conversation, {required String? localUserId}) {
+  if (conversation.type == ConversationType.direct) {
+    return conversation.peerDisplayName ?? '@${conversation.peerHandle}';
+  }
+  final name = (conversation.groupMeta?.name ?? conversation.channelMeta?.name)?.trim();
+  if (name != null && name.isNotEmpty) return name;
+  final others = [
+    for (final member in conversation.members)
+      if (member.userId != localUserId) member.title,
+  ];
+  return others.isEmpty ? l10n.conversationsGroupMark : others.join(', ');
+}
 
 String networkRecoveryMessage({
   required AppLocalizations l10n,
@@ -16,7 +34,7 @@ String networkRecoveryMessage({
 }) {
   final retryLabel = nextRetryAt == null
       ? l10n.chatRetryResumes
-      : l10n.chatRetryNextIn(formatRetryCountdown(nextRetryAt));
+      : l10n.chatRetryNextIn(formatRetryCountdown(l10n, nextRetryAt));
   if (failedCount > 0) {
     return l10n.chatNetworkRecoveryFailed(failedCount, retryLabel);
   }
@@ -26,72 +44,14 @@ String networkRecoveryMessage({
   return l10n.chatNetworkRecoveryQueued(queuedCount, retryLabel);
 }
 
-String historyWindowLabel({
-  required AppLocalizations l10n,
-  required bool isLoadingHistory,
-  required bool hasMoreHistory,
-}) {
-  if (isLoadingHistory) {
-    return l10n.chatMetricHistoryLoading;
-  }
-  if (hasMoreHistory) {
-    return l10n.chatMetricHistoryPaged;
-  }
-  return l10n.chatMetricHistoryComplete;
-}
-
-HistoryWindowBannerSpec? historyWindowBannerSpec({
-  required AppLocalizations l10n,
-  required bool isLoadingHistory,
-  required bool hasMoreHistory,
-}) {
-  if (isLoadingHistory) {
-    return HistoryWindowBannerSpec(
-      title: l10n.chatBannerHistoryLoadingTitle,
-      message: l10n.chatBannerHistoryLoadingBody,
-      tone: VeilBannerTone.info,
-      icon: Icons.history_toggle_off_rounded,
-    );
-  }
-  if (!hasMoreHistory) {
-    return HistoryWindowBannerSpec(
-      title: l10n.chatBannerHistoryCompleteTitle,
-      message: l10n.chatBannerHistoryCompleteBody,
-      tone: VeilBannerTone.info,
-      icon: Icons.done_all_rounded,
-    );
-  }
-  return null;
-}
-
-class HistoryWindowBannerSpec {
-  const HistoryWindowBannerSpec({
-    required this.title,
-    required this.message,
-    required this.tone,
-    required this.icon,
-  });
-
-  final String title;
-  final String message;
-  final VeilBannerTone tone;
-  final IconData icon;
-}
-
-String formatRetryCountdown(DateTime nextRetryAt) {
-  final difference = nextRetryAt.difference(DateTime.now());
-  if (difference.inSeconds <= 0) {
-    return '0s';
-  }
-  if (difference.inSeconds < 60) {
-    return '${difference.inSeconds}s';
-  }
-  final minutes = difference.inMinutes;
-  final seconds = difference.inSeconds - (minutes * 60);
-  if (seconds <= 0) {
-    return '${minutes}m';
-  }
-  return '${minutes}m ${seconds}s';
+/// How long until [nextRetryAt], in whole seconds under a minute and in
+/// minutes and seconds from there: "45s", "2m 5s".
+String formatRetryCountdown(AppLocalizations l10n, DateTime nextRetryAt) {
+  final seconds = nextRetryAt.difference(DateTime.now()).inSeconds;
+  if (seconds < 60) return l10n.chatCountdownSeconds(seconds < 0 ? 0 : seconds);
+  final minutes = seconds ~/ 60;
+  final rest = seconds - minutes * 60;
+  return rest == 0 ? l10n.chatCountdownMinutes(minutes) : l10n.chatCountdownMinutesSeconds(minutes, rest);
 }
 
 String messageDeliveryLabel(AppLocalizations l10n, ChatMessage message) {

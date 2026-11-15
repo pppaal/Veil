@@ -5,13 +5,12 @@ import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import 'chat_room_labels.dart';
 import 'gradient_send_button.dart';
 
-/// The composer at the foot of a chat: the draft, the line saying whether
-/// what is sent disappears, and the send button. Typing tells the peer. A
-/// send the messenger holds back for an identity change or a held account
-/// keeps the draft for after the review.
+/// The composer at the foot of a chat: the draft and the send button.
+/// Typing tells the peer. A send the messenger holds back for an identity
+/// change or a held account keeps the draft for after the review. What is
+/// sent disappears after [messageTtl], which the chat's bar shows.
 class ChatComposerBar extends ConsumerStatefulWidget {
   const ChatComposerBar({
     super.key,
@@ -19,6 +18,7 @@ class ChatComposerBar extends ConsumerStatefulWidget {
     required this.focusNode,
     required this.messageTtl,
     required this.busy,
+    this.tight = false,
     this.onAttach,
   });
 
@@ -32,6 +32,9 @@ class ChatComposerBar extends ConsumerStatefulWidget {
 
   /// Whether the messenger is busy, which disables sending.
   final bool busy;
+
+  /// Less padding around the draft: above an open keyboard.
+  final bool tight;
 
   /// Opens the attachment flow from a button before the draft. Without it
   /// the composer shows its lock mark there.
@@ -91,12 +94,12 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final messageTtl = widget.messageTtl;
     return VeilComposer(
       controller: _messageController,
       focusNode: widget.focusNode,
       enabled: !widget.busy,
       onSubmit: _sendMessage,
+      dense: widget.tight,
       label: l10n.chatComposeHint,
       leading: widget.onAttach == null
           ? null
@@ -106,9 +109,6 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
               onPressed: widget.onAttach,
               icon: const Icon(Icons.attach_file_rounded),
             ),
-      helper: messageTtl == null
-          ? l10n.chatComposerExpiryOff
-          : l10n.chatComposerExpiryOn(formatDurationLabel(l10n, messageTtl)),
       trailing: AnimatedScale(
         scale: _sendScale,
         duration: VeilMotion.fast,

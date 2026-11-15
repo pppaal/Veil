@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
+import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 
 /// The reactions under a message, one chip per emoji with its count, the
-/// most used first. A chip this user added to is highlighted.
+/// most used first. A chip this user added to is highlighted, and a tap on
+/// one adds or withdraws this user's reaction. Each chip takes a tap over
+/// 44 px, more than the pill it draws.
 class ReactionChipsRow extends StatelessWidget {
   const ReactionChipsRow({
     super.key,
@@ -33,8 +36,6 @@ class ReactionChipsRow extends StatelessWidget {
       ..sort((a, b) => b.value.length.compareTo(a.value.length));
 
     return Wrap(
-      spacing: VeilSpace.xs,
-      runSpacing: VeilSpace.xs,
       children: [
         for (final entry in entries)
           _ReactionChip(
@@ -73,36 +74,41 @@ class _ReactionChip extends StatelessWidget {
     final background = mine ? palette.primarySoft : palette.surfaceAlt;
     final border = mine ? palette.primary : palette.stroke;
     final textColor = mine ? palette.primaryStrong : palette.textMuted;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
+    return Semantics(
+      button: true,
+      selected: mine,
+      label: AppLocalizations.of(context).chatReactionSemantics(emoji, count),
+      onTap: onTap,
+      excludeSemantics: true,
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
         borderRadius: BorderRadius.circular(VeilRadius.pill),
         onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: VeilSpace.sm,
-            vertical: VeilSpace.xs,
-          ),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(VeilRadius.pill),
-            border: Border.all(color: border),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 14)),
-              const SizedBox(width: 4),
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: textColor,
-                ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 44),
+          child: Center(
+            widthFactor: 1,
+            heightFactor: 1,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
+              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.xxs + 1),
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(VeilRadius.pill),
+                border: Border.all(color: border),
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(emoji, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(width: 4),
+                  Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor)),
+                ],
+              ),
+            ),
           ),
+        ),
         ),
       ),
     );

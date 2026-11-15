@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
@@ -9,17 +10,16 @@ import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
 
-/// What sits between a chat's header and its messages: a banner for each
-/// thing the user has to decide or should be warned about (an identity
-/// change or held account that pauses the 1:1, an error, sends still
-/// waiting) and a line about a running search.
+/// What sits between a chat's bar and its messages: a banner for each thing
+/// the user has to decide or should be warned about (an identity change or
+/// held account that pauses the 1:1, a key change of the peer's that waits
+/// in another chat, an error, sends still waiting), each with its action
+/// inside it, and a line about a running search. A quiet chat shows nothing
+/// here: the bar carries the verified mark, and the messages keep the height.
 ///
-/// The wide layout adds the verified mark, the relay/history/search metrics
-/// and the history window around them. [compact], the phone layout, shows
-/// the warnings only, each with its action inside it: the bar above carries
-/// the verified mark, and the messages keep the height. Given less height
-/// than its banners need, it shows each warning as one row (title and
-/// action), and only when even those do not fit do the rows scroll.
+/// Given less height than its banners need, it shows each warning as one
+/// row (title and action), and only when even those do not fit do the rows
+/// scroll.
 class ChatStatusBanners extends StatelessWidget {
   const ChatStatusBanners({
     super.key,
@@ -27,16 +27,12 @@ class ChatStatusBanners extends StatelessWidget {
     required this.conversationId,
     required this.conversation,
     required this.messages,
-    required this.hasMoreHistory,
-    required this.isLoadingHistory,
-    required this.peerVerified,
     required this.hasSearchQuery,
     required this.searching,
     required this.searchHitCount,
     required this.onReviewIdentity,
     required this.onAcknowledgeHold,
     required this.onRetryFailed,
-    this.compact = false,
   });
 
   final VeilMessengerController controller;
@@ -45,122 +41,17 @@ class ChatStatusBanners extends StatelessWidget {
 
   /// Every loaded message of the conversation, expired ones included.
   final List<ChatMessage> messages;
-  final bool hasMoreHistory;
-  final bool isLoadingHistory;
-
-  /// Whether every pinned device of the 1:1 peer was verified out of band.
-  final bool peerVerified;
   final bool hasSearchQuery;
   final bool searching;
   final int searchHitCount;
   final VoidCallback onReviewIdentity;
   final void Function(PeerAccountHold hold, String handle) onAcknowledgeHold;
   final VoidCallback onRetryFailed;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final notices = _notices(l10n);
-    if (compact) return _buildCompact(context, l10n, notices);
-
-    final isDirect = conversation?.type == ConversationType.direct;
-    final historyBanner = !hasSearchQuery && messages.isNotEmpty
-        ? historyWindowBannerSpec(
-            l10n: l10n,
-            isLoadingHistory: isLoadingHistory,
-            hasMoreHistory: hasMoreHistory,
-          )
-        : null;
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (peerVerified && isDirect) ...[
-          const SizedBox(height: VeilSpace.xs),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: VeilStatusPill(label: l10n.chatPeerVerified, tone: VeilBannerTone.good),
-          ),
-        ],
-        const SizedBox(height: VeilSpace.sm),
-        VeilMetricStrip(
-          items: [
-            VeilMetricItem(
-              label: l10n.chatMetricRelay,
-              value: controller.realtimeConnected
-                  ? l10n.chatMetricRelayLinked
-                  : l10n.chatMetricRelayRecovering,
-            ),
-            VeilMetricItem(
-              label: l10n.chatMetricLoaded,
-              value: '${messages.length}',
-            ),
-            VeilMetricItem(
-              label: l10n.chatMetricHistory,
-              value: historyWindowLabel(
-                l10n: l10n,
-                isLoadingHistory: isLoadingHistory,
-                hasMoreHistory: hasMoreHistory,
-              ),
-            ),
-            VeilMetricItem(
-              label: l10n.chatMetricSearch,
-              value: hasSearchQuery
-                  ? l10n.chatMetricSearchHits(searchHitCount)
-                  : l10n.chatMetricSearchIdle,
-            ),
-          ],
-        ),
-        if (historyBanner != null) ...[
-          const SizedBox(height: VeilSpace.sm),
-          VeilInlineBanner(
-            title: historyBanner.title,
-            message: historyBanner.message,
-            tone: historyBanner.tone,
-            icon: historyBanner.icon,
-          ),
-        ],
-        for (final notice in notices) ...[
-          const SizedBox(height: VeilSpace.sm),
-          VeilInlineBanner(
-            title: notice.title,
-            message: notice.message,
-            tone: notice.tone,
-            icon: notice.icon,
-          ),
-          if (notice.actionLabel != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: EdgeInsets.only(top: notice.actionGap),
-                child: TextButton(
-                  onPressed: notice.onAction,
-                  child: Text(notice.actionLabel!),
-                ),
-              ),
-            ),
-        ],
-        if (hasSearchQuery) ...[
-          const SizedBox(height: VeilSpace.sm),
-          VeilInlineBanner(
-            title: searching
-                ? l10n.chatSearchBannerSearchingTitle
-                : l10n.chatSearchBannerIdleTitle,
-            message: searching
-                ? l10n.chatSearchBannerSearchingBody
-                : searchHitCount == 0
-                    ? l10n.chatSearchBannerEmptyBody
-                    : l10n.chatSearchBannerResultBody(searchHitCount),
-            tone: VeilBannerTone.info,
-            icon: Icons.manage_search_rounded,
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildCompact(BuildContext context, AppLocalizations l10n, List<_Notice> notices) {
     if (notices.isEmpty && !hasSearchQuery) return const SizedBox.shrink();
     return VeilFirstThatFits(
       children: [
@@ -227,7 +118,7 @@ class ChatStatusBanners extends StatelessWidget {
         const SizedBox(width: VeilSpace.xs),
         Expanded(
           child: Text(
-            searching ? l10n.chatSearchBannerSearchingTitle : l10n.chatSearchMatchCount(searchHitCount),
+            searching ? l10n.chatSearchSearching : l10n.chatSearchMatchCount(searchHitCount),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
           ),
         ),
@@ -235,29 +126,46 @@ class ChatStatusBanners extends StatelessWidget {
     );
   }
 
-  /// The warnings both layouts show, most pressing first.
+  /// The warnings, most pressing first.
   List<_Notice> _notices(AppLocalizations l10n) {
+    final conversation = this.conversation;
     final isDirect = conversation?.type == ConversationType.direct;
     final pendingCount = controller.pendingCountFor(conversationId);
     final failedCount = messages.where((message) => message.hasFailed).length;
-    final uploadingCount = messages
-        .where((message) =>
-            message.deliveryState == MessageDeliveryState.uploading)
-        .length;
-    final queuedCount = messages
-        .where(
-            (message) => message.deliveryState == MessageDeliveryState.pending)
-        .length;
+    final uploadingCount =
+        messages.where((message) => message.deliveryState == MessageDeliveryState.uploading).length;
+    final queuedCount = messages.where((message) => message.deliveryState == MessageDeliveryState.pending).length;
     final nextRetryAt = controller.nextRetryAtForConversation(conversationId);
     final accountHold = isDirect ? controller.peerAccountHoldFor(conversationId) : null;
     final connected = controller.realtimeConnected;
+    final changeHere = isDirect && controller.pendingIdentityChangeFor(conversationId) != null;
+    // The peer presented another key in a conversation they share with the
+    // user (a group), which holds it for review. This 1:1 still talks to
+    // the key it pinned, and says where the question is open.
+    final changeElsewhere = conversation != null &&
+        isDirect &&
+        !changeHere &&
+        controller.pendingIdentityChangeAbout(conversation.recipientBundle.userId) != null;
+    final error = controller.errorMessage;
+    // The note about the dropped relay link is this chat's own "sends are
+    // waiting" below when it has any, and another chat's business when not.
+    final showError = error != null && !controller.errorIsRelayInterruption;
 
     return [
       // Only a 1:1 conversation pauses; a group just leaves the device out.
-      if (isDirect && controller.pendingIdentityChangeFor(conversationId) != null)
+      if (changeHere)
         _Notice(
           title: l10n.chatIdentityChangedTitle,
           message: l10n.chatIdentityChangedBody,
+          tone: VeilBannerTone.warn,
+          icon: Icons.gpp_maybe_outlined,
+          actionLabel: l10n.chatIdentityChangedReview,
+          onAction: onReviewIdentity,
+        ),
+      if (changeElsewhere)
+        _Notice(
+          title: l10n.chatIdentityChangedElsewhereTitle,
+          message: l10n.chatIdentityChangedElsewhereBody,
           tone: VeilBannerTone.warn,
           icon: Icons.gpp_maybe_outlined,
           actionLabel: l10n.chatIdentityChangedReview,
@@ -285,10 +193,10 @@ class ChatStatusBanners extends StatelessWidget {
           actionLabel: l10n.chatAccountHoldAcknowledge,
           onAction: () => onAcknowledgeHold(accountHold, conversation?.peerHandle ?? ''),
         ),
-      if (controller.errorMessage != null)
+      if (showError)
         _Notice(
           title: l10n.chatBannerConversationIssue,
-          message: controller.errorMessage!,
+          message: veilErrorText(l10n, error),
           tone: VeilBannerTone.danger,
         ),
       if (pendingCount > 0)
@@ -314,7 +222,6 @@ class ChatStatusBanners extends StatelessWidget {
           tone: !connected || failedCount > 0 ? VeilBannerTone.warn : VeilBannerTone.info,
           actionLabel: failedCount > 0 ? l10n.chatRetryFailedSendsAction : null,
           onAction: failedCount > 0 ? onRetryFailed : null,
-          actionGap: VeilSpace.xs,
         ),
     ];
   }
@@ -358,7 +265,6 @@ class _Notice {
     this.icon,
     this.actionLabel,
     this.onAction,
-    this.actionGap = 0,
   });
 
   final String title;
@@ -367,7 +273,4 @@ class _Notice {
   final IconData? icon;
   final String? actionLabel;
   final VoidCallback? onAction;
-
-  /// Space between the banner and its button in the wide layout.
-  final double actionGap;
 }

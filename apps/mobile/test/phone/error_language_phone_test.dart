@@ -29,7 +29,7 @@ import 'phone_app.dart';
 final _en = lookupAppLocalizations(const Locale('en'));
 
 // What a relay says in its own words: no code, no sentence of the ARB.
-const _relaysOwn = 'handle_taken';
+const _relaysOwn = 'Request rejected';
 
 // The error under the one text field on screen.
 String? _fieldError(WidgetTester tester) => tester.widget<TextField>(find.byType(TextField)).decoration?.errorText;

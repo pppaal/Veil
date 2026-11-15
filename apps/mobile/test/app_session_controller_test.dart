@@ -180,10 +180,9 @@ void main() {
       throwsA(isA<VeilApiException>()),
     );
 
-    expect(
-      controller.state.errorMessage,
-      'This new device could not prove the final transfer handoff.',
-    );
+    // Reported by the server's code; the transfer screen words it from the
+    // ARB file.
+    expect(controller.state.errorMessage, UserFacingErrorCode.transferCompletionInvalid.sentence);
     expect(api.completeTransferBodies, hasLength(1));
     expect(await storage.readPendingTransfer(), isNotNull);
 

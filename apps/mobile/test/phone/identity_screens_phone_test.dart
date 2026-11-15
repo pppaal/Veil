@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
@@ -196,9 +197,9 @@ void main() {
           size: phoneSmall,
           location: '/choose-handle',
           account: signedOut,
-          sessionError: 'handle_taken', body: (world) async {
+          sessionError: UserFacingErrorCode.handleTaken.sentence, body: (world) async {
         TextField field() => tester.widget<TextField>(find.byType(TextField));
-        expect(field().decoration?.errorText, 'handle_taken');
+        expect(field().decoration?.errorText, l10n.errorHandleTaken);
         expect(find.byType(VeilNotice), findsNothing);
         // In the helper line's place: the button stays where it was.
         expect(findCopy(l10n.authHandleFindCaption), findsNothing);
@@ -207,7 +208,7 @@ void main() {
         await tester.enterText(find.byType(TextField), 'sam');
         await pumpFrames(tester, frames: 2);
         expect(field().decoration?.errorText, isNull);
-        expect(findCopy('handle_taken'), findsNothing);
+        expect(findCopy(l10n.errorHandleTaken), findsNothing);
         expect(findCopy(l10n.authHandleFindCaption), findsOneWidget);
       });
     });

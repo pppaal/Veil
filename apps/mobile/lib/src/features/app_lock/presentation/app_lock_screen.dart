@@ -219,12 +219,10 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
         const SizedBox(height: VeilSpace.md),
         VeilActionCluster(children: [submit, if (_biometricsAvailable) biometrics]),
         if (!isSettingPin) ...[const SizedBox(height: VeilSpace.lg), noRecovery],
+        // What this device offers. The rules that never change are in the
+        // words above and in the notice; they are not repeated as pills.
         const SizedBox(height: VeilSpace.md),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [...facts.statePills(l10n), ...AppLockFacts.principlePills(l10n)],
-        ),
+        Wrap(spacing: 8, runSpacing: 8, children: facts.statePills(l10n)),
       ];
     }
 

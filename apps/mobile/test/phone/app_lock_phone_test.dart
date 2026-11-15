@@ -57,18 +57,23 @@ void main() {
           expect(tester.takeException(), isNull, reason: 'nothing overflows a 360x640 screen');
           expect(find.byType(VeilHeroPanel), findsNothing);
           expect(find.byType(VeilMetricStrip), findsNothing);
-          expect(find.text(l10n.appLockHeroTitle), findsOneWidget);
+          expect(findCopy(l10n.appLockHeroTitle), findsOneWidget);
 
           expect(wholeOnScreen(tester, find.byType(TextField)), isTrue);
           expect(wholeOnScreen(tester, find.text(l10n.appLockUnlock)), isTrue);
           expect(wholeOnScreen(tester, find.text(l10n.appLockUseBiometrics)), isTrue);
 
-          // After the buttons: the notice and what the device offers.
-          await tester.scrollUntilVisible(find.text(l10n.appLockPillNoRemoteReset), 120, scrollable: screenList);
+          // After the buttons: the notice and what the device offers. The
+          // rules the words above already state are not repeated as pills.
+          await tester.scrollUntilVisible(find.text(l10n.appLockPillBiometricsAvailable), 120, scrollable: screenList);
           expect(find.byType(VeilDestructiveNotice), findsOneWidget);
           expect(findCopy(l10n.appLockNoRecoveryBody), findsOneWidget);
           expect(find.text(l10n.appLockPillPinConfigured), findsOneWidget);
           expect(find.text(l10n.appLockPillBiometricsAvailable), findsOneWidget);
+          for (final rule in [l10n.appLockPillLocalOnly, l10n.appLockPillNoRemoteReset]) {
+            expect(find.text(rule, skipOffstage: false), findsNothing);
+          }
+          expect(find.byType(VeilStatusPill, skipOffstage: false), findsNWidgets(3));
           expect(tester.takeException(), isNull);
         },
       );

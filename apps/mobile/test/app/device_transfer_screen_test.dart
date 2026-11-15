@@ -208,7 +208,7 @@ void main() {
 
     expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
     expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpired), findsNothing);
+    expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
     expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
@@ -282,7 +282,7 @@ void main() {
 
     expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
     expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpired), findsNothing);
+    expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
     expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
@@ -357,6 +357,10 @@ void main() {
     await tester.pump();
     expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
 
+    // The step that takes the code is finished; it is reopened to paste one.
+    expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
+    await tester.tap(find.text(_en.deviceTransferNewCodeChange));
+    await tester.pump();
     await tester.enterText(
       find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
       'VEIL_TRANSFER::${transfer.id}::${transfer.transferToken}',
@@ -364,7 +368,10 @@ void main() {
     await tester.tap(find.text(_en.deviceTransferImportPayload));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferPayloadImported), findsOneWidget);
+    // The claim it holds is what comes next: the screen does not ask to
+    // register again, and the step closes over the code.
+    expect(find.text(_en.deviceTransferPayloadImported), findsNothing);
+    expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
     expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
@@ -393,6 +400,8 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
+    await tester.tap(find.text(_en.deviceTransferNewCodeChange));
+    await tester.pump();
     await tester.enterText(
       find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
       'VEIL_TRANSFER::another-session::another-token',

@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/features/security/presentation/safety_number_car
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -118,7 +119,7 @@ void main() {
         // Said before anything else on the page.
         final banner = onScreen(tester, findCopy(l10n.safetyNumbersChangedElsewhereTitle));
         expect(banner.height, greaterThan(0));
-        expect(banner.top, lessThan(onScreen(tester, find.byType(VeilHeroPanel)).top));
+        expect(banner.top, lessThan(onScreen(tester, find.byType(VeilScreenIntro)).top));
         expectInQuestion(await textsOfScreen(tester));
 
         // The review is Selene's page in the group that holds the change.

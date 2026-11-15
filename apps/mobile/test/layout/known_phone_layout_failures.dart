@@ -45,14 +45,6 @@ class KnownPhoneLayoutFailure {
 /// different screens edit different lines.
 const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[
   // --- Onboarding, account and device transfer.
-  KnownPhoneLayoutFailure('privacy-consent', _phones, _both, {LayoutDefect.primaryActionBelowFold},
-      'the agree control comes after three screenfuls of the notice'),
-  KnownPhoneLayoutFailure('create-account', _small, _both, {LayoutDefect.primaryActionBelowFold},
-      'at 360x640 Continue starts below the fold, under the hero and the field'),
-  KnownPhoneLayoutFailure('device-transfer-new-device', [phoneSmall, phoneMedium], _both,
-      {LayoutDefect.primaryActionBelowFold}, 'the first field comes after the hero, the mode chips and the notice'),
-  KnownPhoneLayoutFailure('device-transfer-old-device', _phones, _both, {LayoutDefect.primaryActionBelowFold},
-      'the claim field comes after the hero, the notice, the tiles and the transfer code'),
 
   // --- Chat and conversation list (phone and wide), starting a chat or a group.
   KnownPhoneLayoutFailure('start-group', _phones, _both, {LayoutDefect.primaryActionBelowFold},

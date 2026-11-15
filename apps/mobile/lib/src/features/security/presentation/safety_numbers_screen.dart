@@ -12,6 +12,7 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../core/util/base64url.dart';
 import '../../../core/util/constant_time.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_screen_intro.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
@@ -308,26 +309,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   Future<void> _renewSession() async {
     if (_renewing) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        final l10n = AppLocalizations.of(context);
-        return AlertDialog(
-          title: Text(l10n.safetyNumbersRotateDialogTitle),
-          content: Text(l10n.safetyNumbersRotateDialogBody),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(l10n.safetyNumbersCancel),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(l10n.safetyNumbersRotate),
-            ),
-          ],
-        );
-      },
-    );
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => const SafetyRenewSessionDialog());
     if (confirmed != true) return;
     if (!mounted) return;
 
@@ -344,12 +326,14 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             ? l10n.safetyNumbersSessionRotated
             : l10n.safetyNumbersNoSessionYet,
       );
-    } catch (error) {
+    } catch (_) {
+      // Why it failed is the relay's or the engine's own wording; the user
+      // is told that it did, in their language.
       if (!mounted) return;
       VeilToast.show(
         context,
-        message:
-            AppLocalizations.of(context).safetyNumbersRotationFailed('$error'),
+        message: AppLocalizations.of(context).safetyNumbersRotationFailed,
+        tone: VeilBannerTone.warn,
       );
     } finally {
       if (mounted) {
@@ -373,7 +357,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             );
           }
           if (snapshot.hasError) {
-            return _buildErrorBody(context, snapshot.error!);
+            return _buildErrorBody(context);
           }
           final data = snapshot.data!;
           if (data is _GroupListData) {
@@ -385,11 +369,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
   }
 
-  Widget _buildErrorBody(BuildContext context, Object error) {
+  // The error itself is for a log, not for the user: it is in English and
+  // names internals.
+  Widget _buildErrorBody(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     return VeilErrorState(
       title: l10n.safetyNumbersErrorTitle,
-      body: error.toString(),
+      body: l10n.safetyNumbersErrorBody,
       action: VeilButton(
         label: l10n.safetyNumbersRetry,
         tone: VeilButtonTone.secondary,
@@ -408,7 +394,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     }
     return ListView(
       children: [
-        VeilHeroPanel(
+        VeilScreenIntro(
           eyebrow: l10n.safetyNumbersGroupEyebrow,
           title: data.groupName == null
               ? l10n.safetyNumbersGroupTitleGeneric
@@ -432,6 +418,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
   }
 
+  // Content first: a change of the peer's identity is announced before
+  // anything else; then who the number is about and whether they are
+  // verified, the number to compare, and the action on it. The code to
+  // scan and the rest follow.
   Widget _buildDetail(BuildContext context, _DetailData data) {
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
@@ -445,45 +435,58 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     final verified = settled && (pin?.isVerified ?? false);
     final directoryDiffers = data.directory != null && data.directory != _DirectoryAnswer.matches;
     final warn = directoryDiffers || !settled || _scanMismatch;
-
-    // On a phone the hero fills the first screenful, so a pending change
-    // is announced before it; the new number it is about follows below.
-    final changeBanner = change != null
-        ? _keyChangedBanner(l10n, data)
-        : elsewhere != null
-            ? VeilInlineBanner(
-                tone: VeilBannerTone.warn,
-                title: l10n.safetyNumbersChangedElsewhereTitle,
-                message: l10n.safetyNumbersChangedElsewhereBody(data.peer.title),
-              )
-            : null;
-    final bannerFirst = changeBanner != null && (context.veilPhoneWidth || elsewhere != null);
+    const gap = SizedBox(height: VeilSpace.md);
+    final scan = VeilButton(
+      label: l10n.safetyNumbersScanAction,
+      icon: Icons.qr_code_scanner_rounded,
+      tone: VeilButtonTone.secondary,
+      onPressed: _scanMismatch ? null : () => _compareScannedCode(data),
+    );
 
     return ListView(
       children: [
-        if (bannerFirst) ...[changeBanner, const SizedBox(height: VeilSpace.md)],
-        VeilHeroPanel(
+        if (change != null) ...[
+          _keyChangedBanner(l10n, data),
+          gap,
+        ] else if (elsewhere != null) ...[
+          VeilInlineBanner(
+            tone: VeilBannerTone.warn,
+            title: l10n.safetyNumbersChangedElsewhereTitle,
+            message: l10n.safetyNumbersChangedElsewhereBody(data.peer.title),
+          ),
+          gap,
+        ],
+        // How to compare is said while there is one number to compare; a
+        // pending change says what to do in its banner.
+        VeilScreenIntro(
           eyebrow: l10n.safetyNumbersDetailEyebrow,
           title: l10n.safetyNumbersDetailTitle(data.peer.title),
-          body: l10n.safetyNumbersDetailBody,
-          bottom: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              VeilStatusPill(
-                label: verified && !warn ? l10n.safetyNumbersVerified : l10n.safetyNumbersUnverified,
-                tone: warn
-                    ? VeilBannerTone.warn
-                    : verified
-                        ? VeilBannerTone.good
-                        : VeilBannerTone.info,
+          body: settled ? l10n.safetyNumbersDetailBody : null,
+        ),
+        const SizedBox(height: VeilSpace.sm),
+        Row(
+          children: [
+            VeilStatusPill(
+              label: verified && !warn ? l10n.safetyNumbersVerified : l10n.safetyNumbersUnverified,
+              tone: warn
+                  ? VeilBannerTone.warn
+                  : verified
+                      ? VeilBannerTone.good
+                      : VeilBannerTone.info,
+            ),
+            const SizedBox(width: VeilSpace.xs),
+            Expanded(
+              child: Text(
+                '@${data.peer.handle}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: palette.textMuted),
               ),
-              VeilStatusPill(label: '@${data.peer.handle}', tone: VeilBannerTone.info),
-            ],
-          ),
+            ),
+          ],
         ),
         if (_scanMismatch) ...[
-          const SizedBox(height: VeilSpace.md),
+          gap,
           VeilInlineBanner(
             tone: VeilBannerTone.danger,
             title: l10n.safetyNumbersScanMismatchTitle,
@@ -491,7 +494,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ),
         ],
         if (data.directory == _DirectoryAnswer.otherKey) ...[
-          const SizedBox(height: VeilSpace.md),
+          gap,
           VeilInlineBanner(
             tone: VeilBannerTone.warn,
             title: l10n.safetyNumbersDirectoryMismatchTitle,
@@ -499,7 +502,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ),
         ],
         if (data.directory == _DirectoryAnswer.otherDevice) ...[
-          const SizedBox(height: VeilSpace.md),
+          gap,
           VeilInlineBanner(
             tone: VeilBannerTone.warn,
             title: l10n.safetyNumbersDirectoryOtherDeviceTitle,
@@ -507,121 +510,69 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           ),
         ],
         if (pin == null) ...[
-          const SizedBox(height: VeilSpace.md),
+          gap,
           VeilInlineBanner(
             title: l10n.safetyNumbersNoPinTitle,
             message: l10n.safetyNumbersNoPinBody,
           ),
-        ] else ...[
-          const SizedBox(height: VeilSpace.md),
-          SafetyNumberCard(
-            groups: formatSafetyNumber(data.number!),
-            label: settled ? null : l10n.safetyNumbersCardLabelCurrent,
-          ),
-          const SizedBox(height: VeilSpace.md),
-          // During a change the peer compares against the new key, so the
-          // code to show is the one beside the new number.
-          if (settled) ...[
-            SafetyQrCard(content: _qrPayload(data, pin.identityKey), palette: palette),
-            const SizedBox(height: VeilSpace.md),
-          ],
-          if (verified)
-            VeilSurfaceCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    l10n.safetyNumbersVerifiedOn(_formatDate(pin.verifiedAt!)),
-                    style: TextStyle(color: palette.text, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: VeilSpace.xs),
-                  Text(
-                    l10n.safetyNumbersVerifiedNote,
-                    style: TextStyle(color: palette.textSubtle, fontSize: 13),
-                  ),
-                ],
-              ),
-            )
-          else if (settled)
-            VeilButton(
-              label: l10n.safetyNumbersMarkVerified,
-              onPressed: _scanMismatch ? null : () => _markVerified(data),
-            ),
         ],
-        // In place of what would confirm the pinned key (its code, "mark as
-        // verified", a scan): the way to where the new one is reviewed.
-        if (elsewhere != null)
-          VeilButton(
-            label: l10n.safetyNumbersReviewChange,
-            onPressed: () => _openAndReload(_changeLocation(elsewhere)),
-          ),
+        gap,
         if (change != null)
-          ..._pendingChangeSection(context, data, change, banner: bannerFirst ? null : changeBanner),
-        if (elsewhere == null && (pin != null || change != null)) ...[
-          const SizedBox(height: VeilSpace.sm),
-          VeilButton(
-            label: l10n.safetyNumbersScanAction,
-            icon: Icons.qr_code_scanner_rounded,
-            tone: VeilButtonTone.secondary,
-            onPressed: _scanMismatch ? null : () => _compareScannedCode(data),
-          ),
+          ..._pendingChangeSection(context, data, change, scan: scan)
+        else ...[
+          if (pin != null) ...[
+            SafetyNumberCard(
+              groups: formatSafetyNumber(data.number!),
+              label: settled ? null : l10n.safetyNumbersCardLabelCurrent,
+            ),
+            gap,
+          ],
+          // In place of what would confirm the pinned key (its code, "mark
+          // as verified", a scan): the way to where the new one is reviewed.
+          if (elsewhere != null)
+            VeilButton(
+              label: l10n.safetyNumbersReviewChange,
+              onPressed: () => _openAndReload(_changeLocation(elsewhere)),
+            )
+          else if (pin != null) ...[
+            if (verified)
+              SafetyVerifiedCard(verifiedOn: _formatDate(pin.verifiedAt!))
+            else
+              VeilButton(
+                label: l10n.safetyNumbersMarkVerified,
+                onPressed: _scanMismatch ? null : () => _markVerified(data),
+              ),
+            const SizedBox(height: VeilSpace.sm),
+            scan,
+            gap,
+            SafetyQrCard(content: _qrPayload(data, pin.identityKey), palette: palette),
+          ],
         ],
         if (data.isDirect) ...[
-          const SizedBox(height: VeilSpace.md),
-          VeilSurfaceCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  l10n.safetyNumbersRotateEyebrow,
-                  style: TextStyle(
-                    color: palette.textSubtle,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 1.4,
-                  ),
-                ),
-                const SizedBox(height: VeilSpace.xs),
-                Text(
-                  l10n.safetyNumbersRotateBody,
-                  style: TextStyle(color: palette.textSubtle, fontSize: 13),
-                ),
-                const SizedBox(height: VeilSpace.md),
-                VeilButton(
-                  label: _renewing
-                      ? l10n.safetyNumbersRotating
-                      : l10n.safetyNumbersRotateButton,
-                  tone: VeilButtonTone.secondary,
-                  onPressed: _renewing ? null : _renewSession,
-                ),
-              ],
-            ),
-          ),
+          gap,
+          SafetyNewSessionCard(renewing: _renewing, onRenew: _renewSession),
         ],
       ],
     );
   }
 
-  // The identity this conversation is held back on, with the number the
-  // user must compare before accepting it. A verified contact is accepted
-  // only through a matching scanned code or an explicit affirmation that the
-  // new number was compared, never with a single tap.
+  // The identity this conversation is held back on: its number, which the
+  // user compares before accepting it, and the decision right under it. A
+  // verified contact is accepted only through a matching scanned code or an
+  // explicit affirmation that the new number was compared, never with a
+  // single tap. The pinned number follows for reference.
   List<Widget> _pendingChangeSection(
     BuildContext context,
     _DetailData data,
     PendingIdentityChange change, {
-    required Widget? banner,
+    required Widget scan,
   }) {
     final l10n = AppLocalizations.of(context);
     return [
-      const SizedBox(height: VeilSpace.md),
-      if (banner != null) ...[banner, const SizedBox(height: VeilSpace.md)],
       SafetyNumberCard(
         groups: formatSafetyNumber(data.pendingNumber!),
         label: l10n.safetyNumbersCardLabelNew,
       ),
-      const SizedBox(height: VeilSpace.md),
-      SafetyQrCard(content: _qrPayload(data, change.presentedKey), palette: context.veilPalette),
       const SizedBox(height: VeilSpace.md),
       if (change.requiresReverification)
         VeilButton(
@@ -643,6 +594,19 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           label: l10n.safetyNumbersKeepCurrentKey,
           tone: VeilButtonTone.secondary,
           onPressed: () => _declineChange(change),
+        ),
+      ],
+      const SizedBox(height: VeilSpace.sm),
+      scan,
+      const SizedBox(height: VeilSpace.md),
+      // The peer compares against the new key, so the code to show is the
+      // one that goes with the new number.
+      SafetyQrCard(content: _qrPayload(data, change.presentedKey), palette: context.veilPalette),
+      if (data.pin != null) ...[
+        const SizedBox(height: VeilSpace.md),
+        SafetyNumberCard(
+          groups: formatSafetyNumber(data.number!),
+          label: l10n.safetyNumbersCardLabelCurrent,
         ),
       ],
     ];

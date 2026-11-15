@@ -91,10 +91,82 @@ class SafetyQrCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: VeilSpace.sm),
-          Text(
+          VeilCopy(
             l10n.safetyNumbersQrNote,
             style: TextStyle(color: palette.textSubtle, fontSize: 12),
             textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// When the pinned identity was verified, and what ends that.
+class SafetyVerifiedCard extends StatelessWidget {
+  const SafetyVerifiedCard({super.key, required this.verifiedOn});
+
+  /// The day and time of the verification, already formatted.
+  final String verifiedOn;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
+    return VeilSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          VeilCopy(
+            l10n.safetyNumbersVerifiedOn(verifiedOn),
+            style: TextStyle(color: palette.text, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: VeilSpace.xs),
+          VeilCopy(
+            l10n.safetyNumbersVerifiedNote,
+            style: TextStyle(color: palette.textSubtle, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Starting a fresh session with the contact's current keys: what it does,
+/// and the button for it.
+class SafetyNewSessionCard extends StatelessWidget {
+  const SafetyNewSessionCard({super.key, required this.renewing, required this.onRenew});
+
+  final bool renewing;
+  final VoidCallback onRenew;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    final l10n = AppLocalizations.of(context);
+    return VeilSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            l10n.safetyNumbersRotateEyebrow,
+            style: TextStyle(
+              color: palette.textSubtle,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+            ),
+          ),
+          const SizedBox(height: VeilSpace.xs),
+          VeilCopy(
+            l10n.safetyNumbersRotateBody,
+            style: TextStyle(color: palette.textSubtle, fontSize: 13),
+          ),
+          const SizedBox(height: VeilSpace.md),
+          VeilButton(
+            label: renewing ? l10n.safetyNumbersRotating : l10n.safetyNumbersRotateButton,
+            tone: VeilButtonTone.secondary,
+            onPressed: renewing ? null : onRenew,
           ),
         ],
       ),

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_screen_intro.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -107,42 +108,28 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
         ),
       ],
     ];
-    // The button follows the field on a phone, where the binding steps
-    // would otherwise push it off the first screenful; the steps then show
-    // their progress under it.
-    final phone = context.veilPhoneWidth;
-
+    // The handle and the button that binds it come first; the steps the
+    // binding runs through show their progress under the button.
     return VeilShell(
       title: l10n.authHandleTitle,
       child: ListView(
         children: [
-          VeilHeroPanel(
+          VeilScreenIntro(
             eyebrow: l10n.authHandleEyebrow,
             title: l10n.authHandleHeroTitle,
             body: l10n.authHandleHeroBody,
-            bottom: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                VeilStatusPill(label: l10n.pillNoContactSync),
-                VeilStatusPill(label: l10n.pillHandleDiscovery),
-                VeilStatusPill(label: l10n.pillDeviceBound),
-              ],
-            ),
           ),
           const SizedBox(height: VeilSpace.md),
           VeilFieldBlock(
             label: l10n.authHandleFieldLabel,
             caption: l10n.authHandleFieldCaption,
-            trailing: VeilStatusPill(
-              label: handle.isEmpty ? l10n.authHandleChoosePrompt : '@$handle',
-              tone: handle.isEmpty ? VeilBannerTone.warn : VeilBannerTone.info,
-            ),
             child: TextField(
               controller: _handleController,
               enabled: !_submitting,
               onChanged: (_) => setState(() {}),
               textInputAction: TextInputAction.done,
+              autocorrect: false,
+              enableSuggestions: false,
               decoration: InputDecoration(
                 labelText: l10n.authHandleInputLabel,
                 hintText: l10n.authHandleInputHint,
@@ -150,10 +137,11 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
               ),
             ),
           ),
-          if (!phone) ...[const SizedBox(height: VeilSpace.md), bindingFlow],
           ...failure,
-          SizedBox(height: phone ? VeilSpace.md : VeilSpace.xl),
-          if (phone) ...[submit, const SizedBox(height: VeilSpace.md), bindingFlow] else submit,
+          const SizedBox(height: VeilSpace.md),
+          submit,
+          const SizedBox(height: VeilSpace.md),
+          bindingFlow,
         ],
       ),
     );

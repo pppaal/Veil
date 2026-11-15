@@ -5,6 +5,8 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
+import '../support/copy_finder.dart';
+
 // The consent the user must accept (PIPA Art. 15(2)) names what the server
 // keeps about them, as docs/server-data-inventory.md lists it.
 void main() {
@@ -21,7 +23,7 @@ void main() {
       ),
     ));
     await tester.pumpAndSettle();
-    return tester.widgetList<Text>(find.byType(Text)).map((text) => text.data ?? '').join('\n');
+    return _shown(tester);
   }
 
   testWidgets('lists the contact list, delivery metadata, call records and readable group names', (tester) async {
@@ -49,18 +51,17 @@ void main() {
   });
 
   testWidgets('states the agreement once, in the screen language', (tester) async {
-    // The agreement sits under the lists, past the first screenful.
-    Future<String> agreement(Locale locale) async {
-      await consentText(tester, locale);
-      await tester.scrollUntilVisible(find.byType(Checkbox), 300, scrollable: find.byType(Scrollable).first);
-      return tester.widgetList<Text>(find.byType(Text)).map((text) => text.data ?? '').join('\n');
-    }
-
-    final english = await agreement(const Locale('en'));
+    // The agreement sits under the notice, on screen from the start.
+    final english = await consentText(tester, const Locale('en'));
     expect('I agree to the collection and use'.allMatches(english), hasLength(1));
 
-    final korean = await agreement(const Locale('ko'));
+    final korean = await consentText(tester, const Locale('ko'));
     expect('위 개인정보 수집·이용에 동의합니다.'.allMatches(korean), hasLength(1));
     expect(korean, isNot(contains('I agree')));
   });
 }
+
+// What the screen says, as a person reads it: Korean copy is drawn with
+// word joiners inside its words.
+String _shown(WidgetTester tester) =>
+    tester.widgetList<Text>(find.byType(Text)).map((text) => plainCopy(text.data ?? '')).join('\n');

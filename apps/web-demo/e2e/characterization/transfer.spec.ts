@@ -52,7 +52,7 @@ test.describe('device transfer', () => {
     await openMenuItem(alice, 'transfer-start');
     const oldDialog = alice.page.locator('#transfer-old-dialog');
     await expect(oldDialog).toBeVisible();
-    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Copy the code and paste it on the new device. Waiting for the new device…');
+    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Waiting for the new device…');
     await expect(alice.page.locator('#transfer-old-approve')).toBeHidden();
     const code = await alice.page.locator('#transfer-old-token').inputValue();
     expect(code).toMatch(/^[A-Za-z0-9+/]+$/);

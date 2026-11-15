@@ -174,7 +174,6 @@ auth.mount();
 sidebar.mount();
 createNewChatDialog({ store, stack, history, tabs, dialogs }).mount();
 tabs.mount();
-shell.mountBetaBanner();
 transferDialogs.mount();
 
 auth.boot();

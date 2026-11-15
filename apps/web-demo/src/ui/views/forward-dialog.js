@@ -2,7 +2,7 @@
 // with no quote of the original and no link to it.
 
 import { isTextKind } from '../../domain/ingest.js';
-import { avatarFor, el, handleLine } from '../dom.js';
+import { avatarFor, el, handleLine, icon } from '../dom.js';
 import { toast } from '../toast.js';
 
 // stack: src/app/messaging-stack.js (shownPeer names a conversation);
@@ -25,7 +25,7 @@ export function createForwardDialog({ store, stack, composer }) {
       const cancelButton = el('button', { class: 'btn btn-ghost', id: 'fwd-cancel' }, ['Cancel']);
       const confirmButton = el('button', { class: 'btn btn-primary', id: 'fwd-confirm', disabled: 'disabled' }, ['Forward']);
       const backdrop = el('div', { class: 'dialog-backdrop', role: 'presentation' }, [
-        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'fwd-title', style: 'width:380px;max-width:92vw' }, [
+        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'fwd-title' }, [
           el('div', { class: 'dialog-title', id: 'fwd-title' }, ['Forward message']),
           el('div', { class: 'dialog-sub' }, ['Choose a chat. The message is sent there as a new message, without a quote of the original.']),
           list,
@@ -38,7 +38,8 @@ export function createForwardDialog({ store, stack, composer }) {
         const peer = stack.shownPeer(conv);
         const row = el('div', { class: 'forward-list-item', dataset: { convId: conv.id } }, [
           avatarFor(peer?.handle ?? '?', 'sm'),
-          el('div', { style: 'flex:1' }, [handleLine(peer?.handle)]),
+          handleLine(peer?.handle),
+          icon('check', 'check'),
         ]);
         row.addEventListener('click', () => {
           list.querySelectorAll('.forward-list-item').forEach((other) => other.classList.remove('selected'));

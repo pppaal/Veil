@@ -6,7 +6,7 @@ import { expiryNow } from '../../core/expiry.js';
 import { matchesSearch, previewMessage } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
 import { previewLabel } from '../../domain/ingest.js';
-import { $, avatarFor, convSkeletons, el } from '../dom.js';
+import { $, avatarFor, el, icon } from '../dom.js';
 import { relativeTime } from '../time.js';
 import { holdTextKey } from './key-change-banner.js';
 
@@ -28,17 +28,16 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
     // Held for the handle it is listed under (src/domain/peer-bindings.js
     // hold): the row says so instead of previewing what it holds.
     const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
-    const avatar = avatarFor(peer?.handle ?? '?', 'md');
-    avatar.appendChild(el('span', { class: 'presence-dot' }));
-    if (peer && state.online.has(peer.userId)) avatar.classList.add('online');
+    const muted = state.muted.has(conv.id);
     let className = 'conv-item';
     if (isActive) className += ' active';
-    if (state.muted.has(conv.id)) className += ' muted';
+    if (muted) className += ' muted';
     return el('button', { class: className, dataset: { convId: conv.id }, onclick: () => navigation.open(conv.id) }, [
-      avatar,
+      avatarFor(peer?.handle ?? '?', 'md'),
       el('div', { class: 'conv-meta' }, [
         el('div', { class: 'conv-row1' }, [
           el('span', { class: 'conv-name' }, ['@' + shownHandle(peer?.handle)]),
+          muted ? icon('bell-off', 'conv-muted') : null,
           time ? el('span', { class: 'conv-time' }, [time]) : null,
         ]),
         el('div', { class: 'conv-preview' }, [hold ? t(holdTextKey(hold, 'sidebar')) : keyChanged ? t('keyChange.sidebar') : preview]),
@@ -51,10 +50,10 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
     const query = ($('search-input').value || '').trim().toLowerCase();
     const filtered = state.conversations.filter((conv) => matchesSearch(conv, query));
     if (filtered.length === 0) {
-      // Until the first /conversations response lands, shimmering rows stand
-      // in: "no conversations" would be untrue for that moment.
+      // Until the first /conversations response lands the list stays empty:
+      // "no conversations" would be untrue for that moment.
       if (!state.conversationsLoaded && !query) {
-        list.replaceChildren(...convSkeletons(4));
+        list.replaceChildren();
         return;
       }
       list.replaceChildren(

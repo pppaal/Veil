@@ -8,5 +8,5 @@
 // browser registers as 'android': wrong in the devices list, but the same
 // for every browser, so it tells the server nothing either.
 
-export const WEB_DEVICE_NAME = 'VEIL Web';
+export const WEB_DEVICE_NAME = 'Veil Web';
 export const WEB_DEVICE_PLATFORM = 'android';

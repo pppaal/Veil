@@ -22,8 +22,8 @@ test.describe('VEIL web demo — auth', () => {
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeHidden();
 
-    // Conn pill flips out of "Connecting…" once the WS upgrades.
-    await expect(page.locator('#conn-pill')).not.toContainText('Connecting', {
+    // The bar's connection text leaves "Connecting…" once the WS upgrades.
+    await expect(page.locator('#conn-status')).not.toContainText('Connecting', {
       timeout: 10_000,
     });
   });

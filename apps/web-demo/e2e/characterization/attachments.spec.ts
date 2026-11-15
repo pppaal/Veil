@@ -37,7 +37,7 @@ test.describe('attachments', () => {
       page.locator('.panel-input .image-btn:not(.file-btn)').click(),
     ]);
     await chooser.setFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG });
-    const preview = page.locator('.image-zoom-backdrop[role="dialog"]');
+    const preview = page.locator('.image-confirm[role="dialog"]');
     await expect(preview).toContainText('Send this image?');
     await expect(preview).toContainText('dot.png, 0 KB');
     await preview.locator('button', { hasText: 'Send' }).click();
@@ -104,7 +104,7 @@ test.describe('attachments', () => {
     await expect(toast(alice, 'Only JPG, PNG and WebP images can be sent')).toBeVisible();
 
     await drop('dropped.png', 'image/png');
-    const preview = page.locator('.image-zoom-backdrop[role="dialog"]');
+    const preview = page.locator('.image-confirm[role="dialog"]');
     await expect(preview).toContainText('dropped.png');
     await preview.locator('button', { hasText: 'Cancel' }).click();
     await expect(preview).toHaveCount(0);

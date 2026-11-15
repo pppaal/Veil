@@ -4,7 +4,7 @@
 // session lasts.
 
 import { highlightRuns, searchMatches, stepMatch } from '../../domain/search.js';
-import { el } from '../dom.js';
+import { el, iconButton } from '../dom.js';
 
 const panelSelector = (convId) => `.panel[data-conv="${convId}"]`;
 const searchInputOf = (convId) => document.querySelector(`${panelSelector(convId)} .panel-search input`);
@@ -78,9 +78,9 @@ export function createPanelSearch({ store }) {
       return el('div', { class: 'panel-search', role: 'search' }, [
         input,
         el('span', { class: 'count' }, [total > 0 ? `${search.idx + 1}/${total}` : (query ? '0/0' : '')]),
-        el('button', { title: 'Previous match (Shift+Enter)', onclick: () => step(true) }, ['↑']),
-        el('button', { title: 'Next match (Enter)', onclick: () => step(false) }, ['↓']),
-        el('button', { title: 'Close (Esc)', onclick: () => close(convId) }, ['✕']),
+        iconButton('chevron-up', 'Previous match', { title: 'Previous match (Shift+Enter)', onclick: () => step(true) }),
+        iconButton('chevron-down', 'Next match', { title: 'Next match (Enter)', onclick: () => step(false) }),
+        iconButton('close', 'Close search', { title: 'Close (Esc)', onclick: () => close(convId) }),
       ]);
     },
 

@@ -182,7 +182,7 @@ test.describe('our own entry listed under a handle this device knows', () => {
     await startChat(alice, bob);
     await send(bob, 'hi alice');
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
-    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    await alice.page.locator('.panel-header button[aria-label="Safety number"]').click();
     const dialog = alice.page.locator('#safety-dialog');
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
@@ -278,7 +278,7 @@ test.describe('another account under a handle this device knows', () => {
     await send(bob, 'hi alice');
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
     // Alice compares the safety number with Bob and marks it verified.
-    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    await alice.page.locator('.panel-header button[aria-label="Safety number"]').click();
     const dialog = alice.page.locator('#safety-dialog');
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
@@ -357,7 +357,7 @@ test.describe('another account under a lookalike of a handle this device knows',
     await startChat(alice, bob);
     await send(bob, 'hi alice');
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
-    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    await alice.page.locator('.panel-header button[aria-label="Safety number"]').click();
     const dialog = alice.page.locator('#safety-dialog');
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);

@@ -6,7 +6,7 @@
 import { t } from '../../../i18n/i18n.js';
 import { shownHandle } from '../../domain/handles.js';
 import { trapFocus } from '../confirm.js';
-import { $, el } from '../dom.js';
+import { $, el, icon } from '../dom.js';
 import { toast } from '../toast.js';
 
 const DIALOG_ID = 'safety-dialog';
@@ -54,19 +54,25 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
       };
       backdrop = el('div', { class: 'dialog-backdrop hidden', id: DIALOG_ID, role: 'presentation' }, [
         el('div', {
-          class: 'dialog',
+          class: 'dialog dialog-wide safety-dialog',
           role: 'dialog',
           'aria-modal': 'true',
           'aria-labelledby': 'safety-title',
-          style: 'width:420px;max-width:92vw',
         }, [
           el('div', { class: 'dialog-title', id: 'safety-title' }, [t('safety.title', { handle: shownHandle(peer.handle) })]),
-          safety.pendingNoteKey ? el('div', { class: 'key-change-text', role: 'alert' }, [t(safety.pendingNoteKey, { handle: shownHandle(peer.handle) })]) : null,
-          safety.remoteKey.verified ? el('div', { class: 'dialog-sub' }, [t('safety.alreadyVerified')]) : null,
-          el('div', { class: 'safety-number', id: 'safety-number' }, [safety.number]),
+          safety.pendingNoteKey
+            ? el('div', { class: 'notice', role: 'alert' }, [
+              icon('warning', 'notice-icon tone-warn'),
+              el('div', { class: 'notice-text' }, [t(safety.pendingNoteKey, { handle: shownHandle(peer.handle) })]),
+            ])
+            : null,
+          safety.remoteKey.verified ? el('div', { class: 'safety-status' }, [t('safety.alreadyVerified')]) : null,
+          // Twelve groups of five, four to a line; the text keeps its spaces.
+          el('div', { class: 'safety-number', id: 'safety-number' },
+            safety.number.split(' ').flatMap((group, index) => [index > 0 ? ' ' : null, el('span', {}, [group])])),
           el('div', { class: 'dialog-sub' }, [t('safety.explain', { handle: shownHandle(peer.handle) })]),
           el('div', { class: 'field-label' }, [t('safety.yourCode')]),
-          el('textarea', { readonly: 'readonly', rows: '3', class: 'safety-code' }, [safety.code]),
+          el('textarea', { readonly: 'readonly', rows: '5', class: 'code-field safety-code', 'aria-label': t('safety.yourCode') }, [safety.code]),
           el('div', { class: 'field-label' }, [t('safety.theirCode')]),
           codeInput,
           result,

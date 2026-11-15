@@ -6,12 +6,13 @@ import { MESSAGE_MAX_CHARS } from '../../domain/composer-text.js';
 import { snippetOf } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
 import { sanitizeFilename } from '../../domain/sanitize.js';
-import { el } from '../dom.js';
+import { el, icon, iconButton } from '../dom.js';
 import { toast } from '../toast.js';
 import { checkImage, confirmImage, IMAGE_ACCEPT, isSendableImageType } from './image-preview.js';
 
 const FILE_MAX_BYTES = 25 * 1024 * 1024;
-const MAX_HEIGHT_PX = 140;
+// Five lines of the box (app.css .panel-input textarea), then it scrolls.
+const MAX_HEIGHT_PX = 116;
 
 const textareaOf = (convId) => document.querySelector(`.panel[data-conv="${convId}"] .panel-input textarea`);
 
@@ -92,24 +93,22 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     const draft = state.replyDrafts.get(convId);
     if (!draft) return null;
     return el('div', { class: 'reply-banner' }, [
-      el('span', { class: 'reply-banner-icon' }, ['↩']),
       el('div', { class: 'reply-banner-body' }, [
         el('div', { class: 'reply-banner-meta' }, ['Reply to @' + shownHandle(draft.sender ?? peerHandle)]),
         el('div', { class: 'reply-banner-snippet' }, [draft.snippet]),
       ]),
-      el('button', {
-        class: 'reply-banner-close',
-        'aria-label': 'Cancel reply',
+      iconButton('close', 'Cancel reply', {
+        class: 'icon-btn reply-banner-close',
         onclick: () => {
           state.replyDrafts.delete(convId);
           store.notify('panels');
         },
-      }, ['×']),
+      }),
     ]);
   }
 
-  function attachButton(className, label, title, glyph, onClick) {
-    return el('button', { class: className, 'aria-label': label, title, onclick: onClick }, [el('span', { 'aria-hidden': 'true' }, [glyph])]);
+  function attachButton(className, iconName, label, title, onClick) {
+    return iconButton(iconName, label, { class: `icon-btn ${className}`, title, onclick: onClick });
   }
 
   return {
@@ -120,14 +119,14 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       textarea.disabled = frozen;
       const draft = state.drafts.get(convId);
       if (draft) textarea.value = draft.slice(0, MESSAGE_MAX_CHARS);
-      const sendButton = el('button', { class: 'send-btn', 'aria-label': 'Send', onclick: () => sendTyped(textarea, convId) }, [
-        el('span', { 'aria-hidden': 'true' }, ['↑']),
+      // Shown only while there is a draft to send (app.css hides it disabled).
+      const sendButton = el('button', { class: 'send-btn', type: 'button', 'aria-label': 'Send', title: 'Send', onclick: () => sendTyped(textarea, convId) }, [
+        el('span', { class: 'send-circle' }, [icon('arrow-up')]),
       ]);
       const voiceButton = voice.button(convId);
       voiceButton.disabled = frozen;
-      // Plain text labels until the restyle brings icons.
-      const fileButton = attachButton('file-btn image-btn', 'Attach a file', 'Attach a file (PDF, video or other)', 'File', () => pickAnyFile(convId));
-      const imageButton = attachButton('image-btn', 'Attach an image', 'Attach an image', 'Image', () => pickFile(IMAGE_ACCEPT, (file) => offerImage(convId, file)));
+      const fileButton = attachButton('file-btn image-btn', 'paperclip', 'Attach a file', 'Attach a file (PDF, video or other)', () => pickAnyFile(convId));
+      const imageButton = attachButton('image-btn', 'image', 'Attach an image', 'Attach an image', () => pickFile(IMAGE_ACCEPT, (file) => offerImage(convId, file)));
 
       // On every input: grow, send typing, keep the draft. maxlength holds
       // typing back, but a paste can still land over the cap at once.
@@ -160,7 +159,8 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
           sendTyped(textarea, convId);
         }
       });
-      sendButton.disabled = true;
+      // A draft carried across a redraw keeps its send button.
+      sendButton.disabled = frozen || textarea.value.trim().length === 0;
 
       const node = el('div', { class: 'panel-input-wrap' }, [
         replyBanner(convId, peerHandle),

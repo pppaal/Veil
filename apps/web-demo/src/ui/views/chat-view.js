@@ -10,7 +10,7 @@ import { isGone, isShown } from '../../domain/ingest.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { muteSecondsFromMinutes } from '../../domain/mute.js';
 import { reactionsByTarget } from '../../domain/reactions.js';
-import { $, avatarFor, el, emptyStateSvg, isNarrowLayout } from '../dom.js';
+import { $, avatarFor, el, icon, iconButton, isNarrowLayout } from '../dom.js';
 import { toast } from '../toast.js';
 import { holdTextKey } from './key-change-banner.js';
 
@@ -79,35 +79,42 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     store.notify('sidebar', 'panels');
   }
 
+  // The bell shows whether the conversation is muted.
+  function showMuted(button, muted) {
+    button.setAttribute('aria-pressed', String(muted));
+    button.replaceChildren(icon(muted ? 'bell-off' : 'bell'));
+  }
+
   // Unmuted, a click asks how long to mute for; muted, it unmutes.
   async function toggleMute(convId, button) {
     if (state.muted.has(convId)) {
       await safety.setMute(convId, null);
-      button.textContent = '🔔';
+      showMuted(button, false);
       return;
     }
     const minutes = window.prompt(t('chat.mutePrompt'), '60');
     if (!minutes) return;
     await safety.setMute(convId, muteSecondsFromMinutes(minutes));
-    button.textContent = '🔕';
+    showMuted(button, true);
   }
 
-  const headerButton = (label, glyph, onclick, title = label) =>
-    el('button', { class: 'icon-btn', 'aria-label': label, title, onclick, style: 'padding: 4px 8px; opacity: 0.7;' }, [glyph]);
-
-  // Typing beats presence beats the conversation id.
+  // Typing beats presence; otherwise the line under the name stays empty.
   function subtitle(conv, peer) {
     if (peer && state.typing.get(conv.id)?.has(peer.userId)) return { text: t('chat.typing'), className: 'sub typing' };
     if (peer && state.online.has(peer.userId)) return { text: t('chat.online'), className: 'sub online' };
-    return { text: t('chat.subtitle', { id: conv.id.slice(0, 8) }), className: 'sub' };
+    return { text: '', className: 'sub' };
   }
 
   // Whether the user compared this conversation's safety number, so that a
   // contact they verified looks different from one under the same handle
   // they did not (src/features/secure-messaging.js safetyKey: false while
-  // a change waits for review).
+  // a change waits for review). A check in the success colour; the word is
+  // there for assistive technology.
   function verifiedBadge(convId) {
-    const badge = el('span', { class: 'verified-badge', title: t('safety.verifiedBadgeTitle') }, [t('safety.verifiedBadge')]);
+    const badge = el('span', { class: 'verified-badge', title: t('safety.verifiedBadgeTitle') }, [
+      icon('check'),
+      el('span', { class: 'sr-only' }, [t('safety.verifiedBadge')]),
+    ]);
     badge.hidden = !verifiedKeys.get(convId);
     stack.secure.safetyKey(convId).then((key) => {
       verifiedKeys.set(convId, Boolean(key?.verified));
@@ -117,23 +124,27 @@ export function createChatView({ store, stack, messages, messageList, composer, 
   }
 
   function header(conv, peer, directPeer, legacyIdentity) {
-    const avatar = avatarFor(peer?.handle ?? '?', 'md');
-    avatar.appendChild(el('span', { class: 'presence-dot' }));
-    if (peer && state.online.has(peer.userId)) avatar.classList.add('online');
     const sub = subtitle(conv, peer);
+    const mute = iconButton('bell', t('chat.muteToggle'), {
+      class: 'icon-btn mute-toggle',
+      onclick: (event) => toggleMute(conv.id, event.currentTarget),
+    });
+    showMuted(mute, state.muted.has(conv.id));
     return el('div', { class: 'panel-header' }, [
-      avatar,
-      el('div', { class: 'panel-title' }, [el('div', { class: 'name' }, ['@' + shownHandle(peer?.handle)]), el('div', { class: sub.className }, [sub.text])]),
-      directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
-      headerButton(t('chat.findShortcut'), '🔍', () => panelSearch.open(conv.id), t('chat.find')),
-      directPeer && !legacyIdentity ? headerButton(t('safety.open'), '🛡', () => safetyDialog.open(conv.id, directPeer)) : null,
-      headerButton(t('history.delete'), '🗑', () => deleteLocalHistory(conv.id)),
-      el('button', {
-        class: 'mute-toggle',
-        'aria-label': t('chat.muteToggle'),
-        title: t('chat.muteToggle'),
-        onclick: (event) => toggleMute(conv.id, event.currentTarget),
-      }, [state.muted.has(conv.id) ? '🔕' : '🔔']),
+      avatarFor(peer?.handle ?? '?', 'sm'),
+      el('div', { class: 'panel-title' }, [
+        el('div', { class: 'panel-title-row' }, [
+          el('div', { class: 'name' }, ['@' + shownHandle(peer?.handle)]),
+          directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
+        ]),
+        el('div', { class: sub.className }, [sub.text]),
+      ]),
+      el('div', { class: 'panel-actions' }, [
+        iconButton('search', t('chat.findShortcut'), { title: t('chat.find'), onclick: () => panelSearch.open(conv.id) }),
+        directPeer && !legacyIdentity ? iconButton('shield', t('safety.open'), { onclick: () => safetyDialog.open(conv.id, directPeer) }) : null,
+        iconButton('trash', t('history.delete'), { onclick: () => deleteLocalHistory(conv.id) }),
+        mute,
+      ]),
     ]);
   }
 
@@ -178,7 +189,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       scrollTop = previous.scrollTop;
       followBottom = previous.scrollHeight - previous.scrollTop - previous.clientHeight <= NEAR_BOTTOM_PX;
     }
-    const list = messageList.render(convId, { shown, reactions, peerHandle: peer?.handle });
+    const list = messageList.render(convId, { shown, reactions, peerHandle: peer?.handle, group: !directPeer });
     list.addEventListener('scroll', () => state.scrollTops.set(convId, list.scrollTop));
     const { node: composerNode, textarea } = composer.render(convId, {
       frozen: legacyIdentity || !directPeer || Boolean(hold),
@@ -210,10 +221,8 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       const panels = $('panels');
       const slots = [state.activeConv, state.splitView ? state.secondaryConv : null].filter(Boolean);
       if (slots.length === 0) {
-        panels.replaceChildren(el('div', { class: 'panel-empty', style: 'display:flex' }, [
-          emptyStateSvg('chat'),
+        panels.replaceChildren(el('div', { class: 'panel-empty' }, [
           el('div', { class: 'empty-title' }, [t('chat.empty.title')]),
-          el('div', { class: 'empty-sub' }, [t('chat.empty.sub')]),
         ]));
       } else {
         panels.replaceChildren(...slots.map(renderPanel).filter(Boolean));

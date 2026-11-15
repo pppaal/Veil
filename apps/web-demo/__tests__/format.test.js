@@ -60,9 +60,9 @@ describe('formatBytes', () => {
     expect(formatBytes(1024 * 1024 * 1024)).toBe('1.00 GB');
   });
 
-  it('returns em-dash on invalid input', () => {
-    expect(formatBytes(NaN)).toBe('—');
-    expect(formatBytes(-1)).toBe('—');
-    expect(formatBytes('not a number')).toBe('—');
+  it('returns an empty string for an unknown size', () => {
+    expect(formatBytes(NaN)).toBe('');
+    expect(formatBytes(-1)).toBe('');
+    expect(formatBytes('not a number')).toBe('');
   });
 });

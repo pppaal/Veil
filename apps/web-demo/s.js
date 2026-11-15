@@ -12,7 +12,7 @@ import {
 
 const API = '/v1';
 const $ = (id) => document.getElementById(id);
-const setVisible = (id, visible) => { $(id).style.display = visible ? 'block' : 'none'; };
+const setVisible = (id, visible) => { $(id).hidden = !visible; };
 
 const fragment = location.hash.slice(1);
 if (fragment) mountViewer(fragment);

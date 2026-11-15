@@ -217,7 +217,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
 
   async function claimNew() {
     const code = $('transfer-new-token').value.trim();
-    const name = $('transfer-new-name').value.trim() || 'VEIL';
+    const name = $('transfer-new-name').value.trim() || WEB_DEVICE_NAME;
     if (!code) {
       setText('transfer-new-error', 'Enter the code');
       return;

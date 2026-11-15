@@ -1,60 +1,45 @@
 // The frame around the conversations: the signed-in identity in the
-// sidebar, the connection pill, the private-beta banner and the banner for
-// an identity from before protocol v2.
+// sidebar, the connection state after the title in the bar (shown only
+// while there is no live connection), and the banner for an identity from
+// before protocol v2.
 
 import { isLegacyIdentity } from '../../crypto/identity.js';
-import { $, avatarFor, el } from '../dom.js';
-
-const BETA_BANNER_HEIGHT_PX = 38;
+import { $, applyThemeClass, avatarFor, el } from '../dom.js';
 
 // preferences: src/app/services/preferences.js.
 export function createAppShell({ store, preferences }) {
   const { state } = store;
+  // The reconnect attempt the socket is backing off from, or null.
+  let retry = null;
+  let status = { kind: 'offline', text: '' };
 
   function renderMe() {
     if (!state.me) return;
     $('sidebar-me').replaceChildren(
       avatarFor(state.me.handle, 'sm'),
-      el('div', {}, [
-        el('div', { style: 'font-weight:600' }, ['@' + state.me.handle]),
-        el('div', { style: 'font-size:11px;color:var(--fg-faint)' }, ['Device ' + state.me.deviceId.slice(0, 8)]),
-      ]),
+      el('div', { class: 'sidebar-me-handle' }, ['@' + state.me.handle]),
     );
   }
 
-  // The CSS variable --banner-h moves the app and auth screen down, so the
-  // banner never covers the composer.
-  function setBetaBannerVisible(show) {
-    const banner = $('beta-banner');
-    if (!banner) return;
-    banner.classList.toggle('hidden', !show);
-    document.documentElement.style.setProperty('--banner-h', show ? BETA_BANNER_HEIGHT_PX + 'px' : '0px');
+  // A live connection says nothing; anything else says what it is.
+  function renderConnection() {
+    const node = $('conn-status');
+    if (!node) return;
+    const connected = status.kind === 'connected';
+    node.className = `conn-status ${status.kind}${connected ? ' hidden' : ''}`;
+    node.textContent = connected ? '' : retry === null ? status.text : `${status.text} (${retry})`;
   }
 
+  // kind: 'connected', 'connecting', 'offline', 'error' or 'disconnected'.
   function setConnection(kind, text) {
-    const pill = $('conn-pill');
-    pill.className = 'topbar-pill ' + kind;
-    pill.textContent = text;
-    pill.classList.remove('is-disconnected', 'is-connecting');
-    if (kind === 'connecting' || kind === 'offline') pill.classList.add('is-connecting');
-    if (kind === 'error' || kind === 'disconnected') pill.classList.add('is-disconnected');
+    status = { kind, text };
+    renderConnection();
   }
 
   return {
     // The saved theme applies before anything renders.
     applyTheme() {
-      if (preferences.lightTheme()) document.documentElement.classList.add('theme-light');
-    },
-
-    // Visible until dismissed, once per device.
-    mountBetaBanner() {
-      const close = $('beta-banner-close');
-      if (!$('beta-banner') || !close) return;
-      setBetaBannerVisible(!preferences.betaBannerDismissed());
-      close.addEventListener('click', () => {
-        setBetaBannerVisible(false);
-        preferences.dismissBetaBanner();
-      });
+      applyThemeClass(preferences.lightTheme());
     },
 
     show() {
@@ -67,30 +52,18 @@ export function createAppShell({ store, preferences }) {
       store.notify('sidebar', 'panels');
     },
 
-    // kind: 'connected', 'connecting', 'offline', 'error' or 'disconnected';
-    // a stuck connection gets a colour as well as the text.
     setConnection,
 
     // Back to the signed-out frame once the session's state is dropped.
     reset() {
+      retry = null;
       setConnection('offline', 'Offline');
       $('app').classList.remove('viewing-chat');
     },
 
-    // The reconnect attempt the socket is backing off from, or null.
     setRetry(attempt) {
-      const pill = $('conn-pill');
-      let badge = pill?.querySelector('.retry-count');
-      if (attempt === null) {
-        badge?.remove();
-        return;
-      }
-      if (!pill) return;
-      if (!badge) {
-        badge = el('span', { class: 'retry-count' });
-        pill.appendChild(badge);
-      }
-      badge.textContent = `(${attempt})`;
+      retry = attempt;
+      renderConnection();
     },
   };
 }

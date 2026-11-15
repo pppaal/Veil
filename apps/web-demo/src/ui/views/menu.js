@@ -16,7 +16,8 @@ export function createMenu({ actions }) {
       document.addEventListener('click', () => menu.classList.add('hidden'));
       menu.addEventListener('click', (event) => {
         event.stopPropagation();
-        const action = event.target?.dataset?.action;
+        // The click may land on an item's icon or label.
+        const action = event.target?.closest?.('[data-action]')?.dataset?.action;
         if (!action) return;
         menu.classList.add('hidden');
         actions[action]?.();

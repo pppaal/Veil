@@ -2,7 +2,7 @@
 // MediaRecorder gives opus/webm at the lowest bitrate the browser offers,
 // and the recording goes out as an encrypted attachment like a file.
 
-import { el } from '../dom.js';
+import { el, icon } from '../dom.js';
 import { toast } from '../toast.js';
 
 const MAX_RECORDING_MS = 30_000;
@@ -108,7 +108,8 @@ export function createVoiceRecorder({ attachments }) {
     // The mic button of a conversation's composer.
     button(convId) {
       const button = el('button', {
-        class: 'voice-btn',
+        type: 'button',
+        class: 'icon-btn voice-btn',
         'aria-label': 'Voice message',
         title: 'Hold to record',
         onmousedown: (event) => {
@@ -122,7 +123,7 @@ export function createVoiceRecorder({ attachments }) {
           start(convId, button);
         },
         ontouchend: stop,
-      }, [el('span', { 'aria-hidden': 'true' }, ['Voice'])]);
+      }, [icon('mic')]);
       return button;
     },
   };

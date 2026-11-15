@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DELIVERY_GLYPHS, DELIVERY_LABELS, deliveryStatus, groupMessages, GROUP_GAP_MS, sentAt } from '../src/domain/message-groups.js';
+import { DELIVERY_LABELS, deliveryStatus, groupMessages, GROUP_GAP_MS, sentAt } from '../src/domain/message-groups.js';
 
 const me = { deviceId: 'd-me', handle: 'alice' };
 const at = (minutes) => new Date(Date.UTC(2026, 0, 1, 10, minutes)).toISOString();
@@ -47,12 +47,11 @@ describe('deliveryStatus', () => {
     expect(deliveryStatus({})).toBe('sent');
   });
 
-  it('has a glyph and a label for every state', () => {
+  it('has a label for every state', () => {
     for (const status of ['pending', 'failed', 'read', 'delivered', 'sent']) {
-      expect(DELIVERY_GLYPHS[status]).toBeTruthy();
       expect(DELIVERY_LABELS[status]).toBeTruthy();
     }
     expect(DELIVERY_LABELS.read).toBe('Read');
-    expect(DELIVERY_GLYPHS.sent).toBe('✓');
+    expect(DELIVERY_LABELS.sent).toBe('Sent');
   });
 });

@@ -184,7 +184,7 @@ test.describe('our own entry listed under a handle this device knows', () => {
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
     await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
     const dialog = alice.page.locator('#safety-dialog');
-    await dialog.locator('button', { hasText: '확인됨으로 표시' }).click();
+    await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
   });
 
@@ -240,7 +240,7 @@ test.describe('our own entry listed under a handle this device knows', () => {
     await startChatWithAlice(trudy, 'bob again, other phone');
     const rows = page.locator('.conv-item', { hasText: `@${bob.handle}` });
     await expect(rows).toHaveCount(2, { timeout: 15_000 });
-    const held = rows.filter({ hasText: '⚠️ 같은 이름, 다른 계정' });
+    const held = rows.filter({ hasText: 'Different account, same name' });
     await expect(held).toHaveCount(1);
     await held.click();
     await expect(page.locator('.account-conflict-banner')).toBeVisible();
@@ -252,7 +252,7 @@ test.describe('our own entry listed under a handle this device knows', () => {
     await reload(alice);
     await expect(page.locator('.conv-item', { hasText: `@${mallory.handle}` })).toHaveCount(1, { timeout: 15_000 });
     await expect(page.locator('.conv-item', { hasText: `@${bob.handle}` })).toHaveCount(2);
-    await expect(page.locator('.conv-item', { hasText: '⚠️ 같은 이름, 다른 계정' })).toHaveCount(1);
+    await expect(page.locator('.conv-item', { hasText: 'Different account, same name' })).toHaveCount(1);
 
     // The real Bob's conversation still shows him as verified.
     await page.locator('.conv-item', { hasText: 'hi alice' }).click();
@@ -280,7 +280,7 @@ test.describe('another account under a handle this device knows', () => {
     // Alice compares the safety number with Bob and marks it verified.
     await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
     const dialog = alice.page.locator('#safety-dialog');
-    await dialog.locator('button', { hasText: '확인됨으로 표시' }).click();
+    await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
   });
 
@@ -291,7 +291,7 @@ test.describe('another account under a handle this device knows', () => {
   test('is held until the user chooses to talk to it, and never looks verified', async () => {
     const { page } = alice;
     await expect(page.locator('.panel-header .verified-badge')).toBeVisible();
-    await expect(page.locator('.panel-header .verified-badge')).toHaveText('✓ 확인됨');
+    await expect(page.locator('.panel-header .verified-badge')).toHaveText('Verified');
 
     // The relay lists Mallory's new conversation with Alice under Bob's handle.
     await rewriteList(page, (items) => {
@@ -307,29 +307,29 @@ test.describe('another account under a handle this device knows', () => {
 
     const rows = page.locator('.conv-item', { hasText: `@${bob.handle}` });
     await expect(rows).toHaveCount(2, { timeout: 15_000 });
-    const lookalike = rows.filter({ hasText: '⚠️ 같은 이름, 다른 계정' });
+    const lookalike = rows.filter({ hasText: 'Different account, same name' });
     await expect(lookalike).toHaveCount(1);
     await lookalike.click();
     const banner = page.locator('.account-conflict-banner');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `이 @${bob.handle} 은(는) 전에 대화한 @${bob.handle} 와(과) 다른 계정이에요. 그 사람인 척하는 누군가일 수 있어요: 이 계정과 대화하기로 하기 전까지 여기서는 아무것도 열거나 보내지 않아요.`,
+      `This @${bob.handle} is a different account from the @${bob.handle} you talked with before. It may be someone posing as them: nothing is opened or sent here until you choose to talk to this account.`,
     );
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
 
     // A reload changes nothing.
     await reload(alice);
-    await page.locator('.conv-item', { hasText: '⚠️ 같은 이름, 다른 계정' }).click();
+    await page.locator('.conv-item', { hasText: 'Different account, same name' }).click();
     await expect(page.locator('.account-conflict-banner')).toBeVisible();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
 
     // Chosen as a different account after a confirmation, it is a first
     // contact like any other, still unverified.
     await page.locator('.account-conflict-banner button').click();
-    await expect(page.locator('#confirm-title')).toHaveText(`다른 @${bob.handle} 계정과 대화할까요?`);
+    await expect(page.locator('#confirm-title')).toHaveText(`Talk to this other @${bob.handle}?`);
     await page.click('#confirm-ok');
     await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(1, { timeout: 15_000 });
@@ -359,7 +359,7 @@ test.describe('another account under a lookalike of a handle this device knows',
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
     await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
     const dialog = alice.page.locator('#safety-dialog');
-    await dialog.locator('button', { hasText: '확인됨으로 표시' }).click();
+    await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
   });
 
@@ -383,29 +383,29 @@ test.describe('another account under a lookalike of a handle this device knows',
     await send(mallory, 'bob here, new phone, send the code');
 
     const shown = `@${bob.handle}[U+200B]`;
-    const lookalike = page.locator('.conv-item', { hasText: '⚠️ VEIL이 발급하지 않는 이름' });
+    const lookalike = page.locator('.conv-item', { hasText: 'Name not issued by Veil' });
     await expect(lookalike).toHaveCount(1, { timeout: 15_000 });
     await expect(lookalike.locator('.conv-name')).toHaveText(shown);
     await lookalike.click();
     await expect(page.locator('.panel .panel-title .name')).toHaveText(shown);
     const banner = page.locator('.account-conflict-banner.unissued-handle');
     await expect(banner).toBeVisible();
-    await expect(banner.locator('.key-change-text')).toContainText(`${shown} 은(는) VEIL이 발급하지 않는 이름이에요`);
+    await expect(banner.locator('.key-change-text')).toContainText(`${shown} is not a name Veil gives out`);
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
 
     // A reload changes nothing.
     await reload(alice);
-    await page.locator('.conv-item', { hasText: '⚠️ VEIL이 발급하지 않는 이름' }).click();
+    await page.locator('.conv-item', { hasText: 'Name not issued by Veil' }).click();
     await expect(page.locator('.account-conflict-banner.unissued-handle')).toBeVisible();
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(0);
 
     // Chosen as a different account after a confirmation, it is a first
     // contact like any other, still unverified and still shown for what it is.
     await page.locator('.account-conflict-banner button').click();
-    await expect(page.locator('#confirm-title')).toHaveText(`${shown} 와(과) 대화할까요?`);
+    await expect(page.locator('#confirm-title')).toHaveText(`Talk to ${shown}?`);
     await page.click('#confirm-ok');
     await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(1, { timeout: 15_000 });
@@ -454,30 +454,30 @@ test.describe('another account under our own handle', () => {
     await expect(mallory.page.locator('.panel .panel-title .name')).toHaveText(`@${alice.handle}`);
     await send(mallory, 'it is me, from my other phone');
 
-    const held = page.locator('.conv-item', { hasText: '⚠️ 내 이름을 단 다른 계정' });
+    const held = page.locator('.conv-item', { hasText: 'Another account using your name' });
     await expect(held).toHaveCount(1, { timeout: 15_000 });
     await expect(held.locator('.conv-name')).toHaveText(`@${alice.handle}`);
     await held.click();
     const banner = page.locator('.account-conflict-banner.own-handle');
     await expect(banner).toBeVisible();
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `이 대화는 내 이름 @${alice.handle} (으)로 표시되지만 다른 계정이에요. 다른 사람은 내 이름을 가질 수 없어요: 이 기기가 받은 목록이 바뀐 것이고, 누군가를 나처럼 보이게 하려는 것일 수 있어요. 이 계정과 대화하기로 하기 전까지 여기서는 아무것도 열거나 보내지 않아요.`,
+      `This conversation is listed under your own name, @${alice.handle}, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is opened or sent here until you choose to talk to this account.`,
     );
     await expect(page.locator('.panel-input textarea')).toBeDisabled();
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
 
     // A reload changes nothing.
     await reload(alice);
-    await page.locator('.conv-item', { hasText: '⚠️ 내 이름을 단 다른 계정' }).click();
+    await page.locator('.conv-item', { hasText: 'Another account using your name' }).click();
     await expect(page.locator('.account-conflict-banner.own-handle')).toBeVisible();
     await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(0);
 
     // Chosen as a different account after a confirmation, it is a first
     // contact like any other, still unverified.
     await page.locator('.account-conflict-banner button').click();
-    await expect(page.locator('#confirm-title')).toHaveText(`다른 @${alice.handle} 계정과 대화할까요?`);
+    await expect(page.locator('#confirm-title')).toHaveText(`Talk to this other @${alice.handle}?`);
     await page.click('#confirm-ok');
     await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
     await expect(rowOf(alice, 'it is me, from my other phone')).toHaveCount(1, { timeout: 15_000 });

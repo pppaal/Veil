@@ -43,7 +43,7 @@ test.describe('a send the relay does not take at once', () => {
     await expect(page.locator('.msg-group.me .msg-status.failed')).toHaveCount(1);
     await expect(toast(alice, 'refused once')).toBeVisible();
 
-    await page.locator('.msg-group.me .msg-action', { hasText: '다시 보내기' }).click();
+    await page.locator('.msg-group.me .msg-action', { hasText: 'Send again' }).click();
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['first', 'refused, then retried']);
     await expect(failed).toHaveCount(1);
     await expect(page.locator('.msg-group.me .msg-status.failed')).toHaveCount(0);

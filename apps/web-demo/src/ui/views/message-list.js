@@ -59,7 +59,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
     const { media } = message;
     if (!media) return;
     try {
-      toast(`다운로드 중: ${media.name}…`);
+      toast(t('media.downloading', { name: media.name }));
       const url = URL.createObjectURL(await media.materialize());
       const anchor = el('a', { href: url, download: media.name });
       document.body.appendChild(anchor);
@@ -67,7 +67,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error) {
-      toast('다운로드 실패: ' + (error.message || 'unknown'), 'error');
+      toast(t('media.downloadFailed', { error: error.message || 'unknown' }), 'error');
     }
   }
 
@@ -84,7 +84,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
         },
       });
     }
-    if (message._mediaFailed) return '🖼 이미지 (불러오기 실패)';
+    if (message._mediaFailed) return t('media.imageFailed');
     if (message.media) ensureMediaUrl(message, '_imageUrl');
     return el('span', { class: 'image-uploading' }, [KIND_LABELS.image]);
   }
@@ -105,7 +105,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
   // File names are sender-controlled: the sanitized name and the real
   // extension show separately.
   function fileChip(message) {
-    const name = message.media?.name ?? message._localFile?.name ?? '파일';
+    const name = message.media?.name ?? message._localFile?.name ?? t('media.file');
     const sizeBytes = message.media?.sizeBytes ?? message._localFile?.sizeBytes ?? 0;
     const extension = message.media?.extension ?? fileExtension(name);
     return el('button', {
@@ -121,7 +121,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
         el('div', { class: 'msg-file-chip-name' }, [name]),
         el('div', { class: 'msg-file-chip-size' }, [
           extension ? el('span', { class: 'msg-file-chip-ext' }, ['.' + extension]) : null,
-          `${formatBytes(sizeBytes)} · 클릭해서 다운로드`,
+          t('media.clickToDownload', { size: formatBytes(sizeBytes) }),
         ]),
       ]),
     ]);
@@ -153,7 +153,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
     if (tally.size === 0) return null;
     return el('div', { class: 'msg-reactions' }, [...tally].map(([emoji, entry]) => el('span', {
       class: 'msg-reaction-chip' + (entry.mine ? ' mine' : ''),
-      title: entry.mine ? '내 반응 — 클릭해서 취소' : '같이 반응하기',
+      title: t(entry.mine ? 'reaction.mineTitle' : 'reaction.joinTitle'),
       onclick: (event) => {
         event.stopPropagation();
         send.react(message.id, emoji);
@@ -165,7 +165,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
     const target = shown.find((message) => message.id === replyToId);
     return el('div', { class: 'msg-reply-head' }, [
       el('span', { class: 'msg-reply-icon' }, ['↩']),
-      el('span', { class: 'msg-reply-snippet' }, [target ? snippetOf(target, 80) : '이전 메시지']),
+      el('span', { class: 'msg-reply-snippet' }, [target ? snippetOf(target, 80) : t('msg.reply.earlier')]),
     ]);
   }
 
@@ -178,8 +178,8 @@ export function createMessageList({ store, send, outbox, startReply }) {
     if (message.deletedAt) classes.push('msg-deleted-bubble');
     const replyButton = isPendingId(message.id) ? null : el('button', {
       class: 'msg-reply-btn',
-      'aria-label': '답장',
-      title: '답장',
+      'aria-label': t('msg.action.reply'),
+      title: t('msg.action.reply'),
       onclick: (event) => {
         event.stopPropagation();
         startReply(convId, message);
@@ -188,7 +188,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
     const bubble = el('div', { class: classes.join(' ') }, [
       message.replyTo ? replyHead(message.replyTo, shown) : null,
       el('span', { class: 'msg-text' }, [body(message)]),
-      message.editedAt ? el('span', { class: 'msg-edited', style: 'opacity:0.55;font-size:11px;margin-left:6px' }, ['(수정됨)']) : null,
+      message.editedAt ? el('span', { class: 'msg-edited', style: 'opacity:0.55;font-size:11px;margin-left:6px' }, [t('msg.edited')]) : null,
       // Read from a retired format: the bubble itself says so.
       message.legacy ? el('span', { class: 'msg-legacy-badge', title: t('legacy.badge') }, [t('legacy.badge')]) : null,
     ]);
@@ -210,9 +210,9 @@ export function createMessageList({ store, send, outbox, startReply }) {
     if (status === 'failed') {
       children.push(
         ' · ',
-        el('button', { class: 'msg-action', title: '다시 보내기', onclick: () => outbox.retry(convId, last.clientMessageId) }, ['다시 보내기']),
+        el('button', { class: 'msg-action', title: t('msg.sendAgain'), onclick: () => outbox.retry(convId, last.clientMessageId) }, [t('msg.sendAgain')]),
         ' · ',
-        el('button', { class: 'msg-action danger', title: '취소', onclick: () => outbox.cancel(convId, last.clientMessageId) }, ['취소']),
+        el('button', { class: 'msg-action danger', title: t('common.cancel'), onclick: () => outbox.cancel(convId, last.clientMessageId) }, [t('common.cancel')]),
       );
     }
     return el('div', { class: 'msg-time' }, children);
@@ -246,8 +246,8 @@ export function createMessageList({ store, send, outbox, startReply }) {
     if (shown.length === 0) {
       list.appendChild(el('div', { class: 'panel-empty', style: 'display:flex; flex:1' }, [
         emptyStateSvg('wave'),
-        el('div', { class: 'empty-title' }, ['첫 메시지를 보내보세요']),
-        el('div', { class: 'empty-sub' }, ['이 대화의 메시지는 두 사람 외에는 아무도 못 봐요']),
+        el('div', { class: 'empty-title' }, [t('msg.empty.title')]),
+        el('div', { class: 'empty-sub' }, [t('msg.empty.sub')]),
       ]));
     }
     return list;

@@ -32,7 +32,7 @@ function inMemoryMessage() {
     reactions: [{ userId: 'u', emoji: '🔥' }],
     attachment: { attachmentId: 'a-1', encryption: { nonce: 'n' } },
     kind: 'image',
-    displayText: '🖼 이미지',
+    displayText: 'Image',
     replyTo: 'm-0',
     media: { kind: 'image', attachmentId: 'a-1' },
     _plaintext: '{"kind":"image","key":"SECRET"}',

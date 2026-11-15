@@ -34,11 +34,11 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
     const entry = undoable.get(messageId);
     undoable.delete(messageId);
     if (!entry || Date.now() > entry.expiresAt) {
-      toast('되돌리기 시간 초과', 'error');
+      toast('Too late to undo', 'error');
       return;
     }
     composer.restoreText(entry.convId, entry.text).then((inComposer) => {
-      if (inComposer) toast('입력창에 복원했어요. Enter 로 다시 전송', 'good');
+      if (inComposer) toast('Put back in the message box. Press Enter to send it again', 'good');
     });
   }
 
@@ -46,25 +46,25 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
   // undo puts the text back in the composer to be sent as a new message.
   async function remove(message) {
     const ok = await confirm({
-      title: '메시지 삭제',
-      body: '이 메시지를 삭제합니다. 상대방 화면에서도 삭제 표시로 바뀌어요.',
-      okLabel: '삭제',
+      title: 'Delete message',
+      body: 'This deletes the message for both of you. They will see that it was deleted.',
+      okLabel: 'Delete',
       destructive: true,
     });
     if (!ok) return;
     const captured = await send.deleteMessage(message.id);
     if (!captured || captured.text === '') return;
     undoable.set(message.id, { ...captured, expiresAt: Date.now() + UNDO_MS });
-    actionToast('메시지 삭제됨', '되돌리기', () => restore(message.id), UNDO_MS);
+    actionToast('Message deleted', 'Undo', () => restore(message.id), UNDO_MS);
     setTimeout(() => undoable.delete(message.id), UNDO_MS + 500);
   }
 
   function edit(message, convId) {
     if (!isTextKind(message.kind)) {
-      toast('이 메시지는 수정할 수 없어요', 'error');
+      toast("This message can't be edited", 'error');
       return;
     }
-    const fresh = window.prompt('메시지 수정', message.displayText);
+    const fresh = window.prompt('Edit message', message.displayText);
     if (fresh == null) return;
     const trimmed = fresh.trim();
     if (!trimmed || trimmed === message.displayText) return;
@@ -74,9 +74,9 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
   async function copy(message) {
     try {
       await navigator.clipboard.writeText(message.displayText);
-      toast('복사됨', 'good');
+      toast('Copied', 'good');
     } catch {
-      toast('클립보드 접근 실패', 'error');
+      toast('Could not access the clipboard', 'error');
     }
   }
 
@@ -103,7 +103,7 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
     const peer = senderToReport(store.conversation(convId), message, state.me);
     const node = el('div', { class: 'msg-action-menu' }, [
       el('div', { class: 'msg-action-row' }, QUICK_REACTIONS.map((emoji) => el('button', {
-        title: '반응 추가',
+        title: 'React',
         onclick: (event) => {
           event.stopPropagation();
           send.react(message.id, emoji);
@@ -111,22 +111,22 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
         },
       }, [emoji]))),
       divider(),
-      item('↩  답장', () => composer.startReply(convId, message)),
-      isTextKind(message.kind) ? item('📋  복사', () => copy(message)) : null,
+      item('Reply', () => composer.startReply(convId, message)),
+      isTextKind(message.kind) ? item('Copy', () => copy(message)) : null,
       ...(isMine && !isPendingId(message.id)
         ? [
-          item('✏️  수정', () => edit(message, convId)),
-          item('🗑  삭제', () => remove(message), { className: 'msg-action-item danger', opensDialog: true }),
+          item('Edit', () => edit(message, convId)),
+          item('Delete', () => remove(message), { className: 'msg-action-item danger', opensDialog: true }),
         ]
         : []),
-      item('🔁  전달', () => forwardDialog.open(message), { opensDialog: true }),
+      item('Forward', () => forwardDialog.open(message), { opensDialog: true }),
       // Only a message whose sender is known gets these: never our own, and
       // none in a group, where a sender's device names no member here.
       ...(peer
         ? [
           divider(),
-          item('🚫  차단', () => block(peer), { className: 'msg-action-item danger', opensDialog: true }),
-          item('🚨  신고', () => reportDialog.open(convId, message.id, peer), { opensDialog: true }),
+          item('Block', () => block(peer), { className: 'msg-action-item danger', opensDialog: true }),
+          item('Report', () => reportDialog.open(convId, message.id, peer), { opensDialog: true }),
         ]
         : []),
     ]);
@@ -138,9 +138,9 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
 
   async function block(peer) {
     const ok = await confirm({
-      title: '@' + shownHandle(peer.handle) + ' 차단',
-      body: '이 사용자가 보낸 메시지가 더 이상 도착하지 않고, 이 사용자가 보낸 새 채팅도 시작할 수 없게 됩니다. 언제든지 설정에서 해제할 수 있어요.',
-      okLabel: '차단',
+      title: 'Block @' + shownHandle(peer.handle),
+      body: "You will no longer receive their messages, and they can't start a new chat with you. You can unblock them in Settings at any time.",
+      okLabel: 'Block',
       destructive: true,
     });
     if (ok) await safety.block(peer.userId, shownHandle(peer.handle));

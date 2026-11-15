@@ -38,7 +38,7 @@ describe('legacy payload decoder', () => {
     expect(image.media).toEqual({ kind: 'image', attachmentId: ATTACHMENT_ID, key: KEY, nonce: NONCE });
 
     const file = decodePayload(WIRE.file);
-    expect(file).toMatchObject({ kind: 'file', displayText: '📁 report.pdf' });
+    expect(file).toMatchObject({ kind: 'file', displayText: 'File: report.pdf' });
     expect(file.media).toEqual({
       kind: 'file',
       attachmentId: ATTACHMENT_ID,
@@ -106,7 +106,7 @@ describe('legacy payload decoder', () => {
 
   it('sanitizes file names before they reach displayText', () => {
     const decoded = decodePayload(JSON.stringify({ ...JSON.parse(WIRE.file), name: 'invoice‮fdp.exe' }));
-    expect(decoded.displayText).toBe('📁 invoicefdp.exe');
+    expect(decoded.displayText).toBe('File: invoicefdp.exe');
     expect(decoded.media.name).toBe('invoicefdp.exe');
   });
 

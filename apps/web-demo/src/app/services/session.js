@@ -118,7 +118,7 @@ export function createSession({ store, stack, messages, history, realtime, archi
       const stored = await sessionStore.load();
       if (!stored) return false;
       if (!stored.edPrivKey || !(stored.ik || stored.xPrivKey)) {
-        throw new Error('이 브라우저의 세션은 새 암호화 형식과 호환되지 않아요. 다시 등록해주세요.');
+        throw new Error(t('session.incompatible'));
       }
       await apiClient.login(await sessionStore.getDeviceCredentials());
       await enterApp();
@@ -139,7 +139,7 @@ export function createSession({ store, stack, messages, history, realtime, archi
       try {
         await purgeLocalIdentity();
       } catch (error) {
-        ui.toast('일부 데이터를 지우지 못했어요: ' + error.message, 'error');
+        ui.toast(t('session.wipePartial', { error: error.message }), 'error');
       }
       await ui.showAuth();
     },

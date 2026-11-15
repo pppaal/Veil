@@ -13,21 +13,21 @@ export function createForwardDialog({ store, stack, composer }) {
   return {
     open(message) {
       if (!isTextKind(message.kind) || message.displayText === '') {
-        toast('전달할 내용이 없어요', 'error');
+        toast('Nothing to forward', 'error');
         return;
       }
       const others = state.conversations.filter((conv) => conv.id !== message.conversationId);
       if (others.length === 0) {
-        toast('전달할 다른 대화가 없어요');
+        toast('No other chat to forward to');
         return;
       }
       const list = el('div', { class: 'forward-list' });
-      const cancelButton = el('button', { class: 'btn btn-ghost', id: 'fwd-cancel' }, ['취소']);
-      const confirmButton = el('button', { class: 'btn btn-primary', id: 'fwd-confirm', disabled: 'disabled' }, ['전달']);
+      const cancelButton = el('button', { class: 'btn btn-ghost', id: 'fwd-cancel' }, ['Cancel']);
+      const confirmButton = el('button', { class: 'btn btn-primary', id: 'fwd-confirm', disabled: 'disabled' }, ['Forward']);
       const backdrop = el('div', { class: 'dialog-backdrop', role: 'presentation' }, [
         el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'fwd-title', style: 'width:380px;max-width:92vw' }, [
-          el('div', { class: 'dialog-title', id: 'fwd-title' }, ['메시지 전달']),
-          el('div', { class: 'dialog-sub' }, ['전달할 대화를 고르세요. 원본 인용 없이 새 메시지로 보내져요.']),
+          el('div', { class: 'dialog-title', id: 'fwd-title' }, ['Forward message']),
+          el('div', { class: 'dialog-sub' }, ['Choose a chat. The message is sent there as a new message, without a quote of the original.']),
           list,
           el('div', { class: 'dialog-actions' }, [cancelButton, confirmButton]),
         ]),
@@ -57,7 +57,7 @@ export function createForwardDialog({ store, stack, composer }) {
         if (!selected) return;
         close();
         await composer.sendText(selected, message.displayText);
-        toast('전달했습니다', 'good');
+        toast('Forwarded', 'good');
       });
     },
   };

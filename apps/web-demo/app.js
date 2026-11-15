@@ -56,8 +56,8 @@ import { createTabs } from './src/ui/views/tabs.js';
 import { createTransferDialogs } from './src/ui/views/transfer-dialogs.js';
 import { createVoiceRecorder } from './src/ui/views/voice-recorder.js';
 
-// Translations load before anything renders, so the static strings in the
-// page are rewritten before the user sees them.
+// The strings load before anything renders, so the static page and the
+// dictionary say the same thing before the user sees it.
 await initI18n();
 
 const preferences = createPreferences();

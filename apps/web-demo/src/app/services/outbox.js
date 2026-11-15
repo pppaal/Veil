@@ -88,7 +88,7 @@ export function createOutbox({ store, stack, messages, toast }) {
           // The bubble keeps the sealed envelope, in memory only, for Retry.
           const index = findOwn(item.conversationId, item.clientMessageId);
           if (index >= 0) Object.assign(store.messagesOf(item.conversationId)[index], { _status: 'failed', _envelope: item.envelope });
-          toast('전송 실패: ' + error.message, 'error');
+          toast('Not sent: ' + error.message, 'error');
           store.notify('panels');
         }
       }
@@ -110,7 +110,7 @@ export function createOutbox({ store, stack, messages, toast }) {
       const queued = await stack.idb.get('outbound', clientMessageId);
       const envelope = queued?.envelope ?? message._envelope;
       if (!envelope) {
-        toast('다시 보낼 내용이 없어요. 새로 보내주세요.', 'error');
+        toast('There is nothing to send again. Send it as a new message.', 'error');
         return;
       }
       await stack.identityDb.put('outbound', queued
@@ -134,7 +134,7 @@ export function createOutbox({ store, stack, messages, toast }) {
         await stack.identityDb.delete('outbound', clientMessageId);
       } catch {}
       store.notify('panels');
-      toast('전송 취소됨');
+      toast('Send cancelled');
     },
   };
 }

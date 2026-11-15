@@ -38,9 +38,9 @@ test.describe('attachments', () => {
     ]);
     await chooser.setFiles({ name: 'dot.png', mimeType: 'image/png', buffer: PNG });
     const preview = page.locator('.image-zoom-backdrop[role="dialog"]');
-    await expect(preview).toContainText('이미지 전송 확인');
-    await expect(preview).toContainText(`dot.png · 0 KB`);
-    await preview.locator('button', { hasText: '전송' }).click();
+    await expect(preview).toContainText('Send this image?');
+    await expect(preview).toContainText('dot.png, 0 KB');
+    await preview.locator('button', { hasText: 'Send' }).click();
     await expect(preview).toHaveCount(0);
 
     const own = page.locator('.msg-row.me img.msg-inline-image');
@@ -50,7 +50,7 @@ test.describe('attachments', () => {
     const received = bob.page.locator('.msg-row.them img.msg-inline-image');
     await expect(received).toHaveAttribute('src', /^blob:/, { timeout: 15_000 });
     await expect.poll(() => received.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(1);
-    await expect(bob.page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('🖼 이미지');
+    await expect(bob.page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('Image');
 
     await received.click();
     const zoom = bob.page.locator('.image-zoom-backdrop:not([role]) img');
@@ -69,13 +69,13 @@ test.describe('attachments', () => {
     await chooser.setFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from(NOTES) });
     const own = page.locator('.msg-row.me .msg-file-chip');
     await expect(own.locator('.msg-file-chip-name')).toHaveText('notes.txt');
-    await expect(own.locator('.msg-file-chip-size')).toHaveText(`.txt${NOTES.length} B · 클릭해서 다운로드`);
+    await expect(own.locator('.msg-file-chip-size')).toHaveText(`.txt${NOTES.length} B, click to download`);
     await expect(page.locator('.msg-row.me .msg.pending')).toHaveCount(0, { timeout: 10_000 });
 
     const chip = bob.page.locator('.msg-row.them .msg-file-chip');
     await expect(chip.locator('.msg-file-chip-name')).toHaveText('notes.txt', { timeout: 15_000 });
     const [download] = await Promise.all([bob.page.waitForEvent('download'), chip.click()]);
-    await expect(toast(bob, '다운로드 중: notes.txt…')).toBeVisible();
+    await expect(toast(bob, 'Downloading notes.txt…')).toBeVisible();
     expect(download.suggestedFilename()).toBe('notes.txt');
     const stream = await download.createReadStream();
     const chunks: Buffer[] = [];
@@ -101,12 +101,12 @@ test.describe('attachments', () => {
       );
 
     expect(await drop('dot.gif', 'image/gif')).toEqual({ marked: true, after: false });
-    await expect(toast(alice, 'JPG / PNG / WebP 만 지원해요')).toBeVisible();
+    await expect(toast(alice, 'Only JPG, PNG and WebP images can be sent')).toBeVisible();
 
     await drop('dropped.png', 'image/png');
     const preview = page.locator('.image-zoom-backdrop[role="dialog"]');
     await expect(preview).toContainText('dropped.png');
-    await preview.locator('button', { hasText: '취소' }).click();
+    await preview.locator('button', { hasText: 'Cancel' }).click();
     await expect(preview).toHaveCount(0);
 
     await drop('dropped.png', 'image/png');

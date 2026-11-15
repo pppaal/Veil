@@ -128,7 +128,7 @@ describe('web policy', () => {
     const shipped = [
       "edPrivJwk: await crypto.subtle.exportKey('jwk', keys.edPrivKey),",
       "const x = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);",
-      "    _plaintext: '🖼 이미지',",
+      "    _plaintext: 'Image',",
       'cap.innerHTML = renderMessageInline(text);',
       'node.insertAdjacentHTML("beforeend", html);',
       'globalThis.__veil = state;',

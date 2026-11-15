@@ -20,8 +20,8 @@ export class ApiError extends Error {
 export class AuthError extends Error {
   constructor(reason) {
     super(reason === 'session_rejected'
-      ? '서버가 이 기기의 세션을 거부했어요'
-      : '로그인되어 있지 않아요');
+      ? 'Could not connect to this account'
+      : 'Not signed in');
     this.name = 'AuthError';
     this.reason = reason;
   }

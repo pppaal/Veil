@@ -45,7 +45,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
   async function sendContent(conv, unsealed, {
     clientMessageId = newClientMessageId(),
     attachmentId = null,
-    failureLabel = '전송 실패',
+    failureLabel = t('send.failed'),
     local = null,
     onSealed = () => {},
   } = {}) {
@@ -91,7 +91,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
       return null;
     }
     if (delivered.queued) {
-      if (!delivered.sessionEnded) toast('연결 안 됨 — 큐잉 후 자동 재시도합니다');
+      if (!delivered.sessionEnded) toast(t('send.queued'));
       return null;
     }
     const view = await messages.ingest(delivered.message, { previous: optimistic });
@@ -114,7 +114,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
     async sendText(convId, text, { onSealed = () => {} } = {}) {
       if (!text || !convId) return;
       if (text.length > MESSAGE_MAX_CHARS) {
-        toast(`메시지가 너무 길어요 (최대 ${MESSAGE_MAX_CHARS.toLocaleString()}자)`, 'error');
+        toast(t('send.tooLong', { max: MESSAGE_MAX_CHARS.toLocaleString() }), 'error');
         return;
       }
       const conv = store.conversation(convId);
@@ -156,7 +156,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
         messages.persistMessage(view);
         store.notify('panels');
       } catch (error) {
-        reportFailure('반응 실패', error);
+        reportFailure(t('send.reactionFailed'), error);
       }
     },
 
@@ -179,7 +179,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
         });
         await messages.reingestInPlace(message.id, edited, { content, editCount: (message.editCount || 0) + 1 });
       } catch (error) {
-        reportFailure('수정 실패', error);
+        reportFailure(t('send.editFailed'), error);
       }
     },
 
@@ -194,7 +194,7 @@ export function createSend({ store, stack, messages, realtime, onSent, toast }) 
       try {
         await stack.authedApi(`/messages/${messageId}`, { method: 'DELETE' });
       } catch (error) {
-        toast('삭제 실패: ' + error.message, 'error');
+        toast(t('send.deleteFailed', { error: error.message }), 'error');
       }
       return captured;
     },

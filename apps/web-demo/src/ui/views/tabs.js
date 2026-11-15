@@ -40,14 +40,14 @@ export function createTabs({ store, stack, history }) {
 
   function toggleSplit() {
     if (isNarrowLayout()) {
-      toast('분할 보기는 데스크탑에서만 사용할 수 있어요', 'error');
+      toast('Split view is only available on a desktop', 'error');
       return;
     }
     state.splitView = !state.splitView;
     $('split-btn').classList.toggle('active', state.splitView);
     if (state.splitView) {
       state.secondaryConv = state.openTabs.find((id) => id !== state.activeConv) || null;
-      if (!state.secondaryConv) toast('탭을 두 개 이상 열어주세요', 'good');
+      if (!state.secondaryConv) toast('Open a second chat to use split view', 'good');
     } else {
       state.secondaryConv = null;
     }
@@ -62,7 +62,7 @@ export function createTabs({ store, stack, history }) {
     if (state.secondaryConv === convId) className += ' secondary';
     const closeButton = el('span', {
       class: 'tab-close',
-      'aria-label': '탭 닫기',
+      'aria-label': 'Close tab',
       role: 'button',
       onclick: (event) => {
         event.stopPropagation();
@@ -75,7 +75,7 @@ export function createTabs({ store, stack, history }) {
         activate(convId);
         store.notify('sidebar', 'tabs', 'panels');
       },
-      title: peer?.handle ? '@' + shownHandle(peer.handle) : '대화',
+      title: peer?.handle ? '@' + shownHandle(peer.handle) : 'Chat',
     }, [el('span', {}, ['@' + shownHandle(peer?.handle)]), closeButton]);
   }
 

@@ -14,7 +14,7 @@ async function registerAndOpen(
   await page.fill('#reg-handle', handle);
   await page.click('#reg-btn');
   await expect(page.locator('#app')).toBeVisible();
-  await expect(page.locator('#conn-pill')).not.toContainText('연결 중', {
+  await expect(page.locator('#conn-pill')).not.toContainText('Connecting', {
     timeout: 10_000,
   });
   return { context, page };

@@ -19,13 +19,13 @@ export function createNotificationPrompt({ store, preferences }) {
     if (document.querySelector('.notif-prompt')) return;
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
-    const enable = el('button', { class: 'enable' }, ['켜기']);
-    const later = el('button', { class: 'dismiss' }, ['나중에']);
+    const enable = el('button', { class: 'enable' }, ['Turn on']);
+    const later = el('button', { class: 'dismiss' }, ['Later']);
     const node = el('div', { class: 'notif-prompt' }, [
       el('span', { style: 'flex:1;line-height:1.4' }, [
-        '알림 켤까요?',
+        'Turn on notifications?',
         el('br'),
-        el('span', { style: 'opacity:0.7;font-size:11px' }, ['백그라운드에서도 새 메시지를 알려요.']),
+        el('span', { style: 'opacity:0.7;font-size:11px' }, ['You will be told about new messages while this tab is in the background.']),
       ]),
       enable,
       later,
@@ -33,7 +33,7 @@ export function createNotificationPrompt({ store, preferences }) {
     enable.addEventListener('click', async () => {
       try {
         const result = await Notification.requestPermission();
-        toast(result === 'granted' ? '알림 켜짐' : '알림 거부됨', result === 'granted' ? 'good' : 'error');
+        toast(result === 'granted' ? 'Notifications on' : 'Notifications blocked', result === 'granted' ? 'good' : 'error');
       } catch {}
       node.remove();
     });

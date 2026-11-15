@@ -15,10 +15,10 @@ import { sanitizeFilename } from './sanitize.js';
 
 export const UNSUPPORTED_TEXT = '[unsupported message]';
 export const KIND_LABELS = Object.freeze({
-  image: '🖼 이미지',
-  file: '📁 파일',
-  voice: '🎤 음성',
-  reaction: '💬 반응',
+  image: 'Image',
+  file: 'File',
+  voice: 'Voice message',
+  reaction: 'Reaction',
 });
 
 const ATTACHMENT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -107,7 +107,7 @@ function decodeMedia(value) {
       });
     case 'file': {
       const name = sanitizeFilename(value.name);
-      return media(`📁 ${name}`, {
+      return media(`File: ${name}`, {
         kind: 'file',
         attachmentId: value.attachmentId,
         name,

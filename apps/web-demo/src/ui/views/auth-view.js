@@ -17,7 +17,7 @@ export function createAuthView({ stack, session, confirm }) {
       try {
         stored = await stack.sessionStore.load();
       } catch (error) {
-        toast('세션 불러오기 실패: ' + error.message, 'error');
+        toast(t('auth.restore.loadFailed', { error: error.message }), 'error');
       }
     }
     $('restore-row').classList.toggle('hidden', !stored);
@@ -34,23 +34,22 @@ export function createAuthView({ stack, session, confirm }) {
     const handle = stack.sessionStore.current()?.handle;
     const ok = await confirm({
       title: t('auth.restore.delete'),
-      body: handle
-        ? `@${handle} 의 키와 이 브라우저의 VEIL 데이터를 전부 삭제합니다. 이 핸들로는 다시 로그인할 수 없어요.`
-        : '이 브라우저의 VEIL 키와 데이터를 전부 삭제합니다.',
-      okLabel: '삭제',
+      body: handle ? t('auth.wipe.bodyHandle', { handle }) : t('auth.wipe.body'),
+      okLabel: t('auth.wipe.ok'),
       destructive: true,
     });
     if (!ok) return false;
     await session.destroyIdentity();
-    toast('키를 삭제했습니다');
+    toast(t('auth.wipe.done'));
     return true;
   }
 
-  async function restore(failurePrefix) {
+  // failureKey: the message of a sign-in that failed, with {error}.
+  async function restore(failureKey) {
     try {
       return await session.restore();
     } catch (error) {
-      toast(failurePrefix + error.message, 'error');
+      toast(t(failureKey, { error: error.message }), 'error');
       await show({ rejected: isAuthRejection(error) });
       return true;
     }
@@ -64,15 +63,15 @@ export function createAuthView({ stack, session, confirm }) {
       $('register-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const handle = normalizeHandle($('reg-handle').value);
-        if (!handle) return toast('핸들을 입력하세요', 'error');
-        if (!isValidHandle(handle)) return toast('소문자, 숫자, _ 만 사용 (최대 32자)', 'error');
+        if (!handle) return toast(t('auth.form.handle.missing'), 'error');
+        if (!isValidHandle(handle)) return toast(t('auth.form.handle.invalid'), 'error');
         // A new handle replaces the identity stored here, which destroys it.
         if ((await session.hasStoredIdentity()) && !(await confirmAndDestroyIdentity())) return;
         $('reg-btn').disabled = true;
         try {
           await session.register(handle);
           await session.enterApp();
-          toast('환영합니다 @' + handle, 'good');
+          toast(t('auth.welcome', { handle }), 'good');
         } catch (error) {
           toast(error.message, 'error');
           if (stack.sessionStore.current()) await show({ rejected: isAuthRejection(error) });
@@ -84,7 +83,7 @@ export function createAuthView({ stack, session, confirm }) {
       $('restore-btn').addEventListener('click', async () => {
         $('restore-btn').disabled = true;
         try {
-          await restore('복원 실패: ');
+          await restore('auth.restore.failed');
         } finally {
           $('restore-btn').disabled = false;
         }
@@ -98,7 +97,7 @@ export function createAuthView({ stack, session, confirm }) {
     // The stored identity signs in again on load; without one, the auth
     // screen shows.
     async boot() {
-      if (!(await restore('세션 복원 실패: '))) await show();
+      if (!(await restore('auth.restore.bootFailed'))) await show();
     },
   };
 }

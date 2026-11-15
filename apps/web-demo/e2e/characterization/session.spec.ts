@@ -37,10 +37,10 @@ test.describe('session lifecycle', () => {
     const { page } = device;
 
     await page.click('#reg-btn');
-    await expect(toast(device, '핸들을 입력하세요')).toBeVisible();
+    await expect(toast(device, 'Enter a handle')).toBeVisible();
     await page.fill('#reg-handle', 'Bad-Handle');
     await page.click('#reg-btn');
-    await expect(toast(device, '소문자, 숫자, _ 만 사용 (최대 32자)')).toBeVisible();
+    await expect(toast(device, 'Lowercase letters, digits and underscores only, up to 32 characters')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeVisible();
     await expect(page.locator('#restore-row')).toBeHidden();
 
@@ -48,7 +48,7 @@ test.describe('session lifecycle', () => {
     await page.click('#reg-btn');
     await expect(page.locator('#app')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeHidden();
-    await expect(toast(device, `환영합니다 @${device.handle}`)).toBeVisible();
+    await expect(toast(device, `Welcome, @${device.handle}`)).toBeVisible();
     // The relay stores the device's name and platform and can read them:
     // both are the same for every browser, never the browser's platform
     // string (navigator.platform), which names the operating system. The
@@ -58,15 +58,17 @@ test.describe('session lifecycle', () => {
     expect(stored).toEqual([{ deviceName: 'VEIL Web', platform: 'android' }]);
     expect(stored[0].deviceName).not.toContain(browserPlatform);
     await expect(page.locator('#sidebar-me')).toContainText(`@${device.handle}`);
-    await expect(page.locator('#sidebar-me')).toContainText(/기기 [0-9a-f]{8}/);
+    await expect(page.locator('#sidebar-me')).toContainText(/Device [0-9a-f]{8}/);
     await expect(page.locator('#legacy-banner')).toBeHidden();
     // No realtime gateway on the relay: the app stays in polling mode.
-    await expect(page.locator('#conn-pill')).toContainText('연결 실패', { timeout: 15_000 });
-    await expect(page.locator('#conv-list .conv-empty')).toHaveText('대화 없음. + 새 대화 버튼으로 시작하세요.');
-    await expect(page.locator('#panels .panel-empty .empty-title')).toHaveText('대화를 골라주세요');
+    await expect(page.locator('#conn-pill')).toContainText('Could not connect', { timeout: 15_000 });
+    await expect(page.locator('#conv-list .conv-empty')).toHaveText('No chats yet. Start one with New chat.');
+    await expect(page.locator('#panels .panel-empty .empty-title')).toHaveText('Choose a chat');
+    // English whatever the browser's language (the context is ko-KR).
+    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 
     await openMenuItem(device, 'ws-info');
-    await expect(toast(device, '연결: 폴링 (4초)')).toBeVisible();
+    await expect(toast(device, 'Connection: polling every 4 seconds')).toBeVisible();
 
     await reload(device);
     await expect(page.locator('#sidebar-me')).toContainText(`@${device.handle}`);
@@ -96,14 +98,14 @@ test.describe('session lifecycle', () => {
     await expect(page.locator('#restore-row')).toBeVisible();
     await expect(page.locator('#restore-handle')).toHaveText(`@${device.handle}`);
     await expect(page.locator('#restore-rejected')).toBeVisible();
-    await expect(page.locator('#restore-btn')).toHaveText('다시 시도');
+    await expect(page.locator('#restore-btn')).toHaveText('Try again');
 
     await page.click('#restore-btn');
-    await expect(toast(device, '복원 실패:')).toBeVisible();
+    await expect(toast(device, 'Could not sign in:')).toBeVisible();
     await expect(page.locator('#restore-rejected')).toBeVisible();
 
     await page.reload();
-    await expect(toast(device, '세션 복원 실패:')).toBeVisible();
+    await expect(toast(device, 'Could not sign in to the saved account:')).toBeVisible();
     await expect(page.locator('#auth-screen')).toBeVisible();
     await expect(page.locator('#restore-rejected')).toBeVisible();
     await expect(page.locator('#restore-handle')).toHaveText(`@${device.handle}`);
@@ -119,21 +121,21 @@ test.describe('session lifecycle', () => {
     expectNoErrors(device);
   });
 
-  test('wipe deletes the identity and everything VEIL stored', async ({ browser }) => {
+  test('wipe deletes the identity and everything Veil stored', async ({ browser }) => {
     const device = await register(browser, `cal${id}`);
     devices.push(device);
     const { page } = device;
 
     await openMenuItem(device, 'wipe');
-    await expect(page.locator('#confirm-title')).toHaveText('이 신원 삭제');
+    await expect(page.locator('#confirm-title')).toHaveText('Delete this identity');
     await page.click('#confirm-cancel');
     await expect(page.locator('#app')).toBeVisible();
 
     await openMenuItem(device, 'wipe');
-    await expect(page.locator('#confirm-body')).toContainText(`@${device.handle} 의 키와 이 브라우저의 VEIL 데이터를 전부 삭제합니다`);
+    await expect(page.locator('#confirm-body')).toContainText(`This deletes @${device.handle}'s keys and all Veil data in this browser`);
     await page.click('#confirm-ok');
     await expect(page.locator('#auth-screen')).toBeVisible();
-    await expect(toast(device, '키를 삭제했습니다')).toBeVisible();
+    await expect(toast(device, 'Keys deleted')).toBeVisible();
     await expect(page.locator('#restore-row')).toBeHidden();
     // The auth screen opens the database again to look for an identity,
     // so it exists, with every store empty.
@@ -167,7 +169,7 @@ test.describe('session lifecycle', () => {
     expectNoErrors(device);
   });
 
-  test('settings keep theme, sounds and notification content, and switch the language', async ({ browser }) => {
+  test('settings keep theme, sounds and notification content', async ({ browser }) => {
     const device = await register(browser, `dee${id}`);
     devices.push(device);
     const { page } = device;
@@ -176,15 +178,16 @@ test.describe('session lifecycle', () => {
     await openMenuItem(device, 'open-settings');
     const dialog = page.locator('#settings-dialog');
     await expect(dialog).toBeVisible();
-    await expect(dialog.locator('#settings-title')).toHaveText('⚙️ 설정');
+    await expect(dialog.locator('#settings-title')).toHaveText('Settings');
+    // No language row: the app is English only.
     await expect(dialog.locator('.settings-label')).toHaveText([
-      '테마',
-      '언어 (재로드 필요)',
-      '사운드 (수신/전송 톤)',
-      '브라우저 알림',
-      '알림 내용',
-      '차단된 사용자',
+      'Theme',
+      'Sounds',
+      'Browser notifications',
+      'Notification content',
+      'Blocked users',
     ]);
+    await expect(dialog.locator('[data-key="lang"]')).toHaveCount(0);
     await expect(dialog.locator('[data-key="notification-level"]')).toHaveValue('generic');
     await dialog.locator('[data-key="theme"]').selectOption('light');
     await expect(page.locator('html')).toHaveClass(/theme-light/);
@@ -199,42 +202,31 @@ test.describe('session lifecycle', () => {
     await page.keyboard.press('ControlOrMeta+/');
     const help = page.locator('#help-dialog');
     await expect(help).toBeVisible();
-    await expect(help.locator('#help-title')).toHaveText('키보드 단축키');
+    await expect(help.locator('#help-title')).toHaveText('Keyboard shortcuts');
     await expect(help.locator('.help-grid > div:not(.seq)')).toHaveText([
-      '대화 검색',
-      '새 대화',
-      '대화 안에서 찾기',
-      '도움말 열기',
-      '사운드 토글',
-      '다이얼로그 / 메뉴 닫기',
-      '메시지 전송 (입력창)',
-      '입력창에서 줄바꿈',
+      'Search chats',
+      'New chat',
+      'Find in chat',
+      'Open this help',
+      'Sounds on or off',
+      'Close a dialog or menu',
+      'Send the message',
+      'New line in the message',
     ]);
-    await expect(help).toContainText('🔊 사운드: 켜짐');
+    await expect(help).toContainText('Sounds: on');
     await page.keyboard.press('Escape');
     await expect(help).toBeHidden();
 
     await page.keyboard.press('ControlOrMeta+Shift+S');
-    await expect(page.locator('#toast-root .toast', { hasText: '사운드 꺼짐' })).toBeVisible();
+    await expect(page.locator('#toast-root .toast', { hasText: 'Sounds off' })).toBeVisible();
     expect(await stored('veil-demo-sounds-enabled-v1')).toBe('0');
 
     await reload(device);
     await expect(page.locator('html')).toHaveClass(/theme-light/);
-
-    await openMenuItem(device, 'open-settings');
-    await Promise.all([page.waitForEvent('load'), page.locator('[data-key="lang"]').selectOption('en')]);
-    await expect(page.locator('#app')).toBeVisible();
+    // The page stays English: nothing stored or in the URL picks a language.
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.locator('#menu [data-action="copy-handle"]')).toHaveText('copy my handle');
-    await expect(page.locator('#new-chat-title')).toHaveText('new direct chat');
-    await expect(page.locator('#menu [data-action="open-settings"]')).toHaveText('⚙️ 설정');
-
-    await openMenuItem(device, 'open-settings');
-    await expect(page.locator('#settings-dialog .settings-label').nth(4)).toHaveText('Notification content');
-    await Promise.all([page.waitForEvent('load'), page.locator('[data-key="lang"]').selectOption('ko')]);
-    await expect(page.locator('#app')).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ko');
-    await expect(page.locator('#menu [data-action="copy-handle"]')).toHaveText('내 핸들 복사');
+    await expect(page.locator('#menu [data-action="copy-handle"]')).toHaveText('Copy my handle');
+    await expect(page.locator('#new-chat-title')).toHaveText('New chat');
     expectNoErrors(device);
   });
 
@@ -242,14 +234,14 @@ test.describe('session lifecycle', () => {
     const { page } = devices.at(-1) as Device;
     await expect(page.locator('#menu > *')).toHaveCount(9);
     await expect(page.locator('#menu .menu-item')).toHaveText([
-      '내 핸들 복사',
-      '연결 상태',
-      '다른 기기로 이전',
-      '🔔 사운드 토글',
-      '⌨️ 단축키',
-      '⚙️ 설정',
-      '📥 카카오톡 가져오기',
-      '로그아웃 + 키 삭제',
+      'Copy my handle',
+      'Connection status',
+      'Move to another device',
+      'Sounds',
+      'Keyboard shortcuts',
+      'Settings',
+      'Import a KakaoTalk export',
+      'Sign out and delete keys',
     ]);
   });
 });

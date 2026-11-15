@@ -39,10 +39,10 @@ test.describe('realtime', () => {
   });
 
   test('the connection pill and menu report the push channel', async () => {
-    for (const device of [alice, bob]) await expect(device.page.locator('#conn-pill')).toHaveText('실시간', { timeout: 15_000 });
+    for (const device of [alice, bob]) await expect(device.page.locator('#conn-pill')).toHaveText('Connected', { timeout: 15_000 });
     await expect(alice.page.locator('#conn-pill')).toHaveClass(/connected/);
     await openMenuItem(alice, 'ws-info');
-    await expect(toast(alice, '연결: 실시간 (WebSocket)')).toBeVisible();
+    await expect(toast(alice, 'Connection: live (WebSocket)')).toBeVisible();
     expectNoErrors(alice, bob);
   });
 
@@ -51,7 +51,7 @@ test.describe('realtime', () => {
     await send(alice, 'are you there');
     await expect.poll(() => bubbleTexts(bob), { timeout: 5_000 }).toEqual(['are you there']);
     const status = alice.page.locator('.msg-group.me .msg-status');
-    await expect(status).toHaveAttribute('title', '읽음', { timeout: 10_000 });
+    await expect(status).toHaveAttribute('title', 'Read', { timeout: 10_000 });
     await expect(status).toHaveText('✓✓');
     await expect(status).toHaveClass(/read/);
     expectNoErrors(alice, bob);
@@ -59,16 +59,16 @@ test.describe('realtime', () => {
 
   test('typing shows in the peer header until it stops', async () => {
     const sub = alice.page.locator('.panel .panel-title > div:last-child');
-    await expect(sub).toHaveText(/^대화 [0-9a-f-]{8}$/);
+    await expect(sub).toHaveText(/^Chat [0-9a-f-]{8}$/);
     await bob.page.evaluate(() => {
       const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
       textarea.value = 'typ';
       textarea.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    await expect(sub).toHaveText('입력 중…', { timeout: 5_000 });
+    await expect(sub).toHaveText('Typing…', { timeout: 5_000 });
     await expect(sub).toHaveClass('sub typing');
     // The stop goes out once the composer has been idle for four seconds.
-    await expect(sub).toHaveText(/^대화 [0-9a-f-]{8}$/, { timeout: 10_000 });
+    await expect(sub).toHaveText(/^Chat [0-9a-f-]{8}$/, { timeout: 10_000 });
     await expect(sub).toHaveClass('sub');
     await bob.page.evaluate(() => {
       const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
@@ -84,18 +84,18 @@ test.describe('realtime', () => {
     });
     const messageId = await rowOf(alice, 'are you there').getAttribute('data-msg-id');
     await rowOf(alice, 'are you there').click({ button: 'right' });
-    await alice.page.locator('.msg-action-menu .msg-action-item', { hasText: '수정' }).click();
-    await expect(rowOf(bob, 'are you there, really').locator('.msg-edited')).toHaveText('(수정됨)', { timeout: 5_000 });
+    await alice.page.locator('.msg-action-menu .msg-action-item', { hasText: 'Edit' }).click();
+    await expect(rowOf(bob, 'are you there, really').locator('.msg-edited')).toHaveText('(edited)', { timeout: 5_000 });
     // The edit's push reaches the sender too, and it must not put the old
     // text back on the sender's own bubble.
     const own = alice.page.locator(`.panel-msgs .msg-row[data-msg-id="${messageId}"]`);
-    await expect(own.locator('.msg-edited')).toHaveText('(수정됨)', { timeout: 5_000 });
+    await expect(own.locator('.msg-edited')).toHaveText('(edited)', { timeout: 5_000 });
     await expect(own.locator('.msg-text')).toHaveText('are you there, really');
     await alice.page.locator(`.panel-msgs .msg-row[data-msg-id="${messageId}"]`).click({ button: 'right' });
     await alice.page.locator('.msg-action-menu .msg-action-item.danger').click();
     await alice.page.click('#confirm-ok');
     for (const device of [alice, bob]) {
-      await expect.poll(() => bubbleTexts(device), { timeout: 5_000 }).toEqual(['🚫 삭제된 메시지']);
+      await expect.poll(() => bubbleTexts(device), { timeout: 5_000 }).toEqual(['Message deleted']);
     }
     expectNoErrors(alice, bob);
   });

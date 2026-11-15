@@ -54,9 +54,9 @@ export const DELIVERY_GLYPHS = Object.freeze({
 });
 
 export const DELIVERY_LABELS = Object.freeze({
-  pending: '전송 중',
-  failed: '전송 실패',
-  read: '읽음',
-  delivered: '전달됨',
-  sent: '전송됨',
+  pending: 'Sending',
+  failed: 'Not sent',
+  read: 'Read',
+  delivered: 'Delivered',
+  sent: 'Sent',
 });

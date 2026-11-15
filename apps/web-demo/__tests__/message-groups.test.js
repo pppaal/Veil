@@ -52,7 +52,7 @@ describe('deliveryStatus', () => {
       expect(DELIVERY_GLYPHS[status]).toBeTruthy();
       expect(DELIVERY_LABELS[status]).toBeTruthy();
     }
-    expect(DELIVERY_LABELS.read).toBe('읽음');
+    expect(DELIVERY_LABELS.read).toBe('Read');
     expect(DELIVERY_GLYPHS.sent).toBe('✓');
   });
 });

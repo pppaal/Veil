@@ -43,13 +43,13 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
 
   function listen(s) {
     s.on('connect', () => {
-      onStatus('connected', '실시간');
+      onStatus('connected', 'Connected');
       history.slowToHeartbeat();
       outbox.drain();
       for (const convId of state.openTabs) history.refreshMessages(convId);
     });
-    s.on('disconnect', (reason) => onStatus('connecting', reason === 'io server disconnect' ? '연결 끊김' : '재연결 중…'));
-    s.on('connect_error', () => onStatus('offline', '연결 실패'));
+    s.on('disconnect', (reason) => onStatus('connecting', reason === 'io server disconnect' ? 'Disconnected' : 'Reconnecting…'));
+    s.on('connect_error', () => onStatus('offline', 'Could not connect'));
 
     s.on('message.new', (message) => inbound.onMessageNew(message));
     s.on('message.delivered', ({ messageId, deliveredAt }) => inbound.patchMessage(messageId, { deliveredAt }));
@@ -112,11 +112,11 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
       if (!state.me) return;
       const io = getIo();
       if (typeof io !== 'function') {
-        onStatus('offline', '폴링 모드');
+        onStatus('offline', 'Polling');
         return;
       }
       close();
-      onStatus('connecting', '연결 중…');
+      onStatus('connecting', 'Connecting…');
       socket = io({
         path: '/v1/realtime',
         auth: (send) => send({ token: stack.sessionStore.getAccessToken() }),

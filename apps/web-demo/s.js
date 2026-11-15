@@ -22,7 +22,7 @@ function mountViewer(rawFragment) {
   setVisible('view', true);
   const link = parseSecretFragment(rawFragment);
   if (!link) {
-    showGone('열 수 없는 링크입니다');
+    showGone('This link cannot be opened');
     return;
   }
   setVisible('passPrompt', link.needsPassphrase);
@@ -39,7 +39,7 @@ function mountViewer(rawFragment) {
     try {
       blob ??= await burnAndFetch(link.id);
     } catch {
-      showGone('이미 열렸거나 만료된 링크입니다');
+      showGone('This link was already opened or has expired');
       return;
     }
     try {
@@ -49,8 +49,8 @@ function mountViewer(rawFragment) {
       // The server copy is gone, but the blob stays in memory so a mistyped
       // passphrase can be retried on this page.
       $('vErr').textContent = link.needsPassphrase
-        ? '복호화 실패 — 암호문구를 다시 확인하세요. 이 페이지를 닫으면 다시 열 수 없습니다.'
-        : '복호화 실패 — 잘못된 링크입니다.';
+        ? 'Could not decrypt. Check the passphrase and try again. If you close this page, the message cannot be opened again.'
+        : 'Could not decrypt. The link is not valid.';
       setVisible('vErr', true);
       $('revealBtn').disabled = !link.needsPassphrase;
     }
@@ -65,7 +65,7 @@ async function burnAndFetch(id) {
 
 function showSecret(text) {
   setVisible('revealPanel', false);
-  $('viewTitle').textContent = '비밀 메시지';
+  $('viewTitle').textContent = 'Message';
   $('revealText').textContent = text;
   setVisible('revealWrap', true);
   // The key has done its job; keep it out of the address bar and history.
@@ -114,20 +114,20 @@ function mountComposer() {
       setVisible('out', true);
       $('copied').textContent = '';
     } catch {
-      $('cErr').textContent = '링크 생성 실패 — 잠시 후 다시 시도하세요.';
+      $('cErr').textContent = 'Could not create the link. Try again in a moment.';
       setVisible('cErr', true);
     } finally {
       button.disabled = false;
-      button.textContent = '보안 링크 생성';
+      button.textContent = 'Create link';
     }
   });
 
   $('copyBtn').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(lastLink);
-      $('copied').textContent = '복사됨 ✓';
+      $('copied').textContent = 'Copied';
     } catch {
-      $('copied').textContent = '수동 복사하세요';
+      $('copied').textContent = 'Could not copy. Select the link and copy it.';
     }
   });
 }

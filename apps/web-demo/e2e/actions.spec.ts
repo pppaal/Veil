@@ -10,7 +10,7 @@ async function registerAndOpen(
   await page.fill('#reg-handle', handle);
   await page.click('#reg-btn');
   await expect(page.locator('#app')).toBeVisible();
-  await expect(page.locator('#conn-pill')).not.toContainText('연결 중', {
+  await expect(page.locator('#conn-pill')).not.toContainText('Connecting', {
     timeout: 10_000,
   });
   return { context, page };
@@ -52,7 +52,7 @@ test.describe('VEIL web demo — message actions', () => {
     // menu items on a non-`__pending__` id (app.js: `isMine && !msg.id
     // .startsWith('__pending__')`). The sender's bubble renders optimistically
     // with a `__pending__<clientId>` data-msg-id and swaps to the real id once
-    // the server acks. Wait for that swap, else the menu opens without 수정.
+    // the server acks. Wait for that swap, else the menu opens without Edit.
     await expect(myBubble).not.toHaveAttribute('data-msg-id', /^__pending__/);
 
     // Open the action menu with a REAL right-click. openActionMenu() positions
@@ -70,7 +70,7 @@ test.describe('VEIL web demo — message actions', () => {
       (window as any).prompt = () => 'edited body';
     });
 
-    await sender.page.locator('.msg-action-menu .msg-action-item:has-text("수정")').click();
+    await sender.page.locator('.msg-action-menu .msg-action-item:has-text("Edit")').click();
 
     // Edit lands locally + propagates to recv via WS.
     await expect(myBubble.locator('.msg-edited')).toBeVisible({ timeout: 5_000 });
@@ -83,12 +83,12 @@ test.describe('VEIL web demo — message actions', () => {
     // Delete: open menu again (real right-click), click delete, confirm.
     await myBubble.click({ button: 'right' });
     await expect(sender.page.locator('.msg-action-menu')).toBeVisible();
-    await sender.page.locator('.msg-action-menu .danger:has-text("삭제")').click();
+    await sender.page.locator('.msg-action-menu .danger:has-text("Delete")').click();
     // Confirm dialog
     await sender.page.locator('#confirm-ok').click();
 
-    await expect(myBubble).toContainText('🚫 삭제된 메시지', { timeout: 5_000 });
-    await expect(recv.page.locator('.msg-row.them')).toContainText('🚫 삭제된 메시지', {
+    await expect(myBubble).toContainText('Message deleted', { timeout: 5_000 });
+    await expect(recv.page.locator('.msg-row.them')).toContainText('Message deleted', {
       timeout: 10_000,
     });
 

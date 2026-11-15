@@ -86,7 +86,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       button.textContent = '🔔';
       return;
     }
-    const minutes = window.prompt('알림 끄기 기간을 분 단위로 입력하세요 (예: 60 = 1시간, 1440 = 24시간, 999999 = 영구):', '60');
+    const minutes = window.prompt(t('chat.mutePrompt'), '60');
     if (!minutes) return;
     await safety.setMute(convId, muteSecondsFromMinutes(minutes));
     button.textContent = '🔕';
@@ -97,9 +97,9 @@ export function createChatView({ store, stack, messages, messageList, composer, 
 
   // Typing beats presence beats the conversation id.
   function subtitle(conv, peer) {
-    if (peer && state.typing.get(conv.id)?.has(peer.userId)) return { text: '입력 중…', className: 'sub typing' };
-    if (peer && state.online.has(peer.userId)) return { text: '온라인', className: 'sub online' };
-    return { text: `대화 ${conv.id.slice(0, 8)}`, className: 'sub' };
+    if (peer && state.typing.get(conv.id)?.has(peer.userId)) return { text: t('chat.typing'), className: 'sub typing' };
+    if (peer && state.online.has(peer.userId)) return { text: t('chat.online'), className: 'sub online' };
+    return { text: t('chat.subtitle', { id: conv.id.slice(0, 8) }), className: 'sub' };
   }
 
   // Whether the user compared this conversation's safety number, so that a
@@ -125,13 +125,13 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       avatar,
       el('div', { class: 'panel-title' }, [el('div', { class: 'name' }, ['@' + shownHandle(peer?.handle)]), el('div', { class: sub.className }, [sub.text])]),
       directPeer && !legacyIdentity ? verifiedBadge(conv.id) : null,
-      headerButton('대화에서 찾기 (Ctrl/Cmd+F)', '🔍', () => panelSearch.open(conv.id), '대화에서 찾기'),
+      headerButton(t('chat.findShortcut'), '🔍', () => panelSearch.open(conv.id), t('chat.find')),
       directPeer && !legacyIdentity ? headerButton(t('safety.open'), '🛡', () => safetyDialog.open(conv.id, directPeer)) : null,
       headerButton(t('history.delete'), '🗑', () => deleteLocalHistory(conv.id)),
       el('button', {
         class: 'mute-toggle',
-        'aria-label': '알림 토글',
-        title: '알림 토글',
+        'aria-label': t('chat.muteToggle'),
+        title: t('chat.muteToggle'),
         onclick: (event) => toggleMute(conv.id, event.currentTarget),
       }, [state.muted.has(conv.id) ? '🔕' : '🔔']),
     ]);
@@ -165,7 +165,7 @@ export function createChatView({ store, stack, messages, messageList, composer, 
     const hold = directPeer ? stack.bindings.hold(conv.id, directPeer) : null;
     const legacyIdentity = isLegacyIdentity(state.me);
     // A phone has no room for the key hint, and no Enter key to explain.
-    let placeholder = isNarrowLayout() ? '메시지 입력' : '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)';
+    let placeholder = t(isNarrowLayout() ? 'msg.input.placeholderShort' : 'msg.input.placeholder');
     if (!directPeer) placeholder = t('group.composerFrozen');
     if (hold) placeholder = t(holdTextKey(hold, 'composerFrozen'));
     if (legacyIdentity) placeholder = t('legacy.composerFrozen');
@@ -212,8 +212,8 @@ export function createChatView({ store, stack, messages, messageList, composer, 
       if (slots.length === 0) {
         panels.replaceChildren(el('div', { class: 'panel-empty', style: 'display:flex' }, [
           emptyStateSvg('chat'),
-          el('div', { class: 'empty-title' }, ['대화를 골라주세요']),
-          el('div', { class: 'empty-sub' }, ['좌측에서 대화를 선택하거나 새로 시작하세요']),
+          el('div', { class: 'empty-title' }, [t('chat.empty.title')]),
+          el('div', { class: 'empty-sub' }, [t('chat.empty.sub')]),
         ]));
       } else {
         panels.replaceChildren(...slots.map(renderPanel).filter(Boolean));

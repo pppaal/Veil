@@ -17,7 +17,7 @@ export function createAppShell({ store, preferences }) {
       avatarFor(state.me.handle, 'sm'),
       el('div', {}, [
         el('div', { style: 'font-weight:600' }, ['@' + state.me.handle]),
-        el('div', { style: 'font-size:11px;color:var(--fg-faint)' }, ['기기 ' + state.me.deviceId.slice(0, 8)]),
+        el('div', { style: 'font-size:11px;color:var(--fg-faint)' }, ['Device ' + state.me.deviceId.slice(0, 8)]),
       ]),
     );
   }
@@ -73,7 +73,7 @@ export function createAppShell({ store, preferences }) {
 
     // Back to the signed-out frame once the session's state is dropped.
     reset() {
-      setConnection('offline', '오프라인');
+      setConnection('offline', 'Offline');
       $('app').classList.remove('viewing-chat');
     },
 

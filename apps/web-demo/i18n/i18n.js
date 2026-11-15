@@ -1,41 +1,14 @@
-// Tiny i18n loader. Honors ?lang= query param first, then navigator.language,
-// then falls back to ko. Translations are static JSON files we ship in
-// /i18n/{lang}.json — no build step. {placeholder} interpolation only.
-const SUPPORTED = new Set(['ko', 'en', 'ja']);
-const FALLBACK = 'ko';
-
+// The app's strings. English is the only language: i18n/en.json is the one
+// dictionary, loaded before anything renders, with {placeholder}
+// interpolation only and no build step. The browser's language, the URL and
+// storage play no part.
 let dict = {};
-let active = FALLBACK;
-
-function pickLang() {
-  try {
-    const q = new URLSearchParams(location.search).get('lang');
-    if (q && SUPPORTED.has(q)) return q;
-  } catch {}
-  try {
-    const stored = localStorage.getItem('veil-demo-lang');
-    if (stored && SUPPORTED.has(stored)) return stored;
-  } catch {}
-  const nav = (navigator.language || '').slice(0, 2).toLowerCase();
-  if (SUPPORTED.has(nav)) return nav;
-  return FALLBACK;
-}
 
 export async function initI18n() {
-  active = pickLang();
-  try {
-    const res = await fetch(`./i18n/${active}.json`);
-    if (!res.ok) throw new Error('lang load failed');
-    dict = await res.json();
-  } catch {
-    if (active !== FALLBACK) {
-      const res = await fetch(`./i18n/${FALLBACK}.json`);
-      dict = await res.json();
-      active = FALLBACK;
-    }
-  }
-  document.documentElement.lang = active;
-  // RTL prep: Arabic and Hebrew (not yet shipped) would flip dir here.
+  const res = await fetch('./i18n/en.json');
+  if (!res.ok) throw new Error('strings failed to load');
+  dict = await res.json();
+  document.documentElement.lang = 'en';
   document.documentElement.dir = 'ltr';
   applyDomTranslations();
 }
@@ -48,18 +21,8 @@ export function t(key, vars) {
   );
 }
 
-export function setLang(lang) {
-  if (!SUPPORTED.has(lang)) return;
-  try { localStorage.setItem('veil-demo-lang', lang); } catch {}
-  location.reload();
-}
-
-export function activeLang() {
-  return active;
-}
-
-// Translations may emphasise with <strong>…</strong> and break lines with
-// <br>; nothing else in a translation is ever parsed as markup.
+// Strings may emphasise with <strong>…</strong> and break lines with <br>;
+// nothing else in a string is ever parsed as markup.
 const RICH_TOKEN_RE = /(<strong>|<\/strong>|<br\s*\/?>)/;
 const BREAK_RE = /^<br\s*\/?>$/;
 
@@ -80,10 +43,8 @@ function richText(markup) {
   return fragment;
 }
 
-// Walks the DOM once at init and replaces text/HTML for any element with
-// a data-i18n attribute. Keeps existing static strings working without
-// touching every render path immediately — Phase AA can grow into the
-// codebase incrementally.
+// Walks the DOM once at init and fills in every element with a data-i18n
+// attribute, so the static page and the dictionary say the same thing.
 function applyDomTranslations() {
   for (const node of document.querySelectorAll('[data-i18n]')) {
     const key = node.getAttribute('data-i18n');

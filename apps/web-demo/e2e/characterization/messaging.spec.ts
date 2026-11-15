@@ -48,10 +48,10 @@ test.describe('a direct conversation', () => {
     await expect(page.locator('#new-chat-dialog')).toBeVisible();
     await expect(page.locator('#new-peer-input')).toBeFocused();
     await page.click('#new-confirm');
-    await expect(page.locator('#new-peer-error')).toHaveText('핸들을 입력하세요');
+    await expect(page.locator('#new-peer-error')).toHaveText('Enter a handle');
     await page.fill('#new-peer-input', alice.handle);
     await page.click('#new-confirm');
-    await expect(page.locator('#new-peer-error')).toHaveText('자기 자신과는 대화할 수 없어요');
+    await expect(page.locator('#new-peer-error')).toHaveText("You can't chat with yourself");
     await page.fill('#new-peer-input', `nobody${id}`);
     await page.press('#new-peer-input', 'Enter');
     await expect(page.locator('#new-peer-error')).toHaveText('User not found');
@@ -60,13 +60,13 @@ test.describe('a direct conversation', () => {
 
     await startChat(alice, bob);
     await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}×`]);
-    await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('첫 메시지를 보내보세요');
-    await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', '메시지 입력 (Enter 전송, Shift+Enter 줄바꿈)');
+    await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
+    await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Message (Enter to send, Shift+Enter for a new line)');
     await expect(page.locator('.panel-input > *')).toHaveCount(5);
-    await expect(page.locator('.panel-input .file-btn')).toHaveText('📎');
-    await expect(page.locator('.panel-input .image-btn:not(.file-btn)')).toHaveText('📷');
+    await expect(page.locator('.panel-input .file-btn')).toHaveText('File');
+    await expect(page.locator('.panel-input .image-btn:not(.file-btn)')).toHaveText('Image');
     await expect(page.locator('.panel-header .mute-toggle')).toHaveText('🔔');
-    await expect(bob.page.locator('.conv-item', { hasText: `@${alice.handle}` })).toContainText('아직 메시지 없음');
+    await expect(bob.page.locator('.conv-item', { hasText: `@${alice.handle}` })).toContainText('No messages yet');
     expectNoErrors(alice, bob);
   });
 
@@ -74,7 +74,7 @@ test.describe('a direct conversation', () => {
     await send(alice, 'hello bob');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['hello bob']);
     await expect(bob.page.locator('.panel-msgs .group-meta')).toHaveText([`@${alice.handle}`]);
-    await expect(alice.page.locator('.msg-group.me .msg-status')).toHaveAttribute('title', '전송됨');
+    await expect(alice.page.locator('.msg-group.me .msg-status')).toHaveAttribute('title', 'Sent');
     await expect(alice.page.locator('.msg-group.me .msg-time')).toContainText('✓');
 
     await send(bob, 'hi *alice* and `code`', 'hi alice and code');
@@ -93,7 +93,7 @@ test.describe('a direct conversation', () => {
       await rowOf(bob, 'hello bob').locator('.msg-reply-btn').click({ timeout: 2_000 });
       await expect(bob.page.locator('.reply-banner')).toBeVisible({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
-    await expect(bob.page.locator('.reply-banner-meta')).toHaveText(`답장: @${alice.handle}`);
+    await expect(bob.page.locator('.reply-banner-meta')).toHaveText(`Reply to @${alice.handle}`);
     await expect(bob.page.locator('.reply-banner-snippet')).toHaveText('hello bob');
     await send(bob, 'replying to you');
     await expect(bob.page.locator('.reply-banner')).toHaveCount(0);
@@ -110,11 +110,11 @@ test.describe('a direct conversation', () => {
     const mine = rowOf(bob, 'hello bob').locator('.msg-reaction-chip');
     await expect(mine).toHaveText('👍 1');
     await expect(mine).toHaveClass(/mine/);
-    await expect(mine).toHaveAttribute('title', '내 반응 — 클릭해서 취소');
+    await expect(mine).toHaveAttribute('title', 'Your reaction. Click to remove it');
     const theirs = rowOf(alice, 'hello bob').locator('.msg-reaction-chip');
     await expect(theirs).toHaveText('👍 1', { timeout: 15_000 });
     await expect(theirs).not.toHaveClass(/mine/);
-    await expect(alice.page.locator('.panel-msgs')).not.toContainText('💬 반응');
+    await expect(alice.page.locator('.panel-msgs')).not.toContainText('Reaction');
 
     await expect(async () => {
       await rowOf(bob, 'hello bob').locator('.msg-reaction-chip').click({ timeout: 2_000 });
@@ -128,16 +128,16 @@ test.describe('a direct conversation', () => {
     await rowOf(alice, 'hello bob').click({ button: 'right' });
     const own = alice.page.locator('.msg-action-menu');
     await expect(own.locator('.msg-action-row button')).toHaveText(['👍', '❤️', '😂', '😢', '🔥', '🎉']);
-    await expect(own.locator('.msg-action-item').first()).toHaveText('↩  답장');
-    await expect(own.locator('.msg-action-item', { hasText: '수정' })).toHaveText('✏️  수정');
-    await expect(own.locator('.msg-action-item.danger', { hasText: '삭제' })).toHaveText('🗑  삭제');
+    await expect(own.locator('.msg-action-item').first()).toHaveText('Reply');
+    await expect(own.locator('.msg-action-item', { hasText: 'Edit' })).toHaveText('Edit');
+    await expect(own.locator('.msg-action-item.danger', { hasText: 'Delete' })).toHaveText('Delete');
     await alice.page.locator('#sidebar-me').click();
     await expect(own).toHaveCount(0);
 
     await rowOf(alice, 'replying to you').click({ button: 'right' });
     const peers = alice.page.locator('.msg-action-menu');
-    await expect(peers.locator('.msg-action-item', { hasText: '복사' })).toHaveText('📋  복사');
-    await expect(peers.locator('.msg-action-item', { hasText: '수정' })).toHaveCount(0);
+    await expect(peers.locator('.msg-action-item', { hasText: 'Copy' })).toHaveText('Copy');
+    await expect(peers.locator('.msg-action-item', { hasText: 'Edit' })).toHaveCount(0);
     await alice.page.keyboard.press('Escape');
     await alice.page.locator('#sidebar-me').click();
     expectNoErrors(alice, bob);
@@ -168,16 +168,16 @@ test.describe('a direct conversation', () => {
     expect(await page.evaluate(() => {
       const [, menu] = (window as unknown as { __openedMenus: Element[] }).__openedMenus;
       return [...menu.querySelectorAll('.msg-action-item')].map((item) => item.textContent);
-    })).toEqual(['↩  답장', '📋  복사', '🔁  전달', '🚫  차단', '🚨  신고']);
+    })).toEqual(['Reply', 'Copy', 'Forward', 'Block', 'Report']);
 
     const menu = page.locator('.msg-action-menu');
     await expect(async () => {
       if (!(await menu.isVisible())) await row.click({ button: 'right' });
-      await menu.locator('.msg-action-item', { hasText: '신고' }).click({ timeout: 1_000 });
+      await menu.locator('.msg-action-item', { hasText: 'Report' }).click({ timeout: 1_000 });
     }).toPass({ timeout: 20_000 });
     await page.locator('#report-dialog input[value="harassment"]').check();
     await page.locator('#report-submit').click();
-    await expect(toast(alice, '신고 접수됨')).toBeVisible();
+    await expect(toast(alice, 'Report sent')).toBeVisible();
     type Report = { reportedHandle: string; body: { messageId: string; reason: string } };
     const reports = await relayState<Report[]>('/__test/reports');
     expect(reports.at(-1)).toMatchObject({ reportedHandle: bob.handle, body: { messageId, reason: 'harassment' } });
@@ -188,25 +188,25 @@ test.describe('a direct conversation', () => {
     await alice.page.evaluate(() => {
       window.prompt = () => 'hello bob, edited';
     });
-    await chooseAction(alice, 'hello bob', '수정');
-    await expect(rowOf(alice, 'hello bob, edited').locator('.msg-edited')).toHaveText('(수정됨)');
-    await expect(rowOf(bob, 'hello bob, edited').locator('.msg-edited')).toHaveText('(수정됨)', { timeout: 15_000 });
+    await chooseAction(alice, 'hello bob', 'Edit');
+    await expect(rowOf(alice, 'hello bob, edited').locator('.msg-edited')).toHaveText('(edited)');
+    await expect(rowOf(bob, 'hello bob, edited').locator('.msg-edited')).toHaveText('(edited)', { timeout: 15_000 });
     expectNoErrors(alice, bob);
   });
 
   test('a delete leaves a tombstone on both sides and offers to undo', async () => {
     await send(alice, 'regretted words');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toContain('regretted words');
-    await chooseAction(alice, 'regretted words', '삭제');
-    await expect(alice.page.locator('#confirm-title')).toHaveText('메시지 삭제');
+    await chooseAction(alice, 'regretted words', 'Delete');
+    await expect(alice.page.locator('#confirm-title')).toHaveText('Delete message');
     await alice.page.click('#confirm-ok');
-    const undo = toast(alice, '메시지 삭제됨');
+    const undo = toast(alice, 'Message deleted');
     await expect(undo).toBeVisible();
-    await undo.locator('button', { hasText: '되돌리기' }).click();
+    await undo.locator('button', { hasText: 'Undo' }).click();
     await expect(alice.page.locator('.panel-input textarea')).toHaveValue('regretted words');
-    await expect(toast(alice, '입력창에 복원했어요. Enter 로 다시 전송')).toBeVisible();
+    await expect(toast(alice, 'Put back in the message box. Press Enter to send it again')).toBeVisible();
     for (const device of [alice, bob]) {
-      await expect.poll(() => bubbleTexts(device), { timeout: 15_000 }).toContain('🚫 삭제된 메시지');
+      await expect.poll(() => bubbleTexts(device), { timeout: 15_000 }).toContain('Message deleted');
       expect(await bubbleTexts(device)).not.toContain('regretted words');
     }
     await alice.page.evaluate(() => {
@@ -250,14 +250,14 @@ test.describe('a direct conversation', () => {
   test('a text is forwarded to another conversation', async () => {
     await startChat(alice, carol);
     await openChatWith(alice, bob);
-    await chooseAction(alice, 'replying to you', '전달');
-    const dialog = alice.page.locator('.dialog', { hasText: '메시지 전달' });
+    await chooseAction(alice, 'replying to you', 'Forward');
+    const dialog = alice.page.locator('.dialog', { hasText: 'Forward message' });
     await expect(dialog.locator('.forward-list-item')).toHaveCount(1);
     await expect(dialog.locator('.forward-list-item')).toContainText(`@${carol.handle}`);
     await expect(dialog.locator('#fwd-confirm')).toBeDisabled();
     await dialog.locator('.forward-list-item').click();
     await dialog.locator('#fwd-confirm').click();
-    await expect(toast(alice, '전달했습니다')).toBeVisible();
+    await expect(toast(alice, 'Forwarded')).toBeVisible();
     await expect.poll(() => bubbleTexts(carol), { timeout: 15_000 }).toEqual(['replying to you']);
     expectNoErrors(alice, carol);
   });
@@ -284,24 +284,24 @@ test.describe('a direct conversation', () => {
     const backlog = Array.from({ length: 60 }, (_, i) => `page ${String(i).padStart(2, '0')}`);
     await sendAll(alice, backlog);
     await expect(alice.page.locator('.msg-row.me:not(:has(.msg.pending))')).toHaveCount(backlog.length + 3, { timeout: 30_000 });
-    const expected = ['hello bob, edited', 'hi alice and code', 'replying to you', '🚫 삭제된 메시지', 'please read this', ...backlog];
+    const expected = ['hello bob, edited', 'hi alice and code', 'replying to you', 'Message deleted', 'please read this', ...backlog];
     await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 }).toEqual(expected);
     for (const device of [bob, alice]) {
       await reload(device);
       await openChatWith(device, device === bob ? alice : bob);
       await expect.poll(() => bubbleTexts(device), { timeout: 30_000 }).toEqual(expected);
     }
-    await expect(bob.page.locator('.panel-msgs')).not.toContainText('🔒');
+    await expect(bob.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
     expectNoErrors(alice, bob);
   });
 
   test('deleting history on this device empties the conversation for good', async () => {
     const { page } = bob;
     await page.locator('.panel-header .icon-btn', { hasText: '🗑' }).click();
-    await expect(page.locator('#confirm-title')).toHaveText('이 기기의 대화 기록 삭제');
+    await expect(page.locator('#confirm-title')).toHaveText('Delete history on this device');
     await page.click('#confirm-ok');
-    await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('첫 메시지를 보내보세요');
-    await expect(page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('아직 메시지 없음');
+    await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
+    await expect(page.locator('.conv-item', { hasText: `@${alice.handle}` }).locator('.conv-preview')).toHaveText('No messages yet');
     await page.waitForTimeout(5_000);
     expect(await bubbleTexts(bob)).toEqual([]);
     await send(alice, 'after the purge');

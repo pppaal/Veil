@@ -1,6 +1,6 @@
 # Web demo Playwright e2e
 
-Real-browser end-to-end tests for the VEIL web demo, in three Playwright
+Real-browser end-to-end tests for the Veil web demo, in three Playwright
 projects (see `playwright.config.ts` at the repo root).
 
 ## The in-memory relay

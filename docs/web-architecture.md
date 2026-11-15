@@ -100,7 +100,7 @@ allowlisting serializers in `src/platform/persist.js`.
 
 ### Views (`src/ui/views/`)
 
-`app-shell.js` (identity, connection pill, banners), `auth-view.js`,
+`app-shell.js` (identity, connection status, banners), `auth-view.js`,
 `sidebar.js`, `tabs.js` (tabs, split view, list/chat switch),
 `chat-view.js` (panels, header, read receipts, local history deletion),
 `message-list.js` (days, groups, bubbles, media, reactions, delivery

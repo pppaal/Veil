@@ -86,7 +86,6 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 padding: const EdgeInsets.only(top: VeilSpace.xs, bottom: VeilSpace.xxs),
                 sliver: SliverToBoxAdapter(
                   child: VeilNotice(
-                    margin: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
                     title: l10n.contactsErrorTitle,
                     message: l10n.contactsErrorBody,
                     tone: VeilTone.warn,

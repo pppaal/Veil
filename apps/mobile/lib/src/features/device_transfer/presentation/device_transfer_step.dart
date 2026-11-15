@@ -63,6 +63,9 @@ class TransferStep extends StatelessWidget {
         : upcoming
             ? palette.strokeStrong
             : palette.primary;
+    // A title alone beside a button is centred on it; anything taller hangs
+    // from the top, with a one-line title centred on the badge.
+    final centred = trailing != null && body == null;
 
     return VeilSurfaceCard(
       toned: true,
@@ -71,7 +74,7 @@ class TransferStep extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: centred ? CrossAxisAlignment.center : CrossAxisAlignment.start,
             children: [
               Container(
                 width: _badge,
@@ -92,8 +95,7 @@ class TransferStep extends StatelessWidget {
               const SizedBox(width: VeilSpace.sm),
               Expanded(
                 child: Padding(
-                  // Centres a one-line title on the badge.
-                  padding: const EdgeInsets.only(top: 4),
+                  padding: EdgeInsets.only(top: centred ? 0 : 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -119,6 +121,44 @@ class TransferStep extends StatelessWidget {
           if (children.isNotEmpty) ...[
             const SizedBox(height: VeilSpace.sm),
             ...children,
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// What the user carries from one device to the other (the transfer code,
+/// the claim code), in a box of its own: [code] can be selected, and
+/// [notes] say what else is known about it.
+class TransferCodeBox extends StatelessWidget {
+  const TransferCodeBox({super.key, required this.code, this.codeStyle, this.notes = const []});
+
+  final String code;
+
+  /// The code's style; the theme's body style when null.
+  final TextStyle? codeStyle;
+  final List<String> notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(VeilSpace.sm),
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(VeilRadius.sm),
+        border: Border.all(color: palette.stroke),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SelectableText(code, style: codeStyle ?? theme.textTheme.bodyMedium),
+          for (final note in notes) ...[
+            const SizedBox(height: VeilSpace.xxs),
+            TransferStepNote(note),
           ],
         ],
       ),

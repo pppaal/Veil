@@ -61,8 +61,6 @@ class TransferOldDevicePanel extends StatelessWidget {
       );
     }
 
-    final theme = Theme.of(context);
-    final palette = context.veilPalette;
     // A session that ran out is issued again from the first step.
     final live = transferSessionId != null && !transferExpired;
     final statusLabel = transferStatusLabel(l10n, status);
@@ -109,16 +107,7 @@ class TransferOldDevicePanel extends StatelessWidget {
               : l10n.deviceTransferOldHandBody,
           children: [
             if (live) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(VeilSpace.sm),
-                decoration: BoxDecoration(
-                  color: palette.surface,
-                  borderRadius: BorderRadius.circular(VeilRadius.sm),
-                  border: Border.all(color: palette.stroke),
-                ),
-                child: SelectableText(transferCode ?? '', style: theme.textTheme.bodyMedium),
-              ),
+              TransferCodeBox(code: transferCode ?? ''),
               const SizedBox(height: VeilSpace.sm),
               // The copy button takes the width that is left, so its label
               // stays on one line beside the short one.
@@ -164,16 +153,17 @@ class TransferOldDevicePanel extends StatelessWidget {
               const SizedBox(height: VeilSpace.sm),
               TransferStepNote(l10n.deviceTransferClaimFieldCaption),
               const SizedBox(height: VeilSpace.sm),
-              // What approving leads to, said where it is decided.
-              VeilButton(
-                onPressed: isBusy ? null : onApprove,
-                label: l10n.deviceTransferApproveClaim,
-              ),
-              const SizedBox(height: VeilSpace.sm),
+              // What approving leads to, said where it is decided: above
+              // the button that decides it.
               VeilInlineBanner(
                 dense: true,
                 tone: VeilBannerTone.warn,
                 message: l10n.deviceTransferCompleteOnNewNote,
+              ),
+              const SizedBox(height: VeilSpace.sm),
+              VeilButton(
+                onPressed: isBusy ? null : onApprove,
+                label: l10n.deviceTransferApproveClaim,
               ),
             ],
             if (!aboutIssuing && statusLabel != null) ...[

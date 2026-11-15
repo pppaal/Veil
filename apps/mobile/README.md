@@ -145,15 +145,19 @@ layouts (search, timer, safety number, back).
 
 The screens around the account (consent, onboarding warning, create account,
 choose handle, app lock, device transfer, safety numbers, security status)
-open on `VeilScreenIntro`: a label, one headline and a sentence, with no
-panel around them, and then the field or button the screen is for. A
-no-recovery notice stands once, beside the control that decides. The consent
-and the onboarding warning keep their button in a bar under the text that
-scrolls (`OnboardingActionScaffold`); device transfer is three numbered
-steps per device (`TransferStep`), of which only the step in hand shows its
-controls; the security status names what needs a look before its rows, which
-are grouped (`SecuritySignalGroup`). `test/phone/identity_screens_phone_test.dart`
-holds that behaviour.
+open on `VeilScreenIntro` on a phone: a label, one headline and at most a
+sentence, with no panel around them, and then the field or button the screen
+is for. A no-recovery notice stands once, beside the control that decides.
+The consent and the onboarding warning keep their button in a bar under the
+text that scrolls (`OnboardingActionScaffold`). Device transfer is three
+numbered steps per device (`TransferStep`), of which only the step in hand
+shows its controls; a code to carry to the other device sits in a
+`TransferCodeBox`, and what approving or finishing leads to is said above
+the button that does it. A safety number comes before how to compare it and
+the button that records the comparison; a change to review comes before
+everything else. The security status names what needs a look before its
+rows, which are grouped (`SecuritySignalGroup`).
+`test/phone/identity_screens_phone_test.dart` holds that behaviour.
 
 A chat's warnings are banners while they fit above the messages, which keep
 96 px. When they do not (a small phone with the keyboard up), each warning

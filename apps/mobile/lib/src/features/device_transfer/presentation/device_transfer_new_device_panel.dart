@@ -157,13 +157,24 @@ class TransferNewDevicePanel extends StatelessWidget {
             // the button switched off: registering again replaces it.
             if (hasClaim) ...[
               ...noticeFor(3),
-              SelectableText(l10n.deviceTransferClaimCode(claimId!), style: theme.textTheme.titleMedium),
-              const SizedBox(height: VeilSpace.xxs),
-              TransferStepNote(
-                l10n.deviceTransferClaimFingerprint(claimFingerprint ?? l10n.deviceTransferFingerprintUnavailable),
+              // What the user reads off this screen comes first: the code,
+              // with the key it stands for and how long it holds.
+              TransferCodeBox(
+                code: l10n.deviceTransferClaimCode(claimId!),
+                codeStyle: theme.textTheme.titleMedium,
+                notes: [
+                  l10n.deviceTransferClaimFingerprint(claimFingerprint ?? l10n.deviceTransferFingerprintUnavailable),
+                  if (claimExpiresAt != null)
+                    l10n.deviceTransferExpires(formatTransferExpiry(claimExpiresAt!, now, l10n)),
+                ],
               ),
-              if (claimExpiresAt != null)
-                TransferStepNote(l10n.deviceTransferExpires(formatTransferExpiry(claimExpiresAt!, now, l10n))),
+              const SizedBox(height: VeilSpace.sm),
+              // What finishing leads to, said above the button that does it.
+              VeilInlineBanner(
+                dense: true,
+                tone: VeilBannerTone.warn,
+                message: l10n.deviceTransferNewCompleteNote,
+              ),
               const SizedBox(height: VeilSpace.sm),
               VeilButton(
                 onPressed: isCompleting || claimExpired ? null : onComplete,

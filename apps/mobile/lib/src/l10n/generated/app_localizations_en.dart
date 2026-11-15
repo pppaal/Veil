@@ -105,7 +105,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockHeroBody =>
-      'PIN and biometrics are local only. No remote reset. No recovery fallback. No server override.';
+      'PIN and biometrics are checked on this device only. No server can reset or override them.';
 
   @override
   String get appLockPillLocalOnly => 'Local only';
@@ -201,7 +201,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockCaptionUnlock =>
-      'Unlock with your local PIN or biometrics. This never contacts the server.';
+      'Unlock with this device\'s PIN or biometrics.';
 
   @override
   String get appLockFieldSetPin => 'Set PIN';
@@ -273,17 +273,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get splashEyebrow => 'PRIVATE BETA';
 
   @override
-  String get splashBody => 'No backup. No recovery. No leaks.';
+  String get splashBody => 'No backup. No recovery. No leaks.';
 
   @override
-  String get splashErrorTitle => 'Runtime configuration blocked';
+  String get splashErrorTitle => 'VEIL cannot start';
 
   @override
-  String get splashPreparingTitle => 'Preparing local state';
+  String get splashPreparingTitle => 'Opening VEIL';
 
   @override
   String get splashPreparingBody =>
-      'Checking onboarding, session binding, and local security state.';
+      'Checking this device\'s session and security state.';
 
   @override
   String get onboardingWarnEyebrow => 'PRODUCT RULES';
@@ -2246,11 +2246,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'This QR holds both public identity keys and user ids, nothing secret.';
 
   @override
-  String get safetyNumbersNoPinTitle => 'No identity pinned yet';
+  String get safetyNumbersNoPinTitle => 'No safety number yet';
 
   @override
   String get safetyNumbersNoPinBody =>
-      'Exchange a message first: this device pins the identity it talks to.';
+      'Exchange a message first. This device then pins the identity it talks to, and the number appears here.';
 
   @override
   String get safetyNumbersDirectoryMismatchTitle =>
@@ -2397,10 +2397,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferWindowExpiredTitle => 'Transfer window expired';
 
   @override
-  String get deviceTransferSessionExpiredMessage =>
-      'The transfer session expired. Issue a new code on the old device.';
-
-  @override
   String get deviceTransferClaimExpiredMessage =>
       'This new-device claim expired. Register a fresh claim and request approval again.';
 
@@ -2415,15 +2411,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The transfer code\'s format is not valid.';
 
   @override
-  String get deviceTransferPayloadImported =>
-      'Transfer code read. Register this device before the transfer window closes.';
-
-  @override
   String get deviceTransferImportFirst => 'Use a valid transfer code first.';
-
-  @override
-  String get deviceTransferClaimRegistered =>
-      'Claim registered. Give this claim code to the old device and request approval before it expires.';
 
   @override
   String get deviceTransferClaimFailed => 'Claim failed.';
@@ -2502,7 +2490,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferNewCompleteBody =>
-      'Enter this claim code on the old device and approve it there. When you finish, the old device is signed out. Conversation history does not move to this device.';
+      'Enter this claim code on the old device and approve it there.';
+
+  @override
+  String get deviceTransferNewCompleteNote =>
+      'When you finish, the old device is signed out. Conversation history does not move to this device.';
 
   @override
   String deviceTransferStep1BodyExpires(String when) {
@@ -2546,11 +2538,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferStatusTitle => 'Transfer status';
 
   @override
-  String get deviceTransferStatusNeedsApi => 'Transfer requires API mode.';
+  String get deviceTransferStatusNeedsApi =>
+      'This build is not connected to a relay, so it cannot transfer.';
 
   @override
   String get deviceTransferStatusTokenReady =>
-      'Transfer session open. The token is ready.';
+      'Transfer session open. The code is ready.';
 
   @override
   String get deviceTransferStatusNotStarted => 'Start transfer first.';
@@ -2580,7 +2573,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferNewDeviceCaption =>
-      'This device creates its own keys and sends a claim that only the old device can approve.';
+      'This device creates its own keys and sends a claim that only the old device can approve. Register before the transfer code expires.';
 
   @override
   String get deviceTransferDeviceNameLabel => 'Device name';
@@ -2662,7 +2655,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusTitle => 'Security Status';
 
   @override
-  String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
+  String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
 
   @override
   String get securityStatusHeroBody =>

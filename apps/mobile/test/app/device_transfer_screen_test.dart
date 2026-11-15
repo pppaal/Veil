@@ -9,6 +9,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../support/async_wait.dart';
@@ -338,6 +339,46 @@ void main() {
     expect((await tester.runAsync(storage.readPendingTransfer))?.ended, isTrue);
   });
 
+  // The step in hand opens on what the user carries to the old device, and
+  // says what finishing leads to above the button that does it.
+  testWidgets('a claim waiting for approval shows its code first, then what finishing leads to, then the button',
+      (tester) async {
+    final relay = FakeAccountRelay();
+    late SecureStorageService storage;
+    late AppSessionController session;
+    await tester.runAsync(() async {
+      storage = await _newDeviceKeystore(relay, completion: _Completion.none, age: const Duration(minutes: -4));
+      session = _controller(storage, relay);
+      await session.bootstrap();
+    });
+    final claimId = session.pendingTransfer!.claimId;
+
+    _tallView(tester);
+    await tester.pumpWidget(_app(session, relay, storage));
+    await tester.pump();
+
+    final steps = tester.widgetList<TransferStep>(find.byType(TransferStep)).toList();
+    expect([for (final step in steps) step.state],
+        [TransferStepState.done, TransferStepState.done, TransferStepState.current]);
+    expect(find.byType(TextField), findsNothing, reason: 'nothing is left to type on this device');
+    expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
+
+    final code = find.text(_en.deviceTransferClaimCode(claimId));
+    final consequence = find.text(_en.deviceTransferNewCompleteNote);
+    expect(code, findsOneWidget);
+    expect(consequence, findsOneWidget, reason: 'said once');
+    expect(find.ancestor(of: code, matching: find.byType(TransferCodeBox)), findsOneWidget);
+    for (final part in [code, consequence, _completeButton]) {
+      expect(find.ancestor(of: part, matching: find.byType(TransferStep)), findsOneWidget);
+      expect(tester.widget<TransferStep>(find.ancestor(of: part, matching: find.byType(TransferStep))).number, 3);
+    }
+    expect(tester.getRect(code).bottom, lessThanOrEqualTo(tester.getRect(consequence).top));
+    expect(tester.getRect(consequence).bottom, lessThanOrEqualTo(tester.getRect(_completeButton).top));
+    expect(_enabled(tester), isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   // closing F2: importing again the payload of the session this device
   // already claimed keeps that claim, so it can still be completed.
   testWidgets('re-importing the payload of the claimed session keeps the claim completable', (tester) async {
@@ -370,7 +411,7 @@ void main() {
 
     // The claim it holds is what comes next: the screen does not ask to
     // register again, and the step closes over the code.
-    expect(find.text(_en.deviceTransferPayloadImported), findsNothing);
+    expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
     expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
     expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
     await tester.ensureVisible(_completeButton);

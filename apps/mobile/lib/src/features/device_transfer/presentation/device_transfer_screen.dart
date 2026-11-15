@@ -135,13 +135,13 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               ),
             ],
           ),
-          if (oldDevice ? transferExpired : claimExpired) ...[
+          // The old device says that its session ran out in the step that
+          // issues a new code; the new device has no step that could.
+          if (!oldDevice && claimExpired) ...[
             const SizedBox(height: VeilSpace.sm),
             VeilInlineBanner(
               title: l10n.deviceTransferWindowExpiredTitle,
-              message: oldDevice
-                  ? l10n.deviceTransferSessionExpiredMessage
-                  : l10n.deviceTransferClaimExpiredMessage,
+              message: l10n.deviceTransferClaimExpiredMessage,
               tone: VeilBannerTone.danger,
             ),
           ],
@@ -266,7 +266,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       _claimFingerprint = held?.claimantFingerprint;
       _claimExpiresAt = held?.expiresAt;
       _editingCode = false;
-      _notice = held == null ? TransferNotice(l10n.deviceTransferPayloadImported) : null;
+      // That the code was read is the first step's check mark.
+      _notice = null;
     });
   }
 
@@ -295,7 +296,6 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
         _claimId = result.claimId;
         _claimFingerprint = result.claimantFingerprint;
         _claimExpiresAt = result.expiresAt;
-        _notice = TransferNotice(l10n.deviceTransferClaimRegistered);
       });
     } catch (_) {
       if (!mounted) {

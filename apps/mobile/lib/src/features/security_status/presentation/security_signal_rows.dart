@@ -26,7 +26,8 @@ class SecuritySignal {
 }
 
 /// A group of facts under one heading, as rows of one card: each row its
-/// label with how it stands beside it, and the sentence under them.
+/// label with how it stands at the end of the line, and the sentence under
+/// them.
 class SecuritySignalGroup extends StatelessWidget {
   const SecuritySignalGroup({super.key, required this.title, required this.signals});
 
@@ -57,19 +58,28 @@ class SecuritySignalGroup extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(child: VeilCopy(signal.label, style: theme.textTheme.titleSmall)),
-                          const SizedBox(width: VeilSpace.xs),
-                          VeilStatusPill(
-                            label: signal.value,
-                            tone: switch (signal.tone) {
-                              SecuritySignalTone.good => VeilBannerTone.good,
-                              SecuritySignalTone.warn => VeilBannerTone.warn,
-                              SecuritySignalTone.neutral => VeilBannerTone.info,
-                            },
-                          ),
-                        ],
+                      // The state stands at the end of the label's line
+                      // while both fit; a long state with large text moves
+                      // under the label instead of squeezing it.
+                      SizedBox(
+                        width: double.infinity,
+                        child: Wrap(
+                          alignment: WrapAlignment.spaceBetween,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          spacing: VeilSpace.xs,
+                          runSpacing: VeilSpace.xxs,
+                          children: [
+                            VeilCopy(signal.label, style: theme.textTheme.titleSmall),
+                            VeilStatusPill(
+                              label: signal.value,
+                              tone: switch (signal.tone) {
+                                SecuritySignalTone.good => VeilBannerTone.good,
+                                SecuritySignalTone.warn => VeilBannerTone.warn,
+                                SecuritySignalTone.neutral => VeilBannerTone.info,
+                              },
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: VeilSpace.xxs),
                       VeilCopy(

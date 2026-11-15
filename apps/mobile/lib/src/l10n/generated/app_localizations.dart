@@ -287,7 +287,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockHeroBody.
   ///
   /// In en, this message translates to:
-  /// **'PIN and biometrics are local only. No remote reset. No recovery fallback. No server override.'**
+  /// **'PIN and biometrics are checked on this device only. No server can reset or override them.'**
   String get appLockHeroBody;
 
   /// No description provided for @appLockPillLocalOnly.
@@ -455,7 +455,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockCaptionUnlock.
   ///
   /// In en, this message translates to:
-  /// **'Unlock with your local PIN or biometrics. This never contacts the server.'**
+  /// **'Unlock with this device\'s PIN or biometrics.'**
   String get appLockCaptionUnlock;
 
   /// No description provided for @appLockFieldSetPin.
@@ -581,25 +581,25 @@ abstract class AppLocalizations {
   /// No description provided for @splashBody.
   ///
   /// In en, this message translates to:
-  /// **'No backup. No recovery. No leaks.'**
+  /// **'No backup. No recovery. No leaks.'**
   String get splashBody;
 
   /// No description provided for @splashErrorTitle.
   ///
   /// In en, this message translates to:
-  /// **'Runtime configuration blocked'**
+  /// **'VEIL cannot start'**
   String get splashErrorTitle;
 
   /// No description provided for @splashPreparingTitle.
   ///
   /// In en, this message translates to:
-  /// **'Preparing local state'**
+  /// **'Opening VEIL'**
   String get splashPreparingTitle;
 
   /// No description provided for @splashPreparingBody.
   ///
   /// In en, this message translates to:
-  /// **'Checking onboarding, session binding, and local security state.'**
+  /// **'Checking this device\'s session and security state.'**
   String get splashPreparingBody;
 
   /// No description provided for @onboardingWarnEyebrow.
@@ -3965,13 +3965,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersNoPinTitle.
   ///
   /// In en, this message translates to:
-  /// **'No identity pinned yet'**
+  /// **'No safety number yet'**
   String get safetyNumbersNoPinTitle;
 
   /// No description provided for @safetyNumbersNoPinBody.
   ///
   /// In en, this message translates to:
-  /// **'Exchange a message first: this device pins the identity it talks to.'**
+  /// **'Exchange a message first. This device then pins the identity it talks to, and the number appears here.'**
   String get safetyNumbersNoPinBody;
 
   /// No description provided for @safetyNumbersDirectoryMismatchTitle.
@@ -4226,12 +4226,6 @@ abstract class AppLocalizations {
   /// **'Transfer window expired'**
   String get deviceTransferWindowExpiredTitle;
 
-  /// No description provided for @deviceTransferSessionExpiredMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'The transfer session expired. Issue a new code on the old device.'**
-  String get deviceTransferSessionExpiredMessage;
-
   /// No description provided for @deviceTransferClaimExpiredMessage.
   ///
   /// In en, this message translates to:
@@ -4256,23 +4250,11 @@ abstract class AppLocalizations {
   /// **'The transfer code\'s format is not valid.'**
   String get deviceTransferPayloadInvalid;
 
-  /// No description provided for @deviceTransferPayloadImported.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer code read. Register this device before the transfer window closes.'**
-  String get deviceTransferPayloadImported;
-
   /// No description provided for @deviceTransferImportFirst.
   ///
   /// In en, this message translates to:
   /// **'Use a valid transfer code first.'**
   String get deviceTransferImportFirst;
-
-  /// No description provided for @deviceTransferClaimRegistered.
-  ///
-  /// In en, this message translates to:
-  /// **'Claim registered. Give this claim code to the old device and request approval before it expires.'**
-  String get deviceTransferClaimRegistered;
 
   /// No description provided for @deviceTransferClaimFailed.
   ///
@@ -4403,8 +4385,14 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferNewCompleteBody.
   ///
   /// In en, this message translates to:
-  /// **'Enter this claim code on the old device and approve it there. When you finish, the old device is signed out. Conversation history does not move to this device.'**
+  /// **'Enter this claim code on the old device and approve it there.'**
   String get deviceTransferNewCompleteBody;
+
+  /// No description provided for @deviceTransferNewCompleteNote.
+  ///
+  /// In en, this message translates to:
+  /// **'When you finish, the old device is signed out. Conversation history does not move to this device.'**
+  String get deviceTransferNewCompleteNote;
 
   /// No description provided for @deviceTransferStep1BodyExpires.
   ///
@@ -4481,13 +4469,13 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferStatusNeedsApi.
   ///
   /// In en, this message translates to:
-  /// **'Transfer requires API mode.'**
+  /// **'This build is not connected to a relay, so it cannot transfer.'**
   String get deviceTransferStatusNeedsApi;
 
   /// No description provided for @deviceTransferStatusTokenReady.
   ///
   /// In en, this message translates to:
-  /// **'Transfer session open. The token is ready.'**
+  /// **'Transfer session open. The code is ready.'**
   String get deviceTransferStatusTokenReady;
 
   /// No description provided for @deviceTransferStatusNotStarted.
@@ -4535,7 +4523,7 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferNewDeviceCaption.
   ///
   /// In en, this message translates to:
-  /// **'This device creates its own keys and sends a claim that only the old device can approve.'**
+  /// **'This device creates its own keys and sends a claim that only the old device can approve. Register before the transfer code expires.'**
   String get deviceTransferNewDeviceCaption;
 
   /// No description provided for @deviceTransferDeviceNameLabel.
@@ -4673,7 +4661,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusHeroTitle.
   ///
   /// In en, this message translates to:
-  /// **'No backup. No recovery. No leaks.'**
+  /// **'No backup. No recovery. No leaks.'**
   String get securityStatusHeroTitle;
 
   /// No description provided for @securityStatusHeroBody.

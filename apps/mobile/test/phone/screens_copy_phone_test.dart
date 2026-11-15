@@ -119,7 +119,7 @@ void main() {
   });
 
   group('device transfer', () {
-    testWidgets('the old device says in Korean that its token is ready', (tester) async {
+    testWidgets('the old device says in Korean that its code is ready', (tester) async {
       await withPhoneApp(
         tester,
         identities,
@@ -129,7 +129,8 @@ void main() {
         body: (world) async {
           // The transfer code is data, which the check leaves out.
           expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
-          expect(findCopy('이전 세션을 열었습니다. 토큰이 준비되었습니다.', skipOffstage: false), findsOneWidget);
+          // "Code", as every other line of the screen calls it; not "token".
+          expect(findCopy('이전 세션을 열었습니다. 코드가 준비되었습니다.', skipOffstage: false), findsOneWidget);
         },
       );
     });

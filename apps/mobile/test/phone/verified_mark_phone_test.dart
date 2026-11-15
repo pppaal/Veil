@@ -153,6 +153,71 @@ void main() {
     );
   });
 
+  // Nobody reopens the page: the change is settled where it is held (the
+  // user decides it on another screen, or the relay lists the old key
+  // again), and the page that stands back for it reads again.
+  testWidgets('a safety number that stays open says "verified" again once the change held elsewhere is settled',
+      (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      size: phoneMedium,
+      withGroup: true,
+      location: '/safety-numbers/$chatConversationId',
+      prepare: (world) async {
+        await raiseChange(tester, world, groupConversationId);
+        return null;
+      },
+      body: (world) async {
+        await awaitSafetyNumber(tester);
+        expectInQuestion(await textsOfScreen(tester));
+        final page = tester.state(find.byType(SafetyNumbersScreen));
+
+        final change = world.messenger.pendingIdentityChangeFor(groupConversationId)!;
+        await tester.runAsync(() => world.messenger.declineIdentityChange(groupConversationId, reviewed: change));
+        await pumpFrames(tester, frames: 3);
+        await awaitSafetyNumber(tester);
+
+        expect(tester.state(find.byType(SafetyNumbersScreen)), same(page), reason: 'the page was not reopened');
+        final settled = await textsOfScreen(tester);
+        expect(settled, contains(l10n.safetyNumbersVerified));
+        expect(settled.where((text) => text.startsWith(verifiedOn)), hasLength(1));
+        expect(settled, isNot(contains(l10n.safetyNumbersChangedElsewhereTitle)));
+        expect(settled, isNot(contains(l10n.safetyNumbersReviewChange)));
+        expect(settled, isNot(contains(l10n.safetyNumbersUnverified)));
+      },
+    );
+  });
+
+  testWidgets('a group list that stays open says "verified" again once a member\'s change is settled in their 1:1',
+      (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      size: phoneMedium,
+      withGroup: true,
+      location: '/safety-numbers/$groupConversationId',
+      body: (world) async {
+        await awaitSafetyNumber(tester);
+        final row = find.widgetWithText(VeilListTileCard, seleneName);
+        expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsOneWidget);
+
+        // Raised while the list is open: the app's own check of the 1:1 at
+        // start would withdraw a change raised before it.
+        await raiseChange(tester, world, chatConversationId);
+        await pumpFrames(tester, frames: 3);
+        await awaitSafetyNumber(tester);
+        expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsNothing);
+
+        final change = world.messenger.pendingIdentityChangeFor(chatConversationId)!;
+        await tester.runAsync(() => world.messenger.declineIdentityChange(chatConversationId, reviewed: change));
+        await pumpFrames(tester, frames: 3);
+        await awaitSafetyNumber(tester);
+        expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsOneWidget);
+      },
+    );
+  });
+
   testWidgets('a change raised in the 1:1: the group list and the member page are not verified, and lead to the review',
       (tester) async {
     await withPhoneApp(

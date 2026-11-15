@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_number_cards.dart';
@@ -11,6 +12,7 @@ import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
+import '../layout/support/screen_cases.dart' show largerText;
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
@@ -233,6 +235,9 @@ void main() {
           final after = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
           expect([for (final step in after) step.state],
               [TransferStepState.done, TransferStepState.current, TransferStepState.upcoming]);
+          // That the code was read is the first step's check mark: no banner
+          // stands between the step's words and its field.
+          expect(find.byType(VeilInlineBanner, skipOffstage: false), findsNothing);
           final name = tester.widget<TextField>(find.byType(TextField));
           expect(name.controller!.text, l10n.authDefaultDeviceName);
           expect(name.controller!.text, isNot('VEIL New Device'));
@@ -263,6 +268,23 @@ void main() {
   });
 
   group('device transfer on the old device', () {
+    testWidgets('before a code is issued: the first step is its button, and nothing else asks for input',
+        (tester) async {
+      await withPhoneApp(tester, identities, location: '/device-transfer', locale: 'ko', body: (world) async {
+        final l10n = lookupAppLocalizations(const Locale('ko'));
+        expectNoDashboard();
+        final steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+        expect([for (final step in steps) step.number], [1, 2, 3]);
+        expect([for (final step in steps) step.state],
+            [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+        expectInReach(tester, find.widgetWithText(FilledButton, l10n.deviceTransferIssueToken));
+        expect(find.byType(TextField, skipOffstage: false), findsNothing);
+        expect(find.byType(FilledButton, skipOffstage: false), findsOneWidget);
+        expect(find.byType(VeilDestructiveNotice, skipOffstage: false), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
     for (final locale in ['en', 'ko']) {
       testWidgets('with a code issued: the code, "Copy code" on one line, then the approval ($locale)',
           (tester) async {
@@ -339,6 +361,35 @@ void main() {
         final code = find.byType(SafetyQrCard, skipOffstage: false);
         expect(top(tester, find.byType(SafetyNumberCard)), lessThan(top(tester, mark)));
         expect(top(tester, mark), lessThan(top(tester, code)));
+
+        // How to compare is said once, under the number it is about and
+        // above the button that records the comparison: not above the number.
+        final howTo = findCopy(l10n.safetyNumbersDetailBody);
+        expect(howTo, findsOneWidget);
+        expect(tester.widget<VeilScreenIntro>(find.byType(VeilScreenIntro)).body, isNull);
+        expect(tester.getRect(find.byType(SafetyNumberCard)).bottom, lessThanOrEqualTo(top(tester, howTo)));
+        expect(tester.getRect(howTo).bottom, lessThanOrEqualTo(top(tester, mark)));
+      });
+    });
+
+    testWidgets('of a contact whose key changed in another conversation: the way to the review comes first',
+        (tester) async {
+      await withPhoneApp(tester, identities, location: '/safety-numbers/$chatConversationId', withGroup: true,
+          attention: const ChatAttention(identityChangedInGroup: true), locale: 'ko', body: (world) async {
+        await awaitSafetyNumber(tester);
+        final l10n = lookupAppLocalizations(const Locale('ko'));
+        final review = find.widgetWithText(FilledButton, l10n.safetyNumbersReviewChange);
+        // On the first screenful of a 360x640 phone, under the notice and
+        // above the number the change puts in question.
+        expectInReach(tester, review);
+        final notice = findCopy(l10n.safetyNumbersChangedElsewhereTitle);
+        final current = find.byType(SafetyNumberCard, skipOffstage: false);
+        expect(current, findsOneWidget);
+        expect(top(tester, notice), lessThan(top(tester, review)));
+        expect(tester.getRect(review).bottom, lessThanOrEqualTo(top(tester, current)));
+        // Nothing here compares or confirms the old key.
+        expect(findCopy(l10n.safetyNumbersDetailBody, skipOffstage: false), findsNothing);
+        expect(find.byType(SafetyQrCard, skipOffstage: false), findsNothing);
       });
     });
 
@@ -347,10 +398,22 @@ void main() {
           attention: const ChatAttention(identityChanged: true), locale: 'ko', body: (world) async {
         await awaitSafetyNumber(tester);
         final l10n = lookupAppLocalizations(const Locale('ko'));
+        final decide = find.widgetWithText(FilledButton, l10n.safetyNumbersReVerify);
         expectInReach(tester, find.text(l10n.safetyNumbersCardLabelNew));
-        expectInReach(tester, find.widgetWithText(FilledButton, l10n.safetyNumbersReVerify));
+        expectInReach(tester, decide);
         expect(find.text(l10n.safetyNumbersVerified, skipOffstage: false), findsNothing);
         expect(find.text(l10n.safetyNumbersUnverified), findsOneWidget);
+
+        // How to compare is still said, for the new number: between it and
+        // the decision.
+        final newNumber = find.ancestor(
+          of: find.text(l10n.safetyNumbersCardLabelNew),
+          matching: find.byType(SafetyNumberCard),
+        );
+        final howTo = findCopy(l10n.safetyNumbersDetailBody);
+        expect(howTo, findsOneWidget);
+        expect(tester.getRect(newNumber).bottom, lessThanOrEqualTo(top(tester, howTo)));
+        expect(tester.getRect(howTo).bottom, lessThanOrEqualTo(top(tester, decide)));
       });
     });
 
@@ -361,6 +424,14 @@ void main() {
         expect(find.byType(VeilErrorState), findsOneWidget);
         expect(findCopy(l10n.safetyNumbersErrorBody), findsOneWidget);
         expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+
+        // Trying again fails the same way: the page says so again, and the
+        // error goes nowhere else.
+        await tester.tap(find.text(l10n.safetyNumbersRetry));
+        await pumpFrames(tester, frames: 3);
+        await awaitSafetyNumber(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.byType(VeilErrorState), findsOneWidget);
       });
     });
 
@@ -412,6 +483,90 @@ void main() {
       });
     }
 
+    // Korean fits one line at the default text size, so it is read larger.
+    for (final (locale, textScale) in [('en', 1.0), ('ko', 1.3)]) {
+      testWidgets('its headline breaks between sentences, never inside one ($locale)', (tester) async {
+        await withPhoneApp(tester, identities, location: '/security-status', locale: locale, textScale: textScale,
+            body: (world) async {
+          final l10n = lookupAppLocalizations(Locale(locale));
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.descendant(of: findCopy(l10n.securityStatusHeroTitle), matching: find.byType(RichText)),
+          );
+          final shown = paragraph.text.toPlainText();
+          final sentences = RegExp(r'[^.]+\.').allMatches(shown).toList();
+          expect(sentences, hasLength(3));
+          final lines = <double>{};
+          for (final sentence in sentences) {
+            final start = sentence.start + (sentence[0]!.length - sentence[0]!.trimLeft().length);
+            final tops = {
+              for (final box in paragraph.getBoxesForSelection(TextSelection(baseOffset: start, extentOffset: sentence.end)))
+                box.top,
+            };
+            expect(tops, hasLength(1), reason: '"${sentence[0]}" is split over lines in "$shown"');
+            lines.addAll(tops);
+          }
+          expect(lines.length, greaterThan(1), reason: 'the headline is meant to wrap here');
+        });
+      });
+    }
+
+    // The longest state the screen has ("libsignal bridge (unaudited)"),
+    // on a small phone with text enlarged past the system's usual step.
+    testWidgets('a row whose state does not fit beside its label puts it under the label, whole', (tester) async {
+      usePhoneView(tester, phoneSmall, textScale: 1.6);
+      final en = lookupAppLocalizations(const Locale('en'));
+      await tester.pumpWidget(MaterialApp(
+        theme: VeilTheme.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(VeilSpace.lg),
+            child: SecuritySignalGroup(
+              title: en.securityStatusSectionProductRules,
+              signals: [
+                SecuritySignal(
+                  label: en.securityStatusCryptoAdapter,
+                  value: en.securityStatusCryptoLibsignal,
+                  detail: en.securityStatusCryptoLibsignalDetail('libsignal'),
+                  tone: SecuritySignalTone.neutral,
+                ),
+                SecuritySignal(
+                  label: en.securityStatusLocalWipe,
+                  value: en.securityStatusAvailable,
+                  detail: en.securityStatusLocalWipeDetail,
+                  tone: SecuritySignalTone.good,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+      expect(tester.takeException(), isNull, reason: 'nothing overflows');
+
+      RenderParagraph paragraphOf(String text) =>
+          tester.renderObject<RenderParagraph>(find.descendant(of: find.text(text), matching: find.byType(RichText)));
+      double lineCount(String text) {
+        final paragraph = paragraphOf(text);
+        return paragraph.size.height / paragraph.getFullHeightForCaret(const TextPosition(offset: 0));
+      }
+
+      // The label keeps one line and the state is not cut short; it stands
+      // under the label, from the same left edge.
+      final label = tester.getRect(find.text(en.securityStatusCryptoAdapter));
+      final state = tester.getRect(find.widgetWithText(VeilStatusPill, en.securityStatusCryptoLibsignal));
+      expect(lineCount(en.securityStatusCryptoAdapter), closeTo(1, 0.2));
+      expect(paragraphOf(en.securityStatusCryptoLibsignal).didExceedMaxLines, isFalse);
+      expect(state.top, greaterThanOrEqualTo(label.bottom));
+      expect(state.left, closeTo(label.left, 1));
+
+      // A short state stays at the end of its label's line.
+      final shortLabel = tester.getRect(find.text(en.securityStatusLocalWipe));
+      final shortState = tester.getRect(find.widgetWithText(VeilStatusPill, en.securityStatusAvailable));
+      expect(shortState.left, greaterThan(shortLabel.right));
+      expect(shortState.center.dy, closeTo(shortLabel.center.dy, 4));
+      final card = tester.getRect(find.byType(VeilSurfaceCard));
+      expect(card.right - shortState.right, closeTo(VeilSpace.md, 1), reason: 'at the end of the row');
+    });
+
     test('counts what needs a look in words that agree with the number', () {
       final en = lookupAppLocalizations(const Locale('en'));
       expect(en.securityStatusAttentionTitle(1), '1 item needs a look');
@@ -421,6 +576,93 @@ void main() {
     });
   });
 
+  // A line of Korean may break between any two syllables, which leaves one
+  // alone at the start of the next line. The app's own sentences are drawn
+  // so that they break between words (VeilCopy): here every text of each
+  // screen is held to it, on the narrowest phone, from its first screenful
+  // to its last.
+  group('Korean copy keeps its words whole', () {
+    final hangul = RegExp(r'[\uAC00-\uD7AF]');
+    final word = RegExp(r'\S+');
+
+    // The Korean words on screen that are split over two lines, each with
+    // the text it stands in.
+    Set<String> brokenWords(WidgetTester tester) {
+      final broken = <String>{};
+      for (final element in find.byType(RichText).evaluate()) {
+        final paragraph = element.renderObject! as RenderParagraph;
+        final shown = paragraph.text.toPlainText();
+        if (!hangul.hasMatch(shown)) continue;
+        for (final match in word.allMatches(shown)) {
+          // A Latin token may break at its hyphens ("AES-256-" / "GCM").
+          if (!hangul.hasMatch(match[0]!)) continue;
+          final boxes = paragraph.getBoxesForSelection(TextSelection(baseOffset: match.start, extentOffset: match.end));
+          if ({for (final box in boxes) box.top}.length > 1) {
+            broken.add('"${plainCopy(match[0]!)}" in "${plainCopy(shown)}"');
+          }
+        }
+      }
+      return broken;
+    }
+
+    Future<void> expectWordsWhole(WidgetTester tester, {bool safetyNumber = false}) async {
+      if (safetyNumber) await awaitSafetyNumber(tester);
+      final broken = brokenWords(tester);
+      await scrollToEnd(tester, onPage: (_) async => broken.addAll(brokenWords(tester)));
+      expect(broken, isEmpty);
+      expect(tester.takeException(), isNull);
+    }
+
+    // At the default text size and one step larger, where other lines wrap.
+    for (final textScale in [1.0, largerText]) {
+      final size = textScale == 1.0 ? 'default text' : 'larger text';
+
+      for (final (name, location, account) in [
+        ('the privacy notice', '/privacy-consent', signedOut),
+        ('the onboarding warning', '/onboarding', signedOut),
+        ('create account', '/create-account', signedOut),
+        ('choose handle', '/choose-handle', signedOut),
+        ('device transfer on the new device', '/device-transfer', signedOut),
+        ('device transfer on the old device', '/device-transfer', LayoutAccount.signedIn),
+        ('the app lock', '/lock', LayoutAccount.locked),
+        ('the security status', '/security-status', LayoutAccount.signedIn),
+      ]) {
+        testWidgets('on $name ($size)', (tester) async {
+          await withPhoneApp(tester, identities, location: location, account: account, locale: 'ko',
+              textScale: textScale, body: (world) => expectWordsWhole(tester));
+        });
+      }
+
+      testWidgets('on device transfer with a code issued ($size)', (tester) async {
+        await withPhoneApp(tester, identities, location: '/device-transfer', locale: 'ko', transferStarted: true,
+            textScale: textScale, body: (world) => expectWordsWhole(tester));
+      });
+
+      testWidgets('on a safety number ($size)', (tester) async {
+        await withPhoneApp(tester, identities, location: '/safety-numbers/$chatConversationId', locale: 'ko',
+            textScale: textScale, body: (world) => expectWordsWhole(tester, safetyNumber: true));
+      });
+
+      testWidgets('on a safety number with a change to review ($size)', (tester) async {
+        await withPhoneApp(tester, identities, location: '/safety-numbers/$chatConversationId', locale: 'ko',
+            textScale: textScale,
+            attention: const ChatAttention(identityChanged: true),
+            body: (world) => expectWordsWhole(tester, safetyNumber: true));
+      });
+
+      testWidgets('on a safety number whose change waits elsewhere, and on a group\'s members ($size)',
+          (tester) async {
+        await withPhoneApp(tester, identities, location: '/safety-numbers/$chatConversationId', locale: 'ko',
+            textScale: textScale,
+            withGroup: true,
+            attention: const ChatAttention(identityChangedInGroup: true),
+            body: (world) => expectWordsWhole(tester, safetyNumber: true));
+        await withPhoneApp(tester, identities, location: '/safety-numbers/$groupConversationId', locale: 'ko',
+            textScale: textScale, withGroup: true, body: (world) => expectWordsWhole(tester, safetyNumber: true));
+      });
+    }
+  });
+
   group('the words that open a screen', () {
     testWidgets('are drawn with Korean words kept whole and read out as plain text', (tester) async {
       usePhoneView(tester, phoneSmall);
@@ -428,14 +670,13 @@ void main() {
       const body = '사람들이 나를 찾을 때 쓸 핸들을 정하세요.';
       await tester.pumpWidget(const MaterialApp(
         home: Scaffold(
-          body: VeilScreenIntro(eyebrow: '기기 귀속', title: title, body: body, trailing: SizedBox(key: Key('trailing'), width: 80, height: 20)),
+          body: VeilScreenIntro(eyebrow: '기기 귀속', title: title, body: body),
         ),
       ));
       expect(findCopy(title), findsOneWidget);
       expect(findCopy(body), findsOneWidget);
       expect(tester.widget<Text>(findCopy(title)).semanticsLabel, title);
       expect(tester.widget<Text>(findCopy(title)).data, veilKeepWordsWhole(title));
-      expect(tester.getSize(find.byKey(const Key('trailing'))).width, 80, reason: 'what trails the title keeps its width');
       expect(tester.takeException(), isNull);
     });
   });

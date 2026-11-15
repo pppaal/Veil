@@ -50,6 +50,65 @@ class SafetyNumberCard extends StatelessWidget {
   }
 }
 
+/// Whether the contact counts as verified, as a pill, with their handle
+/// beside it: what the "Verified on" card under it says, and the mark in
+/// the chat. [warn] colours "unverified" as a warning, for a page that has
+/// one up (a change to review, a directory that serves another key, a scan
+/// that did not match).
+class SafetyVerifiedStateRow extends StatelessWidget {
+  const SafetyVerifiedStateRow({super.key, required this.handle, required this.verified, required this.warn});
+
+  final String handle;
+  final bool verified;
+  final bool warn;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Row(
+      children: [
+        VeilStatusPill(
+          label: verified ? l10n.safetyNumbersVerified : l10n.safetyNumbersUnverified,
+          tone: verified
+              ? VeilBannerTone.good
+              : warn
+                  ? VeilBannerTone.warn
+                  : VeilBannerTone.info,
+        ),
+        const SizedBox(width: VeilSpace.xs),
+        Expanded(
+          child: Text(
+            '@$handle',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// How to compare the number above it, and what a mismatch means: said
+/// under the number, in line with the digits, before the button that
+/// records the comparison.
+class SafetyCompareNote extends StatelessWidget {
+  const SafetyCompareNote(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
+      child: VeilCopy(
+        text,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
+      ),
+    );
+  }
+}
+
 /// The QR code the peer scans to compare both identities in one step.
 class SafetyQrCard extends StatelessWidget {
   const SafetyQrCard({super.key, required this.content, required this.palette});

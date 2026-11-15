@@ -1096,12 +1096,6 @@ abstract class AppLocalizations {
   /// **'Searching…'**
   String get chatSearchSearching;
 
-  /// No description provided for @chatBannerConversationIssue.
-  ///
-  /// In en, this message translates to:
-  /// **'Something went wrong'**
-  String get chatBannerConversationIssue;
-
   /// No description provided for @chatBannerRelayReconnecting.
   ///
   /// In en, this message translates to:
@@ -1849,7 +1843,7 @@ abstract class AppLocalizations {
   /// No description provided for @errorRelayFailed.
   ///
   /// In en, this message translates to:
-  /// **'The server could not complete the request. Try again shortly.'**
+  /// **'The server couldn\'t complete the request.'**
   String get errorRelayFailed;
 
   /// No description provided for @errorApiNeedsTls.
@@ -1863,6 +1857,90 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The realtime address must use TLS outside local development.'**
   String get errorRealtimeNeedsTls;
+
+  /// No description provided for @errorNetworkTimeout.
+  ///
+  /// In en, this message translates to:
+  /// **'The server took too long to answer.'**
+  String get errorNetworkTimeout;
+
+  /// No description provided for @errorNetworkUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Can\'t reach the server. Check your connection.'**
+  String get errorNetworkUnavailable;
+
+  /// No description provided for @errorTlsPinMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'The server\'s certificate isn\'t the one this app trusts.'**
+  String get errorTlsPinMismatch;
+
+  /// No description provided for @errorChallengeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The sign-in request expired. Try again.'**
+  String get errorChallengeInvalid;
+
+  /// No description provided for @errorDeviceNotActive.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone was removed from this account.'**
+  String get errorDeviceNotActive;
+
+  /// No description provided for @errorDeviceSignatureInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The server couldn\'t verify this phone.'**
+  String get errorDeviceSignatureInvalid;
+
+  /// No description provided for @errorHandleTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'That handle is taken. Try another.'**
+  String get errorHandleTaken;
+
+  /// No description provided for @errorTransferInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer has ended. Start a new one on the old phone.'**
+  String get errorTransferInactive;
+
+  /// No description provided for @errorTransferCodeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer code isn\'t valid.'**
+  String get errorTransferCodeInvalid;
+
+  /// No description provided for @errorTransferClaimRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the transfer code on the new phone first.'**
+  String get errorTransferClaimRequired;
+
+  /// No description provided for @errorTransferApprovalRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'The old phone hasn\'t approved this phone yet.'**
+  String get errorTransferApprovalRequired;
+
+  /// No description provided for @errorTransferCompletionInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone couldn\'t finish the transfer. Start again on the old phone.'**
+  String get errorTransferCompletionInvalid;
+
+  /// No description provided for @errorAttachmentCanceled.
+  ///
+  /// In en, this message translates to:
+  /// **'The upload was canceled.'**
+  String get errorAttachmentCanceled;
+
+  /// No description provided for @errorAttachmentRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'This file couldn\'t be sent. Attach it again.'**
+  String get errorAttachmentRejected;
 
   /// No description provided for @conversationsNewChat.
   ///

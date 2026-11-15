@@ -169,7 +169,7 @@ void main() {
         attention: const ChatAttention(relayError: true),
         body: (world) async {
           expect(find.text("Couldn't load messages"), findsOneWidget);
-          expect(find.text('The server could not complete the request. Try again shortly.'), findsOneWidget,
+          expect(find.text("The server couldn't complete the request."), findsOneWidget,
               reason: 'the reason, said once');
           expect(find.byType(VeilNotice), findsNothing, reason: 'no notice repeats it');
           expect(find.text('No messages yet'), findsNothing, reason: 'nobody knows that yet');
@@ -182,16 +182,16 @@ void main() {
       );
     });
 
-    testWidgets('with messages on screen an error is a notice above them, in the app\'s words', (tester) async {
+    testWidgets('with messages on screen an error is one line above them, in the app\'s words', (tester) async {
       await withPhoneApp(
         tester,
         identities,
         location: _chat,
         attention: const ChatAttention(relayError: true),
         body: (world) async {
-          expect(find.byType(VeilNotice), findsOneWidget);
-          expect(findCopy('Something went wrong'), findsOneWidget);
-          expect(findCopy('The server could not complete the request. Try again shortly.'), findsOneWidget);
+          // Nothing to decide and no action to take: a plain line, no notice.
+          expect(find.byType(VeilNotice), findsNothing);
+          expect(findCopy("The server couldn't complete the request."), findsOneWidget);
           expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
           expect(onScreen(tester, find.byType(ChatMessageList)).height / screenHeight(tester), greaterThan(0.4));
         },

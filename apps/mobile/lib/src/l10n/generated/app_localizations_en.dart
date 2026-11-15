@@ -625,9 +625,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatSearchSearching => 'Searching…';
 
   @override
-  String get chatBannerConversationIssue => 'Something went wrong';
-
-  @override
   String get chatBannerRelayReconnecting => 'Connecting…';
 
   @override
@@ -1143,8 +1140,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The server didn\'t accept this. Check what you entered and try again.';
 
   @override
-  String get errorRelayFailed =>
-      'The server could not complete the request. Try again shortly.';
+  String get errorRelayFailed => 'The server couldn\'t complete the request.';
 
   @override
   String get errorApiNeedsTls =>
@@ -1153,6 +1149,57 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get errorRealtimeNeedsTls =>
       'The realtime address must use TLS outside local development.';
+
+  @override
+  String get errorNetworkTimeout => 'The server took too long to answer.';
+
+  @override
+  String get errorNetworkUnavailable =>
+      'Can\'t reach the server. Check your connection.';
+
+  @override
+  String get errorTlsPinMismatch =>
+      'The server\'s certificate isn\'t the one this app trusts.';
+
+  @override
+  String get errorChallengeInvalid => 'The sign-in request expired. Try again.';
+
+  @override
+  String get errorDeviceNotActive =>
+      'This phone was removed from this account.';
+
+  @override
+  String get errorDeviceSignatureInvalid =>
+      'The server couldn\'t verify this phone.';
+
+  @override
+  String get errorHandleTaken => 'That handle is taken. Try another.';
+
+  @override
+  String get errorTransferInactive =>
+      'This transfer has ended. Start a new one on the old phone.';
+
+  @override
+  String get errorTransferCodeInvalid => 'This transfer code isn\'t valid.';
+
+  @override
+  String get errorTransferClaimRequired =>
+      'Enter the transfer code on the new phone first.';
+
+  @override
+  String get errorTransferApprovalRequired =>
+      'The old phone hasn\'t approved this phone yet.';
+
+  @override
+  String get errorTransferCompletionInvalid =>
+      'This phone couldn\'t finish the transfer. Start again on the old phone.';
+
+  @override
+  String get errorAttachmentCanceled => 'The upload was canceled.';
+
+  @override
+  String get errorAttachmentRejected =>
+      'This file couldn\'t be sent. Attach it again.';
 
   @override
   String get conversationsNewChat => 'New chat';

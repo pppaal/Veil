@@ -410,15 +410,15 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       // new claim must not replace them.
       final pending = _pendingTransfer ?? await _storage.readPendingTransfer();
       if (pending != null && pending.isCompleted) {
-        throw StateError('Finish the transfer this device already completed before claiming another.');
+        throw StateError('Finish the transfer this device already completed before entering another code.');
       }
       if (pending != null && pending.mayBeCommitted) {
-        throw StateError('Finish the transfer this device already started before claiming another.');
+        throw StateError('Finish the transfer this device already started before entering another code.');
       }
       // The relay keeps the first claim of a session and ends the session on
       // a second one, so the claim this device holds is completed instead.
       if (pending != null && !pending.ended && pending.sessionId == sessionId) {
-        throw StateError('This device already claimed this transfer. Complete it on this device.');
+        throw StateError('This device already entered this transfer code. Complete the transfer on this device.');
       }
 
       final materialSeed =
@@ -694,10 +694,20 @@ class AppSessionController extends StateNotifier<AppSessionState> {
 }
 
 // The label a device is listed under: the one its screen chose, in the
-// user's language, or else the product and the platform's wire name.
+// user's language, or else the name the platform itself goes by.
 String _deviceLabel(String? chosen) {
   final label = chosen?.trim() ?? '';
-  return label.isEmpty ? 'VEIL ${_platformName()}' : label;
+  return label.isEmpty ? _platformLabel() : label;
+}
+
+// The platform's own name for a device, written the same in every language.
+String _platformLabel() {
+  if (Platform.isIOS) return 'iPhone';
+  if (Platform.isAndroid) return 'Android';
+  if (Platform.isWindows) return 'Windows';
+  if (Platform.isMacOS) return 'macOS';
+  if (Platform.isLinux) return 'Linux';
+  return _platformName();
 }
 
 String _platformName() {

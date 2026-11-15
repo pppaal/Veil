@@ -306,7 +306,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       final result = await ref.read(appSessionProvider.notifier).claimTransfer(
             sessionId: _sessionId,
             transferToken: _transferToken,
-            deviceName: _deviceNameController.text.trim(),
+            // A name cleared from the field is the one it started with.
+            deviceName: _deviceNameController.text.trim().isEmpty
+                ? l10n.authDefaultDeviceName
+                : _deviceNameController.text.trim(),
           );
       if (!mounted) {
         return;

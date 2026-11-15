@@ -754,7 +754,8 @@ void main() {
 
     final pending = (await cache.readPendingMessages()).single;
     expect(pending.nextRetryAt, isNull);
-    expect(pending.errorMessage, contains('older version of VEIL'));
+    // Reported by its code; the chat words it from the ARB file.
+    expect(pending.errorMessage, UserFacingErrorCode.attachmentRejected.sentence);
     // Its blob would never open for the recipient, so it is never uploaded.
     expect(api.ticketedAttachmentIds, isEmpty);
     expect(api.sentPayloads, isEmpty);

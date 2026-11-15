@@ -298,7 +298,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.errorMessage, contains('keystore unavailable'));
-    expect(find.text('Something went wrong'), findsOneWidget);
+    expect(find.text(controller.errorMessage!), findsOneWidget);
     expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
     expect(find.text('A different account'), findsOneWidget);
     final listed = controller.conversationById('conv-1')!;

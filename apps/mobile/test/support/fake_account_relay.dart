@@ -339,7 +339,7 @@ class FakeAccountRelay extends VeilApiClient {
       ..claim = null;
     if (dropCompletionResponses > 0) {
       dropCompletionResponses -= 1;
-      throw VeilApiException('The VEIL relay is unreachable.', code: 'network_unavailable');
+      throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
     }
     return _completion(session, claim.claimId);
   }

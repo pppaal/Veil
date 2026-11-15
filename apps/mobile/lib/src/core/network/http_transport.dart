@@ -31,16 +31,16 @@ abstract final class TransportErrorCode {
 VeilApiException? transportFailure(Object error) {
   return switch (error) {
     TimeoutException() => VeilApiException(
-        'The VEIL relay did not respond in time.',
+        'The server did not respond in time.',
         code: TransportErrorCode.timeout,
       ),
     PinnedCertificateException() => VeilApiException(
-        'The relay presented a certificate this build does not trust.',
+        'The server presented a certificate this build does not pin.',
         code: TransportErrorCode.pinMismatch,
       ),
     SocketException() || TlsException() || http.ClientException() =>
       VeilApiException(
-        'The VEIL relay is unreachable.',
+        'The server is unreachable.',
         code: TransportErrorCode.unavailable,
       ),
     _ => null,

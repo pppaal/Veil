@@ -232,7 +232,7 @@ void main() {
       expect(tester.getSize(find.byType(ChatStatusBanners)).height, 0);
     });
 
-    testWidgets('every warning is there, with its action inside its banner', (tester) async {
+    testWidgets('every warning is there, with its action inside its banner; the error is a line', (tester) async {
       messenger
         ..error = 'keystore unavailable'
         ..pending = 1
@@ -250,13 +250,14 @@ void main() {
         );
       await tester.pumpWidget(banners(messages: [_message('m1', MessageDeliveryState.failed)]));
 
-      expect(find.byType(VeilNotice), findsNWidgets(4));
+      expect(find.byType(VeilNotice), findsNWidgets(3));
       expect(find.text(l10n.chatIdentityChangedTitle), findsOneWidget);
       expect(find.text(l10n.chatIdentityChangedBody), findsOneWidget);
       expect(find.text(l10n.chatAccountHoldOtherTitle), findsOneWidget);
       expect(find.text(l10n.chatAccountHoldOtherBody('selene')), findsOneWidget);
-      expect(find.text(l10n.chatBannerConversationIssue), findsOneWidget);
+      // The error has no action to offer: it is one plain line, not a notice.
       expect(find.text('keystore unavailable'), findsOneWidget);
+      expect(find.ancestor(of: find.text('keystore unavailable'), matching: find.byType(VeilNotice)), findsNothing);
       expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
       expect(find.text(l10n.chatBannerFailedSends(1)), findsOneWidget);
 

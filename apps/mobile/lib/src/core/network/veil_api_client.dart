@@ -751,30 +751,30 @@ class VeilApiClient {
       case 'challenge_invalid':
         return 'This challenge is no longer valid. Request a new one.';
       case 'device_not_active':
-        return 'This device is no longer trusted for this VEIL account.';
+        return 'This device is no longer active on this account.';
       case 'invalid_device_signature':
         return 'This device proof was rejected.';
       case 'transfer_session_inactive':
         return 'This transfer session is no longer active.';
       case 'transfer_token_invalid':
-        return 'This transfer token is invalid.';
+        return 'This transfer code is invalid.';
       case 'transfer_claim_required':
-        return 'A matching new-device claim is required first.';
+        return 'The transfer code has to be entered on the new device first.';
       case 'transfer_approval_required':
-        return 'The old device must approve this exact new-device claim first.';
+        return 'The old device has not approved this new device yet.';
       case 'transfer_completion_invalid':
         return 'This new device could not prove the final transfer handoff.';
       case 'attachment_upload_canceled':
         return 'Attachment upload was canceled on this device.';
       case 'attachment_upload_invalid':
-        return 'This attachment was rejected by the relay policy.';
+        return 'The server did not accept this attachment.';
     }
 
     if (message.contains('peer handle')) {
       return 'That handle is not available for a direct chat.';
     }
     if (message.contains('already exists') || message.contains('has already been taken')) {
-      return 'That handle is already claimed.';
+      return 'That handle is already taken.';
     }
     if (message.contains('Invalid handle') || message.contains('handle')) {
       if (status == 400 || status == 422) {

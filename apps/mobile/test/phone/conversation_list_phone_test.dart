@@ -185,7 +185,7 @@ void main() {
       body: (world) async {
         expect(find.byType(VeilNotice), findsOneWidget);
         expect(findCopy("Couldn't refresh"), findsOneWidget);
-        expect(findCopy('The server could not complete the request. Try again shortly.'), findsOneWidget);
+        expect(findCopy("The server couldn't complete the request."), findsOneWidget);
         expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
         expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
         expect(find.byType(ConversationRow), findsWidgets);

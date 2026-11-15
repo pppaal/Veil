@@ -27,21 +27,18 @@ describe('preferences', () => {
     preferences.setTheme('light');
     preferences.setSoundsEnabled(true);
     preferences.setMutedConversations(new Set(['c1', 'c2']));
-    preferences.dismissBetaBanner();
     preferences.dismissNotificationPrompt();
     expect(preferences.setNotificationLevel('sender')).toBe(true);
     expect(storage.entries()).toEqual({
       'veil-demo-theme': 'light',
       'veil-demo-sounds-enabled-v1': '1',
       'veil-demo-muted-convs-v1': '["c1","c2"]',
-      'veil-demo-beta-banner-dismissed-v1': '1',
       'veil-demo-notif-prompt-dismissed-v1': '1',
       'veil-demo-notification-level-v1': 'sender',
     });
     expect(preferences.lightTheme()).toBe(true);
     expect(preferences.soundsEnabled()).toBe(true);
     expect([...preferences.mutedConversations()]).toEqual(['c1', 'c2']);
-    expect(preferences.betaBannerDismissed()).toBe(true);
     expect(preferences.notificationPromptDismissed()).toBe(true);
     expect(preferences.notificationLevel()).toBe('sender');
     preferences.setSoundsEnabled(false);

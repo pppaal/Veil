@@ -10,16 +10,18 @@ import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
 
-/// What sits between a chat's bar and its messages: a banner for each thing
-/// the user has to decide or should be warned about (an identity change or
-/// held account that pauses the 1:1, a key change of the peer's that waits
-/// in another chat, an error, sends still waiting), each with its action
-/// inside it, and a line about a running search. A quiet chat shows nothing
-/// here: the bar carries the verified mark, and the messages keep the height.
+/// What sits between a chat's bar and its messages: a notice for each thing
+/// the user has to decide or act on (an identity change or held account
+/// that pauses the 1:1, a key change of the peer's that waits in another
+/// chat, sends still waiting), each with its action inside it; then, as one
+/// plain line each, the messenger's error and a running search. An error
+/// has no action of its own to offer, so it is a line, not a notice. A
+/// quiet chat shows nothing here: the bar carries the verified mark, and the
+/// messages keep the height.
 ///
-/// Given less height than its banners need, it shows each warning as one
-/// row (title and action), and only when even those do not fit do the rows
-/// scroll.
+/// Given less height than its notices need, it shows each warning as one
+/// full-bleed row (title and action), and only when even those do not fit
+/// do the rows scroll.
 class ChatStatusBanners extends StatelessWidget {
   const ChatStatusBanners({
     super.key,
@@ -57,78 +59,100 @@ class ChatStatusBanners extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final notices = _notices(l10n);
-    if (notices.isEmpty && !hasSearchQuery) return const SizedBox.shrink();
+    final error = _errorLine(l10n);
+    final lines = [
+      if (error != null) error,
+      if (hasSearchQuery) searching ? l10n.chatSearchSearching : l10n.chatSearchMatchCount(searchHitCount),
+    ];
+    if (notices.isEmpty && lines.isEmpty) return const SizedBox.shrink();
     return VeilFirstThatFits(
       children: [
+        // A gap under the last notice as over the first: a message scrolled
+        // up to the notices stops short of them and never touches one (a
+        // grey bubble cut off under a grey notice reads as one shape).
         Padding(
-          padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xs, VeilSpace.sm, 0),
+          padding: const EdgeInsets.symmetric(vertical: VeilSpace.xs),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final (index, notice) in notices.indexed) ...[
                 if (index > 0) const SizedBox(height: VeilSpace.xs),
-                VeilInlineBanner(
-                  dense: true,
+                VeilNotice(
                   title: notice.title,
                   message: notice.message,
                   tone: notice.tone,
-                  icon: notice.icon,
                   actionLabel: notice.actionLabel,
                   onAction: notice.onAction,
                 ),
               ],
-              if (hasSearchQuery)
+              for (final (index, line) in lines.indexed)
                 Padding(
-                  padding: EdgeInsets.fromLTRB(VeilSpace.xxs, notices.isEmpty ? 0 : VeilSpace.xs, VeilSpace.xxs, 0),
-                  child: _searchLine(context, l10n),
+                  padding: EdgeInsets.fromLTRB(
+                      VeilSpace.md, notices.isEmpty && index == 0 ? 0 : VeilSpace.xs, VeilSpace.md, 0),
+                  child: _line(context, line),
                 ),
             ],
           ),
         ),
-        // With the keyboard up on a small phone the banners above would be
+        // With the keyboard up on a small phone the notices above would be
         // cut off, the action of the first among them: each warning then
-        // keeps its title and its action in one row.
-        _ScrollingRows(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (final notice in notices)
-                VeilNoticeRow(
-                  title: notice.title,
-                  message: notice.message,
-                  tone: notice.tone,
-                  icon: notice.icon,
-                  actionLabel: notice.actionLabel,
-                  onAction: notice.onAction,
-                ),
-              if (hasSearchQuery)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xxs),
-                  child: _searchLine(context, l10n),
-                ),
-            ],
+        // keeps its title and its action in one row. A strip of page under
+        // the rows, outside their scrolling, keeps the messages off them.
+        Padding(
+          padding: const EdgeInsets.only(bottom: VeilSpace.xxs),
+          child: _ScrollingRows(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (notices.isNotEmpty)
+                  VeilGroup(
+                    // Grey rows edge to edge: a line that started at the text
+                    // would leave a notch of page colour at the start.
+                    inset: 0,
+                    children: [
+                      for (final notice in notices)
+                        VeilNotice(
+                          dense: true,
+                          title: notice.title,
+                          message: notice.message,
+                          tone: notice.tone,
+                          actionLabel: notice.actionLabel,
+                          onAction: notice.onAction,
+                        ),
+                    ],
+                  ),
+                for (final line in lines)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xxs),
+                    child: _line(context, line, maxLines: 2),
+                  ),
+              ],
+            ),
           ),
         ),
       ],
     );
   }
 
-  Widget _searchLine(BuildContext context, AppLocalizations l10n) {
-    final palette = context.veilPalette;
-    return Row(
-      children: [
-        Icon(Icons.manage_search_rounded, size: VeilIconSize.sm, color: palette.textMuted),
-        const SizedBox(width: VeilSpace.xs),
-        Expanded(
-          child: Text(
-            searching ? l10n.chatSearchSearching : l10n.chatSearchMatchCount(searchHitCount),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-          ),
-        ),
-      ],
+  Widget _line(BuildContext context, String text, {int? maxLines}) {
+    return Text(
+      text,
+      maxLines: maxLines,
+      overflow: maxLines == null ? null : TextOverflow.ellipsis,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
     );
+  }
+
+  /// The messenger's error, in the app's words, when this chat should say
+  /// it: not the note about a dropped link (this chat's waiting sends below
+  /// say that, or it is another chat's business), and not when the message
+  /// area already says why nothing loaded.
+  String? _errorLine(AppLocalizations l10n) {
+    final error = controller.errorMessage;
+    if (error == null || controller.errorIsRelayInterruption || errorShownBelow) return null;
+    return veilErrorText(l10n, error);
   }
 
   /// The warnings, most pressing first.
@@ -151,10 +175,6 @@ class ChatStatusBanners extends StatelessWidget {
         isDirect &&
         !changeHere &&
         controller.pendingIdentityChangeAbout(conversation.recipientBundle.userId) != null;
-    final error = controller.errorMessage;
-    // The note about the dropped relay link is this chat's own "sends are
-    // waiting" below when it has any, and another chat's business when not.
-    final showError = error != null && !controller.errorIsRelayInterruption && !errorShownBelow;
 
     return [
       // Only a 1:1 conversation pauses; a group just leaves the device out.
@@ -162,8 +182,7 @@ class ChatStatusBanners extends StatelessWidget {
         _Notice(
           title: l10n.chatIdentityChangedTitle,
           message: l10n.chatIdentityChangedBody,
-          tone: VeilBannerTone.warn,
-          icon: Icons.gpp_maybe_outlined,
+          tone: VeilTone.warn,
           actionLabel: l10n.chatIdentityChangedReview,
           onAction: onReviewIdentity,
         ),
@@ -171,8 +190,7 @@ class ChatStatusBanners extends StatelessWidget {
         _Notice(
           title: l10n.chatIdentityChangedElsewhereTitle,
           message: l10n.chatIdentityChangedElsewhereBody,
-          tone: VeilBannerTone.warn,
-          icon: Icons.gpp_maybe_outlined,
+          tone: VeilTone.warn,
           actionLabel: l10n.chatIdentityChangedReview,
           onAction: onReviewIdentity,
         ),
@@ -193,23 +211,18 @@ class ChatStatusBanners extends StatelessWidget {
             PeerAccountHoldReason.unissuedHandle => l10n.chatAccountHoldUnissuedBody,
             PeerAccountHoldReason.ownHandle => l10n.chatAccountHoldOwnBody(conversation?.peerHandle ?? ''),
           },
-          tone: VeilBannerTone.danger,
-          icon: Icons.person_off_outlined,
+          tone: VeilTone.warn,
           actionLabel: l10n.chatAccountHoldAcknowledge,
           onAction: () => onAcknowledgeHold(accountHold, conversation?.peerHandle ?? ''),
         ),
-      if (showError)
-        _Notice(
-          title: l10n.chatBannerConversationIssue,
-          message: veilErrorText(l10n, error),
-          tone: VeilBannerTone.danger,
-        ),
       if (pendingCount > 0)
         _Notice(
+          // Sends that failed are said once, in one line with its action:
+          // a title over it would say the same thing twice.
           title: !connected
               ? l10n.chatBannerRelayReconnecting
               : failedCount > 0
-                  ? l10n.chatBannerDeliveryStalled
+                  ? null
                   : l10n.chatBannerQueuedLocally,
           message: !connected
               ? networkRecoveryMessage(
@@ -224,7 +237,11 @@ class ChatStatusBanners extends StatelessWidget {
                   : uploadingCount > 0
                       ? l10n.chatBannerUploadingAttachments(uploadingCount)
                       : l10n.chatBannerQueuedMessages(queuedCount),
-          tone: !connected || failedCount > 0 ? VeilBannerTone.warn : VeilBannerTone.info,
+          tone: failedCount > 0
+              ? VeilTone.danger
+              : !connected
+                  ? VeilTone.warn
+                  : VeilTone.info,
           actionLabel: failedCount > 0 ? l10n.chatRetryFailedSendsAction : null,
           onAction: failedCount > 0 ? onRetryFailed : null,
         ),
@@ -267,15 +284,14 @@ class _Notice {
     required this.title,
     required this.message,
     required this.tone,
-    this.icon,
     this.actionLabel,
     this.onAction,
   });
 
-  final String title;
+  /// Null for a notice whose one line says it all.
+  final String? title;
   final String message;
-  final VeilBannerTone tone;
-  final IconData? icon;
+  final VeilTone tone;
   final String? actionLabel;
   final VoidCallback? onAction;
 }

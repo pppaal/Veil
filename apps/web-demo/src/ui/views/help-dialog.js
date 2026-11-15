@@ -22,11 +22,9 @@ function build(soundsEnabled) {
   }
   const dialog = el('div', { id: 'help-dialog', class: 'dialog-backdrop hidden', role: 'presentation' }, [
     el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'help-title' }, [
-      el('div', { class: 'dialog-title', id: 'help-title', style: 'margin-bottom:12px' }, ['Keyboard shortcuts']),
+      el('div', { class: 'dialog-title', id: 'help-title' }, ['Keyboard shortcuts']),
       grid,
-      el('div', { class: 'dialog-sub', style: 'margin-top:14px;font-size:11px;opacity:0.6' }, [
-        `Sounds: ${soundsEnabled ? 'on' : 'off'} (menu or Ctrl/Cmd+Shift+S)`,
-      ]),
+      el('div', { class: 'help-note' }, [`Sounds: ${soundsEnabled ? 'on' : 'off'} (menu or Ctrl/Cmd+Shift+S)`]),
       el('div', { class: 'dialog-actions' }, [el('button', { class: 'btn btn-primary', id: 'help-ok' }, ['OK'])]),
     ]),
   ]);

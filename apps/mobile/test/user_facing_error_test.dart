@@ -2,6 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
+import 'package:veil_mobile/src/core/network/http_transport.dart';
+import 'package:veil_mobile/src/core/network/veil_api_exception.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_error_text.dart';
 
@@ -31,6 +33,27 @@ const _reported = <String, String>{
       'The VEIL realtime endpoint must use TLS outside local development.',
 };
 
+// The failures that arrive with a wire code (a transport failure's, or the
+// server's) the app has words for, whatever English text came with them.
+final _byWireCode = <VeilApiException, UserFacingErrorCode>{
+  VeilApiException('The server did not respond in time.', code: TransportErrorCode.timeout):
+      UserFacingErrorCode.networkTimeout,
+  VeilApiException('The server is unreachable.', code: TransportErrorCode.unavailable):
+      UserFacingErrorCode.networkUnavailable,
+  VeilApiException('certificate', code: TransportErrorCode.pinMismatch): UserFacingErrorCode.tlsPinMismatch,
+  VeilApiException('x', code: 'challenge_invalid', statusCode: 401): UserFacingErrorCode.challengeInvalid,
+  VeilApiException('x', code: 'device_not_active', statusCode: 403): UserFacingErrorCode.deviceNotActive,
+  VeilApiException('x', code: 'invalid_device_signature'): UserFacingErrorCode.deviceSignatureInvalid,
+  VeilApiException('Handle is already taken', code: 'handle_taken', statusCode: 409): UserFacingErrorCode.handleTaken,
+  VeilApiException('x', code: 'transfer_session_inactive'): UserFacingErrorCode.transferInactive,
+  VeilApiException('x', code: 'transfer_token_invalid'): UserFacingErrorCode.transferCodeInvalid,
+  VeilApiException('x', code: 'transfer_claim_required'): UserFacingErrorCode.transferClaimRequired,
+  VeilApiException('x', code: 'transfer_approval_required'): UserFacingErrorCode.transferApprovalRequired,
+  VeilApiException('x', code: 'transfer_completion_invalid'): UserFacingErrorCode.transferCompletionInvalid,
+  VeilApiException('x', code: 'attachment_upload_canceled'): UserFacingErrorCode.attachmentCanceled,
+  VeilApiException('x', code: 'attachment_upload_invalid'): UserFacingErrorCode.attachmentRejected,
+};
+
 void main() {
   final en = lookupAppLocalizations(const Locale('en'));
 
@@ -38,18 +61,37 @@ void main() {
     for (final MapEntry(key: raw, value: sentence) in _reported.entries) {
       expect(formatUserFacingError(raw), sentence, reason: raw);
     }
-    expect(_reported.values.toSet(), {for (final code in UserFacingErrorCode.values) code.sentence},
-        reason: 'every code is reachable, and nothing else is');
+  });
+
+  test('a failure with a wire code the app knows is reported by that code, whatever its text', () {
+    for (final MapEntry(key: error, value: code) in _byWireCode.entries) {
+      expect(formatUserFacingError(error), code.sentence, reason: error.code);
+      expect(userFacingErrorCodeOf(formatUserFacingError(error)), code, reason: error.code);
+    }
+    // A wire code the app has no words for leaves the server's text as it is.
+    expect(formatUserFacingError(VeilApiException('User not found', code: 'handle_not_found')), 'User not found');
+  });
+
+  test('every code is reachable, and nothing else is', () {
+    expect(
+      {..._reported.values.map(userFacingErrorCodeOf), ..._byWireCode.values},
+      UserFacingErrorCode.values.toSet(),
+    );
   });
 
   test('every known failure has a code, and a sentence of the ARB behind it', () {
     final english = <String>{};
-    for (final raw in _reported.keys) {
-      final reported = formatUserFacingError(raw);
-      expect(userFacingErrorCodeOf(reported), isNotNull, reason: raw);
+    for (final reported in [..._reported.keys.map(formatUserFacingError), ..._byWireCode.keys.map(formatUserFacingError)]) {
+      expect(userFacingErrorCodeOf(reported), isNotNull, reason: reported);
       english.add(veilErrorText(en, reported));
     }
     expect(english, hasLength(UserFacingErrorCode.values.length), reason: 'one sentence per code');
+    // What a screen shows never names the product in capitals or the old
+    // vocabulary (spec 3.2, 10.4).
+    for (final sentence in english) {
+      expect(sentence, isNot(matches(RegExp(r'VEIL|\brelay\b|\btoken\b|\bclaim|\bopaque\b', caseSensitive: false))),
+          reason: sentence);
+    }
   });
 
   test('what the app did not write is shown as it is, redacted', () {

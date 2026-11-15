@@ -52,7 +52,7 @@ test.describe('device transfer', () => {
     await openMenuItem(alice, 'transfer-start');
     const oldDialog = alice.page.locator('#transfer-old-dialog');
     await expect(oldDialog).toBeVisible();
-    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Copy the code and paste it on the new device. Waiting for the new device…');
+    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Waiting for the new device…');
     await expect(alice.page.locator('#transfer-old-approve')).toBeHidden();
     const code = await alice.page.locator('#transfer-old-token').inputValue();
     expect(code).toMatch(/^[A-Za-z0-9+/]+$/);
@@ -62,7 +62,7 @@ test.describe('device transfer', () => {
     const newDialog = page.locator('#transfer-new-dialog');
     await expect(newDialog).toBeVisible();
     // The same name for every browser, never its platform string.
-    await expect(page.locator('#transfer-new-name')).toHaveValue('VEIL Web');
+    await expect(page.locator('#transfer-new-name')).toHaveValue('Veil Web');
     await page.click('#transfer-new-claim');
     await expect(page.locator('#transfer-new-error')).toHaveText('Enter the code');
     await page.fill('#transfer-new-token', 'not a code');
@@ -104,7 +104,7 @@ test.describe('device transfer', () => {
     // with its revocation, the new one under the name the dialog offered.
     expect(await relayState(`/__test/devices/${alice.handle}`)).toEqual([
       { deviceName: 'Removed device', platform: 'android' },
-      { deviceName: 'VEIL Web', platform: 'android' },
+      { deviceName: 'Veil Web', platform: 'android' },
     ]);
     expectNoErrors(alice, bob, spare);
   });

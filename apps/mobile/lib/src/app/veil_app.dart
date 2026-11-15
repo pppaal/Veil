@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/crypto/lib_crypto_adapter.dart';
+import '../features/onboarding/presentation/brand_mark.dart';
 import 'router/app_router.dart';
 import '../core/theme/veil_theme.dart';
 import '../l10n/generated/app_localizations.dart';
-import '../shared/presentation/veil_ui.dart';
 import 'app_state.dart';
 import 'theme_mode_provider.dart';
 
@@ -30,7 +30,7 @@ class VeilApp extends ConsumerWidget {
 
     return _PrivacyLifecycleBoundary(
       child: MaterialApp.router(
-        title: 'VEIL',
+        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
         theme: VeilTheme.light(),
         darkTheme: VeilTheme.dark(),
         // Honor the user's persisted choice. Defaults to ThemeMode.system,
@@ -150,36 +150,17 @@ class _PrivacyLifecycleBoundaryState
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     return Stack(
       fit: StackFit.expand,
       children: [
         widget.child,
+        // What the app switcher shows while the app is away: the page and
+        // the mark, nothing of what was on screen and nothing to read.
         if (_obscured)
           IgnorePointer(
             child: ColoredBox(
               color: Theme.of(context).scaffoldBackgroundColor,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 360),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: VeilHeroPanel(
-                      eyebrow: l10n.privacyShieldEyebrow,
-                      title: l10n.privacyShieldTitle,
-                      body: l10n.privacyShieldBody,
-                      bottom: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          VeilStatusPill(label: l10n.pillSessionLocked),
-                          VeilStatusPill(label: l10n.pillPreviewObscured),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+              child: const Center(child: BrandMark()),
             ),
           ),
       ],

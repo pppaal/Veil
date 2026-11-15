@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -15,7 +16,7 @@ import 'phone_app.dart';
 // A chat on a phone: the messages have the screen, and everything the
 // header cards carried in the wide layout is still one tap away in the bar.
 
-const _latest = 'Section 7 is fine. Let us sign tomorrow.';
+const _latest = "Section 7 is fine. Let's sign tomorrow.";
 const _first = 'Did the signed lease come through on your side?';
 const _chat = '/chat/$chatConversationId';
 
@@ -31,7 +32,7 @@ void main() {
   // The safety number is derived on a background isolate, which only real
   // time moves forward; leaving before it finishes would leave it running.
   Future<void> awaitSafetyNumber(WidgetTester tester) async {
-    final loading = find.byType(VeilLoadingBlock);
+    final loading = find.byKey(SafetyNumbersScreen.loadingKey);
     for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
@@ -41,8 +42,6 @@ void main() {
 
   testWidgets('opens at its latest message and gives the messages the screen', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      expect(find.byType(VeilHeroPanel), findsNothing);
-      expect(find.byType(VeilMetricStrip), findsNothing);
 
       final messages = onScreen(tester, find.byType(ChatMessageList));
       expect(messages.height / screenHeight(tester), greaterThan(0.6));
@@ -94,23 +93,28 @@ void main() {
       await awaitSafetyNumber(tester);
       final opened = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
       expect((opened.conversationId, opened.memberUserId), (groupConversationId, null));
-      expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+      expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
       expect(tester.takeException(), isNull);
     });
   });
 
   testWidgets('searches from the bar: the field replaces the title, and back closes it', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      await tester.tap(find.byTooltip('Search messages'));
+      await tester.tap(find.byTooltip('Search'));
       await pumpFrames(tester, frames: 2);
       expect(find.widgetWithText(TextField, 'Search this chat'), findsOneWidget);
       expect(find.text('Sam Rivera'), findsNothing);
       expect(find.byTooltip('Safety number'), findsNothing);
+      final searchField = find.descendant(of: find.byType(ChatBarSearchField), matching: find.byType(TextField));
+      final emptyHeight = tester.getSize(searchField).height;
 
       // Typed where the focus is: opening the search moved it to the bar.
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
-      expect(find.text('2 matches on this device'), findsOneWidget);
+      expect(find.text('2 matches'), findsOneWidget);
+      // The clear button is as tall as the field: nothing moves under it.
+      expect(find.byTooltip('Clear search'), findsOneWidget);
+      expect(tester.getSize(searchField).height, emptyHeight);
       expect(find.text(_first), findsOneWidget);
       expect(find.text(_latest), findsNothing);
 
@@ -125,7 +129,7 @@ void main() {
 
   testWidgets('sets the disappearing timer from the bar and shows it there', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      await tester.tap(find.byTooltip('Disappearing messages: Off'));
+      await tester.tap(find.byTooltip('Disappearing: Off'));
       await pumpFrames(tester, frames: 4);
       expect(find.text('Disappearing messages'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: 'the sheet fits a 360x640 screen');
@@ -133,26 +137,27 @@ void main() {
       await tester.tap(find.text('1 day'));
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
-      expect(find.byTooltip('Disappearing messages: 1 day'), findsOneWidget);
+      expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget, reason: 'under the name, while a timer is set');
     });
   });
 
   testWidgets('shows a timer the conversation already has', (tester) async {
     await withPhoneApp(tester, identities, location: '/chat/$timerChatConversationId', body: (world) async {
-      expect(find.byTooltip('Disappearing messages: 1 day'), findsOneWidget);
+      expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget);
     });
   });
 
   // The attach button is there only in a build that can send a file
-  // (kAttachmentsEnabled); without it the composer shows its lock mark.
+  // (kAttachmentsEnabled); without it nothing stands before the draft (the
+  // composer has no padlock, design system 7.7).
   testWidgets('offers no attachment from the composer while attachments are switched off', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       expect(find.byTooltip('Attach'), kAttachmentsEnabled ? findsOneWidget : findsNothing);
       expect(
-        find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline_rounded)),
-        kAttachmentsEnabled ? findsNothing : findsOneWidget,
+        find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline)),
+        findsNothing,
       );
     });
   });
@@ -193,7 +198,7 @@ void main() {
       location: _chat,
       attention: const ChatAttention(accountHeld: true),
       body: (world) async {
-        expect(find.byType(VeilInlineBanner), findsOneWidget);
+        expect(_fullNotices(), findsOneWidget);
         expect(find.byTooltip('Verified'), findsNothing);
         expect(await world.messenger.isPeerVerified(chatConversationId), isFalse);
       },
@@ -208,7 +213,8 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        for (final text in ['Safety number changed', 'Review', 'Delivery stalled', 'Retry failed sends']) {
+        // Failed sends are one line with no title over it.
+        for (final text in ['Safety number changed', 'Review', "2 messages weren't sent.", 'Retry now']) {
           final rect = onScreen(tester, find.text(text));
           expect(rect.height, greaterThan(0), reason: '"$text" is on screen');
         }
@@ -227,8 +233,9 @@ void main() {
   // would not fit there, and a strip that scrolls them cuts the first one's
   // action off, which is the one thing the user must be able to reach.
   testWidgets('with the keyboard up, each warning keeps its title and its action on one row', (tester) async {
-    const titles = ['Safety number changed', 'Delivery stalled'];
-    const actions = ['Review', 'Retry failed sends'];
+    // A notice's title, or its one line when it has no title.
+    const titles = ['Safety number changed', "2 messages weren't sent."];
+    const actions = ['Review', 'Retry now'];
     await withPhoneApp(
       tester,
       identities,
@@ -236,8 +243,8 @@ void main() {
       keyboardHeight: 300,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
-        expect(find.byType(VeilInlineBanner), findsNothing, reason: 'the banners are not what is shown');
+        expect(_denseNotices(), findsNWidgets(2));
+        expect(_fullNotices(), findsNothing, reason: 'the full notices are not what is shown');
         for (final title in titles) {
           final box = tester.renderObject<RenderBox>(findCopy(title));
           expect(visibleRect(tester, box).size, box.size, reason: '"$title" is whole');
@@ -268,19 +275,19 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilInlineBanner), findsNWidgets(2));
-        expect(find.byType(VeilNoticeRow), findsNothing);
-        expect(find.text('Nothing is sent to the new key until you review it.'), findsOneWidget);
+        expect(_fullNotices(), findsNWidgets(2));
+        expect(_denseNotices(), findsNothing);
+        expect(find.text('Nothing is sent until you review it.'), findsOneWidget);
 
         // The keyboard comes up, and goes again.
         tester.view.viewInsets = const FakeViewPadding(bottom: 600);
         await pumpFrames(tester, frames: 3);
-        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
-        expect(find.text('Nothing is sent to the new key until you review it.'), findsNothing);
+        expect(_denseNotices(), findsNWidgets(2));
+        expect(find.text('Nothing is sent until you review it.'), findsNothing);
         tester.view.viewInsets = FakeViewPadding.zero;
         await pumpFrames(tester, frames: 3);
-        expect(find.byType(VeilInlineBanner), findsNWidgets(2));
-        expect(find.byType(VeilNoticeRow), findsNothing);
+        expect(_fullNotices(), findsNWidgets(2));
+        expect(_denseNotices(), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
@@ -294,17 +301,17 @@ void main() {
       keyboardHeight: 300,
       attention: const ChatAttention(identityChanged: true, accountHeld: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilNoticeRow), findsNWidgets(3));
+        expect(_denseNotices(), findsNWidgets(3));
         Finder action(String label) => find.widgetWithText(TextButton, label);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Review'))), isNull);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Talk to this account'))), isNull);
-        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry failed sends'))), isNotNull,
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry now'))), isNotNull,
             reason: 'three rows are more than this screen has room for');
         expect(onScreen(tester, find.byType(ChatMessageList)).height, greaterThanOrEqualTo(96));
 
-        await tester.ensureVisible(action('Retry failed sends'));
+        await tester.ensureVisible(action('Retry now'));
         await pumpFrames(tester, frames: 2);
-        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry failed sends'))), isNull);
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry now'))), isNull);
         expect(tester.takeException(), isNull);
       },
     );
@@ -347,3 +354,8 @@ void main() {
     });
   });
 }
+
+// The warnings of a chat in their full form (title, explanation, action)
+// and as one row each.
+Finder _fullNotices() => find.byWidgetPredicate((widget) => widget is VeilNotice && !widget.dense);
+Finder _denseNotices() => find.byWidgetPredicate((widget) => widget is VeilNotice && widget.dense);

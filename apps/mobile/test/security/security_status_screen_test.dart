@@ -9,6 +9,7 @@ import 'package:veil_mobile/src/core/crypto/libsignal_bridge_adapter.dart';
 import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/security_status/presentation/security_signal_rows.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
@@ -97,13 +98,26 @@ void main() {
     await pumpStatus(tester, adapter: LibCryptoAdapter());
 
     expect(find.text('Not pinned'), findsOneWidget);
-    expect(find.textContaining('VEIL_TLS_PINS'), findsOneWidget);
+    expect(find.text('Any certificate the phone trusts is accepted.'), findsOneWidget);
+    expect(find.textContaining('VEIL'), findsNothing, reason: 'the build variable is not the user\'s business');
+  });
+
+  testWidgets('says that push notifications are not connected in a build without a push service', (tester) async {
+    await pumpStatus(tester, adapter: LibCryptoAdapter());
+
+    final l10n = lookupAppLocalizations(const Locale('en'));
+    final row = find.ancestor(of: find.text(l10n.securityStatusPushDelivery), matching: find.byType(SecuritySignalRow));
+    expect(row, findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text(l10n.securityStatusPushDeliveryOff)), findsOneWidget);
+    expect(find.descendant(of: row, matching: find.text(l10n.securityStatusPushDeliveryOffDetail)), findsOneWidget);
+    final status = tester.widget<Text>(find.descendant(of: row, matching: find.text(l10n.securityStatusPushDeliveryOff)));
+    expect(status.style?.color, VeilPalette.dark.warning, reason: 'a warning, not a fact in green');
   });
 
   testWidgets('the TLS row counts the pins the build has', (tester) async {
     await pumpStatus(tester, adapter: LibCryptoAdapter(), tlsPins: 'pin-one, pin-two');
 
     expect(find.text('Pinned'), findsOneWidget);
-    expect(find.textContaining("pins the relay's TLS keys (2)"), findsOneWidget);
+    expect(find.textContaining("pins the server's TLS keys (2)"), findsOneWidget);
   });
 }

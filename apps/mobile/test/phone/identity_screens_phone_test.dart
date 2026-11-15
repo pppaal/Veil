@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
-import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
+import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
+import 'package:veil_mobile/src/features/onboarding/presentation/brand_mark.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_number_cards.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_signal_rows.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -16,9 +18,9 @@ import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
 // The screens around the account on a phone, content first: what each one
-// is for is on its first screenful, a warning about recovery is said once
-// where the decision is made, and no screen opens on a hero card, slogan
-// pills or tiles.
+// is for is on its first screenful, losing the phone is said where the
+// decision is made and once, and no screen opens on a slogan, a paragraph,
+// a notice that only informs, or state words without a row.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -41,17 +43,10 @@ void main() {
 
   double top(WidgetTester tester, Finder finder) => tester.getTopLeft(finder.first).dy;
 
-  // No panel, pills or tiles stand between the bar and what the screen is
-  // for.
-  void expectNoDashboard() {
-    expect(find.byType(VeilHeroPanel, skipOffstage: false), findsNothing);
-    expect(find.byType(VeilMetricStrip, skipOffstage: false), findsNothing);
-  }
-
   // The safety number is derived on a background isolate, which only real
-  // time moves forward.
+  // time moves forward. (The page shows a spinner and one line until it is.)
   Future<void> awaitSafetyNumber(WidgetTester tester) async {
-    final loading = find.byType(VeilLoadingBlock);
+    final loading = find.text(l10n.safetyNumbersLoadingTitle);
     for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
@@ -61,17 +56,20 @@ void main() {
   }
 
   group('splash', () {
-    testWidgets('shows the name, its one line and what the app is doing, and nothing else', (tester) async {
+    testWidgets('shows the mark and that the app is starting, and no words', (tester) async {
       usePhoneView(tester, phoneSmall);
       final world = await LayoutWorld.create(identities: identities, account: signedOut, locale: 'en', bootstrapping: true);
       try {
         await tester.pumpWidget(world.app(location: '/splash'));
         await pumpFrames(tester);
-        expectNoDashboard();
-        expect(find.byType(VeilStatusPill), findsNothing);
-        expect(find.text('VEIL'), findsOneWidget);
-        expect(findCopy(l10n.splashBody), findsOneWidget);
-        expect(findCopy(l10n.splashPreparingTitle), findsOneWidget);
+        expect(find.byType(BrandMark), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(Text), findsNothing, reason: 'the splash has no text');
+        // A screen reader still hears what is going on.
+        expect(find.bySemanticsLabel(l10n.splashPreparingTitle), findsOneWidget);
+        // The mark sits where the native splash put it: in the middle.
+        final mark = tester.getCenter(find.byType(BrandMark));
+        expect(mark.dx, closeTo(phoneSmall.width / 2, 0.5));
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
@@ -85,12 +83,13 @@ void main() {
       await withPhoneApp(tester, identities, location: '/privacy-consent', account: signedOut, body: (world) async {
         final button = find.widgetWithText(FilledButton, l10n.privacyConsentAccept);
         final lastSection = findCopy(l10n.privacyConsentThirdPartyBody);
-        expectNoDashboard();
 
         // On the first screenful of a 360x640 phone, before any scroll.
         expectInReach(tester, find.byType(Checkbox));
         expectInReach(tester, button);
         expect(lastSection, findsNothing, reason: 'the notice is longer than the screen');
+        // The notice opens on its first group, not on words about itself.
+        expect(top(tester, findCopy(l10n.privacyConsentCollectTitle)), lessThan(120));
 
         // The notice scrolls to its end under them.
         await tester.dragUntilVisible(lastSection, find.byType(ListView), const Offset(0, -300));
@@ -125,133 +124,164 @@ void main() {
     });
   });
 
-  group('onboarding warning', () {
-    testWidgets('"I understand" is in reach from the start, under the one no-recovery notice', (tester) async {
+  group('before you start', () {
+    testWidgets('the three lines, the box and "Continue" on the first screenful; the loss said once', (tester) async {
       await withPhoneApp(tester, identities, location: '/onboarding', account: signedOut, body: (world) async {
-        expectNoDashboard();
-        expect(find.byType(VeilStatusPill, skipOffstage: false), findsNothing);
-        expectInReach(tester, find.widgetWithText(FilledButton, l10n.commonIUnderstand));
         expect(findCopy(l10n.onboardingWarnTitle), findsOneWidget);
-        expect(find.byType(VeilDestructiveNotice, skipOffstage: false), findsOneWidget);
-        expect(findCopy(l10n.onboardingWarnDestructiveBody, skipOffstage: false), findsOneWidget);
+        for (final line in [l10n.onboardingWarnLine1, l10n.onboardingWarnLine2, l10n.onboardingWarnLine3]) {
+          expectInReach(tester, findCopy(line));
+        }
+        expect(find.textContaining('no way to recover', skipOffstage: false), findsNWidgets(2),
+            reason: 'the loss sentence and the box that says it was understood');
+        expect(find.byType(VeilNotice, skipOffstage: false), findsNothing);
+
+        final box = find.widgetWithText(CheckboxListTile, l10n.onboardingWarnAgreeCheckbox);
+        final proceed = find.widgetWithText(FilledButton, l10n.commonContinue);
+        expectInReach(tester, box);
+        expectInReach(tester, proceed);
+        expect(tester.widget<FilledButton>(proceed).onPressed, isNull, reason: 'not before the box is ticked');
+        await tester.tap(proceed);
+        await pumpFrames(tester, frames: 3);
+        expect(find.byType(CreateAccountScreen), findsNothing);
+
+        await tester.tap(box);
+        await tester.pump();
+        expect(tester.widget<FilledButton>(proceed).onPressed, isNotNull);
+        await tester.tap(proceed);
+        await pumpFrames(tester, frames: 4);
+        expect(find.byType(CreateAccountScreen), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
-    });
-
-    test('calls what stays on the device a key, as the consent screen does', () {
-      // The consent lists what the server stores about a person; the keys
-      // are not that.
-      expect(l10n.onboardingWarnIdentityLine2, contains('private keys'));
     });
   });
 
   group('create account', () {
-    testWidgets('opens on the name field, with the notice once between it and the two ways on', (tester) async {
+    testWidgets('is the name field, "Continue" and one text button, and nothing else', (tester) async {
       await withPhoneApp(tester, identities, size: phoneMedium, location: '/create-account', account: signedOut,
           body: (world) async {
+        final field = find.byType(TextField);
         final proceed = find.widgetWithText(FilledButton, l10n.commonContinue);
-        final transfer = find.widgetWithText(OutlinedButton, l10n.authCreateTransferLabel);
-        expectNoDashboard();
-        expect(find.byType(VeilStatusPill, skipOffstage: false), findsNothing);
-        expectInReach(tester, find.byType(TextField));
+        final transfer = find.widgetWithText(TextButton, l10n.authCreateTransferLabel);
+        expectInReach(tester, field);
         expectInReach(tester, proceed);
         expectInReach(tester, transfer);
-
-        final notice = find.byType(VeilDestructiveNotice);
-        expect(notice, findsOneWidget);
-        expect(findCopy(l10n.authCreateRestoreBody), findsOneWidget);
-        expect(top(tester, find.byType(TextField)), lessThan(top(tester, notice)));
-        expect(top(tester, notice), lessThan(top(tester, proceed)));
+        expect(field, findsOneWidget);
+        expect(find.byType(FilledButton), findsOneWidget);
+        expect(find.byType(OutlinedButton), findsNothing);
+        expect(top(tester, field), lessThan(top(tester, proceed)));
+        expect(top(tester, proceed), lessThan(top(tester, transfer)));
+        // Before you start already said what losing the phone means.
+        expect(find.byType(VeilNotice), findsNothing);
+        expect(find.textContaining('recover'), findsNothing);
         expect(tester.takeException(), isNull);
       });
     });
   });
 
-  group('choose handle', () {
-    testWidgets('opens on the handle field and the button that binds it, the steps under them', (tester) async {
+  group('choose a handle', () {
+    testWidgets('opens on the handle field and the button, with the one helper line', (tester) async {
       await withPhoneApp(tester, identities, size: phoneMedium, location: '/choose-handle', account: signedOut,
           body: (world) async {
-        final bind = find.widgetWithText(FilledButton, l10n.authHandleBindCta);
-        expectNoDashboard();
-        expect(find.byType(VeilStatusPill, skipOffstage: false), findsNothing);
+        final create = find.widgetWithText(FilledButton, l10n.authHandleBindCta);
         expectInReach(tester, find.byType(TextField));
-        expectInReach(tester, bind);
-        expect(top(tester, bind), lessThan(top(tester, find.byType(VeilStepRow))));
+        expectInReach(tester, create);
+        expect(findCopy(l10n.authHandleFindCaption), findsOneWidget);
+        expect(top(tester, find.byType(TextField)), lessThan(top(tester, create)));
+        expect(find.byType(VeilNotice), findsNothing);
+        expect(find.byType(StepRow), findsNothing, reason: 'the stages are one line under the button, while it works');
+      });
+    });
+
+    testWidgets('a failure is the field\'s error until the handle is changed, not a box', (tester) async {
+      await withPhoneApp(tester, identities,
+          size: phoneSmall,
+          location: '/choose-handle',
+          account: signedOut,
+          sessionError: UserFacingErrorCode.handleTaken.sentence, body: (world) async {
+        TextField field() => tester.widget<TextField>(find.byType(TextField));
+        expect(field().decoration?.errorText, l10n.errorHandleTaken);
+        expect(find.byType(VeilNotice), findsNothing);
+        // In the helper line's place: the button stays where it was.
+        expect(findCopy(l10n.authHandleFindCaption), findsNothing);
+        expectInReach(tester, find.widgetWithText(FilledButton, l10n.authHandleBindCta));
+
+        await tester.enterText(find.byType(TextField), 'sam');
+        await pumpFrames(tester, frames: 2);
+        expect(field().decoration?.errorText, isNull);
+        expect(findCopy(l10n.errorHandleTaken), findsNothing);
+        expect(findCopy(l10n.authHandleFindCaption), findsOneWidget);
       });
     });
   });
 
   group('device transfer on the new device', () {
-    testWidgets('three numbered steps, the code field first, then the name and "Register"', (tester) async {
+    testWidgets('three numbered steps, then the code field, then the name and "Register"', (tester) async {
       await withPhoneApp(tester, identities, location: '/device-transfer', account: signedOut, body: (world) async {
-        expectNoDashboard();
-        expect(find.byType(VeilStatusPill, skipOffstage: false), findsNothing);
-
         // Numbered 1 to 3, top to bottom, the first one in hand.
-        final steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+        final steps = tester.widgetList<StepRow>(find.byType(StepRow, skipOffstage: false)).toList();
         expect([for (final step in steps) step.number], [1, 2, 3]);
         expect([for (final step in steps) step.state],
-            [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+            [StepRowState.current, StepRowState.upcoming, StepRowState.upcoming]);
         expect(find.byType(TextField), findsOneWidget, reason: 'only the step in hand shows its control');
         expectInReach(tester, find.byType(TextField));
         expectInReach(tester, find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
+        expect(top(tester, find.byType(TextField)), greaterThan(tester.getRect(find.byType(StepRow).last).bottom));
         expect(find.text(l10n.deviceTransferRegisterNewDevice, skipOffstage: false), findsNothing);
 
-        // A code is read: the first step closes, the second takes its
-        // place at the top with the device's name.
+        // A code is read: the first step is done, the second is in hand
+        // with the device's name.
         await tester.enterText(find.byType(TextField), 'VEIL_TRANSFER::session-1::token-1');
         await tester.tap(find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
         await pumpFrames(tester, frames: 3);
-        final after = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
-        expect([for (final step in after) step.state],
-            [TransferStepState.done, TransferStepState.current, TransferStepState.upcoming]);
-        // That the code was read is the first step's check mark: no banner
-        // stands between the step's words and its field.
-        expect(find.byType(VeilInlineBanner, skipOffstage: false), findsNothing);
+        final after = tester.widgetList<StepRow>(find.byType(StepRow, skipOffstage: false)).toList();
+        expect([for (final step in after) step.state], [StepRowState.done, StepRowState.current, StepRowState.upcoming]);
+        // That the code was read is the first step's check mark: nothing
+        // else says so.
+        expect(find.byType(VeilNotice, skipOffstage: false), findsNothing);
         final name = tester.widget<TextField>(find.byType(TextField));
         expect(name.controller!.text, l10n.authDefaultDeviceName);
         expect(name.controller!.text, isNot('VEIL New Device'));
         expectInReach(tester, find.byType(TextField));
         expectInReach(tester, find.widgetWithText(FilledButton, l10n.deviceTransferRegisterNewDevice));
 
-        // The no-fallback notice is still on the screen, once, after the steps.
-        expect(find.byType(VeilDestructiveNotice, skipOffstage: false), findsOneWidget);
+        // That the old phone is needed is said once, under the steps.
+        expect(findCopy(l10n.deviceTransferOldPhoneNeeded, skipOffstage: false), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     });
 
-    testWidgets('a code that is not one is refused in the step that took it', (tester) async {
+    testWidgets('a code that is not one is refused under the button that took it', (tester) async {
       await withPhoneApp(tester, identities, location: '/device-transfer', account: signedOut, body: (world) async {
         await tester.enterText(find.byType(TextField), 'not a code');
-        await tester.tap(find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
+        final use = find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload);
+        await tester.tap(use);
         await pumpFrames(tester, frames: 3);
         final refusal = find.text(l10n.deviceTransferPayloadInvalid);
         expect(refusal, findsOneWidget);
-        expect(find.ancestor(of: refusal, matching: find.byType(TransferStep)), findsOneWidget);
-        expect(tester.widget<TransferStep>(find.ancestor(of: refusal, matching: find.byType(TransferStep))).number, 1);
+        expect(top(tester, refusal), greaterThanOrEqualTo(tester.getRect(use).bottom));
+        expectInReach(tester, use);
         expect(find.text(l10n.deviceTransferRegisterNewDevice, skipOffstage: false), findsNothing);
       });
     });
   });
 
   group('device transfer on the old device', () {
-    testWidgets('before a code is issued: the first step is its button, and nothing else asks for input',
-        (tester) async {
+    testWidgets('before a code is issued: "Get code" under the steps, and nothing asks for input', (tester) async {
       await withPhoneApp(tester, identities, location: '/device-transfer', body: (world) async {
-        expectNoDashboard();
-        final steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+        final steps = tester.widgetList<StepRow>(find.byType(StepRow, skipOffstage: false)).toList();
         expect([for (final step in steps) step.number], [1, 2, 3]);
         expect([for (final step in steps) step.state],
-            [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+            [StepRowState.current, StepRowState.upcoming, StepRowState.upcoming]);
         expectInReach(tester, find.widgetWithText(FilledButton, l10n.deviceTransferIssueToken));
         expect(find.byType(TextField, skipOffstage: false), findsNothing);
         expect(find.byType(FilledButton, skipOffstage: false), findsOneWidget);
-        expect(find.byType(VeilDestructiveNotice, skipOffstage: false), findsOneWidget);
+        expect(findCopy(l10n.deviceTransferOldPhoneNeeded, skipOffstage: false), findsOneWidget);
+        expect(find.byType(VeilNotice, skipOffstage: false), findsNothing);
         expect(tester.takeException(), isNull);
       });
     });
 
-    testWidgets('with a code issued: the code, "Copy code" on one line, then the approval', (tester) async {
+    testWidgets('with a code issued: the code with its copy button, then the approval', (tester) async {
       final copied = <String>[];
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
         if (call.method == 'Clipboard.setData') copied.add((call.arguments as Map)['text'] as String);
@@ -260,22 +290,13 @@ void main() {
       addTearDown(() => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(SystemChannels.platform, null));
 
       await withPhoneApp(tester, identities, location: '/device-transfer', transferStarted: true, body: (world) async {
-        expectNoDashboard();
-        final steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+        final steps = tester.widgetList<StepRow>(find.byType(StepRow, skipOffstage: false)).toList();
         expect([for (final step in steps) step.number], [1, 2, 3]);
-        expect(steps.first.state, TransferStepState.done);
+        expect(steps.first.state, StepRowState.done);
 
-        // The copy button's label is one line, beside the short "Clear".
-        final copy = find.widgetWithText(OutlinedButton, l10n.deviceTransferCopyPayload);
+        final copy = find.byTooltip(l10n.deviceTransferCopyPayload);
         expectInReach(tester, copy);
-        final label = tester.renderObject<RenderParagraph>(
-          find.descendant(of: copy, matching: find.byType(RichText)).last,
-        );
-        expect(label.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: label.text.toPlainText().length))
-            .map((box) => box.top)
-            .toSet(), hasLength(1), reason: '"${l10n.deviceTransferCopyPayload}" wraps inside its button');
-        expect(top(tester, copy), closeTo(top(tester, find.text(l10n.deviceTransferClear)), 20));
-
+        expect(tester.getSize(copy).width, greaterThanOrEqualTo(44));
         await tester.tap(copy);
         await pumpFrames(tester, frames: 2);
         expect(copied, hasLength(1));
@@ -287,7 +308,7 @@ void main() {
         expect(claim, findsOneWidget);
         expect(top(tester, claim), lessThan(screenHeight(tester)));
         final approve = find.text(l10n.deviceTransferApproveClaim, skipOffstage: false);
-        final consequence = findCopy(l10n.deviceTransferCompleteOnNewNote, skipOffstage: false);
+        final consequence = findCopy(l10n.deviceTransferApproveFooter, skipOffstage: false);
         await tester.dragUntilVisible(approve, find.byType(ListView), const Offset(0, -200));
         await pumpFrames(tester, frames: 2);
         expect(consequence, findsOneWidget);
@@ -299,7 +320,7 @@ void main() {
   });
 
   group('safety number', () {
-    testWidgets('of a contact not yet verified: the number and "Mark as verified" before the code to scan',
+    testWidgets('of a contact not yet verified: who, the number, "Mark as verified", then the code to scan',
         (tester) async {
       await withPhoneApp(tester, identities, size: phoneMedium, location: '/safety-numbers/conv-priya',
           prepare: (world) async {
@@ -313,20 +334,25 @@ void main() {
       }, body: (world) async {
         await awaitSafetyNumber(tester);
         final mark = find.widgetWithText(FilledButton, l10n.safetyNumbersMarkVerified);
-        expectNoDashboard();
-        expect(find.byType(VeilScreenIntro), findsOneWidget);
-        expect(find.text(l10n.safetyNumbersUnverified), findsOneWidget);
-        expectInReach(tester, find.byType(SafetyNumberCard));
+        final header = find.byType(SafetyPeerHeader);
+        expect(find.descendant(of: header, matching: find.text(l10n.safetyNumbersUnverified)), findsOneWidget);
+        // The number is read, not tapped: wholly on the first screenful.
+        expect(tester.getRect(find.byType(SafetyNumberCard)).bottom, lessThan(screenHeight(tester)));
         expectInReach(tester, mark);
         final code = find.byType(SafetyQrCard, skipOffstage: false);
+        expect(top(tester, header), lessThan(top(tester, find.byType(SafetyNumberCard))));
         expect(top(tester, find.byType(SafetyNumberCard)), lessThan(top(tester, mark)));
         expect(top(tester, mark), lessThan(top(tester, code)));
 
+        // The digits on the page, with no label over them.
+        expect(
+          find.descendant(of: find.byType(SafetyNumberCard), matching: find.textContaining(RegExp('[A-Za-z]'))),
+          findsNothing,
+        );
         // How to compare is said once, under the number it is about and
-        // above the button that records the comparison: not above the number.
+        // above the button that records the comparison.
         final howTo = findCopy(l10n.safetyNumbersDetailBody);
         expect(howTo, findsOneWidget);
-        expect(tester.widget<VeilScreenIntro>(find.byType(VeilScreenIntro)).body, isNull);
         expect(tester.getRect(find.byType(SafetyNumberCard)).bottom, lessThanOrEqualTo(top(tester, howTo)));
         expect(tester.getRect(howTo).bottom, lessThanOrEqualTo(top(tester, mark)));
       });
@@ -337,37 +363,39 @@ void main() {
       await withPhoneApp(tester, identities, location: '/safety-numbers/$chatConversationId', withGroup: true,
           attention: const ChatAttention(identityChangedInGroup: true), body: (world) async {
         await awaitSafetyNumber(tester);
-        final review = find.widgetWithText(FilledButton, l10n.safetyNumbersReviewChange);
-        // On the first screenful of a 360x640 phone, under the notice and
-        // above the number the change puts in question.
+        final review = find.widgetWithText(TextButton, l10n.safetyNumbersReviewChange);
+        // On the first screenful of a 360x640 phone, in the notice, above
+        // the number the change puts in question.
         expectInReach(tester, review);
         final notice = findCopy(l10n.safetyNumbersChangedElsewhereTitle);
         final current = find.byType(SafetyNumberCard, skipOffstage: false);
         expect(current, findsOneWidget);
         expect(top(tester, notice), lessThan(top(tester, review)));
         expect(tester.getRect(review).bottom, lessThanOrEqualTo(top(tester, current)));
+        expect(findCopy(l10n.safetyNumbersCurrentNumberHeader, skipOffstage: false), findsOneWidget);
         // Nothing here compares or confirms the old key.
         expect(findCopy(l10n.safetyNumbersDetailBody, skipOffstage: false), findsNothing);
         expect(find.byType(SafetyQrCard, skipOffstage: false), findsNothing);
       });
     });
 
-    testWidgets('with a change to review: the new number and the decision on the first screenful', (tester) async {
+    testWidgets('with a change to review: the notice first, then the new number and the decision', (tester) async {
       await withPhoneApp(tester, identities, size: phoneMedium, location: '/safety-numbers/$chatConversationId',
           attention: const ChatAttention(identityChanged: true), body: (world) async {
         await awaitSafetyNumber(tester);
+        final notice = findCopy(l10n.safetyNumbersKeyChangedTitle);
         final decide = find.widgetWithText(FilledButton, l10n.safetyNumbersReVerify);
-        expectInReach(tester, find.text(l10n.safetyNumbersCardLabelNew));
+        final newHeader = find.text(l10n.safetyNumbersNewNumberHeader);
+        expectInReach(tester, notice);
+        expectInReach(tester, newHeader);
         expectInReach(tester, decide);
+        expect(top(tester, notice), lessThan(top(tester, find.byType(SafetyPeerHeader))));
         expect(find.text(l10n.safetyNumbersVerified, skipOffstage: false), findsNothing);
         expect(find.text(l10n.safetyNumbersUnverified), findsOneWidget);
 
         // How to compare is still said, for the new number: between it and
         // the decision.
-        final newNumber = find.ancestor(
-          of: find.text(l10n.safetyNumbersCardLabelNew),
-          matching: find.byType(SafetyNumberCard),
-        );
+        final newNumber = find.ancestor(of: newHeader, matching: find.byType(SafetyNumberCard));
         final howTo = findCopy(l10n.safetyNumbersDetailBody);
         expect(howTo, findsOneWidget);
         expect(tester.getRect(newNumber).bottom, lessThanOrEqualTo(top(tester, howTo)));
@@ -378,7 +406,7 @@ void main() {
     testWidgets('that cannot be worked out says so in the app\'s words, not in the error\'s', (tester) async {
       await withPhoneApp(tester, identities, location: '/safety-numbers/conv-nobody', body: (world) async {
         await awaitSafetyNumber(tester);
-        expect(find.byType(VeilErrorState), findsOneWidget);
+        expect(findCopy(l10n.safetyNumbersErrorTitle), findsOneWidget);
         expect(findCopy(l10n.safetyNumbersErrorBody), findsOneWidget);
 
         // Trying again fails the same way: the page says so again, and the
@@ -387,74 +415,52 @@ void main() {
         await pumpFrames(tester, frames: 3);
         await awaitSafetyNumber(tester);
         expect(tester.takeException(), isNull);
-        expect(find.byType(VeilErrorState), findsOneWidget);
+        expect(findCopy(l10n.safetyNumbersErrorTitle), findsOneWidget);
       });
     });
 
-    testWidgets('of a group: the members follow a few words, no panel', (tester) async {
+    testWidgets('of a group: a row per member with their state, how to compare under them', (tester) async {
       await withPhoneApp(tester, identities, location: '/safety-numbers/$groupConversationId', withGroup: true,
           body: (world) async {
         await awaitSafetyNumber(tester);
-        expectNoDashboard();
-        expect(find.byType(VeilScreenIntro), findsOneWidget);
-        expectInReach(tester, find.byType(VeilListTileCard));
+        final rows = find.byType(VeilRow);
+        expect(rows, findsNWidgets(groupMemberHandles.length));
+        expectInReach(tester, rows);
+        expect(top(tester, rows), lessThan(120), reason: 'the list opens under the bar');
+        final howTo = findCopy(l10n.safetyNumbersGroupBody);
+        expect(howTo, findsOneWidget);
+        expect(top(tester, howTo), greaterThan(tester.getRect(rows.last).bottom));
       });
     });
   });
 
   group('security status', () {
-    testWidgets('says first what needs a look, then shows the rows in groups', (tester) async {
+    testWidgets('four groups of rows, each with its state as a word, under the bar', (tester) async {
       await withPhoneApp(tester, identities, location: '/security-status', body: (world) async {
-        expectNoDashboard();
-        // The words on top are words, not a card with pills.
-        expect(find.byType(VeilScreenIntro), findsOneWidget);
-        expect(find.text(l10n.securityStatusPillPrivateBeta, skipOffstage: false), findsNothing);
+        // No notice, no headline and no paragraph before the rows.
+        expect(find.byType(VeilNotice, skipOffstage: false), findsNothing);
+        final firstGroup = find.byType(SecuritySignalGroup);
+        expect(top(tester, firstGroup), lessThan(120), reason: 'rows start under the bar');
 
-        // Every row that warns is named in the notice on top, and only those.
         final groups = <SecuritySignalGroup>{};
         void collect() => groups.addAll(tester.widgetList(find.byType(SecuritySignalGroup, skipOffstage: false)));
-        final notice = find.byType(VeilInlineBanner);
-        expect(notice, findsOneWidget);
-        expectInReach(tester, notice);
-        final said = tester.widget<VeilInlineBanner>(notice);
-        final firstGroup = find.byType(SecuritySignalGroup);
-        expect(top(tester, notice), lessThan(top(tester, firstGroup)));
-        expect(top(tester, firstGroup), lessThan(screenHeight(tester)), reason: 'rows start on the first screenful');
-
         collect();
         await scrollToEnd(tester, onPage: (_) async => collect());
-        expect(groups, hasLength(3));
+        expect([for (final group in groups) group.title],
+            [l10n.securityGroupThisPhone, l10n.securityGroupConnection, l10n.securityGroupEncryption, l10n.securityGroupRules]);
+        for (final group in groups) {
+          for (final signal in group.signals) {
+            expect(signal.value, isNotEmpty, reason: signal.label);
+            expect(signal.value.endsWith('.'), isFalse, reason: 'a word, not a sentence: ${signal.value}');
+          }
+        }
         final warning = [
           for (final group in groups)
             for (final signal in group.signals)
-              if (signal.needsAttention) signal.label,
+              if (signal.tone == SecuritySignalTone.warn) signal.label,
         ];
-        expect(warning, isNotEmpty, reason: 'this build pins no TLS key');
-        expect(said.message.split(' · ').toSet(), warning.toSet());
-        expect(said.title, l10n.securityStatusAttentionTitle(warning.length));
+        expect(warning, contains(l10n.securityStatusTlsPins), reason: 'this build pins no TLS key');
         expect(tester.takeException(), isNull);
-      });
-    });
-
-    testWidgets('its headline breaks between sentences, never inside one', (tester) async {
-      await withPhoneApp(tester, identities, location: '/security-status', body: (world) async {
-        final paragraph = tester.renderObject<RenderParagraph>(
-          find.descendant(of: findCopy(l10n.securityStatusHeroTitle), matching: find.byType(RichText)),
-        );
-        final shown = paragraph.text.toPlainText();
-        final sentences = RegExp(r'[^.]+\.').allMatches(shown).toList();
-        expect(sentences, hasLength(3));
-        final lines = <double>{};
-        for (final sentence in sentences) {
-          final start = sentence.start + (sentence[0]!.length - sentence[0]!.trimLeft().length);
-          final tops = {
-            for (final box in paragraph.getBoxesForSelection(TextSelection(baseOffset: start, extentOffset: sentence.end)))
-              box.top,
-          };
-          expect(tops, hasLength(1), reason: '"${sentence[0]}" is split over lines in "$shown"');
-          lines.addAll(tops);
-        }
-        expect(lines.length, greaterThan(1), reason: 'the headline is meant to wrap here');
       });
     });
 
@@ -466,21 +472,19 @@ void main() {
         theme: VeilTheme.dark(),
         home: Scaffold(
           body: SingleChildScrollView(
-            padding: const EdgeInsets.all(VeilSpace.lg),
             child: SecuritySignalGroup(
-              title: l10n.securityStatusSectionProductRules,
+              title: l10n.securityGroupEncryption,
               signals: [
                 SecuritySignal(
-                  label: l10n.securityStatusCryptoAdapter,
+                  label: l10n.securityStatusCryptoImplementation,
                   value: l10n.securityStatusCryptoLibsignal,
                   detail: l10n.securityStatusCryptoLibsignalDetail('libsignal'),
                   tone: SecuritySignalTone.neutral,
                 ),
                 SecuritySignal(
                   label: l10n.securityStatusLocalWipe,
-                  value: l10n.securityStatusAvailable,
-                  detail: l10n.securityStatusLocalWipeDetail,
-                  tone: SecuritySignalTone.good,
+                  value: l10n.securityStatusLocalWipeValue,
+                  tone: SecuritySignalTone.neutral,
                 ),
               ],
             ),
@@ -498,27 +502,25 @@ void main() {
 
       // The label keeps one line and the state is not cut short; it stands
       // under the label, from the same left edge.
-      final label = tester.getRect(find.text(l10n.securityStatusCryptoAdapter));
-      final state = tester.getRect(find.widgetWithText(VeilStatusPill, l10n.securityStatusCryptoLibsignal));
-      expect(lineCount(l10n.securityStatusCryptoAdapter), closeTo(1, 0.2));
+      final label = tester.getRect(find.text(l10n.securityStatusCryptoImplementation));
+      final state = tester.getRect(find.text(l10n.securityStatusCryptoLibsignal));
+      expect(lineCount(l10n.securityStatusCryptoImplementation), closeTo(1, 0.2));
       expect(paragraphOf(l10n.securityStatusCryptoLibsignal).didExceedMaxLines, isFalse);
       expect(state.top, greaterThanOrEqualTo(label.bottom));
       expect(state.left, closeTo(label.left, 1));
 
       // A short state stays at the end of its label's line.
       final shortLabel = tester.getRect(find.text(l10n.securityStatusLocalWipe));
-      final shortState = tester.getRect(find.widgetWithText(VeilStatusPill, l10n.securityStatusAvailable));
+      final shortState = tester.getRect(find.text(l10n.securityStatusLocalWipeValue));
       expect(shortState.left, greaterThan(shortLabel.right));
       expect(shortState.center.dy, closeTo(shortLabel.center.dy, 4));
-      final card = tester.getRect(find.byType(VeilSurfaceCard));
-      expect(card.right - shortState.right, closeTo(VeilSpace.md, 1), reason: 'at the end of the row');
+      final row = tester.getRect(find.byType(SecuritySignalRow).last);
+      expect(row.right - shortState.right, closeTo(VeilSpace.md, 1), reason: 'at the end of the row');
     });
 
-    test('counts what needs a look in words that agree with the number', () {
-      expect(l10n.securityStatusAttentionTitle(1), '1 item needs a look');
-      expect(l10n.securityStatusAttentionTitle(3), '3 items need a look');
-      expect(l10n.appLockStatusPinMismatchAttempts(1), 'PIN mismatch. 1 attempt left before temporary lock.');
-      expect(l10n.appLockStatusPinMismatchAttempts(2), 'PIN mismatch. 2 attempts left before temporary lock.');
+    test('counts in words that agree with the number', () {
+      expect(l10n.appLockStatusPinMismatchAttempts(1), 'Wrong PIN. 1 attempt left.');
+      expect(l10n.appLockStatusPinMismatchAttempts(2), 'Wrong PIN. 2 attempts left.');
     });
   });
 }

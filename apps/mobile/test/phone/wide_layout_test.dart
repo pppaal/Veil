@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dar
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -18,7 +19,7 @@ import 'phone_app.dart';
 // the hero cards, stat tiles and header cards of the old panes were for is
 // in the two bars.
 
-const _latest = 'Section 7 is fine. Let us sign tomorrow.';
+const _latest = "Section 7 is fine. Let's sign tomorrow.";
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -36,9 +37,6 @@ void main() {
     testWidgets('shows the list and the open chat with nothing above the rows or the messages ($size)',
         (tester) async {
       await withPhoneApp(tester, identities, size: size, location: '/conversations', body: (world) async {
-        expect(find.byType(VeilHeroPanel), findsNothing);
-        expect(find.byType(VeilMetricStrip), findsNothing);
-        expect(find.byType(VeilStatusPill), findsNothing);
 
         final list = tester.getRect(find.byType(ConversationListPhone));
         final chat = tester.getRect(find.byType(ChatRoomScreen));
@@ -67,8 +65,8 @@ void main() {
 
   testWidgets('a tap on a row opens that chat in the pane and marks the row', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
-      VeilConversationCard row(String title) =>
-          tester.widget<VeilConversationCard>(inList(find.widgetWithText(VeilConversationCard, title)));
+      ConversationRow row(String title) =>
+          tester.widget<ConversationRow>(inList(find.widgetWithText(ConversationRow, title)));
       expect(row('Sam Rivera').selected, isTrue);
       expect(row('Jonas Weber').selected, isFalse);
 
@@ -91,11 +89,11 @@ void main() {
 
       // Search: the field takes the title's place, and its back button
       // closes the search, not the chat.
-      await tester.tap(inChat(find.byTooltip('Search messages')));
+      await tester.tap(inChat(find.byTooltip('Search')));
       await pumpFrames(tester, frames: 2);
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
-      expect(inChat(find.text('2 matches on this device')), findsOneWidget);
+      expect(inChat(find.text('2 matches')), findsOneWidget);
       expect(inChat(find.text(_latest)), findsNothing);
       await tester.tap(inChat(find.byTooltip('Back')));
       await pumpFrames(tester, frames: 4);
@@ -103,18 +101,18 @@ void main() {
       expect(find.byTooltip('Back'), findsNothing);
 
       // The disappearing timer.
-      await tester.tap(inChat(find.byTooltip('Disappearing messages: Off')));
+      await tester.tap(inChat(find.byTooltip('Disappearing: Off')));
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.text('1 day'));
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
-      expect(inChat(find.byTooltip('Disappearing messages: 1 day')), findsOneWidget);
+      expect(inChat(find.byTooltip('Disappearing: 1 day')), findsOneWidget);
 
       // The safety number.
       await tester.tap(inChat(find.byTooltip('Safety number')));
       await pumpFrames(tester);
       expect(find.byType(SafetyNumbersScreen), findsOneWidget);
-      final loading = find.byType(VeilLoadingBlock);
+      final loading = find.byKey(SafetyNumbersScreen.loadingKey);
       for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
         await tester.pump();
@@ -125,10 +123,10 @@ void main() {
 
   testWidgets('a new conversation starts from the list\'s bar', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New conversation'));
+      await tester.tap(find.byTooltip('New chat'));
       await pumpFrames(tester, frames: 3);
       expect(find.text('New group'), findsOneWidget);
-      await tester.tap(find.text('New direct chat'));
+      await tester.tap(find.text('New chat'));
       await pumpFrames(tester);
       expect(find.byType(StartDirectChatScreen), findsOneWidget);
     });
@@ -144,8 +142,8 @@ void main() {
         location: '/conversations',
         attention: const ChatAttention(identityChanged: true, failedSends: 2),
         body: (world) async {
-          expect(inChat(find.byType(VeilInlineBanner)), findsNWidgets(2));
-          for (final action in ['Review', 'Retry failed sends']) {
+          expect(inChat(find.byType(VeilNotice)), findsNWidgets(2));
+          for (final action in ['Review', 'Retry now']) {
             final button = tester.renderObject<RenderBox>(inChat(find.widgetWithText(TextButton, action)));
             expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
             expect(button.size.height, greaterThanOrEqualTo(44), reason: '"$action"');
@@ -170,7 +168,7 @@ void main() {
     });
   });
 
-  testWidgets('with no conversation yet, the second pane says what to do', (tester) async {
+  testWidgets('with no conversation yet, the list says so once and the second pane stays empty', (tester) async {
     await withPhoneApp(
       tester,
       identities,
@@ -179,8 +177,11 @@ void main() {
       account: LayoutAccount.signedInEmpty,
       body: (world) async {
         expect(find.byType(ChatRoomScreen), findsNothing);
-        expect(find.text('Select a conversation'), findsOneWidget);
-        expect(find.text('No conversations yet'), findsOneWidget);
+        expect(find.text('No chats yet'), findsOneWidget);
+        expect(find.text('New chat'), findsOneWidget);
+        // "Pick one from the list" would point at a list with nothing in it.
+        expect(find.text('Select a chat'), findsNothing);
+        expect(find.byType(VeilEmptyState), findsOneWidget, reason: 'only the list\'s');
         expect(tester.takeException(), isNull);
       },
     );

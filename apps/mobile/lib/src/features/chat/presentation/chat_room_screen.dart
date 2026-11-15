@@ -12,7 +12,6 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
@@ -106,11 +105,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     if (event == PlatformSecurityEvent.screenshotDetected) {
       final l10n = AppLocalizations.of(context);
       VeilHaptics.heavy();
-      VeilToast.show(
-        context,
-        message: l10n.chatScreenshotToast,
-        tone: VeilBannerTone.danger,
-      );
+      showVeilToast(context, l10n.chatScreenshotToast, tone: VeilTone.warn);
       unawaited(
         ref.read(messengerControllerProvider).sendSystemNotice(
               conversationId: widget.conversationId,
@@ -237,6 +232,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       senderNameOf: isDirect
           ? null
           : (message) => groupSenderName(message) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
+      senderHandleOf: isDirect ? null : groupSenderHandle,
+      // Asked here, above the shell, whose body no longer sees the keyboard.
+      keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
       onResolveAttachment: _showAttachmentTicket,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
@@ -269,7 +267,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         focusNode: _composerFocusNode,
         messageTtl: _messageTtl,
         busy: controller.isBusy,
-        onAttach: kAttachmentsEnabled ? () => context.push('/attachment/${widget.conversationId}') : null,
       ),
     );
   }

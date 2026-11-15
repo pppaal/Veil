@@ -38,9 +38,9 @@ test.describe('realtime', () => {
     await closeAll(alice, bob);
   });
 
-  test('the connection pill and menu report the push channel', async () => {
-    for (const device of [alice, bob]) await expect(device.page.locator('#conn-pill')).toHaveText('Connected', { timeout: 15_000 });
-    await expect(alice.page.locator('#conn-pill')).toHaveClass(/connected/);
+  test('the bar says nothing once the push channel is up, and the menu reports it', async () => {
+    for (const device of [alice, bob]) await expect(device.page.locator('#conn-status')).toHaveClass(/connected/, { timeout: 15_000 });
+    await expect(alice.page.locator('#conn-status')).toBeHidden();
     await openMenuItem(alice, 'ws-info');
     await expect(toast(alice, 'Connection: live (WebSocket)')).toBeVisible();
     expectNoErrors(alice, bob);
@@ -52,14 +52,14 @@ test.describe('realtime', () => {
     await expect.poll(() => bubbleTexts(bob), { timeout: 5_000 }).toEqual(['are you there']);
     const status = alice.page.locator('.msg-group.me .msg-status');
     await expect(status).toHaveAttribute('title', 'Read', { timeout: 10_000 });
-    await expect(status).toHaveText('✓✓');
+    await expect(status).toHaveText('Read');
     await expect(status).toHaveClass(/read/);
     expectNoErrors(alice, bob);
   });
 
   test('typing shows in the peer header until it stops', async () => {
     const sub = alice.page.locator('.panel .panel-title > div:last-child');
-    await expect(sub).toHaveText(/^Chat [0-9a-f-]{8}$/);
+    await expect(sub).toHaveText('');
     await bob.page.evaluate(() => {
       const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;
       textarea.value = 'typ';
@@ -68,7 +68,7 @@ test.describe('realtime', () => {
     await expect(sub).toHaveText('Typing…', { timeout: 5_000 });
     await expect(sub).toHaveClass('sub typing');
     // The stop goes out once the composer has been idle for four seconds.
-    await expect(sub).toHaveText(/^Chat [0-9a-f-]{8}$/, { timeout: 10_000 });
+    await expect(sub).toHaveText('', { timeout: 10_000 });
     await expect(sub).toHaveClass('sub');
     await bob.page.evaluate(() => {
       const textarea = document.querySelector('.panel-input textarea') as HTMLTextAreaElement;

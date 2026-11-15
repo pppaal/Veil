@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart
 import 'package:veil_mobile/src/features/contacts/data/contact_index.dart';
 import 'package:veil_mobile/src/features/contacts/data/contact_nicknames.dart';
 import 'package:veil_mobile/src/features/contacts/data/contacts_providers.dart';
+import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
@@ -14,7 +15,8 @@ import 'phone_app.dart';
 
 // The contacts tab on a phone: the list is the screen, adding a contact is
 // an action of the bar, and the sheets (add, actions, nickname) keep their
-// button above the keyboard.
+// button above the keyboard. What the server keeps of the list is said in
+// the add sheet, where one adds to it.
 
 ContactEntry _contact(String label) =>
     ContactEntry(handle: 'h', displayName: label, nickname: null, avatarPath: null, addedAt: DateTime.utc(2026));
@@ -29,7 +31,7 @@ void main() {
     identities = await LayoutIdentities.generate();
   });
 
-  Finder rows() => find.byType(VeilConversationCard);
+  Finder rows() => find.byType(ContactRow);
   Finder inSheet(Finder finder) => find.descendant(of: find.byType(BottomSheet), matching: finder);
 
   group('the index of the list', () {
@@ -88,10 +90,15 @@ void main() {
       final whole = rows().evaluate().where((row) => tester.getRect(find.byWidget(row.widget)).bottom <= tabs).length;
       expect(whole, greaterThanOrEqualTo(4), reason: 'contacts whole on the first screenful of a 360x640 phone');
 
-      // What the relay keeps of the list is said, under the list.
-      expect(find.byType(VeilInlineBanner), findsNothing);
+      // Nothing but the list: no notice above it or under it.
+      expect(find.byType(VeilNotice), findsNothing);
       await scrollToEnd(tester);
-      expect(findCopy(en.contactsNotice), findsOneWidget);
+      expect(findCopy(en.contactsNotice), findsNothing);
+      // Full-bleed rows around a 40 avatar, with room above and below it.
+      final first = tester.getRect(rows().first);
+      expect(first.left, 0);
+      expect(first.width, 360);
+      expect(first.height, greaterThanOrEqualTo(52));
       expect(tester.takeException(), isNull);
     });
   });
@@ -101,7 +108,7 @@ void main() {
       const prefix = 'contacts-index-';
       final headers = <String>[];
       void collect() {
-        for (final element in find.byType(Padding).evaluate()) {
+        for (final element in find.byType(VeilGroup).evaluate()) {
           if (element.widget.key case ValueKey<String>(:final value) when value.startsWith(prefix)) {
             final letter = value.substring(prefix.length);
             if (!headers.contains(letter)) headers.add(letter);
@@ -115,14 +122,17 @@ void main() {
       expect(headers, ['A', 'J', 'L', 'M', 'O', 'P', 'S', 'T']);
       expect(find.byKey(const ValueKey('${prefix}T')), findsOneWidget);
 
-      // A letter alone is a small glyph: at the size of a caption, in the
-      // faintest text colour, the letters were hard to tell apart.
+      // Each letter is its run's group header, in the muted colour of every
+      // header: in the faintest text colour the letters were hard to tell
+      // apart.
       tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
       await pumpFrames(tester, frames: 2);
-      final letter = find.descendant(of: find.byKey(const ValueKey('${prefix}A')), matching: find.text('A'));
+      final group = tester.widget<VeilGroup>(find.byKey(const ValueKey('${prefix}A')));
+      expect(group.header, 'A');
+      // The header comes before the rows (whose avatar shows an A as well).
+      final letter = find.descendant(of: find.byKey(const ValueKey('${prefix}A')), matching: find.text('A')).first;
       final index = tester.widget<Text>(letter).style!;
-      expect(index.fontSize, greaterThanOrEqualTo(14));
-      expect(index.color, isNot(tester.element(letter).veilPalette.textSubtle));
+      expect(index.color, tester.element(letter).veilPalette.textMuted);
     });
   });
 
@@ -162,7 +172,8 @@ void main() {
       expect(fields, findsNWidgets(2));
       expect(tester.widget<FilledButton>(save).onPressed, isNull, reason: 'nothing to save yet');
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'the button is above the keyboard');
-      expect(findCopy(en.contactsNotice), findsOneWidget, reason: 'what the relay keeps is said where one adds');
+      expect(inSheet(findCopy(en.contactsNotice, skipOffstage: false)), findsOneWidget,
+          reason: 'what the server keeps is said where one adds');
 
       // A handle the relay does not know.
       await tester.enterText(fields.first, 'nobody');
@@ -175,9 +186,13 @@ void main() {
       expect(world.api.addedContacts, isEmpty);
       expect(tester.takeException(), isNull);
 
+      // The refusal is the handle field's error, in place of its helper.
+      expect(tester.widget<TextField>(fields.first).decoration!.errorText, en.contactsAddFailed);
       await tester.enterText(fields.first, '@icarus');
-      await tester.pump();
-      expect(inSheet(findCopy(en.contactsAddFailed)), findsNothing, reason: 'a new handle clears the refusal');
+      await pumpFrames(tester, frames: 2);
+      expect(tester.widget<TextField>(fields.first).decoration!.errorText, isNull,
+          reason: 'a new handle clears the refusal');
+      expect(inSheet(findCopy(en.contactsAddFailed)), findsNothing);
       await tester.enterText(fields.last, 'Ica');
       await tester.tap(save);
       await pumpFrames(tester, frames: 6);
@@ -217,9 +232,11 @@ void main() {
     await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
       await tester.tap(find.text('Lena Fischer'));
       await pumpFrames(tester, frames: 4);
-      // Nothing in the sheet pretends to a profile the relay does not keep.
-      expect(inSheet(find.byType(FilledButton)), findsOneWidget);
-      expect(inSheet(find.byType(OutlinedButton)), findsNWidgets(2));
+      // Three rows under the contact, the last one red; nothing in the sheet
+      // pretends to a profile the server does not keep.
+      expect(inSheet(find.byType(VeilRow)), findsNWidgets(3));
+      expect(tester.widget<VeilRow>(inSheet(find.widgetWithText(VeilRow, en.contactsRemove))).destructive, isTrue);
+      expect(inSheet(find.byType(FilledButton)), findsNothing);
       await tester.tap(find.text(en.contactsRemove));
       await pumpFrames(tester, frames: 6);
       expect(world.api.removedContacts, {'lena'});

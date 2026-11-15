@@ -211,7 +211,7 @@ class AttachmentTransferService {
       // open, and the plaintext was deleted once sealed, so it cannot be
       // re-sealed either. Failing it for good lets the user attach it again.
       throw VeilApiException(
-        'This attachment was prepared by an older version of VEIL. Attach the file again.',
+        'This attachment was prepared by an older version of the app. Attach the file again.',
         code: 'attachment_upload_invalid',
       );
     }

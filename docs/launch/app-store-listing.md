@@ -1,4 +1,4 @@
-# App Store Listing — Draft
+# App Store listing (draft)
 
 Target storefront: Apple App Store (iOS, iPadOS, macOS Catalyst).
 Bundle identifier: `app.veil.messenger` (placeholder; align with
@@ -9,39 +9,35 @@ Bundle identifier: `app.veil.messenger` (placeholder; align with
 
 ## App name
 
-**Veil — Private Messenger**
-
-Alternative (if name collision): **Veil Messenger**.
+**Veil Messenger**
 
 ## Subtitle (30 chars)
 
-`Messages that actually vanish`
+`Encrypted messenger`
 
 ## Promotional text (170 chars, updatable without review)
 
-`End-to-end encrypted. No phone number. No backup. No ads. Built for people who actually want their messages to stay private.`
+`End-to-end encrypted messages with no phone number, no email and no ads. Only you and the people you talk to can read them.`
 
 ## Description
 
-Veil is an end-to-end encrypted messenger built around a single idea:
-what you say on Veil never leaves your device in a form the server can
-read.
+Veil is an end-to-end encrypted messenger. What you send never leaves your
+phone in a form the server can read.
 
-- **Ciphertext-only relay.** The server routes encrypted envelopes. It
-  does not see message bodies, attachments, or conversation content.
-- **No phone number.** No SMS verification, no address-book upload, no
-  contact discovery. You choose a handle and share it on your terms.
-- **Device-bound identity.** Your identity lives on your device. There is
-  no cloud copy. When you retire a device, its access retires with it.
-- **Disappearing messages.** Set a per-conversation timer and messages
-  self-destruct on every device after it expires.
+- **The server can't read your messages.** It passes on encrypted messages
+  and never sees what they say or what you attach.
+- **No phone number.** No SMS code and no address book upload. You choose a
+  handle and give it to the people you want to hear from.
+- **Your account lives on your phone.** There is no cloud copy of it. If you
+  revoke a phone, it loses access.
+- **Disappearing messages.** Set a timer on a chat, and its messages are
+  deleted from every device when the timer runs out.
 
-Veil does not run ads, does not sell analytics, and does not offer account
-recovery. Losing your device is final by design — that's the privacy
-guarantee.
+Veil has no ads and no analytics, and there is no account recovery: if you
+lose your phone, you lose the account.
 
 Not in the mobile build, so not in this listing: view-once messages,
-block, mute and report. The relay has the endpoints; the app has no screen
+block, mute and report. The server has the endpoints; the app has no screen
 for any of them yet. Put a bullet back when its screen ships.
 
 ## Keywords (100 chars, comma-separated)
@@ -57,7 +53,7 @@ for any of them yet. Put a bullet back when its screen ships.
 
 17+ (unrestricted web access not enabled, but user-generated content is
 end-to-end encrypted so we cannot moderate private content). The mobile app
-has no reporting or blocking screen yet, though the relay takes abuse
+has no reporting or blocking screen yet, though the server takes abuse
 reports. App Review expects both in an app with user-generated content
 (guideline 1.2): a launch blocker.
 
@@ -111,15 +107,16 @@ Nothing you send is stored on our servers in a form we can read.
 Ship 5 screenshots per device class (6.7" iPhone, 6.5" iPhone, 5.5"
 iPhone, 12.9" iPad, 11" iPad). Consistent visual order:
 
-1. Hero shot — conversation list with at least one disappearing-messages
-   indicator visible. Korean + English variants.
-2. Safety numbers screen — the "verify this conversation" moment.
+1. Chats, with at least one disappearing-message timer visible. English
+   only.
+2. Safety number, the moment two people compare their numbers.
 3. A chat with the disappearing-message timer set.
 4. Settings: devices, app lock and privacy.
-5. Onboarding — "no phone number required" screen.
+5. Choose a handle: sign-up without a phone number.
 
 Asset directory: `apps/mobile/ios/fastlane/screenshots/` (not yet
-configured — see `docs/launch/store-asset-pipeline.md` once it exists).
+configured). The shot list and sizes are in
+[`store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md).
 
 ## Review notes for Apple
 
@@ -130,7 +127,7 @@ Veil is an end-to-end encrypted messenger. To sign in, the reviewer can
 use the following test account:
 
   Handle: @appstore-review-<random>
-  Device transfer token: <generated per review, see README>
+  Transfer code: <generated per review, see README>
 
 Veil does not use a phone number or email for onboarding. The reviewer
 chooses a handle, and the app generates keys on-device. There is no
@@ -144,12 +141,12 @@ two installs will be visible only on those installs.
 ## Export compliance
 
 Veil uses end-to-end encryption with only standard, published algorithms
-(X25519, AES-256-GCM, Ed25519, HKDF-SHA256 — see `docs/crypto-envelope-spec.md`).
+(X25519, AES-256-GCM, Ed25519, HKDF-SHA256; see `docs/crypto-envelope-spec.md`).
 It implements no proprietary cryptography, so it qualifies for the mass-market
 self-classification exemption under 15 CFR 740.17(b)(1). For App Store
 submission:
 
-- `ITSAppUsesNonExemptEncryption` = `YES` (already set in `Info.plist`) — the
+- `ITSAppUsesNonExemptEncryption` = `YES` (already set in `Info.plist`): the
   encryption is not OS/auth/HTTPS-only, so this is the truthful value.
 - Do **not** add `ITSEncryptionExportComplianceCode`. That key is only for apps
   that hold an issued BIS CCATS/ERN. Standard-algorithm mass-market software
@@ -167,8 +164,8 @@ completed truthfully.
 
 ## Localization
 
-Priority v1: English, Korean. Both privacy policies exist in-repo. Tier 2
-after launch: Japanese, Chinese (Traditional), German.
+The app and the listing are English only. The privacy policy exists in
+English and Korean (`docs/privacy-policy-en.md`, `docs/privacy-policy-ko.md`).
 
 ## Submission checklist
 

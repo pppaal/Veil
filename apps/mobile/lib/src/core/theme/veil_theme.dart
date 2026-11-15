@@ -1,7 +1,9 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
+// The design tokens and the two themes (docs/mobile-design-system.md). Pages
+// are white or black, lists are full-bleed rows with hairlines, the type is
+// the platform's own font, and one blue appears in a handful of places.
 
 class VeilSpace {
   static const double xxs = 4;
@@ -11,16 +13,26 @@ class VeilSpace {
   static const double lg = 20;
   static const double xl = 24;
   static const double xxl = 32;
-  static const double xxxl = 40;
-  static const double hero = 56;
 }
 
+/// Corner radii. Nothing is rounder than [xl] but the four pill shapes
+/// (avatar, switch, unread badge, send circle).
 class VeilRadius {
-  static const double xs = 10;
-  static const double sm = 14;
-  static const double md = 18;
-  static const double lg = 24;
-  static const double xl = 30;
+  /// Filter chips.
+  static const double xs = 6;
+
+  /// Segmented controls, menu item hover.
+  static const double sm = 8;
+
+  /// Text fields, buttons, group containers, notices, snackbars.
+  static const double md = 10;
+
+  /// Dialogs, sheet tops.
+  static const double lg = 14;
+
+  /// Bubble main corners, the composer field.
+  static const double xl = 18;
+
   static const double pill = 999;
 }
 
@@ -33,8 +45,6 @@ class VeilIconSize {
 }
 
 class VeilMotion {
-  // Shorter durations match iOS's snappier feel. Existing call sites read these
-  // constants by name, so we keep names stable and only tune the values.
   static const Duration fast = Duration(milliseconds: 180);
   static const Duration normal = Duration(milliseconds: 260);
   static const Duration slow = Duration(milliseconds: 420);
@@ -42,37 +52,19 @@ class VeilMotion {
   static const Curve emphasize = Cubic(0.2, 0.8, 0.2, 1.0);
   static const Curve smooth = Cubic(0.4, 0.0, 0.2, 1.0);
 
-  // iOS-inspired spring curves approximated as cubic Beziers. Use these for
-  // element transitions; page-level transitions already use Cupertino.
+  /// The one spring, for sheets.
   static const Curve springGentle = Cubic(0.22, 1.0, 0.36, 1.0);
-  static const Curve springResponsive = Cubic(0.4, 1.3, 0.45, 1.0);
-  static const Curve springBouncy = Cubic(0.16, 1.5, 0.3, 1.0);
 }
 
+/// The only shadow in the product: under dialogs, sheets and menus, in the
+/// light theme only. In the dark theme those surfaces are lifted by their
+/// tier ([VeilPalette.surfaceRaised]) and a hairline instead.
 class VeilElevation {
-  // iOS leans on vibrancy and hairlines instead of Material drop shadows. These
-  // shadows are deliberately softer than a typical Material elevation set.
-  static const List<BoxShadow> raised = [
-    BoxShadow(
-      color: Color(0x14000000),
-      blurRadius: 16,
-      offset: Offset(0, 6),
-    ),
-  ];
-
   static const List<BoxShadow> modal = [
     BoxShadow(
-      color: Color(0x26000000),
-      blurRadius: 32,
-      offset: Offset(0, 16),
-    ),
-  ];
-
-  static const List<BoxShadow> chip = [
-    BoxShadow(
-      color: Color(0x14000000),
-      blurRadius: 10,
-      offset: Offset(0, 3),
+      color: Color(0x2E000000),
+      blurRadius: 24,
+      offset: Offset(0, 8),
     ),
   ];
 }
@@ -84,7 +76,6 @@ class VeilPalette {
     required this.surface,
     required this.surfaceAlt,
     required this.surfaceRaised,
-    required this.surfaceOverlay,
     required this.stroke,
     required this.strokeStrong,
     required this.primary,
@@ -96,126 +87,136 @@ class VeilPalette {
     required this.success,
     required this.warning,
     required this.danger,
-    this.accent = const Color(0xFF8B5CF6),
-    this.accentSoft = const Color(0x1A8B5CF6),
+    required this.outgoingMeta,
   });
 
+  /// The page of Chats, Contacts, the chat room, auth, onboarding and the
+  /// lock screen.
   final Color canvas;
+
+  /// The page of grouped screens (Settings, Profile, Security, ...). The
+  /// same as [canvas] in the dark theme.
   final Color canvasAlt;
+
+  /// Group containers on a grouped page, list rows, bars.
   final Color surface;
+
+  /// Incoming bubbles, field fills, disabled fills, notice fills.
   final Color surfaceAlt;
+
+  /// Sheets, dialogs and menus.
   final Color surfaceRaised;
-  final Color surfaceOverlay;
+
+  /// 0.5dp separators, the bar hairline, a field's border at rest.
   final Color stroke;
+
+  /// A focused field's border, the sheet drag handle, separators inside a
+  /// dark group.
   final Color strokeStrong;
+
+  /// The brand fill: filled buttons, own bubbles, the switch track, the
+  /// send circle, the unread badge, the launcher tile. Nothing else.
   final Color primary;
+
+  /// The brand as text: the active tab, text buttons and links, the
+  /// focused floating label, progress indicators, a selected segment's
+  /// label. Nothing else.
   final Color primaryStrong;
+
+  /// The fill of a selected segment, filter chip or own reaction.
   final Color primarySoft;
+
   final Color text;
+
+  /// Subtitles, meta, headers, footers, notice bodies, placeholders.
   final Color textMuted;
+
+  /// Disabled text, chevrons and disabled glyphs only: never body or
+  /// placeholder text, never on [canvasAlt] or [surfaceAlt].
   final Color textSubtle;
+
+  /// The verified mark and "Verified" / "Available" status text.
   final Color success;
+
+  /// Warn notice icons, stale status text, the timer glyph in a bar.
   final Color warning;
+
+  /// Destructive row titles and text buttons, "Not sent", danger notice
+  /// icons. Never a fill.
   final Color danger;
-  final Color accent;
-  final Color accentSoft;
 
-  LinearGradient get primaryGradient => const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF7B66FF), Color(0xFF6E56F8)],
-      );
-
-  LinearGradient get surfaceGradient => const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF1C1C21), Color(0xFF111114)],
-      );
+  /// Time and ticks inside an own bubble (on [primary]).
+  final Color outgoingMeta;
 
   static const dark = VeilPalette(
-    // Canvas stack follows iOS dark mode tiers: near-black base, quietly
-    // lifted surfaces, minimal hue shift so content feels grounded.
     canvas: Color(0xFF000000),
-    canvasAlt: Color(0xFF0A0A0C),
-    surface: Color(0xFF111114),
-    surfaceAlt: Color(0xFF17171B),
-    surfaceRaised: Color(0xFF1C1C21),
-    surfaceOverlay: Color(0xFF24242B),
-    // Hairline tier maps to iOS systemGray separators in dark mode.
-    stroke: Color(0xFF2A2A30),
-    strokeStrong: Color(0xFF3A3A42),
-    // Brand: Veil Violet. Lighter tint for dark surfaces so it stays
-    // legible against near-black; differentiates from the blue-dominated
-    // messenger field (Signal/Telegram/Messenger).
-    primary: Color(0xFF8B7BFF),
-    primaryStrong: Color(0xFFA99CFF),
-    primarySoft: Color(0x1F8B7BFF),
-    // Label tiers align with iOS primary/secondary/tertiary label contrast.
+    canvasAlt: Color(0xFF000000),
+    surface: Color(0xFF1C1C1E),
+    surfaceAlt: Color(0xFF26262B),
+    surfaceRaised: Color(0xFF2C2C2E),
+    stroke: Color(0xFF2C2C2E),
+    strokeStrong: Color(0xFF3A3A3C),
+    primary: Color(0xFF2A63CC),
+    primaryStrong: Color(0xFF6FA3FF),
+    primarySoft: Color(0x296FA3FF),
     text: Color(0xFFF2F2F7),
     textMuted: Color(0xFF9A9AA1),
-    textSubtle: Color(0xFF6A6A71),
+    textSubtle: Color(0xFF8E8E93),
     success: Color(0xFF30D158),
     warning: Color(0xFFFF9F0A),
-    danger: Color(0xFFFF453A),
-    accent: Color(0xFFBF5AF2),
-    accentSoft: Color(0x1FBF5AF2),
+    danger: Color(0xFFFF6B5E),
+    outgoingMeta: Color(0xFFE3ECFB),
   );
 
-  // iOS light mode. Background tiers mirror systemBackground /
-  // secondarySystemBackground / tertiarySystemBackground. Colors use the
-  // documented iOS light system color values so Dynamic Type and system
-  // contrast assumptions hold.
   static const light = VeilPalette(
     canvas: Color(0xFFFFFFFF),
     canvasAlt: Color(0xFFF2F2F7),
     surface: Color(0xFFFFFFFF),
-    surfaceAlt: Color(0xFFF2F2F7),
+    surfaceAlt: Color(0xFFE9E9EB),
     surfaceRaised: Color(0xFFFFFFFF),
-    surfaceOverlay: Color(0xFFE5E5EA),
-    stroke: Color(0xFFD1D1D6),
-    strokeStrong: Color(0xFFC6C6C8),
-    // Brand: Veil Violet (core tone for the light surface).
-    primary: Color(0xFF6E56F8),
-    primaryStrong: Color(0xFF5A43E0),
-    primarySoft: Color(0x1F6E56F8),
+    stroke: Color(0xFFC6C6C8),
+    strokeStrong: Color(0xFFAEAEB2),
+    primary: Color(0xFF1F5FD6),
+    primaryStrong: Color(0xFF1F5FD6),
+    primarySoft: Color(0x1F1F5FD6),
     text: Color(0xFF000000),
-    textMuted: Color(0xFF3C3C43),
-    textSubtle: Color(0x993C3C43),
-    success: Color(0xFF34C759),
-    warning: Color(0xFFFF9500),
-    danger: Color(0xFFFF3B30),
-    accent: Color(0xFFAF52DE),
-    accentSoft: Color(0x1FAF52DE),
+    textMuted: Color(0xFF5F5F64),
+    textSubtle: Color(0xFF8E8E93),
+    success: Color(0xFF15683A),
+    warning: Color(0xFF9A4600),
+    danger: Color(0xFFB8000E),
+    outgoingMeta: Color(0xFFDCE7FB),
   );
 
   /// Resolve the palette matching a [Brightness]. Screens should prefer
   /// `context.veilPalette` which reads the brightness from [Theme.of].
-  static VeilPalette forBrightness(Brightness brightness) =>
-      brightness == Brightness.light ? light : dark;
+  static VeilPalette forBrightness(Brightness brightness) => brightness == Brightness.light ? light : dark;
 }
 
 class VeilTheme {
-  // Bundled (pubspec.yaml fonts:), so Korean and Latin text look the same on
-  // iOS and Android.
-  static const String _fontFamily = 'Pretendard';
+  /// The dark theme. [fontFamily] is null in production: the text theme
+  /// keeps Flutter's platform families, so iOS draws its system font and
+  /// Android draws Roboto. The test harness passes the family it loaded.
+  static ThemeData dark({String? fontFamily}) => _build(VeilPalette.dark, Brightness.dark, fontFamily);
 
-  static ThemeData dark() => _build(VeilPalette.dark, Brightness.dark);
+  /// The light theme; see [dark].
+  static ThemeData light({String? fontFamily}) => _build(VeilPalette.light, Brightness.light, fontFamily);
 
-  static ThemeData light() => _build(VeilPalette.light, Brightness.light);
-
-  static ThemeData _build(VeilPalette palette, Brightness brightness) {
-    final onPrimary =
-        brightness == Brightness.light ? Colors.white : palette.canvas;
+  static ThemeData _build(VeilPalette palette, Brightness brightness, String? fontFamily) {
+    final light = brightness == Brightness.light;
+    // Dialogs, sheets and menus cast the one shadow, in the light theme only.
+    final modalShadow = light ? VeilElevation.modal.first.color : Colors.transparent;
     final scheme = ColorScheme(
       brightness: brightness,
       primary: palette.primary,
-      onPrimary: onPrimary,
+      onPrimary: Colors.white,
       secondary: palette.primary,
-      onSecondary: onPrimary,
+      onSecondary: Colors.white,
       error: palette.danger,
-      onError: onPrimary,
+      onError: Colors.white,
       surface: palette.surface,
       onSurface: palette.text,
+      onSurfaceVariant: palette.textMuted,
       outline: palette.stroke,
       outlineVariant: palette.strokeStrong,
       shadow: Colors.black,
@@ -224,425 +225,420 @@ class VeilTheme {
       onInverseSurface: palette.canvas,
       inversePrimary: palette.surfaceRaised,
       surfaceContainerHighest: palette.surfaceRaised,
+      surfaceContainerLow: palette.surfaceAlt,
+      surfaceContainer: palette.surfaceAlt,
+      surfaceContainerHigh: palette.surfaceRaised,
     );
 
     final base = ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: scheme,
-      fontFamily: _fontFamily,
+      fontFamily: fontFamily,
       scaffoldBackgroundColor: palette.canvas,
       canvasColor: palette.canvas,
       dividerColor: palette.stroke,
-      splashFactory: InkSparkle.splashFactory,
+      splashFactory: InkRipple.splashFactory,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
-      // Use Flutter's default PageTransitionsTheme: it keeps the native
-      // Cupertino swipe transition on iOS/macOS without this file having to
-      // name CupertinoPageTransitionsBuilder, which is not resolvable in the
-      // current Flutter (the explicit override regressed on an SDK bump).
+      adaptations: <Adaptation<Object>>[_VeilSwitchAdaptation(palette)],
     );
 
+    // The scale sits on the platform's text theme (which carries the
+    // platform's font family) so the names of the fonts stay Flutter's.
+    // Every style sets its height, so line boxes are font-independent, and
+    // its tracking, so nothing is spaced out.
+    final textTheme = base.textTheme
+        .merge(
+          const TextTheme(
+            headlineLarge: TextStyle(fontSize: 28, height: 1.2, fontWeight: FontWeight.w700, letterSpacing: -0.3),
+            headlineMedium: TextStyle(fontSize: 22, height: 1.25, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+            titleLarge: TextStyle(fontSize: 17, height: 1.3, fontWeight: FontWeight.w600, letterSpacing: -0.2),
+            titleMedium: TextStyle(fontSize: 16, height: 1.3, fontWeight: FontWeight.w600, letterSpacing: -0.1),
+            titleSmall: TextStyle(fontSize: 15, height: 1.3, fontWeight: FontWeight.w600, letterSpacing: 0),
+            bodyLarge: TextStyle(fontSize: 16, height: 1.4, fontWeight: FontWeight.w400, letterSpacing: 0),
+            bodyMedium: TextStyle(fontSize: 15, height: 1.4, fontWeight: FontWeight.w400, letterSpacing: 0),
+            bodySmall: TextStyle(fontSize: 13, height: 1.35, fontWeight: FontWeight.w400, letterSpacing: 0),
+            labelLarge: TextStyle(fontSize: 15, height: 1.2, fontWeight: FontWeight.w600, letterSpacing: 0),
+            labelMedium: TextStyle(fontSize: 13, height: 1.2, fontWeight: FontWeight.w500, letterSpacing: 0),
+            labelSmall: TextStyle(fontSize: 11, height: 1.2, fontWeight: FontWeight.w500, letterSpacing: 0),
+          ),
+        )
+        .apply(bodyColor: palette.text, displayColor: palette.text);
+
+    final titleLarge = textTheme.titleLarge!;
+    final titleMedium = textTheme.titleMedium!;
+    final bodyMedium = textTheme.bodyMedium!;
+    final bodySmall = textTheme.bodySmall!;
+    final labelLarge = textTheme.labelLarge!;
+    final labelMedium = textTheme.labelMedium!;
+    final labelSmall = textTheme.labelSmall!;
+
+    final mutedBodyMedium = bodyMedium.copyWith(color: palette.textMuted);
+    final mutedBodySmall = bodySmall.copyWith(color: palette.textMuted);
+
+    RoundedRectangleBorder rounded(double radius) =>
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius));
+    OutlineInputBorder fieldBorder(Color color, double width) => OutlineInputBorder(
+          borderRadius: BorderRadius.circular(VeilRadius.md),
+          borderSide: BorderSide(color: color, width: width),
+        );
+    final restingFieldLine = light ? palette.stroke : palette.strokeStrong;
+
     return base.copyWith(
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(
-          fontSize: 42,
-          height: 1.02,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -2.1,
-        ),
-        headlineLarge: TextStyle(
-          fontSize: 30,
-          height: 1.08,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -1.1,
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 24,
-          height: 1.12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.6,
-        ),
-        headlineSmall: TextStyle(
-          fontSize: 22,
-          height: 1.15,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.45,
-        ),
-        titleLarge: TextStyle(
-          fontSize: 19,
-          height: 1.18,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.25,
-        ),
-        titleMedium: TextStyle(
-          fontSize: 16,
-          height: 1.22,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.15,
-        ),
-        titleSmall: TextStyle(
-          fontSize: 14,
-          height: 1.24,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.05,
-        ),
-        bodyLarge: TextStyle(
-          fontSize: 15,
-          height: 1.55,
-          fontWeight: FontWeight.w400,
-        ),
-        bodyMedium: TextStyle(
-          fontSize: 14,
-          height: 1.52,
-          fontWeight: FontWeight.w400,
-        ),
-        bodySmall: TextStyle(
-          fontSize: 12,
-          height: 1.45,
-          fontWeight: FontWeight.w500,
-        ),
-        labelLarge: TextStyle(
-          fontSize: 12,
-          height: 1.2,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 1.8,
-        ),
-        labelMedium: TextStyle(
-          fontSize: 11,
-          height: 1.2,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
-        ),
-      ).apply(
-        // This text theme replaces the one `base` built, so the family set
-        // there has to be applied again or every style here falls back to
-        // the platform font.
-        fontFamily: _fontFamily,
-        bodyColor: palette.text,
-        displayColor: palette.text,
-      ),
-      appBarTheme: const AppBarTheme(
-        centerTitle: false,
+      textTheme: textTheme,
+      iconTheme: IconThemeData(color: palette.textMuted, size: VeilIconSize.md),
+      // The bar: 52dp, opaque, the title in titleLarge, centred on iOS and
+      // at the start on Android (centerTitle is left to the platform).
+      appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 68,
-        backgroundColor: Colors.transparent,
-      ).copyWith(
+        toolbarHeight: 52,
+        backgroundColor: palette.canvas,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
         foregroundColor: palette.text,
-        titleTextStyle: const TextStyle(
-          fontFamily: _fontFamily,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.3,
-        ).copyWith(color: palette.text),
+        titleTextStyle: titleLarge,
+        toolbarTextStyle: bodyMedium,
+        iconTheme: IconThemeData(color: palette.textMuted, size: 24),
+        actionsIconTheme: IconThemeData(color: palette.textMuted, size: 24),
       ),
       cardTheme: CardThemeData(
         color: palette.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.lg),
-          side: BorderSide(color: palette.stroke),
-        ),
-        shadowColor: Colors.black,
+        shape: rounded(VeilRadius.md),
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: palette.surfaceRaised,
-        contentTextStyle: TextStyle(
-          fontFamily: _fontFamily,
-          color: palette.text,
-          fontSize: 14,
-          height: 1.45,
-        ),
+        contentTextStyle: bodyMedium,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-          side: BorderSide(color: palette.stroke),
-        ),
+        elevation: light ? 8 : 0,
+        shape: rounded(VeilRadius.md),
+        actionTextColor: palette.primaryStrong,
+        closeIconColor: palette.textMuted,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: palette.surfaceAlt,
-        hintStyle: TextStyle(color: palette.textSubtle),
+        hintStyle: TextStyle(color: palette.textMuted),
         labelStyle: TextStyle(color: palette.textMuted),
-        helperStyle: TextStyle(color: palette.textSubtle),
-        errorStyle: TextStyle(color: palette.danger),
+        helperStyle: mutedBodySmall,
+        helperMaxLines: 3,
+        errorStyle: bodySmall.copyWith(color: palette.danger),
+        errorMaxLines: 3,
         floatingLabelStyle: TextStyle(color: palette.primaryStrong),
+        prefixStyle: TextStyle(color: palette.textMuted),
         prefixIconColor: palette.textMuted,
         suffixIconColor: palette.textMuted,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: VeilSpace.lg,
-          vertical: VeilSpace.md,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-          borderSide: BorderSide(color: palette.stroke),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-          borderSide: BorderSide(color: palette.stroke),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-          borderSide: BorderSide(color: palette.strokeStrong, width: 1.2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-          borderSide: BorderSide(color: palette.danger),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-          borderSide: BorderSide(color: palette.danger, width: 1.2),
-        ),
+        // 11 above and below a 16/1.4 line make a dense field 44, the tap
+        // target (10 made one 42 and failed the layout gate); a field that
+        // is not dense is 48 in Flutter whatever this padding is.
+        contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 11),
+        // At rest a field has a hairline round its fill. Dark `stroke` is
+        // within a shade of the `surfaceAlt` fill and draws nothing, which
+        // left a field looking like the disabled button under it (the same
+        // grey slab): dark fields take `strokeStrong` at rest instead.
+        border: fieldBorder(restingFieldLine, 0.5),
+        enabledBorder: fieldBorder(restingFieldLine, 0.5),
+        focusedBorder: fieldBorder(palette.strokeStrong, 1),
+        disabledBorder: fieldBorder(restingFieldLine, 0.5),
+        errorBorder: fieldBorder(palette.danger, 1),
+        focusedErrorBorder: fieldBorder(palette.danger, 1),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(0, 56),
-          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xl, vertical: VeilSpace.md),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(VeilRadius.md),
-          ),
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+          shape: rounded(VeilRadius.md),
           backgroundColor: palette.primary,
-          foregroundColor: palette.canvas,
-          disabledBackgroundColor: palette.surfaceOverlay,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: palette.surfaceAlt,
           disabledForegroundColor: palette.textSubtle,
-          textStyle: const TextStyle(
-            fontFamily: _fontFamily,
-            fontWeight: FontWeight.w700,
-            fontSize: 14,
-            letterSpacing: 0.1,
-          ),
+          textStyle: labelLarge,
+          elevation: 0,
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(0, 52),
-          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xl, vertical: VeilSpace.md),
+          minimumSize: const Size(0, 48),
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
           side: BorderSide(color: palette.stroke),
           foregroundColor: palette.text,
-          backgroundColor: palette.surfaceAlt,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(VeilRadius.md),
-          ),
-          textStyle: const TextStyle(
-            fontFamily: _fontFamily,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
+          disabledForegroundColor: palette.textSubtle,
+          backgroundColor: Colors.transparent,
+          shape: rounded(VeilRadius.md),
+          textStyle: labelLarge,
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: palette.primary,
-          minimumSize: const Size(0, 44),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(VeilRadius.sm),
-          ),
-          textStyle: const TextStyle(
-            fontFamily: _fontFamily,
-            fontWeight: FontWeight.w600,
-            fontSize: 14,
-          ),
+          foregroundColor: palette.primaryStrong,
+          disabledForegroundColor: palette.textSubtle,
+          minimumSize: const Size(44, 44),
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm),
+          shape: rounded(VeilRadius.md),
+          textStyle: labelLarge,
         ),
-      ),
-      listTileTheme: ListTileThemeData(
-        dense: false,
-        minLeadingWidth: 18,
-        minVerticalPadding: VeilSpace.xs,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: VeilSpace.lg,
-          vertical: VeilSpace.xs,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.md),
-        ),
-      ),
-      chipTheme: ChipThemeData(
-        backgroundColor: palette.surfaceAlt,
-        selectedColor: palette.primarySoft,
-        disabledColor: palette.surface,
-        side: BorderSide(color: palette.stroke),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.pill),
-        ),
-        labelStyle: TextStyle(
-          fontFamily: _fontFamily,
-          color: palette.text,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-        // A selected chip sits on primarySoft, a tint of the surface: its
-        // label has to stay a text colour, not the canvas.
-        secondaryLabelStyle: TextStyle(
-          fontFamily: _fontFamily,
-          color: palette.primaryStrong,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-        checkmarkColor: palette.primaryStrong,
-        padding: const EdgeInsets.symmetric(
-          horizontal: VeilSpace.sm,
-          vertical: VeilSpace.xs,
-        ),
-      ),
-      dividerTheme: DividerThemeData(
-        color: palette.stroke,
-        thickness: 1,
-        space: 1,
-      ),
-      switchTheme: SwitchThemeData(
-        thumbColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return palette.canvas;
-          }
-          return palette.textMuted;
-        }),
-        trackColor: WidgetStateProperty.resolveWith((states) {
-          if (states.contains(WidgetState.selected)) {
-            return palette.primary;
-          }
-          return palette.surfaceRaised;
-        }),
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: palette.surfaceRaised,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.lg),
-          side: BorderSide(color: palette.stroke),
-        ),
-      ),
-      bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: palette.surfaceRaised,
-        modalBackgroundColor: palette.surfaceRaised,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(VeilRadius.lg)),
-        ),
-      ),
-      progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: palette.primary,
-        linearTrackColor: palette.surfaceAlt,
-      ),
-      iconTheme: IconThemeData(
-        color: palette.textMuted,
-        size: VeilIconSize.md,
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
           foregroundColor: palette.textMuted,
-          backgroundColor: palette.surfaceAlt.withValues(alpha: 0.4),
+          disabledForegroundColor: palette.textSubtle,
+          backgroundColor: Colors.transparent,
           minimumSize: const Size(44, 44),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(VeilRadius.md),
+        ),
+      ),
+      // Rows: 16 at the sides; the 6 above and below the text is the
+      // tile's own minimum, so a one-line row is 44 and not 44 + 12.
+      listTileTheme: ListTileThemeData(
+        dense: false,
+        minVerticalPadding: 6,
+        minLeadingWidth: 0,
+        horizontalTitleGap: VeilSpace.sm,
+        contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+        shape: const RoundedRectangleBorder(),
+        tileColor: Colors.transparent,
+        iconColor: palette.textMuted,
+        textColor: palette.text,
+        titleTextStyle: titleMedium,
+        subtitleTextStyle: mutedBodyMedium,
+        leadingAndTrailingTextStyle: mutedBodyMedium,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: palette.surfaceAlt,
+        selectedColor: palette.primarySoft,
+        disabledColor: palette.surfaceAlt,
+        side: BorderSide.none,
+        shape: rounded(VeilRadius.xs),
+        labelStyle: labelMedium.copyWith(color: palette.text),
+        secondaryLabelStyle: labelMedium.copyWith(color: palette.primaryStrong),
+        checkmarkColor: palette.primaryStrong,
+        iconTheme: IconThemeData(color: palette.textMuted, size: VeilIconSize.sm),
+        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs, vertical: VeilSpace.xs),
+        labelPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
+        elevation: 0,
+        pressElevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(rounded(VeilRadius.sm)),
+          side: WidgetStatePropertyAll(BorderSide(color: palette.stroke, width: 0.5)),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? palette.primarySoft : Colors.transparent,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? palette.primaryStrong : palette.text,
+          ),
+          iconColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? palette.primaryStrong : palette.textMuted,
+          ),
+          overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+          textStyle: WidgetStatePropertyAll(labelMedium),
+          minimumSize: const WidgetStatePropertyAll(Size(0, 44)),
+          padding: const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: VeilSpace.sm)),
+          tapTargetSize: MaterialTapTargetSize.padded,
+        ),
+      ),
+      dividerTheme: DividerThemeData(color: palette.stroke, thickness: 0.5, space: 0.5),
+      switchTheme: SwitchThemeData(
+        // A disabled switch that is on keeps its brand track, faded, so it
+        // still reads as on but not as something to tap; one that is off
+        // greys its thumb.
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled) && !states.contains(WidgetState.selected)
+              ? palette.textSubtle
+              : Colors.white,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => !states.contains(WidgetState.selected)
+              ? palette.surfaceAlt
+              : states.contains(WidgetState.disabled)
+                  ? palette.primary.withValues(alpha: 0.38)
+                  : palette.primary,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? Colors.transparent : palette.stroke,
+        ),
+        trackOutlineWidth: const WidgetStatePropertyAll(0.5),
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+      ),
+      checkboxTheme: CheckboxThemeData(
+        fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? palette.primary : Colors.transparent,
+        ),
+        checkColor: const WidgetStatePropertyAll(Colors.white),
+        side: BorderSide(color: palette.textMuted, width: 1.5),
+        shape: rounded(4),
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+      ),
+      radioTheme: RadioThemeData(
+        fillColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? palette.primary : palette.textMuted,
+        ),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: palette.surfaceRaised,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: modalShadow,
+        elevation: light ? 8 : 0,
+        shape: rounded(VeilRadius.lg),
+        titleTextStyle: titleLarge,
+        contentTextStyle: mutedBodyMedium,
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: palette.surfaceRaised,
+        modalBackgroundColor: palette.surfaceRaised,
+        surfaceTintColor: Colors.transparent,
+        modalElevation: light ? 8 : 0,
+        elevation: 0,
+        shadowColor: modalShadow,
+        dragHandleColor: palette.strokeStrong,
+        dragHandleSize: const Size(36, 4),
+        // In the dark theme a sheet has no shadow; its tier and a hairline
+        // along its top edge lift it.
+        shape: _SheetTopEdgeBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(VeilRadius.lg)),
+          side: light ? BorderSide.none : BorderSide(color: palette.strokeStrong, width: 0.5),
+        ),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: palette.surfaceRaised,
+        surfaceTintColor: Colors.transparent,
+        elevation: light ? 8 : 0,
+        shadowColor: modalShadow,
+        shape: rounded(VeilRadius.md),
+        textStyle: bodyMedium,
+        iconColor: palette.textMuted,
+      ),
+      menuTheme: MenuThemeData(
+        style: MenuStyle(
+          backgroundColor: WidgetStatePropertyAll(palette.surfaceRaised),
+          surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+          elevation: WidgetStatePropertyAll(light ? 8 : 0),
+          shape: WidgetStatePropertyAll(rounded(VeilRadius.md)),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 56,
+        backgroundColor: palette.canvas,
+        surfaceTintColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+        elevation: 0,
+        indicatorColor: Colors.transparent,
+        overlayColor: const WidgetStatePropertyAll(Colors.transparent),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            size: 24,
+            color: states.contains(WidgetState.selected) ? palette.primaryStrong : palette.textMuted,
           ),
         ),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => labelSmall.copyWith(
+            color: states.contains(WidgetState.selected) ? palette.primaryStrong : palette.textMuted,
+          ),
+        ),
+      ),
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: palette.primaryStrong,
+        linearTrackColor: palette.surfaceAlt,
+        circularTrackColor: Colors.transparent,
+      ),
+      badgeTheme: BadgeThemeData(
+        backgroundColor: palette.primary,
+        textColor: Colors.white,
+        textStyle: labelSmall.copyWith(fontSize: 12, fontWeight: FontWeight.w600),
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
           color: palette.surfaceRaised,
           borderRadius: BorderRadius.circular(VeilRadius.sm),
-          border: Border.all(color: palette.stroke),
+          border: Border.all(color: palette.stroke, width: 0.5),
         ),
-        textStyle: TextStyle(
-          fontFamily: _fontFamily,
-          color: palette.text,
-          fontSize: 12,
-          height: 1.35,
-        ),
+        textStyle: bodySmall,
       ),
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: palette.primary,
-        selectionColor: palette.primary.withValues(alpha: 0.35),
+        selectionColor: palette.primary.withValues(alpha: 0.3),
         selectionHandleColor: palette.primary,
       ),
     );
   }
 }
 
-/// iOS Human Interface Guidelines type scale exposed as Flutter TextStyles.
-/// Use these when a screen wants to speak the SF Pro vocabulary explicitly
-/// (e.g. large title, headline, footnote). Existing screens can keep using
-/// [Theme.of(context).textTheme] — this is additive, not a replacement.
-class VeilTypography {
-  const VeilTypography._();
+/// The switch theme `Switch.adaptive` uses. On iOS Flutter drops the
+/// Material switch theme and draws the Cupertino switch in system green;
+/// this keeps the iOS shape and thumb and puts the brand on the track when
+/// it is on, as on Android. Elsewhere the theme is used as it is.
+class _VeilSwitchAdaptation extends Adaptation<SwitchThemeData> {
+  const _VeilSwitchAdaptation(this.palette);
 
-  static const TextStyle largeTitle = TextStyle(
-    fontSize: 34,
-    height: 1.03,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.37,
-  );
+  final VeilPalette palette;
 
-  static const TextStyle title1 = TextStyle(
-    fontSize: 28,
-    height: 1.08,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.36,
-  );
+  @override
+  SwitchThemeData adapt(ThemeData theme, SwitchThemeData defaultValue) => switch (theme.platform) {
+        TargetPlatform.iOS || TargetPlatform.macOS => SwitchThemeData(
+            trackColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected) ? palette.primary : null,
+            ),
+          ),
+        _ => defaultValue,
+      };
+}
 
-  static const TextStyle title2 = TextStyle(
-    fontSize: 22,
-    height: 1.14,
-    fontWeight: FontWeight.w700,
-    letterSpacing: 0.35,
-  );
+/// The outline of a sheet: rounded top corners, and its [side] drawn along
+/// the top edge only. A sheet spans the screen's width and runs off its
+/// bottom, so a whole outline would also draw faint lines down both screen
+/// edges.
+class _SheetTopEdgeBorder extends RoundedRectangleBorder {
+  const _SheetTopEdgeBorder({super.side, super.borderRadius});
 
-  static const TextStyle title3 = TextStyle(
-    fontSize: 20,
-    height: 1.2,
-    fontWeight: FontWeight.w600,
-    letterSpacing: 0.38,
-  );
+  @override
+  _SheetTopEdgeBorder copyWith({BorderSide? side, BorderRadiusGeometry? borderRadius}) =>
+      _SheetTopEdgeBorder(side: side ?? this.side, borderRadius: borderRadius ?? this.borderRadius);
 
-  static const TextStyle headline = TextStyle(
-    fontSize: 17,
-    height: 1.29,
-    fontWeight: FontWeight.w600,
-    letterSpacing: -0.41,
-  );
+  @override
+  ShapeBorder scale(double t) => _SheetTopEdgeBorder(side: side.scale(t), borderRadius: borderRadius * t);
 
-  static const TextStyle body = TextStyle(
-    fontSize: 17,
-    height: 1.29,
-    fontWeight: FontWeight.w400,
-    letterSpacing: -0.41,
-  );
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) => a is RoundedRectangleBorder
+      ? _SheetTopEdgeBorder(
+          side: BorderSide.lerp(a.side, side, t),
+          borderRadius: BorderRadiusGeometry.lerp(a.borderRadius, borderRadius, t)!,
+        )
+      : super.lerpFrom(a, t);
 
-  static const TextStyle callout = TextStyle(
-    fontSize: 16,
-    height: 1.31,
-    fontWeight: FontWeight.w400,
-    letterSpacing: -0.32,
-  );
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) => b is RoundedRectangleBorder
+      ? _SheetTopEdgeBorder(
+          side: BorderSide.lerp(side, b.side, t),
+          borderRadius: BorderRadiusGeometry.lerp(borderRadius, b.borderRadius, t)!,
+        )
+      : super.lerpTo(b, t);
 
-  static const TextStyle subheadline = TextStyle(
-    fontSize: 15,
-    height: 1.33,
-    fontWeight: FontWeight.w400,
-    letterSpacing: -0.24,
-  );
-
-  static const TextStyle footnote = TextStyle(
-    fontSize: 13,
-    height: 1.38,
-    fontWeight: FontWeight.w400,
-    letterSpacing: -0.08,
-  );
-
-  static const TextStyle caption1 = TextStyle(
-    fontSize: 12,
-    height: 1.33,
-    fontWeight: FontWeight.w400,
-    letterSpacing: 0.0,
-  );
-
-  static const TextStyle caption2 = TextStyle(
-    fontSize: 11,
-    height: 1.27,
-    fontWeight: FontWeight.w400,
-    letterSpacing: 0.07,
-  );
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.none || side.width == 0) return;
+    // The middle of the stroke, inside the edge as the whole outline would
+    // draw it.
+    final inset = side.strokeInset - side.width / 2;
+    final edge = rect.deflate(inset);
+    final radii = borderRadius.resolve(textDirection);
+    Radius shrink(Radius r) => Radius.elliptical(r.x > inset ? r.x - inset : 0, r.y > inset ? r.y - inset : 0);
+    final left = shrink(radii.topLeft);
+    final right = shrink(radii.topRight);
+    final path = Path()
+      ..moveTo(edge.left, edge.top + left.y)
+      ..arcToPoint(Offset(edge.left + left.x, edge.top), radius: left)
+      ..lineTo(edge.right - right.x, edge.top)
+      ..arcToPoint(Offset(edge.right, edge.top + right.y), radius: right);
+    canvas.drawPath(path, side.toPaint());
+  }
 }
 
 /// Discipline for haptics. Flutter's [HapticFeedback] exposes raw primitives,
@@ -656,7 +652,7 @@ class VeilHaptics {
   static void selection() => HapticFeedback.selectionClick();
 
   /// Light tap. Default for ordinary button presses that commit nothing
-  /// dangerous — "send message", "tap a chip", "confirm a non-destructive
+  /// dangerous: "send message", "tap a chip", "confirm a non-destructive
   /// action".
   static void light() => HapticFeedback.lightImpact();
 
@@ -685,54 +681,5 @@ class VeilHaptics {
     Future<void>.delayed(const Duration(milliseconds: 180), () {
       HapticFeedback.heavyImpact();
     });
-  }
-}
-
-/// Translucent surface matching iOS nav bars / tab bars. Wrap a child that
-/// should sit over scrolling content with a frosted-glass effect. The tint
-/// defaults to the palette canvas so the surface darkens content behind it
-/// without fully hiding it.
-class VeilBlur extends StatelessWidget {
-  const VeilBlur({
-    super.key,
-    required this.child,
-    this.intensity = 24,
-    this.tint,
-    this.tintAlpha = 0.72,
-    this.borderRadius,
-  });
-
-  /// Child rendered on top of the blurred backdrop.
-  final Widget child;
-
-  /// Gaussian blur sigma in logical pixels. iOS navigation bars use ~20.
-  final double intensity;
-
-  /// Optional tint laid over the blur. Defaults to the theme canvas.
-  final Color? tint;
-
-  /// Opacity of the tint overlay. Lower = more transparent.
-  final double tintAlpha;
-
-  /// Optional clip radius for the frosted region.
-  final BorderRadius? borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    // Resolve the palette from the active theme brightness instead of always
-    // using the dark canvas — otherwise the frosted tint stays dark in the
-    // light theme, giving light-mode app bars / toasts a muddy dark cast.
-    final palette = VeilPalette.forBrightness(Theme.of(context).brightness);
-    final overlay = (tint ?? palette.canvas).withValues(alpha: tintAlpha);
-    final filtered = BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: intensity, sigmaY: intensity),
-      child: Container(color: overlay, child: child),
-    );
-    // A backdrop filter blurs everything inside the nearest clip, which
-    // without one is the whole screen: the bar's own bounds must clip it.
-    if (borderRadius == null) {
-      return ClipRect(child: filtered);
-    }
-    return ClipRRect(borderRadius: borderRadius!, child: filtered);
   }
 }

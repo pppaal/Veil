@@ -517,7 +517,7 @@ class FakeRelayClient extends VeilApiClient {
     String accessToken,
     Map<String, dynamic> body,
   ) async {
-    if (unreachable) throw VeilApiException('The VEIL relay is unreachable.', code: 'network_unavailable');
+    if (unreachable) throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
     final stored = relay._accept(me, body);
     return {'message': relay.rewriteAck?.call(Map<String, dynamic>.of(stored)) ?? stored, 'idempotent': false};
   }

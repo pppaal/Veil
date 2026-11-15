@@ -239,7 +239,7 @@ No client forces a send step without a receive. Such a step is sound only when
 the peer has not sent since our last send; with a reply in flight it builds on
 a root key the peer has already ratcheted past, and neither side decrypts the
 other again. The Double Ratchet already steps the DH ratchet on every turn.
-What the user can ask for instead ("Start a new session", 1:1 only) is a fresh
+What the user can ask for instead ("Renew keys", 1:1 only) is a fresh
 X3DH handshake against the peer's current directory entry, after the identity
 pins accept it: the new state becomes current and the old one is archived, never
 destroyed (see "Session records and glare"), so frames already in flight on it

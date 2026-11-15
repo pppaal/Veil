@@ -195,7 +195,7 @@ void main() {
     expect(find.text("Couldn't decrypt this message"), findsNothing);
   });
 
-  testWidgets('real failure renders chip', (tester) async {
+  testWidgets('real failure renders the line of this app, never the text of the adapter', (tester) async {
     await _pumpChat(tester, [
       (
         'frame-1',
@@ -214,7 +214,7 @@ void main() {
     expect(find.text('whatever an adapter put here'), findsNothing);
   });
 
-  testWidgets('a legacy frame renders its text with an unverified-sender badge', (tester) async {
+  testWidgets('a legacy frame renders its text with a line saying the sender is not verified', (tester) async {
     await _pumpChat(tester, [
       (
         'frame-1',
@@ -224,7 +224,7 @@ void main() {
     ]);
 
     expect(find.text('old client'), findsOneWidget);
-    expect(find.text('Sender not verified (old format)'), findsOneWidget);
+    expect(find.text('Sent from an older version; not verified'), findsOneWidget);
   });
 
   testWidgets('inbound reaction applies to target and renders no bubble', (tester) async {

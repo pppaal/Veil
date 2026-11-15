@@ -1,4 +1,4 @@
-# Google Play Listing — Draft
+# Google Play listing (draft)
 
 Target storefront: Google Play.
 Application ID: `app.veil.messenger` (placeholder; align with
@@ -9,38 +9,35 @@ Application ID: `app.veil.messenger` (placeholder; align with
 
 ## App title (30 chars)
 
-`Veil — Private Messenger`
+`Veil Messenger`
 
 ## Short description (80 chars)
 
-`End-to-end encrypted messenger. No phone number. Messages that actually vanish.`
+`End-to-end encrypted messenger with no phone number, no email and no real name.`
 
 ## Full description
 
-Veil is an end-to-end encrypted messenger. The server relays ciphertext
-envelopes; it never sees the content of your messages.
+Veil is an end-to-end encrypted messenger. The server passes on encrypted
+messages and never sees what they say.
 
-**What Veil is**
-- End-to-end encrypted messages. Server sees ciphertext.
-- No phone number, no email, no address book upload. You pick a handle.
-- Device-bound identity. No cloud account. No silent sync across devices
-  you didn't explicitly add.
-- Disappearing messages (per-conversation timer).
+**What you get**
+- End-to-end encrypted messages.
+- No phone number, no email and no address book upload. You pick a handle.
+- Your account lives on your phone. There is no cloud account.
+- Disappearing messages, with a timer on each chat.
 
-**What Veil is not**
-- Not ad-supported. Not analytics-monetized.
+**What you don't get**
+- No ads and no analytics.
 - No backups, local or cloud.
-- No account recovery. Losing your device is final — that's the
-  privacy guarantee.
-- No contact discovery. No "who else is on Veil" directory.
+- No account recovery. If you lose your phone, you lose the account.
+- No contact upload and no directory of who else uses Veil.
 
-**Who Veil is for**
-People who want their private conversations to actually be private. If
-"private" to you means "the company running the server can't read my
-messages even if they try," Veil is for you.
+**Who it's for**
+People who want to message without giving out a phone number, and who
+accept that a lost phone means a lost account.
 
 Not in the mobile build, so not in this listing: view-once messages,
-block, mute and report. The relay has the endpoints; the app has no screen
+block, mute and report. The server has the endpoints; the app has no screen
 for any of them yet. Put a bullet back when its screen ships.
 
 ## Category
@@ -53,7 +50,7 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: NO in the current build. The relay takes abuse reports
+- In-app reporting: NO in the current build. The server takes abuse reports
   (`POST /safety/reports`), but the mobile app has no screen that files
   one. Google Play expects in-app reporting and blocking in an app with
   user-generated content: a launch blocker. Answer YES once the screen
@@ -61,7 +58,7 @@ IARC rating questionnaire should be answered honestly:
 - Interactive features: chat only; no live video to strangers, no
   unmoderated public rooms
 
-Expected rating band: **Teen** (13+) — same band Signal sits in.
+Expected rating band: **Teen** (13+), the band Signal sits in.
 
 ## Data safety form (Play Console)
 
@@ -101,15 +98,16 @@ Declared in `AndroidManifest.xml` and surfaced in Play Console:
 | ACCESS_NETWORK_STATE         | reconnect logic     | no              |
 | POST_NOTIFICATIONS (33+)     | message wake only   | yes (Android 13+)|
 | CAMERA                       | attachments (switched off) | never asked |
-| RECORD_AUDIO                 | voice messages, calls (switched off) | never asked |
+| RECORD_AUDIO                 | voice messages, calls (not in the app) | never asked |
 | READ_MEDIA_IMAGES/VIDEO/AUDIO (33+) | attachments (switched off) | never asked |
 | USE_BIOMETRIC                | app lock            | no (per-use)    |
 
 No `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`.
 
-Attachments, voice messages and calls are switched off in the mobile app
-(`apps/mobile/lib/src/features/*/*_feature.dart`), so nothing in the build
-asks for the camera, the microphone or the media library at runtime. The
+Sending attachments is switched off in the mobile app (`kAttachmentsEnabled`
+in `apps/mobile/lib/src/features/attachments/attachments_feature.dart`), and
+the app has no voice messages or calls, so nothing in the build asks for the
+camera, the microphone or the media library at runtime. The
 manifest still declares those permissions. Remove them (and the matching
 usage strings in `ios/Runner/Info.plist`) before submitting a build that
 ships without those features: a store reviewer reads a declared permission
@@ -123,7 +121,7 @@ as a feature.
 ## Screenshot set
 
 Five screenshots, 16:9 landscape or 9:16 portrait. Same storyline as the
-App Store screenshots — reuse assets.
+App Store screenshots: reuse the assets.
 
 ## Google Play review notes
 
@@ -134,22 +132,22 @@ Veil is an end-to-end encrypted messenger. Reviewers do not need a real
 phone number or email. Use the following test handle:
 
   Handle: @playstore-review-<random>
-  Device transfer token: <generated per review>
+  Transfer code: <generated per review>
 
 Veil uses end-to-end encryption; the server cannot read user content, so
-the review team cannot inspect message bodies. This is intentional and
-documented in the Privacy Policy.
+the review team cannot inspect message bodies. The Privacy Policy explains
+this.
 ```
 
 ## Release track plan
 
-1. **Internal testing** — closed to the dev org, use for every push
+1. **Internal testing**: closed to the dev org, used for every push
    during release hardening.
-2. **Closed testing (alpha)** — opt-in tester pool, ~50 testers. At
-   least 14 days before broader rollout.
-3. **Closed testing (beta)** — 200–500 testers. Required for new
+2. **Closed testing (alpha)**: opt-in tester pool, about 50 testers, for
+   at least 14 days before broader rollout.
+3. **Closed testing (beta)**: 200 to 500 testers. Required for new
    personal-developer accounts per Play Console 2024 rules.
-4. **Production** — staged rollout at 5% → 20% → 100% over 7 days.
+4. **Production**: staged rollout at 5%, 20%, then 100% over 7 days.
 
 ## Submission checklist
 

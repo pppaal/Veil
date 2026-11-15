@@ -11,6 +11,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+import 'package:veil_mobile/src/features/security/presentation/safety_number_cards.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
@@ -21,6 +22,13 @@ import '../support/mock_relay_parties.dart';
 import '../support/strict_mock_crypto_adapter.dart';
 
 const conv = 'conv-1';
+
+/// The one number when no change is pending: its digits on the page.
+final _number = find.byType(SafetyNumberCard);
+
+/// Any words inside the number's block: there are none while it is the only
+/// number on screen (the bar says what the page is).
+final _labelOverNumber = find.descendant(of: _number, matching: find.textContaining(RegExp('[a-z]')));
 
 /// A signed-in atlas, as the screen reads the session.
 class _SignedIn extends AppSessionController {
@@ -112,11 +120,12 @@ void main() {
     final fixture = _Fixture();
     await fixture.setUp(tester);
 
-    await fixture.pumpScreen(tester, until: find.text('SAFETY NUMBER'));
+    await fixture.pumpScreen(tester, until: _number);
 
-    expect(find.text('The key server lists a different key'), findsOneWidget);
-    expect(find.text('SAFETY NUMBER'), findsOneWidget);
-    expect(find.text('Unverified'), findsOneWidget);
+    expect(find.text('The server lists a different key'), findsOneWidget);
+    expect(_number, findsOneWidget);
+    expect(_labelOverNumber, findsNothing);
+    expect(find.text('Not verified'), findsOneWidget);
   });
 
   // The mark says what the chat's says: the key this device encrypts to was
@@ -128,16 +137,16 @@ void main() {
     await fixture.setUp(tester);
     await tester.runAsync(() => fixture.trust.markVerified('user-selene', 'dev-selene', fixture.pinnedKey));
 
-    await fixture.pumpScreen(tester, until: find.text('SAFETY NUMBER'));
+    await fixture.pumpScreen(tester, until: _number);
 
-    expect(find.text('The key server lists a different key'), findsOneWidget);
+    expect(find.text('The server lists a different key'), findsOneWidget);
     expect(await tester.runAsync(() => fixture.controller.isUserVerified('user-selene')), isTrue);
     expect(find.text('Verified'), findsOneWidget);
-    expect(find.text('Unverified'), findsNothing);
+    expect(find.text('Not verified'), findsNothing);
     expect(find.textContaining('Verified on'), findsOneWidget);
     expect(find.text('Mark as verified'), findsNothing);
     final mark = tester.getRect(find.text('Verified'));
-    final warning = tester.getRect(find.text('The key server lists a different key'));
+    final warning = tester.getRect(find.text('The server lists a different key'));
     expect(mark.bottom, lessThanOrEqualTo(warning.top));
   });
 
@@ -171,8 +180,8 @@ void main() {
     });
 
     await fixture.pumpScreen(tester, until: find.text('Mark as verified'));
-    expect(find.text('The key server lists another device'), findsOneWidget);
-    expect(find.text('The key server lists a different key'), findsNothing);
+    expect(find.text('The server lists another device'), findsOneWidget);
+    expect(find.text('The server lists a different key'), findsNothing);
 
     // What the user compares, and verifies, is the device replies go to.
     await tester.tap(find.text('Mark as verified'));
@@ -193,9 +202,9 @@ void main() {
     });
     expect(fixture.controller.pendingIdentityChangeFor(conv)!.requiresReverification, isTrue);
 
-    final reverify = find.text('Re-verify with new key');
+    final reverify = find.text('Verify the new number');
     await fixture.pumpScreen(tester, until: reverify);
-    expect(find.text('Accept the new key'), findsNothing);
+    expect(find.text('Accept new number'), findsNothing);
 
     // The tap only opens the comparison; nothing is accepted yet.
     await tester.tap(reverify);
@@ -241,7 +250,7 @@ void main() {
       await fixture.trust.admit(conv, 'user-selene', 'dev-selene', fixture.servedKey);
     });
 
-    final reverify = find.text('Re-verify with new key');
+    final reverify = find.text('Verify the new number');
     await fixture.pumpScreen(tester, until: reverify);
     await tester.tap(reverify);
     await tester.pumpAndSettle();
@@ -279,7 +288,7 @@ void main() {
     });
 
     await fixture.pumpScreen(tester, until: find.text('selene'), conversationId: 'grp');
-    expect(find.text('Unverified'), findsOneWidget);
+    expect(find.text('Not verified'), findsOneWidget);
     expect(find.text('Verified'), findsNothing);
   });
 
@@ -288,7 +297,7 @@ void main() {
     await fixture.setUp(tester);
     await tester.runAsync(() => fixture.trust.admit(conv, 'user-selene', 'dev-selene', fixture.servedKey));
 
-    final keep = find.text('Keep the current key');
+    final keep = find.text('Keep the old one');
     await fixture.pumpScreen(tester, until: keep);
     await tester.tap(keep);
     await tester.pump();
@@ -308,9 +317,9 @@ void main() {
     await fixture.setUp(tester);
     await tester.runAsync(() => fixture.trust.admit(conv, 'user-selene', 'dev-selene', fixture.servedKey));
 
-    final acceptNewKey = find.text('Accept the new key');
+    final acceptNewKey = find.text('Accept new number');
     await fixture.pumpScreen(tester, until: acceptNewKey);
-    expect(find.text('Re-verify with new key'), findsNothing);
+    expect(find.text('Verify the new number'), findsNothing);
 
     await tester.tap(acceptNewKey);
     await tester.pump();

@@ -78,7 +78,8 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
       return;
     }
     $('transfer-old-token').value = started.code;
-    setText('transfer-old-status', 'Copy the code and paste it on the new device. Waiting for the new device…');
+    // The dialog's first line already says to paste the code there.
+    setText('transfer-old-status', 'Waiting for the new device…');
     $('transfer-old-claim').classList.add('hidden');
     $('transfer-old-approve').classList.add('hidden');
     setText('transfer-old-cancel', 'Cancel');
@@ -217,7 +218,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
 
   async function claimNew() {
     const code = $('transfer-new-token').value.trim();
-    const name = $('transfer-new-name').value.trim() || 'VEIL';
+    const name = $('transfer-new-name').value.trim() || WEB_DEVICE_NAME;
     if (!code) {
       setText('transfer-new-error', 'Enter the code');
       return;

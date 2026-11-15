@@ -10,7 +10,7 @@ import '../../../shared/presentation/veil_ui.dart';
 
 /// Creates a group: its name, the handles of its members (at least one
 /// besides the creator), an optional description and the button, then one
-/// note on what of a group is encrypted and what the relay keeps.
+/// plain line on what of a group the server can read.
 class StartGroupScreen extends ConsumerStatefulWidget {
   const StartGroupScreen({super.key});
 
@@ -86,16 +86,19 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
     return VeilShell(
       title: l10n.startGroupTitle,
       maxWidth: 560,
-      padding: EdgeInsets.zero,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
+        padding: VeilShell.formPadding,
         children: [
           TextField(
             controller: _nameController,
             autofocus: true,
             textInputAction: TextInputAction.next,
             onChanged: edited,
-            decoration: InputDecoration(labelText: l10n.startGroupNameInput, hintText: l10n.startGroupNameHint),
+            decoration: InputDecoration(
+              labelText: l10n.startGroupNameInput,
+              hintText: l10n.startGroupNameHint,
+              helperText: l10n.startGroupNameRequired,
+            ),
           ),
           const SizedBox(height: VeilSpace.sm),
           TextField(
@@ -106,15 +109,14 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
             onChanged: edited,
             decoration: InputDecoration(
               labelText: l10n.startGroupMembersInput,
-              hintText: 'icarus, daedalus, minos',
+              hintText: l10n.startGroupMembersHint,
               suffixText: memberCount == 0 ? null : l10n.startGroupMembersCount(memberCount),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(VeilSpace.xxs, VeilSpace.xs, VeilSpace.xxs, 0),
-            child: VeilCopy(
-              l10n.startGroupMembersCaption,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
+              helperText: l10n.startGroupMembersCaption,
+              helperMaxLines: 3,
+              // Who could not be added, or no connection: the handles are
+              // what to check first.
+              errorText: _failed ? l10n.startGroupMembersError : null,
+              errorMaxLines: 3,
             ),
           ),
           const SizedBox(height: VeilSpace.sm),
@@ -128,22 +130,16 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
               hintText: l10n.startGroupDescriptionHint,
             ),
           ),
-          if (_failed) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilInlineBanner(
-              title: l10n.startGroupErrorTitle,
-              message: l10n.startGroupErrorBody,
-              tone: VeilBannerTone.danger,
-            ),
-          ],
           const SizedBox(height: VeilSpace.md),
           VeilButton(
             onPressed: _creating || !_ready ? null : _create,
             label: _creating ? l10n.startGroupCreating : l10n.startGroupCreateButton,
-            icon: Icons.group_add_rounded,
           ),
-          const SizedBox(height: VeilSpace.lg),
-          VeilInlineBanner(icon: Icons.lock_outline_rounded, message: l10n.startGroupNote),
+          const SizedBox(height: VeilSpace.sm),
+          Text(
+            l10n.startGroupNote,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
+          ),
         ],
       ),
     );

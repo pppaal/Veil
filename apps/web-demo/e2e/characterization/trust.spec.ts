@@ -21,7 +21,7 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 async function openSafetyDialog(page: Page) {
-  await page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+  await page.locator('.panel-header button[aria-label="Safety number"]').click();
   const dialog = page.locator('#safety-dialog');
   await expect(dialog).toBeVisible();
   return dialog;
@@ -49,7 +49,8 @@ test.describe('a contact verified by safety number', () => {
 
   test('compares codes and marks the key verified', async () => {
     const bobDialog = await openSafetyDialog(bob.page);
-    const bobCode = await bobDialog.locator('.safety-code').inputValue();
+    const bobCode = (await bobDialog.locator('.safety-copy-code').getAttribute('data-code')) ?? '';
+    expect(bobCode.length).toBeGreaterThan(40);
     const bobNumber = (await bobDialog.locator('#safety-number').innerText()).trim();
     await bob.page.keyboard.press('Escape');
     await expect(bobDialog).toHaveCount(0);
@@ -82,9 +83,9 @@ test.describe('a contact verified by safety number', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${bob.handle} presented a new security key. You had verified them: compare the new safety number before you trust it.`,
+      `@${bob.handle}'s safety number changed. You had verified them, so compare the new number before you trust it.`,
     );
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message (security key changed, review it)');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message (safety number changed)');
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     // Meanwhile Alice goes on writing to the key she verified.
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
@@ -130,7 +131,7 @@ test.describe('a contact never verified', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${dave.handle} presented a new security key. Messages from it stay locked until you review it.`,
+      `@${dave.handle}'s safety number changed. Nothing is sent or shown until you review it.`,
     );
     await expect(page.locator('.conv-item', { hasText: `@${dave.handle}` }).locator('.conv-preview')).toHaveText('Safety number changed');
     await expect(page.locator('.panel-input textarea')).toBeEnabled();

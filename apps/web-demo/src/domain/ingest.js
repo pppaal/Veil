@@ -28,11 +28,11 @@ export const LOCKED_LABELS = Object.freeze({
   legacy: 'Encrypted message (older format)',
   'no-key': 'Encrypted message (no key yet)',
   failed: 'Encrypted message (could not decrypt)',
-  identityRejected: 'Encrypted message (security key changed, review it)',
+  identityRejected: 'Encrypted message (safety number changed)',
   // a key the user declined, or a device of another contact: nothing to review
   identityRefused: 'Encrypted message (declined security key)',
   sessionMissing: 'Encrypted message (no session)',
-  'own-missing': 'Not available on this device',
+  'own-missing': 'Encrypted message (not on this device)',
 });
 const PREVIEW_MAX_CHARS = 120;
 // Views with nothing left to show: no bubble, preview or search hit.

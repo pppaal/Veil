@@ -18,10 +18,10 @@ import 'device_transfer_old_device_panel.dart';
 
 enum _TransferMode { oldDevice, newDevice }
 
-/// Moving the account to another device. A signed-in device opens as the
-/// old one, any other as the new one. Each side is three numbered steps
-/// with the step in hand first on the screen; the notice that nothing
-/// replaces a missing old device follows the steps. A session or a claim
+/// Moving the account to another phone. A signed-in phone opens as the
+/// old one, any other as the new one. Each side is three numbered steps,
+/// with the controls of the step in hand under them; that nothing replaces
+/// a missing old phone is said once, under the steps. A session or a claim
 /// that ran out is said in the first step of its side, which takes the new
 /// code.
 class DeviceTransferScreen extends ConsumerStatefulWidget {
@@ -124,25 +124,30 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
 
     return VeilShell(
       title: l10n.deviceTransferTitle,
+      grouped: true,
       child: ListView(
+        padding: const EdgeInsets.only(top: VeilSpace.md, bottom: VeilSpace.xl),
         children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
+          // Which phone this is, on the group's surface: the selected
+          // segment's blue on its tint reads there in both themes.
+          VeilGroup(
             children: [
-              ChoiceChip(
-                label: Text(l10n.deviceTransferChipOldDevice),
-                selected: oldDevice,
-                onSelected: (_) => setState(() => _mode = _TransferMode.oldDevice),
-              ),
-              ChoiceChip(
-                label: Text(l10n.deviceTransferChipNewDevice),
-                selected: !oldDevice,
-                onSelected: (_) => setState(() => _mode = _TransferMode.newDevice),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xs),
+                child: SegmentedButton<_TransferMode>(
+                  segments: [
+                    ButtonSegment(value: _TransferMode.oldDevice, label: Text(l10n.deviceTransferChipOldDevice)),
+                    ButtonSegment(value: _TransferMode.newDevice, label: Text(l10n.deviceTransferChipNewDevice)),
+                  ],
+                  selected: {_mode},
+                  showSelectedIcon: false,
+                  expandedInsets: EdgeInsets.zero,
+                  onSelectionChanged: (selection) => setState(() => _mode = selection.first),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: VeilSpace.sm),
+          const SizedBox(height: VeilSpace.md),
           if (oldDevice)
             TransferOldDevicePanel(
               isAuthenticated: session.isAuthenticated,
@@ -161,6 +166,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               onCopyCode: transferCode == null || transferExpired ? null : () => _copyCode(transferCode),
               onClear: () => ref.read(deviceTransferControllerProvider).clearTransferState(),
               now: _now,
+              stepsFooter: l10n.deviceTransferOldPhoneNeeded,
             )
           else
             TransferNewDevicePanel(
@@ -188,20 +194,17 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               onClaim: _claimTransfer,
               onComplete: _completeTransfer,
               now: _now,
+              stepsFooter: l10n.deviceTransferOldPhoneNeeded,
             ),
-          if (!oldDevice && session.isAuthenticated) ...[
-            const SizedBox(height: VeilSpace.md),
-            VeilButton(
-              onPressed: () => context.go('/conversations'),
-              tone: VeilButtonTone.secondary,
-              label: l10n.deviceTransferReturnToConversations,
+          if (!oldDevice && session.isAuthenticated)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.md, VeilSpace.md, 0),
+              child: VeilButton(
+                onPressed: () => context.go('/conversations'),
+                tone: VeilButtonTone.secondary,
+                label: l10n.deviceTransferReturnToConversations,
+              ),
             ),
-          ],
-          const SizedBox(height: VeilSpace.lg),
-          VeilDestructiveNotice(
-            title: l10n.deviceTransferNoFallbackTitle,
-            body: l10n.deviceTransferNoFallbackBody,
-          ),
         ],
       ),
     );
@@ -246,7 +249,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     if (!mounted) {
       return;
     }
-    VeilToast.show(context, message: copied);
+    showVeilToast(context, copied);
   }
 
   void _useCode() {
@@ -303,7 +306,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       final result = await ref.read(appSessionProvider.notifier).claimTransfer(
             sessionId: _sessionId,
             transferToken: _transferToken,
-            deviceName: _deviceNameController.text.trim(),
+            // A name cleared from the field is the one it started with.
+            deviceName: _deviceNameController.text.trim().isEmpty
+                ? l10n.authDefaultDeviceName
+                : _deviceNameController.text.trim(),
           );
       if (!mounted) {
         return;

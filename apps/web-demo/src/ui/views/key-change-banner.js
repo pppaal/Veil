@@ -8,7 +8,7 @@
 import { t } from '../../../i18n/i18n.js';
 import { shownHandle } from '../../domain/handles.js';
 import { HoldReason } from '../../domain/peer-bindings.js';
-import { el } from '../dom.js';
+import { el, icon } from '../dom.js';
 import { toast } from '../toast.js';
 
 // What a held conversation's banner, its confirmation, its frozen composer
@@ -105,24 +105,30 @@ export function createKeyChangeBanner({ identityTrust, safetyDialog, confirm }) 
     // issues. Nothing is opened or sent there until the user chooses to talk
     // to this account (src/app/services/identity-trust.js acknowledgeAccount).
     renderHold(convId, peer, hold) {
-      return el('div', { class: `key-change-banner account-conflict-banner ${hold.reason}`, role: 'alert' }, [
-        el('div', { class: 'key-change-text' }, [t(holdTextKey(hold, 'banner'), { handle: shownHandle(peer.handle) })]),
-        el('button', {
-          class: 'btn btn-secondary btn-compact',
-          onclick: () => acknowledgeAccount(convId, peer, hold),
-        }, [t('accountConflict.acknowledge')]),
+      return el('div', { class: `notice key-change-banner account-conflict-banner ${hold.reason}`, role: 'alert' }, [
+        icon('warning', 'notice-icon tone-warn'),
+        el('div', { class: 'notice-text key-change-text' }, [t(holdTextKey(hold, 'banner'), { handle: shownHandle(peer.handle) })]),
+        el('div', { class: 'notice-actions' }, [
+          el('button', {
+            class: 'text-btn',
+            onclick: () => acknowledgeAccount(convId, peer, hold),
+          }, [t('accountConflict.acknowledge')]),
+        ]),
       ]);
     },
 
     render(convId, peer) {
       const { textKey, needsComparison } = identityTrust.bannerFor(peer);
-      return el('div', { class: 'key-change-banner', role: 'alert' }, [
-        el('div', { class: 'key-change-text' }, [t(textKey, { handle: shownHandle(peer.handle) })]),
-        el('button', { class: 'btn btn-ghost btn-compact key-change-decline', onclick: () => decline(convId, peer) }, [t('keyChange.decline')]),
-        el('button', {
-          class: 'btn btn-secondary btn-compact',
-          onclick: () => (needsComparison ? safetyDialog.open(convId, peer) : accept(convId, peer)),
-        }, [t(needsComparison ? 'safety.compare' : 'keyChange.review')]),
+      return el('div', { class: 'notice key-change-banner', role: 'alert' }, [
+        icon('warning', 'notice-icon tone-warn'),
+        el('div', { class: 'notice-text key-change-text' }, [t(textKey, { handle: shownHandle(peer.handle) })]),
+        el('div', { class: 'notice-actions' }, [
+          el('button', { class: 'text-btn key-change-decline', onclick: () => decline(convId, peer) }, [t('keyChange.decline')]),
+          el('button', {
+            class: 'text-btn key-change-review',
+            onclick: () => (needsComparison ? safetyDialog.open(convId, peer) : accept(convId, peer)),
+          }, [t(needsComparison ? 'safety.compare' : 'keyChange.review')]),
+        ]),
       ]);
     },
   };

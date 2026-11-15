@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -15,11 +13,15 @@ import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
 import 'message_expiry_label.dart';
 
-/// One message as a bubble on its sender's side: who of a group wrote it,
-/// the decrypted text, or the chip for a message that did not open, any
-/// attachment and its transfer, and the time, delivery state and expiry. A
-/// bubble takes at most 340 px and, on a narrow screen, 82% of the width, so
-/// the side it sits on still tells who wrote it.
+/// One message as a bubble on its sender's side: who of a group wrote it
+/// (the first bubble of a run, in the sender's tint), the decrypted text or
+/// the line for a message that did not open, any attachment, and the meta
+/// at its end: the time, the ticks of the user's own messages ("Read" in
+/// words once read) and the time left on a disappearing one.
+///
+/// A send that failed is a grey bubble with "Not sent. Tap to retry." under
+/// it, and a tap on it retries. A message from an older version, whose
+/// sender is not proven, says so in a line under the bubble.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -35,6 +37,8 @@ class MessageBubble extends StatelessWidget {
     required this.expiryNow,
     this.onRetryMessage,
     this.senderName,
+    this.senderSeed,
+    this.position = VeilBubblePosition.single,
   });
 
   final ChatMessage message;
@@ -50,222 +54,193 @@ class MessageBubble extends StatelessWidget {
   final VoidCallback? onRetryMessage;
 
   /// Who of a group wrote the message, shown above it; null in a 1:1, on
-  /// the user's own messages, and under another message of the same sender.
+  /// the user's own messages, and under another message of the same run.
   final String? senderName;
+
+  /// What the sender's name tint is drawn from (their handle); the name
+  /// itself when null.
+  final String? senderSeed;
+
+  /// Where the bubble sits in its run of bubbles from the same sender.
+  final VeilBubblePosition position;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final alignment =
-        message.isMine ? Alignment.centerRight : Alignment.centerLeft;
     final theme = Theme.of(context);
     final palette = context.veilPalette;
-    // On the violet of the user's own bubbles the palette's status colours
-    // do not read: what is written there is white.
-    final metaColor = message.isMine ? Colors.white.withValues(alpha: 0.82) : palette.textMuted;
-    final metaStyle = theme.textTheme.bodySmall?.copyWith(color: metaColor, fontSize: 11.5, height: 1.2);
-    final bodyStyle = theme.textTheme.bodyLarge?.copyWith(height: 1.38);
+    final failed = message.hasFailed;
+    // The colours VeilBubble fills with: own bubbles are the brand fill,
+    // everything else (theirs, failed, a search hit) a grey or raised one.
+    final onBrand = message.isMine && !failed && !highlighted;
+    final textColor = onBrand ? Colors.white : palette.text;
+    final metaColor = onBrand ? palette.outgoingMeta : palette.textMuted;
+    final metaStyle = theme.textTheme.labelSmall?.copyWith(color: metaColor);
+    final bodyStyle = theme.textTheme.bodyLarge?.copyWith(color: textColor);
 
-    final bubble = Semantics(
-      label: messageBubbleSemanticsLabel(l10n, message),
-      child: AnimatedContainer(
-        duration: VeilMotion.normal,
-        curve: Curves.easeOutCubic,
-        padding: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(VeilRadius.lg + 2),
-          border: highlighted
-              ? Border.all(color: context.veilPalette.primary, width: 1.2)
-              : null,
-          color: highlighted ? context.veilPalette.primarySoft : Colors.transparent,
-        ),
-        child: VeilMessageBubbleCard(
+    final content = FutureBuilder<DecryptedMessage>(
+      future: decryptFuture,
+      builder: (context, snapshot) {
+        final decrypted = snapshot.data;
+        final status = decrypted?.status;
+        // Attachment metadata comes only from the authenticated payload;
+        // the envelope carries a bare pointer.
+        final attachment = decrypted?.attachment;
+        final attachmentId = attachment?.attachmentId;
+        final body = switch (status) {
+          null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
+          DecryptStatus.ok ||
+          DecryptStatus.legacyUnauthenticated =>
+            decrypted!.body.isEmpty && attachment != null ? null : Text(decrypted.body, style: bodyStyle),
+          _ => DecryptFailureLine(status: status, color: metaColor),
+        };
+        final bubble = VeilBubble(
           isMine: message.isMine,
           highlighted: highlighted,
-          child: FutureBuilder<DecryptedMessage>(
-            future: decryptFuture,
-            builder: (context, snapshot) {
-              final decrypted = snapshot.data;
-              final status = decrypted?.status;
-              // Attachment metadata comes only from the authenticated
-              // payload; the envelope carries a bare pointer.
-              final attachment = decrypted?.attachment;
-              final attachmentId = attachment?.attachmentId;
-              final attachmentResolving =
-                  attachmentId != null && isResolvingAttachment(attachmentId);
-              final downloadError =
-                  attachmentId == null ? null : attachmentDownloadError(attachmentId);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (senderName != null) ...[
-                    Text(
-                      senderName!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: palette.primaryStrong,
-                        fontWeight: FontWeight.w700,
-                        height: 1.2,
-                      ),
+          position: position,
+          failed: failed,
+          failedText: failed ? l10n.chatNotSentTapToRetry : null,
+          // As wide as its widest line, so the meta can sit at the end.
+          child: IntrinsicWidth(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (senderName != null) ...[
+                  Text(
+                    senderName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: VeilAvatar.nameTint(context, senderSeed ?? senderName!),
                     ),
-                    const SizedBox(height: 3),
-                  ],
-                  switch (status) {
-                    null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
-                    DecryptStatus.ok => Text(decrypted!.body, style: bodyStyle),
-                    DecryptStatus.legacyUnauthenticated => Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(decrypted!.body, style: bodyStyle),
-                          const SizedBox(height: VeilSpace.xs),
-                          VeilStatusPill(label: l10n.chatLegacyUnverifiedBadge, tone: VeilBannerTone.warn),
-                        ],
-                      ),
-                    _ => DecryptFailureChip(status: status),
-                  },
-                  if (transferSnapshot != null) ...[
-                    const SizedBox(height: 12),
-                    AttachmentTransferPanel(
-                      snapshot: transferSnapshot!,
-                      onRetry: onRetryMessage,
-                      onCancel: transferSnapshot!.canCancel
-                          ? onCancelAttachment
-                          : null,
-                    ),
-                  ],
-                  if (attachment != null) ...[
-                    const SizedBox(height: 12),
-                    MessageAttachmentCard(
-                      attachment: attachment,
-                      resolving: attachmentResolving,
-                      downloadError: downloadError,
-                      onResolve:
-                          kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
-                      onRetry: message.hasFailed ? onRetryMessage : null,
-                    ),
-                  ],
-                  if (message.hasFailed &&
-                      attachment == null &&
-                      onRetryMessage != null) ...[
-                    const SizedBox(height: VeilSpace.xs),
-                    _BubbleRetryButton(label: l10n.chatRetrySend, onPressed: onRetryMessage!),
-                  ],
-                  const SizedBox(height: VeilSpace.xxs + 2),
-                  // Wraps instead of cutting a word short when the time,
-                  // the delivery state and the expiry do not fit one line.
-                  Wrap(
-                    spacing: VeilSpace.xs,
-                    runSpacing: VeilSpace.xxs,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(sentAtFormat.format(message.sentAt), style: metaStyle),
-                      if (message.isMine) _DeliveryMark(message: message, style: metaStyle),
-                      if (message.expiresAt != null)
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.timer_outlined, size: 12, color: metaColor),
-                            const SizedBox(width: 2),
-                            Flexible(
-                              child: MessageExpiryLabel(
-                                expiresAt: message.expiresAt!,
-                                now: expiryNow,
-                                style: metaStyle,
-                              ),
-                            ),
-                          ],
-                        ),
-                    ],
+                  ),
+                  const SizedBox(height: 2),
+                ],
+                if (body != null) body,
+                if (transferSnapshot != null) ...[
+                  const SizedBox(height: VeilSpace.xs),
+                  AttachmentTransferPanel(
+                    snapshot: transferSnapshot!,
+                    color: textColor,
+                    mutedColor: metaColor,
+                    onRetry: onRetryMessage,
+                    onCancel: transferSnapshot!.canCancel ? onCancelAttachment : null,
                   ),
                 ],
-              );
-            },
+                if (attachment != null) ...[
+                  if (body != null) const SizedBox(height: VeilSpace.xs),
+                  MessageAttachmentCard(
+                    attachment: attachment,
+                    resolving: attachmentId != null && isResolvingAttachment(attachmentId),
+                    downloadError: attachmentId == null ? null : attachmentDownloadError(attachmentId),
+                    onResolve: kAttachmentsEnabled ? () => onResolveAttachment(attachment.attachmentId) : null,
+                    framed: onBrand,
+                  ),
+                ],
+                const SizedBox(height: VeilSpace.xxs),
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: _Meta(message: message, sentAtFormat: sentAtFormat, expiryNow: expiryNow, style: metaStyle),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+        if (status != DecryptStatus.legacyUnauthenticated) return bubble;
+        return Column(
+          crossAxisAlignment: message.isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            bubble,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.sm, 0),
+              child: Text(
+                l10n.chatLegacySenderLine,
+                style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+              ),
+            ),
+          ],
+        );
+      },
     );
 
-    return LayoutBuilder(
-      builder: (context, constraints) => Align(
-        alignment: alignment,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: math.min(344, constraints.maxWidth * 0.82)),
-          child: bubble,
-        ),
+    final retry = onRetryMessage;
+    return Semantics(
+      label: messageBubbleSemanticsLabel(l10n, message),
+      onTapHint: failed && retry != null ? l10n.chatRetrySend : null,
+      child: Align(
+        alignment: message.isMine ? AlignmentDirectional.centerEnd : AlignmentDirectional.centerStart,
+        child: failed && retry != null
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  VeilHaptics.light();
+                  retry();
+                },
+                child: content,
+              )
+            : content,
       ),
     );
   }
 }
 
-/// How far one of the user's own messages got, as an icon and a word. A
-/// failed send is set apart on a dark chip.
-class _DeliveryMark extends StatelessWidget {
-  const _DeliveryMark({required this.message, required this.style});
+/// The meta at the end of a bubble: the time, then on the user's own
+/// messages how far it got (a tick when sent, two when delivered, two and
+/// the word "Read" once read), then the time left on a disappearing one.
+/// The words "Sent" and "Delivered" are not written: a screen reader hears
+/// them from messageBubbleSemanticsLabel.
+class _Meta extends StatelessWidget {
+  const _Meta({required this.message, required this.sentAtFormat, required this.expiryNow, required this.style});
 
   final ChatMessage message;
+  final DateFormat sentAtFormat;
+  final DateTime Function() expiryNow;
   final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
-    final failed = message.deliveryState == MessageDeliveryState.failed;
-    final icon = switch (message.deliveryState) {
-      MessageDeliveryState.pending => Icons.schedule_rounded,
-      MessageDeliveryState.uploading => Icons.upload_rounded,
-      MessageDeliveryState.failed => Icons.error_outline_rounded,
-      MessageDeliveryState.sent => Icons.done_rounded,
-      MessageDeliveryState.delivered || MessageDeliveryState.read => Icons.done_all_rounded,
-    };
-    final read = message.deliveryState == MessageDeliveryState.read;
-    final color = failed || read ? Colors.white : style?.color;
-    final mark = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 3),
-        Flexible(
-          child: Text(
-            messageDeliveryLabel(AppLocalizations.of(context), message),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: style?.copyWith(color: color, fontWeight: failed || read ? FontWeight.w700 : null),
-          ),
+    final l10n = AppLocalizations.of(context);
+    final color = style?.color;
+    final state = message.deliveryState;
+    final IconData? tick = !message.isMine
+        ? null
+        : switch (state) {
+            MessageDeliveryState.pending => Icons.schedule,
+            MessageDeliveryState.uploading => Icons.upload,
+            MessageDeliveryState.failed => null,
+            MessageDeliveryState.sent => Icons.done,
+            MessageDeliveryState.delivered || MessageDeliveryState.read => Icons.done_all,
+          };
+    final items = <Widget>[
+      Text(sentAtFormat.format(message.sentAt), style: style),
+      if (tick != null) Icon(tick, size: 16, color: color),
+      if (message.isMine && state == MessageDeliveryState.read)
+        Text(l10n.chatDeliveryRead, style: style?.copyWith(fontWeight: FontWeight.w600)),
+      if (message.expiresAt != null)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: color),
+            const SizedBox(width: 2),
+            Flexible(child: MessageExpiryLabel(expiresAt: message.expiresAt!, now: expiryNow, style: style)),
+          ],
         ),
+    ];
+    // One line, wrapping only when the bubble cannot be that wide. The gap
+    // is padding on each item rather than the Wrap's spacing: the bubble
+    // takes the meta's intrinsic width, and a Wrap leaves its spacing out
+    // of that, so a short message ("ok") would wrap its own meta.
+    return Wrap(
+      runSpacing: 2,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (final (index, item) in items.indexed)
+          index == 0
+              ? item
+              : Padding(padding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs), child: item),
       ],
-    );
-    if (!failed) return mark;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.32),
-        borderRadius: BorderRadius.circular(VeilRadius.pill),
-      ),
-      child: mark,
-    );
-  }
-}
-
-/// Retry for a failed send, readable on the violet of the user's own bubble.
-class _BubbleRetryButton extends StatelessWidget {
-  const _BubbleRetryButton({required this.label, required this.onPressed});
-
-  final String label;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton.icon(
-      style: TextButton.styleFrom(
-        foregroundColor: Colors.white,
-        backgroundColor: Colors.black.withValues(alpha: 0.28),
-        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-      ),
-      onPressed: () {
-        VeilHaptics.light();
-        onPressed();
-      },
-      icon: const Icon(Icons.refresh_rounded, size: VeilIconSize.sm),
-      label: Text(label),
     );
   }
 }

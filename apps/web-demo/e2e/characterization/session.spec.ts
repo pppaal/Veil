@@ -55,13 +55,13 @@ test.describe('session lifecycle', () => {
     // relay has no platform value for a browser; 'android' stands in.
     const browserPlatform = await page.evaluate(() => navigator.platform);
     const stored = await relayState<{ deviceName: string; platform: string }[]>(`/__test/devices/${device.handle}`);
-    expect(stored).toEqual([{ deviceName: 'VEIL Web', platform: 'android' }]);
+    expect(stored).toEqual([{ deviceName: 'Veil Web', platform: 'android' }]);
     expect(stored[0].deviceName).not.toContain(browserPlatform);
     await expect(page.locator('#sidebar-me')).toContainText(`@${device.handle}`);
-    await expect(page.locator('#sidebar-me')).toContainText(/Device [0-9a-f]{8}/);
     await expect(page.locator('#legacy-banner')).toBeHidden();
-    // No realtime gateway on the relay: the app stays in polling mode.
-    await expect(page.locator('#conn-pill')).toContainText('Could not connect', { timeout: 15_000 });
+    // No realtime gateway on the relay: the app stays in polling mode, and
+    // the bar says so in its one word for a missing live connection.
+    await expect(page.locator('#conn-status')).toHaveText('Offline', { timeout: 15_000 });
     await expect(page.locator('#conv-list .conv-empty')).toHaveText('No chats yet. Start one with New chat.');
     await expect(page.locator('#panels .panel-empty .empty-title')).toHaveText('Choose a chat');
     // English whatever the browser's language (the context is ko-KR).

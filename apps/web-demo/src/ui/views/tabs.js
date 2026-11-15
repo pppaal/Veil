@@ -3,7 +3,7 @@
 // a chat.
 
 import { shownHandle } from '../../domain/handles.js';
-import { $, el, isNarrowLayout } from '../dom.js';
+import { $, el, icon, isNarrowLayout } from '../dom.js';
 import { toast } from '../toast.js';
 
 // stack: src/app/messaging-stack.js (shownPeer names a tab); history:
@@ -45,6 +45,7 @@ export function createTabs({ store, stack, history }) {
     }
     state.splitView = !state.splitView;
     $('split-btn').classList.toggle('active', state.splitView);
+    $('split-btn').setAttribute('aria-pressed', String(state.splitView));
     if (state.splitView) {
       state.secondaryConv = state.openTabs.find((id) => id !== state.activeConv) || null;
       if (!state.secondaryConv) toast('Open a second chat to use split view', 'good');
@@ -63,12 +64,13 @@ export function createTabs({ store, stack, history }) {
     const closeButton = el('span', {
       class: 'tab-close',
       'aria-label': 'Close tab',
+      title: 'Close tab',
       role: 'button',
       onclick: (event) => {
         event.stopPropagation();
         close(convId);
       },
-    }, ['×']);
+    }, [icon('close')]);
     return el('button', {
       class: className,
       onclick: () => {

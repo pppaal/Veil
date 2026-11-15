@@ -5,7 +5,7 @@
 import { t } from '../../../i18n/i18n.js';
 import { shownHandle } from '../../domain/handles.js';
 import { NOTIFICATION_LEVELS } from '../../features/notifications.js';
-import { avatarFor, el, handleLine } from '../dom.js';
+import { applyThemeClass, avatarFor, el, handleLine } from '../dom.js';
 import { toast } from '../toast.js';
 
 const NOTIFICATION_LEVEL_LABEL_KEYS = {
@@ -15,9 +15,9 @@ const NOTIFICATION_LEVEL_LABEL_KEYS = {
   sender_preview: 'settings.notifications.senderPreview',
 };
 
-function select(key, options, value) {
-  const node = el('select', { class: 'settings-select', dataset: { key } },
-    options.map(([optionValue, label]) => el('option', { value: optionValue }, [label])));
+function select(key, label, options, value) {
+  const node = el('select', { class: 'settings-select', dataset: { key }, 'aria-label': label },
+    options.map(([optionValue, optionLabel]) => el('option', { value: optionValue }, [optionLabel])));
   node.value = value;
   return node;
 }
@@ -37,22 +37,27 @@ export function createSettingsDialog({ store, preferences, safety }) {
   function blockedSection() {
     const container = el('div', { class: 'blocked-list', id: 'blocked-list-container' });
     safety.listBlocked().then((users) => {
+      if (users.length === 0) {
+        container.replaceChildren(el('div', { class: 'blocked-empty' }, ['No blocked users']));
+        return;
+      }
       container.replaceChildren(...users.map((user) => {
-        const unblock = el('button', { class: 'unblock' }, [t('settings.unblock')]);
+        const unblock = el('button', { class: 'text-btn unblock' }, [t('settings.unblock')]);
         const blockedRow = el('div', { class: 'blocked-row' }, [
           avatarFor(user.handle ?? '?', 'sm'),
-          el('div', { class: 'grow' }, [handleLine(user.handle, 'font-size:13px')]),
+          el('div', { class: 'grow' }, [handleLine(user.handle)]),
           unblock,
         ]);
         unblock.addEventListener('click', async () => {
           await safety.unblock(user.userId ?? user.id, shownHandle(user.handle));
           blockedRow.remove();
+          if (!container.querySelector('.blocked-row')) container.replaceChildren(el('div', { class: 'blocked-empty' }, ['No blocked users']));
         });
         return blockedRow;
       }));
     });
-    return el('div', { dataset: { blockedSection: '1' }, style: 'margin-top:10px;border-top:1px solid rgba(255,255,255,0.06);padding-top:10px' }, [
-      el('div', { class: 'settings-label', style: 'margin-bottom:6px' }, [t('settings.blocked')]),
+    return el('div', { class: 'settings-section', dataset: { blockedSection: '1' } }, [
+      el('div', { class: 'settings-label' }, [t('settings.blocked')]),
       container,
     ]);
   }
@@ -82,30 +87,30 @@ export function createSettingsDialog({ store, preferences, safety }) {
 
     open() {
       document.getElementById('settings-dialog')?.remove();
-      const theme = select('theme', [['dark', t('settings.theme.dark')], ['light', t('settings.theme.light')]],
+      const theme = select('theme', t('settings.theme'), [['dark', t('settings.theme.dark')], ['light', t('settings.theme.light')]],
         document.documentElement.classList.contains('theme-light') ? 'light' : 'dark');
-      const level = select('notification-level',
+      const level = select('notification-level', t('settings.notifications.level'),
         NOTIFICATION_LEVELS.map((value) => [value, t(NOTIFICATION_LEVEL_LABEL_KEYS[value])]),
         preferences.notificationLevel());
-      const sounds = el('input', { type: 'checkbox', class: 'settings-toggle', dataset: { key: 'sounds' } });
+      const sounds = el('input', { type: 'checkbox', role: 'switch', class: 'settings-toggle', 'aria-label': t('settings.sounds'), dataset: { key: 'sounds' } });
       sounds.checked = !!state.soundsEnabled;
       const notifications = el('button', { class: 'btn btn-ghost', dataset: { key: 'notif' } }, [t('settings.notifications.allow')]);
       const closeButton = el('button', { class: 'btn btn-primary', id: 'settings-close' }, [t('settings.close')]);
       const backdrop = el('div', { id: 'settings-dialog', class: 'dialog-backdrop', role: 'presentation' }, [
-        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'settings-title', style: 'width:380px;max-width:92vw' }, [
-          el('div', { class: 'dialog-title', id: 'settings-title', style: 'margin-bottom:12px' }, [t('menu.settings')]),
+        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'settings-title' }, [
+          el('div', { class: 'dialog-title', id: 'settings-title' }, [t('menu.settings')]),
           row(t('settings.theme'), theme),
           row(t('settings.sounds'), sounds),
           row(t('settings.notifications'), notifications),
           row(t('settings.notifications.level'), level),
           blockedSection(),
-          el('div', { class: 'dialog-actions', style: 'margin-top:14px' }, [closeButton]),
+          el('div', { class: 'dialog-actions' }, [closeButton]),
         ]),
       ]);
       document.body.appendChild(backdrop);
 
       theme.addEventListener('change', () => {
-        document.documentElement.classList.toggle('theme-light', theme.value === 'light');
+        applyThemeClass(theme.value === 'light');
         preferences.setTheme(theme.value);
       });
       level.addEventListener('change', () => {

@@ -30,7 +30,7 @@ void main() {
   });
 
   Future<void> awaitSafetyNumber(WidgetTester tester) async {
-    final loading = find.byType(VeilLoadingBlock);
+    final loading = find.byKey(SafetyNumbersScreen.loadingKey);
     for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
@@ -46,7 +46,7 @@ void main() {
       await withPhoneApp(tester, identities, location: _emptyChat, body: (world) async {
         expect(find.text('No messages yet'), findsOneWidget);
         expect(
-          find.text('What you send here is encrypted on this device, for the people in this chat only.'),
+          find.text('Messages are end-to-end encrypted.'),
           findsOneWidget,
         );
         expect(find.text('Send'), findsNothing);
@@ -78,7 +78,7 @@ void main() {
 
         expect(nameOn('The movers can do the 14th or the 16th.'), 'Sam Rivera');
         expect(nameOn('The 14th works for me.'), 'Priya Nair');
-        expect(nameOn('14th then. I will book the lift for the morning.'), isNull);
+        expect(nameOn("14th then. I'll book the lift for the morning."), isNull);
         expect(nameOn('I can bring the van after six, if someone helps me carry the shelves down.'), 'Omar Haddad');
         // Drawn, above the words, inside the bubble.
         final name = tester.getRect(find.text('Priya Nair'));
@@ -95,7 +95,7 @@ void main() {
         withGroup: true,
         location: _group,
         prepare: (world) async {
-          await _injectGroupLine(world, from: 'omar', body: 'And the lamp.');
+          await _injectGroupLine(world, from: 'omar', body: 'And the lamp.', at: _lastGroupLineAt.add(const Duration(minutes: 2)));
           return null;
         },
         body: (world) async {
@@ -153,7 +153,9 @@ void main() {
       await withPhoneApp(tester, identities, location: _chat, body: (world) async {
         world.messenger.presenceTyping.typingStarted(chatConversationId, peerHandle);
         await tester.pump();
-        expect(find.text('typing…'), findsOneWidget);
+        // The dots alone; a screen reader still hears it.
+        expect(find.bySemanticsLabel('Typing…'), findsOneWidget);
+        expect(find.text('Typing…'), findsNothing);
         expect(find.textContaining('@$peerHandle is'), findsNothing);
         await tester.pump(const Duration(seconds: 6));
       });
@@ -168,10 +170,10 @@ void main() {
         location: _emptyChat,
         attention: const ChatAttention(relayError: true),
         body: (world) async {
-          expect(find.text('Could not load messages'), findsOneWidget);
-          expect(find.text('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget,
+          expect(find.text("Couldn't load messages"), findsOneWidget);
+          expect(find.text("The server couldn't complete the request."), findsOneWidget,
               reason: 'the reason, said once');
-          expect(find.byType(VeilInlineBanner), findsNothing, reason: 'no banner repeats it');
+          expect(find.byType(VeilNotice), findsNothing, reason: 'no notice repeats it');
           expect(find.text('No messages yet'), findsNothing, reason: 'nobody knows that yet');
 
           final before = world.api.messageFetches;
@@ -182,16 +184,16 @@ void main() {
       );
     });
 
-    testWidgets('with messages on screen an error is a banner above them, in the app\'s words', (tester) async {
+    testWidgets('with messages on screen an error is one line above them, in the app\'s words', (tester) async {
       await withPhoneApp(
         tester,
         identities,
         location: _chat,
         attention: const ChatAttention(relayError: true),
         body: (world) async {
-          expect(find.byType(VeilInlineBanner), findsOneWidget);
-          expect(findCopy('Conversation issue'), findsOneWidget);
-          expect(findCopy('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget);
+          // Nothing to decide and no action to take: a plain line, no notice.
+          expect(find.byType(VeilNotice), findsNothing);
+          expect(findCopy("The server couldn't complete the request."), findsOneWidget);
           expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
           expect(onScreen(tester, find.byType(ChatMessageList)).height / screenHeight(tester), greaterThan(0.4));
         },
@@ -205,7 +207,7 @@ void main() {
         location: _emptyChat,
         attention: const ChatAttention(loading: true),
         body: (world) async {
-          expect(find.text('Loading messages'), findsOneWidget);
+          expect(find.text('Loading messages…'), findsOneWidget);
           expect(find.text('No messages yet'), findsNothing);
           expect(find.text('Compare safety numbers'), findsNothing);
         },
@@ -248,8 +250,8 @@ void main() {
       textScale: 1.3,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
-        for (final action in ['Review', 'Retry failed sends']) {
+        expect(find.byWidgetPredicate((widget) => widget is VeilNotice && widget.dense), findsNWidgets(2));
+        for (final action in ['Review', 'Retry now']) {
           final button = tester.renderObject<RenderBox>(find.widgetWithText(TextButton, action));
           expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
           expect(button.size.height, greaterThanOrEqualTo(44), reason: '"$action"');
@@ -301,7 +303,7 @@ final _sealer = createDefaultCryptoAdapter();
 
 /// A text message from [from] at the end of the group's history, as the
 /// relay lists it.
-Future<void> _injectGroupLine(LayoutWorld world, {required String from, required String body}) async {
+Future<void> _injectGroupLine(LayoutWorld world, {required String from, required String body, DateTime? at}) async {
   final envelope = await _sealer.messaging.encryptMessage(
     conversationId: groupConversationId,
     senderDeviceId: 'dev-$from',
@@ -321,8 +323,12 @@ Future<void> _injectGroupLine(LayoutWorld world, {required String from, required
     conversationId: groupConversationId,
     envelope: _sealer.envelopeCodec.encodeApiEnvelope(envelope),
   );
-  stored['serverReceivedAt'] = DateTime.utc(2026, 4, 7, 11).toIso8601String();
+  stored['serverReceivedAt'] = (at ?? DateTime.utc(2026, 4, 7, 11)).toIso8601String();
 }
+
+/// When the seed's last group line (Omar's) was sent: the seed sends a line
+/// every seven minutes from 08:00 (layout_seed.dart).
+final _lastGroupLineAt = DateTime.utc(2026, 4, 7, 10, 13);
 
 /// The peer reacts to the newest message of the chat.
 Future<void> _reactToLatest(LayoutWorld world, String emoji) async {

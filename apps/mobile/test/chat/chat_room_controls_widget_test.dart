@@ -11,8 +11,8 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dar
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_dialogs.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
 import 'package:veil_mobile/src/features/chat/presentation/disappearing_timer_sheet.dart';
-import 'package:veil_mobile/src/features/chat/presentation/gradient_send_button.dart';
 import 'package:veil_mobile/src/features/chat/presentation/presence_selector.dart';
+import 'package:veil_mobile/src/features/chat/presentation/send_button.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_change.dart';
@@ -188,8 +188,11 @@ void main() {
         _message('m2', MessageDeliveryState.pending),
       ]));
 
-      expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
-      expect(find.text('1 message was not sent. Retry once the relay is reachable.'), findsOneWidget);
+      // One line says it, with its action: no title over it saying the same.
+      final notice = tester.widget<VeilNotice>(find.byType(VeilNotice));
+      expect(notice.title, isNull);
+      expect(notice.message, "1 message wasn't sent.");
+      expect(find.text("1 message wasn't sent."), findsOneWidget);
       await tester.tap(find.text(l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
 
@@ -198,7 +201,7 @@ void main() {
         _message('m1', MessageDeliveryState.failed),
         _message('m2', MessageDeliveryState.failed),
       ]));
-      expect(find.text('2 messages were not sent. Retry once the relay is reachable.'), findsOneWidget);
+      expect(find.text("2 messages weren't sent."), findsOneWidget);
       expect(find.textContaining('(s)'), findsNothing);
     });
 
@@ -209,7 +212,7 @@ void main() {
       await tester.pumpWidget(banners(messages: messages));
       expect(find.text(l10n.chatBannerQueuedLocally), findsOneWidget);
       expect(
-        find.text('1 message is waiting on this device and will be sent after reconnecting.'),
+        find.text('1 message is waiting to be sent.'),
         findsOneWidget,
       );
       expect(find.text(l10n.chatRetryFailedSendsAction), findsNothing);
@@ -227,14 +230,12 @@ void main() {
     testWidgets('a quiet chat shows nothing: no metrics, no history window, no verified pill', (tester) async {
       await tester.pumpWidget(banners(messages: [_message('m1', MessageDeliveryState.read)]));
 
-      expect(find.byType(VeilInlineBanner), findsNothing);
-      expect(find.byType(VeilMetricStrip), findsNothing);
-      expect(find.byType(VeilStatusPill), findsNothing);
+      expect(find.byType(VeilNotice), findsNothing);
       expect(find.text(l10n.chatPeerVerified), findsNothing, reason: 'the bar carries the verified mark');
       expect(tester.getSize(find.byType(ChatStatusBanners)).height, 0);
     });
 
-    testWidgets('every warning is there, with its action inside its banner', (tester) async {
+    testWidgets('every warning is there, with its action inside its banner; the error is a line', (tester) async {
       messenger
         ..error = 'keystore unavailable'
         ..pending = 1
@@ -252,18 +253,18 @@ void main() {
         );
       await tester.pumpWidget(banners(messages: [_message('m1', MessageDeliveryState.failed)]));
 
-      expect(find.byType(VeilInlineBanner), findsNWidgets(4));
+      expect(find.byType(VeilNotice), findsNWidgets(3));
       expect(find.text(l10n.chatIdentityChangedTitle), findsOneWidget);
       expect(find.text(l10n.chatIdentityChangedBody), findsOneWidget);
       expect(find.text(l10n.chatAccountHoldOtherTitle), findsOneWidget);
       expect(find.text(l10n.chatAccountHoldOtherBody('selene')), findsOneWidget);
-      expect(find.text(l10n.chatBannerConversationIssue), findsOneWidget);
+      // The error has no action to offer: it is one plain line, not a notice.
       expect(find.text('keystore unavailable'), findsOneWidget);
-      expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
+      expect(find.ancestor(of: find.text('keystore unavailable'), matching: find.byType(VeilNotice)), findsNothing);
       expect(find.text(l10n.chatBannerFailedSends(1)), findsOneWidget);
 
       Finder inBanner(String title, String action) => find.descendant(
-            of: find.widgetWithText(VeilInlineBanner, title),
+            of: find.widgetWithText(VeilNotice, title),
             matching: find.text(action),
           );
       await tester.tap(inBanner(l10n.chatIdentityChangedTitle, l10n.chatIdentityChangedReview));
@@ -271,7 +272,7 @@ void main() {
       await tester.tap(inBanner(l10n.chatAccountHoldOtherTitle, l10n.chatAccountHoldAcknowledge));
       expect(acknowledged.single.$1, same(messenger.hold));
       expect(acknowledged.single.$2, 'selene');
-      await tester.tap(inBanner(l10n.chatBannerDeliveryStalled, l10n.chatRetryFailedSendsAction));
+      await tester.tap(inBanner(l10n.chatBannerFailedSends(1), l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
       for (final action in [
         l10n.chatIdentityChangedReview,
@@ -295,7 +296,7 @@ void main() {
         );
       await tester.pumpWidget(banners(type: ConversationType.group));
 
-      expect(find.byType(VeilInlineBanner), findsNothing);
+      expect(find.byType(VeilNotice), findsNothing);
     });
 
     testWidgets('a search says how many messages on this device match', (tester) async {
@@ -304,14 +305,14 @@ void main() {
       expect(find.text(l10n.chatSearchSearching), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true));
-      expect(find.text('No matches on this device'), findsOneWidget);
+      expect(find.text('No matches'), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true, searchHitCount: 1));
-      expect(find.text('1 match on this device'), findsOneWidget);
+      expect(find.text('1 match'), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true, searchHitCount: 3));
-      expect(find.text('3 matches on this device'), findsOneWidget);
-      expect(find.byType(VeilInlineBanner), findsNothing, reason: 'a line, not a banner');
+      expect(find.text('3 matches'), findsOneWidget);
+      expect(find.byType(VeilNotice), findsNothing, reason: 'a line, not a banner');
     });
   });
 
@@ -335,7 +336,8 @@ void main() {
     testWidgets('shows an attach button only where the screen gives it somewhere to go', (tester) async {
       await tester.pumpWidget(composer());
       expect(find.byTooltip(l10n.chatAttachAction), findsNothing);
-      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      // The composer has no padlock (design system 7.7): nothing before the draft.
+      expect(find.byIcon(Icons.lock_outline), findsNothing);
       expect(find.text(l10n.chatComposeHint), findsOneWidget);
 
       var attached = 0;
@@ -356,10 +358,11 @@ void main() {
     testWidgets('typing tells the peer; a send carries the timer and clears the draft', (tester) async {
       await tester.pumpWidget(composer(messageTtl: const Duration(minutes: 5)));
       await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
       expect(messenger.typing, isNotEmpty);
       expect(messenger.typing.toSet(), {'conv-1'});
 
-      await tester.tap(find.byType(GradientSendButton));
+      await tester.tap(find.byType(SendButton));
       await tester.pump();
       expect(messenger.sent, [('conv-1', 'hello', const Duration(minutes: 5))]);
       expect(draft(tester), isEmpty);
@@ -381,16 +384,30 @@ void main() {
 
     testWidgets('a blank draft sends nothing, and a busy messenger disables the composer', (tester) async {
       await tester.pumpWidget(composer());
+      expect(tester.widget<SendButton>(find.byType(SendButton)).onPressed, isNull, reason: 'no draft, no send button');
+      expect(find.byIcon(Icons.arrow_upward), findsNothing);
+      // Its square stays, empty: the field keeps its width when the first
+      // character brings the button.
+      expect(tester.getSize(find.byType(SendButton)), const Size.square(44));
+      final emptyField = tester.getRect(find.byType(TextField));
       await tester.enterText(find.byType(TextField), '   ');
-      await tester.tap(find.byType(GradientSendButton));
+      await tester.pump();
+      expect(tester.widget<SendButton>(find.byType(SendButton)).onPressed, isNull, reason: 'blank is no draft');
+      await tester.testTextInput.receiveAction(TextInputAction.send);
       await tester.pump();
       expect(messenger.sent, isEmpty);
       expect(messenger.typing, isEmpty);
 
+      await tester.enterText(find.byType(TextField), 'hello');
+      await tester.pump();
+      expect(find.byIcon(Icons.arrow_upward), findsOneWidget, reason: 'a draft shows the send button');
+      expect(tester.getSize(find.byType(SendButton)), const Size.square(44));
+      expect(tester.getRect(find.byType(TextField)), emptyField, reason: 'the field did not move');
+
       await tester.pumpWidget(composer(busy: true));
-      expect(tester.widget<GradientSendButton>(find.byType(GradientSendButton)).onPressed, isNull);
+      expect(tester.widget<SendButton>(find.byType(SendButton)).onPressed, isNull);
       expect(tester.widget<TextField>(find.byType(TextField)).enabled, isFalse);
-      expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_upward), findsNothing, reason: 'a disabled composer offers no send');
     });
   });
 
@@ -421,10 +438,9 @@ void main() {
 
       await open();
       expect(find.text(l10n.chatTtlSheetTitle), findsOneWidget);
-      expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.check), findsOneWidget);
       expect(
-        find.descendant(
-            of: find.widgetWithText(ListTile, l10n.chatTtl1m), matching: find.byIcon(Icons.check_circle_rounded)),
+        find.descendant(of: find.widgetWithText(ListTile, l10n.chatTtl1m), matching: find.byIcon(Icons.check)),
         findsOneWidget,
       );
       await tester.tapAt(const Offset(10, 10));
@@ -472,7 +488,7 @@ void main() {
       expect(find.byType(ReactionPickerWidget), findsOneWidget);
       // No "more" button where nothing would open: with it the row was
       // wider than a 360 px phone.
-      expect(find.byIcon(Icons.add_rounded), findsNothing);
+      expect(find.byIcon(Icons.add), findsNothing);
       expect(tester.getSize(find.byType(ReactionPickerWidget)).width, lessThan(360 - 32));
 
       await tester.tap(find.text('\u{1F525}'));

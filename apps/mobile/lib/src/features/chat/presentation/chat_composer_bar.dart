@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
-import 'gradient_send_button.dart';
+import 'send_button.dart';
 
-/// The composer at the foot of a chat: the draft and the send button.
-/// Typing tells the peer. A send the messenger holds back for an identity
-/// change or a held account keeps the draft for after the review. What is
-/// sent disappears after [messageTtl], which the chat's bar shows.
+/// The composer at the foot of a chat: the draft and, once there is one,
+/// the send button. Typing tells the peer. A send the messenger holds back
+/// for an identity change or a held account keeps the draft for after the
+/// review. What is sent disappears after [messageTtl], which the chat's bar
+/// shows.
 class ChatComposerBar extends ConsumerStatefulWidget {
   const ChatComposerBar({
     super.key,
@@ -33,7 +33,7 @@ class ChatComposerBar extends ConsumerStatefulWidget {
   final bool busy;
 
   /// Opens the attachment flow from a button before the draft. Without it
-  /// the composer shows its lock mark there.
+  /// there is nothing before the draft.
   final VoidCallback? onAttach;
 
   @override
@@ -42,7 +42,9 @@ class ChatComposerBar extends ConsumerStatefulWidget {
 
 class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
   final _messageController = TextEditingController();
-  double _sendScale = 1.0;
+
+  // Whether the draft has something to send, which shows the send button.
+  bool _hasDraft = false;
 
   @override
   void initState() {
@@ -57,7 +59,9 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
   }
 
   void _handleComposerChanged() {
-    if (_messageController.text.trim().isNotEmpty) {
+    final hasDraft = _messageController.text.trim().isNotEmpty;
+    if (hasDraft != _hasDraft) setState(() => _hasDraft = hasDraft);
+    if (hasDraft) {
       ref.read(messengerControllerProvider).notifyTyping(widget.conversationId);
     }
   }
@@ -67,11 +71,6 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
     if (body.isEmpty) {
       return;
     }
-
-    setState(() => _sendScale = 0.85);
-    Future<void>.delayed(VeilMotion.fast, () {
-      if (mounted) setState(() => _sendScale = 1.0);
-    });
 
     final controller = ref.read(messengerControllerProvider);
     await controller.sendText(
@@ -100,19 +99,13 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
           ? null
           : IconButton(
               tooltip: l10n.chatAttachAction,
-              style: IconButton.styleFrom(backgroundColor: Colors.transparent),
               onPressed: widget.onAttach,
-              icon: const Icon(Icons.attach_file_rounded),
+              icon: const Icon(Icons.attach_file),
             ),
-      trailing: AnimatedScale(
-        scale: _sendScale,
-        duration: VeilMotion.fast,
-        curve: VeilMotion.emphasize,
-        child: GradientSendButton(
-          onPressed: widget.busy ? null : _sendMessage,
-          busy: widget.busy,
-          semanticLabel: l10n.chatSendAction,
-        ),
+      // A disabled composer says why in its hint and offers no send.
+      trailing: SendButton(
+        onPressed: widget.busy || !_hasDraft ? null : _sendMessage,
+        semanticLabel: l10n.chatSendAction,
       ),
     );
   }

@@ -119,7 +119,9 @@ test.describe('a relay that rewrites its lists', () => {
     await expect(page.locator('.conv-item', { hasText: `@${carol.handle}` })).toHaveCount(1);
     await openChatWith(alice, bob);
     await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 }).toEqual(['bob says the code is 4471', 'thanks bob']);
-    await expect(page.locator('.panel-msgs .group-meta', { hasText: `@${carol.handle}` })).toHaveCount(0);
+    // The chat names Bob, the one place a one-to-one chat names its peer.
+    await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
+    await expect(page.locator('#tab-strip .tab.active span').first()).toHaveText(`@${bob.handle}`);
     await expect(page.locator('.key-change-banner')).toHaveCount(0);
 
     // What Alice writes there still reaches Bob, and nothing reaches Carol.
@@ -150,11 +152,10 @@ test.describe('a relay that rewrites its lists', () => {
     await openChatWith(alice, bob);
     await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 }).toContain('bob says the code is 4471');
     await expect(page.locator('#tab-strip .tab.active span').first()).toHaveText(`@${bob.handle}`);
-    // Bob's messages are labelled with his handle, none with Carol's.
-    const theirs = page.locator('.panel-msgs .msg-group.them .group-meta');
-    await expect(theirs.first()).toBeVisible();
-    for (const label of await theirs.allInnerTexts()) expect(label).toBe(`@${bob.handle}`);
-    await expect(page.locator('.panel-msgs .group-meta', { hasText: `@${carol.handle}` })).toHaveCount(0);
+    // The header names Bob, never Carol; a one-to-one chat labels no run.
+    await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
+    await expect(page.locator('.panel-msgs .msg-group.them')).not.toHaveCount(0);
+    await expect(page.locator('.panel-msgs .group-meta')).toHaveCount(0);
     await expect(page.locator('.key-change-banner')).toHaveCount(0);
     await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
 
@@ -182,7 +183,7 @@ test.describe('our own entry listed under a handle this device knows', () => {
     await startChat(alice, bob);
     await send(bob, 'hi alice');
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
-    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    await alice.page.locator('.panel-header button[aria-label="Safety number"]').click();
     const dialog = alice.page.locator('#safety-dialog');
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
@@ -227,7 +228,7 @@ test.describe('our own entry listed under a handle this device knows', () => {
     await malloryRow.click();
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${mallory.handle}`);
     await expect(rowOf(alice, 'bob here, new phone, send the code')).toHaveCount(1, { timeout: 15_000 });
-    await expect(page.locator('.panel-msgs .msg-group.them .group-meta')).toHaveText([`@${mallory.handle}`]);
+    await expect(page.locator('.panel-msgs .group-meta')).toHaveCount(0);
     await expect(page.locator('#tab-strip .tab.active span').first()).toHaveText(`@${mallory.handle}`);
     await expect(page.locator('.account-conflict-banner')).toHaveCount(0);
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
@@ -278,7 +279,7 @@ test.describe('another account under a handle this device knows', () => {
     await send(bob, 'hi alice');
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
     // Alice compares the safety number with Bob and marks it verified.
-    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    await alice.page.locator('.panel-header button[aria-label="Safety number"]').click();
     const dialog = alice.page.locator('#safety-dialog');
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
@@ -357,7 +358,7 @@ test.describe('another account under a lookalike of a handle this device knows',
     await startChat(alice, bob);
     await send(bob, 'hi alice');
     await expect(rowOf(alice, 'hi alice')).toHaveCount(1, { timeout: 15_000 });
-    await alice.page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+    await alice.page.locator('.panel-header button[aria-label="Safety number"]').click();
     const dialog = alice.page.locator('#safety-dialog');
     await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
@@ -412,9 +413,11 @@ test.describe('another account under a lookalike of a handle this device knows',
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
     await expect(page.locator('.panel .panel-title .name')).toHaveText(shown);
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
-    // Its messages are named, and drawn, under the same shown form.
-    await expect(page.locator('.panel-msgs .msg-group.them .group-meta').last()).toHaveText(shown);
-    await expect(page.locator('.panel-msgs .msg-group.them > .avatar').last()).toHaveAttribute('title', shown.slice(1));
+    // The header is the one place that names it, under the same shown form:
+    // its runs carry no handle and no avatar that could draw it otherwise.
+    await expect(page.locator('.panel-header .avatar')).toHaveAttribute('title', shown.slice(1));
+    await expect(page.locator('.panel-msgs .group-meta')).toHaveCount(0);
+    await expect(page.locator('.panel-msgs .msg-group.them > .avatar')).toHaveCount(0);
 
     // The real Bob's conversation still shows him as verified.
     await page.locator('.conv-item', { hasText: 'hi alice' }).click();

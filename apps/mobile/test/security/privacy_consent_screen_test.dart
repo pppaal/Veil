@@ -9,8 +9,11 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 // keeps about them, as docs/server-data-inventory.md lists it.
 void main() {
   Future<String> consentText(WidgetTester tester, Locale locale) async {
+    // At 1x, so the whole notice is laid out at once: at the design
+    // system's 15sp body it is taller than the 2000 a 3x view gives it.
     tester.view.physicalSize = const Size(1200, 6000);
-    addTearDown(tester.view.resetPhysicalSize);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
       child: MaterialApp(
         theme: VeilTheme.dark(),

@@ -21,7 +21,6 @@ import 'package:veil_mobile/src/features/conversations/data/conversation_models.
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import 'support/memory_secure_store.dart';
 
@@ -109,26 +108,28 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Orbit relay window'), findsOneWidget);
-    expect(find.text('Delivered'), findsOneWidget);
-    // The pane shows the messages, not cards about them.
-    expect(find.byType(VeilHeroPanel), findsNothing);
-    expect(find.byType(VeilMetricStrip), findsNothing);
-    expect(find.byType(VeilStatusPill), findsNothing);
+    // Delivered is two ticks, the word only for a screen reader.
+    expect(find.text('Delivered'), findsNothing);
+    expect(find.byIcon(Icons.done_all), findsOneWidget);
+    expect(
+      find.byWidgetPredicate((widget) => widget is Semantics && (widget.properties.label ?? '').contains('Delivered')),
+      findsOneWidget,
+    );
 
     // The search is in the pane's bar, as on a phone.
-    await tester.tap(find.byTooltip('Search messages'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'orbit');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('1 match on this device'), findsOneWidget);
+    expect(find.text('1 match'), findsOneWidget);
     expect(find.text('Orbit relay window'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'nothing like it');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
-    expect(find.text('No matches on this device'), findsOneWidget);
+    expect(find.text('No matches'), findsOneWidget);
     expect(find.text('Orbit relay window'), findsNothing);
   });
 
@@ -216,22 +217,22 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Load older'), findsOneWidget);
+    expect(find.text('Load older messages'), findsOneWidget);
     expect(find.text('Newest relay note'), findsOneWidget);
 
-    await tester.tap(find.text('Load older'));
+    await tester.tap(find.text('Load older messages'));
     await tester.pump();
     // The button says so while the page is on its way, and cannot be
     // pressed again.
-    expect(find.text('Loading older'), findsOneWidget);
-    expect(find.text('Load older'), findsNothing);
+    expect(find.text('Loading older messages…'), findsOneWidget);
+    expect(find.text('Load older messages'), findsNothing);
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
 
     expect(find.text('Older relay note'), findsOneWidget);
     expect(find.text('Newest relay note'), findsOneWidget);
-    expect(find.text('Load older'), findsNothing);
-    expect(find.text('Loading older'), findsNothing);
+    expect(find.text('Load older messages'), findsNothing);
+    expect(find.text('Loading older messages…'), findsNothing);
   });
 
   group('a disappearing message on a device whose clock runs 15 minutes fast', () {
@@ -297,7 +298,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.errorMessage, contains('keystore unavailable'));
-    expect(find.text('Conversation issue'), findsOneWidget);
+    expect(find.text(controller.errorMessage!), findsOneWidget);
     expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
     expect(find.text('A different account'), findsOneWidget);
     final listed = controller.conversationById('conv-1')!;

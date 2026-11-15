@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/domain/message_search.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_parts.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_group_screen.dart';
-import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -18,9 +20,9 @@ import '../layout/support/layout_seed.dart';
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// The conversation list on a phone: conversations first, and what the hero
-// card, the stat tiles and the buttons at the end of the list carried is in
-// the status line and the bar.
+// The Chats list on a phone: the search field and the chats under a bar
+// titled Chats, with nothing between them: no status line, no hero card, no
+// stat tiles. The bar names the connection only while there is none.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -31,17 +33,19 @@ void main() {
     identities = await LayoutIdentities.generate();
   });
 
-  testWidgets('starts with the conversations, under one line of status and the search', (tester) async {
+  testWidgets('starts with the search and the chats, under a bar titled Chats', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      expect(find.byType(VeilHeroPanel), findsNothing);
-      expect(find.byType(VeilMetricStrip), findsNothing);
-      // What the hero card said: the relay, the count, and that nothing is
-      // backed up.
-      expect(find.text('Relay linked  ·  8 conversations  ·  No backup'), findsOneWidget,
-          reason: 'one line at the default text size');
-      expect(find.widgetWithText(TextField, 'Search chats and messages'), findsOneWidget);
+      expect(find.text('Chats'), findsWidgets, reason: 'the bar and the tab');
+      expect(find.text('VEIL'), findsNothing);
+      // No status line: no count, no standing reminder, no connection while
+      // there is one.
+      expect(find.textContaining('8 chats'), findsNothing);
+      expect(find.textContaining('No backup'), findsNothing);
+      expect(find.text('Connected'), findsNothing);
+      expect(find.text('Connecting…'), findsNothing);
+      expect(find.widgetWithText(TextField, 'Search'), findsOneWidget);
 
-      final rows = find.byType(VeilConversationCard);
+      final rows = find.byType(ConversationRow);
       final firstRow = onScreen(tester, rows);
       expect(firstRow.top, lessThan(screenHeight(tester) * 0.3), reason: 'the first conversation is near the top');
       final whole = [
@@ -54,25 +58,13 @@ void main() {
     });
   });
 
-  // Where the line is too long (360 px at 1.3x) it breaks between two
-  // parts, and the dot that separates parts is drawn only between two that
-  // share a line: no line ends with one, and none starts with one.
-  testWidgets('with larger text the status line wraps between its parts, with no separator left hanging',
-      (tester) async {
-    const lines = ['Relay linked  ·  8 conversations', 'No backup'];
+  // Larger text makes the rows taller; names and messages end in an
+  // ellipsis rather than wrap or overflow.
+  testWidgets('with larger text the rows grow and nothing overflows', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', textScale: 1.3, body: (world) async {
-      final rects = [for (final line in lines) tester.getRect(find.text(line))];
-      for (final (index, rect) in rects.indexed) {
-        expect(rect.height, rects.first.height, reason: '"${lines[index]}" is one line');
-        expect(rect.right, lessThanOrEqualTo(360), reason: '"${lines[index]}" fits the screen');
-        if (index > 0) expect(rect.top, greaterThanOrEqualTo(rects[index - 1].bottom));
-      }
-      // Nothing drawn on the list starts or ends with the separator.
-      final hanging = tester
-          .widgetList<Text>(find.byType(Text))
-          .map((text) => text.data ?? '')
-          .where((data) => data.trim().startsWith('·') || data.trim().endsWith('·'));
-      expect(hanging, isEmpty);
+      final row = tester.getRect(find.byType(ConversationRow).first);
+      expect(row.height, greaterThanOrEqualTo(64));
+      expect(row.width, 360, reason: 'the row runs edge to edge');
       expect(tester.takeException(), isNull);
     });
   });
@@ -85,19 +77,18 @@ void main() {
     const tall = PhoneSize(412, 1400, topInset: 32, bottomInset: 24);
     await withPhoneApp(tester, identities, size: tall, location: '/conversations', body: (world) async {
       final previews = {
-        for (final row in tester.widgetList<VeilConversationCard>(find.byType(VeilConversationCard)))
-          row.title: row.subtitle,
+        for (final row in tester.widgetList<ConversationRow>(find.byType(ConversationRow))) row.title: row.snippet,
       };
       expect(previews, hasLength(8));
-      expect(previews['Sam Rivera'], 'Section 7 is fine. Let us sign tomorrow.');
+      expect(previews['Sam Rivera'], "Section 7 is fine. Let's sign tomorrow.");
       expect(previews['Jonas Weber'], 'See you at nine.');
       expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
       // Only text is quoted: other kinds are named by what they are.
-      expect(previews['Omar Haddad'], 'Encrypted image');
-      expect(previews['Alexandra Montgomery-Whitfield'], 'Encrypted voice note');
+      expect(previews['Omar Haddad'], 'Photo');
+      expect(previews['Alexandra Montgomery-Whitfield'], 'Voice message');
       expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));
-      expect(find.text('Section 7 is fine. Let us sign tomorrow.'), findsOneWidget, reason: 'drawn on its row');
+      expect(find.text("Section 7 is fine. Let's sign tomorrow."), findsOneWidget, reason: 'drawn on its row');
 
       expect(find.byType(ChatRoomScreen), findsNothing);
       expect(world.messenger.activeConversationId, isNull);
@@ -134,7 +125,7 @@ void main() {
         expect(find.byType(AppLockScreen), findsOneWidget, reason: location);
         expect(find.byType(ConversationListScreen), findsNothing, reason: location);
         expect(find.byType(ChatRoomScreen), findsNothing, reason: location);
-        expect(find.byType(VeilConversationCard), findsNothing, reason: location);
+        expect(find.byType(ConversationRow), findsNothing, reason: location);
         expect(find.textContaining('Section 7'), findsNothing, reason: location);
         expect(find.text('Sam Rivera'), findsNothing, reason: location);
       }
@@ -146,23 +137,28 @@ void main() {
     }
   });
 
-  testWidgets('a group is listed under its members\' names, with the group mark and its last message',
+  testWidgets('a group is listed under its members\' names, with the group avatar and its last message',
       (tester) async {
     await withPhoneApp(tester, identities, withGroup: true, location: '/conversations', body: (world) async {
-      final row = tester.widget<VeilConversationCard>(find.byType(VeilConversationCard).first);
+      final row = tester.widget<ConversationRow>(find.byType(ConversationRow).first);
       expect(row.title, 'Sam Rivera, Priya Nair, Omar Haddad');
-      expect(row.titleIcon, Icons.group_rounded);
-      expect(row.semanticLabel, 'Group conversation with Sam Rivera, Priya Nair, Omar Haddad');
-      expect(row.subtitle, 'I can bring the van after six, if someone helps me carry the shelves down.');
-      expect(find.textContaining('9 conversations'), findsOneWidget);
+      expect(row.group, isTrue);
+      expect(
+        find.descendant(of: find.byType(ConversationRow).first, matching: find.byIcon(Icons.group_outlined)),
+        findsOneWidget,
+        reason: 'the neutral group disc, never a letter',
+      );
+      expect(row.semanticLabel, 'Group chat with Sam Rivera, Priya Nair, Omar Haddad');
+      expect(row.snippet, 'I can bring the van after six, if someone helps me carry the shelves down.');
 
-      await tester.tap(find.byType(VeilConversationCard).first);
+      await tester.tap(find.byType(ConversationRow).first);
       await pumpFrames(tester);
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, groupConversationId);
     });
   });
 
-  testWidgets('while the first list is on its way, shows rows to come, not an empty state', (tester) async {
+  testWidgets('while the first list is on its way, shows nothing under the field, not an empty state',
+      (tester) async {
     await withPhoneApp(
       tester,
       identities,
@@ -170,47 +166,44 @@ void main() {
       account: LayoutAccount.signedInEmpty,
       attention: const ChatAttention(loading: true),
       body: (world) async {
-        expect(find.byType(ConversationListSkeleton), findsOneWidget);
-        expect(find.text('No conversations yet'), findsNothing);
-        // Nobody knows the count yet, so the status line does not give one.
-        expect(find.text('Relay linked  ·  No backup'), findsOneWidget);
-        expect(find.textContaining('0 conversations'), findsNothing);
-        expect(find.byType(VeilSurfaceCard), findsNothing, reason: 'placeholders have the shape of rows, not of cards');
-        expect(
-          find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == 'Loading…'),
-          findsOneWidget,
-        );
+        expect(find.widgetWithText(TextField, 'Search'), findsOneWidget);
+        expect(find.text('No chats yet'), findsNothing);
+        expect(find.byType(VeilEmptyState), findsNothing);
+        expect(find.byType(ConversationRow), findsNothing);
+        expect(find.textContaining('0 chats'), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
   });
 
-  testWidgets('a sync error is one banner above the rows, in the app\'s words', (tester) async {
+  testWidgets('a sync error is one notice above the rows, in the app\'s words, with a retry', (tester) async {
     await withPhoneApp(
       tester,
       identities,
       location: '/conversations',
       attention: const ChatAttention(relayError: true),
       body: (world) async {
-        expect(find.byType(VeilInlineBanner), findsOneWidget);
-        expect(findCopy('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget);
+        expect(find.byType(VeilNotice), findsOneWidget);
+        expect(findCopy("Couldn't refresh"), findsOneWidget);
+        expect(findCopy("The server couldn't complete the request."), findsOneWidget);
         expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
-        expect(find.byType(VeilConversationCard), findsWidgets);
+        expect(find.widgetWithText(TextButton, 'Retry'), findsOneWidget);
+        expect(find.byType(ConversationRow), findsWidgets);
       },
     );
   });
 
   testWidgets('starts a direct chat or a group from the bar', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New conversation'));
+      await tester.tap(find.byTooltip('New chat'));
       await pumpFrames(tester, frames: 3);
       expect(find.text('New group'), findsOneWidget);
-      await tester.tap(find.text('New direct chat'));
+      await tester.tap(find.text('New chat'));
       await pumpFrames(tester);
       expect(find.byType(StartDirectChatScreen), findsOneWidget);
     });
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New conversation'));
+      await tester.tap(find.byTooltip('New chat'));
       await pumpFrames(tester, frames: 3);
       await tester.tap(find.text('New group'));
       await pumpFrames(tester);
@@ -218,16 +211,12 @@ void main() {
     });
   });
 
-  // Settings is a tab of the bottom bar, so the bar above keeps only what
-  // has no tab: security status.
-  testWidgets('keeps security status in the bar, and has settings as a tab', (tester) async {
+  // The bar's one action starts a chat. Settings is a tab of the bottom bar,
+  // and the security status is under it: neither has a button up here.
+  testWidgets('has one action in the bar, and settings as a tab', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('Security status'));
-      await pumpFrames(tester);
-      expect(find.byType(SecurityStatusScreen), findsOneWidget);
-      await tester.tap(find.byTooltip('Back'));
-      await pumpFrames(tester);
-
+      expect(find.byTooltip('Security'), findsNothing);
+      expect(find.byIcon(Icons.verified_user_outlined), findsNothing);
       expect(find.byTooltip('Settings'), findsNothing, reason: 'no second way to settings in the bar');
       await tester.tap(find.text('Settings'));
       await pumpFrames(tester);
@@ -235,31 +224,33 @@ void main() {
     });
   });
 
-  testWidgets('a search shows its filters, says it stays on the device, and lists what it found',
-      (tester) async {
+  testWidgets('a search shows its filters and lists what it found under plain headings', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
+      final emptyField = tester.getRect(find.byType(TextField));
+      expect(emptyField.height, 44);
       await tester.enterText(find.byType(TextField), conversationSearchQuery);
       // The archive search waits 180 ms for the typing to stop.
       await pumpFrames(tester, frames: 4);
 
+      // The clear button is as tall as the field: nothing moves under it.
+      expect(tester.getRect(find.byType(TextField)), emptyField);
+      expect(tester.getSize(find.widgetWithIcon(IconButton, Icons.close)), const Size.square(44));
       expect(find.text('All senders'), findsOneWidget);
-      expect(find.text('Search stays on this device.'), findsOneWidget);
-      expect(find.text('CONVERSATIONS'), findsOneWidget);
-      expect(find.text('2 matches'), findsOneWidget);
-      expect(find.text('MESSAGES'), findsOneWidget);
-      expect(find.byType(VeilConversationCard), findsNWidgets(2));
-      // No message matches: the heading counts none and one line says so,
-      // without a second empty state under the rows that did match.
-      expect(find.text('0 results'), findsOneWidget);
-      expect(find.text('No message on this device matches with these filters.'), findsOneWidget);
+      expect(find.widgetWithText(ConversationListHeader, 'Chats'), findsOneWidget);
+      expect(find.widgetWithText(ConversationListHeader, 'Messages'), findsOneWidget);
+      expect(find.byType(ConversationRow), findsNWidgets(2));
+      // The headings count nothing the rows under them do not show.
+      expect(find.text('2 matches'), findsNothing);
+      expect(find.text('0 results'), findsNothing);
+      // No message matches: one line says so, without a second empty state
+      // under the rows that did match.
+      expect(find.text('No message matches these filters.'), findsOneWidget);
       expect(find.byType(VeilEmptyState), findsNothing);
-      // The status line still counts every conversation, not the matches.
-      expect(find.textContaining('8 conversations'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Clear search'));
       await pumpFrames(tester, frames: 4);
       expect(find.text('All senders'), findsNothing);
-      expect(find.text('MESSAGES'), findsNothing);
+      expect(find.text('Messages'), findsNothing);
     });
   });
 
@@ -270,10 +261,90 @@ void main() {
       location: '/conversations',
       account: LayoutAccount.signedInEmpty,
       body: (world) async {
-        expect(find.text('No conversations yet'), findsOneWidget);
-        await tester.tap(find.text('Start direct chat'));
+        expect(find.text('No chats yet'), findsOneWidget);
+        await tester.tap(find.text('New chat'));
         await pumpFrames(tester);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
+      },
+    );
+  });
+
+  // The empty state sits a little above the middle of the space under the
+  // field, but that space is a floor: with the keyboard up or the phone on
+  // its side the state is taller than it, and the list scrolls to the
+  // button instead of cutting through it.
+  for (final (name, size, keyboard, scale) in [
+    ('with the keyboard up', phoneSmall, 300.0, 1.0),
+    ('with the keyboard up and larger text', phoneSmall, 300.0, 1.3),
+    ('on its side', const PhoneSize(640, 360, topInset: 0, bottomInset: 0), 0.0, 1.0),
+  ]) {
+    testWidgets('with no conversation yet and $name, the state does not overflow and its button takes a tap',
+        (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: '/conversations',
+        account: LayoutAccount.signedInEmpty,
+        size: size,
+        keyboardHeight: keyboard,
+        textScale: scale,
+        body: (world) async {
+          expect(tester.takeException(), isNull, reason: 'the empty state overflowed its box');
+          final button = find.widgetWithText(VeilButton, 'New chat');
+          await tester.dragUntilVisible(button, find.byType(ListView), const Offset(0, -40));
+          await pumpFrames(tester, frames: 2);
+          final box = tester.renderObject<RenderBox>(find.descendant(of: button, matching: find.byType(OutlinedButton)));
+          expect(whyNotWhollyTappable(tester, box), isNull);
+          await tester.tap(button);
+          await pumpFrames(tester);
+          expect(find.byType(StartDirectChatScreen), findsOneWidget);
+        },
+      );
+    });
+  }
+
+  // A message found in a group is shown under the group, as its row is: the
+  // neutral disc and the group's name, not a letter and the name of one
+  // member.
+  testWidgets('a message found in a group shows the group\'s avatar and name', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      withGroup: true,
+      location: '/conversations',
+      prepare: (world) async {
+        // The search reads the chat's peer, which in a group is a member.
+        world.cache.archiveHits = [
+          MessageSearchResult(
+            conversationId: groupConversationId,
+            messageId: 'group-hit',
+            peerHandle: peerHandle,
+            peerDisplayName: 'Sam Rivera',
+            sentAt: DateTime.utc(2026, 4, 7, 9, 12),
+            messageKind: MessageKind.text,
+            isMine: false,
+            bodySnippet: 'I can bring the van after six',
+          ),
+        ];
+        return null;
+      },
+      body: (world) async {
+        await tester.enterText(find.byType(TextField), 'van');
+        // The archive search waits 180 ms for the typing to stop.
+        await pumpFrames(tester, frames: 4);
+        final tile = find.byType(MessageSearchResultTile);
+        await tester.dragUntilVisible(tile, find.byType(ListView), const Offset(0, -200));
+        await pumpFrames(tester, frames: 2);
+
+        expect(find.descendant(of: tile, matching: find.byIcon(Icons.group_outlined)), findsOneWidget);
+        expect(find.descendant(of: tile, matching: find.text('S')), findsNothing, reason: 'no letter on a group');
+        expect(
+          find.descendant(of: tile, matching: find.text('Sam Rivera, Priya Nair, Omar Haddad')),
+          findsOneWidget,
+          reason: 'named as the group\'s row is',
+        );
+        expect(find.descendant(of: tile, matching: find.text('Sam Rivera')), findsNothing);
+        expect(tester.takeException(), isNull);
       },
     );
   });

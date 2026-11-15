@@ -8,7 +8,6 @@ import { readNotificationLevel, writeNotificationLevel } from '../../features/no
 const THEME_KEY = 'veil-demo-theme';
 const SOUND_KEY = 'veil-demo-sounds-enabled-v1';
 const MUTE_KEY = 'veil-demo-muted-convs-v1';
-const BETA_BANNER_KEY = 'veil-demo-beta-banner-dismissed-v1';
 const NOTIF_PROMPT_KEY = 'veil-demo-notif-prompt-dismissed-v1';
 
 // Storage access throws in some sandboxed and privacy modes.
@@ -49,9 +48,6 @@ export function createPreferences(storage = webStorage('localStorage')) {
       }
     },
     setMutedConversations: (ids) => write(MUTE_KEY, JSON.stringify(Array.from(ids))),
-
-    betaBannerDismissed: () => read(BETA_BANNER_KEY) === '1',
-    dismissBetaBanner: () => write(BETA_BANNER_KEY, '1'),
 
     notificationPromptDismissed: () => read(NOTIF_PROMPT_KEY) === '1',
     dismissNotificationPrompt: () => write(NOTIF_PROMPT_KEY, '1'),

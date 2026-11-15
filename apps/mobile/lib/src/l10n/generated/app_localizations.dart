@@ -97,7 +97,7 @@ abstract class AppLocalizations {
   /// No description provided for @appTitle.
   ///
   /// In en, this message translates to:
-  /// **'VEIL'**
+  /// **'Veil'**
   String get appTitle;
 
   /// No description provided for @commonContinue.
@@ -112,18 +112,6 @@ abstract class AppLocalizations {
   /// **'Cancel'**
   String get commonCancel;
 
-  /// No description provided for @commonSave.
-  ///
-  /// In en, this message translates to:
-  /// **'Save'**
-  String get commonSave;
-
-  /// No description provided for @commonDelete.
-  ///
-  /// In en, this message translates to:
-  /// **'Delete'**
-  String get commonDelete;
-
   /// No description provided for @commonRetry.
   ///
   /// In en, this message translates to:
@@ -136,77 +124,29 @@ abstract class AppLocalizations {
   /// **'Close'**
   String get commonClose;
 
-  /// No description provided for @commonBack.
-  ///
-  /// In en, this message translates to:
-  /// **'Back'**
-  String get commonBack;
-
-  /// No description provided for @commonDone.
-  ///
-  /// In en, this message translates to:
-  /// **'Done'**
-  String get commonDone;
-
-  /// No description provided for @commonConfirm.
-  ///
-  /// In en, this message translates to:
-  /// **'Confirm'**
-  String get commonConfirm;
-
-  /// No description provided for @commonLoading.
-  ///
-  /// In en, this message translates to:
-  /// **'Loading…'**
-  String get commonLoading;
-
   /// No description provided for @commonError.
   ///
   /// In en, this message translates to:
   /// **'Something went wrong'**
   String get commonError;
 
-  /// No description provided for @commonIUnderstand.
+  /// No description provided for @commonOn.
   ///
   /// In en, this message translates to:
-  /// **'I understand'**
-  String get commonIUnderstand;
+  /// **'On'**
+  String get commonOn;
 
-  /// No description provided for @pillNoRecovery.
+  /// No description provided for @commonOff.
   ///
   /// In en, this message translates to:
-  /// **'No recovery'**
-  String get pillNoRecovery;
+  /// **'Off'**
+  String get commonOff;
 
-  /// No description provided for @pillSessionLocked.
+  /// No description provided for @commonNone.
   ///
   /// In en, this message translates to:
-  /// **'Session locked'**
-  String get pillSessionLocked;
-
-  /// No description provided for @pillPreviewObscured.
-  ///
-  /// In en, this message translates to:
-  /// **'Preview obscured'**
-  String get pillPreviewObscured;
-
-  /// No description provided for @privacyShieldEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'PRIVACY SHIELD'**
-  String get privacyShieldEyebrow;
-
-  /// No description provided for @privacyShieldTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'VEIL is hidden while inactive.'**
-  String get privacyShieldTitle;
-
-  /// No description provided for @privacyShieldBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Recent-app previews are obscured and the app lock is re-armed when the app leaves the foreground.'**
-  String get privacyShieldBody;
+  /// **'None'**
+  String get commonNone;
 
   /// No description provided for @appLockTitle.
   ///
@@ -214,82 +154,22 @@ abstract class AppLocalizations {
   /// **'App lock'**
   String get appLockTitle;
 
-  /// No description provided for @appLockLoadingTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking the app lock'**
-  String get appLockLoadingTitle;
-
-  /// No description provided for @appLockLoadingBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Looking for a stored PIN and biometric availability.'**
-  String get appLockLoadingBody;
-
-  /// No description provided for @appLockHeroEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'THIS DEVICE ONLY'**
-  String get appLockHeroEyebrow;
-
-  /// No description provided for @appLockHeroTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'VEIL never unlocks itself remotely.'**
-  String get appLockHeroTitle;
-
-  /// No description provided for @appLockHeroBody.
-  ///
-  /// In en, this message translates to:
-  /// **'PIN and biometrics are checked on this device only. No server can reset or override them.'**
-  String get appLockHeroBody;
-
-  /// No description provided for @appLockPillLocalOnly.
-  ///
-  /// In en, this message translates to:
-  /// **'Local only'**
-  String get appLockPillLocalOnly;
-
-  /// No description provided for @appLockPillNoRemoteReset.
-  ///
-  /// In en, this message translates to:
-  /// **'No remote reset'**
-  String get appLockPillNoRemoteReset;
-
-  /// No description provided for @appLockNoRecoveryBody.
-  ///
-  /// In en, this message translates to:
-  /// **'If you forget the PIN and lose the active device, VEIL cannot restore access.'**
-  String get appLockNoRecoveryBody;
-
-  /// No description provided for @appLockCompromisedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Compromised device blocked'**
-  String get appLockCompromisedTitle;
-
   /// No description provided for @appLockCompromisedBody.
   ///
   /// In en, this message translates to:
-  /// **'This device appears rooted or jailbroken. VEIL blocks local unlock on compromised devices.'**
+  /// **'This device appears to be rooted or jailbroken, so the app won\'t unlock here.'**
   String get appLockCompromisedBody;
 
   /// No description provided for @appLockCompromisedReasons.
   ///
   /// In en, this message translates to:
-  /// **'This device appears rooted or jailbroken. {reasons}'**
+  /// **'This device appears to be rooted or jailbroken. {reasons}'**
   String appLockCompromisedReasons(String reasons);
-
-  /// No description provided for @appLockLockoutTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'PIN temporarily locked'**
-  String get appLockLockoutTitle;
 
   /// No description provided for @appLockLockoutBody.
   ///
   /// In en, this message translates to:
-  /// **'Too many failed PIN attempts on this device. {retry}'**
+  /// **'PIN entry is paused. {retry}'**
   String appLockLockoutBody(String retry);
 
   /// No description provided for @appLockRetryNow.
@@ -301,13 +181,13 @@ abstract class AppLocalizations {
   /// No description provided for @appLockRetrySeconds.
   ///
   /// In en, this message translates to:
-  /// **'Try again in {seconds}s.'**
+  /// **'{seconds, plural, =1{Try again in 1 second.} other{Try again in {seconds} seconds.}}'**
   String appLockRetrySeconds(int seconds);
 
   /// No description provided for @appLockRetryMinutes.
   ///
   /// In en, this message translates to:
-  /// **'Try again in {minutes}m.'**
+  /// **'{minutes, plural, =1{Try again in 1 minute.} other{Try again in {minutes} minutes.}}'**
   String appLockRetryMinutes(int minutes);
 
   /// No description provided for @appLockPinLabel.
@@ -315,108 +195,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'PIN'**
   String get appLockPinLabel;
-
-  /// No description provided for @appLockMetricConfigured.
-  ///
-  /// In en, this message translates to:
-  /// **'Configured'**
-  String get appLockMetricConfigured;
-
-  /// No description provided for @appLockMetricRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Required'**
-  String get appLockMetricRequired;
-
-  /// No description provided for @appLockMetricBiometrics.
-  ///
-  /// In en, this message translates to:
-  /// **'Biometrics'**
-  String get appLockMetricBiometrics;
-
-  /// No description provided for @appLockMetricAvailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Available'**
-  String get appLockMetricAvailable;
-
-  /// No description provided for @appLockMetricUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Unavailable'**
-  String get appLockMetricUnavailable;
-
-  /// No description provided for @appLockMetricPreview.
-  ///
-  /// In en, this message translates to:
-  /// **'Preview'**
-  String get appLockMetricPreview;
-
-  /// No description provided for @appLockMetricProtected.
-  ///
-  /// In en, this message translates to:
-  /// **'Protected'**
-  String get appLockMetricProtected;
-
-  /// No description provided for @appLockMetricShielded.
-  ///
-  /// In en, this message translates to:
-  /// **'Shielded'**
-  String get appLockMetricShielded;
-
-  /// No description provided for @appLockPillPinConfigured.
-  ///
-  /// In en, this message translates to:
-  /// **'PIN configured'**
-  String get appLockPillPinConfigured;
-
-  /// No description provided for @appLockPillPinRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'PIN required'**
-  String get appLockPillPinRequired;
-
-  /// No description provided for @appLockPillBiometricsAvailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Biometrics available'**
-  String get appLockPillBiometricsAvailable;
-
-  /// No description provided for @appLockPillBiometricsUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'Biometrics unavailable'**
-  String get appLockPillBiometricsUnavailable;
-
-  /// No description provided for @appLockPillCaptureBlocked.
-  ///
-  /// In en, this message translates to:
-  /// **'Capture blocked'**
-  String get appLockPillCaptureBlocked;
-
-  /// No description provided for @appLockPillPreviewShield.
-  ///
-  /// In en, this message translates to:
-  /// **'Preview shield only'**
-  String get appLockPillPreviewShield;
-
-  /// No description provided for @appLockCaptionSet.
-  ///
-  /// In en, this message translates to:
-  /// **'Set a numeric PIN for this device before continuing. VEIL cannot reset it for you.'**
-  String get appLockCaptionSet;
-
-  /// No description provided for @appLockCaptionUnlock.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock with this device\'s PIN or biometrics.'**
-  String get appLockCaptionUnlock;
-
-  /// No description provided for @appLockFieldSetPin.
-  ///
-  /// In en, this message translates to:
-  /// **'Set PIN'**
-  String get appLockFieldSetPin;
 
   /// No description provided for @appLockFieldPinHint.
   ///
@@ -427,7 +205,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockFieldPinError.
   ///
   /// In en, this message translates to:
-  /// **'Use 6 to 12 digits only.'**
+  /// **'Use 6 to 12 digits.'**
   String get appLockFieldPinError;
 
   /// No description provided for @appLockFieldConfirm.
@@ -439,26 +217,14 @@ abstract class AppLocalizations {
   /// No description provided for @appLockFieldConfirmHint.
   ///
   /// In en, this message translates to:
-  /// **'Repeat the same PIN'**
+  /// **'Enter it again'**
   String get appLockFieldConfirmHint;
 
   /// No description provided for @appLockConfirmMismatch.
   ///
   /// In en, this message translates to:
-  /// **'PIN confirmation does not match.'**
+  /// **'The PINs don\'t match.'**
   String get appLockConfirmMismatch;
-
-  /// No description provided for @appLockStatusTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Lock status'**
-  String get appLockStatusTitle;
-
-  /// No description provided for @appLockStatusUnlockedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlocked'**
-  String get appLockStatusUnlockedTitle;
 
   /// No description provided for @appLockStatusUnlocked.
   ///
@@ -469,43 +235,43 @@ abstract class AppLocalizations {
   /// No description provided for @appLockStatusBiometricFailed.
   ///
   /// In en, this message translates to:
-  /// **'Biometric unlock failed.'**
+  /// **'Biometrics didn\'t work. Enter your PIN.'**
   String get appLockStatusBiometricFailed;
 
   /// No description provided for @appLockStatusEnterPin.
   ///
   /// In en, this message translates to:
-  /// **'Enter a PIN first.'**
+  /// **'Enter your PIN first.'**
   String get appLockStatusEnterPin;
 
   /// No description provided for @appLockStatusPinFormat.
   ///
   /// In en, this message translates to:
-  /// **'PIN must be 6 to 12 digits.'**
+  /// **'The PIN must be 6 to 12 digits.'**
   String get appLockStatusPinFormat;
 
   /// No description provided for @appLockStatusPinMismatch.
   ///
   /// In en, this message translates to:
-  /// **'PIN mismatch.'**
+  /// **'Wrong PIN.'**
   String get appLockStatusPinMismatch;
 
   /// No description provided for @appLockStatusPinMismatchAttempts.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{PIN mismatch. 1 attempt left before temporary lock.} other{PIN mismatch. {count} attempts left before temporary lock.}}'**
+  /// **'{count, plural, =1{Wrong PIN. 1 attempt left.} other{Wrong PIN. {count} attempts left.}}'**
   String appLockStatusPinMismatchAttempts(int count);
 
   /// No description provided for @appLockStatusLocked.
   ///
   /// In en, this message translates to:
-  /// **'PIN locked temporarily.'**
+  /// **'Too many attempts. Try again later.'**
   String get appLockStatusLocked;
 
   /// No description provided for @appLockStatusCompromised.
   ///
   /// In en, this message translates to:
-  /// **'Unlock blocked on compromised device.'**
+  /// **'This device can\'t be unlocked.'**
   String get appLockStatusCompromised;
 
   /// No description provided for @appLockUseBiometrics.
@@ -514,143 +280,77 @@ abstract class AppLocalizations {
   /// **'Use biometrics'**
   String get appLockUseBiometrics;
 
-  /// No description provided for @appLockSetAndUnlock.
-  ///
-  /// In en, this message translates to:
-  /// **'Set PIN and unlock'**
-  String get appLockSetAndUnlock;
-
   /// No description provided for @appLockUnlock.
   ///
   /// In en, this message translates to:
-  /// **'Unlock VEIL'**
+  /// **'Unlock'**
   String get appLockUnlock;
 
-  /// No description provided for @splashEyebrow.
+  /// No description provided for @appLockLockedTitle.
   ///
   /// In en, this message translates to:
-  /// **'PRIVATE BETA'**
-  String get splashEyebrow;
+  /// **'Veil is locked'**
+  String get appLockLockedTitle;
 
-  /// No description provided for @splashBody.
+  /// No description provided for @appLockSetupFooter.
   ///
   /// In en, this message translates to:
-  /// **'No backup. No recovery. No leaks.'**
-  String get splashBody;
+  /// **'Your PIN is checked on this phone only. If you forget it, wipe this device and start over.'**
+  String get appLockSetupFooter;
+
+  /// No description provided for @appLockTurnOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on'**
+  String get appLockTurnOn;
 
   /// No description provided for @splashErrorTitle.
   ///
   /// In en, this message translates to:
-  /// **'VEIL cannot start'**
+  /// **'Couldn\'t start'**
   String get splashErrorTitle;
 
   /// No description provided for @splashPreparingTitle.
   ///
   /// In en, this message translates to:
-  /// **'Opening VEIL'**
+  /// **'Starting…'**
   String get splashPreparingTitle;
-
-  /// No description provided for @splashPreparingBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking this device\'s session and security state.'**
-  String get splashPreparingBody;
-
-  /// No description provided for @onboardingWarnEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'PRODUCT RULES'**
-  String get onboardingWarnEyebrow;
 
   /// No description provided for @onboardingWarnTitle.
   ///
   /// In en, this message translates to:
-  /// **'No backup.\nNo recovery.\nNo leaks.'**
+  /// **'Before you start'**
   String get onboardingWarnTitle;
 
-  /// No description provided for @onboardingWarnBody.
+  /// No description provided for @onboardingWarnAgreeCheckbox.
   ///
   /// In en, this message translates to:
-  /// **'VEIL is bound to this device by design. It is not a cloud inbox.'**
-  String get onboardingWarnBody;
+  /// **'I understand there is no way to recover a lost account'**
+  String get onboardingWarnAgreeCheckbox;
 
-  /// No description provided for @onboardingWarnDestructiveTitle.
+  /// No description provided for @onboardingWarnLine1.
   ///
   /// In en, this message translates to:
-  /// **'Unrecoverable by design'**
-  String get onboardingWarnDestructiveTitle;
+  /// **'Your account lives on this phone.'**
+  String get onboardingWarnLine1;
 
-  /// No description provided for @onboardingWarnDestructiveBody.
+  /// No description provided for @onboardingWarnLine2.
   ///
   /// In en, this message translates to:
-  /// **'If you lose your device, your account and messages are gone. VEIL cannot restore your access.'**
-  String get onboardingWarnDestructiveBody;
+  /// **'If you lose this phone, you lose this account and its messages. There is no backup and no way to recover it.'**
+  String get onboardingWarnLine2;
 
-  /// No description provided for @onboardingWarnIdentityTitle.
+  /// No description provided for @onboardingWarnLine3.
   ///
   /// In en, this message translates to:
-  /// **'Identity'**
-  String get onboardingWarnIdentityTitle;
-
-  /// No description provided for @onboardingWarnIdentityLine1.
-  ///
-  /// In en, this message translates to:
-  /// **'This device becomes your identity.'**
-  String get onboardingWarnIdentityLine1;
-
-  /// No description provided for @onboardingWarnIdentityLine2.
-  ///
-  /// In en, this message translates to:
-  /// **'Your private keys stay on this device.'**
-  String get onboardingWarnIdentityLine2;
-
-  /// No description provided for @onboardingWarnIdentityLine3.
-  ///
-  /// In en, this message translates to:
-  /// **'There is no password reset path.'**
-  String get onboardingWarnIdentityLine3;
-
-  /// No description provided for @onboardingWarnTransferTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer'**
-  String get onboardingWarnTransferTitle;
-
-  /// No description provided for @onboardingWarnTransferLine1.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer works only while the old device still exists.'**
-  String get onboardingWarnTransferLine1;
-
-  /// No description provided for @onboardingWarnTransferLine2.
-  ///
-  /// In en, this message translates to:
-  /// **'The old device must approve the move.'**
-  String get onboardingWarnTransferLine2;
-
-  /// No description provided for @onboardingWarnTransferLine3.
-  ///
-  /// In en, this message translates to:
-  /// **'No old device means no transfer.'**
-  String get onboardingWarnTransferLine3;
+  /// **'To move to a new phone you need the old one.'**
+  String get onboardingWarnLine3;
 
   /// No description provided for @privacyConsentTitle.
   ///
   /// In en, this message translates to:
   /// **'Privacy notice'**
   String get privacyConsentTitle;
-
-  /// No description provided for @privacyConsentSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Read before using VEIL'**
-  String get privacyConsentSubtitle;
-
-  /// No description provided for @privacyConsentHeroBody.
-  ///
-  /// In en, this message translates to:
-  /// **'VEIL complies with Korea\'s PIPA. Please review the notice below before using the service.'**
-  String get privacyConsentHeroBody;
 
   /// No description provided for @privacyConsentAgree.
   ///
@@ -667,43 +367,43 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentCollectTitle.
   ///
   /// In en, this message translates to:
-  /// **'Information we collect'**
+  /// **'What we store'**
   String get privacyConsentCollectTitle;
 
   /// No description provided for @privacyConsentCollectItem1.
   ///
   /// In en, this message translates to:
-  /// **'User handle, and the random account and device IDs linked to it'**
+  /// **'Your handle, and the random account and device IDs linked to it'**
   String get privacyConsentCollectItem1;
 
   /// No description provided for @privacyConsentCollectItem2.
   ///
   /// In en, this message translates to:
-  /// **'Device info (platform, device label) and push token; push wake-ups carry no message content'**
+  /// **'Device type, device name and push token (notifications carry no message content)'**
   String get privacyConsentCollectItem2;
 
   /// No description provided for @privacyConsentCollectItem3.
   ///
   /// In en, this message translates to:
-  /// **'Public identity key and prekeys (for encrypted communication)'**
+  /// **'Your public keys, used to encrypt messages to you'**
   String get privacyConsentCollectItem3;
 
   /// No description provided for @privacyConsentCollectItem4.
   ///
   /// In en, this message translates to:
-  /// **'Your in-app contact list: which accounts you added (the names you give them stay on this device)'**
+  /// **'Your in-app contact list: which accounts you added (the names you give them stay on this phone)'**
   String get privacyConsentCollectItem4;
 
   /// No description provided for @privacyConsentCollectItem5.
   ///
   /// In en, this message translates to:
-  /// **'Conversation membership and delivery metadata: when messages arrived, delivery and read-receipt times, the day a device was last seen'**
+  /// **'Chat membership and delivery metadata: when messages arrived, delivery and read-receipt times, the day a device was last seen'**
   String get privacyConsentCollectItem5;
 
   /// No description provided for @privacyConsentCollectItem6.
   ///
   /// In en, this message translates to:
-  /// **'Call records: conversation, who started the call, call type, start and end time, duration (kept 30 days)'**
+  /// **'Call records: which chat, who started the call, call type, start and end time, duration (kept 30 days)'**
   String get privacyConsentCollectItem6;
 
   /// No description provided for @privacyConsentCollectItem7.
@@ -715,49 +415,49 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentPurposeTitle.
   ///
   /// In en, this message translates to:
-  /// **'Purpose of collection'**
+  /// **'Why'**
   String get privacyConsentPurposeTitle;
 
   /// No description provided for @privacyConsentPurposeItem1.
   ///
   /// In en, this message translates to:
-  /// **'Provide end-to-end encrypted messaging'**
+  /// **'Delivering end-to-end encrypted messages'**
   String get privacyConsentPurposeItem1;
 
   /// No description provided for @privacyConsentPurposeItem2.
   ///
   /// In en, this message translates to:
-  /// **'Device authentication and session management'**
+  /// **'Signing in your device and keeping your session'**
   String get privacyConsentPurposeItem2;
 
   /// No description provided for @privacyConsentPurposeItem3.
   ///
   /// In en, this message translates to:
-  /// **'Contact discovery and conversation routing'**
+  /// **'Finding people by handle and delivering messages to their devices'**
   String get privacyConsentPurposeItem3;
 
   /// No description provided for @privacyConsentRetentionTitle.
   ///
   /// In en, this message translates to:
-  /// **'Retention period'**
+  /// **'How long'**
   String get privacyConsentRetentionTitle;
 
   /// No description provided for @privacyConsentRetentionItem1.
   ///
   /// In en, this message translates to:
-  /// **'Deleted immediately on account deletion request'**
+  /// **'Deleted as soon as you delete your account'**
   String get privacyConsentRetentionItem1;
 
   /// No description provided for @privacyConsentRetentionItem2.
   ///
   /// In en, this message translates to:
-  /// **'Device data is removed when the device is unpaired, and its device record within about 30 days'**
+  /// **'Device data is removed when a device is signed out, and its device record within about 30 days'**
   String get privacyConsentRetentionItem2;
 
   /// No description provided for @privacyConsentRetentionItem3.
   ///
   /// In en, this message translates to:
-  /// **'Expired messages are auto-deleted'**
+  /// **'Expired messages are deleted automatically'**
   String get privacyConsentRetentionItem3;
 
   /// No description provided for @privacyConsentRightsTitle.
@@ -769,55 +469,55 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentRightsItem1.
   ///
   /// In en, this message translates to:
-  /// **'Right to access, correct, and delete your information'**
+  /// **'You can access, correct and delete your information'**
   String get privacyConsentRightsItem1;
 
   /// No description provided for @privacyConsentRightsItem2.
   ///
   /// In en, this message translates to:
-  /// **'Full deletion available from Settings → Delete account'**
+  /// **'You can delete everything in Settings with Delete account'**
   String get privacyConsentRightsItem2;
 
   /// No description provided for @privacyConsentRightsItem3.
   ///
   /// In en, this message translates to:
-  /// **'Withdrawing consent terminates service access'**
+  /// **'Withdrawing consent ends your access to the service'**
   String get privacyConsentRightsItem3;
 
   /// No description provided for @privacyConsentNotCollectedTitle.
   ///
   /// In en, this message translates to:
-  /// **'What we do not collect'**
+  /// **'What we never collect'**
   String get privacyConsentNotCollectedTitle;
 
   /// No description provided for @privacyConsentNotCollectedItem1.
   ///
   /// In en, this message translates to:
-  /// **'Message contents (end-to-end encrypted, unreadable by server)'**
+  /// **'Message contents: they are end-to-end encrypted and the server can\'t read them'**
   String get privacyConsentNotCollectedItem1;
 
   /// No description provided for @privacyConsentNotCollectedItem2.
   ///
   /// In en, this message translates to:
-  /// **'Location data'**
+  /// **'Location'**
   String get privacyConsentNotCollectedItem2;
 
   /// No description provided for @privacyConsentNotCollectedItem3.
   ///
   /// In en, this message translates to:
-  /// **'Your phone\'s address book, its call log, or other personal data stored on your device'**
+  /// **'Your phone\'s address book, its call log or other personal data on your device'**
   String get privacyConsentNotCollectedItem3;
 
   /// No description provided for @privacyConsentThirdPartyTitle.
   ///
   /// In en, this message translates to:
-  /// **'Third-party disclosure'**
+  /// **'Third parties'**
   String get privacyConsentThirdPartyTitle;
 
   /// No description provided for @privacyConsentThirdPartyBody.
   ///
   /// In en, this message translates to:
-  /// **'VEIL does not share collected personal information with third parties, except as required by applicable law.'**
+  /// **'Veil does not share your information with third parties, except where the law requires it.'**
   String get privacyConsentThirdPartyBody;
 
   /// No description provided for @authCreateTitle.
@@ -826,46 +526,16 @@ abstract class AppLocalizations {
   /// **'Create account'**
   String get authCreateTitle;
 
-  /// No description provided for @authCreateEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'DEVICE BINDING'**
-  String get authCreateEyebrow;
-
-  /// No description provided for @authCreateHeroTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'This device becomes your identity.'**
-  String get authCreateHeroTitle;
-
-  /// No description provided for @authCreateRestoreTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No restore path'**
-  String get authCreateRestoreTitle;
-
-  /// No description provided for @authCreateRestoreBody.
-  ///
-  /// In en, this message translates to:
-  /// **'If you lose this device, your account and messages are gone. VEIL cannot restore access. This is intentional.'**
-  String get authCreateRestoreBody;
-
-  /// No description provided for @authCreateFieldLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'PROFILE'**
-  String get authCreateFieldLabel;
-
   /// No description provided for @authCreateFieldCaption.
   ///
   /// In en, this message translates to:
-  /// **'Only this device knows it. Others find you and see you by your handle.'**
+  /// **'Shown only on this phone. Others see your handle.'**
   String get authCreateFieldCaption;
 
   /// No description provided for @authCreateDisplayName.
   ///
   /// In en, this message translates to:
-  /// **'Nickname'**
+  /// **'Name'**
   String get authCreateDisplayName;
 
   /// No description provided for @authCreateDisplayHint.
@@ -877,44 +547,20 @@ abstract class AppLocalizations {
   /// No description provided for @authCreateTransferLabel.
   ///
   /// In en, this message translates to:
-  /// **'Transfer from old device'**
+  /// **'Move from another phone'**
   String get authCreateTransferLabel;
 
   /// No description provided for @authHandleTitle.
   ///
   /// In en, this message translates to:
-  /// **'Choose handle'**
+  /// **'Choose a handle'**
   String get authHandleTitle;
 
-  /// No description provided for @authHandleEyebrow.
+  /// No description provided for @authHandleFindCaption.
   ///
   /// In en, this message translates to:
-  /// **'HANDLE REGISTRATION'**
-  String get authHandleEyebrow;
-
-  /// No description provided for @authHandleHeroTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Phone numbers stay out.'**
-  String get authHandleHeroTitle;
-
-  /// No description provided for @authHandleHeroBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Pick the handle people will find you by. VEIL binds it to this device once the device\'s keys are generated.'**
-  String get authHandleHeroBody;
-
-  /// No description provided for @authHandleFieldLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'HANDLE'**
-  String get authHandleFieldLabel;
-
-  /// No description provided for @authHandleFieldCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Lowercase. Minimal. Permanent enough to matter.'**
-  String get authHandleFieldCaption;
+  /// **'People find you by this handle. Veil has no phone number, email or contact upload.'**
+  String get authHandleFindCaption;
 
   /// No description provided for @authHandleInputLabel.
   ///
@@ -925,109 +571,49 @@ abstract class AppLocalizations {
   /// No description provided for @authHandleInputHint.
   ///
   /// In en, this message translates to:
-  /// **'cold.operator'**
+  /// **'alex'**
   String get authHandleInputHint;
-
-  /// No description provided for @authHandleBindingSection.
-  ///
-  /// In en, this message translates to:
-  /// **'BINDING FLOW'**
-  String get authHandleBindingSection;
-
-  /// No description provided for @authHandleStep1Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Generate local identity'**
-  String get authHandleStep1Title;
-
-  /// No description provided for @authHandleStep1Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Create device-bound material and keep the private side on this device.'**
-  String get authHandleStep1Body;
-
-  /// No description provided for @authHandleStep2Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Register handle'**
-  String get authHandleStep2Title;
-
-  /// No description provided for @authHandleStep2Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Publish only public device material and handle metadata.'**
-  String get authHandleStep2Body;
-
-  /// No description provided for @authHandleStep3Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Check the device'**
-  String get authHandleStep3Title;
-
-  /// No description provided for @authHandleStep3Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Request a short-lived server challenge for this registered device.'**
-  String get authHandleStep3Body;
-
-  /// No description provided for @authHandleStep4Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Verify and bind'**
-  String get authHandleStep4Title;
-
-  /// No description provided for @authHandleStep4Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Complete verification and activate the device session.'**
-  String get authHandleStep4Body;
-
-  /// No description provided for @authHandleFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Binding failed'**
-  String get authHandleFailedTitle;
 
   /// No description provided for @authHandleBindCta.
   ///
   /// In en, this message translates to:
-  /// **'Bind this device'**
+  /// **'Create account'**
   String get authHandleBindCta;
 
   /// No description provided for @authStageGeneratingKeys.
   ///
   /// In en, this message translates to:
-  /// **'Generating local identity'**
+  /// **'Creating keys…'**
   String get authStageGeneratingKeys;
 
   /// No description provided for @authStageRegistering.
   ///
   /// In en, this message translates to:
-  /// **'Registering handle'**
+  /// **'Registering handle…'**
   String get authStageRegistering;
 
   /// No description provided for @authStageRequestingChallenge.
   ///
   /// In en, this message translates to:
-  /// **'Requesting challenge'**
+  /// **'Checking this phone…'**
   String get authStageRequestingChallenge;
 
   /// No description provided for @authStageVerifying.
   ///
   /// In en, this message translates to:
-  /// **'Verifying device'**
+  /// **'Signing in…'**
   String get authStageVerifying;
 
   /// No description provided for @authStageComplete.
   ///
   /// In en, this message translates to:
-  /// **'Bound'**
+  /// **'Done'**
   String get authStageComplete;
 
   /// No description provided for @authDefaultDeviceName.
   ///
   /// In en, this message translates to:
-  /// **'VEIL Mobile'**
+  /// **'My phone'**
   String get authDefaultDeviceName;
 
   /// No description provided for @settingsTitle.
@@ -1039,7 +625,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsSectionAppearance.
   ///
   /// In en, this message translates to:
-  /// **'APPEARANCE'**
+  /// **'Appearance'**
   String get settingsSectionAppearance;
 
   /// No description provided for @settingsProfileTitle.
@@ -1051,25 +637,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLoadingDeviceGraph.
   ///
   /// In en, this message translates to:
-  /// **'Loading devices'**
+  /// **'Loading devices…'**
   String get settingsLoadingDeviceGraph;
-
-  /// No description provided for @settingsLoadingDeviceGraphBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Reviewing the bound devices known to this account.'**
-  String get settingsLoadingDeviceGraphBody;
 
   /// No description provided for @settingsDeviceGraphUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Device list unavailable'**
+  /// **'Couldn\'t load devices'**
   String get settingsDeviceGraphUnavailable;
 
   /// No description provided for @settingsNoTrustedDevices.
   ///
   /// In en, this message translates to:
-  /// **'No trusted devices visible'**
+  /// **'No devices listed'**
   String get settingsNoTrustedDevices;
 
   /// No description provided for @settingsAppLockTitle.
@@ -1078,46 +658,16 @@ abstract class AppLocalizations {
   /// **'App lock'**
   String get settingsAppLockTitle;
 
-  /// No description provided for @settingsAppLockSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Biometric and PIN lock on this device only'**
-  String get settingsAppLockSubtitle;
-
   /// No description provided for @settingsDeviceTransferTitle.
   ///
   /// In en, this message translates to:
-  /// **'Device transfer'**
+  /// **'Move to a new phone'**
   String get settingsDeviceTransferTitle;
-
-  /// No description provided for @settingsDeviceTransferSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Old device must initiate and approve'**
-  String get settingsDeviceTransferSubtitle;
-
-  /// No description provided for @settingsSecurityStatusTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Security status'**
-  String get settingsSecurityStatusTitle;
-
-  /// No description provided for @settingsSecurityStatusSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Keys, lock and relay connection on this device'**
-  String get settingsSecurityStatusSubtitle;
-
-  /// No description provided for @settingsNoRecoveryPath.
-  ///
-  /// In en, this message translates to:
-  /// **'No recovery path'**
-  String get settingsNoRecoveryPath;
 
   /// No description provided for @settingsSectionPrivacy.
   ///
   /// In en, this message translates to:
-  /// **'PRIVACY'**
+  /// **'Privacy'**
   String get settingsSectionPrivacy;
 
   /// No description provided for @settingsReadReceiptsTitle.
@@ -1126,23 +676,11 @@ abstract class AppLocalizations {
   /// **'Send read receipts'**
   String get settingsReadReceiptsTitle;
 
-  /// No description provided for @settingsReadReceiptsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'When off, contacts don\'t learn what you read, and you see their reads only as delivered.'**
-  String get settingsReadReceiptsSubtitle;
-
   /// No description provided for @settingsTypingIndicatorsTitle.
   ///
   /// In en, this message translates to:
   /// **'Send typing indicators'**
   String get settingsTypingIndicatorsTitle;
-
-  /// No description provided for @settingsTypingIndicatorsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Lets contacts see while you type. Off unless you turn it on.'**
-  String get settingsTypingIndicatorsSubtitle;
 
   /// No description provided for @settingsLockNow.
   ///
@@ -1153,13 +691,13 @@ abstract class AppLocalizations {
   /// No description provided for @settingsWipeLocal.
   ///
   /// In en, this message translates to:
-  /// **'Wipe local device state'**
+  /// **'Wipe this device'**
   String get settingsWipeLocal;
 
   /// No description provided for @settingsWipeConfirmTitle.
   ///
   /// In en, this message translates to:
-  /// **'Wipe this device locally?'**
+  /// **'Wipe this device?'**
   String get settingsWipeConfirmTitle;
 
   /// No description provided for @settingsRevokeTitle.
@@ -1177,19 +715,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLogout.
   ///
   /// In en, this message translates to:
-  /// **'Log out'**
+  /// **'Sign out'**
   String get settingsLogout;
 
   /// No description provided for @settingsDeleteAccountBody.
   ///
   /// In en, this message translates to:
-  /// **'Permanently removes your account, messages, and contacts. This cannot be undone.'**
+  /// **'This deletes your account, messages and contacts from this phone and the server. There is no backup, so this can\'t be undone.'**
   String get settingsDeleteAccountBody;
 
   /// No description provided for @settingsDeleteAccountAction.
   ///
   /// In en, this message translates to:
-  /// **'Delete my account'**
+  /// **'Delete account'**
   String get settingsDeleteAccountAction;
 
   /// No description provided for @settingsDeleteAccountConfirmHeadline.
@@ -1201,163 +739,109 @@ abstract class AppLocalizations {
   /// No description provided for @settingsDeviceGraphLoadFailedBody.
   ///
   /// In en, this message translates to:
-  /// **'The list of trusted devices could not be loaded. The security controls of this device still work.'**
+  /// **'Couldn\'t load your devices. Check your connection and try again.'**
   String get settingsDeviceGraphLoadFailedBody;
 
   /// No description provided for @settingsNoTrustedDevicesBody.
   ///
   /// In en, this message translates to:
-  /// **'The relay lists no device for this account yet. What is bound to this device stays on it and cannot be recovered.'**
+  /// **'The server lists no devices for this account yet.'**
   String get settingsNoTrustedDevicesBody;
 
   /// No description provided for @settingsRefreshDeviceGraph.
   ///
   /// In en, this message translates to:
-  /// **'Refresh device list'**
+  /// **'Refresh'**
   String get settingsRefreshDeviceGraph;
 
   /// No description provided for @settingsSectionSecurity.
   ///
   /// In en, this message translates to:
-  /// **'SECURITY'**
+  /// **'Security'**
   String get settingsSectionSecurity;
 
   /// No description provided for @settingsSectionDevices.
   ///
   /// In en, this message translates to:
-  /// **'DEVICES'**
+  /// **'Devices'**
   String get settingsSectionDevices;
 
-  /// No description provided for @settingsSectionTools.
+  /// No description provided for @settingsSectionAccount.
   ///
   /// In en, this message translates to:
-  /// **'TOOLS'**
-  String get settingsSectionTools;
-
-  /// No description provided for @settingsSectionIrreversible.
-  ///
-  /// In en, this message translates to:
-  /// **'CANNOT BE UNDONE'**
-  String get settingsSectionIrreversible;
+  /// **'Account'**
+  String get settingsSectionAccount;
 
   /// No description provided for @settingsDevicesTitle.
   ///
   /// In en, this message translates to:
-  /// **'Trusted devices'**
+  /// **'Devices'**
   String get settingsDevicesTitle;
-
-  /// No description provided for @settingsDevicesRowCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 device holds this account} other{{count} devices hold this account}}'**
-  String settingsDevicesRowCount(int count);
-
-  /// No description provided for @settingsDevicesTrustedCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 trusted device} other{{count} trusted devices}}'**
-  String settingsDevicesTrustedCount(int count);
-
-  /// No description provided for @settingsDevicesTrustedWithStale.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 trusted device} other{{count} trusted devices}} ({stale} stale)'**
-  String settingsDevicesTrustedWithStale(int count, int stale);
-
-  /// No description provided for @settingsDestructiveNoticeBody.
-  ///
-  /// In en, this message translates to:
-  /// **'What you erase here stays erased. VEIL keeps no backup and has no way to restore a device or an account.'**
-  String get settingsDestructiveNoticeBody;
-
-  /// No description provided for @settingsLockNowSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Hide the current session behind the app lock immediately'**
-  String get settingsLockNowSubtitle;
-
-  /// No description provided for @settingsWipeLocalSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Deletes the session, keys, encrypted cache, PIN and onboarding state from this device only. The relay is not told.'**
-  String get settingsWipeLocalSubtitle;
 
   /// No description provided for @settingsWipeConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This erases local VEIL state on this device. It does not create a recovery path. If this is your only active device, access is gone.'**
+  /// **'This deletes your messages, keys, PIN and settings from this phone. If this is your only device, the account and its messages are gone. There is no backup and no way to recover them.'**
   String get settingsWipeConfirmBody;
 
   /// No description provided for @settingsWipeConfirmAction.
   ///
   /// In en, this message translates to:
-  /// **'Wipe local state'**
+  /// **'Wipe'**
   String get settingsWipeConfirmAction;
-
-  /// No description provided for @settingsRevokeSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Revokes this device on the relay and wipes its local state. No recovery exists.'**
-  String get settingsRevokeSubtitle;
 
   /// No description provided for @settingsRevokeConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This removes the active device binding for this account on this device and wipes local state here. VEIL cannot restore it.'**
+  /// **'This signs this device out on the server and wipes it. If this is your only device, the account and its messages are gone. There is no backup and no way to recover them.'**
   String get settingsRevokeConfirmBody;
 
   /// No description provided for @settingsRevokeConfirmAction.
   ///
   /// In en, this message translates to:
-  /// **'Revoke device'**
+  /// **'Revoke'**
   String get settingsRevokeConfirmAction;
-
-  /// No description provided for @settingsLogoutSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Erases this device\'s keys, session and messages. You cannot sign back in: the account returns here only by transfer from another trusted device.'**
-  String get settingsLogoutSubtitle;
 
   /// No description provided for @settingsLogoutConfirmTitle.
   ///
   /// In en, this message translates to:
-  /// **'Log out of this device?'**
+  /// **'Sign out of this phone?'**
   String get settingsLogoutConfirmTitle;
 
   /// No description provided for @settingsLogoutConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This erases the keys that make this device yours. VEIL cannot sign you back in. If this is your only trusted device, the account is gone.'**
+  /// **'This erases your keys and messages on this phone. If this is your only device, the account and its messages are gone. There is no backup and no way to recover them.'**
   String get settingsLogoutConfirmBody;
 
   /// No description provided for @settingsLogoutConfirmPhrase.
   ///
   /// In en, this message translates to:
-  /// **'LOG OUT'**
+  /// **'Sign out'**
   String get settingsLogoutConfirmPhrase;
 
   /// No description provided for @settingsWipeConfirmPhrase.
   ///
   /// In en, this message translates to:
-  /// **'WIPE'**
+  /// **'Wipe'**
   String get settingsWipeConfirmPhrase;
 
   /// No description provided for @settingsRevokeConfirmPhrase.
   ///
   /// In en, this message translates to:
-  /// **'REVOKE'**
+  /// **'Revoke'**
   String get settingsRevokeConfirmPhrase;
 
   /// No description provided for @settingsDeleteAccountConfirmPhrase.
   ///
   /// In en, this message translates to:
-  /// **'DELETE'**
+  /// **'Delete'**
   String get settingsDeleteAccountConfirmPhrase;
 
   /// No description provided for @settingsTypePhraseToContinue.
   ///
   /// In en, this message translates to:
-  /// **'Type {phrase} to continue.'**
+  /// **'Type \"{phrase}\" to continue.'**
   String settingsTypePhraseToContinue(String phrase);
 
   /// No description provided for @settingsRevokeListedTitle.
@@ -1369,19 +853,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsRevokeListedBody.
   ///
   /// In en, this message translates to:
-  /// **'This removes {deviceName} from your trusted devices. VEIL will not create a recovery path for that device.'**
+  /// **'{deviceName} will be signed out and can no longer use this account.'**
   String settingsRevokeListedBody(String deviceName);
 
   /// No description provided for @settingsRevokeListedDone.
   ///
   /// In en, this message translates to:
-  /// **'{deviceName} is no longer a trusted device.'**
+  /// **'{deviceName} was revoked.'**
   String settingsRevokeListedDone(String deviceName);
 
   /// No description provided for @settingsRevokeListedFailed.
   ///
   /// In en, this message translates to:
-  /// **'The device could not be revoked. Try again.'**
+  /// **'Couldn\'t revoke the device. Try again.'**
   String get settingsRevokeListedFailed;
 
   /// No description provided for @settingsDeviceStateCurrent.
@@ -1395,12 +879,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Preferred'**
   String get settingsDeviceStatePreferred;
-
-  /// No description provided for @settingsDeviceStateTrusted.
-  ///
-  /// In en, this message translates to:
-  /// **'Trusted'**
-  String get settingsDeviceStateTrusted;
 
   /// No description provided for @settingsDeviceStateStale.
   ///
@@ -1423,37 +901,19 @@ abstract class AppLocalizations {
   /// No description provided for @settingsDeviceCreated.
   ///
   /// In en, this message translates to:
-  /// **'Created {when}'**
+  /// **'Added {when}'**
   String settingsDeviceCreated(String when);
 
   /// No description provided for @settingsDeviceSeen.
   ///
   /// In en, this message translates to:
-  /// **'Seen {when}'**
+  /// **'Last seen {when}'**
   String settingsDeviceSeen(String when);
-
-  /// No description provided for @settingsDeviceSynced.
-  ///
-  /// In en, this message translates to:
-  /// **'Synced {when}'**
-  String settingsDeviceSynced(String when);
-
-  /// No description provided for @settingsDeviceActivity.
-  ///
-  /// In en, this message translates to:
-  /// **'Activity {when}'**
-  String settingsDeviceActivity(String when);
-
-  /// No description provided for @settingsDeviceTrustedAt.
-  ///
-  /// In en, this message translates to:
-  /// **'Trusted {when}'**
-  String settingsDeviceTrustedAt(String when);
 
   /// No description provided for @settingsDeviceJoinedFrom.
   ///
   /// In en, this message translates to:
-  /// **'Joined from {device}'**
+  /// **'Approved by {device}'**
   String settingsDeviceJoinedFrom(String device);
 
   /// No description provided for @settingsDeviceRevokedAt.
@@ -1462,77 +922,47 @@ abstract class AppLocalizations {
   /// **'Revoked {when}'**
   String settingsDeviceRevokedAt(String when);
 
-  /// No description provided for @settingsDeviceNoteCurrent.
-  ///
-  /// In en, this message translates to:
-  /// **'This is the current trusted device. If every trusted device is lost, VEIL cannot restore access.'**
-  String get settingsDeviceNoteCurrent;
-
   /// No description provided for @settingsDeviceNotePreferred.
   ///
   /// In en, this message translates to:
-  /// **'This trusted device is the current preferred routing device. It is not a cloud recovery anchor.'**
+  /// **'Messages go to this device first.'**
   String get settingsDeviceNotePreferred;
-
-  /// No description provided for @settingsDeviceNoteTrusted.
-  ///
-  /// In en, this message translates to:
-  /// **'This device remains trusted and can continue syncing while another trusted device exists.'**
-  String get settingsDeviceNoteTrusted;
 
   /// No description provided for @settingsDeviceNoteStale.
   ///
   /// In en, this message translates to:
-  /// **'This device is still trusted but recent trusted activity has gone quiet. Revoke it if it should no longer retain access.'**
+  /// **'Not seen for 30 days. Revoke it if you no longer use it.'**
   String get settingsDeviceNoteStale;
 
-  /// No description provided for @settingsDeviceNoteRevoked.
+  /// No description provided for @settingsSecurityDetailsTitle.
   ///
   /// In en, this message translates to:
-  /// **'This device is no longer trusted and cannot resume the session.'**
-  String get settingsDeviceNoteRevoked;
+  /// **'Security details'**
+  String get settingsSecurityDetailsTitle;
 
-  /// No description provided for @settingsGraphStaleCount.
+  /// No description provided for @settingsReadReceiptsCaption.
   ///
   /// In en, this message translates to:
-  /// **'{count} stale'**
-  String settingsGraphStaleCount(int count);
+  /// **'When off, neither of you sees when messages are read.'**
+  String get settingsReadReceiptsCaption;
 
-  /// No description provided for @settingsGraphRevokedCount.
+  /// No description provided for @settingsTypingIndicatorsCaption.
   ///
   /// In en, this message translates to:
-  /// **'{count} revoked'**
-  String settingsGraphRevokedCount(int count);
+  /// **'Lets people see when you\'re typing.'**
+  String get settingsTypingIndicatorsCaption;
 
-  /// No description provided for @settingsGraphRecentActivity.
+  /// No description provided for @settingsDevicesStaleNotice.
   ///
   /// In en, this message translates to:
-  /// **'Recent trusted activity {when}'**
-  String settingsGraphRecentActivity(String when);
+  /// **'{count, plural, =1{A device hasn\'t been seen for 30 days.} other{{count} devices haven\'t been seen for 30 days.}}'**
+  String settingsDevicesStaleNotice(int count);
 
-  /// No description provided for @settingsGraphPreferredDiffersTitle.
+  /// No description provided for @settingsDevicesReview.
   ///
   /// In en, this message translates to:
-  /// **'Preferred device differs'**
-  String get settingsGraphPreferredDiffersTitle;
-
-  /// No description provided for @settingsGraphPreferredDiffersBody.
-  ///
-  /// In en, this message translates to:
-  /// **'{preferred} is currently preferred for routing and directory compatibility. {current} remains trusted.'**
-  String settingsGraphPreferredDiffersBody(String preferred, String current);
-
-  /// No description provided for @settingsGraphStaleTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Stale trusted devices present'**
-  String get settingsGraphStaleTitle;
-
-  /// No description provided for @settingsGraphStaleBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Some trusted devices have no recent trusted activity. Stale does not mean revoked, but they should be reviewed deliberately.'**
-  String get settingsGraphStaleBody;
+  /// **'Review'**
+  String get settingsDevicesReview;
 
   /// No description provided for @chatEmptyTitle.
   ///
@@ -1540,11 +970,11 @@ abstract class AppLocalizations {
   /// **'No messages yet'**
   String get chatEmptyTitle;
 
-  /// No description provided for @chatEmptyBody.
+  /// No description provided for @chatEmptyEncrypted.
   ///
   /// In en, this message translates to:
-  /// **'What you send here is encrypted on this device, for the people in this chat only.'**
-  String get chatEmptyBody;
+  /// **'Messages are end-to-end encrypted.'**
+  String get chatEmptyEncrypted;
 
   /// No description provided for @chatEmptyVerifyAction.
   ///
@@ -1555,7 +985,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatLoadFailedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Could not load messages'**
+  /// **'Couldn\'t load messages'**
   String get chatLoadFailedTitle;
 
   /// No description provided for @chatLoadFailedBody.
@@ -1567,7 +997,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatComposeHint.
   ///
   /// In en, this message translates to:
-  /// **'Type a message'**
+  /// **'Message'**
   String get chatComposeHint;
 
   /// No description provided for @chatSendAction.
@@ -1585,43 +1015,19 @@ abstract class AppLocalizations {
   /// No description provided for @chatLoadingTitle.
   ///
   /// In en, this message translates to:
-  /// **'Loading messages'**
+  /// **'Loading messages…'**
   String get chatLoadingTitle;
-
-  /// No description provided for @chatLoadingBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Fetching the messages sent to this device and decrypting them.'**
-  String get chatLoadingBody;
-
-  /// No description provided for @chatConversationNotFound.
-  ///
-  /// In en, this message translates to:
-  /// **'Conversation not found'**
-  String get chatConversationNotFound;
-
-  /// No description provided for @chatRelockTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Session locked'**
-  String get chatRelockTitle;
-
-  /// No description provided for @chatRelockBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Unlock the app to continue this conversation.'**
-  String get chatRelockBody;
 
   /// No description provided for @chatTitleFallback.
   ///
   /// In en, this message translates to:
-  /// **'Secure conversation'**
+  /// **'Chat'**
   String get chatTitleFallback;
 
   /// No description provided for @chatSubtitleOnline.
   ///
   /// In en, this message translates to:
-  /// **'Online now'**
+  /// **'Online'**
   String get chatSubtitleOnline;
 
   /// No description provided for @chatGroupUnknownSender.
@@ -1639,7 +1045,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatTimerTooltip.
   ///
   /// In en, this message translates to:
-  /// **'Disappearing messages: {value}'**
+  /// **'Disappearing: {value}'**
   String chatTimerTooltip(String value);
 
   /// No description provided for @chatSearchHint.
@@ -1657,91 +1063,79 @@ abstract class AppLocalizations {
   /// No description provided for @chatSearchTooltip.
   ///
   /// In en, this message translates to:
-  /// **'Search messages'**
+  /// **'Search'**
   String get chatSearchTooltip;
 
   /// No description provided for @chatSearchMatchCount.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =0{No matches on this device} =1{1 match on this device} other{{count} matches on this device}}'**
+  /// **'{count, plural, =0{No matches} =1{1 match} other{{count} matches}}'**
   String chatSearchMatchCount(int count);
 
   /// No description provided for @chatSearchSearching.
   ///
   /// In en, this message translates to:
-  /// **'Searching this device…'**
+  /// **'Searching…'**
   String get chatSearchSearching;
-
-  /// No description provided for @chatBannerConversationIssue.
-  ///
-  /// In en, this message translates to:
-  /// **'Conversation issue'**
-  String get chatBannerConversationIssue;
 
   /// No description provided for @chatBannerRelayReconnecting.
   ///
   /// In en, this message translates to:
-  /// **'Relay reconnecting'**
+  /// **'Connecting…'**
   String get chatBannerRelayReconnecting;
-
-  /// No description provided for @chatBannerDeliveryStalled.
-  ///
-  /// In en, this message translates to:
-  /// **'Delivery stalled'**
-  String get chatBannerDeliveryStalled;
 
   /// No description provided for @chatBannerQueuedLocally.
   ///
   /// In en, this message translates to:
-  /// **'Waiting to be sent'**
+  /// **'Sending…'**
   String get chatBannerQueuedLocally;
 
   /// No description provided for @chatBannerFailedSends.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message was not sent.} other{{count} messages were not sent.}} Retry once the relay is reachable.'**
+  /// **'{count, plural, =1{1 message wasn\'t sent.} other{{count} messages weren\'t sent.}}'**
   String chatBannerFailedSends(int count);
 
   /// No description provided for @chatBannerUploadingAttachments.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 attachment is} other{{count} attachments are}} being uploaded, encrypted, before sending.'**
+  /// **'{count, plural, =1{1 attachment is} other{{count} attachments are}} being encrypted and uploaded.'**
   String chatBannerUploadingAttachments(int count);
 
   /// No description provided for @chatBannerQueuedMessages.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message is} other{{count} messages are}} waiting on this device and will be sent after reconnecting.'**
+  /// **'{count, plural, =1{1 message is} other{{count} messages are}} waiting to be sent.'**
   String chatBannerQueuedMessages(int count);
 
   /// No description provided for @chatRetryFailedSendsAction.
   ///
   /// In en, this message translates to:
-  /// **'Retry failed sends'**
+  /// **'Retry now'**
   String get chatRetryFailedSendsAction;
 
   /// No description provided for @chatLoadOlder.
   ///
   /// In en, this message translates to:
-  /// **'Load older'**
+  /// **'Load older messages'**
   String get chatLoadOlder;
 
   /// No description provided for @chatLoadingOlder.
   ///
   /// In en, this message translates to:
-  /// **'Loading older'**
+  /// **'Loading older messages…'**
   String get chatLoadingOlder;
 
   /// No description provided for @chatSearchEmptyTitle.
   ///
   /// In en, this message translates to:
-  /// **'No matches'**
+  /// **'No messages found'**
   String get chatSearchEmptyTitle;
 
   /// No description provided for @chatSearchEmptyBody.
   ///
   /// In en, this message translates to:
-  /// **'Nothing in this chat on this device matches. Only messages loaded here are searched.'**
+  /// **'Only messages on this phone are searched.'**
   String get chatSearchEmptyBody;
 
   /// No description provided for @chatTtlSheetTitle.
@@ -1750,29 +1144,23 @@ abstract class AppLocalizations {
   /// **'Disappearing messages'**
   String get chatTtlSheetTitle;
 
+  /// No description provided for @chatTtlSheetFooter.
+  ///
+  /// In en, this message translates to:
+  /// **'The timer starts when a message is sent.'**
+  String get chatTtlSheetFooter;
+
   /// No description provided for @chatTtlOff.
   ///
   /// In en, this message translates to:
   /// **'Off'**
   String get chatTtlOff;
 
-  /// No description provided for @chatTtlOffCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Messages do not disappear.'**
-  String get chatTtlOffCaption;
-
   /// No description provided for @chatTtl10s.
   ///
   /// In en, this message translates to:
   /// **'10 seconds'**
   String get chatTtl10s;
-
-  /// No description provided for @chatTtl10sCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Gone almost at once. For when the other person is looking.'**
-  String get chatTtl10sCaption;
 
   /// No description provided for @chatTtl1m.
   ///
@@ -1798,40 +1186,34 @@ abstract class AppLocalizations {
   /// **'1 day'**
   String get chatTtl1d;
 
-  /// No description provided for @chatTtl1dCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'A good default for everyday chats.'**
-  String get chatTtl1dCaption;
-
   /// No description provided for @chatTtlCustom.
   ///
   /// In en, this message translates to:
-  /// **'Custom timer'**
+  /// **'Custom'**
   String get chatTtlCustom;
 
   /// No description provided for @chatTtlDisabledLabel.
   ///
   /// In en, this message translates to:
-  /// **'Disappear off'**
+  /// **'Off'**
   String get chatTtlDisabledLabel;
 
   /// No description provided for @chatAttachmentTicketTitle.
   ///
   /// In en, this message translates to:
-  /// **'Download ticket issued'**
+  /// **'File not downloaded'**
   String get chatAttachmentTicketTitle;
 
   /// No description provided for @chatAttachmentTicketBody.
   ///
   /// In en, this message translates to:
-  /// **'The relay issued a short-lived download ticket for this device.\n\nSummary: {summary}\n\nThis build stops here: it does not fetch or open the file yet. The ticket itself is not shown, so it cannot be copied or shared.'**
+  /// **'The server would send this file, but this version can\'t download or open it yet.\n\n{summary}'**
   String chatAttachmentTicketBody(String summary);
 
   /// No description provided for @chatAttachmentTicketFailed.
   ///
   /// In en, this message translates to:
-  /// **'Download request failed'**
+  /// **'Couldn\'t request the download'**
   String get chatAttachmentTicketFailed;
 
   /// No description provided for @chatAttachmentResolveAction.
@@ -1843,50 +1225,50 @@ abstract class AppLocalizations {
   /// No description provided for @chatAttachmentResolvingAction.
   ///
   /// In en, this message translates to:
-  /// **'Requesting download'**
+  /// **'Requesting…'**
   String get chatAttachmentResolvingAction;
-
-  /// No description provided for @chatAttachmentEncryptedImage.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted image'**
-  String get chatAttachmentEncryptedImage;
-
-  /// No description provided for @chatAttachmentEncryptedVideo.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted video'**
-  String get chatAttachmentEncryptedVideo;
-
-  /// No description provided for @chatAttachmentEncryptedAudio.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted audio'**
-  String get chatAttachmentEncryptedAudio;
-
-  /// No description provided for @chatAttachmentEncryptedDocument.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted document'**
-  String get chatAttachmentEncryptedDocument;
-
-  /// No description provided for @chatAttachmentEncryptedFile.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted file'**
-  String get chatAttachmentEncryptedFile;
 
   /// No description provided for @chatAttachmentStateBanner.
   ///
   /// In en, this message translates to:
-  /// **'Attachment state'**
+  /// **'Attachment'**
   String get chatAttachmentStateBanner;
 
   /// No description provided for @chatAttachmentCannotOpen.
   ///
   /// In en, this message translates to:
-  /// **'This version cannot open attachments.'**
+  /// **'This version can\'t open attachments.'**
   String get chatAttachmentCannotOpen;
+
+  /// No description provided for @chatAttachmentKindPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get chatAttachmentKindPhoto;
+
+  /// No description provided for @chatAttachmentKindVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Video'**
+  String get chatAttachmentKindVideo;
+
+  /// No description provided for @chatAttachmentKindAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio'**
+  String get chatAttachmentKindAudio;
+
+  /// No description provided for @chatAttachmentKindDocument.
+  ///
+  /// In en, this message translates to:
+  /// **'Document'**
+  String get chatAttachmentKindDocument;
+
+  /// No description provided for @chatAttachmentKindFile.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get chatAttachmentKindFile;
 
   /// No description provided for @reactionsMoreTooltip.
   ///
@@ -1894,58 +1276,16 @@ abstract class AppLocalizations {
   /// **'More reactions'**
   String get reactionsMoreTooltip;
 
-  /// No description provided for @attachmentTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Attachment'**
-  String get attachmentTitle;
-
-  /// No description provided for @attachmentPlaceholderNotice.
-  ///
-  /// In en, this message translates to:
-  /// **'This version has no file picker. It sends a placeholder file instead: 2 KB of random bytes, encrypted and uploaded the way a chosen file will be.'**
-  String get attachmentPlaceholderNotice;
-
-  /// No description provided for @attachmentNameCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'The name stays on this device. Its extension sets the type the recipient is shown: {contentType}'**
-  String attachmentNameCaption(String contentType);
-
-  /// No description provided for @attachmentNameInputLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'File name'**
-  String get attachmentNameInputLabel;
-
-  /// No description provided for @attachmentSendFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Attachment send failed'**
-  String get attachmentSendFailedTitle;
-
-  /// No description provided for @attachmentSendAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypt and send'**
-  String get attachmentSendAction;
-
-  /// No description provided for @attachmentSendingAction.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypting and sending'**
-  String get attachmentSendingAction;
-
   /// No description provided for @chatScreenshotToast.
   ///
   /// In en, this message translates to:
-  /// **'Screenshot detected in this conversation. Veil cannot prevent it on this device — a notice is being sent to the other side.'**
+  /// **'You took a screenshot. Screenshots can\'t be blocked on this phone, so a notice is being sent to the other person.'**
   String get chatScreenshotToast;
 
   /// No description provided for @chatScreenshotSystemNotice.
   ///
   /// In en, this message translates to:
-  /// **'Peer took a screenshot of this conversation on their device.'**
+  /// **'Someone in this chat took a screenshot.'**
   String get chatScreenshotSystemNotice;
 
   /// No description provided for @chatDecryptingEnvelope.
@@ -1981,14 +1321,32 @@ abstract class AppLocalizations {
   /// No description provided for @chatDecryptIdentityRejected.
   ///
   /// In en, this message translates to:
-  /// **'Held back: the sender\'s identity changed'**
+  /// **'Held back: the sender\'s safety number changed'**
   String get chatDecryptIdentityRejected;
 
-  /// No description provided for @chatLegacyUnverifiedBadge.
+  /// No description provided for @chatLegacySenderLine.
   ///
   /// In en, this message translates to:
-  /// **'Sender not verified (old format)'**
-  String get chatLegacyUnverifiedBadge;
+  /// **'Sent from an older version; not verified'**
+  String get chatLegacySenderLine;
+
+  /// No description provided for @chatNotSentTapToRetry.
+  ///
+  /// In en, this message translates to:
+  /// **'Not sent. Tap to retry.'**
+  String get chatNotSentTapToRetry;
+
+  /// No description provided for @chatDayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get chatDayToday;
+
+  /// No description provided for @chatDayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get chatDayYesterday;
 
   /// No description provided for @chatNoticeIdentityChanged.
   ///
@@ -2005,7 +1363,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatNoticeSenderKeysKept.
   ///
   /// In en, this message translates to:
-  /// **'The server listed this group without its group encryption keys. This device keeps using them.'**
+  /// **'The server listed this group without its keys. This phone keeps using the ones it has.'**
   String get chatNoticeSenderKeysKept;
 
   /// No description provided for @chatNoticeGroupMemberAdded.
@@ -2029,7 +1387,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatIdentityChangedBody.
   ///
   /// In en, this message translates to:
-  /// **'Nothing is sent to the new key until you review it.'**
+  /// **'Nothing is sent until you review it.'**
   String get chatIdentityChangedBody;
 
   /// No description provided for @chatIdentityChangedReview.
@@ -2047,7 +1405,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatIdentityChangedElsewhereBody.
   ///
   /// In en, this message translates to:
-  /// **'They showed a new key in a group you share. Until you review it there, they are not marked as verified.'**
+  /// **'Their safety number changed in a group you share. Until you review it there, they aren\'t shown as verified.'**
   String get chatIdentityChangedElsewhereBody;
 
   /// No description provided for @chatAccountHoldOtherTitle.
@@ -2059,19 +1417,19 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOtherBody.
   ///
   /// In en, this message translates to:
-  /// **'This chat is listed as @{handle}, but it is not the account you talked to as @{handle} before. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  /// **'This chat is listed as @{handle}, but it isn\'t the account you talked to as @{handle} before. Nothing is sent or opened here until you confirm you want to talk to this account.'**
   String chatAccountHoldOtherBody(String handle);
 
   /// No description provided for @chatAccountHoldUnissuedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Name no VEIL server gives out'**
+  /// **'A name the server never gives out'**
   String get chatAccountHoldUnissuedTitle;
 
   /// No description provided for @chatAccountHoldUnissuedBody.
   ///
   /// In en, this message translates to:
-  /// **'This chat is listed under a name no VEIL server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  /// **'This chat is listed under a name no server issues, so it may only look like someone you know. Nothing is sent or opened here until you confirm you want to talk to this account.'**
   String get chatAccountHoldUnissuedBody;
 
   /// No description provided for @chatAccountHoldOwnTitle.
@@ -2083,7 +1441,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOwnBody.
   ///
   /// In en, this message translates to:
-  /// **'This chat is listed under your own name, @{handle}, but with another account. No one else can have your name: the list this device received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.'**
+  /// **'This chat is listed under your own name, @{handle}, but with another account. No one else can have your name, so the list this phone received was altered, perhaps to pass someone off as you. Nothing is sent or opened here until you confirm you want to talk to this account.'**
   String chatAccountHoldOwnBody(String handle);
 
   /// No description provided for @chatAccountHoldOwnConfirmTitle.
@@ -2095,7 +1453,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatAccountHoldOwnConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'No other VEIL account can have your name: the server showed this account under it. Continue only if you confirmed another way (in person, a call) whose account this is.'**
+  /// **'No other account can have your name, yet the server showed this one under it. Continue only if you confirmed another way, in person or on a call, whose account this is.'**
   String get chatAccountHoldOwnConfirmBody;
 
   /// No description provided for @chatAccountHoldAcknowledge.
@@ -2113,7 +1471,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatRetrySend.
   ///
   /// In en, this message translates to:
-  /// **'Retry send'**
+  /// **'Retry'**
   String get chatRetrySend;
 
   /// No description provided for @chatRetryUpload.
@@ -2131,7 +1489,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatDeliveryQueued.
   ///
   /// In en, this message translates to:
-  /// **'Queued'**
+  /// **'Waiting'**
   String get chatDeliveryQueued;
 
   /// No description provided for @chatDeliveryUploading.
@@ -2143,7 +1501,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatDeliveryFailed.
   ///
   /// In en, this message translates to:
-  /// **'Retry required'**
+  /// **'Not sent'**
   String get chatDeliveryFailed;
 
   /// No description provided for @chatDeliverySent.
@@ -2167,7 +1525,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatPhaseStaged.
   ///
   /// In en, this message translates to:
-  /// **'Staged'**
+  /// **'Ready'**
   String get chatPhaseStaged;
 
   /// No description provided for @chatPhasePreparing.
@@ -2185,13 +1543,13 @@ abstract class AppLocalizations {
   /// No description provided for @chatPhaseFinalizing.
   ///
   /// In en, this message translates to:
-  /// **'Finalizing'**
+  /// **'Finishing'**
   String get chatPhaseFinalizing;
 
   /// No description provided for @chatPhaseFailed.
   ///
   /// In en, this message translates to:
-  /// **'Retry required'**
+  /// **'Not sent'**
   String get chatPhaseFailed;
 
   /// No description provided for @chatPhaseCanceled.
@@ -2203,37 +1561,37 @@ abstract class AppLocalizations {
   /// No description provided for @chatPhaseDescStaged.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted on this device and ready.{sizeLabel} The upload starts once the relay is reachable.'**
+  /// **'Encrypted and ready.{sizeLabel} It uploads when you\'re online.'**
   String chatPhaseDescStaged(String sizeLabel);
 
   /// No description provided for @chatPhaseDescPreparing.
   ///
   /// In en, this message translates to:
-  /// **'Getting permission to upload and checking the encrypted file.'**
+  /// **'Preparing the upload.'**
   String get chatPhaseDescPreparing;
 
   /// No description provided for @chatPhaseDescUploading.
   ///
   /// In en, this message translates to:
-  /// **'Uploading the encrypted file. The relay never sees its contents.'**
+  /// **'Uploading the encrypted file.'**
   String get chatPhaseDescUploading;
 
   /// No description provided for @chatPhaseDescFinalizing.
   ///
   /// In en, this message translates to:
-  /// **'Attaching the uploaded file to an encrypted message.'**
+  /// **'Attaching the file to the message.'**
   String get chatPhaseDescFinalizing;
 
   /// No description provided for @chatPhaseDescFailed.
   ///
   /// In en, this message translates to:
-  /// **'Upload failed. A retry uses the encrypted copy kept on this device.'**
+  /// **'The upload failed.'**
   String get chatPhaseDescFailed;
 
   /// No description provided for @chatPhaseDescCanceled.
   ///
   /// In en, this message translates to:
-  /// **'Upload stopped on this device. A retry starts over with the encrypted copy kept here.'**
+  /// **'The upload was canceled.'**
   String get chatPhaseDescCanceled;
 
   /// No description provided for @chatAttachmentSizeBytes.
@@ -2251,7 +1609,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatTypingUnnamed.
   ///
   /// In en, this message translates to:
-  /// **'typing…'**
+  /// **'Typing…'**
   String get chatTypingUnnamed;
 
   /// No description provided for @chatReactionSemantics.
@@ -2287,25 +1645,25 @@ abstract class AppLocalizations {
   /// No description provided for @chatNetworkRecoveryFailed.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message is} other{{count} messages are}} waiting for the relay to come back. {retryLabel}'**
+  /// **'{count, plural, =1{1 message wasn\'t sent.} other{{count} messages weren\'t sent.}} {retryLabel}'**
   String chatNetworkRecoveryFailed(int count, String retryLabel);
 
   /// No description provided for @chatNetworkRecoveryUploading.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 attachment is} other{{count} attachments are}} paused while the relay reconnects. {retryLabel}'**
+  /// **'{count, plural, =1{1 attachment is waiting.} other{{count} attachments are waiting.}} {retryLabel}'**
   String chatNetworkRecoveryUploading(int count, String retryLabel);
 
   /// No description provided for @chatNetworkRecoveryQueued.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 message stays} other{{count} messages stay}} queued on this device. {retryLabel}'**
+  /// **'{count, plural, =1{1 message is waiting.} other{{count} messages are waiting.}} {retryLabel}'**
   String chatNetworkRecoveryQueued(int count, String retryLabel);
 
   /// No description provided for @chatRetryResumes.
   ///
   /// In en, this message translates to:
-  /// **'Sending resumes when the relay reconnects.'**
+  /// **'They\'ll be sent when you\'re back online.'**
   String get chatRetryResumes;
 
   /// No description provided for @chatRetryNextIn.
@@ -2389,103 +1747,169 @@ abstract class AppLocalizations {
   /// No description provided for @errorSessionRequired.
   ///
   /// In en, this message translates to:
-  /// **'This device no longer has a trusted VEIL session.'**
+  /// **'This phone is signed out.'**
   String get errorSessionRequired;
 
   /// No description provided for @errorTransferNeedsApi.
   ///
   /// In en, this message translates to:
-  /// **'Device transfer is available only while connected to the VEIL API.'**
+  /// **'Moving to a new phone needs a server connection.'**
   String get errorTransferNeedsApi;
 
   /// No description provided for @errorClaimBeforeCompletion.
   ///
   /// In en, this message translates to:
-  /// **'Register this new device first, then wait for approval from the old device.'**
+  /// **'Register this phone first, then approve it on the old one.'**
   String get errorClaimBeforeCompletion;
 
   /// No description provided for @errorUnexpectedResponse.
   ///
   /// In en, this message translates to:
-  /// **'The relay returned an unexpected response. Try again.'**
+  /// **'The server sent an unexpected response. Try again.'**
   String get errorUnexpectedResponse;
 
   /// No description provided for @errorUploadFailed.
   ///
   /// In en, this message translates to:
-  /// **'The encrypted upload failed. Check the connection and try again.'**
+  /// **'The upload failed. Check your connection and try again.'**
   String get errorUploadFailed;
 
   /// No description provided for @errorSessionInvalid.
   ///
   /// In en, this message translates to:
-  /// **'This session is no longer valid on this device.'**
+  /// **'This session is no longer valid on this phone.'**
   String get errorSessionInvalid;
 
   /// No description provided for @errorNotAllowed.
   ///
   /// In en, this message translates to:
-  /// **'This action is not allowed on the current device.'**
+  /// **'This isn\'t allowed on this phone.'**
   String get errorNotAllowed;
 
   /// No description provided for @errorNotFound.
   ///
   /// In en, this message translates to:
-  /// **'The relay could not find what was asked for.'**
+  /// **'The server couldn\'t find that.'**
   String get errorNotFound;
 
   /// No description provided for @errorConflict.
   ///
   /// In en, this message translates to:
-  /// **'This request conflicts with the current state. Refresh and try again.'**
+  /// **'This conflicts with the current state. Refresh and try again.'**
   String get errorConflict;
 
   /// No description provided for @errorRejected.
   ///
   /// In en, this message translates to:
-  /// **'The submitted values were rejected. Review them and try again.'**
+  /// **'The server didn\'t accept this. Check what you entered and try again.'**
   String get errorRejected;
 
   /// No description provided for @errorRelayFailed.
   ///
   /// In en, this message translates to:
-  /// **'The VEIL relay could not complete the request. Try again shortly.'**
+  /// **'The server couldn\'t complete the request.'**
   String get errorRelayFailed;
 
   /// No description provided for @errorApiNeedsTls.
   ///
   /// In en, this message translates to:
-  /// **'The VEIL API endpoint must use TLS outside local development.'**
+  /// **'The server address must use TLS outside local development.'**
   String get errorApiNeedsTls;
 
   /// No description provided for @errorRealtimeNeedsTls.
   ///
   /// In en, this message translates to:
-  /// **'The VEIL realtime endpoint must use TLS outside local development.'**
+  /// **'The realtime address must use TLS outside local development.'**
   String get errorRealtimeNeedsTls;
 
-  /// No description provided for @conversationsEmptyTitle.
+  /// No description provided for @errorNetworkTimeout.
   ///
   /// In en, this message translates to:
-  /// **'No conversations yet'**
-  String get conversationsEmptyTitle;
+  /// **'The server took too long to answer.'**
+  String get errorNetworkTimeout;
 
-  /// No description provided for @conversationsEmptyBody.
+  /// No description provided for @errorNetworkUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'Find someone by handle and send the first encrypted message.'**
-  String get conversationsEmptyBody;
+  /// **'Can\'t reach the server. Check your connection.'**
+  String get errorNetworkUnavailable;
 
-  /// No description provided for @conversationsSearchHint.
+  /// No description provided for @errorTlsPinMismatch.
   ///
   /// In en, this message translates to:
-  /// **'Search conversations and archive'**
-  String get conversationsSearchHint;
+  /// **'The server\'s certificate isn\'t the one this app trusts.'**
+  String get errorTlsPinMismatch;
+
+  /// No description provided for @errorChallengeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The sign-in request expired. Try again.'**
+  String get errorChallengeInvalid;
+
+  /// No description provided for @errorDeviceNotActive.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone was removed from this account.'**
+  String get errorDeviceNotActive;
+
+  /// No description provided for @errorDeviceSignatureInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'The server couldn\'t verify this phone.'**
+  String get errorDeviceSignatureInvalid;
+
+  /// No description provided for @errorHandleTaken.
+  ///
+  /// In en, this message translates to:
+  /// **'That handle is taken. Try another.'**
+  String get errorHandleTaken;
+
+  /// No description provided for @errorTransferInactive.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer has ended. Start a new one on the old phone.'**
+  String get errorTransferInactive;
+
+  /// No description provided for @errorTransferCodeInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This transfer code isn\'t valid.'**
+  String get errorTransferCodeInvalid;
+
+  /// No description provided for @errorTransferClaimRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter the transfer code on the new phone first.'**
+  String get errorTransferClaimRequired;
+
+  /// No description provided for @errorTransferApprovalRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'The old phone hasn\'t approved this phone yet.'**
+  String get errorTransferApprovalRequired;
+
+  /// No description provided for @errorTransferCompletionInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone couldn\'t finish the transfer. Start again on the old phone.'**
+  String get errorTransferCompletionInvalid;
+
+  /// No description provided for @errorAttachmentCanceled.
+  ///
+  /// In en, this message translates to:
+  /// **'The upload was canceled.'**
+  String get errorAttachmentCanceled;
+
+  /// No description provided for @errorAttachmentRejected.
+  ///
+  /// In en, this message translates to:
+  /// **'This file couldn\'t be sent. Attach it again.'**
+  String get errorAttachmentRejected;
 
   /// No description provided for @conversationsNewChat.
   ///
   /// In en, this message translates to:
-  /// **'New direct chat'**
+  /// **'New chat'**
   String get conversationsNewChat;
 
   /// No description provided for @conversationsNewGroup.
@@ -2493,18 +1917,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New group'**
   String get conversationsNewGroup;
-
-  /// No description provided for @conversationsArchiveSection.
-  ///
-  /// In en, this message translates to:
-  /// **'Archive results'**
-  String get conversationsArchiveSection;
-
-  /// No description provided for @conversationsLoadingArchive.
-  ///
-  /// In en, this message translates to:
-  /// **'Searching archive…'**
-  String get conversationsLoadingArchive;
 
   /// No description provided for @conversationsPreviewEmpty.
   ///
@@ -2517,6 +1929,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'{count, plural, =1{1 message waiting to be sent} other{{count} messages waiting to be sent}}'**
   String conversationsQueued(int count);
+
+  /// No description provided for @conversationsNotSent.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 message wasn\'t sent} other{{count} messages weren\'t sent}}'**
+  String conversationsNotSent(int count);
 
   /// No description provided for @conversationsPreviewExpired.
   ///
@@ -2533,13 +1951,13 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsPreviewImage.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted image'**
+  /// **'Photo'**
   String get conversationsPreviewImage;
 
   /// No description provided for @conversationsPreviewAttachment.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted attachment'**
+  /// **'File'**
   String get conversationsPreviewAttachment;
 
   /// No description provided for @conversationsPreviewSystem.
@@ -2551,74 +1969,50 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsPreviewVoice.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted voice note'**
+  /// **'Voice message'**
   String get conversationsPreviewVoice;
 
   /// No description provided for @conversationsPreviewSticker.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted sticker'**
+  /// **'Sticker'**
   String get conversationsPreviewSticker;
 
   /// No description provided for @conversationsPreviewReaction.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted reaction'**
+  /// **'Reaction'**
   String get conversationsPreviewReaction;
 
-  /// No description provided for @conversationsPreviewCall.
+  /// No description provided for @conversationsBarConnecting.
   ///
   /// In en, this message translates to:
-  /// **'Encrypted call event'**
-  String get conversationsPreviewCall;
+  /// **'Connecting…'**
+  String get conversationsBarConnecting;
 
-  /// No description provided for @conversationsRelayLinked.
+  /// No description provided for @conversationsBarOffline.
   ///
   /// In en, this message translates to:
-  /// **'Relay linked'**
-  String get conversationsRelayLinked;
+  /// **'Offline'**
+  String get conversationsBarOffline;
 
-  /// No description provided for @conversationsRelayIdle.
+  /// No description provided for @conversationsUnreadSemantics.
   ///
   /// In en, this message translates to:
-  /// **'Relay not connected'**
-  String get conversationsRelayIdle;
-
-  /// No description provided for @conversationsCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 conversation} other{{count} conversations}}'**
-  String conversationsCount(int count);
-
-  /// No description provided for @conversationsNoBackup.
-  ///
-  /// In en, this message translates to:
-  /// **'No backup'**
-  String get conversationsNoBackup;
+  /// **'{count, plural, =1{1 unread message} other{{count} unread messages}}'**
+  String conversationsUnreadSemantics(int count);
 
   /// No description provided for @conversationsSyncIssueTitle.
   ///
   /// In en, this message translates to:
-  /// **'Sync issue'**
+  /// **'Couldn\'t refresh'**
   String get conversationsSyncIssueTitle;
-
-  /// No description provided for @conversationsRelayInterruptedBody.
-  ///
-  /// In en, this message translates to:
-  /// **'The connection to the relay dropped. Messages waiting to be sent go out once it is back.'**
-  String get conversationsRelayInterruptedBody;
 
   /// No description provided for @conversationsSearchHintCompact.
   ///
   /// In en, this message translates to:
-  /// **'Search chats and messages'**
+  /// **'Search'**
   String get conversationsSearchHintCompact;
-
-  /// No description provided for @conversationsSearchLocalNote.
-  ///
-  /// In en, this message translates to:
-  /// **'Search stays on this device.'**
-  String get conversationsSearchLocalNote;
 
   /// No description provided for @conversationsFilterAllSenders.
   ///
@@ -2629,13 +2023,13 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsFilterMine.
   ///
   /// In en, this message translates to:
-  /// **'Mine'**
+  /// **'From me'**
   String get conversationsFilterMine;
 
   /// No description provided for @conversationsFilterTheirs.
   ///
   /// In en, this message translates to:
-  /// **'Theirs'**
+  /// **'From them'**
   String get conversationsFilterTheirs;
 
   /// No description provided for @conversationsFilterAllTypes.
@@ -2665,73 +2059,61 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsFilterLast7Days.
   ///
   /// In en, this message translates to:
-  /// **'Last 7d'**
+  /// **'Last 7 days'**
   String get conversationsFilterLast7Days;
 
   /// No description provided for @conversationsFilterLast30Days.
   ///
   /// In en, this message translates to:
-  /// **'Last 30d'**
+  /// **'Last 30 days'**
   String get conversationsFilterLast30Days;
 
   /// No description provided for @conversationsSectionLabel.
   ///
   /// In en, this message translates to:
-  /// **'CONVERSATIONS'**
+  /// **'Chats'**
   String get conversationsSectionLabel;
-
-  /// No description provided for @conversationsMatchCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 match} other{{count} matches}}'**
-  String conversationsMatchCount(int count);
 
   /// No description provided for @conversationsNoMatchTitle.
   ///
   /// In en, this message translates to:
-  /// **'No matching conversations'**
+  /// **'No matching chats'**
   String get conversationsNoMatchTitle;
 
   /// No description provided for @conversationsNoneYetTitle.
   ///
   /// In en, this message translates to:
-  /// **'No conversations yet'**
+  /// **'No chats yet'**
   String get conversationsNoneYetTitle;
 
   /// No description provided for @conversationsNoMatchBody.
   ///
   /// In en, this message translates to:
-  /// **'No name or handle on this device matches.'**
+  /// **'No name or handle matches.'**
   String get conversationsNoMatchBody;
 
   /// No description provided for @conversationsNoneYetBody.
   ///
   /// In en, this message translates to:
-  /// **'Start one with someone\'s handle. VEIL does not look through your contacts: you find people by the handle they give you.'**
+  /// **'Start a chat with someone\'s handle.'**
   String get conversationsNoneYetBody;
 
   /// No description provided for @conversationsStartDirect.
   ///
   /// In en, this message translates to:
-  /// **'Start direct chat'**
+  /// **'New chat'**
   String get conversationsStartDirect;
 
   /// No description provided for @conversationsMessagesSection.
   ///
   /// In en, this message translates to:
-  /// **'MESSAGES'**
+  /// **'Messages'**
   String get conversationsMessagesSection;
-
-  /// No description provided for @conversationsResultCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 result} other{{count} results}}'**
-  String conversationsResultCount(int count);
 
   /// No description provided for @conversationsNoMessageMatchBody.
   ///
   /// In en, this message translates to:
-  /// **'No message on this device matches with these filters.'**
+  /// **'No message matches these filters.'**
   String get conversationsNoMessageMatchBody;
 
   /// No description provided for @conversationsResultFromYou.
@@ -2749,25 +2131,25 @@ abstract class AppLocalizations {
   /// No description provided for @conversationsKindImage.
   ///
   /// In en, this message translates to:
-  /// **'Image'**
+  /// **'Photo'**
   String get conversationsKindImage;
 
   /// No description provided for @conversationsKindAttachment.
   ///
   /// In en, this message translates to:
-  /// **'Attachment'**
+  /// **'File'**
   String get conversationsKindAttachment;
 
   /// No description provided for @conversationsKindSystem.
   ///
   /// In en, this message translates to:
-  /// **'System'**
+  /// **'Notice'**
   String get conversationsKindSystem;
 
   /// No description provided for @conversationsKindVoice.
   ///
   /// In en, this message translates to:
-  /// **'Voice'**
+  /// **'Voice message'**
   String get conversationsKindVoice;
 
   /// No description provided for @conversationsKindSticker.
@@ -2782,52 +2164,46 @@ abstract class AppLocalizations {
   /// **'Reaction'**
   String get conversationsKindReaction;
 
-  /// No description provided for @conversationsKindCall.
-  ///
-  /// In en, this message translates to:
-  /// **'Call'**
-  String get conversationsKindCall;
-
   /// No description provided for @conversationsLoadingMore.
   ///
   /// In en, this message translates to:
-  /// **'Loading more'**
+  /// **'Loading more…'**
   String get conversationsLoadingMore;
 
   /// No description provided for @conversationsLoadMore.
   ///
   /// In en, this message translates to:
-  /// **'Load more results'**
+  /// **'Load more'**
   String get conversationsLoadMore;
 
   /// No description provided for @conversationsChoosePaneTitle.
   ///
   /// In en, this message translates to:
-  /// **'Select a conversation'**
+  /// **'Select a chat'**
   String get conversationsChoosePaneTitle;
 
   /// No description provided for @conversationsChoosePaneBody.
   ///
   /// In en, this message translates to:
-  /// **'Pick one from the list, or start a new one from the bar above it.'**
+  /// **'Pick one from the list or start a new one.'**
   String get conversationsChoosePaneBody;
 
   /// No description provided for @conversationsNewTooltip.
   ///
   /// In en, this message translates to:
-  /// **'New conversation'**
+  /// **'New chat'**
   String get conversationsNewTooltip;
 
   /// No description provided for @conversationsRowSemantics.
   ///
   /// In en, this message translates to:
-  /// **'Conversation with {name}'**
+  /// **'Chat with {name}'**
   String conversationsRowSemantics(String name);
 
   /// No description provided for @conversationsGroupRowSemantics.
   ///
   /// In en, this message translates to:
-  /// **'Group conversation with {names}'**
+  /// **'Group chat with {names}'**
   String conversationsGroupRowSemantics(String names);
 
   /// No description provided for @conversationsGroupMark.
@@ -2848,18 +2224,6 @@ abstract class AppLocalizations {
   /// **'Contacts'**
   String get navContacts;
 
-  /// No description provided for @navStories.
-  ///
-  /// In en, this message translates to:
-  /// **'Stories'**
-  String get navStories;
-
-  /// No description provided for @navCalls.
-  ///
-  /// In en, this message translates to:
-  /// **'Calls'**
-  String get navCalls;
-
   /// No description provided for @navSettings.
   ///
   /// In en, this message translates to:
@@ -2869,14 +2233,8 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkTitle.
   ///
   /// In en, this message translates to:
-  /// **'One-time secret link'**
+  /// **'One-time link'**
   String get oneTimeLinkTitle;
-
-  /// No description provided for @oneTimeLinkSettingsSubtitle.
-  ///
-  /// In en, this message translates to:
-  /// **'An encrypted message that is gone once opened. The recipient needs no app.'**
-  String get oneTimeLinkSettingsSubtitle;
 
   /// No description provided for @oneTimeLinkSecretLabel.
   ///
@@ -2887,20 +2245,20 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkSecretHint.
   ///
   /// In en, this message translates to:
-  /// **'A password, an account number, a sensitive note…'**
+  /// **'A password, an account number, a note'**
   String get oneTimeLinkSecretHint;
 
   /// No description provided for @oneTimeLinkUsePassphrase.
   ///
   /// In en, this message translates to:
-  /// **'Lock with a passphrase'**
+  /// **'Protect with a passphrase'**
   String get oneTimeLinkUsePassphrase;
 
-  /// No description provided for @oneTimeLinkUsePassphraseBody.
+  /// No description provided for @oneTimeLinkUsePassphraseCaption.
   ///
   /// In en, this message translates to:
-  /// **'Keeps the key out of the link. Send the passphrase another way.'**
-  String get oneTimeLinkUsePassphraseBody;
+  /// **'The secret can\'t be read without it.'**
+  String get oneTimeLinkUsePassphraseCaption;
 
   /// No description provided for @oneTimeLinkPassphraseLabel.
   ///
@@ -2923,7 +2281,7 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkFailed.
   ///
   /// In en, this message translates to:
-  /// **'The link could not be created. Try again in a moment.'**
+  /// **'Couldn\'t create the link. Try again in a moment.'**
   String get oneTimeLinkFailed;
 
   /// No description provided for @oneTimeLinkCopy.
@@ -2941,7 +2299,7 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkExpires.
   ///
   /// In en, this message translates to:
-  /// **'Unopened, the relay deletes it on {when}.'**
+  /// **'If it isn\'t opened, it\'s deleted on {when}.'**
   String oneTimeLinkExpires(String when);
 
   /// No description provided for @oneTimeLinkSendPassphraseApart.
@@ -2950,58 +2308,46 @@ abstract class AppLocalizations {
   /// **'Send the passphrase separately from the link.'**
   String get oneTimeLinkSendPassphraseApart;
 
-  /// No description provided for @oneTimeLinkProtectsLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'WHAT IT PROTECTS'**
-  String get oneTimeLinkProtectsLabel;
-
-  /// No description provided for @oneTimeLinkProtectsEncrypted.
-  ///
-  /// In en, this message translates to:
-  /// **'The secret is encrypted on this device. The relay stores only ciphertext and is never sent the key.'**
-  String get oneTimeLinkProtectsEncrypted;
-
-  /// No description provided for @oneTimeLinkProtectsBurn.
-  ///
-  /// In en, this message translates to:
-  /// **'The relay deletes it the first time it is opened, and when it expires unopened.'**
-  String get oneTimeLinkProtectsBurn;
-
   /// No description provided for @oneTimeLinkLimitsLabel.
   ///
   /// In en, this message translates to:
-  /// **'WHAT IT DOES NOT PROTECT'**
+  /// **'What it doesn\'t protect'**
   String get oneTimeLinkLimitsLabel;
 
   /// No description provided for @oneTimeLinkLimitHolder.
   ///
   /// In en, this message translates to:
-  /// **'Whoever gets the whole link first can read it. If the channel is not safe, lock it with a passphrase.'**
+  /// **'Whoever opens the whole link first can read it. If the channel isn\'t safe, add a passphrase.'**
   String get oneTimeLinkLimitHolder;
 
   /// No description provided for @oneTimeLinkLimitReader.
   ///
   /// In en, this message translates to:
-  /// **'The reader can copy or screenshot it. One-time means one opening, not copy protection.'**
+  /// **'The person who opens it can copy it or take a screenshot. One-time means it opens once, not that it can\'t be copied.'**
   String get oneTimeLinkLimitReader;
 
   /// No description provided for @oneTimeLinkLimitRelay.
   ///
   /// In en, this message translates to:
-  /// **'The relay sees when a link is made and opened, its size and the network addresses. It also serves the page that opens the link in the recipient\'s browser, so a link is only as trustworthy as the relay.'**
+  /// **'The server sees when a link is made and opened, its size and the network addresses. It also serves the page that opens the link, so a link is only as trustworthy as the server.'**
   String get oneTimeLinkLimitRelay;
+
+  /// No description provided for @oneTimeLinkFooter.
+  ///
+  /// In en, this message translates to:
+  /// **'The link opens once, then it\'s gone. The server can\'t read it.'**
+  String get oneTimeLinkFooter;
 
   /// No description provided for @contactsNotice.
   ///
   /// In en, this message translates to:
-  /// **'The relay keeps which accounts you added. The names you give them stay on this device.'**
+  /// **'The server knows which accounts you added. The nicknames you give them stay on this phone.'**
   String get contactsNotice;
 
   /// No description provided for @contactsSearchHint.
   ///
   /// In en, this message translates to:
-  /// **'Search contacts'**
+  /// **'Search'**
   String get contactsSearchHint;
 
   /// No description provided for @contactsSearchClear.
@@ -3019,19 +2365,19 @@ abstract class AppLocalizations {
   /// No description provided for @contactsWorking.
   ///
   /// In en, this message translates to:
-  /// **'Working…'**
+  /// **'Saving…'**
   String get contactsWorking;
 
   /// No description provided for @contactsErrorTitle.
   ///
   /// In en, this message translates to:
-  /// **'Contacts could not be loaded'**
+  /// **'Couldn\'t load contacts'**
   String get contactsErrorTitle;
 
   /// No description provided for @contactsErrorBody.
   ///
   /// In en, this message translates to:
-  /// **'The list below is as it was last loaded.'**
+  /// **'Showing the last list that loaded.'**
   String get contactsErrorBody;
 
   /// No description provided for @contactsEmptyTitle.
@@ -3049,19 +2395,19 @@ abstract class AppLocalizations {
   /// No description provided for @contactsEmptySearchBody.
   ///
   /// In en, this message translates to:
-  /// **'No name or handle matches your search.'**
+  /// **'No name or handle matches.'**
   String get contactsEmptySearchBody;
 
   /// No description provided for @contactsEmptyBody.
   ///
   /// In en, this message translates to:
-  /// **'Add someone by their handle to keep them at hand.'**
+  /// **'Add someone by their handle.'**
   String get contactsEmptyBody;
 
   /// No description provided for @contactsAddSheetBody.
   ///
   /// In en, this message translates to:
-  /// **'Enter the exact handle. VEIL does not scan address books.'**
+  /// **'Enter their handle exactly as they gave it to you.'**
   String get contactsAddSheetBody;
 
   /// No description provided for @contactsHandleLabel.
@@ -3076,28 +2422,22 @@ abstract class AppLocalizations {
   /// **'Nickname (optional)'**
   String get contactsNicknameLabel;
 
-  /// No description provided for @contactsNicknameHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Private label'**
-  String get contactsNicknameHint;
-
   /// No description provided for @contactsSave.
   ///
   /// In en, this message translates to:
-  /// **'Save contact'**
+  /// **'Add'**
   String get contactsSave;
 
   /// No description provided for @contactsAddFailed.
   ///
   /// In en, this message translates to:
-  /// **'That handle could not be added. Check the spelling and your connection.'**
+  /// **'Couldn\'t add that handle. Check the spelling and your connection.'**
   String get contactsAddFailed;
 
   /// No description provided for @contactsAdded.
   ///
   /// In en, this message translates to:
-  /// **'Contact @{handle} added'**
+  /// **'@{handle} added'**
   String contactsAdded(String handle);
 
   /// No description provided for @contactsStartChat.
@@ -3109,7 +2449,7 @@ abstract class AppLocalizations {
   /// No description provided for @contactsStartChatFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not start conversation'**
+  /// **'Couldn\'t start the chat'**
   String get contactsStartChatFailed;
 
   /// No description provided for @contactsEditNickname.
@@ -3121,13 +2461,13 @@ abstract class AppLocalizations {
   /// No description provided for @contactsSaveNickname.
   ///
   /// In en, this message translates to:
-  /// **'Save nickname'**
+  /// **'Save'**
   String get contactsSaveNickname;
 
   /// No description provided for @contactsNicknameCaption.
   ///
   /// In en, this message translates to:
-  /// **'Only this device knows the nickname. Leave it empty to show the handle.'**
+  /// **'Only you see the nickname. Leave it empty to show the handle.'**
   String get contactsNicknameCaption;
 
   /// No description provided for @contactsRemove.
@@ -3139,13 +2479,13 @@ abstract class AppLocalizations {
   /// No description provided for @contactsRemoved.
   ///
   /// In en, this message translates to:
-  /// **'{name} removed from contacts'**
+  /// **'{name} removed'**
   String contactsRemoved(String name);
 
   /// No description provided for @contactsRemoveFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not remove contact'**
+  /// **'Couldn\'t remove the contact'**
   String get contactsRemoveFailed;
 
   /// No description provided for @contactsRowSemantics.
@@ -3154,250 +2494,16 @@ abstract class AppLocalizations {
   /// **'Contact {name}'**
   String contactsRowSemantics(String name);
 
-  /// No description provided for @callsMissed.
+  /// An example handle in the field's hint: lower-case Latin, as every handle.
   ///
   /// In en, this message translates to:
-  /// **'Missed'**
-  String get callsMissed;
-
-  /// No description provided for @callsDeclined.
-  ///
-  /// In en, this message translates to:
-  /// **'Declined'**
-  String get callsDeclined;
-
-  /// No description provided for @callsRinging.
-  ///
-  /// In en, this message translates to:
-  /// **'Ringing'**
-  String get callsRinging;
-
-  /// No description provided for @callsIncoming.
-  ///
-  /// In en, this message translates to:
-  /// **'Incoming'**
-  String get callsIncoming;
-
-  /// No description provided for @callsOutgoing.
-  ///
-  /// In en, this message translates to:
-  /// **'Outgoing'**
-  String get callsOutgoing;
-
-  /// No description provided for @callsToday.
-  ///
-  /// In en, this message translates to:
-  /// **'Today, {time}'**
-  String callsToday(String time);
-
-  /// No description provided for @callsYesterday.
-  ///
-  /// In en, this message translates to:
-  /// **'Yesterday, {time}'**
-  String callsYesterday(String time);
-
-  /// No description provided for @callsUnavailableTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Call history unavailable'**
-  String get callsUnavailableTitle;
-
-  /// No description provided for @callsUnavailableBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Pull down to try again.'**
-  String get callsUnavailableBody;
-
-  /// No description provided for @callsEmptyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No call history'**
-  String get callsEmptyTitle;
-
-  /// No description provided for @callsEmptyBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This version cannot place or receive calls, so there is nothing to list yet.'**
-  String get callsEmptyBody;
-
-  /// No description provided for @callsNotice.
-  ///
-  /// In en, this message translates to:
-  /// **'This version cannot place or receive calls. Tap a call to open its chat.'**
-  String get callsNotice;
-
-  /// No description provided for @callsUnknownCounterparty.
-  ///
-  /// In en, this message translates to:
-  /// **'Unknown'**
-  String get callsUnknownCounterparty;
-
-  /// No description provided for @callScreenTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Call'**
-  String get callScreenTitle;
-
-  /// No description provided for @callScreenUnavailableTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Calls are not available in this version'**
-  String get callScreenUnavailableTitle;
-
-  /// No description provided for @callScreenUnavailableBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice and video calls are not built yet. No call was placed, and the other person was not notified.'**
-  String get callScreenUnavailableBody;
-
-  /// No description provided for @mediaPickerTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Photos and videos'**
-  String get mediaPickerTitle;
-
-  /// No description provided for @mediaPickerUnavailableTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Photos and videos cannot be sent in this version'**
-  String get mediaPickerUnavailableTitle;
-
-  /// No description provided for @mediaPickerUnavailableBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This version does not read the photo library or use the camera. Nothing was chosen or sent.'**
-  String get mediaPickerUnavailableBody;
-
-  /// No description provided for @voiceRecorderTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice message'**
-  String get voiceRecorderTitle;
-
-  /// No description provided for @voiceRecorderUnavailableTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Voice messages cannot be recorded in this version'**
-  String get voiceRecorderUnavailableTitle;
-
-  /// No description provided for @voiceRecorderUnavailableBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This version does not use the microphone. Nothing was recorded or sent.'**
-  String get voiceRecorderUnavailableBody;
-
-  /// No description provided for @stickerPickerTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Emoji'**
-  String get stickerPickerTitle;
-
-  /// No description provided for @stickerPickerTabSmileys.
-  ///
-  /// In en, this message translates to:
-  /// **'Smileys'**
-  String get stickerPickerTabSmileys;
-
-  /// No description provided for @stickerPickerTabGestures.
-  ///
-  /// In en, this message translates to:
-  /// **'Gestures'**
-  String get stickerPickerTabGestures;
-
-  /// No description provided for @stickerPickerTabSymbols.
-  ///
-  /// In en, this message translates to:
-  /// **'Symbols'**
-  String get stickerPickerTabSymbols;
-
-  /// No description provided for @storiesNotice.
-  ///
-  /// In en, this message translates to:
-  /// **'Stories are encrypted, and this version cannot open or post them yet. Nothing is marked as viewed.'**
-  String get storiesNotice;
-
-  /// No description provided for @storiesUnavailableTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Stories could not be loaded'**
-  String get storiesUnavailableTitle;
-
-  /// No description provided for @storiesUnavailableBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Pull down to try again.'**
-  String get storiesUnavailableBody;
-
-  /// No description provided for @storiesEmptyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No stories'**
-  String get storiesEmptyTitle;
-
-  /// No description provided for @storiesEmptyBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Nobody has shared a story with you in the last 24 hours.'**
-  String get storiesEmptyBody;
-
-  /// No description provided for @storiesUnknownAuthor.
-  ///
-  /// In en, this message translates to:
-  /// **'Unknown'**
-  String get storiesUnknownAuthor;
-
-  /// No description provided for @storiesRowCount.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 story} other{{count} stories}}'**
-  String storiesRowCount(int count);
-
-  /// No description provided for @storiesAgeJustNow.
-  ///
-  /// In en, this message translates to:
-  /// **'Just now'**
-  String get storiesAgeJustNow;
-
-  /// No description provided for @storiesAgeMinutes.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 minute ago} other{{count} minutes ago}}'**
-  String storiesAgeMinutes(int count);
-
-  /// No description provided for @storiesAgeHours.
-  ///
-  /// In en, this message translates to:
-  /// **'{count, plural, =1{1 hour ago} other{{count} hours ago}}'**
-  String storiesAgeHours(int count);
-
-  /// No description provided for @storyViewerUnavailableTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'This story cannot be opened'**
-  String get storyViewerUnavailableTitle;
-
-  /// No description provided for @storyViewerUnavailableBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Stories are encrypted, and this version cannot open them yet. The story was not marked as viewed.'**
-  String get storyViewerUnavailableBody;
-
-  /// No description provided for @notificationNewMessageTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'VEIL'**
-  String get notificationNewMessageTitle;
-
-  /// No description provided for @notificationNewMessageBody.
-  ///
-  /// In en, this message translates to:
-  /// **'New encrypted message'**
-  String get notificationNewMessageBody;
+  /// **'alex'**
+  String get contactsHandleHint;
 
   /// No description provided for @startDirectTitle.
   ///
   /// In en, this message translates to:
-  /// **'New direct chat'**
+  /// **'New chat'**
   String get startDirectTitle;
 
   /// No description provided for @startDirectInputLabel.
@@ -3405,18 +2511,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Handle'**
   String get startDirectInputLabel;
-
-  /// No description provided for @startDirectErrorTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Unable to open conversation'**
-  String get startDirectErrorTitle;
-
-  /// No description provided for @startDirectErrorBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Check the handle and your connection, then try again.'**
-  String get startDirectErrorBody;
 
   /// No description provided for @startDirectOpening.
   ///
@@ -3427,20 +2521,26 @@ abstract class AppLocalizations {
   /// No description provided for @startDirectOpenButton.
   ///
   /// In en, this message translates to:
-  /// **'Open conversation'**
+  /// **'Start chat'**
   String get startDirectOpenButton;
 
-  /// No description provided for @startDirectNoteTitle.
+  /// No description provided for @startDirectFieldCaption.
   ///
   /// In en, this message translates to:
-  /// **'No contact sync'**
-  String get startDirectNoteTitle;
+  /// **'Enter their handle exactly as they gave it to you.'**
+  String get startDirectFieldCaption;
 
-  /// No description provided for @startDirectNote.
+  /// An example handle in the field's hint: lower-case Latin, as every handle.
   ///
   /// In en, this message translates to:
-  /// **'VEIL does not read your contacts or phone book, and suggests no one. A conversation opens only when you know the exact handle.'**
-  String get startDirectNote;
+  /// **'alex'**
+  String get startDirectHandleHint;
+
+  /// No description provided for @startDirectHandleError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start the chat. Check the handle and your connection.'**
+  String get startDirectHandleError;
 
   /// No description provided for @startGroupTitle.
   ///
@@ -3457,7 +2557,7 @@ abstract class AppLocalizations {
   /// No description provided for @startGroupNameHint.
   ///
   /// In en, this message translates to:
-  /// **'Weekend hiking'**
+  /// **'Weekend plans'**
   String get startGroupNameHint;
 
   /// No description provided for @startGroupDescriptionInput.
@@ -3469,7 +2569,7 @@ abstract class AppLocalizations {
   /// No description provided for @startGroupDescriptionHint.
   ///
   /// In en, this message translates to:
-  /// **'What is this group for?'**
+  /// **'What it\'s for'**
   String get startGroupDescriptionHint;
 
   /// No description provided for @startGroupMembersCount.
@@ -3481,26 +2581,14 @@ abstract class AppLocalizations {
   /// No description provided for @startGroupMembersCaption.
   ///
   /// In en, this message translates to:
-  /// **'Separate handles with commas or spaces. This version cannot add members later, so list everyone now.'**
+  /// **'Handles, separated by commas. Members can\'t be added later, so list everyone now.'**
   String get startGroupMembersCaption;
 
   /// No description provided for @startGroupMembersInput.
   ///
   /// In en, this message translates to:
-  /// **'Member handles'**
+  /// **'Members'**
   String get startGroupMembersInput;
-
-  /// No description provided for @startGroupErrorTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Unable to create group'**
-  String get startGroupErrorTitle;
-
-  /// No description provided for @startGroupErrorBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Check the handles and your connection, then try again.'**
-  String get startGroupErrorBody;
 
   /// No description provided for @startGroupCreating.
   ///
@@ -3517,8 +2605,26 @@ abstract class AppLocalizations {
   /// No description provided for @startGroupNote.
   ///
   /// In en, this message translates to:
-  /// **'Messages in a group are end-to-end encrypted. Its name, description and member list are not: the relay stores them as you type them here.'**
+  /// **'The server can read the group name, description and member list.'**
   String get startGroupNote;
+
+  /// No description provided for @startGroupNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get startGroupNameRequired;
+
+  /// Example handles in the field's hint, separated as the field expects.
+  ///
+  /// In en, this message translates to:
+  /// **'alex, sam, priya'**
+  String get startGroupMembersHint;
+
+  /// No description provided for @startGroupMembersError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create the group. Check the handles and your connection.'**
+  String get startGroupMembersError;
 
   /// No description provided for @safetyNumbersTitle.
   ///
@@ -3529,14 +2635,8 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersLoadingTitle.
   ///
   /// In en, this message translates to:
-  /// **'Deriving safety number'**
+  /// **'Working out the safety number…'**
   String get safetyNumbersLoadingTitle;
-
-  /// No description provided for @safetyNumbersLoadingBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Hashing identity keys locally.'**
-  String get safetyNumbersLoadingBody;
 
   /// No description provided for @safetyNumbersMarkedVerified.
   ///
@@ -3547,13 +2647,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotateDialogTitle.
   ///
   /// In en, this message translates to:
-  /// **'Start a new session?'**
+  /// **'Renew the keys?'**
   String get safetyNumbersRotateDialogTitle;
 
   /// No description provided for @safetyNumbersRotateDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'This runs a fresh key agreement with your contact\'s current keys, and your next message starts the new session. Messages already on their way still open. Use this if you suspect this device or your contact\'s device was briefly exposed: a stolen copy of the old session cannot read what the new one carries.'**
+  /// **'Your next message uses new keys, and messages already on their way still open. Do this if you think your phone or theirs was briefly in someone else\'s hands: anyone who copied the old keys can\'t read new messages.'**
   String get safetyNumbersRotateDialogBody;
 
   /// No description provided for @safetyNumbersCancel.
@@ -3565,37 +2665,37 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotate.
   ///
   /// In en, this message translates to:
-  /// **'Start'**
+  /// **'Renew'**
   String get safetyNumbersRotate;
 
   /// No description provided for @safetyNumbersSessionRotated.
   ///
   /// In en, this message translates to:
-  /// **'New session ready. Your next message starts it.'**
+  /// **'New keys ready. Your next message uses them.'**
   String get safetyNumbersSessionRotated;
 
   /// No description provided for @safetyNumbersNoSessionYet.
   ///
   /// In en, this message translates to:
-  /// **'No session yet — send a message first'**
+  /// **'There are no keys to renew yet. Send a message first.'**
   String get safetyNumbersNoSessionYet;
 
   /// No description provided for @safetyNumbersRotationFailed.
   ///
   /// In en, this message translates to:
-  /// **'Could not start a new session. Try again in a moment.'**
+  /// **'Couldn\'t renew the keys. Try again in a moment.'**
   String get safetyNumbersRotationFailed;
 
   /// No description provided for @safetyNumbersErrorTitle.
   ///
   /// In en, this message translates to:
-  /// **'Could not load safety number'**
+  /// **'Couldn\'t load the safety number'**
   String get safetyNumbersErrorTitle;
 
   /// No description provided for @safetyNumbersErrorBody.
   ///
   /// In en, this message translates to:
-  /// **'This device could not work out the safety number. Try again in a moment.'**
+  /// **'Try again in a moment.'**
   String get safetyNumbersErrorBody;
 
   /// No description provided for @safetyNumbersRetry.
@@ -3613,37 +2713,19 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersNoMembersBody.
   ///
   /// In en, this message translates to:
-  /// **'This group has no other participants yet — invite someone to verify.'**
+  /// **'Nobody else is in this group yet.'**
   String get safetyNumbersNoMembersBody;
-
-  /// No description provided for @safetyNumbersGroupEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'VERIFY GROUP MEMBERS'**
-  String get safetyNumbersGroupEyebrow;
-
-  /// No description provided for @safetyNumbersGroupTitleGeneric.
-  ///
-  /// In en, this message translates to:
-  /// **'Verify each member of this group'**
-  String get safetyNumbersGroupTitleGeneric;
-
-  /// No description provided for @safetyNumbersGroupTitleNamed.
-  ///
-  /// In en, this message translates to:
-  /// **'Verify each member of {groupName}'**
-  String safetyNumbersGroupTitleNamed(String groupName);
 
   /// No description provided for @safetyNumbersGroupBody.
   ///
   /// In en, this message translates to:
-  /// **'Tap a member to see their 60-digit safety number. Compare it on a channel you trust — read it aloud over a call or scan the QR. A mismatch means that specific member\'s device may be compromised.'**
+  /// **'Tap a member to see their 60-digit safety number. Compare it over a call or scan the QR code. If it doesn\'t match, someone may be between you and that member.'**
   String get safetyNumbersGroupBody;
 
   /// No description provided for @safetyNumbersUnverified.
   ///
   /// In en, this message translates to:
-  /// **'Unverified'**
+  /// **'Not verified'**
   String get safetyNumbersUnverified;
 
   /// No description provided for @safetyNumbersVerified.
@@ -3652,34 +2734,22 @@ abstract class AppLocalizations {
   /// **'Verified'**
   String get safetyNumbersVerified;
 
-  /// No description provided for @safetyNumbersDetailEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'VERIFY IDENTITY'**
-  String get safetyNumbersDetailEyebrow;
-
-  /// No description provided for @safetyNumbersDetailTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Make sure you\'re talking to {peer}'**
-  String safetyNumbersDetailTitle(String peer);
-
   /// No description provided for @safetyNumbersDetailBody.
   ///
   /// In en, this message translates to:
-  /// **'Both of you should see the same 60-digit number. Compare on a channel you trust — read it aloud over a call, or scan the QR. If the numbers don\'t match, someone is in the middle of your conversation.'**
+  /// **'Both of you should see the same 60-digit number. Compare it over a call or scan the QR code. If it doesn\'t match, someone may be between you.'**
   String get safetyNumbersDetailBody;
 
   /// No description provided for @safetyNumbersKeyChangedTitle.
   ///
   /// In en, this message translates to:
-  /// **'This contact\'s identity key changed'**
+  /// **'Safety number changed'**
   String get safetyNumbersKeyChangedTitle;
 
   /// No description provided for @safetyNumbersKeyChangedMessage.
   ///
   /// In en, this message translates to:
-  /// **'This contact\'s identity key is different from the one you verified on {date}. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.'**
+  /// **'It changed since you verified it on {date}, after a reinstall, a new phone, or someone pretending to be them. Compare the new number before you trust it.'**
   String safetyNumbersKeyChangedMessage(String date);
 
   /// No description provided for @safetyNumbersVerifiedOn.
@@ -3688,16 +2758,10 @@ abstract class AppLocalizations {
   /// **'Verified on {date}'**
   String safetyNumbersVerifiedOn(String date);
 
-  /// No description provided for @safetyNumbersVerifiedNote.
-  ///
-  /// In en, this message translates to:
-  /// **'If this contact reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.'**
-  String get safetyNumbersVerifiedNote;
-
   /// No description provided for @safetyNumbersReVerify.
   ///
   /// In en, this message translates to:
-  /// **'Re-verify with new key'**
+  /// **'Verify the new number'**
   String get safetyNumbersReVerify;
 
   /// No description provided for @safetyNumbersMarkVerified.
@@ -3706,58 +2770,34 @@ abstract class AppLocalizations {
   /// **'Mark as verified'**
   String get safetyNumbersMarkVerified;
 
-  /// No description provided for @safetyNumbersRotateEyebrow.
-  ///
-  /// In en, this message translates to:
-  /// **'NEW SESSION'**
-  String get safetyNumbersRotateEyebrow;
-
-  /// No description provided for @safetyNumbersRotateBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Runs a fresh key agreement with your contact\'s current keys; your next message starts the new session, and messages already on their way still open. Use if this device or your contact\'s was briefly exposed.'**
-  String get safetyNumbersRotateBody;
-
   /// No description provided for @safetyNumbersRotating.
   ///
   /// In en, this message translates to:
-  /// **'Starting…'**
+  /// **'Renewing…'**
   String get safetyNumbersRotating;
 
   /// No description provided for @safetyNumbersRotateButton.
   ///
   /// In en, this message translates to:
-  /// **'Start a new session'**
+  /// **'Renew keys'**
   String get safetyNumbersRotateButton;
 
-  /// No description provided for @safetyNumbersCardLabel.
+  /// No description provided for @safetyNumbersNewNumberHeader.
   ///
   /// In en, this message translates to:
-  /// **'SAFETY NUMBER'**
-  String get safetyNumbersCardLabel;
+  /// **'New safety number'**
+  String get safetyNumbersNewNumberHeader;
 
-  /// No description provided for @safetyNumbersCardLabelCurrent.
+  /// No description provided for @safetyNumbersCurrentNumberHeader.
   ///
   /// In en, this message translates to:
-  /// **'CURRENT SAFETY NUMBER'**
-  String get safetyNumbersCardLabelCurrent;
-
-  /// No description provided for @safetyNumbersCardLabelNew.
-  ///
-  /// In en, this message translates to:
-  /// **'NEW SAFETY NUMBER'**
-  String get safetyNumbersCardLabelNew;
-
-  /// No description provided for @safetyNumbersScanLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'SCAN TO COMPARE'**
-  String get safetyNumbersScanLabel;
+  /// **'Current safety number'**
+  String get safetyNumbersCurrentNumberHeader;
 
   /// No description provided for @safetyNumbersQrNote.
   ///
   /// In en, this message translates to:
-  /// **'This QR holds both public identity keys and user ids, nothing secret.'**
+  /// **'The code holds both public keys and account IDs, nothing secret.'**
   String get safetyNumbersQrNote;
 
   /// No description provided for @safetyNumbersNoPinTitle.
@@ -3769,61 +2809,61 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersNoPinBody.
   ///
   /// In en, this message translates to:
-  /// **'Exchange a message first. This device then pins the identity it talks to, and the number appears here.'**
+  /// **'Exchange a message first. The number appears here once this phone knows which keys it\'s talking to.'**
   String get safetyNumbersNoPinBody;
 
   /// No description provided for @safetyNumbersDirectoryMismatchTitle.
   ///
   /// In en, this message translates to:
-  /// **'The key server lists a different key'**
+  /// **'The server lists a different key'**
   String get safetyNumbersDirectoryMismatchTitle;
 
   /// No description provided for @safetyNumbersDirectoryMismatchBody.
   ///
   /// In en, this message translates to:
-  /// **'The key server now serves another identity key for this device than the one pinned here. Nothing is sent to that key unless you compare and accept it.'**
+  /// **'The server now gives a different key for this contact than the one this phone knows. Nothing is sent to that key unless you compare and accept it.'**
   String get safetyNumbersDirectoryMismatchBody;
 
   /// No description provided for @safetyNumbersDirectoryOtherDeviceTitle.
   ///
   /// In en, this message translates to:
-  /// **'The key server lists another device'**
+  /// **'The server lists another device'**
   String get safetyNumbersDirectoryOtherDeviceTitle;
 
   /// No description provided for @safetyNumbersDirectoryOtherDeviceBody.
   ///
   /// In en, this message translates to:
-  /// **'This conversation encrypts to a different device than the one the key server now lists for this contact. The safety number on this page belongs to the device it encrypts to. If your contact changed devices, compare numbers with them again.'**
+  /// **'This chat encrypts to a different device than the one the server now lists for this contact. The safety number here belongs to the device it encrypts to. If your contact changed phones, compare numbers with them again.'**
   String get safetyNumbersDirectoryOtherDeviceBody;
 
   /// No description provided for @safetyNumbersPendingBody.
   ///
   /// In en, this message translates to:
-  /// **'This contact presents a new identity key. Compare the new safety number below before accepting it.'**
+  /// **'Your contact\'s keys changed. Compare the new safety number below before accepting it.'**
   String get safetyNumbersPendingBody;
 
   /// No description provided for @safetyNumbersAcceptNewKey.
   ///
   /// In en, this message translates to:
-  /// **'Accept the new key'**
+  /// **'Accept new number'**
   String get safetyNumbersAcceptNewKey;
 
   /// No description provided for @safetyNumbersKeepCurrentKey.
   ///
   /// In en, this message translates to:
-  /// **'Keep the current key'**
+  /// **'Keep the old one'**
   String get safetyNumbersKeepCurrentKey;
 
   /// No description provided for @safetyNumbersScanAction.
   ///
   /// In en, this message translates to:
-  /// **'Compare a scanned code'**
+  /// **'Compare their code'**
   String get safetyNumbersScanAction;
 
   /// No description provided for @safetyNumbersScanFieldLabel.
   ///
   /// In en, this message translates to:
-  /// **'Scanned code'**
+  /// **'Their code'**
   String get safetyNumbersScanFieldLabel;
 
   /// No description provided for @safetyNumbersScanVerify.
@@ -3835,25 +2875,25 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersScanMismatchTitle.
   ///
   /// In en, this message translates to:
-  /// **'The codes do not match'**
+  /// **'The codes don\'t match'**
   String get safetyNumbersScanMismatchTitle;
 
   /// No description provided for @safetyNumbersScanMismatchBody.
   ///
   /// In en, this message translates to:
-  /// **'Someone may be in the middle of this conversation. Do not mark it verified; compare again in person.'**
+  /// **'Someone may be between you. Don\'t mark it verified until you have compared again in person.'**
   String get safetyNumbersScanMismatchBody;
 
   /// No description provided for @safetyNumbersScanInvalid.
   ///
   /// In en, this message translates to:
-  /// **'That is not a VEIL safety code.'**
+  /// **'That isn\'t a safety code.'**
   String get safetyNumbersScanInvalid;
 
   /// No description provided for @safetyNumbersScanUnsupported.
   ///
   /// In en, this message translates to:
-  /// **'That code uses a safety-number version this app does not support.'**
+  /// **'That code is from a version this app doesn\'t support.'**
   String get safetyNumbersScanUnsupported;
 
   /// No description provided for @safetyNumbersReverifyDialogTitle.
@@ -3865,7 +2905,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersReverifyDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'You had verified {peer}. Accept the new key as verified only after comparing this number with {peer} in person or on a call you trust.'**
+  /// **'You had verified {peer}. Accept the new number only after comparing it with {peer} in person or on a call you trust.'**
   String safetyNumbersReverifyDialogBody(String peer);
 
   /// No description provided for @safetyNumbersReverifyAffirm.
@@ -3895,13 +2935,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersChangedElsewhereBody.
   ///
   /// In en, this message translates to:
-  /// **'{peer} presented a new identity key in another conversation. Until you review it there, {peer} is not shown as verified. The number below is the one this device pinned before the change.'**
+  /// **'{peer}\'s safety number changed in another chat. Until you review it there, {peer} isn\'t shown as verified. The number below is the one this phone knew before the change.'**
   String safetyNumbersChangedElsewhereBody(String peer);
 
   /// No description provided for @safetyNumbersReviewChange.
   ///
   /// In en, this message translates to:
-  /// **'Review the new key'**
+  /// **'Review the new number'**
   String get safetyNumbersReviewChange;
 
   /// No description provided for @profileTitle.
@@ -3913,56 +2953,14 @@ abstract class AppLocalizations {
   /// No description provided for @profileNicknameSaved.
   ///
   /// In en, this message translates to:
-  /// **'Nickname saved on this device'**
+  /// **'Nickname saved'**
   String get profileNicknameSaved;
-
-  /// No description provided for @profileHandleLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'HANDLE'**
-  String get profileHandleLabel;
-
-  /// No description provided for @profileHandleCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Others find and message you by this handle. It cannot be changed.'**
-  String get profileHandleCaption;
-
-  /// No description provided for @profileNicknameLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'NICKNAME'**
-  String get profileNicknameLabel;
-
-  /// No description provided for @profileNicknameCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Only this device knows it. Peers see your handle.'**
-  String get profileNicknameCaption;
 
   /// No description provided for @profileNicknameHint.
   ///
   /// In en, this message translates to:
-  /// **'How this device greets you'**
+  /// **'Optional'**
   String get profileNicknameHint;
-
-  /// No description provided for @profileNicknameNotSet.
-  ///
-  /// In en, this message translates to:
-  /// **'Not set'**
-  String get profileNicknameNotSet;
-
-  /// No description provided for @profilePrivacyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No profile on the relay'**
-  String get profilePrivacyTitle;
-
-  /// No description provided for @profilePrivacyBody.
-  ///
-  /// In en, this message translates to:
-  /// **'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.'**
-  String get profilePrivacyBody;
 
   /// No description provided for @profileSaveNickname.
   ///
@@ -3970,47 +2968,41 @@ abstract class AppLocalizations {
   /// **'Save'**
   String get profileSaveNickname;
 
-  /// No description provided for @profileEditNickname.
+  /// No description provided for @profileNicknameFooter.
   ///
   /// In en, this message translates to:
-  /// **'Edit nickname'**
-  String get profileEditNickname;
+  /// **'Only you see nicknames. Your handle can\'t be changed.'**
+  String get profileNicknameFooter;
 
-  /// No description provided for @profileCancel.
+  /// No description provided for @profileNicknameHeader.
   ///
   /// In en, this message translates to:
-  /// **'Cancel'**
-  String get profileCancel;
+  /// **'Nickname'**
+  String get profileNicknameHeader;
 
   /// No description provided for @deviceTransferTitle.
   ///
   /// In en, this message translates to:
-  /// **'Device transfer'**
+  /// **'Move to a new phone'**
   String get deviceTransferTitle;
 
   /// No description provided for @deviceTransferChipOldDevice.
   ///
   /// In en, this message translates to:
-  /// **'Old device'**
+  /// **'Old phone'**
   String get deviceTransferChipOldDevice;
 
   /// No description provided for @deviceTransferChipNewDevice.
   ///
   /// In en, this message translates to:
-  /// **'New device'**
+  /// **'New phone'**
   String get deviceTransferChipNewDevice;
 
-  /// No description provided for @deviceTransferNoFallbackTitle.
+  /// No description provided for @deviceTransferOldPhoneNeeded.
   ///
   /// In en, this message translates to:
-  /// **'No fallback path'**
-  String get deviceTransferNoFallbackTitle;
-
-  /// No description provided for @deviceTransferNoFallbackBody.
-  ///
-  /// In en, this message translates to:
-  /// **'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.'**
-  String get deviceTransferNoFallbackBody;
+  /// **'You need the old phone. If it is gone, the account is gone.'**
+  String get deviceTransferOldPhoneNeeded;
 
   /// No description provided for @deviceTransferPayloadCopied.
   ///
@@ -4021,49 +3013,49 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferReturnToConversations.
   ///
   /// In en, this message translates to:
-  /// **'Return to conversations'**
+  /// **'Back to chats'**
   String get deviceTransferReturnToConversations;
 
   /// No description provided for @deviceTransferPayloadInvalid.
   ///
   /// In en, this message translates to:
-  /// **'The transfer code\'s format is not valid.'**
+  /// **'That isn\'t a valid transfer code.'**
   String get deviceTransferPayloadInvalid;
 
   /// No description provided for @deviceTransferImportFirst.
   ///
   /// In en, this message translates to:
-  /// **'Use a valid transfer code first.'**
+  /// **'Enter a valid transfer code first.'**
   String get deviceTransferImportFirst;
 
   /// No description provided for @deviceTransferClaimFailed.
   ///
   /// In en, this message translates to:
-  /// **'Claim failed.'**
+  /// **'Couldn\'t register this phone.'**
   String get deviceTransferClaimFailed;
 
   /// No description provided for @deviceTransferRegisterBeforeComplete.
   ///
   /// In en, this message translates to:
-  /// **'Register this new-device claim before completion.'**
+  /// **'Register this phone before finishing.'**
   String get deviceTransferRegisterBeforeComplete;
 
   /// No description provided for @deviceTransferCodeExpired.
   ///
   /// In en, this message translates to:
-  /// **'This transfer code has expired. Issue a new one on the old device.'**
+  /// **'This transfer code has expired. Get a new one from the old phone.'**
   String get deviceTransferCodeExpired;
 
   /// No description provided for @deviceTransferFinishStartedFirst.
   ///
   /// In en, this message translates to:
-  /// **'This device already started completing a transfer that the relay may have finished. Complete that transfer on this device before using another code.'**
+  /// **'This phone already started finishing a transfer that the server may have completed. Finish that one before using another code.'**
   String get deviceTransferFinishStartedFirst;
 
   /// No description provided for @deviceTransferComplete.
   ///
   /// In en, this message translates to:
-  /// **'Transfer complete. Your handle is now on this device and the old device has been signed out.'**
+  /// **'Done. Your account is now on this phone and the old phone is signed out.'**
   String get deviceTransferComplete;
 
   /// No description provided for @deviceTransferFailed.
@@ -4075,73 +3067,61 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferOldRequiredTitle.
   ///
   /// In en, this message translates to:
-  /// **'Old device session required'**
+  /// **'Sign in on the old phone'**
   String get deviceTransferOldRequiredTitle;
 
   /// No description provided for @deviceTransferOldRequiredBody.
   ///
   /// In en, this message translates to:
-  /// **'Sign in on a currently trusted device to issue and approve a transfer.'**
+  /// **'Only a phone that has the account can start and approve a move.'**
   String get deviceTransferOldRequiredBody;
 
   /// No description provided for @deviceTransferOldIssueTitle.
   ///
   /// In en, this message translates to:
-  /// **'Issue a transfer code'**
+  /// **'Get a transfer code'**
   String get deviceTransferOldIssueTitle;
 
   /// No description provided for @deviceTransferOldIssueBody.
   ///
   /// In en, this message translates to:
-  /// **'Opens a short-lived transfer session for your new device.'**
+  /// **'The code works for a short time.'**
   String get deviceTransferOldIssueBody;
 
   /// No description provided for @deviceTransferOldIssueExpiredBody.
   ///
   /// In en, this message translates to:
-  /// **'The transfer session expired. Issue a new code.'**
+  /// **'The code expired. Get a new one.'**
   String get deviceTransferOldIssueExpiredBody;
 
   /// No description provided for @deviceTransferOldHandTitle.
   ///
   /// In en, this message translates to:
-  /// **'Give the code to the new device'**
+  /// **'Enter the code on the new phone'**
   String get deviceTransferOldHandTitle;
-
-  /// No description provided for @deviceTransferOldHandBody.
-  ///
-  /// In en, this message translates to:
-  /// **'The code appears here once it is issued.'**
-  String get deviceTransferOldHandBody;
 
   /// No description provided for @deviceTransferOldApproveTitle.
   ///
   /// In en, this message translates to:
-  /// **'Approve the new device'**
+  /// **'Approve the new phone'**
   String get deviceTransferOldApproveTitle;
-
-  /// No description provided for @deviceTransferOldApproveBody.
-  ///
-  /// In en, this message translates to:
-  /// **'After it registers, the new device shows a claim code. You approve that code here.'**
-  String get deviceTransferOldApproveBody;
 
   /// No description provided for @deviceTransferNewCodeTitle.
   ///
   /// In en, this message translates to:
-  /// **'Paste the transfer code'**
+  /// **'Enter the transfer code'**
   String get deviceTransferNewCodeTitle;
 
   /// No description provided for @deviceTransferNewCodeBody.
   ///
   /// In en, this message translates to:
-  /// **'Issue the code on your old device, then paste it here.'**
+  /// **'Get it from your old phone.'**
   String get deviceTransferNewCodeBody;
 
   /// No description provided for @deviceTransferNewCodeExpiredBody.
   ///
   /// In en, this message translates to:
-  /// **'The transfer code expired before the transfer was finished. Issue a new code on the old device and paste it here.'**
+  /// **'The transfer code expired before the move finished. Get a new one from the old phone.'**
   String get deviceTransferNewCodeExpiredBody;
 
   /// No description provided for @deviceTransferNewCodeChange.
@@ -4153,37 +3133,31 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferNewRegisterTitle.
   ///
   /// In en, this message translates to:
-  /// **'Register this device'**
+  /// **'Register this phone'**
   String get deviceTransferNewRegisterTitle;
 
   /// No description provided for @deviceTransferNewCompleteTitle.
   ///
   /// In en, this message translates to:
-  /// **'Approve on the old device, then finish'**
+  /// **'Approve on the old phone, then finish'**
   String get deviceTransferNewCompleteTitle;
-
-  /// No description provided for @deviceTransferNewCompleteBodyUpcoming.
-  ///
-  /// In en, this message translates to:
-  /// **'Once registered, this device shows a claim code for the old device to approve.'**
-  String get deviceTransferNewCompleteBodyUpcoming;
 
   /// No description provided for @deviceTransferNewCompleteBody.
   ///
   /// In en, this message translates to:
-  /// **'Enter this claim code on the old device and approve it there.'**
+  /// **'Enter this code on the old phone and approve it there.'**
   String get deviceTransferNewCompleteBody;
 
   /// No description provided for @deviceTransferNewCompleteNote.
   ///
   /// In en, this message translates to:
-  /// **'When you finish, the old device is signed out. Conversation history does not move to this device.'**
+  /// **'When you finish, the old phone is signed out. Your message history does not move.'**
   String get deviceTransferNewCompleteNote;
 
   /// No description provided for @deviceTransferStep1BodyExpires.
   ///
   /// In en, this message translates to:
-  /// **'This transfer session expires {when}.'**
+  /// **'This code expires {when}.'**
   String deviceTransferStep1BodyExpires(String when);
 
   /// No description provided for @deviceTransferStatusExpired.
@@ -4195,49 +3169,37 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferIssuingToken.
   ///
   /// In en, this message translates to:
-  /// **'Issuing code'**
+  /// **'Getting a code…'**
   String get deviceTransferIssuingToken;
 
   /// No description provided for @deviceTransferIssueToken.
   ///
   /// In en, this message translates to:
-  /// **'Issue transfer code'**
+  /// **'Get code'**
   String get deviceTransferIssueToken;
-
-  /// No description provided for @deviceTransferClaimFieldCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Approve only the exact claim code shown on the new device you trust.'**
-  String get deviceTransferClaimFieldCaption;
 
   /// No description provided for @deviceTransferClaimInputLabel.
   ///
   /// In en, this message translates to:
-  /// **'New-device claim code'**
+  /// **'Code from the new phone'**
   String get deviceTransferClaimInputLabel;
-
-  /// No description provided for @deviceTransferClaimInputHint.
-  ///
-  /// In en, this message translates to:
-  /// **'Paste the claim code shown on the new device'**
-  String get deviceTransferClaimInputHint;
 
   /// No description provided for @deviceTransferApproveClaim.
   ///
   /// In en, this message translates to:
-  /// **'Approve this claim'**
+  /// **'Approve'**
   String get deviceTransferApproveClaim;
 
-  /// No description provided for @deviceTransferCompleteOnNewNote.
+  /// No description provided for @deviceTransferApproveFooter.
   ///
   /// In en, this message translates to:
-  /// **'After you approve, finish on the new device. This device is then signed out and its local history is erased. Conversation history does not move to the new device.'**
-  String get deviceTransferCompleteOnNewNote;
+  /// **'Approve only the code your new phone shows. When the move finishes, this phone is signed out and your message history does not move to the new phone.'**
+  String get deviceTransferApproveFooter;
 
   /// No description provided for @deviceTransferCopyPayload.
   ///
   /// In en, this message translates to:
-  /// **'Copy code'**
+  /// **'Copy'**
   String get deviceTransferCopyPayload;
 
   /// No description provided for @deviceTransferClear.
@@ -4246,53 +3208,41 @@ abstract class AppLocalizations {
   /// **'Clear'**
   String get deviceTransferClear;
 
-  /// No description provided for @deviceTransferStatusTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer status'**
-  String get deviceTransferStatusTitle;
-
   /// No description provided for @deviceTransferStatusNeedsApi.
   ///
   /// In en, this message translates to:
-  /// **'This build is not connected to a relay, so it cannot transfer.'**
+  /// **'No server is configured, so nothing can be moved.'**
   String get deviceTransferStatusNeedsApi;
 
   /// No description provided for @deviceTransferStatusTokenReady.
   ///
   /// In en, this message translates to:
-  /// **'Transfer session open. The code is ready.'**
+  /// **'The code is ready.'**
   String get deviceTransferStatusTokenReady;
 
   /// No description provided for @deviceTransferStatusNotStarted.
   ///
   /// In en, this message translates to:
-  /// **'Start transfer first.'**
+  /// **'Get a transfer code first.'**
   String get deviceTransferStatusNotStarted;
 
   /// No description provided for @deviceTransferStatusClaimCodeMissing.
   ///
   /// In en, this message translates to:
-  /// **'Enter the new-device claim code first.'**
+  /// **'Enter the code from the new phone first.'**
   String get deviceTransferStatusClaimCodeMissing;
 
   /// No description provided for @deviceTransferStatusClaimNotWaiting.
   ///
   /// In en, this message translates to:
-  /// **'No claim {claimId} is waiting on this transfer.'**
+  /// **'No phone with code {claimId} is waiting.'**
   String deviceTransferStatusClaimNotWaiting(String claimId);
 
   /// No description provided for @deviceTransferStatusClaimApproved.
   ///
   /// In en, this message translates to:
-  /// **'Approved claim {claimId} on old device. Key fingerprint: {fingerprint}'**
+  /// **'Approved code {claimId}. Key fingerprint: {fingerprint}'**
   String deviceTransferStatusClaimApproved(String claimId, String fingerprint);
-
-  /// No description provided for @deviceTransferFailedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer failed'**
-  String get deviceTransferFailedTitle;
 
   /// No description provided for @deviceTransferPayloadInputLabel.
   ///
@@ -4309,7 +3259,7 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferNewDeviceCaption.
   ///
   /// In en, this message translates to:
-  /// **'This device creates its own keys and sends a claim that only the old device can approve. Register before the transfer code expires.'**
+  /// **'This phone creates its own keys and asks the old phone to approve them. Register before the code expires.'**
   String get deviceTransferNewDeviceCaption;
 
   /// No description provided for @deviceTransferDeviceNameLabel.
@@ -4321,13 +3271,13 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferClaimCode.
   ///
   /// In en, this message translates to:
-  /// **'Claim code {claimId}'**
+  /// **'Code {claimId}'**
   String deviceTransferClaimCode(String claimId);
 
   /// No description provided for @deviceTransferClaimFingerprint.
   ///
   /// In en, this message translates to:
-  /// **'Claim fingerprint {fingerprint}'**
+  /// **'Key fingerprint {fingerprint}'**
   String deviceTransferClaimFingerprint(String fingerprint);
 
   /// No description provided for @deviceTransferFingerprintUnavailable.
@@ -4345,25 +3295,25 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferRegisteringClaim.
   ///
   /// In en, this message translates to:
-  /// **'Registering claim'**
+  /// **'Registering…'**
   String get deviceTransferRegisteringClaim;
 
   /// No description provided for @deviceTransferRegisterNewDevice.
   ///
   /// In en, this message translates to:
-  /// **'Register this new device'**
+  /// **'Register'**
   String get deviceTransferRegisterNewDevice;
 
   /// No description provided for @deviceTransferCompleting.
   ///
   /// In en, this message translates to:
-  /// **'Completing transfer'**
+  /// **'Finishing…'**
   String get deviceTransferCompleting;
 
   /// No description provided for @deviceTransferCompleteOnDevice.
   ///
   /// In en, this message translates to:
-  /// **'Complete on this device'**
+  /// **'Finish'**
   String get deviceTransferCompleteOnDevice;
 
   /// No description provided for @deviceTransferExpiryNow.
@@ -4375,13 +3325,13 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferExpiryInSeconds.
   ///
   /// In en, this message translates to:
-  /// **'in {seconds}s'**
+  /// **'{seconds, plural, =1{in 1 second} other{in {seconds} seconds}}'**
   String deviceTransferExpiryInSeconds(int seconds);
 
   /// No description provided for @deviceTransferExpiryInMinutes.
   ///
   /// In en, this message translates to:
-  /// **'in {minutes}m'**
+  /// **'{minutes, plural, =1{in 1 minute} other{in {minutes} minutes}}'**
   String deviceTransferExpiryInMinutes(int minutes);
 
   /// No description provided for @deviceTransferExpiryAt.
@@ -4414,166 +3364,58 @@ abstract class AppLocalizations {
   /// **'System'**
   String get themeModeSystem;
 
-  /// No description provided for @aiDemoBannerTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Prepared answers'**
-  String get aiDemoBannerTitle;
-
-  /// No description provided for @aiDemoBannerBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Demo: replies are scripted on this device. Nothing is sent anywhere.'**
-  String get aiDemoBannerBody;
-
-  /// No description provided for @aiTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'VEIL Assistant'**
-  String get aiTitle;
-
-  /// No description provided for @aiClearTooltip.
-  ///
-  /// In en, this message translates to:
-  /// **'Clear conversation'**
-  String get aiClearTooltip;
-
-  /// No description provided for @aiIntro.
-  ///
-  /// In en, this message translates to:
-  /// **'There is no AI model behind this preview. Pick a question below to see the answer prepared for it.'**
-  String get aiIntro;
-
-  /// No description provided for @aiQuestionBackup.
-  ///
-  /// In en, this message translates to:
-  /// **'Is there a backup?'**
-  String get aiQuestionBackup;
-
-  /// No description provided for @aiAnswerBackup.
-  ///
-  /// In en, this message translates to:
-  /// **'No. VEIL has no backup and no account recovery. Messages are encrypted on this device before they reach the relay.'**
-  String get aiAnswerBackup;
-
-  /// No description provided for @aiQuestionNewDevice.
-  ///
-  /// In en, this message translates to:
-  /// **'How do I move to a new device?'**
-  String get aiQuestionNewDevice;
-
-  /// No description provided for @aiAnswerNewDevice.
-  ///
-  /// In en, this message translates to:
-  /// **'Your old device has to approve the new one. There is no cloud recovery path, by design.'**
-  String get aiAnswerNewDevice;
-
-  /// No description provided for @aiQuestionGroups.
-  ///
-  /// In en, this message translates to:
-  /// **'Are group messages encrypted?'**
-  String get aiQuestionGroups;
-
-  /// No description provided for @aiAnswerGroups.
-  ///
-  /// In en, this message translates to:
-  /// **'Yes. Group messages are encrypted on the sending device before they reach the relay.'**
-  String get aiAnswerGroups;
-
-  /// No description provided for @aiQuestionCalls.
-  ///
-  /// In en, this message translates to:
-  /// **'Can I make calls?'**
-  String get aiQuestionCalls;
-
-  /// No description provided for @aiAnswerCalls.
-  ///
-  /// In en, this message translates to:
-  /// **'Not in this version. Voice and video calls are not built yet.'**
-  String get aiAnswerCalls;
-
   /// No description provided for @securityStatusTitle.
   ///
   /// In en, this message translates to:
-  /// **'Security status'**
+  /// **'Security'**
   String get securityStatusTitle;
 
-  /// No description provided for @securityStatusHeroTitle.
+  /// No description provided for @securityGroupThisPhone.
   ///
   /// In en, this message translates to:
-  /// **'No backup. No recovery. No leaks.'**
-  String get securityStatusHeroTitle;
+  /// **'This phone'**
+  String get securityGroupThisPhone;
 
-  /// No description provided for @securityStatusHeroBody.
+  /// No description provided for @securityGroupConnection.
   ///
   /// In en, this message translates to:
-  /// **'The identity and runtime rows are read from this device and this build. The product rules hold for every VEIL build.'**
-  String get securityStatusHeroBody;
+  /// **'Connection'**
+  String get securityGroupConnection;
 
-  /// No description provided for @securityStatusAttentionTitle.
+  /// No description provided for @securityGroupEncryption.
   ///
   /// In en, this message translates to:
-  /// **'{count, plural, =1{1 item needs a look} other{{count} items need a look}}'**
-  String securityStatusAttentionTitle(int count);
+  /// **'Encryption'**
+  String get securityGroupEncryption;
 
-  /// No description provided for @securityStatusPillPrivateBeta.
+  /// No description provided for @securityGroupRules.
   ///
   /// In en, this message translates to:
-  /// **'Private beta'**
-  String get securityStatusPillPrivateBeta;
+  /// **'Rules'**
+  String get securityGroupRules;
 
-  /// No description provided for @securityStatusMetricRuntime.
+  /// No description provided for @securityFooterEncryption.
   ///
   /// In en, this message translates to:
-  /// **'Runtime'**
-  String get securityStatusMetricRuntime;
+  /// **'Messages are end-to-end encrypted. Keys exist only on your devices.'**
+  String get securityFooterEncryption;
 
-  /// No description provided for @securityStatusMetricRelay.
+  /// No description provided for @securityFooterDevice.
   ///
   /// In en, this message translates to:
-  /// **'Relay'**
-  String get securityStatusMetricRelay;
+  /// **'Your account lives on this phone.'**
+  String get securityFooterDevice;
 
-  /// No description provided for @securityStatusMetricRelayLinked.
+  /// No description provided for @securityFooterNoRecovery.
   ///
   /// In en, this message translates to:
-  /// **'Linked'**
-  String get securityStatusMetricRelayLinked;
-
-  /// No description provided for @securityStatusMetricCache.
-  ///
-  /// In en, this message translates to:
-  /// **'Cache'**
-  String get securityStatusMetricCache;
-
-  /// No description provided for @securityStatusMetricCacheOff.
-  ///
-  /// In en, this message translates to:
-  /// **'Off'**
-  String get securityStatusMetricCacheOff;
-
-  /// No description provided for @securityStatusSectionIdentity.
-  ///
-  /// In en, this message translates to:
-  /// **'Identity'**
-  String get securityStatusSectionIdentity;
-
-  /// No description provided for @securityStatusSectionRuntime.
-  ///
-  /// In en, this message translates to:
-  /// **'Runtime'**
-  String get securityStatusSectionRuntime;
-
-  /// No description provided for @securityStatusSectionProductRules.
-  ///
-  /// In en, this message translates to:
-  /// **'Product rules'**
-  String get securityStatusSectionProductRules;
+  /// **'There is no backup, no password reset and no way for anyone, including us, to recover an account.'**
+  String get securityFooterNoRecovery;
 
   /// No description provided for @securityStatusChecking.
   ///
   /// In en, this message translates to:
-  /// **'Checking'**
+  /// **'Checking…'**
   String get securityStatusChecking;
 
   /// No description provided for @securityStatusAvailable.
@@ -4588,16 +3430,10 @@ abstract class AppLocalizations {
   /// **'Unavailable'**
   String get securityStatusUnavailable;
 
-  /// No description provided for @securityStatusEnabled.
-  ///
-  /// In en, this message translates to:
-  /// **'Enabled'**
-  String get securityStatusEnabled;
-
   /// No description provided for @securityStatusDisabled.
   ///
   /// In en, this message translates to:
-  /// **'Disabled'**
+  /// **'Off'**
   String get securityStatusDisabled;
 
   /// No description provided for @securityStatusReady.
@@ -4609,7 +3445,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusStarting.
   ///
   /// In en, this message translates to:
-  /// **'Starting'**
+  /// **'Starting…'**
   String get securityStatusStarting;
 
   /// No description provided for @securityStatusBlocked.
@@ -4621,43 +3457,19 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusIdle.
   ///
   /// In en, this message translates to:
-  /// **'Idle'**
+  /// **'Not connected'**
   String get securityStatusIdle;
-
-  /// No description provided for @securityStatusBoundDevice.
-  ///
-  /// In en, this message translates to:
-  /// **'Bound device'**
-  String get securityStatusBoundDevice;
-
-  /// No description provided for @securityStatusBoundDeviceUnbound.
-  ///
-  /// In en, this message translates to:
-  /// **'Unbound'**
-  String get securityStatusBoundDeviceUnbound;
-
-  /// No description provided for @securityStatusBoundDeviceNoneDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'No active device session is present.'**
-  String get securityStatusBoundDeviceNoneDetail;
-
-  /// No description provided for @securityStatusBoundDeviceDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'This device currently holds the active VEIL session.'**
-  String get securityStatusBoundDeviceDetail;
 
   /// No description provided for @securityStatusSecretRefs.
   ///
   /// In en, this message translates to:
-  /// **'Device secret keys'**
+  /// **'Keys'**
   String get securityStatusSecretRefs;
 
   /// No description provided for @securityStatusSecretRefsPresent.
   ///
   /// In en, this message translates to:
-  /// **'Present'**
+  /// **'On this phone'**
   String get securityStatusSecretRefsPresent;
 
   /// No description provided for @securityStatusSecretRefsMissing.
@@ -4666,35 +3478,23 @@ abstract class AppLocalizations {
   /// **'Missing'**
   String get securityStatusSecretRefsMissing;
 
-  /// No description provided for @securityStatusSecretRefsDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Private device material stays on the device. The server never receives it.'**
-  String get securityStatusSecretRefsDetail;
-
   /// No description provided for @securityStatusPin.
   ///
   /// In en, this message translates to:
-  /// **'App lock PIN'**
+  /// **'App lock'**
   String get securityStatusPin;
 
   /// No description provided for @securityStatusPinConfigured.
   ///
   /// In en, this message translates to:
-  /// **'Configured'**
+  /// **'On'**
   String get securityStatusPinConfigured;
 
   /// No description provided for @securityStatusPinUnset.
   ///
   /// In en, this message translates to:
-  /// **'Unset'**
+  /// **'Off'**
   String get securityStatusPinUnset;
-
-  /// No description provided for @securityStatusPinDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'A lock on this device only. VEIL cannot unlock the app for you.'**
-  String get securityStatusPinDetail;
 
   /// No description provided for @securityStatusBiometrics.
   ///
@@ -4702,34 +3502,16 @@ abstract class AppLocalizations {
   /// **'Biometrics'**
   String get securityStatusBiometrics;
 
-  /// No description provided for @securityStatusBiometricsDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Device-level biometric unlock only. No remote fallback exists.'**
-  String get securityStatusBiometricsDetail;
-
-  /// No description provided for @securityStatusPrivacyShield.
-  ///
-  /// In en, this message translates to:
-  /// **'Privacy shield'**
-  String get securityStatusPrivacyShield;
-
-  /// No description provided for @securityStatusPrivacyShieldDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'When VEIL leaves the foreground, the app obscures previews and re-arms the app lock.'**
-  String get securityStatusPrivacyShieldDetail;
-
   /// No description provided for @securityStatusAppPreview.
   ///
   /// In en, this message translates to:
-  /// **'Recent-app preview'**
+  /// **'App switcher preview'**
   String get securityStatusAppPreview;
 
   /// No description provided for @securityStatusAppPreviewProtected.
   ///
   /// In en, this message translates to:
-  /// **'Protected'**
+  /// **'Hidden'**
   String get securityStatusAppPreviewProtected;
 
   /// No description provided for @securityStatusAppPreviewPartial.
@@ -4738,22 +3520,16 @@ abstract class AppLocalizations {
   /// **'Partial'**
   String get securityStatusAppPreviewPartial;
 
-  /// No description provided for @securityStatusAppPreviewDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Native and Flutter privacy shields are used to hide app-switcher content while VEIL is backgrounded.'**
-  String get securityStatusAppPreviewDetail;
-
   /// No description provided for @securityStatusScreenCapture.
   ///
   /// In en, this message translates to:
-  /// **'Screen capture'**
+  /// **'Screenshots'**
   String get securityStatusScreenCapture;
 
   /// No description provided for @securityStatusScreenCapturePlatformLimited.
   ///
   /// In en, this message translates to:
-  /// **'Platform-limited'**
+  /// **'Limited'**
   String get securityStatusScreenCapturePlatformLimited;
 
   /// No description provided for @securityStatusScreenCaptureNotBlocked.
@@ -4762,28 +3538,16 @@ abstract class AppLocalizations {
   /// **'Not blocked'**
   String get securityStatusScreenCaptureNotBlocked;
 
-  /// No description provided for @securityStatusScreenCaptureSupportedDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Android blocks screenshots with secure-window flags when enabled.'**
-  String get securityStatusScreenCaptureSupportedDetail;
-
   /// No description provided for @securityStatusScreenCaptureUnsupportedDetail.
   ///
   /// In en, this message translates to:
-  /// **'This platform has no public API for full screenshot blocking, so VEIL relies on preview shielding and rapid relocking instead.'**
+  /// **'This platform has no way to block screenshots, so the app hides its preview and locks quickly instead.'**
   String get securityStatusScreenCaptureUnsupportedDetail;
-
-  /// No description provided for @securityStatusScreenCaptureCheckingDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking native screen-capture policy.'**
-  String get securityStatusScreenCaptureCheckingDetail;
 
   /// No description provided for @securityStatusClipboard.
   ///
   /// In en, this message translates to:
-  /// **'Clipboard hygiene'**
+  /// **'Clipboard'**
   String get securityStatusClipboard;
 
   /// No description provided for @securityStatusClipboardRestricted.
@@ -4795,26 +3559,8 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusClipboardDetail.
   ///
   /// In en, this message translates to:
-  /// **'Sensitive attachment tickets are summarized locally instead of exposing raw signed URLs for copy/share.'**
+  /// **'Download links for attachments are never shown, so they can\'t be copied.'**
   String get securityStatusClipboardDetail;
-
-  /// No description provided for @securityStatusTransport.
-  ///
-  /// In en, this message translates to:
-  /// **'Transport policy'**
-  String get securityStatusTransport;
-
-  /// No description provided for @securityStatusTransportCompliant.
-  ///
-  /// In en, this message translates to:
-  /// **'Compliant'**
-  String get securityStatusTransportCompliant;
-
-  /// No description provided for @securityStatusTransportDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Configured endpoints satisfy the current private-beta transport policy.'**
-  String get securityStatusTransportDetail;
 
   /// No description provided for @securityStatusTlsPins.
   ///
@@ -4837,44 +3583,26 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusTlsPinsPinnedDetail.
   ///
   /// In en, this message translates to:
-  /// **'This build pins the relay\'s TLS keys ({count}). A certificate whose key matches none of them is refused.'**
+  /// **'This build pins the server\'s TLS keys ({count}). A certificate that matches none of them is refused.'**
   String securityStatusTlsPinsPinnedDetail(int count);
 
   /// No description provided for @securityStatusTlsPinsUnpinnedDetail.
   ///
   /// In en, this message translates to:
-  /// **'This build sets no TLS pins (VEIL_TLS_PINS), so the relay connection accepts any certificate the platform trusts. Release builds stop at a configuration error without them.'**
+  /// **'Any certificate the phone trusts is accepted.'**
   String get securityStatusTlsPinsUnpinnedDetail;
 
   /// No description provided for @securityStatusApiMode.
   ///
   /// In en, this message translates to:
-  /// **'Relay address'**
+  /// **'Server'**
   String get securityStatusApiMode;
-
-  /// No description provided for @securityStatusApiAttached.
-  ///
-  /// In en, this message translates to:
-  /// **'Configured'**
-  String get securityStatusApiAttached;
-
-  /// No description provided for @securityStatusApiAttachedDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'A relay address is configured for this build.'**
-  String get securityStatusApiAttachedDetail;
 
   /// No description provided for @securityStatusApiUnavailableDetail.
   ///
   /// In en, this message translates to:
-  /// **'No relay address is configured. Messaging is unavailable.'**
+  /// **'No server address is configured. Messaging is unavailable.'**
   String get securityStatusApiUnavailableDetail;
-
-  /// No description provided for @securityStatusRelayLink.
-  ///
-  /// In en, this message translates to:
-  /// **'Relay link'**
-  String get securityStatusRelayLink;
 
   /// No description provided for @securityStatusRelayConnected.
   ///
@@ -4882,34 +3610,22 @@ abstract class AppLocalizations {
   /// **'Connected'**
   String get securityStatusRelayConnected;
 
-  /// No description provided for @securityStatusRelayConnectedDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Realtime relay is connected with opaque event payloads.'**
-  String get securityStatusRelayConnectedDetail;
-
-  /// No description provided for @securityStatusRelayIdleDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Realtime relay is disconnected or still syncing.'**
-  String get securityStatusRelayIdleDetail;
-
   /// No description provided for @securityStatusLocalCache.
   ///
   /// In en, this message translates to:
-  /// **'Local cache'**
+  /// **'Messages on this phone'**
   String get securityStatusLocalCache;
 
   /// No description provided for @securityStatusLocalCacheDisabledDetail.
   ///
   /// In en, this message translates to:
-  /// **'Local message cache is disabled in this build.'**
+  /// **'No messages are stored on this phone in this build.'**
   String get securityStatusLocalCacheDisabledDetail;
 
   /// No description provided for @securityStatusLocalCacheDetail.
   ///
   /// In en, this message translates to:
-  /// **'Conversations and envelopes are cached locally behind the current private-beta encrypted-at-rest layer, scrubbed from app-switcher previews, and wiped on destructive local lifecycle events.'**
+  /// **'Stored encrypted on this phone, hidden from the app switcher, and deleted when you wipe this device.'**
   String get securityStatusLocalCacheDetail;
 
   /// No description provided for @securityStatusIntegrity.
@@ -4927,44 +3643,26 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusIntegrityClean.
   ///
   /// In en, this message translates to:
-  /// **'Clean'**
+  /// **'OK'**
   String get securityStatusIntegrityClean;
 
   /// No description provided for @securityStatusIntegrityCompromisedDetail.
   ///
   /// In en, this message translates to:
-  /// **'This device matched rooted or jailbroken heuristics. VEIL blocks local unlock in this state.'**
+  /// **'This device looks rooted or jailbroken, so the app won\'t unlock here.'**
   String get securityStatusIntegrityCompromisedDetail;
 
   /// No description provided for @securityStatusIntegrityCompromisedReasons.
   ///
   /// In en, this message translates to:
-  /// **'This device matched rooted or jailbroken heuristics. {reasons}'**
+  /// **'This device looks rooted or jailbroken. {reasons}'**
   String securityStatusIntegrityCompromisedReasons(String reasons);
-
-  /// No description provided for @securityStatusIntegrityCleanDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Native rooted and jailbroken heuristics did not trigger on this device.'**
-  String get securityStatusIntegrityCleanDetail;
-
-  /// No description provided for @securityStatusIntegrityCheckingDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Checking native integrity heuristics.'**
-  String get securityStatusIntegrityCheckingDetail;
 
   /// No description provided for @securityStatusCloudBackup.
   ///
   /// In en, this message translates to:
-  /// **'Cloud backup'**
+  /// **'Backup'**
   String get securityStatusCloudBackup;
-
-  /// No description provided for @securityStatusCloudBackupDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'VEIL does not keep a recovery copy of your message history.'**
-  String get securityStatusCloudBackupDetail;
 
   /// No description provided for @securityStatusAccountRecovery.
   ///
@@ -4972,47 +3670,35 @@ abstract class AppLocalizations {
   /// **'Account recovery'**
   String get securityStatusAccountRecovery;
 
-  /// No description provided for @securityStatusAccountRecoveryDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'No recovery email, reset flow, or admin restore path exists.'**
-  String get securityStatusAccountRecoveryDetail;
-
   /// No description provided for @securityStatusDeviceTransfer.
   ///
   /// In en, this message translates to:
-  /// **'Device transfer'**
+  /// **'Transfer'**
   String get securityStatusDeviceTransfer;
 
   /// No description provided for @securityStatusDeviceTransferValue.
   ///
   /// In en, this message translates to:
-  /// **'Old device required'**
+  /// **'Old phone required'**
   String get securityStatusDeviceTransferValue;
-
-  /// No description provided for @securityStatusDeviceTransferDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer succeeds only while the old device can approve it.'**
-  String get securityStatusDeviceTransferDetail;
 
   /// No description provided for @securityStatusLocalWipe.
   ///
   /// In en, this message translates to:
-  /// **'Local wipe'**
+  /// **'Wipe'**
   String get securityStatusLocalWipe;
 
-  /// No description provided for @securityStatusLocalWipeDetail.
+  /// No description provided for @securityStatusLocalWipeValue.
   ///
   /// In en, this message translates to:
-  /// **'This device can erase local session state, local secrets, encrypted cache, and the app lock without creating a recovery path.'**
-  String get securityStatusLocalWipeDetail;
+  /// **'This phone only'**
+  String get securityStatusLocalWipeValue;
 
-  /// No description provided for @securityStatusCryptoAdapter.
+  /// No description provided for @securityStatusCryptoImplementation.
   ///
   /// In en, this message translates to:
-  /// **'Crypto adapter'**
-  String get securityStatusCryptoAdapter;
+  /// **'Implementation'**
+  String get securityStatusCryptoImplementation;
 
   /// No description provided for @securityStatusCryptoVeilRatchet.
   ///
@@ -5023,7 +3709,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoVeilRatchetDetail.
   ///
   /// In en, this message translates to:
-  /// **'VEIL\'s own X3DH and Double Ratchet (X25519, AES-256-GCM, Ed25519) is active ({adapterId}). An external audit is still pending.'**
+  /// **'X3DH and Double Ratchet ({adapterId})'**
   String securityStatusCryptoVeilRatchetDetail(String adapterId);
 
   /// No description provided for @securityStatusCryptoLibsignal.
@@ -5035,7 +3721,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoLibsignalDetail.
   ///
   /// In en, this message translates to:
-  /// **'Sessions and message encryption run in Signal\'s libsignal through VEIL\'s native bridge ({adapterId}). The bridge has not been audited.'**
+  /// **'Signal\'s libsignal through a native bridge ({adapterId})'**
   String securityStatusCryptoLibsignalDetail(String adapterId);
 
   /// No description provided for @securityStatusCryptoDevelopment.
@@ -5047,55 +3733,37 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoDevelopmentDetail.
   ///
   /// In en, this message translates to:
-  /// **'This build runs a development adapter ({adapterId}), not production cryptography. Do not use it for real conversations.'**
+  /// **'This build runs a development adapter ({adapterId}), not production cryptography. Don\'t use it for real chats.'**
   String securityStatusCryptoDevelopmentDetail(String adapterId);
 
-  /// No description provided for @securityStatusPushPlaintext.
+  /// No description provided for @securityStatusPushDelivery.
   ///
   /// In en, this message translates to:
-  /// **'Push plaintext'**
-  String get securityStatusPushPlaintext;
+  /// **'Push notifications'**
+  String get securityStatusPushDelivery;
 
-  /// No description provided for @securityStatusPushPlaintextForbidden.
+  /// No description provided for @securityStatusPushDeliveryOn.
   ///
   /// In en, this message translates to:
-  /// **'Forbidden'**
-  String get securityStatusPushPlaintextForbidden;
+  /// **'Connected'**
+  String get securityStatusPushDeliveryOn;
 
-  /// No description provided for @securityStatusPushPlaintextDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'Push payloads must never contain plaintext message content.'**
-  String get securityStatusPushPlaintextDetail;
-
-  /// No description provided for @securityStatusPushProvider.
-  ///
-  /// In en, this message translates to:
-  /// **'Push provider'**
-  String get securityStatusPushProvider;
-
-  /// No description provided for @securityStatusPushProviderSeam.
+  /// No description provided for @securityStatusPushDeliveryOff.
   ///
   /// In en, this message translates to:
   /// **'Not connected'**
-  String get securityStatusPushProviderSeam;
+  String get securityStatusPushDeliveryOff;
 
-  /// No description provided for @securityStatusPushProviderSeamDetail.
+  /// No description provided for @securityStatusPushDeliveryOffDetail.
   ///
   /// In en, this message translates to:
-  /// **'The metadata-only wake-up path is defined, but a real APNs/FCM provider is not wired in this build.'**
-  String get securityStatusPushProviderSeamDetail;
-
-  /// No description provided for @securityStatusPushProviderUnavailableDetail.
-  ///
-  /// In en, this message translates to:
-  /// **'No relay address is configured, so push delivery is unavailable in this build.'**
-  String get securityStatusPushProviderUnavailableDetail;
+  /// **'Notifications arrive only while the app is open.'**
+  String get securityStatusPushDeliveryOffDetail;
 
   /// No description provided for @securityStatusPushPayloads.
   ///
   /// In en, this message translates to:
-  /// **'Push payloads'**
+  /// **'Notification content'**
   String get securityStatusPushPayloads;
 
   /// No description provided for @securityStatusPushPayloadsMetadata.
@@ -5107,13 +3775,13 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusPushPayloadsMetadataDetail.
   ///
   /// In en, this message translates to:
-  /// **'If push is enabled later, wake-up hints must stay metadata-only. Message bodies remain out of push.'**
+  /// **'A notification only says that something arrived.'**
   String get securityStatusPushPayloadsMetadataDetail;
 
   /// No description provided for @securityStatusPushPayloadsUnavailableDetail.
   ///
   /// In en, this message translates to:
-  /// **'No relay address is configured, so push payload generation is unavailable in this build.'**
+  /// **'No server address is configured, so there are no push notifications.'**
   String get securityStatusPushPayloadsUnavailableDetail;
 }
 

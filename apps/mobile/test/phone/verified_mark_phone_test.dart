@@ -5,7 +5,6 @@ import 'package:veil_mobile/src/features/security/presentation/safety_number_car
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -49,7 +48,7 @@ void main() {
   // The safety number is derived on a background isolate, which only real
   // time moves forward.
   Future<void> awaitSafetyNumber(WidgetTester tester) async {
-    final loading = find.byType(VeilLoadingBlock);
+    final loading = find.byKey(SafetyNumbersScreen.loadingKey);
     for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
@@ -86,10 +85,9 @@ void main() {
     // The pinned number is still shown, as the current one; what would
     // confirm the old key (marking it verified, its QR code, a scan against
     // it) is not offered here: the change is reviewed where it is held.
-    expect(texts, contains(l10n.safetyNumbersCardLabelCurrent));
+    expect(texts, contains(l10n.safetyNumbersCurrentNumberHeader));
     expect(texts, contains(l10n.safetyNumbersReviewChange));
     expect(texts, isNot(contains(l10n.safetyNumbersMarkVerified)));
-    expect(texts, isNot(contains(l10n.safetyNumbersScanLabel)));
     expect(texts, isNot(contains(l10n.safetyNumbersScanAction)));
   }
 
@@ -119,7 +117,7 @@ void main() {
         // Said before anything else on the page.
         final banner = onScreen(tester, findCopy(l10n.safetyNumbersChangedElsewhereTitle));
         expect(banner.height, greaterThan(0));
-        expect(banner.top, lessThan(onScreen(tester, find.byType(VeilScreenIntro)).top));
+        expect(banner.top, lessThan(onScreen(tester, find.byType(SafetyPeerHeader)).top));
         expectInQuestion(await textsOfScreen(tester));
 
         // The review is Sam's page in the group that holds the change.
@@ -129,7 +127,7 @@ void main() {
         expect((review.conversationId, review.memberUserId), (groupConversationId, peerId));
         final reviewTexts = await textsOfScreen(tester);
         expect(reviewTexts, contains(l10n.safetyNumbersKeyChangedTitle));
-        expect(reviewTexts, contains(l10n.safetyNumbersCardLabelNew));
+        expect(reviewTexts, contains(l10n.safetyNumbersNewNumberHeader));
         expect(reviewTexts, isNot(contains(l10n.safetyNumbersVerified)));
 
         // The user keeps the key they compared. Back on the 1:1's page she
@@ -199,7 +197,7 @@ void main() {
       location: '/safety-numbers/$groupConversationId',
       body: (world) async {
         await awaitSafetyNumber(tester);
-        final row = find.widgetWithText(VeilListTileCard, peerName);
+        final row = find.widgetWithText(VeilRow, peerName);
         expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsOneWidget);
 
         // Raised while the list is open: the app's own check of the 1:1 at
@@ -229,11 +227,11 @@ void main() {
       body: (world) async {
         await awaitSafetyNumber(tester);
         // Of the group's members only Sam was compared.
-        expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+        expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
         expect(find.text(l10n.safetyNumbersVerified), findsOneWidget);
         expect(
           find.descendant(
-            of: find.widgetWithText(VeilListTileCard, peerName),
+            of: find.widgetWithText(VeilRow, peerName),
             matching: find.text(l10n.safetyNumbersVerified),
           ),
           findsOneWidget,
@@ -244,13 +242,13 @@ void main() {
         await raiseChange(tester, world, chatConversationId);
         await pumpFrames(tester, frames: 3);
         await awaitSafetyNumber(tester);
-        expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+        expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
         expect(find.text(l10n.safetyNumbersVerified), findsNothing);
         expect(find.text(l10n.safetyNumbersUnverified), findsNWidgets(groupMemberHandles.length));
 
         // Her page in the group says why, and leads to the 1:1 that holds
         // the change.
-        await tester.tap(find.widgetWithText(VeilListTileCard, peerName));
+        await tester.tap(find.widgetWithText(VeilRow, peerName));
         await pumpFrames(tester);
         await awaitSafetyNumber(tester);
         final member = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
@@ -281,7 +279,7 @@ void main() {
       },
       body: (world) async {
         await awaitSafetyNumber(tester);
-        final row = find.widgetWithText(VeilListTileCard, peerNames['priya']!);
+        final row = find.widgetWithText(VeilRow, peerNames['priya']!);
         expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersUnverified)), findsOneWidget);
 
         await tester.tap(row);
@@ -375,9 +373,9 @@ void main() {
         expect(digits, hasLength(12));
         expect({for (final group in digits) group.style?.color}, {palette.text}, reason: '$themeMode');
 
-        // The page keeps the 20 px side margin of the other screens.
+        // The page keeps the 16 px side gutter of the other form screens.
         final card = tester.getRect(find.byType(SafetyNumberCard));
-        expect((card.left, phoneMedium.width - card.right), (20.0, 20.0), reason: '$themeMode');
+        expect((card.left, phoneMedium.width - card.right), (16.0, 16.0), reason: '$themeMode');
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump();

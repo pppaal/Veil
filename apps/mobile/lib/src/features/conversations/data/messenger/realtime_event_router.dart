@@ -214,7 +214,7 @@ class RealtimeEventRouter {
       // label costs nothing: it could withhold the message.
       unawaited(_notifications?.showMessageNotification(
         conversationId: conversationId,
-        title: 'VEIL',
+        title: 'Veil',
         body: 'New encrypted message',
       ));
     }

@@ -5,11 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../app/app_state.dart';
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import 'brand_mark.dart';
+
+const double _markWidth = 96;
+const double _indicatorSize = 24;
+const double _indicatorGap = 24;
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -68,48 +72,34 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     final session = ref.watch(appSessionProvider);
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final palette = context.veilPalette;
+    final error = session.errorMessage;
 
-    // The name, the line VEIL stands for, and what the app is doing right
-    // now (or why it cannot start). Nothing here is for reading twice.
+    // The mark where the native splash had it, and under it that the app
+    // is starting; no words. Only a start that failed says something.
     return VeilShell(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  l10n.splashEyebrow,
-                  style: theme.textTheme.labelLarge?.copyWith(color: palette.primaryStrong),
-                ),
-                const SizedBox(height: VeilSpace.sm),
-                Text(l10n.appTitle, style: theme.textTheme.displayLarge),
-                const SizedBox(height: VeilSpace.xs),
-                VeilCopy(
-                  l10n.splashBody,
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.bodyLarge?.copyWith(color: palette.textMuted),
-                ),
-                if (session.errorMessage != null) ...[
-                  const SizedBox(height: VeilSpace.xxl),
-                  VeilInlineBanner(
-                    title: l10n.splashErrorTitle,
-                    message: veilErrorText(l10n, session.errorMessage!),
-                    tone: VeilBannerTone.danger,
+      maxWidth: null,
+      child: error != null
+          ? VeilEmptyState.error(title: l10n.splashErrorTitle, body: veilErrorText(l10n, error))
+          : SizedBox.expand(
+              child: Stack(
+                children: [
+                  const Center(child: BrandMark(width: _markWidth)),
+                  // 24 under the mark, which stays at the centre.
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: _markWidth + 2 * _indicatorGap + _indicatorSize),
+                      child: Semantics(
+                        label: l10n.splashPreparingTitle,
+                        child: const SizedBox.square(
+                          dimension: _indicatorSize,
+                          child: CircularProgressIndicator.adaptive(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
                   ),
-                ] else
-                  VeilLoadingBlock(
-                    title: l10n.splashPreparingTitle,
-                    body: l10n.splashPreparingBody,
-                  ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 }

@@ -9,9 +9,10 @@ import 'package:veil_mobile/src/features/conversations/data/veil_messenger_contr
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_old_device_panel.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
-import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_notice.dart';
 
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
@@ -28,7 +29,10 @@ import 'phone_app.dart';
 final _en = lookupAppLocalizations(const Locale('en'));
 
 // What a relay says in its own words: no code, no sentence of the ARB.
-const _relaysOwn = 'handle_taken';
+const _relaysOwn = 'Request rejected';
+
+// The error under the one text field on screen.
+String? _fieldError(WidgetTester tester) => tester.widget<TextField>(find.byType(TextField)).decoration?.errorText;
 
 Widget _alone(Widget child) => MaterialApp(
       theme: VeilTheme.dark(),
@@ -87,16 +91,18 @@ void main() {
         account: LayoutAccount.signedOut,
         sessionError: UserFacingErrorCode.conflict.sentence, body: (world) async {
       expect(find.byType(ChooseHandleScreen), findsOneWidget);
-      expect(findCopy(_en.authHandleFailedTitle), findsOneWidget);
+      // The handle field's error, in place of its helper line.
+      expect(_fieldError(tester), _en.errorConflict);
       expect(findCopy(_en.errorConflict), findsOneWidget);
       expect(findCopy(UserFacingErrorCode.conflict.sentence), findsNothing);
+      expect(find.byType(VeilNotice), findsNothing);
     });
 
     await withPhoneApp(tester, identities,
         location: '/choose-handle',
         account: LayoutAccount.signedOut,
         sessionError: _relaysOwn, body: (world) async {
-      expect(findCopy(_en.authHandleFailedTitle), findsOneWidget);
+      expect(_fieldError(tester), _relaysOwn);
       expect(findCopy(_relaysOwn), findsOneWidget);
     });
   });
@@ -109,8 +115,12 @@ void main() {
       expect(find.byType(DeviceTransferScreen), findsOneWidget);
       final failure = findCopy(_en.errorRelayFailed);
       expect(failure, findsOneWidget);
-      expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 1);
-      expect(findCopy(_en.deviceTransferFailedTitle), findsOneWidget);
+      // With the first step's controls, under the steps.
+      expect(tester.getRect(failure).top, greaterThanOrEqualTo(tester.getRect(find.byType(StepRow).last).bottom));
+      expect(tester.getRect(failure).top,
+          greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.deviceTransferImportPayload)).bottom));
+      // One line, not a box.
+      expect(find.byType(VeilNotice), findsNothing);
       expect(findCopy(UserFacingErrorCode.relayFailed.sentence), findsNothing);
     });
   });
@@ -132,6 +142,7 @@ void main() {
           onCopyCode: () {},
           onClear: () {},
           now: now,
+          stepsFooter: _en.deviceTransferOldPhoneNeeded,
         ));
     tester.view
       ..physicalSize = const Size(400, 3000)
@@ -142,7 +153,9 @@ void main() {
     await tester.pump();
     final failure = findCopy(_en.errorConflict);
     expect(failure, findsOneWidget);
-    expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 3);
+    // Under the button that approves.
+    expect(tester.getRect(failure).top,
+        greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim)).bottom));
     expect(findCopy(UserFacingErrorCode.conflict.sentence), findsNothing);
 
     await tester.pumpWidget(panel(_relaysOwn));

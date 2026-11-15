@@ -104,7 +104,6 @@ const realtime = createRealtime({
   messages,
   getIo: () => window.io,
   onStatus: shell.setConnection,
-  onRetry: shell.setRetry,
   onPeerMessage: sounds.playReceive,
 });
 const send = createSend({ store, stack, messages, realtime, onSent: sounds.playSend, toast });
@@ -174,7 +173,6 @@ auth.mount();
 sidebar.mount();
 createNewChatDialog({ store, stack, history, tabs, dialogs }).mount();
 tabs.mount();
-shell.mountBetaBanner();
 transferDialogs.mount();
 
 auth.boot();

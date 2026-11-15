@@ -81,7 +81,7 @@ const _chat = <_Line>[
   _Line(false, 'The registry entry is at https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true'),
   _Line(false, 'Screenshot taken', kind: MessageKind.system),
   _Line(true, 'Account number for the deposit, gone in a week.', expires: true),
-  _Line(true, 'Section 7 is fine. Let us sign tomorrow.'),
+  _Line(true, "Section 7 is fine. Let's sign tomorrow."),
 ];
 
 /// How many messages the chat's conversation holds.
@@ -91,12 +91,12 @@ int get chatLineCount => _chat.length;
 // One conversation has none yet.
 const _others = <String, _Line?>{
   emptyChatPeerHandle: null,
-  'tom_walsh': _Line(true, 'Keys rotated, you should see a new safety number.'),
+  'tom_walsh': _Line(true, 'Can you send me the address again?'),
   'omar': _Line(false, 'Photo from the site visit', kind: MessageKind.image),
   'mia': _Line(false, 'The second mock-up is closer, but the header still feels heavy to me.'),
   'alexandra': _Line(false, 'Voice note', kind: MessageKind.voice),
   timerChatPeerHandle: _Line(true, 'See you at nine.'),
-  'priya': _Line(false, 'I will send the slides for tomorrow here.'),
+  'priya': _Line(false, "I'll send the slides here tomorrow."),
 };
 
 /// The group of the group cases: this user and three of the peers, in a
@@ -107,7 +107,7 @@ const groupMemberHandles = [peerHandle, 'priya', 'omar'];
 const _group = <_Line>[
   _Line(false, 'The movers can do the 14th or the 16th.', from: peerHandle),
   _Line(false, 'The 14th works for me.', from: 'priya'),
-  _Line(true, '14th then. I will book the lift for the morning.'),
+  _Line(true, "14th then. I'll book the lift for the morning."),
   _Line(false, 'I can bring the van after six, if someone helps me carry the shelves down.', from: 'omar'),
 ];
 

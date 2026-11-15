@@ -6,7 +6,7 @@ import 'support/async_wait.dart';
 import 'support/fake_relay.dart';
 import 'support/messenger_party.dart';
 
-// "Start a new session" replaces a 1:1 session with a fresh X3DH handshake
+// "Renew keys" replaces a 1:1 session with a fresh X3DH handshake
 // and archives the old state. It replaced a forced ratchet step on the live
 // session, which desynchronised the conversation for good whenever the peer
 // had a reply in flight: the step was taken from a ratchet key the peer had

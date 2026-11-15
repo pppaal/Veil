@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/errors/user_facing_error.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
@@ -38,7 +39,7 @@ class _RelayApi extends VeilApiClient {
   Future<Map<String, dynamic>> sendMessage(String accessToken, Map<String, dynamic> body) async {
     final clientMessageId = body['clientMessageId'] as String;
     sent.add(clientMessageId);
-    if (offline) throw VeilApiException('The VEIL relay is unreachable.', code: 'network_unavailable');
+    if (offline) throw VeilApiException('The server is unreachable.', code: 'network_unavailable');
     if (stalled.remove(clientMessageId)) return super.sendMessage(accessToken, body);
     await gate?.future;
     final failure = failures.remove(clientMessageId);
@@ -132,7 +133,7 @@ void main() {
       MessageDeliveryState.pending,
       reason: 'a transient failure stays queued, not failed',
     );
-    expect(services.ops.errorMessage, 'The VEIL relay did not respond in time.');
+    expect(services.ops.errorMessage, UserFacingErrorCode.networkTimeout.sentence);
 
     await services.outbox.retry('conv-1');
     expect(api.sent, ['c-slow', 'c-next', 'c-slow']);

@@ -57,11 +57,11 @@ Future<void> showReactionPickerSheet(
 }) async {
   await showModalBottomSheet<void>(
     context: context,
-    backgroundColor: Colors.transparent,
+    showDragHandle: true,
     builder: (sheetContext) {
       return SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(VeilSpace.md),
+          padding: const EdgeInsets.only(bottom: VeilSpace.md),
           child: Center(
             heightFactor: 1,
             child: ReactionPickerWidget(

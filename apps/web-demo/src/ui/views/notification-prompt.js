@@ -1,7 +1,7 @@
 // The offer to turn on browser notifications, at the top of the sidebar
 // once signed in, until the user answers or dismisses it.
 
-import { el } from '../dom.js';
+import { el, icon } from '../dom.js';
 import { toast } from '../toast.js';
 
 const CHECK_MS = 2000;
@@ -19,16 +19,15 @@ export function createNotificationPrompt({ store, preferences }) {
     if (document.querySelector('.notif-prompt')) return;
     const sidebar = document.getElementById('sidebar');
     if (!sidebar) return;
-    const enable = el('button', { class: 'enable' }, ['Turn on']);
-    const later = el('button', { class: 'dismiss' }, ['Later']);
-    const node = el('div', { class: 'notif-prompt' }, [
-      el('span', { style: 'flex:1;line-height:1.4' }, [
-        'Turn on notifications?',
-        el('br'),
-        el('span', { style: 'opacity:0.7;font-size:11px' }, ['You will be told about new messages while this tab is in the background.']),
+    const enable = el('button', { class: 'text-btn enable' }, ['Turn on']);
+    const later = el('button', { class: 'text-btn dismiss' }, ['Later']);
+    const node = el('div', { class: 'notice notif-prompt', role: 'region', 'aria-label': 'Notifications' }, [
+      icon('bell', 'notice-icon tone-info'),
+      el('div', { class: 'notice-text' }, [
+        el('div', { class: 'notice-title' }, ['Turn on notifications?']),
+        el('div', { class: 'notice-body' }, ['You will be told about new messages while this tab is in the background.']),
       ]),
-      enable,
-      later,
+      el('div', { class: 'notice-actions' }, [later, enable]),
     ]);
     enable.addEventListener('click', async () => {
       try {

@@ -76,7 +76,7 @@ allowlisting serializers in `src/platform/persist.js`.
 
 | module | role |
 | ------ | ---- |
-| `app.js` | loads translations, builds everything below, subscribes views to topics, mounts listeners, signs the stored identity in |
+| `app.js` | loads the strings (`i18n/en.json`), builds everything below, subscribes views to topics, mounts listeners, signs the stored identity in |
 | `src/app/messaging-stack.js` | IndexedDB, the session record, the REST client, pins and trust, the direct conversations' peer bindings, the session cipher, the decrypt-once content store, secure messaging, the sender, prekey maintenance |
 
 ### Services (`src/app/services/`)
@@ -100,7 +100,7 @@ allowlisting serializers in `src/platform/persist.js`.
 
 ### Views (`src/ui/views/`)
 
-`app-shell.js` (identity, connection pill, banners), `auth-view.js`,
+`app-shell.js` (identity, connection status, banners), `auth-view.js`,
 `sidebar.js`, `tabs.js` (tabs, split view, list/chat switch),
 `chat-view.js` (panels, header, read receipts, local history deletion),
 `message-list.js` (days, groups, bubbles, media, reactions, delivery
@@ -298,12 +298,12 @@ characterization session and transfer specs.
 - `npx playwright test --project=characterization`: the whole app through
   its UI in two or more browser contexts against the same relay (its
   realtime gateway, `e2e/mock-realtime.mjs`, switched on where a test needs
-  pushes), covering sign-up and sign-in, rejected sessions, wipe, settings
-  and language, messaging with replies, reactions, edits, deletes,
-  search, forwarding, tabs, receipts and typing, history paging,
-  attachments, safety numbers, identity changes, device transfer, secret
-  links and the KakaoTalk import, each with no app errors in the console;
-  also what a relay that rewrites its lists cannot change (the messages a
+  pushes), covering sign-up and sign-in, rejected sessions, wipe, settings,
+  the page staying English whatever the browser's language, messaging with
+  replies, reactions, edits, deletes, search, forwarding, tabs, receipts
+  and typing, history paging, attachments, safety numbers, identity changes,
+  device transfer, secret links and the KakaoTalk import, each with no app
+  errors in the console; also what a relay that rewrites its lists cannot change (the messages a
   history holds, whom a conversation is with, the name it is shown and
   searched under, and which new conversations are held), Retry of a
   refused send, a send in flight when its page closes, a transfer whose

@@ -45,12 +45,12 @@ export function confirmImage(file, onSend) {
     }
   };
   const send = el('button', { class: 'btn btn-primary' }, ['Send']);
-  const backdrop = el('div', { class: 'image-zoom-backdrop', style: 'cursor: default;', role: 'dialog', 'aria-modal': 'true' }, [
-    el('div', { style: 'background:#1c1d22;padding:16px;border-radius:14px;max-width:480px;width:90vw;display:flex;flex-direction:column;gap:12px' }, [
-      el('div', { style: 'font-size:15px;font-weight:600' }, ['Send this image?']),
-      el('div', { style: 'font-size:12px;opacity:0.7' }, [`${file.name || 'Image'}, ${(file.size / 1024).toFixed(0)} KB`]),
-      el('img', { src: url, style: 'max-width:100%;max-height:50vh;border-radius:8px;object-fit:contain;background:#0b0c10' }),
-      el('div', { style: 'display:flex;gap:8px;justify-content:flex-end' }, [
+  const backdrop = el('div', { class: 'dialog-backdrop image-confirm', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'image-confirm-title' }, [
+    el('div', { class: 'dialog dialog-wide' }, [
+      el('div', { class: 'dialog-title', id: 'image-confirm-title' }, ['Send this image?']),
+      el('div', { class: 'dialog-sub' }, [`${file.name || 'Image'}, ${(file.size / 1024).toFixed(0)} KB`]),
+      el('img', { class: 'image-confirm-preview', src: url, alt: '' }),
+      el('div', { class: 'dialog-actions' }, [
         el('button', { class: 'btn btn-ghost', onclick: close }, ['Cancel']),
         send,
       ]),

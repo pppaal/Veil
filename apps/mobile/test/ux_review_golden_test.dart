@@ -31,12 +31,12 @@ void main() {
       conversationId: 'conv-1',
       senderDeviceId: 'device-local',
       recipientUserId: 'user-peer-1',
-      body: 'Selene relay note',
+      body: 'See you at nine',
       messageKind: MessageKind.text,
       recipientBundle: const KeyBundle(
         userId: 'user-peer-1',
         deviceId: 'device-peer-1',
-        handle: 'selene',
+        handle: 'sam',
         identityPublicKey: 'pub-peer-1',
         signedPrekeyBundle: 'bundle-peer-1',
       ),
@@ -50,7 +50,7 @@ void main() {
       recipientBundle: const KeyBundle(
         userId: 'user-peer-2',
         deviceId: 'device-peer-2',
-        handle: 'rowan',
+        handle: 'priya',
         identityPublicKey: 'pub-peer-2',
         signedPrekeyBundle: 'bundle-peer-2',
       ),
@@ -62,14 +62,14 @@ void main() {
         conversations: [
           _conversationMap(
             id: 'conv-1',
-            peerHandle: 'selene',
-            peerDisplayName: 'Selene',
+            peerHandle: 'sam',
+            peerDisplayName: 'Sam Rivera',
             envelope: firstEnvelope,
           ),
           _conversationMap(
             id: 'conv-2',
-            peerHandle: 'rowan',
-            peerDisplayName: 'Rowan',
+            peerHandle: 'priya',
+            peerDisplayName: 'Priya Nair',
             envelope: secondEnvelope,
           ),
         ],
@@ -99,8 +99,8 @@ void main() {
           MessageSearchResult(
             conversationId: 'conv-2',
             messageId: 'msg-2',
-            peerHandle: 'rowan',
-            peerDisplayName: 'Rowan',
+            peerHandle: 'priya',
+            peerDisplayName: 'Priya Nair',
             sentAt: DateTime.utc(2026, 4, 7, 9, 40),
             messageKind: MessageKind.text,
             isMine: false,
@@ -116,8 +116,8 @@ void main() {
         accessToken: 'token',
         userId: 'user-local',
         deviceId: 'device-local',
-        handle: 'atlas',
-        displayName: 'Atlas',
+        handle: 'alex',
+        displayName: 'Alex Kim',
         onboardingAccepted: true,
         locked: false,
         initializing: false,
@@ -172,7 +172,7 @@ void main() {
       recipientBundle: const KeyBundle(
         userId: 'user-peer',
         deviceId: 'device-peer',
-        handle: 'selene',
+        handle: 'sam',
         identityPublicKey: 'pub-peer',
         signedPrekeyBundle: 'bundle-peer',
       ),
@@ -186,7 +186,7 @@ void main() {
       recipientBundle: const KeyBundle(
         userId: 'user-peer',
         deviceId: 'device-peer',
-        handle: 'selene',
+        handle: 'sam',
         identityPublicKey: 'pub-peer',
         signedPrekeyBundle: 'bundle-peer',
       ),
@@ -210,8 +210,8 @@ void main() {
         accessToken: 'token',
         userId: 'user-local',
         deviceId: 'device-local',
-        handle: 'atlas',
-        displayName: 'Atlas',
+        handle: 'alex',
+        displayName: 'Alex Kim',
         onboardingAccepted: true,
         locked: false,
         initializing: false,
@@ -233,7 +233,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Load older'));
+    await tester.tap(find.text('Load older messages'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
@@ -420,8 +420,8 @@ class _FakeConversationApiClient extends VeilApiClient {
         : [
             _conversationMap(
               id: 'conv-1',
-              peerHandle: 'selene',
-              peerDisplayName: 'Selene',
+              peerHandle: 'sam',
+              peerDisplayName: 'Sam Rivera',
               envelope: _envelope,
             ),
           ];
@@ -487,8 +487,8 @@ class _FakePagedChatApiClient extends VeilApiClient {
       'items': [
         _conversationMap(
           id: 'conv-1',
-          peerHandle: 'selene',
-          peerDisplayName: 'Selene',
+          peerHandle: 'sam',
+          peerDisplayName: 'Sam Rivera',
           envelope: latestEnvelope,
         ),
       ],
@@ -553,8 +553,8 @@ Map<String, dynamic> _conversationMap({
     'members': [
       {
         'userId': 'user-local',
-        'handle': 'atlas',
-        'displayName': 'Atlas',
+        'handle': 'alex',
+        'displayName': 'Alex Kim',
       },
       {
         'userId': 'user-peer',

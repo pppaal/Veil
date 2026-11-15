@@ -164,7 +164,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
         event.stopPropagation();
         send.react(message.id, emoji);
       },
-    }, [el('span', {}, [emoji]), el('span', { class: 'msg-reaction-count' }, [String(entry.count)])])));
+    }, [el('span', {}, [emoji]), ' ', el('span', { class: 'msg-reaction-count' }, [String(entry.count)])])));
   }
 
   // The quoted message at the top of a reply, behind a rule.
@@ -237,8 +237,8 @@ export function createMessageList({ store, send, outbox, startReply }) {
 
   // The list node for a conversation's shown messages; reactions:
   // src/domain/reactions.js reactionsByTarget over the messages not gone.
-  // Each run of a peer's messages is headed by their handle; in a group it
-  // is in their own tint and their avatar sits beside the run.
+  // Each run of a peer's messages is headed by their handle, in their own
+  // tint in a group, and has their avatar beside it.
   function render(convId, { shown, reactions, peerHandle, group: isGroup = false }) {
     const list = el('div', { class: 'panel-msgs', dataset: { conv: convId } });
     for (const day of groupMessages(shown, { me: state.me, peerHandle, dayKey, dayLabel })) {
@@ -263,7 +263,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
         const failed = failedLine(convId, group);
         if (failed) stack.appendChild(failed);
         list.appendChild(el('div', { class: 'msg-group ' + (group.isMe ? 'me' : 'them') }, [
-          group.isMe || !isGroup ? null : avatarFor(group.senderHandle, 'sm'),
+          group.isMe ? null : avatarFor(group.senderHandle, 'sm'),
           stack,
         ]));
       }

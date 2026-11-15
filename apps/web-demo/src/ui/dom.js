@@ -63,13 +63,13 @@ export const avatarIndex = (handle) => fnv1a32(shownHandle(handle)) % AVATAR_COL
 // A flat disc in one of eight colours (.av-0 to .av-7 in app.css) with the
 // handle's first letter in white. A handle no honest server issues is drawn
 // from its shown form (src/domain/handles.js shownHandle), never like the
-// handle it imitates. The row it sits in carries the name, so the disc is
-// hidden from assistive technology.
+// handle it imitates, and its tooltip names that shown form. The row it sits
+// in carries the name, so the disc is hidden from assistive technology.
 export function avatarFor(handle, size = 'md') {
   const shown = shownHandle(handle);
   if (shown === '?') return el('div', { class: `avatar size-${size} avatar-neutral`, 'aria-hidden': 'true' }, [icon('user')]);
   const initial = [...shown][0].toUpperCase();
-  return el('div', { class: `avatar size-${size} av-${fnv1a32(shown) % AVATAR_COLOURS}`, 'aria-hidden': 'true' }, [initial]);
+  return el('div', { class: `avatar size-${size} av-${fnv1a32(shown) % AVATAR_COLOURS}`, title: shown, 'aria-hidden': 'true' }, [initial]);
 }
 
 // "@handle" for member and contact rows. Handles only: profile text is not

@@ -133,11 +133,11 @@ export function createKakaoImport({ store, archives }) {
           title = file.name.replace(/\.txt$/i, '');
           const { participants, errors } = parsed;
           const more = participants.length > 4 ? ` and ${participants.length - 4} more` : '';
-          preview.replaceChildren(
+          preview.replaceChildren(...[
             el('div', {}, [el('strong', {}, [String(messageCount(parsed))]), ' messages']),
             el('div', {}, [el('strong', {}, [String(participants.length)]), ` participants (${participants.slice(0, 4).join(', ')}${more})`]),
             errors.length > 0 ? el('div', {}, [`${errors.length} lines could not be read (you can still continue)`]) : null,
-          );
+          ].filter(Boolean));
           preview.classList.remove('hidden');
           confirmButton.disabled = false;
         } catch (failure) {

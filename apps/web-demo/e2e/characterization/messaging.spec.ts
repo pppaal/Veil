@@ -275,7 +275,7 @@ test.describe('a direct conversation', () => {
     await page.locator('#tab-strip .tab', { hasText: carol.handle }).click();
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${carol.handle}`);
     await page.locator('#tab-strip .tab', { hasText: carol.handle }).locator('.tab-close').click();
-    await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}×`]);
+    await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`]);
     await expect(page.locator('.panel .panel-title .name')).toHaveText(`@${bob.handle}`);
     expectNoErrors(alice);
   });

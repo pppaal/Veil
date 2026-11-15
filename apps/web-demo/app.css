@@ -1056,7 +1056,7 @@ html.theme-light .name-7 { color: #45602A; }
   display: grid;
   grid-template-columns: repeat(4, max-content);
   justify-content: start;
-  gap: 6px 18px;
+  gap: 6px 14px;
   margin: 8px 0 16px;
   font-family: var(--mono);
   font-size: 20px;
@@ -1066,7 +1066,7 @@ html.theme-light .name-7 { color: #45602A; }
 .safety-status { margin: -4px 0 12px; font-size: 13px; font-weight: 500; color: var(--good); }
 .safety-dialog .notice { margin-bottom: 12px; }
 .safety-dialog .field-label { margin: 0 0 6px; }
-.safety-code { margin-bottom: 12px; font-size: 13px; }
+.safety-code { margin-bottom: 12px; font-size: 13px; field-sizing: content; max-height: 160px; }
 
 .settings-row {
   display: flex;
@@ -1077,7 +1077,7 @@ html.theme-light .name-7 { color: #45602A; }
   padding: 4px 0;
   border-top: 0.5px solid var(--line-strong);
 }
-.settings-row:first-of-type { border-top: 0; }
+.dialog-title + .settings-row { border-top: 0; }
 .settings-label { font-size: 15px; }
 .settings-select {
   height: 36px;
@@ -1283,4 +1283,7 @@ html.theme-light .settings-toggle { background: var(--line); }
   .panel-msgs { padding: 8px 12px 12px; }
   .panel-input textarea:disabled { min-height: 56px; }
   .menu { right: 4px; left: auto; max-width: calc(100vw - 8px); }
+  .dialog { padding: 16px 16px 8px; }
+  .forward-list { margin: 0 -16px 8px; }
+  .forward-list-item { padding: 0 16px; }
 }

@@ -205,18 +205,23 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
     if (!widget.pane) {
       return VeilShell(padding: EdgeInsets.zero, leading: leading, titleWidget: title, actions: actions, child: body);
     }
-    return Column(
-      children: [
-        ChatPaneBar(leading: leading, titleWidget: title, actions: actions),
-        Expanded(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth),
-              child: body,
+    // A pane brings its own material for its fields and ink: it does not
+    // count on what it is placed in.
+    return Material(
+      type: MaterialType.transparency,
+      child: Column(
+        children: [
+          ChatPaneBar(leading: leading, titleWidget: title, actions: actions),
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth),
+                child: body,
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

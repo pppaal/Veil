@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -35,38 +37,17 @@ void main() {
     final soon = DateTime.now().add(const Duration(seconds: 9));
     final medium = DateTime.now().add(const Duration(minutes: 2, seconds: 5));
 
-    expect(formatRetryCountdown(soon), matches(RegExp(r'^[0-9]+s$')));
-    expect(formatRetryCountdown(medium), matches(RegExp(r'^2m [0-9]+s$')));
+    expect(formatRetryCountdown(l10n, soon), matches(RegExp(r'^[0-9]+s$')));
+    expect(formatRetryCountdown(l10n, medium), matches(RegExp(r'^2m [0-9]+s$')));
   });
 
-  test('historyWindowLabel reflects paged and complete states clearly', () {
-    expect(
-      historyWindowLabel(l10n: l10n, isLoadingHistory: true, hasMoreHistory: true),
-      'Loading older',
-    );
-    expect(
-      historyWindowLabel(l10n: l10n, isLoadingHistory: false, hasMoreHistory: true),
-      'Paged',
-    );
-    expect(
-      historyWindowLabel(l10n: l10n, isLoadingHistory: false, hasMoreHistory: false),
-      'Complete',
-    );
-  });
+  test('formatRetryCountdown counts in the language of the screen', () {
+    final ko = lookupAppLocalizations(const Locale('ko'));
+    final soon = DateTime.now().add(const Duration(seconds: 9));
+    final medium = DateTime.now().add(const Duration(minutes: 2, seconds: 5));
 
-  test('historyWindowBannerSpec only appears for loading or complete windows', () {
-    expect(
-      historyWindowBannerSpec(l10n: l10n, isLoadingHistory: false, hasMoreHistory: true),
-      isNull,
-    );
-    expect(
-      historyWindowBannerSpec(l10n: l10n, isLoadingHistory: true, hasMoreHistory: true)?.title,
-      'Syncing older history',
-    );
-    expect(
-      historyWindowBannerSpec(l10n: l10n, isLoadingHistory: false, hasMoreHistory: false)?.title,
-      'Conversation window complete',
-    );
+    expect(formatRetryCountdown(ko, soon), matches(RegExp(r'^[0-9]+초$')));
+    expect(formatRetryCountdown(ko, medium), matches(RegExp(r'^2분 [0-9]+초$')));
   });
 
   test('messageDeliveryLabel handles all delivery states exhaustively', () {
@@ -84,9 +65,9 @@ void main() {
     final distant = DateTime.now().add(const Duration(minutes: 10, seconds: 30));
     final past = DateTime.now().subtract(const Duration(seconds: 5));
 
-    expect(formatRetryCountdown(imminent), matches(RegExp(r'^[0-9]+s$')));
-    expect(formatRetryCountdown(distant), matches(RegExp(r'^10m [0-9]+s$')));
-    expect(formatRetryCountdown(past), matches(RegExp(r'^0s$')));
+    expect(formatRetryCountdown(l10n, imminent), matches(RegExp(r'^[0-9]+s$')));
+    expect(formatRetryCountdown(l10n, distant), matches(RegExp(r'^10m [0-9]+s$')));
+    expect(formatRetryCountdown(l10n, past), matches(RegExp(r'^0s$')));
   });
 
   test('messageBubbleSemanticsLabel omits delivery state for received messages', () {

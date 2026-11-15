@@ -5,8 +5,8 @@ import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
-import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_pane.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_parts.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -198,7 +198,7 @@ void main() {
           final tile = find.byWidgetPredicate(
             (widget) => widget is MessageSearchResultTile && widget.result.bodySnippet == historyLine(line),
           );
-          await tester.dragUntilVisible(tile, find.byType(ConversationListPane), const Offset(0, -200));
+          await tester.dragUntilVisible(tile, find.byType(ConversationListPhone), const Offset(0, -200));
           await pumpFrames(tester, frames: 2);
           await tester.tap(tile);
           await settleJump(tester);

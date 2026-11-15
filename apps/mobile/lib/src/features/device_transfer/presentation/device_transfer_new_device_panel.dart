@@ -6,6 +6,7 @@ import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import 'device_transfer_code.dart';
 import 'device_transfer_step.dart';
+import 'step_row.dart';
 
 /// What the screen has to say about the step in hand: that the last action
 /// went through, or why it did not.
@@ -21,8 +22,8 @@ class TransferNotice {
 
 /// The new device's half of a transfer, as three steps: paste the transfer
 /// code, register this device, and finish once the old device approved.
-/// Only the step in hand shows its controls, so the control to use next is
-/// the first one on the screen; a finished step shrinks to its title.
+/// Under the steps are only the controls of the step in hand, so the
+/// control to use next is the first one after them.
 ///
 /// A claim that ran out goes back to the first step. Its transfer session
 /// ran out with it (they share one window), so nothing can be registered or
@@ -48,6 +49,7 @@ class TransferNewDevicePanel extends StatelessWidget {
     required this.onClaim,
     required this.onComplete,
     required this.now,
+    required this.stepsFooter,
   });
 
   final TextEditingController codeController;
@@ -77,10 +79,14 @@ class TransferNewDevicePanel extends StatelessWidget {
   final Future<void> Function() onComplete;
   final DateTime now;
 
+  /// Said once under the steps: what a missing old phone means.
+  final String stepsFooter;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+    final palette = context.veilPalette;
     final claimLive = claimId != null && !claimExpired;
     // The code this device holds went with the claim made on it.
     final expired = claimId != null && claimExpired;
@@ -89,120 +95,151 @@ class TransferNewDevicePanel extends StatelessWidget {
     // Where the notice goes: its own step, or else the one in hand.
     final noticeStep = notice?.step ?? (claimLive ? 3 : (codeRead ? 2 : 1));
     List<Widget> noticeFor(int step) => [
-          if (notice != null && noticeStep == step) ...[
-            TransferStepResult(
-              title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
-              message: veilErrorText(l10n, notice!.message),
-              tone: notice!.isError ? VeilBannerTone.danger : VeilBannerTone.good,
+          if (notice != null && noticeStep == step)
+            Padding(
+              padding: const EdgeInsets.only(bottom: VeilSpace.md),
+              child: TransferControls(
+                children: [
+                  TransferStepResult(
+                    title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
+                    message: veilErrorText(l10n, notice!.message),
+                    tone: notice!.isError ? VeilTone.danger : VeilTone.good,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: VeilSpace.sm),
-          ],
         ];
+    final muted = theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted);
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TransferStep(
-          number: 1,
-          title: l10n.deviceTransferNewCodeTitle,
-          state: pasting ? TransferStepState.current : TransferStepState.done,
-          body: expired
-              ? l10n.deviceTransferNewCodeExpiredBody
-              : pasting
-                  ? l10n.deviceTransferNewCodeBody
-                  : null,
-          status: expired ? l10n.deviceTransferStatusExpired : null,
-          statusTone: VeilBannerTone.danger,
-          // A step reopened over a code that still holds can be closed
-          // again; one that has no usable code stays open.
-          trailing: !pasting
-              ? TextButton(onPressed: onEditCode, child: Text(l10n.deviceTransferNewCodeChange))
-              : codeRead
-                  ? TextButton(onPressed: onKeepCode, child: Text(l10n.commonCancel))
-                  : null,
+        VeilGroup(
+          inset: StepRow.groupInset,
+          footer: stepsFooter,
           children: [
-            if (pasting) ...[
-              ...noticeFor(1),
-              TextField(
-                controller: codeController,
-                minLines: 2,
-                maxLines: 4,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: InputDecoration(labelText: l10n.deviceTransferPayloadInputLabel),
+            StepRow(
+              number: 1,
+              title: l10n.deviceTransferNewCodeTitle,
+              state: pasting ? StepRowState.current : StepRowState.done,
+              body: expired
+                  ? l10n.deviceTransferNewCodeExpiredBody
+                  : pasting
+                      ? l10n.deviceTransferNewCodeBody
+                      : null,
+              status: expired ? l10n.deviceTransferStatusExpired : null,
+              statusTone: VeilTone.danger,
+              // A finished step can be opened again to paste another code.
+              trailing: pasting ? null : TextButton(onPressed: onEditCode, child: Text(l10n.deviceTransferNewCodeChange)),
+            ),
+            StepRow(
+              number: 2,
+              title: l10n.deviceTransferNewRegisterTitle,
+              state: !codeRead
+                  ? StepRowState.upcoming
+                  : claimLive
+                      ? StepRowState.done
+                      : StepRowState.current,
+              body: claimLive ? null : l10n.deviceTransferNewDeviceCaption,
+            ),
+            StepRow(
+              number: 3,
+              title: l10n.deviceTransferNewCompleteTitle,
+              state: claimLive ? StepRowState.current : StepRowState.upcoming,
+              body: claimLive ? l10n.deviceTransferNewCompleteBody : l10n.deviceTransferNewCompleteBodyUpcoming,
+            ),
+          ],
+        ),
+        // The controls of the step in hand, first on the screen after the
+        // steps: the code to paste, the phone's name, or the claim's code
+        // and Finish.
+        if (pasting) ...[
+          ...noticeFor(1),
+          VeilGroup(
+            children: [
+              VeilRow.field(
+                field: TextField(
+                  controller: codeController,
+                  minLines: 2,
+                  maxLines: 4,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: InputDecoration(hintText: l10n.deviceTransferPayloadInputLabel),
+                ),
               ),
-              const SizedBox(height: VeilSpace.sm),
+            ],
+          ),
+          TransferControls(
+            children: [
               VeilButton(
                 tone: codeRead ? VeilButtonTone.secondary : VeilButtonTone.primary,
                 onPressed: onUseCode,
                 label: l10n.deviceTransferImportPayload,
               ),
+              // A step reopened over a code that still holds can be closed
+              // again, keeping that code.
+              if (codeRead) VeilButton(tone: VeilButtonTone.ghost, onPressed: onKeepCode, label: l10n.commonCancel),
             ],
-          ],
-        ),
-        const SizedBox(height: VeilSpace.sm),
-        TransferStep(
-          number: 2,
-          title: l10n.deviceTransferNewRegisterTitle,
-          state: !codeRead
-              ? TransferStepState.upcoming
-              : claimLive
-                  ? TransferStepState.done
-                  : TransferStepState.current,
-          body: claimLive ? null : l10n.deviceTransferNewDeviceCaption,
-          children: [
-            if (codeRead && !claimLive) ...[
-              ...noticeFor(2),
-              TextField(
-                controller: deviceNameController,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(labelText: l10n.deviceTransferDeviceNameLabel),
+          ),
+        ],
+        if (codeRead && !claimLive) ...[
+          if (pasting) const SizedBox(height: VeilSpace.md),
+          ...noticeFor(2),
+          VeilGroup(
+            children: [
+              VeilRow.field(
+                title: l10n.deviceTransferDeviceNameLabel,
+                field: TextField(controller: deviceNameController, textInputAction: TextInputAction.done),
               ),
-              const SizedBox(height: VeilSpace.sm),
+            ],
+          ),
+          TransferControls(
+            children: [
               VeilButton(
                 onPressed: isClaiming ? null : onClaim,
                 label: isClaiming ? l10n.deviceTransferRegisteringClaim : l10n.deviceTransferRegisterNewDevice,
               ),
             ],
-          ],
-        ),
-        const SizedBox(height: VeilSpace.sm),
-        TransferStep(
-          number: 3,
-          title: l10n.deviceTransferNewCompleteTitle,
-          state: claimLive ? TransferStepState.current : TransferStepState.upcoming,
-          body: claimLive ? l10n.deviceTransferNewCompleteBody : l10n.deviceTransferNewCompleteBodyUpcoming,
-          children: [
-            // Only a claim that can still be approved shows its code and the
-            // button that finishes it.
-            if (claimLive) ...[
-              ...noticeFor(3),
-              // What the user reads off this screen comes first: the code,
-              // with the key it stands for and how long it holds.
-              TransferCodeBox(
-                code: l10n.deviceTransferClaimCode(claimId!),
-                codeStyle: theme.textTheme.titleMedium,
-                notes: [
-                  l10n.deviceTransferClaimFingerprint(claimFingerprint ?? l10n.deviceTransferFingerprintUnavailable),
-                  if (claimExpiresAt != null)
-                    l10n.deviceTransferExpires(formatTransferExpiry(claimExpiresAt!, now, l10n)),
-                ],
+          ),
+        ],
+        // Only a claim that can still be approved shows its code and the
+        // button that finishes it: what the user reads off this screen
+        // first, with the key it stands for and how long it holds, then
+        // what finishing leads to, then the button.
+        if (claimLive) ...[
+          ...noticeFor(3),
+          VeilGroup(
+            footer: l10n.deviceTransferNewCompleteNote,
+            children: [
+              VeilRow.field(
+                field: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SelectableText(l10n.deviceTransferClaimCode(claimId!), style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        l10n.deviceTransferClaimFingerprint(claimFingerprint ?? l10n.deviceTransferFingerprintUnavailable),
+                        style: muted,
+                      ),
+                      if (claimExpiresAt != null)
+                        Text(l10n.deviceTransferExpires(formatTransferExpiry(claimExpiresAt!, now, l10n)), style: muted),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(height: VeilSpace.sm),
-              // What finishing leads to, said above the button that does it.
-              VeilInlineBanner(
-                dense: true,
-                tone: VeilBannerTone.warn,
-                message: l10n.deviceTransferNewCompleteNote,
-              ),
-              const SizedBox(height: VeilSpace.sm),
+            ],
+          ),
+          TransferControls(
+            children: [
               VeilButton(
                 onPressed: isCompleting ? null : onComplete,
                 label: isCompleting ? l10n.deviceTransferCompleting : l10n.deviceTransferCompleteOnDevice,
-                icon: Icons.arrow_forward_rounded,
               ),
             ],
-          ],
-        ),
+          ),
+        ],
       ],
     );
   }

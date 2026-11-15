@@ -148,7 +148,8 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
           controller: _nickname,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _save(),
-          decoration: InputDecoration(labelText: l10n.contactsNicknameLabel, hintText: l10n.contactsNicknameHint),
+          // Who sees it is said once, under the button.
+          decoration: InputDecoration(labelText: l10n.contactsNicknameLabel),
         )),
         const SizedBox(height: VeilSpace.md),
         _padded(VeilButton(
@@ -272,7 +273,6 @@ class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
           onSubmitted: (_) => _save(),
           decoration: InputDecoration(
             labelText: l10n.contactsNicknameLabel,
-            hintText: l10n.contactsNicknameHint,
             helperText: l10n.contactsNicknameCaption,
             helperMaxLines: 2,
           ),

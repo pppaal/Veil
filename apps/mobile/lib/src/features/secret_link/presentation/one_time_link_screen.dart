@@ -141,8 +141,13 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
               tone: VeilTone.warn,
             ),
           ],
-          if (link != null) _CreatedLink(key: _resultKey, link: link),
-          // What such a link does not protect: the one place it is said.
+          if (link != null) ...[
+            const SizedBox(height: VeilSpace.lg),
+            _CreatedLink(key: _resultKey, link: link),
+          ],
+          // What such a link does not protect, set apart from the form: the
+          // one place it is said.
+          const SizedBox(height: VeilSpace.md),
           VeilGroup(
             header: l10n.oneTimeLinkLimitsLabel,
             children: [

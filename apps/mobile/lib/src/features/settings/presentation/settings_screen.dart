@@ -163,7 +163,7 @@ class _AppLockRow extends ConsumerWidget {
       onTap: () async {
         await context.push('/lock');
         // A PIN may have been set meanwhile.
-        ref.invalidate(localSecuritySnapshotProvider);
+        if (context.mounted) ref.invalidate(localSecuritySnapshotProvider);
       },
     );
   }

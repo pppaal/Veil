@@ -113,8 +113,8 @@ void main() {
       en.oneTimeLinkLimitRelay,
     ];
     expect([for (final text in said) if (order.contains(text)) text], order);
-    expect(said, isNot(contains(en.oneTimeLinkProtectsEncrypted)), reason: 'the footer says it');
-    expect(said, isNot(contains(en.oneTimeLinkProtectsBurn)), reason: 'the footer says it');
+    // The footer is the one place the screen says the link opens once.
+    expect([for (final text in said) if (text.contains('once')) text], [en.oneTimeLinkFooter, en.oneTimeLinkLimitReader]);
     expect(tester.takeException(), isNull);
   });
 

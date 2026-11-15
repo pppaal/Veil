@@ -204,8 +204,9 @@ class _DevicesGroup extends ConsumerWidget {
     return VeilGroup(
       header: l10n.settingsSectionDevices,
       // Each line belongs to the row above it: under a device, at its text.
-      // The rows under the devices (the notice, with its own icon, and
-      // moving to a new phone, the last row) have no line of their own.
+      // The stale notice under the devices leads with an icon too, so the
+      // line under it sits near its text as well; moving to a new phone is
+      // the last row and has none.
       inset: listed ? deviceRowTextInset : VeilSpace.md,
       children: [
         if (devices.hasError && !devices.isLoading)

@@ -149,6 +149,18 @@ void main() {
       expect(find.bySemanticsLabel(RegExp(RegExp.escape('Chat with $name'))), findsOneWidget);
     });
 
+    testWidgets('a group switch row without onChanged keeps a disabled switch', (tester) async {
+      // One-time link passes onChanged: null while a link is being made; the
+      // switch must stay and keep showing its state.
+      await tester.pumpWidget(_app(const Column(children: [
+        VeilGroupSwitchRow(title: 'Lock with a passphrase', value: true, onChanged: null),
+        VeilGroupSwitchRow(title: 'Send typing indicators', value: false, onChanged: null),
+      ])));
+      final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
+      expect([for (final s in switches) s.value], [true, false]);
+      expect([for (final s in switches) s.onChanged], [null, null]);
+    });
+
     test('the old tone name still resolves', () {
       expect(VeilBannerTone.warn, VeilTone.warn);
       expect(VeilBannerTone.values, VeilTone.values);

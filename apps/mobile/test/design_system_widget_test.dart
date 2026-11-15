@@ -337,6 +337,39 @@ void main() {
       expect(find.ancestor(of: find.text('Verified'), matching: find.byType(DecoratedBox)), findsNothing);
     });
 
+    testWidgets('a disabled switch row still shows and announces its state', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await _pump(
+        tester,
+        const _App(
+          light: true,
+          child: VeilShell(
+            title: 'x',
+            grouped: true,
+            child: VeilGroup(children: [
+              VeilRow(title: 'Lock with a passphrase', switchValue: true),
+              VeilRow(title: 'Send typing indicators', subtitle: 'Saving…', switchValue: false),
+            ]),
+          ),
+        ),
+      );
+      final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
+      expect(switches, hasLength(2), reason: 'a row without onSwitch keeps its switch');
+      expect([for (final s in switches) s.value], [true, false]);
+      expect([for (final s in switches) s.onChanged], [null, null], reason: 'both are disabled');
+
+      // Tapping the row does nothing and throws nothing.
+      await tester.tap(find.text('Lock with a passphrase'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final node = tester.getSemantics(find.text('Lock with a passphrase'));
+      final data = node.getSemanticsData();
+      expect(data.flagsCollection.isToggled.toBoolOrNull(), isTrue, reason: 'its state is announced');
+      expect(data.flagsCollection.isEnabled.toBoolOrNull(), isFalse, reason: 'and that it cannot be changed');
+      semantics.dispose();
+    });
+
     testWidgets('a field row hosts a borderless text field', (tester) async {
       await _pump(
         tester,

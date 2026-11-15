@@ -103,9 +103,11 @@ class _VeilGroupScope extends InheritedWidget {
 /// With [onTap] and no [trailing] the row ends in a chevron: it opens
 /// something. [value] is a short muted word at the end ("On", "2",
 /// "@alex"); [status] is a word in a tone colour ("Verified" in green,
-/// "Stale" in amber) with no fill and no border. [onSwitch] puts a switch
-/// at the end and the whole row toggles it. [destructive] draws the title
-/// in the danger colour, with no chevron.
+/// "Stale" in amber) with no fill and no border. [switchValue] puts a
+/// switch at the end and the whole row toggles it through [onSwitch]; with
+/// no [onSwitch] the switch still shows its state, disabled, and the row
+/// does nothing. [destructive] draws the title in the danger colour, with
+/// no chevron.
 ///
 /// [VeilRow.field] hosts a borderless text field inside a group.
 class VeilRow extends StatelessWidget {
@@ -167,7 +169,12 @@ class VeilRow extends StatelessWidget {
 
     final hasSubtitle = subtitle != null || subtitleWidget != null;
     final minHeight = leading != null ? 60.0 : (hasSubtitle ? 52.0 : 44.0);
-    final isSwitch = onSwitch != null;
+    // A switch row is one with a value: a disabled switch (no [onSwitch])
+    // still shows whether it is on.
+    final switchValue = this.switchValue;
+    final onSwitch = this.onSwitch;
+    final isSwitch = switchValue != null;
+    final disabledSwitch = isSwitch && onSwitch == null;
     final chevron = onTap != null && trailing == null && !destructive && !isSwitch;
 
     final trailingParts = <Widget>[
@@ -180,17 +187,21 @@ class VeilRow extends StatelessWidget {
       if (trailing != null) trailing!,
       if (isSwitch)
         ExcludeFocus(
-          child: Switch.adaptive(value: switchValue!, onChanged: onSwitch),
+          child: Switch.adaptive(value: switchValue, onChanged: onSwitch),
         ),
       if (chevron) Icon(Icons.chevron_right, size: 20, color: palette.textSubtle),
     ];
 
     final tile = ListTile(
+      // A disabled switch row says so, to the eye and to a screen reader.
+      enabled: !disabledSwitch,
       minTileHeight: minHeight,
       leading: leading,
       title: Text(
         title!,
-        style: theme.textTheme.titleMedium?.copyWith(color: destructive ? palette.danger : null),
+        style: theme.textTheme.titleMedium?.copyWith(
+          color: destructive ? palette.danger : (disabledSwitch ? palette.textSubtle : null),
+        ),
       ),
       subtitle: !hasSubtitle
           ? null
@@ -213,7 +224,7 @@ class VeilRow extends StatelessWidget {
               ],
             ),
       onTap: isSwitch
-          ? () => onSwitch!(!switchValue!)
+          ? (onSwitch == null ? null : () => onSwitch(!switchValue))
           : onTap == null
               ? null
               : () {

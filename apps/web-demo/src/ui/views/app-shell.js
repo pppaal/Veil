@@ -9,8 +9,6 @@ import { $, applyThemeClass, avatarFor, el } from '../dom.js';
 // preferences: src/app/services/preferences.js.
 export function createAppShell({ store, preferences }) {
   const { state } = store;
-  // The reconnect attempt the socket is backing off from, or null.
-  let retry = null;
   let status = { kind: 'offline', text: '' };
 
   function renderMe() {
@@ -27,7 +25,7 @@ export function createAppShell({ store, preferences }) {
     if (!node) return;
     const connected = status.kind === 'connected';
     node.className = `conn-status ${status.kind}${connected ? ' hidden' : ''}`;
-    node.textContent = connected ? '' : retry === null ? status.text : `${status.text} (${retry})`;
+    node.textContent = connected ? '' : status.text;
   }
 
   // kind: 'connected', 'connecting', 'offline', 'error' or 'disconnected'.
@@ -56,14 +54,8 @@ export function createAppShell({ store, preferences }) {
 
     // Back to the signed-out frame once the session's state is dropped.
     reset() {
-      retry = null;
       setConnection('offline', 'Offline');
       $('app').classList.remove('viewing-chat');
-    },
-
-    setRetry(attempt) {
-      retry = attempt;
-      renderConnection();
     },
   };
 }

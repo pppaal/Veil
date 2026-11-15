@@ -1033,6 +1033,12 @@ html.theme-light .name-7 { color: #45602A; }
 .dialog-actions .btn-ghost { font-weight: 500; }
 .dialog-actions .btn-danger { color: var(--danger); }
 .dialog-actions .btn[disabled] { color: var(--fg-subtle); }
+/* Three actions do not fit one row of a phone's dialog: they stack at the
+   end edge, the last (the one the dialog is for) on top, rather than leave
+   one alone on a second row. */
+@media (max-width: 480px) {
+  .dialog-actions:has(> .btn:nth-of-type(3)) { flex-direction: column-reverse; align-items: flex-end; }
+}
 
 .code-field {
   display: block;

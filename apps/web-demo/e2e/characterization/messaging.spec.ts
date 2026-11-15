@@ -61,7 +61,7 @@ test.describe('a direct conversation', () => {
     await startChat(alice, bob);
     await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`]);
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
-    await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Message (Enter to send, Shift+Enter for a new line)');
+    await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Message');
     await expect(page.locator('.panel-input > *')).toHaveCount(5);
     await expect(page.locator('.panel-input .file-btn')).toHaveAttribute('aria-label', 'Attach a file');
     await expect(page.locator('.panel-input .image-btn:not(.file-btn)')).toHaveAttribute('aria-label', 'Attach an image');

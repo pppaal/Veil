@@ -10,10 +10,10 @@ const TYPING_IDLE_MS = 4000;
 
 // getIo() -> the socket.io client factory (window.io from socket.io.min.js),
 // or nothing when it did not load: then the app stays in polling mode.
-// inbound: src/app/services/inbound.js. onStatus(kind, text) and
-// onRetry(attempt | null) report the connection; onPeerMessage() fires for
-// every message pushed from another device.
-export function createRealtime({ store, stack, history, outbox, inbound, messages, getIo, onStatus, onRetry, onPeerMessage }) {
+// inbound: src/app/services/inbound.js. onStatus(kind, text) reports the
+// connection; onPeerMessage() fires for every message pushed from another
+// device.
+export function createRealtime({ store, stack, history, outbox, inbound, messages, getIo, onStatus, onPeerMessage }) {
   const { state } = store;
   let socket = null;
   const typingSent = new Map(); // convId -> { lastStartAt, stopTimer }
@@ -89,11 +89,6 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
     s.on('message.new', (message) => {
       if (message && message.senderDeviceId !== state.me?.deviceId) onPeerMessage();
     });
-
-    // socket.io reconnects silently; the attempt count shows while it backs off.
-    s.io?.on?.('reconnect_attempt', (attempt) => onRetry(attempt));
-    s.io?.on?.('reconnect', () => onRetry(null));
-    s.on('connect', () => onRetry(null));
   }
 
   function stopTyping(convId) {

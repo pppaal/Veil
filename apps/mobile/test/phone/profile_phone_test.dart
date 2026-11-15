@@ -7,9 +7,9 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// The profile on a phone: the handle and the nickname with its edit button
-// on the first screenful, and under them the one note on what the relay
-// keeps of a person.
+// The profile on a phone: the avatar, the name and the handle, then the
+// nickname in one field row with the one line on who sees it, all on the
+// first screenful; the nickname is edited in place.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,65 +21,59 @@ void main() {
     identities = await LayoutIdentities.generate();
   });
 
-  testWidgets('opens on the handle and the nickname, with the note on the relay under them', (tester) async {
+  Finder field() => find.byKey(const ValueKey('profile-nickname'), skipOffstage: false);
+
+  testWidgets('opens on the avatar, the name and the handle, with the nickname field under them', (tester) async {
     await withPhoneApp(tester, identities, location: '/profile', body: (world) async {
+      final avatar = tester.getRect(find.byType(VeilAvatar));
+      final name = tester.getRect(find.text(selfDisplayName).first);
       final handle = tester.getRect(find.text('@$selfHandle'));
-      final nickname = tester.getRect(find.text(selfDisplayName).last);
-      final edit = tester.getRect(find.widgetWithText(TextButton, en.profileEditNickname));
-      final note = tester.getRect(findCopy(en.profilePrivacyTitle));
+      final nickname = tester.getRect(field());
+      expect(avatar.size, const Size(72, 72));
+      expect(avatar.bottom, lessThan(name.top));
+      expect(name.bottom, lessThan(handle.top));
       expect(handle.bottom, lessThan(nickname.top));
-      expect(edit.bottom, lessThanOrEqualTo(640 * 0.75), reason: 'editing is on the first screenful');
-      expect(edit.height, greaterThanOrEqualTo(44));
-      expect(edit.bottom, lessThan(note.top), reason: 'the explanation comes after');
-      expect(findCopy(en.profileHandleCaption), findsOneWidget);
-      expect(findCopy(en.profileNicknameCaption), findsOneWidget);
-      expect(find.byType(VeilHeroPanel), findsNothing);
+      expect(nickname.bottom, lessThanOrEqualTo(640 * 0.75), reason: 'editing is on the first screenful');
+      expect(tester.getSize(find.ancestor(of: field(), matching: find.byType(ConstrainedBox)).first).height,
+          greaterThanOrEqualTo(44));
+      expect(tester.widget<TextField>(field()).controller!.text, selfDisplayName);
+      // Said once, under the field; nothing is a notice.
+      expect(findCopy(en.profileNicknameFooter), findsOneWidget);
+      expect(find.byType(VeilNotice), findsNothing);
+      // Nothing to save until the nickname changes.
+      expect(find.widgetWithText(TextButton, en.profileSaveNickname), findsNothing);
     });
   });
 
-  // The relay keeps the handle, the devices and who was added as a contact:
-  // the note is about the profile, which it does not keep, and no wider.
-  test('the note on the relay claims no more than that it keeps no profile', () {
-    expect(en.profilePrivacyTitle.toLowerCase(), contains('profile'));
-    expect(en.profilePrivacyTitle.toLowerCase(), isNot(contains('nothing')));
-  });
-
-  testWidgets('the nickname is edited in place: cancel keeps it, an empty one clears it', (tester) async {
+  testWidgets('the nickname is edited in place: saved from its row, an empty one clears it', (tester) async {
     await withPhoneApp(tester, identities, location: '/profile', keyboardHeight: 300, body: (world) async {
       String? nickname() => world.container.read(appSessionProvider).displayName;
-      // With the keyboard up a 360x640 phone shows a third of the screen:
-      // what is tapped is scrolled to first, as a thumb would.
-      Future<void> tapShown(Finder finder) async {
-        // A field that was just typed into scrolls its caret into view for
-        // a moment, and a list that is scrolling takes no tap.
-        await pumpFrames(tester, frames: 2);
-        await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
-        await pumpFrames(tester, frames: 2);
-        await tester.tap(finder);
-        await pumpFrames(tester, frames: 3);
-      }
+      final save = find.widgetWithText(TextButton, en.profileSaveNickname, skipOffstage: false);
 
-      final edit = find.text(en.profileEditNickname, skipOffstage: false);
-      final save = find.widgetWithText(FilledButton, en.profileSaveNickname, skipOffstage: false);
-      final field = find.byType(TextField, skipOffstage: false);
-      await tapShown(edit);
-      expect(tester.widget<TextField>(field).controller!.text, selfDisplayName);
-      // The button that saves can be brought above the keyboard.
+      await tester.enterText(field(), 'Someone else');
+      await pumpFrames(tester, frames: 2);
+      expect(nickname(), selfDisplayName, reason: 'typing alone saves nothing');
+      expect(save, findsOneWidget);
+      // The button that saves is in the field's row, above the keyboard.
       await tester.ensureVisible(save);
-      await tester.pump();
+      await pumpFrames(tester, frames: 2);
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300));
+      expect(tester.getRect(save).top, closeTo(tester.getRect(field()).top, 24));
 
-      await tester.enterText(field, 'Someone else');
-      await tapShown(find.text(en.profileCancel, skipOffstage: false));
-      expect(nickname(), selfDisplayName);
-      expect(field, findsNothing);
-
-      await tapShown(edit);
-      await tester.enterText(field, '  ');
-      await tapShown(save);
-      expect(nickname(), isNull);
-      expect(find.text(en.profileNicknameNotSet, skipOffstage: false), findsOneWidget);
+      await tester.tap(save);
+      await pumpFrames(tester, frames: 3);
+      expect(nickname(), 'Someone else');
+      expect(save, findsNothing, reason: 'nothing left to save');
       expect(findCopy(en.profileNicknameSaved), findsOneWidget);
+      expect(find.text('Someone else', skipOffstage: false), findsWidgets);
+
+      // An empty one, sent from the keyboard, clears it: the handle stands
+      // for the user again.
+      await tester.enterText(field(), '  ');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await pumpFrames(tester, frames: 3);
+      expect(nickname(), isNull);
+      expect(find.text('@$selfHandle', skipOffstage: false), findsOneWidget);
     });
   });
 }

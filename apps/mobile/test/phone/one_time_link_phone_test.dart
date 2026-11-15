@@ -13,13 +13,13 @@ import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/phone_layout_probe.dart';
 import '../support/copy_finder.dart';
 
-// The one-time link screen on a phone: the form first, then the link that
-// was made, then what such a link protects and what it does not.
+// The one-time link screen on a phone: the form first with what the link
+// does under it, then the link that was made, then what such a link does
+// not protect.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -76,9 +76,10 @@ void main() {
     await pumpFrames(tester, frames: 4);
   }
 
-  testWidgets('opens on the secret, the passphrase switch and the button; the explanation follows', (tester) async {
+  testWidgets('opens on the secret, the passphrase switch and the button; the limits follow', (tester) async {
     await open(tester);
     expect(find.byType(VeilShell), findsOneWidget);
+    expect(tester.widget<VeilShell>(find.byType(VeilShell)).grouped, isTrue, reason: 'a grouped page');
     final field = tester.getRect(find.byType(TextField));
     final passphrase = tester.getRect(find.byType(Switch));
     final button = tester.getRect(find.byType(FilledButton));
@@ -86,9 +87,13 @@ void main() {
     expect(field.bottom, lessThan(passphrase.top));
     expect(passphrase.bottom, lessThan(button.top));
     expect(button.bottom, lessThanOrEqualTo(640), reason: 'on the first screenful of a 360x640 phone');
-    expect(find.byType(VeilStatusPill), findsNothing);
+    // What the link does is the form's footer, between the form and the
+    // button; nothing else on the screen says it again.
+    final footer = tester.getRect(find.text(en.oneTimeLinkFooter));
+    expect(footer.top, greaterThan(passphrase.bottom));
+    expect(footer.bottom, lessThan(button.top));
 
-    // What it protects, then what it does not, each with its sentences.
+    // Then what it does not protect, sentence by sentence.
     final said = <String>[];
     void collect() {
       for (final element in find.byType(Text).evaluate()) {
@@ -100,16 +105,16 @@ void main() {
     collect();
     await scrollToEnd(tester, onPage: (_) async => collect());
     final order = [
+      en.oneTimeLinkFooter,
       en.oneTimeLinkCreate,
-      en.oneTimeLinkProtectsLabel,
-      en.oneTimeLinkProtectsEncrypted,
-      en.oneTimeLinkProtectsBurn,
       en.oneTimeLinkLimitsLabel,
       en.oneTimeLinkLimitHolder,
       en.oneTimeLinkLimitReader,
       en.oneTimeLinkLimitRelay,
     ];
     expect([for (final text in said) if (order.contains(text)) text], order);
+    expect(said, isNot(contains(en.oneTimeLinkProtectsEncrypted)), reason: 'the footer says it');
+    expect(said, isNot(contains(en.oneTimeLinkProtectsBurn)), reason: 'the footer says it');
     expect(tester.takeException(), isNull);
   });
 
@@ -168,7 +173,11 @@ void main() {
     expect(result.top, greaterThanOrEqualTo(24 + 52));
     expect(result.bottom, lessThanOrEqualTo(640 - 300));
 
-    final copy = find.text(en.oneTimeLinkCopy, skipOffstage: false);
+    // The link is drawn in monospace, with its copy button beside it.
+    expect(tester.widget<SelectableText>(find.byType(SelectableText, skipOffstage: false)).style?.fontFamily,
+        'monospace');
+    final copy = find.byTooltip(en.oneTimeLinkCopy, skipOffstage: false);
+    expect(tester.getSize(copy).shortestSide, greaterThanOrEqualTo(44));
     await Scrollable.ensureVisible(tester.element(copy), alignment: 0.5);
     await tester.pump();
     await tester.tap(copy);

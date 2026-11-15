@@ -9,21 +9,21 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
+import 'package:veil_mobile/src/features/settings/presentation/device_rows.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_danger_zone.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/trusted_device_card.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_grouped.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// The settings tab on a phone: grouped rows with what is changed day to day
-// first, the devices of the account behind a row of their own, and what
-// cannot be undone last, each behind a typed phrase.
+// The settings tab on a phone: a grouped page with what is changed day to
+// day first, the security of the account with its one footer, a row for
+// each device of the account, and what cannot be undone last, each behind a
+// typed phrase.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -39,46 +39,57 @@ void main() {
   List<Widget> sections(WidgetTester tester) =>
       (tester.widget<ListView>(find.byType(ListView)).childrenDelegate as SliverChildListDelegate).children;
 
+  // The headers of the groups, top to bottom, read while scrolling down.
+  Future<List<String?>> groupHeaders(WidgetTester tester) async {
+    final headers = <String?>[];
+    final seen = <VeilGroup>{};
+    void collect() {
+      for (final group in tester.widgetList<VeilGroup>(find.byType(VeilGroup, skipOffstage: false))) {
+        if (seen.add(group)) headers.add(group.header);
+      }
+    }
+
+    collect();
+    await scrollToEnd(tester, onPage: (_) async => collect());
+    return headers;
+  }
+
   Future<void> scrollTo(WidgetTester tester, Finder finder) async {
     await tester.scrollUntilVisible(finder, 200, scrollable: find.byType(Scrollable).first);
     await pumpFrames(tester, frames: 2);
   }
 
-  testWidgets('leads with appearance, privacy and the lock; devices follow; what cannot be undone is last',
+  // The quiet laptop's row: any device row opens the list of devices.
+  const laptopRow = ValueKey('settings-device-dev-laptop');
+
+  testWidgets('leads with the account, appearance, privacy and security; devices follow; what cannot be undone is last',
       (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      final groups = sections(tester);
-      expect([for (final group in groups.whereType<VeilGroup>()) group.label], [
+      expect(sections(tester).last, isA<SettingsDangerZone>());
+      expect(find.byType(VeilShell), findsOneWidget);
+      expect(tester.widget<VeilShell>(find.byType(VeilShell)).grouped, isTrue, reason: 'a grouped page');
+      expect(await groupHeaders(tester), [
         null, // the account row
         en.settingsSectionAppearance,
         en.settingsSectionPrivacy,
         en.settingsSectionSecurity,
         en.settingsSectionDevices,
-        en.settingsSectionTools,
+        en.settingsSectionAccount,
       ]);
-      // Once, and after everything else.
-      expect(groups.whereType<SettingsDangerZone>(), hasLength(1));
-      expect(groups.last, isA<SettingsDangerZone>());
-
-      // No hero, no pills and no device card ahead of the settings.
-      expect(find.byType(VeilHeroPanel), findsNothing);
-      expect(find.byType(TrustedDeviceCard), findsNothing);
-      expect(find.text('Pixel 9 Pro Fold'), findsNothing);
     });
   });
 
-  testWidgets('section labels are in one casing', (tester) async {
+  testWidgets('group headers are in sentence case, and no row repeats its group\'s header', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      final labels = [
-        for (final group in sections(tester).whereType<VeilGroup>())
-          if (group.label case final label?) label,
-        en.settingsSectionIrreversible,
-      ];
-      expect(labels, hasLength(6));
-      for (final label in labels) {
-        expect(label, isNot(label.toUpperCase()), reason: '"$label" is in capitals, unlike the others');
-        expect(label[0], label[0].toUpperCase(), reason: '"$label" does not start with a capital like the others');
+      final headers = [for (final header in await groupHeaders(tester)) if (header != null) header];
+      expect(headers, hasLength(5));
+      for (final header in headers) {
+        expect(header, isNot(header.toUpperCase()), reason: '"$header" is in capitals');
+        expect(header[0], header[0].toUpperCase(), reason: '"$header" does not start with a capital');
+        expect(header.substring(1), header.substring(1).toLowerCase(), reason: '"$header" is in title case');
       }
+      expect(en.settingsSecurityDetailsTitle, isNot(en.settingsSectionSecurity));
+      expect(en.settingsDeviceTransferTitle, isNot(contains(en.settingsSectionDevices)));
     });
   });
 
@@ -100,6 +111,13 @@ void main() {
             hasLength(1), reason: '"$label" wraps');
         expect(paragraph.didExceedMaxLines, isFalse, reason: '"$label" is cut');
         expect(tester.getRect(text).right, lessThanOrEqualTo(theme.right));
+      }
+      // The privacy captions are whole: neither is cut with an ellipsis.
+      for (final caption in [en.settingsReadReceiptsCaption, en.settingsTypingIndicatorsCaption]) {
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: find.text(caption), matching: find.byType(RichText)).first,
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: '"$caption" is cut');
       }
       expect(tester.takeException(), isNull);
     });
@@ -123,31 +141,58 @@ void main() {
     });
   });
 
-  testWidgets('the devices row counts the devices, flags the quiet one and opens their list over the tab bar',
+  testWidgets('the security group: the lock with its state, and the one footer on encryption and recovery',
       (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      final row = find.byKey(const ValueKey('settings-devices'));
-      await scrollTo(tester, row);
-      expect(find.descendant(of: row, matching: find.text(en.settingsDevicesRowCount(2))), findsOneWidget);
-      expect(find.descendant(of: row, matching: find.text(en.settingsGraphStaleCount(1))), findsOneWidget);
+      final lock = find.byKey(const ValueKey('settings-app-lock'));
+      await scrollTo(tester, lock);
+      // The seeded phone has a PIN.
+      expect(find.descendant(of: lock, matching: find.text(en.commonOn)), findsOneWidget);
+      for (final key in ['settings-lock-now', 'settings-security-details', 'settings-one-time-link']) {
+        expect(find.byKey(ValueKey(key), skipOffstage: false), findsOneWidget, reason: key);
+      }
+      final footer = '${en.securityFooterEncryption} ${en.securityFooterNoRecovery}';
+      expect(find.text(footer, skipOffstage: false), findsOneWidget);
+      final security = tester.widgetList<VeilGroup>(find.byType(VeilGroup, skipOffstage: false))
+          .singleWhere((group) => group.header == en.settingsSectionSecurity);
+      expect(security.footer, footer);
+    });
+  });
 
-      await tester.tap(row);
+  testWidgets('a row for each device with its state, the one notice on the quiet one, the list over the tab bar',
+      (tester) async {
+    await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
+      final laptop = find.byKey(laptopRow);
+      await scrollTo(tester, laptop);
+      expect(find.byType(DeviceRow, skipOffstage: false), findsNWidgets(3));
+      expect(find.descendant(of: laptop, matching: find.text('MacBook Air')), findsOneWidget);
+      expect(find.descendant(of: laptop, matching: find.text(en.settingsDeviceStateStale)), findsOneWidget);
+      expect(find.descendant(of: laptop, matching: find.text('Last seen Apr 2 (UTC)')), findsOneWidget);
+      expect(find.text(en.settingsDeviceStateCurrent, skipOffstage: false), findsOneWidget);
+      expect(find.text(en.settingsDeviceStateRevoked, skipOffstage: false), findsOneWidget);
+      final stale = find.byKey(const ValueKey('settings-devices-stale'), skipOffstage: false);
+      expect(find.descendant(of: stale, matching: find.text(en.settingsDevicesStaleNotice(1))), findsOneWidget);
+      expect(find.descendant(of: stale, matching: find.text(en.settingsDevicesReview)), findsOneWidget);
+
+      await tester.tap(laptop);
       await pumpFrames(tester, frames: 6);
       expect(find.byType(TrustedDevicesScreen), findsOneWidget);
       expect(find.byType(SettingsScreen), findsNothing);
       expect(find.text(en.navChats), findsNothing, reason: 'the list covers the tab bar');
-      expect(find.byType(TrustedDeviceCard), findsWidgets);
-      expect(findCopy(en.settingsGraphStaleTitle), findsOneWidget, reason: 'the warning is whole on the list');
-      // Three devices: the quiet one is one of the two trusted, not a third
-      // beside them and the revoked one.
-      expect(find.text('2 devices (1 stale)  ·  '), findsOneWidget);
-      expect(find.text('1 revoked'), findsOneWidget);
-      expect(find.textContaining('·'), findsOneWidget, reason: 'two parts, which add up to the list');
+      expect(find.byType(DeviceDetailsGroup, skipOffstage: false), findsWidgets);
+      expect(findCopy(en.settingsDeviceNoteStale, skipOffstage: false), findsOneWidget,
+          reason: 'what the quiet one\'s state means is said under it');
 
       await tester.tap(find.byType(VeilBackButton));
       await pumpFrames(tester, frames: 6);
       expect(find.byType(SettingsScreen), findsOneWidget);
       expect(find.byType(TrustedDevicesScreen), findsNothing);
+
+      // The notice's action opens the same list.
+      await scrollTo(tester, find.text(en.settingsDevicesReview));
+      await tester.tap(find.text(en.settingsDevicesReview));
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(TrustedDevicesScreen), findsOneWidget);
     });
   });
 
@@ -176,7 +221,7 @@ void main() {
       await pumpFrames(tester);
 
       Future<void> openDevices() async {
-        final row = find.byKey(const ValueKey('settings-devices'));
+        final row = find.byKey(laptopRow);
         await scrollTo(tester, row);
         await tester.tap(row);
         await pumpFrames(tester, frames: 6);
@@ -214,56 +259,52 @@ void main() {
 
   testWidgets('revoking a listed device asks first, then lists it as revoked', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      await scrollTo(tester, find.byKey(const ValueKey('settings-devices')));
-      await tester.tap(find.byKey(const ValueKey('settings-devices')));
+      await scrollTo(tester, find.byKey(laptopRow));
+      await tester.tap(find.byKey(laptopRow));
       await pumpFrames(tester, frames: 6);
 
       // Only the quiet laptop can be revoked from here: not this device,
       // and not the one already revoked.
-      final revoke = find.widgetWithText(OutlinedButton, en.settingsDeviceRevokeAction);
-      await scrollTo(tester, revoke);
+      final revoke = find.widgetWithText(VeilRow, en.settingsDeviceRevokeAction, skipOffstage: false);
       expect(revoke, findsOneWidget);
+      expect(tester.widget<VeilRow>(revoke).destructive, isTrue);
+      await scrollTo(tester, revoke);
       await tester.tap(revoke);
       await pumpFrames(tester, frames: 3);
       expect(findCopy(en.settingsRevokeListedTitle('MacBook Air')), findsOneWidget);
+      expect(find.byType(FilledButton), findsNothing, reason: 'no red fill: the confirming button is red text');
       expect(world.api.revokedDevices, isEmpty, reason: 'nothing is revoked before the answer');
 
-      await tester.tap(find.widgetWithText(FilledButton, en.settingsRevokeConfirmAction));
+      await tester.tap(find.widgetWithText(TextButton, en.settingsRevokeConfirmAction));
       await pumpFrames(tester, frames: 6);
       expect(world.api.revokedDevices, ['dev-laptop']);
-      expect(find.widgetWithText(OutlinedButton, en.settingsDeviceRevokeAction), findsNothing);
-      expect(findCopy(en.settingsGraphStaleTitle, skipOffstage: false), findsNothing);
-      // Nothing quiet is left to count among the trusted.
-      tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
-      await pumpFrames(tester, frames: 2);
-      expect(find.text('1 device  ·  '), findsOneWidget);
-      expect(find.text('2 revoked'), findsOneWidget);
+      expect(find.widgetWithText(VeilRow, en.settingsDeviceRevokeAction, skipOffstage: false), findsNothing);
+      expect(findCopy(en.settingsDeviceNoteStale, skipOffstage: false), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(TrustedDevicesScreen),
+          matching: find.text(en.settingsDeviceStateRevoked, skipOffstage: false),
+        ),
+        findsNWidgets(2),
+      );
     });
   });
 
   group('what cannot be undone', () {
-    testWidgets('is one group under the no-recovery notice, with what each action erases', (tester) async {
+    testWidgets('is the last group, four red rows that each open their own dialog', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
         await scrollTo(tester, find.byKey(const ValueKey('settings-delete-account')));
-        final notice = tester.getRect(find.byType(VeilDestructiveNotice));
-        final rows = [
-          for (final key in ['settings-logout', 'settings-wipe', 'settings-revoke', 'settings-delete-account'])
-            find.byKey(ValueKey(key), skipOffstage: false),
-        ];
-        for (final row in rows) {
+        final footer = '${en.securityFooterEncryption} ${en.securityFooterNoRecovery}';
+        for (final key in ['settings-logout', 'settings-wipe', 'settings-revoke', 'settings-delete-account']) {
+          final row = find.byKey(ValueKey(key), skipOffstage: false);
           expect(row, findsOneWidget);
-          expect(tester.widget<VeilGroupRow>(row).destructive, isTrue);
+          final widget = tester.widget<VeilRow>(row);
+          expect(widget.destructive, isTrue, reason: key);
+          expect(widget.subtitle, isNull, reason: 'the dialog says what $key does, once');
         }
-        expect(notice.top, lessThan(tester.getRect(rows.last).top));
-        expect(findCopy(en.settingsDestructiveNoticeBody, skipOffstage: false), findsOneWidget);
-        for (final said in [
-          en.settingsLogoutSubtitle,
-          en.settingsWipeLocalSubtitle,
-          en.settingsRevokeSubtitle,
-          en.settingsDeleteAccountBody,
-        ]) {
-          expect(findCopy(said, skipOffstage: false), findsOneWidget);
-        }
+        // The loss is said once on the screen, in the security footer.
+        expect(findCopy(en.settingsDeleteAccountBody, skipOffstage: false), findsNothing);
+        expect(find.text(footer, skipOffstage: false), findsOneWidget);
       });
     });
 
@@ -280,7 +321,7 @@ void main() {
         expect(findCopy(en.settingsLogoutConfirmTitle), findsOneWidget);
         expect(findCopy(en.settingsLogoutConfirmBody), findsOneWidget);
         expect(findCopy(en.settingsTypePhraseToContinue(en.settingsLogoutConfirmPhrase)), findsOneWidget);
-        FilledButton confirm() => tester.widget(find.widgetWithText(FilledButton, en.settingsLogout));
+        TextButton confirm() => tester.widget(find.widgetWithText(TextButton, en.settingsLogout));
         expect(confirm().onPressed, isNull);
 
         await tester.tap(find.text(en.commonCancel));
@@ -297,16 +338,16 @@ void main() {
         await tester.tap(logout);
         await pumpFrames(tester, frames: 3);
 
-        FilledButton confirm() => tester.widget(find.widgetWithText(FilledButton, en.settingsLogout));
+        TextButton confirm() => tester.widget(find.widgetWithText(TextButton, en.settingsLogout));
         await tester.enterText(find.byType(TextField), 'sign');
         await tester.pump();
         expect(confirm().onPressed, isNull, reason: 'half the phrase is not the phrase');
         // Letter case is not the point.
-        await tester.enterText(find.byType(TextField), 'sign out');
+        await tester.enterText(find.byType(TextField), 'SIGN OUT');
         await tester.pump();
         expect(confirm().onPressed, isNotNull);
 
-        await tester.tap(find.widgetWithText(FilledButton, en.settingsLogout));
+        await tester.tap(find.widgetWithText(TextButton, en.settingsLogout));
         await pumpFrames(tester, frames: 6);
         expect(world.container.read(appSessionProvider).isAuthenticated, isFalse);
         expect(find.byType(CreateAccountScreen), findsOneWidget);
@@ -327,11 +368,12 @@ void main() {
           await pumpFrames(tester, frames: 3);
 
           expect(findCopy(en.settingsTypePhraseToContinue(phrase)), findsOneWidget);
-          final confirm = find.widgetWithText(FilledButton, action);
-          expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+          final confirm = find.widgetWithText(TextButton, action);
+          expect(tester.widget<TextButton>(confirm).onPressed, isNull);
+          expect(find.byType(FilledButton), findsNothing, reason: 'no red fill');
           await tester.enterText(find.byType(TextField), phrase);
           await tester.pump();
-          expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
+          expect(tester.widget<TextButton>(confirm).onPressed, isNotNull);
           // The field and the button that confirms are above the keyboard.
           expect(tester.getRect(find.byType(TextField)).top, greaterThanOrEqualTo(24), reason: 'under the status bar');
           expect(tester.getRect(confirm).bottom, lessThanOrEqualTo(640 - 300));

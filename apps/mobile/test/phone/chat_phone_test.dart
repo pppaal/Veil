@@ -134,14 +134,14 @@ void main() {
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
       expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
-      expect(find.text('Disappearing: 1 day'), findsOneWidget, reason: 'under the name, while a timer is set');
+      expect(find.text('1 day'), findsOneWidget, reason: 'under the name, while a timer is set');
     });
   });
 
   testWidgets('shows a timer the conversation already has', (tester) async {
     await withPhoneApp(tester, identities, location: '/chat/$timerChatConversationId', body: (world) async {
       expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
-      expect(find.text('Disappearing: 1 day'), findsOneWidget);
+      expect(find.text('1 day'), findsOneWidget);
     });
   });
 

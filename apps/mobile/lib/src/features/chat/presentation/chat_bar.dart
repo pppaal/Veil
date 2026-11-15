@@ -82,9 +82,12 @@ class ChatBarTitle extends StatelessWidget {
               if (timerLabel != null) ...[
                 Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.warning),
                 const SizedBox(width: 2),
+                // The glyph says the messages disappear; the words say when,
+                // which fits a 360 px bar. A screen reader hears both.
                 Flexible(
                   child: Text(
-                    l10n.chatTimerTooltip(timerLabel!),
+                    timerLabel!,
+                    semanticsLabel: l10n.chatTimerTooltip(timerLabel!),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: subtitleStyle,

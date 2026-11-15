@@ -64,9 +64,7 @@ class ChatPhoneScaffold extends StatefulWidget {
   final Widget messages;
   final Widget typing;
 
-  /// Builds the composer; `tight` while the keyboard is up, when every
-  /// pixel above it counts.
-  final Widget Function(bool tight) composer;
+  final Widget composer;
 
   /// Whether the chat is the second pane of the wide layout, not a screen.
   final bool pane;
@@ -197,7 +195,7 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
             VeilSpace.xs,
             keyboardUp ? VeilSpace.xxs : VeilSpace.xs,
           ),
-          child: widget.composer(keyboardUp),
+          child: widget.composer,
         ),
       ],
     );

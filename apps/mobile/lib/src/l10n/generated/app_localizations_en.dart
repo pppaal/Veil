@@ -1363,28 +1363,28 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String chatPhaseDescStaged(String sizeLabel) {
-    return 'Opaque blob staged locally.$sizeLabel Upload begins when the relay is reachable.';
+    return 'Encrypted on this device and ready.$sizeLabel The upload starts once the relay is reachable.';
   }
 
   @override
   String get chatPhaseDescPreparing =>
-      'Refreshing upload authorization and validating encrypted metadata.';
+      'Getting permission to upload and checking the encrypted file.';
 
   @override
   String get chatPhaseDescUploading =>
-      'Sending ciphertext-like bytes to object storage. The relay never sees plaintext.';
+      'Uploading the encrypted file. The relay never sees its contents.';
 
   @override
   String get chatPhaseDescFinalizing =>
-      'Binding the uploaded blob into an encrypted message envelope.';
+      'Attaching the uploaded file to an encrypted message.';
 
   @override
   String get chatPhaseDescFailed =>
-      'Upload failed. Retry will reuse the local encrypted temp blob.';
+      'Upload failed. A retry uses the encrypted copy kept on this device.';
 
   @override
   String get chatPhaseDescCanceled =>
-      'Upload stopped on this device. Retry will request a fresh ticket and reuse the local blob.';
+      'Upload stopped on this device. A retry starts over with the encrypted copy kept here.';
 
   @override
   String chatAttachmentSizeBytes(int count) {

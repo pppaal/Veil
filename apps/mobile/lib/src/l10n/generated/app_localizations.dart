@@ -2429,37 +2429,37 @@ abstract class AppLocalizations {
   /// No description provided for @chatPhaseDescStaged.
   ///
   /// In en, this message translates to:
-  /// **'Opaque blob staged locally.{sizeLabel} Upload begins when the relay is reachable.'**
+  /// **'Encrypted on this device and ready.{sizeLabel} The upload starts once the relay is reachable.'**
   String chatPhaseDescStaged(String sizeLabel);
 
   /// No description provided for @chatPhaseDescPreparing.
   ///
   /// In en, this message translates to:
-  /// **'Refreshing upload authorization and validating encrypted metadata.'**
+  /// **'Getting permission to upload and checking the encrypted file.'**
   String get chatPhaseDescPreparing;
 
   /// No description provided for @chatPhaseDescUploading.
   ///
   /// In en, this message translates to:
-  /// **'Sending ciphertext-like bytes to object storage. The relay never sees plaintext.'**
+  /// **'Uploading the encrypted file. The relay never sees its contents.'**
   String get chatPhaseDescUploading;
 
   /// No description provided for @chatPhaseDescFinalizing.
   ///
   /// In en, this message translates to:
-  /// **'Binding the uploaded blob into an encrypted message envelope.'**
+  /// **'Attaching the uploaded file to an encrypted message.'**
   String get chatPhaseDescFinalizing;
 
   /// No description provided for @chatPhaseDescFailed.
   ///
   /// In en, this message translates to:
-  /// **'Upload failed. Retry will reuse the local encrypted temp blob.'**
+  /// **'Upload failed. A retry uses the encrypted copy kept on this device.'**
   String get chatPhaseDescFailed;
 
   /// No description provided for @chatPhaseDescCanceled.
   ///
   /// In en, this message translates to:
-  /// **'Upload stopped on this device. Retry will request a fresh ticket and reuse the local blob.'**
+  /// **'Upload stopped on this device. A retry starts over with the encrypted copy kept here.'**
   String get chatPhaseDescCanceled;
 
   /// No description provided for @chatAttachmentSizeBytes.

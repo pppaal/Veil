@@ -263,12 +263,11 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       banners: banners,
       messages: messageList,
       typing: typing,
-      composer: (tight) => ChatComposerBar(
+      composer: ChatComposerBar(
         conversationId: widget.conversationId,
         focusNode: _composerFocusNode,
         messageTtl: _messageTtl,
         busy: controller.isBusy,
-        tight: tight,
         onAttach: kAttachmentsEnabled ? () => context.push('/attachment/${widget.conversationId}') : null,
       ),
     );

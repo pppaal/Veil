@@ -18,7 +18,6 @@ class ChatComposerBar extends ConsumerStatefulWidget {
     required this.focusNode,
     required this.messageTtl,
     required this.busy,
-    this.tight = false,
     this.onAttach,
   });
 
@@ -32,9 +31,6 @@ class ChatComposerBar extends ConsumerStatefulWidget {
 
   /// Whether the messenger is busy, which disables sending.
   final bool busy;
-
-  /// Less padding around the draft: above an open keyboard.
-  final bool tight;
 
   /// Opens the attachment flow from a button before the draft. Without it
   /// the composer shows its lock mark there.
@@ -99,7 +95,6 @@ class _ChatComposerBarState extends ConsumerState<ChatComposerBar> {
       focusNode: widget.focusNode,
       enabled: !widget.busy,
       onSubmit: _sendMessage,
-      dense: widget.tight,
       label: l10n.chatComposeHint,
       leading: widget.onAttach == null
           ? null

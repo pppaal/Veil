@@ -1305,7 +1305,6 @@ class VeilComposer extends StatelessWidget {
     required this.label,
     this.leading,
     this.helper,
-    this.dense = false,
   });
 
   final TextEditingController controller;
@@ -1313,11 +1312,6 @@ class VeilComposer extends StatelessWidget {
   final bool enabled;
   final VoidCallback onSubmit;
   final Widget trailing;
-
-  /// Less padding above and below the draft, for where height is scarce
-  /// (above an open keyboard): at the default text size the draft is then
-  /// exactly as tall as the send button.
-  final bool dense;
 
   /// A control before the draft (attach), in place of the lock mark.
   final Widget? leading;
@@ -1349,7 +1343,7 @@ class VeilComposer extends StatelessWidget {
           children: [
             leading ??
                 Padding(
-                  padding: EdgeInsets.only(bottom: dense ? VeilSpace.sm - 2 : VeilSpace.sm),
+                  padding: const EdgeInsets.only(bottom: VeilSpace.sm),
                   child: Icon(
                     Icons.lock_outline_rounded,
                     size: VeilIconSize.sm,
@@ -1374,11 +1368,9 @@ class VeilComposer extends StatelessWidget {
                   border: InputBorder.none,
                   enabledBorder: InputBorder.none,
                   focusedBorder: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    vertical: dense ? VeilSpace.sm - 2 : VeilSpace.sm,
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: VeilSpace.sm,
                   ),
-                  // Never under the 44 px a tap target needs.
-                  constraints: dense ? const BoxConstraints(minHeight: 44) : null,
                   isDense: true,
                 ),
               ),

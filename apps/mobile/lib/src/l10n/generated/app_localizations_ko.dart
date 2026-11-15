@@ -881,7 +881,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatLoadingTitle => '메시지를 불러오는 중';
 
   @override
-  String get chatLoadingBody => '이 기기로 온 메시지를 가져와 여는 중입니다.';
+  String get chatLoadingBody => '이 기기로 온 메시지를 가져와 복호화하는 중입니다.';
 
   @override
   String get chatConversationNotFound => '대화를 찾을 수 없습니다';
@@ -1014,11 +1014,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatTtlDisabledLabel => '사라짐 꺼짐';
 
   @override
-  String get chatAttachmentTicketTitle => '다운로드 티켓 발급됨';
+  String get chatAttachmentTicketTitle => '다운로드 허가를 받았습니다';
 
   @override
   String chatAttachmentTicketBody(String summary) {
-    return '릴레이가 이 기기에 단기 다운로드 티켓을 발급했습니다.\n\n요약: $summary\n\n이 빌드는 여기까지입니다. 아직 파일을 내려받거나 열지는 않습니다. 티켓 자체는 표시하지 않으므로 복사하거나 공유할 수 없습니다.';
+    return '릴레이가 이 기기에 잠시 동안만 쓸 수 있는 다운로드 허가를 내주었습니다.\n\n요약: $summary\n\n이 버전은 여기까지입니다. 아직 파일을 내려받거나 열지는 않습니다. 허가 정보 자체는 표시하지 않으므로 복사하거나 공유할 수 없습니다.';
   }
 
   @override
@@ -1294,25 +1294,25 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String chatPhaseDescStaged(String sizeLabel) {
-    return '암호화된 블롭이 로컬에 준비되었습니다.$sizeLabel 릴레이에 연결되면 업로드가 시작됩니다.';
+    return '이 기기에서 암호화해 두었습니다.$sizeLabel 릴레이에 연결되면 올리기 시작합니다.';
   }
 
   @override
-  String get chatPhaseDescPreparing => '업로드 권한을 갱신하고 암호화된 메타데이터를 검증합니다.';
+  String get chatPhaseDescPreparing => '업로드 허가를 받고 암호화된 파일을 확인하는 중입니다.';
 
   @override
-  String get chatPhaseDescUploading =>
-      '객체 저장소로 암호문 바이트를 전송합니다. 릴레이는 평문을 보지 못합니다.';
+  String get chatPhaseDescUploading => '암호화된 파일을 올리는 중입니다. 릴레이는 내용을 볼 수 없습니다.';
 
   @override
-  String get chatPhaseDescFinalizing => '업로드된 블롭을 암호화된 메시지 엔벨로프에 결합합니다.';
+  String get chatPhaseDescFinalizing => '올린 파일을 암호화된 메시지에 연결하는 중입니다.';
 
   @override
-  String get chatPhaseDescFailed => '업로드 실패. 재시도 시 로컬의 암호화된 임시 블롭을 재사용합니다.';
+  String get chatPhaseDescFailed =>
+      '올리지 못했습니다. 다시 시도하면 이 기기에 둔 암호화된 사본을 사용합니다.';
 
   @override
   String get chatPhaseDescCanceled =>
-      '이 기기에서 업로드가 중지되었습니다. 재시도 시 새 티켓을 요청하고 로컬 블롭을 재사용합니다.';
+      '이 기기에서 업로드를 멈췄습니다. 다시 시도하면 이 기기에 둔 암호화된 사본으로 처음부터 올립니다.';
 
   @override
   String chatAttachmentSizeBytes(int count) {

@@ -1,6 +1,6 @@
-# VEIL — App Store Submission Checklist
+# App Store submission checklist
 
-A step-by-step, executable checklist for shipping VEIL Messenger to the iOS App Store.
+A step-by-step, executable checklist for shipping Veil Messenger to the iOS App Store.
 Audience: an operator with a **Mac running Xcode** and an **Apple Developer Program account**.
 
 Bundle id: `io.veil.mobile` · Flutter project: `apps/mobile` · Listing package: `store/appstore`
@@ -9,7 +9,7 @@ Bundle id: `io.veil.mobile` · Flutter project: `apps/mobile` · Listing package
 
 ## ⛔ Ship-gate notice (read first)
 
-VEIL declares an org-wide non-negotiable: **production must not ship until an external
+Veil has an org-wide non-negotiable: **production must not ship until an external
 cryptographer has audited the `LibCryptoAdapter`** (Double Ratchet over X25519 + AES-256-GCM
 + Ed25519 + HKDF-SHA256).
 
@@ -43,13 +43,13 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
   <key>ITSAppUsesNonExemptEncryption</key>
   <true/>
   ```
-  VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
+  Veil ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is
   **YES/true**. This suppresses the per-build export prompt; the *exemption* is claimed via
   the App Store Connect answers + BIS self-classification report (Step 12), **not** via this
-  boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS —
-  VEIL uses only standard published algorithms, so no CCATS/ERN is required.
-- [x] **Fix the EN subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` now
-      uses "Encrypted privacy messenger" (27 chars). KO subtitle is fine.
+  boolean. Do **not** add `ITSEncryptionExportComplianceCode` and do **not** file a CCATS:
+  Veil uses only standard published algorithms, so no CCATS/ERN is required.
+- [x] **Fix the subtitle (30-char limit).** Done: `store/appstore/metadata-en.txt` uses
+      "Encrypted messenger" (19 chars).
 - [ ] **(Optional, cosmetic) Align CFBundleURLName.** `Info.plist` `CFBundleURLName` is
       `app.veil.messenger` but the bundle id is `io.veil.mobile`. Align or leave; not a blocker.
 - [ ] **Author the two missing source docs** referenced by this checklist (they do not exist yet):
@@ -102,12 +102,11 @@ prevent guaranteed TestFlight/Store rejections or stalls. **[GATE-OK]**
 
 - [ ] In **App Store Connect → Apps → +** → New App:
       - Platform: iOS
-      - Name: **VEIL Messenger** (must be globally unique on the Store)
+      - Name: **Veil Messenger** (must be globally unique on the Store)
       - Primary language: English (U.S.)
       - Bundle ID: **`io.veil.mobile`**
       - SKU: e.g. `veil-mobile-ios`
 - [ ] Set **Primary category: Social Networking**, **Secondary: Utilities** (or Productivity).
-- [ ] Add Korean (한국어) as an additional App Store localization so KO metadata can be entered.
 
 ## 5. Set version + build number  · owner: code-today
 
@@ -150,11 +149,11 @@ Choose Xcode **or** fastlane.
 
 ## 8. Fill metadata  · owner: human-account (text drafted code-today)
 
-Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/metadata-ko.txt`
-(Korean) into App Store Connect → the version's **App Information** / localized fields:
+Transcribe from `store/appstore/metadata-en.txt` into App Store Connect → the version's
+**App Information** fields. The listing is English only; add no other localization:
 
-- [ ] Name, Subtitle (**use the corrected ≤30-char EN subtitle from Pre-flight**), Promotional Text,
-      Description, Keywords (EN 69 / KO 36 chars — both under the 100 limit).
+- [ ] Name, Subtitle (≤30 chars), Promotional Text, Description, Keywords (69 chars, under
+      the 100 limit).
 - [ ] Support URL `https://veil.app/support`, Marketing URL `https://veil.app`,
       Privacy Policy URL `https://pppaal.github.io/Veil/`.
 - [ ] **Verify all three URLs resolve to live pages before submission** — a dead support/privacy
@@ -170,7 +169,7 @@ Transcribe from `store/appstore/metadata-en.txt` (English) and `store/appstore/m
         family and skip iPad shots.
       - Per-screen shot list + captions (onboarding/identity creation, 1:1 chat, group chat,
         app-lock, device-transfer).
-- [ ] Capture from the Simulator/device on the Mac, then upload to each localization.
+- [ ] Capture from the Simulator/device on the Mac, then upload to the English localization.
 - [ ] App preview video is **optional** — skip for beta.
 
 ## 10. App Privacy ("nutrition label")  · owner: human-account (answers drafted)
@@ -210,7 +209,7 @@ In App Store Connect export-compliance flow (or at TestFlight upload):
 ## 13. Review notes  · owner: code-today (draft) → human-account (paste)
 
 - [ ] Author `store/appstore/app-review-notes.md` if missing, then paste into the version's
-      **App Review Information → Notes**. **Critical** because VEIL asks for no phone number, no
+      **App Review Information → Notes**. **Critical** because Veil asks for no phone number, no
       email and no real name, and has no recovery, so reviewers cannot "log in." The notes must explain:
       - No demo credentials are needed and none exist — there is **no password login**.
       - How an account is created on **first launch**: privacy notice, product rules, **Create

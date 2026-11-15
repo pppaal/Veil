@@ -1,21 +1,18 @@
 # Play Store screenshots
 
-Six phone screenshots (1080 × 1920, Play Store spec) for the Korean
-listing, generated from the light-first **Veil Violet** design and the
-caption plan in [`../screenshot-captions-ko.md`](../screenshot-captions-ko.md).
+No screenshots are checked in. The earlier set (Korean captions on violet
+promo frames) and the feature graphic were removed when the app became
+English only and was restyled; nothing from them belongs in the listing.
 
-| File | Headline |
-| --- | --- |
-| `01-encrypted.png` | 서버도 못 읽는 메시지 |
-| `02-no-phone.png` | 전화번호 없이 시작 |
-| `03-no-tracking.png` | 광고도, 추적도 없음 |
-| `04-crypto.png` | 군용급 암호화 |
-| `05-app-lock.png` | 내 손 안에서만 열림 |
-| `06-no-recovery.png` | 복구 불가. 그게 안전입니다 |
+Make the new set from the restyled app once the screens are final:
 
-Upload order in Play Console: 01 → 06 (first 2–3 frames drive install rate).
-Play requires 2–8 phone screenshots; this is a complete set.
-
-> These are marketing promo frames (headline caption + framed device
-> mock), not raw device captures. For raw in-app captures, run the app and
-> screenshot the real screens; the copy and order here are the proven plan.
+- Play needs 2 to 8 phone screenshots (portrait 1080 x 1920 works) and a
+  1024 x 500 feature graphic.
+- Capture the real screens, in the order of
+  [`../../store/appstore/screenshot-spec.md`](../../store/appstore/screenshot-spec.md)
+  section 4, with the same names and messages as the App Store set. The
+  layout gate renders (`flutter test test/layout --dart-define=SHOTS_DIR=...`,
+  see `apps/mobile/README.md`) show every screen at phone sizes and are a
+  good check before capturing on a device.
+- No caption frames, gradients or device mock-ups. If a caption is needed,
+  one plain sentence above the screen is enough.

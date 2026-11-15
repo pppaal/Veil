@@ -36,7 +36,8 @@ export const CLAIM_SOURCES = [
 ];
 
 // Phrases that make a privacy or security claim. The Korean entries cover the
-// Korean policy and store listings, which make the same claims.
+// Korean policy, the Korean guides and the Korean half of the site, which make
+// the same claims. The store listings are English only.
 export const CLAIM_PATTERNS = [
   /never stored/i,
   /deleted on fetch/i,

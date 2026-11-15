@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
+import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/core/domain/message_search.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -226,10 +228,15 @@ void main() {
 
   testWidgets('a search shows its filters and lists what it found under plain headings', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
+      final emptyField = tester.getRect(find.byType(TextField));
+      expect(emptyField.height, 44);
       await tester.enterText(find.byType(TextField), conversationSearchQuery);
       // The archive search waits 180 ms for the typing to stop.
       await pumpFrames(tester, frames: 4);
 
+      // The clear button is as tall as the field: nothing moves under it.
+      expect(tester.getRect(find.byType(TextField)), emptyField);
+      expect(tester.getSize(find.widgetWithIcon(IconButton, Icons.close)), const Size.square(44));
       expect(find.text('All senders'), findsOneWidget);
       expect(find.widgetWithText(ConversationListHeader, 'Chats'), findsOneWidget);
       expect(find.widgetWithText(ConversationListHeader, 'Messages'), findsOneWidget);
@@ -260,6 +267,86 @@ void main() {
         await tester.tap(find.text('New chat'));
         await pumpFrames(tester);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
+      },
+    );
+  });
+
+  // The empty state sits a little above the middle of the space under the
+  // field, but that space is a floor: with the keyboard up or the phone on
+  // its side the state is taller than it, and the list scrolls to the
+  // button instead of cutting through it.
+  for (final (name, size, keyboard, scale) in [
+    ('with the keyboard up', phoneSmall, 300.0, 1.0),
+    ('with the keyboard up and larger text', phoneSmall, 300.0, 1.3),
+    ('on its side', const PhoneSize(640, 360, topInset: 0, bottomInset: 0), 0.0, 1.0),
+  ]) {
+    testWidgets('with no conversation yet and $name, the state does not overflow and its button takes a tap',
+        (tester) async {
+      await withPhoneApp(
+        tester,
+        identities,
+        location: '/conversations',
+        account: LayoutAccount.signedInEmpty,
+        size: size,
+        keyboardHeight: keyboard,
+        textScale: scale,
+        body: (world) async {
+          expect(tester.takeException(), isNull, reason: 'the empty state overflowed its box');
+          final button = find.widgetWithText(VeilButton, 'New chat');
+          await tester.dragUntilVisible(button, find.byType(ListView), const Offset(0, -40));
+          await pumpFrames(tester, frames: 2);
+          final box = tester.renderObject<RenderBox>(find.descendant(of: button, matching: find.byType(OutlinedButton)));
+          expect(whyNotWhollyTappable(tester, box), isNull);
+          await tester.tap(button);
+          await pumpFrames(tester);
+          expect(find.byType(StartDirectChatScreen), findsOneWidget);
+        },
+      );
+    });
+  }
+
+  // A message found in a group is shown under the group, as its row is: the
+  // neutral disc and the group's name, not a letter and the name of one
+  // member.
+  testWidgets('a message found in a group shows the group\'s avatar and name', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      withGroup: true,
+      location: '/conversations',
+      prepare: (world) async {
+        // The search reads the chat's peer, which in a group is a member.
+        world.cache.archiveHits = [
+          MessageSearchResult(
+            conversationId: groupConversationId,
+            messageId: 'group-hit',
+            peerHandle: peerHandle,
+            peerDisplayName: 'Sam Rivera',
+            sentAt: DateTime.utc(2026, 4, 7, 9, 12),
+            messageKind: MessageKind.text,
+            isMine: false,
+            bodySnippet: 'I can bring the van after six',
+          ),
+        ];
+        return null;
+      },
+      body: (world) async {
+        await tester.enterText(find.byType(TextField), 'van');
+        // The archive search waits 180 ms for the typing to stop.
+        await pumpFrames(tester, frames: 4);
+        final tile = find.byType(MessageSearchResultTile);
+        await tester.dragUntilVisible(tile, find.byType(ListView), const Offset(0, -200));
+        await pumpFrames(tester, frames: 2);
+
+        expect(find.descendant(of: tile, matching: find.byIcon(Icons.group_outlined)), findsOneWidget);
+        expect(find.descendant(of: tile, matching: find.text('S')), findsNothing, reason: 'no letter on a group');
+        expect(
+          find.descendant(of: tile, matching: find.text('Sam Rivera, Priya Nair, Omar Haddad')),
+          findsOneWidget,
+          reason: 'named as the group\'s row is',
+        );
+        expect(find.descendant(of: tile, matching: find.text('Sam Rivera')), findsNothing);
+        expect(tester.takeException(), isNull);
       },
     );
   });

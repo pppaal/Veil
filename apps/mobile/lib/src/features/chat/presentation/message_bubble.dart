@@ -213,24 +213,33 @@ class _Meta extends StatelessWidget {
             MessageDeliveryState.sent => Icons.done,
             MessageDeliveryState.delivered || MessageDeliveryState.read => Icons.done_all,
           };
+    final items = <Widget>[
+      Text(sentAtFormat.format(message.sentAt), style: style),
+      if (tick != null) Icon(tick, size: 16, color: color),
+      if (message.isMine && state == MessageDeliveryState.read)
+        Text(l10n.chatDeliveryRead, style: style?.copyWith(fontWeight: FontWeight.w600)),
+      if (message.expiresAt != null)
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: color),
+            const SizedBox(width: 2),
+            Flexible(child: MessageExpiryLabel(expiresAt: message.expiresAt!, now: expiryNow, style: style)),
+          ],
+        ),
+    ];
+    // One line, wrapping only when the bubble cannot be that wide. The gap
+    // is padding on each item rather than the Wrap's spacing: the bubble
+    // takes the meta's intrinsic width, and a Wrap leaves its spacing out
+    // of that, so a short message ("ok") would wrap its own meta.
     return Wrap(
-      spacing: VeilSpace.xxs,
       runSpacing: 2,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        Text(sentAtFormat.format(message.sentAt), style: style),
-        if (tick != null) Icon(tick, size: 16, color: color),
-        if (message.isMine && state == MessageDeliveryState.read)
-          Text(l10n.chatDeliveryRead, style: style?.copyWith(fontWeight: FontWeight.w600)),
-        if (message.expiresAt != null)
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: color),
-              const SizedBox(width: 2),
-              Flexible(child: MessageExpiryLabel(expiresAt: message.expiresAt!, now: expiryNow, style: style)),
-            ],
-          ),
+        for (final (index, item) in items.indexed)
+          index == 0
+              ? item
+              : Padding(padding: const EdgeInsetsDirectional.only(start: VeilSpace.xxs), child: item),
       ],
     );
   }

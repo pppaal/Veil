@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -106,11 +107,16 @@ void main() {
       expect(find.widgetWithText(TextField, 'Search this chat'), findsOneWidget);
       expect(find.text('Sam Rivera'), findsNothing);
       expect(find.byTooltip('Safety number'), findsNothing);
+      final searchField = find.descendant(of: find.byType(ChatBarSearchField), matching: find.byType(TextField));
+      final emptyHeight = tester.getSize(searchField).height;
 
       // Typed where the focus is: opening the search moved it to the bar.
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
       expect(find.text('2 matches'), findsOneWidget);
+      // The clear button is as tall as the field: nothing moves under it.
+      expect(find.byTooltip('Clear search'), findsOneWidget);
+      expect(tester.getSize(searchField).height, emptyHeight);
       expect(find.text(_first), findsOneWidget);
       expect(find.text(_latest), findsNothing);
 

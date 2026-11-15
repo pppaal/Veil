@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -195,6 +197,82 @@ void main() {
         expect(_progressValue(tester), isNull, reason: '$phase');
       }
     });
+  });
+
+  group('MessageBubble meta', () {
+    ChatMessage message({required MessageDeliveryState state, DateTime? expiresAt, bool mine = true}) => ChatMessage(
+          id: 'msg-1',
+          senderDeviceId: 'device-1',
+          sentAt: DateTime(2026, 4, 7, 9, 17),
+          isMine: mine,
+          deliveryState: state,
+          expiresAt: expiresAt,
+          envelope: const CryptoEnvelope(
+            version: 'v',
+            conversationId: 'conv-1',
+            senderDeviceId: 'device-1',
+            recipientUserId: 'user-1',
+            ciphertext: 'x',
+            nonce: 'n',
+            messageKind: MessageKind.text,
+          ),
+        );
+
+    Future<void> pumpBubble(WidgetTester tester, String body, ChatMessage message) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: VeilTheme.dark(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 390,
+              child: MessageBubble(
+                message: message,
+                highlighted: false,
+                sentAtFormat: DateFormat('HH:mm'),
+                decryptFuture: Future.value(DecryptedMessage(body: body, messageKind: MessageKind.text)),
+                onResolveAttachment: (_) async {},
+                onCancelAttachment: null,
+                isResolvingAttachment: (_) => false,
+                attachmentDownloadError: (_) => null,
+                transferSnapshot: null,
+                expiryNow: () => DateTime(2026, 4, 7, 9, 18),
+                onRetryMessage: () {},
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    // The bubble is as wide as its widest line. On a short message that is
+    // the meta, which must then fit on the one line it was measured for.
+    for (final body in ['ok', 'Yes', 'Sure, see you then']) {
+      testWidgets('a read "$body": "Read" sits on the line of the time', (tester) async {
+        await pumpBubble(tester, body, message(state: MessageDeliveryState.read));
+        final time = tester.getRect(find.text('09:17'));
+        final read = tester.getRect(find.text(l10n.chatDeliveryRead));
+        expect(read.center.dy, closeTo(time.center.dy, 1), reason: '"Read" wrapped under the time');
+        expect(read.left, greaterThan(time.right));
+      });
+    }
+
+    for (final mine in [true, false]) {
+      testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the time left sits on the line of the time',
+          (tester) async {
+        await pumpBubble(
+          tester,
+          'ok',
+          message(state: MessageDeliveryState.sent, expiresAt: DateTime(2026, 4, 13, 9, 17), mine: mine),
+        );
+        final time = tester.getRect(find.text('09:17'));
+        final timer = tester.getRect(find.byIcon(Icons.timer_outlined));
+        expect(timer.center.dy, closeTo(time.center.dy, 1), reason: 'the time left wrapped under the time');
+        expect(timer.left, greaterThan(time.right));
+      });
+    }
   });
 
   group('ReactionChipsRow', () {

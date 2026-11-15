@@ -189,9 +189,17 @@ class ChatBarSearchField extends StatelessWidget {
                 )
               : controller.text.isEmpty
                   ? null
+                  // 44 square like the field, so the field keeps its height
+                  // when the button appears on the first character.
                   : IconButton(
                       tooltip: l10n.chatSearchClearTooltip,
                       onPressed: controller.clear,
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size.square(44),
+                        maximumSize: const Size.square(44),
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       icon: const Icon(Icons.close, size: 20),
                     ),
         ),

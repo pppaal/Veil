@@ -176,7 +176,9 @@ class ConversationListHeader extends StatelessWidget {
 
 /// One message the local search found: a 60 px row with the avatar of the
 /// chat it is in, the chat's name and the day it was sent, and the message
-/// with the query in the text colour.
+/// with the query in the text colour. The avatar and the name are the ones
+/// the chat's own row shows: a group's neutral disc and its name, never the
+/// letter or the name of the member the search result happens to carry.
 class MessageSearchResultTile extends StatelessWidget {
   const MessageSearchResultTile({
     super.key,
@@ -184,6 +186,8 @@ class MessageSearchResultTile extends StatelessWidget {
     required this.query,
     required this.timeFormat,
     required this.onTap,
+    this.conversation,
+    this.localUserId,
   });
 
   /// Where the hairline under the row starts: the text edge.
@@ -194,12 +198,21 @@ class MessageSearchResultTile extends StatelessWidget {
   final DateFormat timeFormat;
   final VoidCallback onTap;
 
+  /// The chat the message is in, when this device still lists it.
+  final ConversationPreview? conversation;
+
+  /// The user's own id, which a group named after its members leaves out.
+  final String? localUserId;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final snippetStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
+    final chat = conversation;
+    final group = chat?.type == ConversationType.group;
+    final title = chat == null ? result.title : conversationRowTitle(l10n, chat, localUserId: localUserId);
     return Semantics(
       button: true,
       // Who sent it and what it is, for a screen reader: "You · Text".
@@ -212,7 +225,8 @@ class MessageSearchResultTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xs),
             child: Row(
               children: [
-                VeilAvatar(name: result.title, seed: result.peerHandle, size: 40),
+                // Seeded as the chat's row is: a group has no handle of its own.
+                VeilAvatar(name: title, seed: group ? chat!.id : result.peerHandle, size: 40, group: group),
                 const SizedBox(width: VeilSpace.sm),
                 Expanded(
                   child: Column(
@@ -223,7 +237,7 @@ class MessageSearchResultTile extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              result.title,
+                              title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: theme.textTheme.titleMedium,
@@ -294,6 +308,8 @@ List<Widget> messageSearchResultSection(BuildContext context, ConversationListVi
             RepaintBoundary(
               child: MessageSearchResultTile(
                 result: result,
+                conversation: view.controller.conversationById(result.conversationId),
+                localUserId: view.session.userId,
                 query: view.searchController.text,
                 timeFormat: view.timeFormat,
                 onTap: () => view.onSelectMessageResult(result),

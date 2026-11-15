@@ -385,6 +385,10 @@ void main() {
       await tester.pumpWidget(composer());
       expect(tester.widget<SendButton>(find.byType(SendButton)).onPressed, isNull, reason: 'no draft, no send button');
       expect(find.byIcon(Icons.arrow_upward), findsNothing);
+      // Its square stays, empty: the field keeps its width when the first
+      // character brings the button.
+      expect(tester.getSize(find.byType(SendButton)), const Size.square(44));
+      final emptyField = tester.getRect(find.byType(TextField));
       await tester.enterText(find.byType(TextField), '   ');
       await tester.pump();
       expect(tester.widget<SendButton>(find.byType(SendButton)).onPressed, isNull, reason: 'blank is no draft');
@@ -397,6 +401,7 @@ void main() {
       await tester.pump();
       expect(find.byIcon(Icons.arrow_upward), findsOneWidget, reason: 'a draft shows the send button');
       expect(tester.getSize(find.byType(SendButton)), const Size.square(44));
+      expect(tester.getRect(find.byType(TextField)), emptyField, reason: 'the field did not move');
 
       await tester.pumpWidget(composer(busy: true));
       expect(tester.widget<SendButton>(find.byType(SendButton)).onPressed, isNull);

@@ -173,9 +173,10 @@ class AttachmentTransferPanel extends StatelessWidget {
             margin: EdgeInsets.zero,
           ),
         ],
+        // The gap is padding, not the Wrap's spacing: the bubble takes this
+        // panel's intrinsic width, and a Wrap leaves its spacing out of it.
         if (onRetry != null || onCancel != null)
           Wrap(
-            spacing: VeilSpace.xs,
             children: [
               if (onRetry != null)
                 TextButton(
@@ -184,10 +185,13 @@ class AttachmentTransferPanel extends StatelessWidget {
                   child: Text(l10n.chatRetryUpload),
                 ),
               if (onCancel != null)
-                TextButton(
-                  style: TextButton.styleFrom(foregroundColor: color),
-                  onPressed: onCancel,
-                  child: Text(l10n.chatCancelAction),
+                Padding(
+                  padding: EdgeInsetsDirectional.only(start: onRetry != null ? VeilSpace.xs : 0),
+                  child: TextButton(
+                    style: TextButton.styleFrom(foregroundColor: color),
+                    onPressed: onCancel,
+                    child: Text(l10n.chatCancelAction),
+                  ),
                 ),
             ],
           ),

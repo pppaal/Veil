@@ -4,13 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_grouped.dart';
-import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// The user's handle, which peers route by, and a nickname that only this
-/// device knows. No profile field is stored on the relay.
+/// Who the user is to themselves: the avatar, the nickname this phone
+/// keeps for them and the handle people find them by, with the nickname
+/// edited in place. No profile field is stored on the server.
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
@@ -19,100 +18,102 @@ class ProfileScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
-  final _nicknameController = TextEditingController();
-  bool _isEditing = false;
+  late final _nickname = TextEditingController(text: ref.read(appSessionProvider).displayName ?? '');
+  final _focus = FocusNode();
+  bool _saving = false;
 
   @override
   void dispose() {
-    _nicknameController.dispose();
+    _nickname.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
-  void _edit(String? currentNickname) {
-    VeilHaptics.selection();
-    _nicknameController.text = currentNickname ?? '';
-    setState(() => _isEditing = true);
-  }
+  bool _changed(String? saved) => _nickname.text.trim() != (saved ?? '');
 
   Future<void> _save() async {
-    await ref.read(appSessionProvider.notifier).updateLocalNickname(_nicknameController.text.trim());
+    if (_saving) return;
+    final typed = _nickname.text.trim();
+    setState(() => _saving = true);
+    try {
+      await ref.read(appSessionProvider.notifier).updateLocalNickname(typed);
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
     if (!mounted) return;
-    setState(() => _isEditing = false);
-    VeilToast.show(context, message: AppLocalizations.of(context).profileNicknameSaved, tone: VeilBannerTone.good);
+    _nickname.text = typed;
+    _focus.unfocus();
+    showVeilToast(context, AppLocalizations.of(context).profileNicknameSaved, tone: VeilTone.good);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
     final handle = session.handle ?? '';
     final nickname = session.displayName;
     final named = nickname != null && nickname.isNotEmpty;
+    final changed = _changed(nickname);
 
     return VeilShell(
       title: l10n.profileTitle,
+      grouped: true,
       maxWidth: 560,
-      padding: EdgeInsets.zero,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.only(top: VeilSpace.xl, bottom: VeilSpace.xxl),
         children: [
-          Center(child: VeilInitialBadge(name: named ? nickname : handle, size: 72)),
-          if (named) ...[
-            const SizedBox(height: VeilSpace.sm),
-            // The user's own words: drawn as typed.
-            Text(nickname, textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
-          ],
-          const SizedBox(height: VeilSpace.xl),
-          VeilGroup(
-            label: l10n.profileHandleLabel,
-            footer: l10n.profileHandleCaption,
-            children: [VeilGroupRow(title: '@$handle')],
-          ),
-          const SizedBox(height: VeilSpace.lg),
-          VeilGroup(
-            label: l10n.profileNicknameLabel,
-            footer: l10n.profileNicknameCaption,
-            children: [
-              if (_isEditing)
-                Padding(
-                  padding: const EdgeInsets.all(VeilSpace.sm),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      TextField(
-                        controller: _nicknameController,
-                        autofocus: true,
-                        textInputAction: TextInputAction.done,
-                        onSubmitted: (_) => _save(),
-                        decoration: InputDecoration(hintText: l10n.profileNicknameHint),
-                      ),
-                      const SizedBox(height: VeilSpace.sm),
-                      VeilActionRow(
-                        children: [
-                          VeilButton(
-                            label: l10n.profileCancel,
-                            tone: VeilButtonTone.secondary,
-                            onPressed: () => setState(() => _isEditing = false),
-                          ),
-                          VeilButton(label: l10n.profileSaveNickname, onPressed: _save),
-                        ],
-                      ),
-                    ],
-                  ),
-                )
-              else
-                VeilGroupRow(
-                  title: named ? nickname : l10n.profileNicknameNotSet,
-                  trailing: TextButton(onPressed: () => _edit(nickname), child: Text(l10n.profileEditNickname)),
+          Center(child: VeilAvatar(name: named ? nickname : handle, seed: handle, size: 72)),
+          const SizedBox(height: VeilSpace.sm),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+            child: Column(
+              children: [
+                // The user's own words: drawn as typed.
+                Text(
+                  named ? nickname : '@$handle',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.headlineMedium,
                 ),
-            ],
+                if (named) ...[
+                  const SizedBox(height: VeilSpace.xxs),
+                  Text(
+                    '@$handle',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                  ),
+                ],
+              ],
+            ),
           ),
-          const SizedBox(height: VeilSpace.xl),
-          VeilInlineBanner(
-            icon: Icons.shield_outlined,
-            title: l10n.profilePrivacyTitle,
-            message: l10n.profilePrivacyBody,
+          const SizedBox(height: VeilSpace.xs),
+          VeilGroup(
+            header: l10n.profileNicknameHeader,
+            footer: l10n.profileNicknameFooter,
+            children: [
+              VeilRow.field(
+                field: TextField(
+                  key: const ValueKey('profile-nickname'),
+                  controller: _nickname,
+                  focusNode: _focus,
+                  textInputAction: TextInputAction.done,
+                  textCapitalization: TextCapitalization.words,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) {
+                    if (_changed(ref.read(appSessionProvider).displayName)) _save();
+                  },
+                  decoration: InputDecoration(hintText: l10n.profileNicknameHint),
+                ),
+                trailing: !changed
+                    ? null
+                    : TextButton(
+                        onPressed: _saving ? null : _save,
+                        child: Text(l10n.profileSaveNickname),
+                      ),
+              ),
+            ],
           ),
         ],
       ),

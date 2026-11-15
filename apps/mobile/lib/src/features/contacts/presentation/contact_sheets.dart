@@ -5,16 +5,28 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/contacts_providers.dart';
 
 // The sheets of the contacts tab: adding a contact, what to do with one,
-// and the name this device calls it by. Each scrolls inside the room the
+// and the name this phone calls it by. Each scrolls inside the room the
 // keyboard leaves, so its button stays in reach on a small phone.
 
+/// Opens a sheet of the contacts tab, with the drag handle every sheet has,
+/// over the tab bar like any sheet.
+Future<void> _showSheet(BuildContext context, WidgetBuilder builder) => showModalBottomSheet<void>(
+      context: context,
+      useRootNavigator: true,
+      // A sheet with a field grows above the keyboard, and three rows under a
+      // header are taller than the half screen a sheet gets by default.
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: builder,
+    );
+
 /// A sheet's content above the keyboard and the system bar, scrolling when
-/// the two leave it less room than it needs.
+/// the two leave it less room than it needs. Rows run full-bleed; the rest
+/// keeps the 16 side gutter ([_padded]).
 class _SheetBody extends StatelessWidget {
   const _SheetBody({required this.children});
 
@@ -25,11 +37,12 @@ class _SheetBody extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SafeArea(
+        top: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.md, VeilSpace.lg, VeilSpace.lg),
+          padding: const EdgeInsets.only(bottom: VeilSpace.md),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: children,
           ),
         ),
@@ -38,18 +51,20 @@ class _SheetBody extends StatelessWidget {
   }
 }
 
+/// The 16 side gutter of what is not a row: a title, a field, a button.
+Widget _padded(Widget child) => Padding(padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md), child: child);
+
 /// Asks for a handle and, optionally, a name for it, and adds the contact.
 Future<void> showAddContactSheet(BuildContext context, WidgetRef ref) {
   VeilHaptics.selection();
   final l10n = AppLocalizations.of(context);
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) => _AddContactSheet(
+  return _showSheet(
+    context,
+    (_) => _AddContactSheet(
       // Said on the screen behind the sheet, once the sheet is gone.
       onAdded: (handle) {
         if (!context.mounted) return;
-        VeilToast.show(context, message: l10n.contactsAdded(handle), tone: VeilBannerTone.good);
+        showVeilToast(context, l10n.contactsAdded(handle), tone: VeilTone.good);
       },
     ),
   );
@@ -107,38 +122,42 @@ class _AddContactSheetState extends ConsumerState<_AddContactSheet> {
     final palette = context.veilPalette;
     return _SheetBody(
       children: [
-        Text(l10n.contactsAdd, style: theme.textTheme.titleLarge),
-        const SizedBox(height: VeilSpace.xxs),
-        // A refusal takes the place of the instruction it repeats, so the
-        // sheet keeps its height and the button stays above the keyboard.
-        VeilCopy(
-          _failed ? l10n.contactsAddFailed : l10n.contactsAddSheetBody,
-          style: theme.textTheme.bodySmall?.copyWith(color: _failed ? palette.danger : palette.textMuted),
-        ),
+        _padded(Text(l10n.contactsAdd, style: theme.textTheme.titleLarge)),
         const SizedBox(height: VeilSpace.md),
-        TextField(
+        // A refusal takes the place of the instruction under the field, so
+        // the sheet keeps its height and the button stays above the keyboard.
+        _padded(TextField(
           controller: _handle,
           autofocus: true,
           autocorrect: false,
           enableSuggestions: false,
           textInputAction: TextInputAction.next,
           onChanged: (_) => setState(() => _failed = false),
-          decoration: InputDecoration(labelText: l10n.contactsHandleLabel, hintText: 'icarus', prefixText: '@'),
-        ),
+          decoration: InputDecoration(
+            labelText: l10n.contactsHandleLabel,
+            hintText: l10n.contactsHandleHint,
+            prefixText: '@',
+            helperText: l10n.contactsAddSheetBody,
+            errorText: _failed ? l10n.contactsAddFailed : null,
+            helperMaxLines: 2,
+            errorMaxLines: 2,
+          ),
+        )),
         const SizedBox(height: VeilSpace.sm),
-        TextField(
+        _padded(TextField(
           controller: _nickname,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _save(),
           decoration: InputDecoration(labelText: l10n.contactsNicknameLabel, hintText: l10n.contactsNicknameHint),
-        ),
+        )),
         const SizedBox(height: VeilSpace.md),
-        VeilButton(
+        _padded(VeilButton(
           label: _saving ? l10n.contactsWorking : l10n.contactsSave,
           onPressed: _saving || _typedHandle.isEmpty ? null : _save,
-        ),
+        )),
         const SizedBox(height: VeilSpace.sm),
-        VeilCopy(l10n.contactsNotice, style: theme.textTheme.bodySmall?.copyWith(color: palette.textSubtle)),
+        // What the server learns of the list, said where one adds to it.
+        _padded(Text(l10n.contactsNotice, style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted))),
       ],
     );
   }
@@ -155,80 +174,64 @@ Future<void> showContactActionsSheet(BuildContext context, WidgetRef ref, Contac
     if (conversationId != null) {
       context.push('/chat/$conversationId');
     } else {
-      VeilToast.show(context, message: l10n.contactsStartChatFailed, tone: VeilBannerTone.warn);
+      showVeilToast(context, l10n.contactsStartChatFailed, tone: VeilTone.warn);
     }
   }
 
   Future<void> remove() async {
     final removed = await ref.read(contactsControllerProvider).removeContact(contact.handle);
     if (!context.mounted) return;
-    VeilToast.show(
+    showVeilToast(
       context,
-      message: removed ? l10n.contactsRemoved(contact.label) : l10n.contactsRemoveFailed,
-      tone: removed ? VeilBannerTone.info : VeilBannerTone.warn,
+      removed ? l10n.contactsRemoved(contact.label) : l10n.contactsRemoveFailed,
+      tone: removed ? VeilTone.info : VeilTone.warn,
     );
   }
 
-  return showModalBottomSheet<void>(
-    context: context,
-    // Three buttons under the name are taller than the half screen a sheet
-    // gets by default on a small phone.
-    isScrollControlled: true,
-    builder: (sheetContext) {
-      final palette = sheetContext.veilPalette;
-      void close() => Navigator.of(sheetContext).pop();
-      return _SheetBody(
-        children: [
-          _ContactHeader(contact: contact),
-          const SizedBox(height: VeilSpace.lg),
-          VeilButton(
-            label: l10n.contactsStartChat,
-            icon: Icons.chat_bubble_outline_rounded,
-            onPressed: () {
-              close();
-              startChat();
-            },
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilButton(
-            label: l10n.contactsEditNickname,
-            icon: Icons.edit_outlined,
-            tone: VeilButtonTone.secondary,
-            onPressed: () {
-              close();
-              showContactNicknameSheet(context, ref, contact);
-            },
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: palette.danger,
-                side: BorderSide(color: palette.danger.withValues(alpha: 0.45)),
-              ),
-              onPressed: () {
-                VeilHaptics.medium();
+  return _showSheet(context, (sheetContext) {
+    void close() => Navigator.of(sheetContext).pop();
+    // Each row does what it says at once: none leads to a screen of its own.
+    const noChevron = SizedBox.shrink();
+    return _SheetBody(
+      children: [
+        _ContactHeader(contact: contact),
+        const SizedBox(height: VeilSpace.xs),
+        VeilGroup(
+          children: [
+            VeilRow(
+              title: l10n.contactsStartChat,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                startChat();
+              },
+            ),
+            VeilRow(
+              title: l10n.contactsEditNickname,
+              trailing: noChevron,
+              onTap: () {
+                close();
+                showContactNicknameSheet(context, ref, contact);
+              },
+            ),
+            VeilRow(
+              title: l10n.contactsRemove,
+              destructive: true,
+              onTap: () {
                 close();
                 remove();
               },
-              icon: const Icon(Icons.person_remove_outlined, size: VeilIconSize.sm),
-              label: Text(l10n.contactsRemove),
             ),
-          ),
-        ],
-      );
-    },
-  );
+          ],
+        ),
+      ],
+    );
+  });
 }
 
-/// Changes the name this device calls [contact] by. The relay never sees it.
+/// Changes the name this phone calls [contact] by. The server never sees it.
 Future<void> showContactNicknameSheet(BuildContext context, WidgetRef ref, ContactEntry contact) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (_) => _NicknameSheet(contact: contact),
-  );
+  return _showSheet(context, (_) => _NicknameSheet(contact: contact));
 }
 
 class _NicknameSheet extends ConsumerStatefulWidget {
@@ -258,29 +261,31 @@ class _NicknameSheetState extends ConsumerState<_NicknameSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final palette = context.veilPalette;
     return _SheetBody(
       children: [
         _ContactHeader(contact: widget.contact),
         const SizedBox(height: VeilSpace.md),
-        TextField(
+        _padded(TextField(
           controller: _nickname,
           autofocus: true,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => _save(),
-          decoration: InputDecoration(labelText: l10n.contactsNicknameLabel, hintText: l10n.contactsNicknameHint),
-        ),
-        const SizedBox(height: VeilSpace.xs),
-        VeilCopy(l10n.contactsNicknameCaption, style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted)),
+          decoration: InputDecoration(
+            labelText: l10n.contactsNicknameLabel,
+            hintText: l10n.contactsNicknameHint,
+            helperText: l10n.contactsNicknameCaption,
+            helperMaxLines: 2,
+          ),
+        )),
         const SizedBox(height: VeilSpace.md),
-        VeilButton(label: l10n.contactsSaveNickname, onPressed: _save),
+        _padded(VeilButton(label: l10n.contactsSaveNickname, onPressed: _save)),
       ],
     );
   }
 }
 
-/// Who a sheet is about: the name this device shows and the handle.
+/// Who a sheet is about: the avatar, the name this phone shows and the
+/// handle.
 class _ContactHeader extends StatelessWidget {
   const _ContactHeader({required this.contact});
 
@@ -290,20 +295,21 @@ class _ContactHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
-    return Row(
+    return _padded(Row(
       children: [
-        VeilInitialBadge(name: contact.label),
-        const SizedBox(width: VeilSpace.md),
+        VeilAvatar(name: contact.label, seed: contact.handle, size: 56),
+        const SizedBox(width: VeilSpace.sm),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(contact.label, style: theme.textTheme.titleMedium),
-              Text('@${contact.handle}', style: theme.textTheme.bodySmall?.copyWith(color: palette.textSubtle)),
+              // A name and a handle are their owner's words: drawn as typed.
+              Text(contact.label, style: theme.textTheme.titleLarge),
+              Text('@${contact.handle}', style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
             ],
           ),
         ),
       ],
-    );
+    ));
   }
 }

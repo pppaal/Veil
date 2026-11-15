@@ -5,15 +5,14 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_grouped.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/one_time_link_service.dart';
 
 /// Compose a one-time secret link: type a secret, encrypt on-device, store
 /// only the ciphertext, and share the resulting burn-after-read link. The
-/// form comes first; what the link protects, and what it does not, is said
-/// under it.
+/// form comes first, with what the link does under it; the link that was
+/// made follows, and last what such a link does not protect.
 class OneTimeLinkScreen extends StatefulWidget {
   const OneTimeLinkScreen({super.key, OneTimeLinkService? service}) : _service = service;
 
@@ -84,78 +83,72 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
     final link = _link;
     return VeilShell(
       title: l10n.oneTimeLinkTitle,
+      grouped: true,
       maxWidth: 560,
-      padding: EdgeInsets.zero,
       child: ListView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
+        padding: const EdgeInsets.only(bottom: VeilSpace.xxl),
         children: [
-          TextField(
-            controller: _secret,
-            minLines: 3,
-            maxLines: 5,
-            onChanged: (_) => _edited(),
-            decoration: InputDecoration(
-              labelText: l10n.oneTimeLinkSecretLabel,
-              hintText: l10n.oneTimeLinkSecretHint,
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
           VeilGroup(
+            header: l10n.oneTimeLinkSecretLabel,
+            footer: l10n.oneTimeLinkFooter,
             children: [
-              VeilGroupSwitchRow(
-                icon: Icons.key_outlined,
+              VeilRow.field(
+                field: TextField(
+                  controller: _secret,
+                  minLines: 3,
+                  maxLines: 5,
+                  onChanged: (_) => _edited(),
+                  decoration: InputDecoration(hintText: l10n.oneTimeLinkSecretHint),
+                ),
+              ),
+              VeilRow(
                 title: l10n.oneTimeLinkUsePassphrase,
-                subtitle: l10n.oneTimeLinkUsePassphraseBody,
-                value: _usePass,
-                onChanged: _busy
+                subtitle: l10n.oneTimeLinkUsePassphraseCaption,
+                switchValue: _usePass,
+                onSwitch: _busy
                     ? null
                     : (value) {
                         _usePass = value;
                         _edited();
                       },
               ),
+              if (_usePass)
+                VeilRow.field(
+                  title: l10n.oneTimeLinkPassphraseLabel,
+                  field: TextField(
+                    controller: _pass,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    onChanged: (_) => _edited(),
+                  ),
+                ),
             ],
           ),
-          if (_usePass) ...[
-            const SizedBox(height: VeilSpace.sm),
-            TextField(
-              controller: _pass,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              onChanged: (_) => _edited(),
-              decoration: InputDecoration(labelText: l10n.oneTimeLinkPassphraseLabel),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+            child: VeilButton(
+              label: _busy ? l10n.oneTimeLinkCreating : l10n.oneTimeLinkCreate,
+              onPressed: _busy || !_ready ? null : _generate,
             ),
-          ],
-          const SizedBox(height: VeilSpace.md),
-          VeilButton(
-            icon: Icons.link_rounded,
-            label: _busy ? l10n.oneTimeLinkCreating : l10n.oneTimeLinkCreate,
-            onPressed: _busy || !_ready ? null : _generate,
           ),
           if (_failed) ...[
             const SizedBox(height: VeilSpace.sm),
-            VeilInlineBanner(message: l10n.oneTimeLinkFailed, tone: VeilBannerTone.danger),
+            VeilNotice(
+              margin: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+              message: l10n.oneTimeLinkFailed,
+              tone: VeilTone.warn,
+            ),
           ],
-          if (link != null) ...[
-            const SizedBox(height: VeilSpace.md),
-            _CreatedLink(key: _resultKey, link: link),
-          ],
-          const SizedBox(height: VeilSpace.xl),
-          _Facts(
-            label: l10n.oneTimeLinkProtectsLabel,
-            icon: Icons.check_circle_outline_rounded,
-            color: context.veilPalette.success,
-            facts: [l10n.oneTimeLinkProtectsEncrypted, l10n.oneTimeLinkProtectsBurn],
-          ),
-          const SizedBox(height: VeilSpace.lg),
-          _Facts(
-            label: l10n.oneTimeLinkLimitsLabel,
-            icon: Icons.error_outline_rounded,
-            color: context.veilPalette.warning,
-            facts: [l10n.oneTimeLinkLimitHolder, l10n.oneTimeLinkLimitReader, l10n.oneTimeLinkLimitRelay],
+          if (link != null) _CreatedLink(key: _resultKey, link: link),
+          // What such a link does not protect: the one place it is said.
+          VeilGroup(
+            header: l10n.oneTimeLinkLimitsLabel,
+            children: [
+              for (final limit in [l10n.oneTimeLinkLimitHolder, l10n.oneTimeLinkLimitReader, l10n.oneTimeLinkLimitRelay])
+                _Paragraph(limit),
+            ],
           ),
         ],
       ),
@@ -163,9 +156,9 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
   }
 }
 
-/// The link that was made: its QR code, the link itself, when it expires
-/// unopened, the reminder to send its passphrase apart if it was sealed with
-/// one, and the button that copies it.
+/// The link that was made: its QR code, the link itself with the button
+/// that copies it, and under them when it is deleted unopened and, if it
+/// was sealed with one, the reminder to send its passphrase apart.
 class _CreatedLink extends StatelessWidget {
   const _CreatedLink({super.key, required this.link});
 
@@ -175,77 +168,67 @@ class _CreatedLink extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final palette = context.veilPalette;
     final expiresAt = link.expiresAt?.toLocal();
-    return VeilSurfaceCard(
-      padding: const EdgeInsets.all(VeilSpace.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
+    final notes = [
+      if (expiresAt != null) l10n.oneTimeLinkExpires(DateFormat.MMMd(l10n.localeName).add_Hm().format(expiresAt)),
+      if (link.passphraseLocked) l10n.oneTimeLinkSendPassphraseApart,
+    ];
+    return VeilGroup(
+      footer: notes.isEmpty ? null : notes.join(' '),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(VeilSpace.md),
+          child: Center(
             // A QR code is read dark on light, whatever the theme.
-            child: QrImageView(data: link.url, size: 180, backgroundColor: Colors.white),
+            child: DecoratedBox(
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(VeilRadius.md)),
+              child: Padding(
+                padding: const EdgeInsets.all(VeilSpace.sm),
+                child: QrImageView(data: link.url, size: 180, padding: EdgeInsets.zero, backgroundColor: Colors.white),
+              ),
+            ),
           ),
-          const SizedBox(height: VeilSpace.sm),
-          SelectableText(link.url, style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted)),
-          const SizedBox(height: VeilSpace.xs),
-          VeilCopy(
-            [
-              if (expiresAt != null)
-                l10n.oneTimeLinkExpires(DateFormat.MMMd(l10n.localeName).add_Hm().format(expiresAt)),
-              if (link.passphraseLocked) l10n.oneTimeLinkSendPassphraseApart,
-            ].join(' '),
-            style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+        ),
+        Padding(
+          padding: const EdgeInsetsDirectional.only(start: VeilSpace.md, end: VeilSpace.xxs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
+                  child: SelectableText(
+                    link.url,
+                    style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.4),
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: l10n.oneTimeLinkCopy,
+                icon: const Icon(Icons.copy_outlined, size: 20),
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: link.url));
+                  if (context.mounted) showVeilToast(context, l10n.oneTimeLinkCopied);
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilButton(
-            tone: VeilButtonTone.secondary,
-            icon: Icons.copy_rounded,
-            label: l10n.oneTimeLinkCopy,
-            onPressed: () async {
-              await Clipboard.setData(ClipboardData(text: link.url));
-              if (context.mounted) VeilToast.show(context, message: l10n.oneTimeLinkCopied);
-            },
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
-/// A short list of facts under one label, each with the same mark.
-class _Facts extends StatelessWidget {
-  const _Facts({required this.label, required this.icon, required this.color, required this.facts});
+/// A sentence as a row of its own: plain body text, wrapping as it needs.
+class _Paragraph extends StatelessWidget {
+  const _Paragraph(this.text);
 
-  final String label;
-  final IconData icon;
-  final Color color;
-  final List<String> facts;
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return VeilGroup(
-      label: label,
-      children: [
-        for (final fact in facts)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.sm),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 1),
-                  child: Icon(icon, size: VeilIconSize.sm, color: color),
-                ),
-                const SizedBox(width: VeilSpace.sm),
-                Expanded(
-                  child: VeilCopy(fact, style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13, height: 1.45)),
-                ),
-              ],
-            ),
-          ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: 11),
+      child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
     );
   }
 }

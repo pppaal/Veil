@@ -911,6 +911,31 @@ class AppLocalizationsEn extends AppLocalizations {
       'Stale devices can still use this account. Revoke the ones you no longer use.';
 
   @override
+  String get settingsSecurityDetailsTitle => 'Security details';
+
+  @override
+  String get settingsReadReceiptsCaption =>
+      'When off, neither of you sees when messages are read.';
+
+  @override
+  String get settingsTypingIndicatorsCaption =>
+      'Lets people see when you\'re typing.';
+
+  @override
+  String settingsDevicesStaleNotice(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count devices haven\'t been seen for 30 days.',
+      one: 'A device hasn\'t been seen for 30 days.',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get settingsDevicesReview => 'Review';
+
+  @override
   String get chatEmptyTitle => 'No messages yet';
 
   @override
@@ -1791,6 +1816,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'The key stays out of the link. Send the passphrase another way.';
 
   @override
+  String get oneTimeLinkUsePassphraseCaption =>
+      'You send the passphrase another way.';
+
+  @override
   String get oneTimeLinkPassphraseLabel => 'Passphrase';
 
   @override
@@ -1941,6 +1970,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactsVerifiedStatus => 'Verified';
+
+  @override
+  String get contactsHandleHint => 'alex';
 
   @override
   String get notificationNewMessageTitle => 'Veil';
@@ -2302,6 +2334,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get profileNicknameFooter =>
       'Only you see nicknames. Your handle can\'t be changed.';
+
+  @override
+  String get profileNicknameHeader => 'Nickname';
 
   @override
   String get deviceTransferTitle => 'Move to a new phone';

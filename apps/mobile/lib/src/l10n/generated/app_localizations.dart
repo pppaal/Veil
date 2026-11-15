@@ -1606,6 +1606,36 @@ abstract class AppLocalizations {
   /// **'Stale devices can still use this account. Revoke the ones you no longer use.'**
   String get settingsGraphStaleBody;
 
+  /// No description provided for @settingsSecurityDetailsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Security details'**
+  String get settingsSecurityDetailsTitle;
+
+  /// No description provided for @settingsReadReceiptsCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'When off, neither of you sees when messages are read.'**
+  String get settingsReadReceiptsCaption;
+
+  /// No description provided for @settingsTypingIndicatorsCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'Lets people see when you\'re typing.'**
+  String get settingsTypingIndicatorsCaption;
+
+  /// No description provided for @settingsDevicesStaleNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{A device hasn\'t been seen for 30 days.} other{{count} devices haven\'t been seen for 30 days.}}'**
+  String settingsDevicesStaleNotice(int count);
+
+  /// No description provided for @settingsDevicesReview.
+  ///
+  /// In en, this message translates to:
+  /// **'Review'**
+  String get settingsDevicesReview;
+
   /// No description provided for @chatEmptyTitle.
   ///
   /// In en, this message translates to:
@@ -2950,6 +2980,12 @@ abstract class AppLocalizations {
   /// **'The key stays out of the link. Send the passphrase another way.'**
   String get oneTimeLinkUsePassphraseBody;
 
+  /// No description provided for @oneTimeLinkUsePassphraseCaption.
+  ///
+  /// In en, this message translates to:
+  /// **'You send the passphrase another way.'**
+  String get oneTimeLinkUsePassphraseCaption;
+
   /// No description provided for @oneTimeLinkPassphraseLabel.
   ///
   /// In en, this message translates to:
@@ -3213,6 +3249,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Verified'**
   String get contactsVerifiedStatus;
+
+  /// An example handle in the field's hint: lower-case Latin, as every handle.
+  ///
+  /// In en, this message translates to:
+  /// **'alex'**
+  String get contactsHandleHint;
 
   /// No description provided for @notificationNewMessageTitle.
   ///
@@ -3837,6 +3879,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Only you see nicknames. Your handle can\'t be changed.'**
   String get profileNicknameFooter;
+
+  /// No description provided for @profileNicknameHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Nickname'**
+  String get profileNicknameHeader;
 
   /// No description provided for @deviceTransferTitle.
   ///

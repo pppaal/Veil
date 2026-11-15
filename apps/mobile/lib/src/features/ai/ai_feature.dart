@@ -1,4 +1,4 @@
-/// The assistant stays off: it is a scripted preview that answers from a
-/// few fixed replies, not an assistant. While false, it has no route and
-/// nothing opens it.
+/// The assistant stays off: it has no model. Its screen offers four fixed
+/// questions and shows the answer prepared for each, under a notice that
+/// says so. While false, it has no route and nothing opens it.
 const bool kAssistantEnabled = false;

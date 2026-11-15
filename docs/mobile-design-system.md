@@ -152,6 +152,25 @@ The composer should feel stable, deliberate, and operational.
 - helper text short and policy-aware
 - no playful send affordances
 
+### `VeilUnavailable`
+
+The body of a screen for something the build cannot do (a call without a
+call engine, a recorder without a microphone): what is missing, that nothing
+happened, and one button that leaves. Use it instead of drawing the missing
+feature's states. A screen never plays a state the build cannot reach: no
+timer that counts by itself, no placeholder grid, no "sent" for something
+that was not sent.
+
+A screen that can do part of its job shows that part, and says the rest in
+one `VeilInlineBanner` above it.
+
+### `VeilInitialBadge`
+
+A person or a group where there is no picture: the first letter of the name
+in a circle (44 in a row, larger in a header). `veilInitialOf` picks the
+letter: it skips the `@` of a handle and gives `#` for a name with nothing
+to show, so a row never fails on an empty name.
+
 ## Screen Guidance
 
 ### Onboarding

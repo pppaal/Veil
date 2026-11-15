@@ -1051,88 +1051,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get attachmentTitle => '첨부';
 
   @override
-  String get attachmentHeroEyebrow => '첨부';
+  String get attachmentPlaceholderNotice =>
+      '이 버전에는 파일을 고르는 기능이 없습니다. 대신 무작위 데이터로 채운 2KB 크기의 시험용 파일을 보냅니다. 실제 파일을 보낼 때와 같은 방식으로 암호화해 올립니다.';
 
   @override
-  String get attachmentHeroTitle => '보내기 전에 암호화됩니다.';
-
-  @override
-  String get attachmentHeroBody =>
-      '이 기기에서 암호화한 뒤 내용을 알 수 없는 데이터로 올리고, 그 데이터를 가리키는 암호화된 메시지를 보냅니다.';
-
-  @override
-  String get attachmentPillOpaqueBlob => '암호화된 블롭';
-
-  @override
-  String get attachmentPillMetadataOnlyRelay => '릴레이는 메타데이터만';
-
-  @override
-  String get attachmentPillNoPlaintextPush => '평문 푸시 없음';
-
-  @override
-  String get attachmentNameLabel => '파일 이름';
-
-  @override
-  String get attachmentNameCaption =>
-      '이 빌드에는 아직 파일 선택 기능이 없습니다. 이 이름으로 작은 자리표시용 파일을, 실제 첨부가 거칠 경로 그대로 보냅니다.';
+  String attachmentNameCaption(String contentType) {
+    return '이름은 이 기기에만 남습니다. 받는 사람에게 표시되는 형식은 확장자로 정해집니다: $contentType';
+  }
 
   @override
   String get attachmentNameInputLabel => '파일 이름';
 
   @override
-  String get attachmentRelayPolicyTitle => '릴레이 정책';
-
-  @override
-  String get attachmentRelayPolicyBody =>
-      '비공개 베타에서는 현재 JPEG, PNG, WEBP, PDF와 그 밖의 바이너리 파일을 보낼 수 있습니다. 릴레이는 파일 이름의 평문이나 첨부 키를 받지 않습니다.';
-
-  @override
-  String get attachmentMetricType => '형식';
-
-  @override
-  String get attachmentMetricUpload => '업로드';
-
-  @override
-  String get attachmentMetricUploadValue => '티켓 방식';
-
-  @override
-  String get attachmentMetricBlob => '데이터';
-
-  @override
-  String get attachmentMetricBlobValue => '내용 비공개';
-
-  @override
-  String get attachmentStepsSection => '전송 과정';
-
-  @override
-  String get attachmentStep1Title => '티켓';
-
-  @override
-  String get attachmentStep1Body => '이 데이터만 올릴 수 있는 업로드 주소를 요청합니다.';
-
-  @override
-  String get attachmentStep2Title => '업로드';
-
-  @override
-  String get attachmentStep2Body =>
-      '내용을 알 수 없는 데이터를 올립니다. 다시 시도하면 이 기기의 임시 파일을 다시 쓰고, 티켓이 만료되었으면 새로 받습니다.';
-
-  @override
-  String get attachmentStep3Title => '메시지';
-
-  @override
-  String get attachmentStep3Body =>
-      '업로드를 가리키는 암호화된 메시지를 대기열에 넣고, 마무리되면 이 기기의 임시 파일을 지웁니다.';
-
-  @override
   String get attachmentSendFailedTitle => '첨부 전송 실패';
-
-  @override
-  String get attachmentQueuedTitle => '이 기기에서 대기 중';
-
-  @override
-  String get attachmentQueuedBody =>
-      '첨부 전송은 이제 대화 안에서 이어집니다. 진행 상황, 다시 시도, 취소는 해당 메시지에서 볼 수 있습니다.';
 
   @override
   String get attachmentSendAction => '암호화하여 보내기';
@@ -1847,7 +1778,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get callsDeclined => '거절함';
 
   @override
-  String get callsRinging => '연결 중';
+  String get callsRinging => '호출 중';
 
   @override
   String get callsIncoming => '수신';
@@ -1869,13 +1800,105 @@ class AppLocalizationsKo extends AppLocalizations {
   String get callsUnavailableTitle => '통화 기록을 불러올 수 없습니다';
 
   @override
+  String get callsUnavailableBody => '아래로 당겨 다시 시도하세요.';
+
+  @override
   String get callsEmptyTitle => '통화 기록이 없습니다';
 
   @override
-  String get callsEmptyBody => '걸거나 받은 통화가 여기에 표시됩니다.';
+  String get callsEmptyBody => '이 버전에서는 통화를 걸거나 받을 수 없어 아직 표시할 기록이 없습니다.';
 
   @override
-  String get callsNotAvailable => '이 빌드에서는 아직 통화를 사용할 수 없습니다.';
+  String get callsNotice => '이 버전에서는 통화를 걸거나 받을 수 없습니다. 기록을 누르면 해당 대화가 열립니다.';
+
+  @override
+  String get callsUnknownCounterparty => '알 수 없음';
+
+  @override
+  String get callScreenTitle => '통화';
+
+  @override
+  String get callScreenUnavailableTitle => '이 버전에서는 통화할 수 없습니다';
+
+  @override
+  String get callScreenUnavailableBody =>
+      '음성 통화와 영상 통화는 아직 지원하지 않습니다. 통화는 걸리지 않았고, 상대방에게 알림도 가지 않았습니다.';
+
+  @override
+  String get mediaPickerTitle => '사진 및 동영상';
+
+  @override
+  String get mediaPickerUnavailableTitle => '이 버전에서는 사진과 동영상을 보낼 수 없습니다';
+
+  @override
+  String get mediaPickerUnavailableBody =>
+      '이 버전은 사진 보관함을 읽거나 카메라를 사용하지 않습니다. 선택하거나 보낸 항목은 없습니다.';
+
+  @override
+  String get voiceRecorderTitle => '음성 메시지';
+
+  @override
+  String get voiceRecorderUnavailableTitle => '이 버전에서는 음성 메시지를 녹음할 수 없습니다';
+
+  @override
+  String get voiceRecorderUnavailableBody =>
+      '이 버전은 마이크를 사용하지 않습니다. 녹음하거나 보낸 것은 없습니다.';
+
+  @override
+  String get stickerPickerTitle => '이모지';
+
+  @override
+  String get stickerPickerTabSmileys => '표정';
+
+  @override
+  String get stickerPickerTabGestures => '손동작';
+
+  @override
+  String get stickerPickerTabSymbols => '기호';
+
+  @override
+  String get storiesNotice =>
+      '이 버전에서는 스토리를 열거나 올릴 수 없습니다. 암호화된 스토리를 여는 기능이 아직 없으며, 열람 표시도 남기지 않습니다.';
+
+  @override
+  String get storiesUnavailableTitle => '스토리를 불러올 수 없습니다';
+
+  @override
+  String get storiesUnavailableBody => '아래로 당겨 다시 시도하세요.';
+
+  @override
+  String get storiesEmptyTitle => '스토리가 없습니다';
+
+  @override
+  String get storiesEmptyBody => '지난 24시간 동안 나에게 공유된 스토리가 없습니다.';
+
+  @override
+  String get storiesUnknownAuthor => '알 수 없음';
+
+  @override
+  String storiesRowCount(int count) {
+    return '스토리 $count개';
+  }
+
+  @override
+  String get storiesAgeJustNow => '방금 전';
+
+  @override
+  String storiesAgeMinutes(int count) {
+    return '$count분 전';
+  }
+
+  @override
+  String storiesAgeHours(int count) {
+    return '$count시간 전';
+  }
+
+  @override
+  String get storyViewerUnavailableTitle => '이 스토리를 열 수 없습니다';
+
+  @override
+  String get storyViewerUnavailableBody =>
+      '이 버전에는 암호화된 스토리를 여는 기능이 아직 없습니다. 열람 표시도 남지 않았습니다.';
 
   @override
   String get notificationNewMessageTitle => 'VEIL';
@@ -2466,10 +2489,45 @@ class AppLocalizationsKo extends AppLocalizations {
   String get themeModeSystem => '시스템';
 
   @override
-  String get aiDemoBannerTitle => '스크립트 데모';
+  String get aiDemoBannerTitle => '미리 준비된 답변';
 
   @override
-  String get aiDemoBannerBody => '데모: 답변은 이 기기에 미리 정해진 내용입니다. 어디로도 전송되지 않습니다.';
+  String get aiDemoBannerBody => '데모입니다. 답변은 이 기기에 미리 정해져 있으며, 어디로도 전송되지 않습니다.';
+
+  @override
+  String get aiTitle => 'VEIL 어시스턴트';
+
+  @override
+  String get aiClearTooltip => '대화 지우기';
+
+  @override
+  String get aiIntro => '이 미리보기에는 AI 모델이 연결되어 있지 않습니다. 아래에서 질문을 골라 보세요.';
+
+  @override
+  String get aiQuestionBackup => '백업이 있나요?';
+
+  @override
+  String get aiAnswerBackup =>
+      '없습니다. VEIL에는 백업도 계정 복구도 없습니다. 메시지는 릴레이에 닿기 전에 이 기기에서 암호화됩니다.';
+
+  @override
+  String get aiQuestionNewDevice => '새 기기로 옮기려면 어떻게 하나요?';
+
+  @override
+  String get aiAnswerNewDevice =>
+      '기존 기기에서 새 기기를 승인해야 합니다. 클라우드를 통한 복구 경로는 처음부터 만들지 않았습니다.';
+
+  @override
+  String get aiQuestionGroups => '그룹 메시지도 암호화되나요?';
+
+  @override
+  String get aiAnswerGroups => '네. 그룹 메시지도 릴레이에 닿기 전에 보내는 기기에서 암호화됩니다.';
+
+  @override
+  String get aiQuestionCalls => '통화할 수 있나요?';
+
+  @override
+  String get aiAnswerCalls => '이 버전에서는 할 수 없습니다. 음성 통화와 영상 통화는 아직 지원하지 않습니다.';
 
   @override
   String get securityStatusTitle => '보안 상태';

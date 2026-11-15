@@ -155,12 +155,9 @@ class ScreenCase {
 }
 
 /// The screens whose controls the gate does not hold to 44x44, each with
-/// what is smaller there. Every other screen is held to it. This set may
-/// only shrink: a new screen is held from the start.
-const tapTargetExemptScreens = {
-  // The emoji and sticker grid packs eight cells of about 33 px into a row.
-  'sticker_picker_screen.dart',
-};
+/// what is smaller there. None is left: every screen is held to it, and a
+/// new one is from the start.
+const tapTargetExemptScreens = <String>{};
 
 /// The text size of the larger-text cases: the step most people who enlarge
 /// their text choose.
@@ -436,20 +433,31 @@ const List<ScreenCase> screenCases = [
   ScreenCase('attachment-preview',
       screen: AttachmentPreviewScreen,
       file: 'attachment_preview_screen.dart',
-      location: '/attachment/$chatConversationId'),
+      location: '/attachment/$chatConversationId',
+      primaryAction: _primaryButton),
   ScreenCase('media-picker',
-      screen: MediaPickerScreen, file: 'media_picker_screen.dart', location: '/media/$chatConversationId'),
+      screen: MediaPickerScreen,
+      file: 'media_picker_screen.dart',
+      location: '/media/$chatConversationId',
+      primaryAction: _closeButton),
   ScreenCase('voice-recorder',
-      screen: VoiceRecorderScreen, file: 'voice_recorder_screen.dart', location: '/voice/$chatConversationId'),
+      screen: VoiceRecorderScreen,
+      file: 'voice_recorder_screen.dart',
+      location: '/voice/$chatConversationId',
+      primaryAction: _closeButton),
   ScreenCase('sticker-picker',
-      screen: StickerPickerScreen, file: 'sticker_picker_screen.dart', location: '/stickers/$chatConversationId'),
+      screen: StickerPickerScreen,
+      file: 'sticker_picker_screen.dart',
+      location: '/stickers/$chatConversationId',
+      primaryExtent: emojiGridExtent,
+      minPrimaryShare: minPrimaryContentShare),
   ScreenCase(
     'call',
     screen: CallScreen,
     file: 'call_screen.dart',
     location: '/call/$chatConversationId',
     extra: {'name': 'Selene Park'},
-    settle: _untilCallConnects,
+    primaryAction: _closeButton,
   ),
 
   // Starting a conversation.
@@ -488,10 +496,23 @@ const List<ScreenCase> screenCases = [
       file: 'contacts_screen.dart',
       location: '/contacts',
       settle: _openContactActionsSheet),
-  ScreenCase('call-history', screen: CallHistoryScreen, file: 'call_history_screen.dart', location: '/calls'),
-  ScreenCase('stories', screen: StoriesScreen, file: 'stories_screen.dart', location: '/stories'),
+  ScreenCase('call-history',
+      screen: CallHistoryScreen,
+      file: 'call_history_screen.dart',
+      location: '/calls',
+      primaryExtent: cardRowsExtent,
+      minPrimaryShare: minPrimaryContentShare),
+  ScreenCase('stories',
+      screen: StoriesScreen,
+      file: 'stories_screen.dart',
+      location: '/stories',
+      primaryExtent: cardRowsExtent,
+      minPrimaryShare: minPrimaryContentShare),
   ScreenCase('story-viewer',
-      screen: StoryViewerScreen, file: 'story_viewer_screen.dart', location: '/story-viewer/user-$peerHandle'),
+      screen: StoryViewerScreen,
+      file: 'story_viewer_screen.dart',
+      location: '/story-viewer/user-$peerHandle',
+      primaryAction: _closeButton),
 
   // Account, device and security.
   ScreenCase('settings',
@@ -517,7 +538,8 @@ const List<ScreenCase> screenCases = [
       file: 'device_transfer_screen.dart',
       location: '/device-transfer',
       primaryAction: _primaryButton),
-  ScreenCase('ai-chat', screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat'),
+  ScreenCase('ai-chat',
+      screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat', primaryAction: _firstQuestion),
 
   // States the gate did not open before: a group (its chat, its row in the
   // list, the safety numbers of its members), a message from a legacy frame
@@ -757,6 +779,13 @@ Finder _firstInput() => find.byType(TextField);
 // What adds a contact, wherever the screen puts it.
 Finder _addContact() => find.byIcon(Icons.person_add_outlined);
 
+// The one button of a screen that only says what this build cannot do: the
+// way back.
+Finder _closeButton() => find.byType(OutlinedButton);
+
+// The questions the assistant offers; the first if it has more.
+Finder _firstQuestion() => find.byType(ActionChip);
+
 // The first control of the settings screen that changes a setting: the
 // theme selector or a switch, whichever the screen puts first. A row that
 // only leads to another screen (the profile, the security status) is not it.
@@ -806,6 +835,16 @@ double _rowsExtent(WidgetTester tester, Finder rows) {
   final list = visibleRect(tester, viewport);
   final top = firstRow.localToGlobal(Offset.zero).dy.clamp(list.top, list.bottom);
   return list.bottom - top;
+}
+
+/// The same for the call history and the stories, whose rows are cards too.
+double cardRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilListTileCard));
+
+/// The height the emoji have on screen: the grid of the picker's open tab.
+double emojiGridExtent(WidgetTester tester) {
+  final grid = find.byType(GridView);
+  if (grid.evaluate().isEmpty) return 0;
+  return visibleRect(tester, tester.renderObject<RenderBox>(grid.first)).height;
 }
 
 /// The actions of the warnings a chat shows above its messages.
@@ -951,12 +990,4 @@ Future<void> _awaitChangeElsewhere(WidgetTester tester) async {
   await _awaitSafetyNumber(tester);
   // The page opens on the notice; a verified contact's page has none.
   expect(find.byType(VeilInlineBanner), findsOneWidget, reason: 'the page does not say a change waits elsewhere');
-}
-
-// The call screen plays dialing (2 s) and ringing (3 s) before the state a
-// call spends its time in.
-Future<void> _untilCallConnects(WidgetTester tester) async {
-  await tester.pump(const Duration(seconds: 2));
-  await tester.pump(const Duration(seconds: 3));
-  await tester.pump(const Duration(seconds: 1));
 }

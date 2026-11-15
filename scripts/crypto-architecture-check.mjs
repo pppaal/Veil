@@ -277,8 +277,6 @@ const presentationLineCap = 450;
 const chatRoomScreen = `${mobileSrc}/features/chat/presentation/chat_room_screen.dart`;
 const presentationOversized = new Map([
   [`${mobileSrc}/features/security/presentation/safety_numbers_screen.dart`, 665],
-  [`${mobileSrc}/features/stories/presentation/stories_screen.dart`, 469],
-  [`${mobileSrc}/features/stories/presentation/story_viewer_screen.dart`, 464],
 ]);
 for (const feature of readdirSync(`${mobileSrc}/features`, { withFileTypes: true })) {
   const dir = `${mobileSrc}/features/${feature.name}/presentation`;

@@ -448,9 +448,20 @@ class VeilTheme {
       ),
       dividerTheme: DividerThemeData(color: palette.stroke, thickness: 0.5, space: 0.5),
       switchTheme: SwitchThemeData(
-        thumbColor: const WidgetStatePropertyAll(Colors.white),
+        // A disabled switch that is on keeps its brand track, faded, so it
+        // still reads as on but not as something to tap; one that is off
+        // greys its thumb.
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled) && !states.contains(WidgetState.selected)
+              ? palette.textSubtle
+              : Colors.white,
+        ),
         trackColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected) ? palette.primary : palette.surfaceAlt,
+          (states) => !states.contains(WidgetState.selected)
+              ? palette.surfaceAlt
+              : states.contains(WidgetState.disabled)
+                  ? palette.primary.withValues(alpha: 0.38)
+                  : palette.primary,
         ),
         trackOutlineColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected) ? Colors.transparent : palette.stroke,

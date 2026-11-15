@@ -100,6 +100,21 @@ void main() {
       }
     });
 
+    test('a disabled switch still reads as on or off, faded', () {
+      for (final theme in [VeilTheme.dark(), VeilTheme.light()]) {
+        final palette = VeilPalette.forBrightness(theme.brightness);
+        final switches = theme.switchTheme;
+        const onDisabled = {WidgetState.selected, WidgetState.disabled};
+        expect(switches.trackColor?.resolve({WidgetState.selected}), palette.primary);
+        final fadedTrack = switches.trackColor!.resolve(onDisabled)!;
+        expect(fadedTrack.toARGB32() & 0x00FFFFFF, palette.primary.toARGB32() & 0x00FFFFFF, reason: 'still the brand');
+        expect(fadedTrack.a, lessThan(0.5), reason: 'but faded');
+        expect(switches.thumbColor?.resolve(onDisabled), Colors.white);
+        expect(switches.thumbColor?.resolve({WidgetState.disabled}), palette.textSubtle);
+        expect(switches.thumbColor?.resolve({}), Colors.white);
+      }
+    });
+
     test('a dark sheet has a hairline along its top edge only; a light sheet has none', () {
       const rect = Rect.fromLTWH(0, 0, 390, 300);
       final dark = VeilTheme.dark().bottomSheetTheme.shape!;

@@ -14,36 +14,42 @@ const messageCount = (parsed) => parsed.messages.filter((message) => message.kin
 const messagesLabel = (count) => `${count} ${count === 1 ? 'message' : 'messages'}, read only`;
 
 function archivePanel(archive) {
-  const list = el('div', { class: 'msgs', style: 'flex:1;overflow-y:auto;padding:14px' });
+  const list = el('div', { class: 'archive-msgs' });
   let lastDay = null;
   for (const message of archive.messages) {
     if (message.kind === 'system') {
-      list.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [message.body])]));
+      list.appendChild(el('div', { class: 'day-divider' }, [message.body]));
       continue;
     }
     if (!message.sender || !message.sentAt) continue;
     const sent = new Date(message.sentAt);
     const key = dayKey(sent);
     if (key !== lastDay) {
-      list.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [dayLabel(sent)])]));
+      list.appendChild(el('div', { class: 'day-divider' }, [dayLabel(sent)]));
       lastDay = key;
     }
     // Who "me" was is not in the export: every message shows as received.
-    list.appendChild(el('div', { class: 'group-stack' }, [
-      el('div', { class: 'group-meta' }, [message.sender]),
-      el('div', { class: 'msg-row them' }, [el('div', { class: 'msg first-of-group last-of-group' }, [el('span', { class: 'msg-text' }, [message.body])])]),
-      el('div', { class: 'msg-time' }, [timeOfDay(sent)]),
+    list.appendChild(el('div', { class: 'msg-group them' }, [
+      el('div', { class: 'group-stack' }, [
+        el('div', { class: 'group-meta' }, [message.sender]),
+        el('div', { class: 'msg-row them' }, [
+          el('div', { class: 'msg first-of-group last-of-group' }, [
+            el('span', { class: 'msg-text' }, [message.body]),
+            el('span', { class: 'msg-meta' }, [timeOfDay(sent)]),
+          ]),
+        ]),
+      ]),
     ]));
   }
   return el('div', { class: 'panel', dataset: { conv: archive.id } }, [
     el('div', { class: 'panel-header' }, [
-      avatarFor(archive.title || 'kakao', 'md'),
+      avatarFor(archive.title || 'kakao', 'sm'),
       el('div', { class: 'panel-title' }, [
         el('div', { class: 'name' }, [archive.title || 'KakaoTalk archive']),
         el('div', { class: 'sub' }, [messagesLabel(archive.messageCount)]),
       ]),
     ]),
-    el('div', { class: 'kakao-archive-banner' }, [el('strong', {}, ['KakaoTalk archive']), '. Read only. Stored in this browser only.']),
+    el('div', { class: 'kakao-archive-banner' }, ['KakaoTalk archive. Read only. Stored in this browser only.']),
     list,
   ]);
 }
@@ -70,32 +76,28 @@ export function createKakaoImport({ store, archives }) {
     rows() {
       if (state.archives.length === 0) return [];
       return [
-        el('div', {
-          dataset: { kakaoSection: '1' },
-          style: 'padding:10px 14px 4px;font-size:11px;opacity:0.55;letter-spacing:0.05em;text-transform:uppercase',
-        }, ['KakaoTalk archives']),
+        el('div', { class: 'conv-section', dataset: { kakaoSection: '1' } }, ['KakaoTalk archives']),
         ...state.archives.map((meta) => el('button', {
           class: 'conv-item',
-          style: 'background:transparent;border:0;color:inherit;cursor:pointer;width:100%;display:flex;align-items:center;gap:10px;padding:10px 14px;text-align:left',
           onclick: () => openArchive(meta),
         }, [
-          avatarFor(meta.title || 'kakao', 'sm'),
-          el('div', { style: 'flex:1' }, [
-            el('div', { style: 'font-size:13px' }, [meta.title || 'Archive']),
-            el('div', { style: 'font-size:11px;opacity:0.6' }, [messagesLabel(meta.messageCount)]),
+          avatarFor(meta.title || 'kakao', 'md'),
+          el('div', { class: 'conv-meta' }, [
+            el('div', { class: 'conv-row1' }, [el('span', { class: 'conv-name' }, [meta.title || 'Archive'])]),
+            el('div', { class: 'conv-preview' }, [messagesLabel(meta.messageCount)]),
           ]),
         ])),
       ];
     },
 
     openDialog() {
-      const fileInput = el('input', { type: 'file', id: 'kakao-file', accept: '.txt,text/plain' });
-      const preview = el('div', { id: 'kakao-preview', class: 'hidden', style: 'margin-top:14px' });
+      const fileInput = el('input', { type: 'file', id: 'kakao-file', class: 'kakao-file', accept: '.txt,text/plain' });
+      const preview = el('div', { id: 'kakao-preview', class: 'kakao-import-summary hidden' });
       const error = el('div', { class: 'dialog-error', id: 'kakao-error', role: 'alert', 'aria-live': 'polite' });
       const cancelButton = el('button', { class: 'btn btn-ghost', id: 'kakao-cancel' }, ['Cancel']);
       const confirmButton = el('button', { class: 'btn btn-primary', id: 'kakao-confirm', disabled: 'disabled' }, ['Save as archive']);
       const backdrop = el('div', { class: 'dialog-backdrop', role: 'presentation' }, [
-        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'kakao-title', style: 'width:480px;max-width:92vw' }, [
+        el('div', { class: 'dialog dialog-wide', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'kakao-title' }, [
           el('div', { class: 'dialog-title', id: 'kakao-title' }, ['Import a KakaoTalk export']),
           el('div', { class: 'dialog-sub' }, [
             'In KakaoTalk, open the chat, then its settings, then ',
@@ -131,11 +133,11 @@ export function createKakaoImport({ store, archives }) {
           title = file.name.replace(/\.txt$/i, '');
           const { participants, errors } = parsed;
           const more = participants.length > 4 ? ` and ${participants.length - 4} more` : '';
-          preview.replaceChildren(el('div', { class: 'kakao-import-summary' }, [
+          preview.replaceChildren(
             el('div', {}, [el('strong', {}, [String(messageCount(parsed))]), ' messages']),
             el('div', {}, [el('strong', {}, [String(participants.length)]), ` participants (${participants.slice(0, 4).join(', ')}${more})`]),
-            errors.length > 0 ? el('div', { style: 'opacity:0.7;margin-top:4px' }, [`${errors.length} lines could not be read (you can still continue)`]) : null,
-          ]));
+            errors.length > 0 ? el('div', {}, [`${errors.length} lines could not be read (you can still continue)`]) : null,
+          );
           preview.classList.remove('hidden');
           confirmButton.disabled = false;
         } catch (failure) {

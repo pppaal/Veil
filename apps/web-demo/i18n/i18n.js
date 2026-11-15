@@ -4,12 +4,21 @@
 // storage play no part.
 let dict = {};
 
+// A dictionary that fails to load is logged and the app goes on: t() then
+// answers with the key names, and the page keeps the English it was served
+// with, instead of a blank screen that cannot even offer to sign in.
 export async function initI18n() {
-  const res = await fetch('./i18n/en.json');
-  if (!res.ok) throw new Error('strings failed to load');
-  dict = await res.json();
   document.documentElement.lang = 'en';
   document.documentElement.dir = 'ltr';
+  try {
+    const res = await fetch('./i18n/en.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    dict = await res.json();
+  } catch (error) {
+    console.error('Could not load the strings, showing key names:', error);
+    dict = {};
+    return;
+  }
   applyDomTranslations();
 }
 

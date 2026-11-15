@@ -10,11 +10,14 @@ import { senderToReport } from '../../features/report.js';
 import { el } from '../dom.js';
 import { actionToast, toast } from '../toast.js';
 
-const QUICK_REACTIONS = ['👍', '❤️', '😂', '😢', '🔥', '🎉'];
+// The reactions a message offers: emoji are what a reaction is, so they are
+// the one place emoji appear, written as escapes (thumbs up, red heart, tears
+// of joy, crying, fire, party popper).
+const QUICK_REACTIONS = ['\u{1F44D}', '\u{2764}\u{FE0F}', '\u{1F602}', '\u{1F622}', '\u{1F525}', '\u{1F389}'];
 const LONG_PRESS_MS = 500;
 const UNDO_MS = 5_000;
-const MENU_WIDTH_PX = 200;
-const MENU_HEIGHT_PX = 240;
+const MENU_WIDTH_PX = 288;
+const MENU_HEIGHT_PX = 400;
 
 // send: src/app/services/send.js; safety: src/app/services/safety.js;
 // composer, forwardDialog, reportDialog: the views the items lead to;
@@ -103,7 +106,7 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
     const peer = senderToReport(store.conversation(convId), message, state.me);
     const node = el('div', { class: 'msg-action-menu' }, [
       el('div', { class: 'msg-action-row' }, QUICK_REACTIONS.map((emoji) => el('button', {
-        title: 'React',
+        title: 'React', 'aria-label': 'React with ' + emoji,
         onclick: (event) => {
           event.stopPropagation();
           send.react(message.id, emoji);
@@ -130,8 +133,8 @@ export function createMessageActions({ store, send, safety, composer, forwardDia
         ]
         : []),
     ]);
-    node.style.left = Math.min(x, window.innerWidth - MENU_WIDTH_PX) + 'px';
-    node.style.top = Math.min(y, window.innerHeight - MENU_HEIGHT_PX) + 'px';
+    node.style.left = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH_PX)) + 'px';
+    node.style.top = Math.max(8, Math.min(y, window.innerHeight - MENU_HEIGHT_PX)) + 'px';
     document.body.appendChild(node);
     menu = node;
   }

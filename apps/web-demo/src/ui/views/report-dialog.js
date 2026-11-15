@@ -20,7 +20,7 @@ export function createReportDialog({ safety, dialogs }) {
         backdrop.remove();
       };
       const submit = el('button', { class: 'btn btn-primary', id: 'report-submit', disabled: 'disabled' }, [t('report.submit')]);
-      const choices = REPORT_REASONS.map((reason, index) => el('label', { style: 'display:block;padding:6px 0;cursor:pointer' }, [
+      const choices = REPORT_REASONS.map((reason, index) => el('label', { class: 'choice' }, [
         el('input', {
           type: 'radio',
           name: 'report-reason',
@@ -30,7 +30,7 @@ export function createReportDialog({ safety, dialogs }) {
             submit.disabled = false;
           },
         }),
-        ' ' + t(`report.reason.${reason}`),
+        el('span', {}, [t(`report.reason.${reason}`)]),
       ]));
       submit.addEventListener('click', async () => {
         const reason = backdrop.querySelector('input[name="report-reason"]:checked')?.value;
@@ -39,10 +39,10 @@ export function createReportDialog({ safety, dialogs }) {
         await safety.report({ conversationId: convId, messageId, sender, reason });
       });
       backdrop = el('div', { class: 'dialog-backdrop hidden', id: DIALOG_ID, role: 'presentation' }, [
-        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'report-title', style: 'width:380px;max-width:92vw' }, [
+        el('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'report-title' }, [
           el('div', { class: 'dialog-title', id: 'report-title' }, [t('report.title', { handle: shownHandle(sender.handle) })]),
           el('div', { class: 'dialog-sub' }, [t('report.explain')]),
-          el('div', { role: 'radiogroup', 'aria-labelledby': 'report-title' }, choices),
+          el('div', { class: 'choice-list', role: 'radiogroup', 'aria-labelledby': 'report-title' }, choices),
           el('div', { class: 'dialog-actions' }, [el('button', { class: 'btn btn-ghost', onclick: close }, [t('common.cancel')]), submit]),
         ]),
       ]);

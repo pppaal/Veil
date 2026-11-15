@@ -6,16 +6,26 @@ import { t } from '../../../i18n/i18n.js';
 import { formatBytes } from '../../../lib/format.js';
 import { snippetOf } from '../../domain/conversations.js';
 import { shownHandle } from '../../domain/handles.js';
-import { DELIVERY_GLYPHS, DELIVERY_LABELS, deliveryStatus, groupMessages, sentAt } from '../../domain/message-groups.js';
+import { DELIVERY_LABELS, deliveryStatus, groupMessages, sentAt } from '../../domain/message-groups.js';
 import { isPendingId } from '../../domain/local-messages.js';
 import { KIND_LABELS } from '../../domain/payload.js';
 import { reactionTally } from '../../domain/reactions.js';
 import { fileExtension } from '../../domain/sanitize.js';
-import { avatarFor, el, emptyStateSvg } from '../dom.js';
+import { avatarFor, avatarIndex, el, icon } from '../dom.js';
 import { dayKey, dayLabel, timeOfDay } from '../time.js';
 import { toast } from '../toast.js';
 import { toFragment } from '../markdown-dom.js';
 import { openImageZoom } from './image-preview.js';
+
+// The delivery state of an own message as the sprite draws it
+// (src/domain/message-groups.js deliveryStatus).
+const STATUS_ICONS = Object.freeze({
+  pending: 'clock',
+  failed: 'warning',
+  sent: 'check',
+  delivered: 'check-double',
+  read: 'check-double',
+});
 
 // send: src/app/services/send.js; outbox: src/app/services/outbox.js;
 // startReply(convId, message): src/ui/views/composer.js.
@@ -91,12 +101,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
 
   function voiceBody(message) {
     if (message._voiceUrl) {
-      return el('audio', {
-        controls: 'controls',
-        src: message._voiceUrl,
-        preload: 'metadata',
-        style: 'max-width: 240px; height: 32px; vertical-align: middle;',
-      });
+      return el('audio', { class: 'msg-audio', controls: 'controls', src: message._voiceUrl, preload: 'metadata' });
     }
     if (message.media) ensureMediaUrl(message, '_voiceUrl');
     return KIND_LABELS.voice;
@@ -108,6 +113,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
     const name = message.media?.name ?? message._localFile?.name ?? t('media.file');
     const sizeBytes = message.media?.sizeBytes ?? message._localFile?.sizeBytes ?? 0;
     const extension = message.media?.extension ?? fileExtension(name);
+    const size = formatBytes(sizeBytes);
     return el('button', {
       class: 'msg-file-chip',
       type: 'button',
@@ -116,12 +122,12 @@ export function createMessageList({ store, send, outbox, startReply }) {
         downloadFile(message);
       },
     }, [
-      el('div', { class: 'msg-file-chip-icon', 'aria-hidden': 'true' }, ['📁']),
+      el('div', { class: 'msg-file-chip-icon' }, [icon('file')]),
       el('div', { class: 'msg-file-chip-meta' }, [
         el('div', { class: 'msg-file-chip-name' }, [name]),
         el('div', { class: 'msg-file-chip-size' }, [
           extension ? el('span', { class: 'msg-file-chip-ext' }, ['.' + extension]) : null,
-          t('media.clickToDownload', { size: formatBytes(sizeBytes) }),
+          size ? t('media.clickToDownload', { size }) : 'Click to download',
         ]),
       ]),
     ]);
@@ -158,18 +164,45 @@ export function createMessageList({ store, send, outbox, startReply }) {
         event.stopPropagation();
         send.react(message.id, emoji);
       },
-    }, [emoji + ' ' + entry.count])));
+    }, [el('span', {}, [emoji]), el('span', { class: 'msg-reaction-count' }, [String(entry.count)])])));
   }
 
+  // The quoted message at the top of a reply, behind a rule.
   function replyHead(replyToId, shown) {
     const target = shown.find((message) => message.id === replyToId);
-    return el('div', { class: 'msg-reply-head' }, [
-      el('span', { class: 'msg-reply-icon' }, ['↩']),
-      el('span', { class: 'msg-reply-snippet' }, [target ? snippetOf(target, 80) : t('msg.reply.earlier')]),
+    return el('div', { class: 'msg-reply-head' }, [target ? snippetOf(target, 80) : t('msg.reply.earlier')]);
+  }
+
+  // Time, and for our own messages the delivery state, at the end of the
+  // last bubble of a run: one tick for sent, two for delivered, two and the
+  // word for read. Assistive technology hears the state as a word.
+  function bubbleMeta(group) {
+    const last = group.msgs.at(-1);
+    const time = timeOfDay(sentAt(last, Date.now()));
+    if (!group.isMe) return el('span', { class: 'msg-meta' }, [time]);
+    const status = deliveryStatus(last);
+    const label = DELIVERY_LABELS[status];
+    return el('span', { class: 'msg-meta' }, [
+      time,
+      el('span', { class: 'msg-status ' + status, title: label }, [
+        icon(STATUS_ICONS[status]),
+        el('span', { class: status === 'read' ? 'msg-status-word' : 'sr-only' }, [label]),
+      ]),
     ]);
   }
 
-  function messageRow(convId, message, { isMe, first, last, shown, reactions }) {
+  // Under a run whose last send failed: what happened and what to do.
+  function failedLine(convId, group) {
+    const last = group.msgs.at(-1);
+    if (!group.isMe || deliveryStatus(last) !== 'failed') return null;
+    return el('div', { class: 'msg-fail' }, [
+      el('span', {}, [t('send.failed')]),
+      el('button', { class: 'msg-action', onclick: () => outbox.retry(convId, last.clientMessageId) }, [t('msg.sendAgain')]),
+      el('button', { class: 'msg-action danger', onclick: () => outbox.cancel(convId, last.clientMessageId) }, [t('common.cancel')]),
+    ]);
+  }
+
+  function messageRow(convId, message, { isMe, first, last, shown, reactions, meta }) {
     const classes = ['msg'];
     if (first) classes.push('first-of-group');
     if (last) classes.push('last-of-group');
@@ -184,13 +217,14 @@ export function createMessageList({ store, send, outbox, startReply }) {
         event.stopPropagation();
         startReply(convId, message);
       },
-    }, ['↩']);
+    }, [icon('reply')]);
     const bubble = el('div', { class: classes.join(' ') }, [
       message.replyTo ? replyHead(message.replyTo, shown) : null,
       el('span', { class: 'msg-text' }, [body(message)]),
-      message.editedAt ? el('span', { class: 'msg-edited', style: 'opacity:0.55;font-size:11px;margin-left:6px' }, [t('msg.edited')]) : null,
+      message.editedAt ? el('span', { class: 'msg-edited' }, [t('msg.edited')]) : null,
       // Read from a retired format: the bubble itself says so.
       message.legacy ? el('span', { class: 'msg-legacy-badge', title: t('legacy.badge') }, [t('legacy.badge')]) : null,
+      meta,
     ]);
     const row = el('div', { class: 'msg-row ' + (isMe ? 'me' : 'them') }, [
       isMe ? replyButton : null,
@@ -201,51 +235,41 @@ export function createMessageList({ store, send, outbox, startReply }) {
     return row;
   }
 
-  function groupFooter(convId, group) {
-    const last = group.msgs.at(-1);
-    const time = timeOfDay(sentAt(last, Date.now()));
-    if (!group.isMe) return el('div', { class: 'msg-time' }, [time]);
-    const status = deliveryStatus(last);
-    const children = [time, ' · ', el('span', { class: 'msg-status ' + status, title: DELIVERY_LABELS[status] }, [DELIVERY_GLYPHS[status]])];
-    if (status === 'failed') {
-      children.push(
-        ' · ',
-        el('button', { class: 'msg-action', title: t('msg.sendAgain'), onclick: () => outbox.retry(convId, last.clientMessageId) }, [t('msg.sendAgain')]),
-        ' · ',
-        el('button', { class: 'msg-action danger', title: t('common.cancel'), onclick: () => outbox.cancel(convId, last.clientMessageId) }, [t('common.cancel')]),
-      );
-    }
-    return el('div', { class: 'msg-time' }, children);
-  }
-
   // The list node for a conversation's shown messages; reactions:
   // src/domain/reactions.js reactionsByTarget over the messages not gone.
-  function render(convId, { shown, reactions, peerHandle }) {
+  // Each run of a peer's messages is headed by their handle; in a group it
+  // is in their own tint and their avatar sits beside the run.
+  function render(convId, { shown, reactions, peerHandle, group: isGroup = false }) {
     const list = el('div', { class: 'panel-msgs', dataset: { conv: convId } });
     for (const day of groupMessages(shown, { me: state.me, peerHandle, dayKey, dayLabel })) {
-      list.appendChild(el('div', { class: 'day-divider' }, [el('span', {}, [day.dayLabel])]));
+      list.appendChild(el('div', { class: 'day-divider' }, [day.dayLabel]));
       for (const group of day.groups) {
         const stack = el('div', { class: 'group-stack' });
-        if (!group.isMe) stack.appendChild(el('div', { class: 'group-meta' }, ['@' + shownHandle(group.senderHandle)]));
+        if (!group.isMe) {
+          const tint = isGroup ? ` name-${avatarIndex(group.senderHandle)}` : '';
+          stack.appendChild(el('div', { class: 'group-meta' + tint }, ['@' + shownHandle(group.senderHandle)]));
+        }
         group.msgs.forEach((message, index) => {
+          const last = index === group.msgs.length - 1;
           stack.appendChild(messageRow(convId, message, {
             isMe: group.isMe,
             first: index === 0,
-            last: index === group.msgs.length - 1,
+            last,
             shown,
             reactions,
+            meta: last ? bubbleMeta(group) : null,
           }));
         });
-        stack.appendChild(groupFooter(convId, group));
+        const failed = failedLine(convId, group);
+        if (failed) stack.appendChild(failed);
         list.appendChild(el('div', { class: 'msg-group ' + (group.isMe ? 'me' : 'them') }, [
-          group.isMe ? null : avatarFor(group.senderHandle, 'sm'),
+          group.isMe || !isGroup ? null : avatarFor(group.senderHandle, 'sm'),
           stack,
         ]));
       }
     }
     if (shown.length === 0) {
-      list.appendChild(el('div', { class: 'panel-empty', style: 'display:flex; flex:1' }, [
-        emptyStateSvg('wave'),
+      list.appendChild(el('div', { class: 'panel-empty' }, [
         el('div', { class: 'empty-title' }, [t('msg.empty.title')]),
         el('div', { class: 'empty-sub' }, [t('msg.empty.sub')]),
       ]));

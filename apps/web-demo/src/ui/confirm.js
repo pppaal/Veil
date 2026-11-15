@@ -38,18 +38,15 @@ export function createConfirm(dialogs) {
       const cancelBtn = $('confirm-cancel');
       okBtn.textContent = okLabel;
       cancelBtn.textContent = cancelLabel;
+      // A destructive action is a red text button, never a filled one.
       okBtn.classList.toggle('btn-primary', !destructive);
-      okBtn.classList.toggle('btn-secondary', destructive);
-      okBtn.style.background = destructive ? 'var(--bad)' : '';
-      okBtn.style.borderColor = destructive ? 'var(--bad)' : '';
+      okBtn.classList.toggle('btn-danger', destructive);
 
       const cleanup = (result) => {
         okBtn.removeEventListener('click', onOk);
         cancelBtn.removeEventListener('click', onCancel);
         dialog.removeEventListener('click', onBackdrop);
         dialog.removeEventListener('keydown', onKey);
-        okBtn.style.background = '';
-        okBtn.style.borderColor = '';
         dialogs.close('confirm-dialog');
         resolve(result);
       };

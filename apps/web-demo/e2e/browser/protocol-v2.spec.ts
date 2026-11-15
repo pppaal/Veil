@@ -206,7 +206,7 @@ test.describe('protocol v2 in the browser', () => {
   test('both devices show the same safety number', async () => {
     const numbers: string[] = [];
     for (const device of [alice, bob]) {
-      await device.page.locator('.panel .icon-btn', { hasText: '🛡' }).click();
+      await device.page.locator('.panel button[aria-label="Safety number"]').click();
       const shown = device.page.locator('#safety-dialog #safety-number');
       await expect(shown).toBeVisible();
       numbers.push((await shown.innerText()).trim());

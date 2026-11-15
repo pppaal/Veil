@@ -45,14 +45,8 @@ export function deliveryStatus(message) {
   return 'sent';
 }
 
-export const DELIVERY_GLYPHS = Object.freeze({
-  pending: '⏳',
-  failed: '!',
-  read: '✓✓',
-  delivered: '✓✓',
-  sent: '✓',
-});
-
+// What each state is called; the views draw it with icons
+// (src/ui/views/message-list.js) and say it with these words.
 export const DELIVERY_LABELS = Object.freeze({
   pending: 'Sending',
   failed: 'Not sent',

@@ -59,13 +59,13 @@ test.describe('a direct conversation', () => {
     await expect(page.locator('#new-chat-dialog')).toBeHidden();
 
     await startChat(alice, bob);
-    await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}×`]);
+    await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`]);
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');
     await expect(page.locator('.panel-input textarea')).toHaveAttribute('placeholder', 'Message (Enter to send, Shift+Enter for a new line)');
     await expect(page.locator('.panel-input > *')).toHaveCount(5);
-    await expect(page.locator('.panel-input .file-btn')).toHaveText('File');
-    await expect(page.locator('.panel-input .image-btn:not(.file-btn)')).toHaveText('Image');
-    await expect(page.locator('.panel-header .mute-toggle')).toHaveText('🔔');
+    await expect(page.locator('.panel-input .file-btn')).toHaveAttribute('aria-label', 'Attach a file');
+    await expect(page.locator('.panel-input .image-btn:not(.file-btn)')).toHaveAttribute('aria-label', 'Attach an image');
+    await expect(page.locator('.panel-header .mute-toggle')).toHaveAttribute('aria-pressed', 'false');
     await expect(bob.page.locator('.conv-item', { hasText: `@${alice.handle}` })).toContainText('No messages yet');
     expectNoErrors(alice, bob);
   });
@@ -75,7 +75,7 @@ test.describe('a direct conversation', () => {
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['hello bob']);
     await expect(bob.page.locator('.panel-msgs .group-meta')).toHaveText([`@${alice.handle}`]);
     await expect(alice.page.locator('.msg-group.me .msg-status')).toHaveAttribute('title', 'Sent');
-    await expect(alice.page.locator('.msg-group.me .msg-time')).toContainText('✓');
+    await expect(alice.page.locator('.msg-group.me .msg-status use')).toHaveAttribute('href', '#i-check');
 
     await send(bob, 'hi *alice* and `code`', 'hi alice and code');
     await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 }).toEqual(['hello bob', 'hi alice and code']);
@@ -97,8 +97,8 @@ test.describe('a direct conversation', () => {
     await expect(bob.page.locator('.reply-banner-snippet')).toHaveText('hello bob');
     await send(bob, 'replying to you');
     await expect(bob.page.locator('.reply-banner')).toHaveCount(0);
-    await expect(rowOf(bob, 'replying to you').locator('.msg-reply-head')).toHaveText('↩hello bob');
-    await expect(rowOf(alice, 'replying to you').locator('.msg-reply-head')).toHaveText('↩hello bob', { timeout: 15_000 });
+    await expect(rowOf(bob, 'replying to you').locator('.msg-reply-head')).toHaveText('hello bob');
+    await expect(rowOf(alice, 'replying to you').locator('.msg-reply-head')).toHaveText('hello bob', { timeout: 15_000 });
     expectNoErrors(alice, bob);
   });
 
@@ -219,7 +219,7 @@ test.describe('a direct conversation', () => {
 
   test('search in the conversation counts and marks matches', async () => {
     const { page } = alice;
-    await page.locator('.panel-header .icon-btn', { hasText: '🔍' }).click();
+    await page.locator('.panel-header button[aria-label^="Find in chat"]').click();
     const search = page.locator('.panel-search input');
     await expect(search).toBeFocused();
     await search.fill('bob');
@@ -264,12 +264,12 @@ test.describe('a direct conversation', () => {
 
   test('tabs switch, split and close', async () => {
     const { page } = alice;
-    await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}×`, `@${carol.handle}×`]);
-    await expect(page.locator('#tab-strip .tab.active')).toHaveText(`@${bob.handle}×`);
+    await expect(page.locator('#tab-strip .tab')).toHaveText([`@${bob.handle}`, `@${carol.handle}`]);
+    await expect(page.locator('#tab-strip .tab.active')).toHaveText(`@${bob.handle}`);
     await page.click('#split-btn');
     await expect(page.locator('#split-btn')).toHaveClass(/active/);
     await expect(page.locator('#panels .panel .panel-title .name')).toHaveText([`@${bob.handle}`, `@${carol.handle}`]);
-    await expect(page.locator('#tab-strip .tab.secondary')).toHaveText(`@${carol.handle}×`);
+    await expect(page.locator('#tab-strip .tab.secondary')).toHaveText(`@${carol.handle}`);
     await page.click('#split-btn');
     await expect(page.locator('#panels .panel')).toHaveCount(1);
     await page.locator('#tab-strip .tab', { hasText: carol.handle }).click();
@@ -297,7 +297,7 @@ test.describe('a direct conversation', () => {
 
   test('deleting history on this device empties the conversation for good', async () => {
     const { page } = bob;
-    await page.locator('.panel-header .icon-btn', { hasText: '🗑' }).click();
+    await page.locator('.panel-header button[aria-label="Delete history on this device"]').click();
     await expect(page.locator('#confirm-title')).toHaveText('Delete history on this device');
     await page.click('#confirm-ok');
     await expect(page.locator('.panel .panel-msgs .empty-title')).toHaveText('No messages yet');

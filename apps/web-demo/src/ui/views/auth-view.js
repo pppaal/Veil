@@ -4,7 +4,7 @@
 import { t } from '../../../i18n/i18n.js';
 import { isValidHandle, normalizeHandle } from '../../domain/composer-text.js';
 import { isAuthRejection } from '../../platform/api-client.js';
-import { $ } from '../dom.js';
+import { $, avatarFor } from '../dom.js';
 import { toast } from '../toast.js';
 
 // session: src/app/services/session.js; confirm: src/ui/confirm.js.
@@ -21,7 +21,10 @@ export function createAuthView({ stack, session, confirm }) {
       }
     }
     $('restore-row').classList.toggle('hidden', !stored);
-    if (stored) $('restore-handle').textContent = '@' + stored.handle;
+    if (stored) {
+      $('restore-handle').textContent = '@' + stored.handle;
+      $('restore-avatar').replaceChildren(avatarFor(stored.handle, 'md'));
+    }
     $('restore-rejected').classList.toggle('hidden', !(stored && rejected));
     $('restore-btn').textContent = t(rejected ? 'auth.restore.retry' : 'auth.restore.continue');
     // The wipe button stays whatever happened: a corrupted or half-restored
@@ -55,11 +58,20 @@ export function createAuthView({ stack, session, confirm }) {
     }
   }
 
+  // "How Veil works": two paragraphs, shown and hidden by the text button.
+  function toggleExplainer() {
+    const button = $('auth-explainer-toggle');
+    const open = button.getAttribute('aria-expanded') !== 'true';
+    button.setAttribute('aria-expanded', String(open));
+    $('auth-explainer').classList.toggle('hidden', !open);
+  }
+
   return {
     show,
     confirmAndDestroyIdentity,
 
     mount() {
+      $('auth-explainer-toggle').addEventListener('click', toggleExplainer);
       $('register-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const handle = normalizeHandle($('reg-handle').value);

@@ -21,7 +21,7 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 async function openSafetyDialog(page: Page) {
-  await page.locator('.panel-header .icon-btn', { hasText: '🛡' }).click();
+  await page.locator('.panel-header button[aria-label="Safety number"]').click();
   const dialog = page.locator('#safety-dialog');
   await expect(dialog).toBeVisible();
   return dialog;

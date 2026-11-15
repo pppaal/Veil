@@ -31,9 +31,9 @@ export function dayLabel(date, today = new Date()) {
   return `${monthDay}, ${d.getFullYear()}`;
 }
 
-// Bytes → human-readable.
+// Bytes as a human-readable size; an empty string for an unknown one.
 export function formatBytes(n) {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return '—';
+  if (typeof n !== 'number' || !Number.isFinite(n) || n < 0) return '';
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;

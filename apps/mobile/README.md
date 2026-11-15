@@ -1,8 +1,10 @@
-# VEIL Mobile
+# Veil mobile
 
-Flutter mobile shell for the VEIL MVP. This source tree is scaffolded manually in this environment because the Flutter SDK is not installed here.
+The Flutter app for iOS and Android. It is English only (`lib/src/l10n/app_en.arb`
+is the one string file), and its look follows
+[`docs/mobile-design-system.md`](../../docs/mobile-design-system.md).
 
-After installing Flutter locally:
+To run it:
 
 1. Run `flutter pub get`
 2. Run `dart run build_runner build --delete-conflicting-outputs`
@@ -35,9 +37,10 @@ bar is Chats, Contacts, Settings.
 ## Layout gate
 
 `flutter test test/layout` opens every screen at three phone sizes
-(360x640, 390x844, 412x915) in English and Korean, with the bundled fonts,
-and scrolls it to its end. Besides each screen's everyday state it opens the
-states that take room away (the keyboard, stacked warnings, a search, larger
+(360x640, 390x844, 412x915) in English, the app's only language, and
+scrolls it to its end. The app bundles no UI font, so the gate loads Roboto
+from `test/fonts` (wider than SF, so it measures the worst case). Besides
+each screen's everyday state it opens the states that take room away (the keyboard, stacked warnings, a search, larger
 system text), the sheets and menus that only appear on a tap, and the states
 a chat can be in (a group, reactions, the peer typing, a message from a
 legacy frame, search results). A case fails
@@ -57,17 +60,13 @@ legacy frame, search results). A case fails
 - when the control a screen is for is not on the first screenful. A case
   names it (`primaryAction`: the first input, the primary button, the first
   setting of the settings screen); with the keyboard closed it must be
-  wholly on screen at 390x844 and 412x915, and begin on screen at 360x640,
-- when a text of the app's own copy is in the other language: Latin words
-  and no Hangul in a Korean run, Hangul in an English run. What is not the
-  app's copy (the brand, fixture names and messages, handles, platform
-  names, PIN, URLs, file names, MIME types) is listed with its reason in
-  `test/layout/support/language_probe.dart` (`notOwnCopy`).
+  wholly on screen at 390x844 and 412x915, and begin on screen at 360x640.
 
-Each case is rendered once more in the light theme (390x844, Korean, every
-screenful), held to layout errors and tap targets. Nothing reads colours:
-a light render that passes can still hold text nobody can read, so look at
-its PNGs (`<case>__390x844__ko__light.png`). The wide cases open the
+Each case is rendered once more in the light theme (390x844, every
+screenful), held to layout errors and tap targets. Nothing in the gate reads
+colours: a light render that passes can still hold text nobody can read, so
+look at its PNGs (`<case>__390x844__en__light.png`). The palette itself is
+held to WCAG AA in both themes by `test/theme/veil_palette_contrast_test.dart`. The wide cases open the
 two-pane shell with a chat at 1280x800 and 1440x1000, and the chat on an
 upright tablet (1024x1366, which is under the 1120 px the two panes need),
 with and without warnings, held to what a phone's chat is held to: layout
@@ -88,18 +87,12 @@ flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=S
 screen. A new screen needs a case in `test/layout/support/screen_cases.dart`,
 and a new sheet or state of an existing screen deserves one.
 
-Nothing is listed as failing today. The gate has two lists for what is known
-to fail, and both are empty; a test of the gate keeps them empty, so a
-screen that stops fitting or shows text in the other language is fixed, not
-listed.
-
-- `test/layout/known_phone_layout_failures.dart`: one line per case, with
-  the sizes and languages it fails at and the defects it shows. The gate
-  fails for a listed case that passes, or fails another way, as it does for
-  an unlisted one that fails.
-- `test/layout/known_other_language_text.dart`: per screen, the texts it
-  shows in the other language. A text that is not listed fails the case
-  that shows it; a listed text no case shows any more fails the full run.
+Nothing is listed as failing today. `test/layout/known_phone_layout_failures.dart`
+is the list of what is known to fail, one line per case with the sizes it
+fails at and the defects it shows. It is empty, and a test of the gate keeps
+it empty, so a screen that stops fitting is fixed, not listed. The gate
+fails for a listed case that passes, or fails another way, as it does for an
+unlisted one that fails.
 
 ## UI strings gate
 
@@ -121,12 +114,12 @@ script, by file and literal:
   `core/errors/user_facing_error.dart`: controllers and logs have no locale,
   so `formatUserFacingError` keeps them, and a screen shows such an error
   through `veilErrorText` (`shared/presentation/veil_error_text.dart`), which
-  finds the sentence's code and reads its translation from the ARB files
+  finds the sentence's code and reads its text from the ARB file
   (`test/phone/error_language_phone_test.dart`). A failure without a code is
   shown as it came: a relay's own words, and the English of a failure the
   data layer words itself and the formatter does not know. The script does
   not read the data layer, so those sentences are on no list.
-- `NOT_COPY`: what the gate takes for text and nobody translates (an example
+- `NOT_COPY`: what the gate takes for text and is not copy (an example
   handle in a hint, a file name), each with its reason. This is the way out
   for a false positive: add the literal with why it is not copy, rather than
   rewriting code to get past the gate.
@@ -141,12 +134,12 @@ first, with the bar carrying the safety number, the search and the
 disappearing timer. From 1120 px the same list and the same chat sit side by
 side, each under its own bar (`ChatPaneBar` in `chat_bar.dart`): the list in
 a 380 px pane with the open conversation's row marked, the chat in the rest,
-its messages and composer at most 760 px wide. Neither pane puts a hero
-card, stat tiles or pills above its rows or messages. Other screens tighten
-under 600 px (`context.veilPhoneWidth`): hero panels shrink, decorative stat
-tiles step aside, and the field a screen is for comes before its
-explanations. `test/phone` holds the behaviour of both layouts (search,
-timer, safety number, back, the panes).
+its messages and composer at most 760 px wide. Neither pane puts anything
+above its rows or messages but a notice that asks for a decision. Every
+screen opens with its control or its list under a 52 px bar, never with a
+slogan, a paragraph or a row of chips (`docs/mobile-design-system.md`,
+sections 1 and 11). `test/phone` holds the behaviour of both layouts
+(search, timer, safety number, back, the panes).
 
 A row of the list quotes its conversation's last message when that is a
 text this device decrypted, read from the device's own content store; every
@@ -157,30 +150,28 @@ app was closed is quoted without its chat being opened. Nothing is marked
 read for a preview, an expired message is not quoted, and the list is not
 built behind the app lock.
 
-The screens around the account (consent, onboarding warning, create account,
-choose handle, app lock, device transfer, safety numbers, security status)
-open on `VeilScreenIntro` on a phone: a label, one headline and at most a
-sentence, with no panel around them, and then the field or button the screen
-is for. A no-recovery notice stands once, beside the control that decides.
-The consent and the onboarding warning keep their button in a bar under the
-text that scrolls (`OnboardingActionScaffold`). Device transfer is three
-numbered steps per device (`TransferStep`), of which only the step in hand
-shows its controls; a code to carry to the other device sits in a
-`TransferCodeBox`, and what approving or finishing leads to is said above
-the button that does it. A step's state pill and its small action share the
-title's line and never take width from the words under it. What an action
-came to (`TransferStepResult`) is said in the step that was acted on and
-scrolls itself into view. A session or claim that ran out puts the first
+The screens around the account (privacy notice, Before you start, Create
+account, Choose a handle, App lock, Move to a new phone, Safety number,
+Security) open with the field or button they are for. Each security fact is
+said in one place only (`docs/mobile-design-system.md`, section 9): the
+loss of a phone, for one, is said on Before you start, in the Security
+footer and in the confirm dialogs that destroy something. The privacy notice
+and Before you start keep their button in a bar under the text that
+scrolls. Move to a new phone is three numbered steps per phone, of which
+only the step in hand shows its controls; a code to carry to the other phone
+is shown with a copy button, and what approving or finishing leads to is
+said above the button that does it. What an action came to is said in the
+step that was acted on and scrolls itself into view. A session or claim that ran out puts the first
 step back in hand on its side: the claim's window is the session's, so the
 new device can neither register again nor finish on the code it holds, and
 the step that says so is the one that takes the new code
-(`test/phone/device_transfer_expired_claim_phone_test.dart`). A safety number comes before how to compare it and
-the button that records the comparison; a change to review comes before
-everything else. The security status names what needs a look before its
-rows, which are grouped (`SecuritySignalGroup`).
+(`test/phone/device_transfer_expired_claim_phone_test.dart`). A safety
+number comes before how to compare it and the button that records the
+comparison; a change to review comes before everything else. Security lists
+one row per fact, in groups, with its state as a word at the row's end.
 `test/phone/identity_screens_phone_test.dart` holds that behaviour.
 
-A chat's warnings are banners while they fit above the messages, which keep
+A chat's warnings are notices while they fit above the messages, which keep
 96 px. When they do not (a small phone with the keyboard up), each warning
 is one row with its title and its action, and only more rows than fit
 scroll. `VeilFirstThatFits` makes that choice during layout. Opening a
@@ -189,7 +180,7 @@ message that a search found moves the list to it however far back it is
 
 ## Release builds
 
-A release build must name its relay and pin its TLS keys. With the
+A release build must name its server and pin its TLS keys. With the
 development defaults (a localhost endpoint, or no `VEIL_TLS_PINS`) a release
 build stops at the configuration-error screen and the security status screen
 reports it as blocked (`VeilConfig.validateRuntimeConfiguration`). `VEIL_ENV`

@@ -44,17 +44,26 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
   // the key back into the link without saying so.
   bool get _ready => _secret.text.trim().isNotEmpty && (!_usePass || _pass.text.isNotEmpty);
 
+  // The link on screen is the one the form, as it stands, made. Once the
+  // secret, the passphrase or the switch changes, the link would be shown
+  // beside words it does not carry and a lock it may not have, so it goes.
+  void _edited() => setState(() => _link = null);
+
   Future<void> _generate() async {
     final secret = _secret.text.trim();
     if (!_ready || _busy) return;
+    final passphrase = _usePass ? _pass.text : null;
     setState(() {
       _busy = true;
       _failed = false;
       _link = null;
     });
     try {
-      final link = await _service.create(secret, passphrase: _usePass ? _pass.text : null);
+      final link = await _service.create(secret, passphrase: passphrase);
       if (!mounted) return;
+      // Sealing takes a moment, and the fields stay open meanwhile: a link
+      // for what the form no longer says is not shown.
+      if (_secret.text.trim() != secret || (_usePass ? _pass.text : null) != passphrase) return;
       setState(() => _link = link);
       // The link appears under the button, which a small phone or an open
       // keyboard may have at the bottom edge.
@@ -85,7 +94,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
             controller: _secret,
             minLines: 3,
             maxLines: 5,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => _edited(),
             decoration: InputDecoration(
               labelText: l10n.oneTimeLinkSecretLabel,
               hintText: l10n.oneTimeLinkSecretHint,
@@ -100,7 +109,12 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
                 title: l10n.oneTimeLinkUsePassphrase,
                 subtitle: l10n.oneTimeLinkUsePassphraseBody,
                 value: _usePass,
-                onChanged: _busy ? null : (value) => setState(() => _usePass = value),
+                onChanged: _busy
+                    ? null
+                    : (value) {
+                        _usePass = value;
+                        _edited();
+                      },
               ),
             ],
           ),
@@ -111,7 +125,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
               obscureText: true,
               autocorrect: false,
               enableSuggestions: false,
-              onChanged: (_) => setState(() {}),
+              onChanged: (_) => _edited(),
               decoration: InputDecoration(labelText: l10n.oneTimeLinkPassphraseLabel),
             ),
           ],
@@ -127,7 +141,7 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
           ],
           if (link != null) ...[
             const SizedBox(height: VeilSpace.md),
-            _CreatedLink(key: _resultKey, link: link, withPassphrase: _usePass),
+            _CreatedLink(key: _resultKey, link: link),
           ],
           const SizedBox(height: VeilSpace.xl),
           _Facts(
@@ -150,12 +164,12 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
 }
 
 /// The link that was made: its QR code, the link itself, when it expires
-/// unopened, and the button that copies it.
+/// unopened, the reminder to send its passphrase apart if it was sealed with
+/// one, and the button that copies it.
 class _CreatedLink extends StatelessWidget {
-  const _CreatedLink({super.key, required this.link, required this.withPassphrase});
+  const _CreatedLink({super.key, required this.link});
 
   final CreatedOneTimeLink link;
-  final bool withPassphrase;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +193,7 @@ class _CreatedLink extends StatelessWidget {
             [
               if (expiresAt != null)
                 l10n.oneTimeLinkExpires(DateFormat.MMMd(l10n.localeName).add_Hm().format(expiresAt)),
-              if (withPassphrase) l10n.oneTimeLinkSendPassphraseApart,
+              if (link.passphraseLocked) l10n.oneTimeLinkSendPassphraseApart,
             ].join(' '),
             style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
           ),

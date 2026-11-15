@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -43,14 +44,20 @@ void main() {
 
   setUp(() => posted = []);
 
-  Future<void> open(WidgetTester tester, {String locale = 'en', int status = 201, double keyboardHeight = 0}) async {
+  Future<void> open(
+    WidgetTester tester, {
+    String locale = 'en',
+    int status = 201,
+    double keyboardHeight = 0,
+    OneTimeLinkService? service,
+  }) async {
     usePhoneView(tester, phoneSmall, keyboardHeight: keyboardHeight);
     await tester.pumpWidget(MaterialApp(
       theme: VeilTheme.dark(),
       locale: Locale(locale),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: OneTimeLinkScreen(service: relay(status: status)),
+      home: OneTimeLinkScreen(service: service ?? relay(status: status)),
     ));
     await pumpFrames(tester, frames: 2);
   }
@@ -173,6 +180,139 @@ void main() {
     expect(findCopy(en.oneTimeLinkCopied), findsOneWidget);
   });
 
+  // What is said under a link is about that link. A link made with its key
+  // inside was called passphrase-locked once the switch was turned on beside
+  // it: the link on screen now goes when the form it came from changes.
+  group('the link on screen is the one the form made', () {
+    Finder shownLink() => find.byType(SelectableText, skipOffstage: false);
+    Finder note() => findCopyContaining(en.oneTimeLinkSendPassphraseApart, skipOffstage: false);
+
+    // The form scrolls away when the link is brought on screen.
+    Future<void> backToTheForm(WidgetTester tester) async {
+      tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
+      await pumpFrames(tester, frames: 2);
+    }
+
+    Future<void> flipSwitch(WidgetTester tester) async {
+      final row = find.text(en.oneTimeLinkUsePassphrase, skipOffstage: false);
+      await tester.ensureVisible(row);
+      await pumpFrames(tester, frames: 2);
+      await tester.tap(row);
+      await pumpFrames(tester, frames: 2);
+    }
+
+    testWidgets('made with the key inside, it goes when the passphrase switch is turned on', (tester) async {
+      await open(tester);
+      await tester.enterText(find.byType(TextField), secret);
+      await tester.pump();
+      await tapCreate(tester);
+      expect(tester.widget<SelectableText>(shownLink()).data, contains('#link-7.k.'));
+      expect(note(), findsNothing);
+
+      await flipSwitch(tester);
+      expect(shownLink(), findsNothing, reason: 'a link with its key inside beside a form that says "locked"');
+      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+      expect(note(), findsNothing, reason: 'nothing on screen is locked with a passphrase');
+      expect(tester.widget<FilledButton>(find.byType(FilledButton, skipOffstage: false)).onPressed, isNull,
+          reason: 'the next link waits for its passphrase');
+      expect(posted, hasLength(1));
+    });
+
+    // The next three seal nothing: the links are handed out as the service
+    // would describe them, which the tests above and one_time_link_test.dart
+    // hold it to. Deriving a key from a passphrase takes seconds here.
+    Future<void> createCanned(WidgetTester tester) async {
+      await pumpFrames(tester, frames: 2);
+      await tester.ensureVisible(find.byType(FilledButton, skipOffstage: false));
+      await pumpFrames(tester, frames: 2);
+      await tester.tap(find.byType(FilledButton));
+      await pumpFrames(tester, frames: 4);
+    }
+
+    testWidgets('made with a passphrase, it goes when the switch is turned off, and the next one has no reminder',
+        (tester) async {
+      final service = _CannedLinks();
+      await open(tester, service: service);
+      await tester.enterText(find.byType(TextField), secret);
+      await flipSwitch(tester);
+      await tester.enterText(find.byType(TextField).last, 'open-sesame');
+      await tester.pump();
+      await createCanned(tester);
+      expect(service.passphrases, ['open-sesame']);
+      expect(tester.widget<SelectableText>(shownLink()).data, endsWith('#link-1.p'));
+      expect(note(), findsOneWidget);
+
+      await flipSwitch(tester);
+      expect(shownLink(), findsNothing);
+      expect(note(), findsNothing);
+
+      // The form now asks for a link with its key inside, and gets one.
+      await createCanned(tester);
+      expect(service.passphrases, ['open-sesame', null]);
+      expect(tester.widget<SelectableText>(shownLink()).data, contains('#link-2.k.'));
+      expect(note(), findsNothing, reason: 'this link opens without a passphrase');
+    });
+
+    testWidgets('it goes when the secret or the passphrase is edited', (tester) async {
+      final service = _CannedLinks();
+      await open(tester, service: service);
+      await tester.enterText(find.byType(TextField), secret);
+      await flipSwitch(tester);
+      await tester.enterText(find.byType(TextField).last, 'open-sesame');
+      await tester.pump();
+      await createCanned(tester);
+      expect(shownLink(), findsOneWidget);
+
+      await backToTheForm(tester);
+      await tester.enterText(find.byType(TextField).last, 'open-sesame-2');
+      await pumpFrames(tester, frames: 2);
+      expect(shownLink(), findsNothing, reason: 'the link is locked with the passphrase that was replaced');
+
+      await createCanned(tester);
+      expect(shownLink(), findsOneWidget);
+      await backToTheForm(tester);
+      await tester.enterText(find.byType(TextField).first, 'The door code is 4472');
+      await pumpFrames(tester, frames: 2);
+      expect(shownLink(), findsNothing, reason: 'the link carries the secret that was replaced');
+      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+      expect(service.secrets, [secret, secret], reason: 'no link was made for what was typed since');
+    });
+
+    testWidgets('a link that arrives after the secret was changed is not shown', (tester) async {
+      // A relay that takes its time: the fields stay open meanwhile.
+      final answer = Completer<http.Response>();
+      await open(
+        tester,
+        service: OneTimeLinkService(
+          apiBaseUrl: 'https://relay.example.org/v1',
+          client: MockClient((request) {
+            posted.add(jsonDecode(request.body) as Map<String, dynamic>);
+            return answer.future;
+          }),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), secret);
+      await pumpFrames(tester, frames: 2);
+      await tester.tap(find.byType(FilledButton));
+      for (var i = 0; i < 200 && posted.isEmpty; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+      expect(posted, hasLength(1), reason: 'the first secret was sealed and sent');
+      expect(create(tester).onPressed, isNull, reason: 'still creating');
+
+      await tester.enterText(find.byType(TextField), 'The door code is 4472');
+      await tester.pump();
+      answer.complete(http.Response(jsonEncode({'id': 'link-7'}), 201));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await pumpFrames(tester, frames: 4);
+
+      expect(shownLink(), findsNothing, reason: 'the link does not carry what the field says now');
+      expect(find.byType(QrImageView, skipOffstage: false), findsNothing);
+      expect(create(tester).onPressed, isNotNull, reason: 'ready to seal what the field says');
+    });
+  });
+
   testWidgets('says in Korean that the relay refused, and keeps the form', (tester) async {
     await open(tester, locale: 'ko', status: 503);
     await tester.enterText(find.byType(TextField), '현관 비밀번호 4471');
@@ -199,4 +339,24 @@ void main() {
     // The link itself is an address, which the check leaves out.
     expect(foreign, isEmpty);
   });
+}
+
+/// Hands out links without sealing anything: with the key inside, or locked
+/// with a passphrase, as the service says of a link it made.
+class _CannedLinks extends OneTimeLinkService {
+  _CannedLinks() : super(apiBaseUrl: 'https://relay.example.org/v1', client: MockClient((_) async => http.Response('', 500)));
+
+  final List<String> secrets = [];
+  final List<String?> passphrases = [];
+
+  @override
+  Future<CreatedOneTimeLink> create(String secret, {String? passphrase}) async {
+    secrets.add(secret);
+    passphrases.add(passphrase);
+    final locked = passphrase != null && passphrase.isNotEmpty;
+    return CreatedOneTimeLink(
+      url: 'https://relay.example.org/demo/s.html#link-${secrets.length}.${locked ? 'p' : 'k.a2V5'}',
+      passphraseLocked: locked,
+    );
+  }
 }

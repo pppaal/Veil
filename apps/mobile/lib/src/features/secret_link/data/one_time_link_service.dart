@@ -62,16 +62,21 @@ class OneTimeLinkService {
     final webBase = _apiBaseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
     return CreatedOneTimeLink(
       url: '$webBase/demo/s.html#$id.${sealed.fragment}',
+      passphraseLocked: sealed.passphraseLocked,
       expiresAt: DateTime.tryParse(created['expiresAt'] as String? ?? ''),
     );
   }
 }
 
-/// A link the relay stored, and when it deletes it if nobody opens it
-/// (null when the relay did not say).
+/// A link the relay stored: whether it was sealed with a passphrase (the
+/// key is then not in [url]), and when the relay deletes it if nobody opens
+/// it (null when the relay did not say).
 class CreatedOneTimeLink {
-  const CreatedOneTimeLink({required this.url, this.expiresAt});
+  const CreatedOneTimeLink({required this.url, required this.passphraseLocked, this.expiresAt});
 
   final String url;
+
+  /// How this link was sealed, not how the form is set now.
+  final bool passphraseLocked;
   final DateTime? expiresAt;
 }

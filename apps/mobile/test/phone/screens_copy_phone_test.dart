@@ -8,7 +8,6 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
-import '../layout/support/screen_cases.dart' show layoutOnlyRoutes;
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
@@ -180,38 +179,6 @@ void main() {
       }
       final en = lookupAppLocalizations(const Locale('en'));
       expect(transferStatusLabel(en, const TransferClaimApproved('c', 'f')), 'Approved claim c on old device. Key fingerprint: f');
-    });
-  });
-
-  // The attachment screen's feature is switched off, so the app has no
-  // route to it; the screen is still built and tested through the test-only
-  // routes.
-  group('attachment', () {
-    testWidgets('speaks Korean, and says what this build sends', (tester) async {
-      await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId', locale: 'ko',
-          extraRoutes: layoutOnlyRoutes, body: (world) async {
-        // The file's name and its type are data, which the check leaves out.
-        expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
-      });
-    });
-
-    testWidgets('no longer says the build runs on mock crypto', (tester) async {
-      await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId',
-          extraRoutes: layoutOnlyRoutes, body: (world) async {
-        final seen = <String>{};
-        void collect() {
-          for (final element in find.byType(Text).evaluate()) {
-            if ((element.widget as Text).data case final text?) seen.add(text);
-          }
-        }
-
-        collect();
-        await scrollToEnd(tester, onPage: (_) async => collect());
-        expect(seen.where((text) => text.toLowerCase().contains('mock')), isEmpty);
-        expect(seen.where((text) => text.contains('placeholder file')), hasLength(1),
-            reason: 'that it sends a placeholder is said once');
-        expect(seen, contains('Encrypt and send'));
-      });
     });
   });
 

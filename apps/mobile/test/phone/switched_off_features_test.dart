@@ -4,39 +4,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
-import 'package:veil_mobile/src/features/ai/ai_feature.dart';
 import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
-import 'package:veil_mobile/src/features/calls/calls_feature.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
-import 'package:veil_mobile/src/features/media/media_feature.dart';
 import 'package:veil_mobile/src/features/profile/presentation/profile_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
-import 'package:veil_mobile/src/features/stickers/stickers_feature.dart';
-import 'package:veil_mobile/src/features/stories/stories_feature.dart';
-import 'package:veil_mobile/src/features/voice/voice_feature.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
 
-import '../layout/support/screen_cases.dart';
 import 'phone_app.dart';
 
-// A feature this build cannot do end to end is switched off by its
-// `k…Enabled` constant. While it is off nothing leads to it: no route, no
-// tab, no button. Each check below reads the constant, so it keeps holding
-// the day a feature is switched on (its routes are then the app's again).
+// This is a text-only build. The screens of what it could not do end to end
+// (calls, a media picker, voice messages, a sticker picker, stories, an
+// assistant, sending an attachment) are gone, and so are their routes, so
+// nothing leads where there is no screen: no route, no tab, no button. One
+// constant is left, kAttachmentsEnabled: the receive side of attachments is
+// real, and it says what the chat does with one it was sent.
 
-/// The routes of each switchable feature, by its constant.
-const _featureRoutes = <String, (bool enabled, List<String> paths)>{
-  'calls': (kCallsEnabled, ['/calls', '/call/:conversationId']),
-  'attachments': (kAttachmentsEnabled, ['/attachment/:conversationId']),
-  'media picker': (kMediaPickerEnabled, ['/media/:conversationId']),
-  'voice messages': (kVoiceMessagesEnabled, ['/voice/:conversationId']),
-  'sticker picker': (kStickerPickerEnabled, ['/stickers/:conversationId']),
-  'assistant': (kAssistantEnabled, ['/ai-chat']),
-  'stories': (kStoriesEnabled, ['/stories', '/story-viewer/:userId']),
-};
+/// Where the deleted features lived. None of these may be a route again
+/// before the feature works end to end.
+const _deadPrefixes = ['/calls', '/call', '/media', '/voice', '/stickers', '/ai-chat', '/stories', '/story-viewer', '/attachment'];
 
 Set<String> _paths(Iterable<RouteBase> routes) => {
       for (final route in routes) ...[
@@ -44,6 +32,8 @@ Set<String> _paths(Iterable<RouteBase> routes) => {
         ..._paths(route.routes),
       ],
     };
+
+bool _under(String path, String prefix) => path == prefix || path.startsWith('$prefix/');
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -56,30 +46,25 @@ void main() {
     identities = await LayoutIdentities.generate();
   });
 
-  testWidgets('the route table has a feature\'s routes only while the feature is on', (tester) async {
+  testWidgets('the route table has no route under the deleted features', (tester) async {
     final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'en');
     final app = _paths(world.container.read(appRoutesProvider));
     // Before the test ends: the messenger's timers go with it.
     world.dispose();
-    final testOnly = _paths(layoutOnlyRoutes);
 
-    for (final MapEntry(key: feature, value: (enabled, paths)) in _featureRoutes.entries) {
-      for (final path in paths) {
-        expect(app.contains(path), enabled, reason: '$feature is ${enabled ? 'on' : 'off'}: $path');
-        // What the app leaves out, the layout gate still reaches.
-        expect(testOnly.contains(path), !enabled, reason: '$feature: $path in layoutOnlyRoutes');
-      }
+    for (final prefix in _deadPrefixes) {
+      expect(app.where((path) => _under(path, prefix)), isEmpty, reason: 'a route under $prefix');
     }
-    // What works has its route whatever is switched off.
+    // What works has its route.
     expect(app, containsAll(['/conversations', '/contacts', '/settings', '/profile', '/secret-link']));
   });
 
-  // A link into a feature that is off (a `veil://` link, an unlock that
+  // A link into a feature that is gone (a `veil://` link, an unlock that
   // returns to `?from=`) must not end on the router's own "Page Not Found",
   // whose only button leads nowhere.
   testWidgets('a location no route has opens the conversation list, not a dead end', (tester) async {
     usePhoneView(tester, phoneSmall);
-    final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'ko');
+    final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'en');
     try {
       // The app's own router, guard and all.
       final router = world.container.read(appRouterProvider);
@@ -87,7 +72,6 @@ void main() {
         container: world.container,
         child: MaterialApp.router(
           routerConfig: router,
-          locale: const Locale('ko'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
         ),
@@ -96,15 +80,19 @@ void main() {
       expect(find.byType(ConversationListScreen), findsOneWidget);
 
       final nowhere = [
-        for (final (enabled, paths) in _featureRoutes.values)
-          if (!enabled)
-            for (final path in paths)
-              path.replaceFirst(':conversationId', chatConversationId).replaceFirst(':userId', 'user-$peerHandle'),
+        '/calls',
+        '/call/$chatConversationId',
+        '/media/$chatConversationId',
+        '/voice/$chatConversationId',
+        '/stickers/$chatConversationId',
+        '/ai-chat',
+        '/stories',
+        '/story-viewer/user-$peerHandle',
+        '/attachment/$chatConversationId',
         '/no-such-screen',
         // Unlocked already, the lock passes on to where `from` points.
         '/lock?from=%2Fno-such-screen',
       ];
-      expect(nowhere, hasLength(greaterThan(2)));
       for (final location in nowhere) {
         router.go('/contacts');
         await pumpFrames(tester, frames: 3);
@@ -124,14 +112,11 @@ void main() {
     }
   });
 
-  testWidgets('the bottom bar is Chats, Contacts and Settings, plus the tabs of features that are on',
-      (tester) async {
+  testWidgets('the bottom bar is Chats, Contacts and Settings', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
       for (final tab in [l10n.navChats, l10n.navContacts, l10n.navSettings]) {
         expect(find.text(tab), findsOneWidget, reason: 'the $tab tab');
       }
-      expect(find.text(l10n.navCalls), kCallsEnabled ? findsOneWidget : findsNothing);
-      expect(find.text(l10n.navStories), kStoriesEnabled ? findsOneWidget : findsNothing);
 
       // Settings is a tab: it opens with the bar still under it, and with
       // no back button, and the list's own bar has no second way there.

@@ -515,7 +515,6 @@ Future<LayoutFindings> _render(
       await tester.pumpWidget(world.app(
         location: screenCase.location,
         extra: screenCase.extra,
-        extraRoutes: layoutOnlyRoutes,
         themeMode: light ? ThemeMode.light : ThemeMode.dark,
       ));
       await pumpFrames(tester);

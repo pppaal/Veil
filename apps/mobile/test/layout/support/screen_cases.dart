@@ -1,17 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
-import 'package:veil_mobile/src/features/ai/ai_feature.dart';
-import 'package:veil_mobile/src/features/ai/presentation/ai_chat_screen.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
-import 'package:veil_mobile/src/features/attachments/presentation/attachment_preview_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
-import 'package:veil_mobile/src/features/calls/calls_feature.dart';
-import 'package:veil_mobile/src/features/calls/presentation/call_history_screen.dart';
-import 'package:veil_mobile/src/features/calls/presentation/call_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_status_banners.dart';
@@ -23,8 +15,6 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_group_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
-import 'package:veil_mobile/src/features/media/media_feature.dart';
-import 'package:veil_mobile/src/features/media/presentation/media_picker_screen.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent_screen.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
@@ -35,13 +25,6 @@ import 'package:veil_mobile/src/features/security/presentation/safety_numbers_sc
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
-import 'package:veil_mobile/src/features/stickers/presentation/sticker_picker_screen.dart';
-import 'package:veil_mobile/src/features/stickers/stickers_feature.dart';
-import 'package:veil_mobile/src/features/stories/presentation/stories_screen.dart';
-import 'package:veil_mobile/src/features/stories/presentation/story_viewer_screen.dart';
-import 'package:veil_mobile/src/features/stories/stories_feature.dart';
-import 'package:veil_mobile/src/features/voice/presentation/voice_recorder_screen.dart';
-import 'package:veil_mobile/src/features/voice/voice_feature.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import 'layout_seed.dart';
@@ -162,41 +145,6 @@ const tapTargetExemptScreens = <String>{};
 /// The text size of the larger-text cases: the step most people who enlarge
 /// their text choose.
 const double largerText = 1.3;
-
-/// Routes to the screens of the features this build has switched off, which
-/// the app's own route table leaves out (see each `*_feature.dart`). The
-/// gate still renders those screens, and their tests still open them,
-/// through these. A feature that is switched on drops out of this list: its
-/// routes are the app's again.
-final List<RouteBase> layoutOnlyRoutes = [
-  if (!kStoriesEnabled) ...[
-    GoRoute(path: '/stories', builder: (_, __) => const StoriesScreen()),
-    GoRoute(
-      path: '/story-viewer/:userId',
-      builder: (_, state) => StoryViewerScreen(authorUserId: state.pathParameters['userId']!),
-    ),
-  ],
-  if (!kCallsEnabled) ...[
-    GoRoute(path: '/calls', builder: (_, __) => const CallHistoryScreen()),
-    GoRoute(
-      path: '/call/:conversationId',
-      builder: (_, state) => CallScreen(
-        contactName: switch (state.extra) { {'name': final String name} => name, _ => '' },
-      ),
-    ),
-  ],
-  if (!kAttachmentsEnabled)
-    GoRoute(
-      path: '/attachment/:conversationId',
-      builder: (_, state) => AttachmentPreviewScreen(conversationId: state.pathParameters['conversationId']!),
-    ),
-  if (!kMediaPickerEnabled) GoRoute(path: '/media/:conversationId', builder: (_, __) => const MediaPickerScreen()),
-  if (!kVoiceMessagesEnabled)
-    GoRoute(path: '/voice/:conversationId', builder: (_, __) => const VoiceRecorderScreen()),
-  if (!kStickerPickerEnabled)
-    GoRoute(path: '/stickers/:conversationId', builder: (_, __) => const StickerPickerScreen()),
-  if (!kAssistantEnabled) GoRoute(path: '/ai-chat', builder: (_, __) => const AiChatScreen()),
-];
 
 const _signedOut = LayoutAccount.signedOut;
 const _chat = '/chat/$chatConversationId';
@@ -430,35 +378,6 @@ const List<ScreenCase> screenCases = [
       location: '/safety-numbers/$chatConversationId',
       attention: ChatAttention(identityChanged: true),
       settle: _awaitSafetyNumber),
-  ScreenCase('attachment-preview',
-      screen: AttachmentPreviewScreen,
-      file: 'attachment_preview_screen.dart',
-      location: '/attachment/$chatConversationId',
-      primaryAction: _primaryButton),
-  ScreenCase('media-picker',
-      screen: MediaPickerScreen,
-      file: 'media_picker_screen.dart',
-      location: '/media/$chatConversationId',
-      primaryAction: _closeButton),
-  ScreenCase('voice-recorder',
-      screen: VoiceRecorderScreen,
-      file: 'voice_recorder_screen.dart',
-      location: '/voice/$chatConversationId',
-      primaryAction: _closeButton),
-  ScreenCase('sticker-picker',
-      screen: StickerPickerScreen,
-      file: 'sticker_picker_screen.dart',
-      location: '/stickers/$chatConversationId',
-      primaryExtent: emojiGridExtent,
-      minPrimaryShare: minPrimaryContentShare),
-  ScreenCase(
-    'call',
-    screen: CallScreen,
-    file: 'call_screen.dart',
-    location: '/call/$chatConversationId',
-    extra: {'name': 'Selene Park'},
-    primaryAction: _closeButton,
-  ),
 
   // Starting a conversation.
   ScreenCase('start-direct-chat',
@@ -496,23 +415,6 @@ const List<ScreenCase> screenCases = [
       file: 'contacts_screen.dart',
       location: '/contacts',
       settle: _openContactActionsSheet),
-  ScreenCase('call-history',
-      screen: CallHistoryScreen,
-      file: 'call_history_screen.dart',
-      location: '/calls',
-      primaryExtent: cardRowsExtent,
-      minPrimaryShare: minPrimaryContentShare),
-  ScreenCase('stories',
-      screen: StoriesScreen,
-      file: 'stories_screen.dart',
-      location: '/stories',
-      primaryExtent: cardRowsExtent,
-      minPrimaryShare: minPrimaryContentShare),
-  ScreenCase('story-viewer',
-      screen: StoryViewerScreen,
-      file: 'story_viewer_screen.dart',
-      location: '/story-viewer/user-$peerHandle',
-      primaryAction: _closeButton),
 
   // Account, device and security.
   ScreenCase('settings',
@@ -538,8 +440,6 @@ const List<ScreenCase> screenCases = [
       file: 'device_transfer_screen.dart',
       location: '/device-transfer',
       primaryAction: _primaryButton),
-  ScreenCase('ai-chat',
-      screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat', primaryAction: _firstQuestion),
 
   // States the gate did not open before: a group (its chat, its row in the
   // list, the safety numbers of its members), a message from a legacy frame
@@ -779,13 +679,6 @@ Finder _firstInput() => find.byType(TextField);
 // What adds a contact, wherever the screen puts it.
 Finder _addContact() => find.byIcon(Icons.person_add_outlined);
 
-// The one button of a screen that only says what this build cannot do: the
-// way back.
-Finder _closeButton() => find.byType(OutlinedButton);
-
-// The questions the assistant offers; the first if it has more.
-Finder _firstQuestion() => find.byType(ActionChip);
-
 // The first control of the settings screen that changes a setting: the
 // theme selector or a switch, whichever the screen puts first. A row that
 // only leads to another screen (the profile, the security status) is not it.
@@ -835,16 +728,6 @@ double _rowsExtent(WidgetTester tester, Finder rows) {
   final list = visibleRect(tester, viewport);
   final top = firstRow.localToGlobal(Offset.zero).dy.clamp(list.top, list.bottom);
   return list.bottom - top;
-}
-
-/// The same for the call history and the stories, whose rows are cards too.
-double cardRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilListTileCard));
-
-/// The height the emoji have on screen: the grid of the picker's open tab.
-double emojiGridExtent(WidgetTester tester) {
-  final grid = find.byType(GridView);
-  if (grid.evaluate().isEmpty) return 0;
-  return visibleRect(tester, tester.renderObject<RenderBox>(grid.first)).height;
 }
 
 /// The actions of the warnings a chat shows above its messages.

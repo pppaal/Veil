@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
-import 'package:veil_mobile/src/features/attachments/presentation/attachment_preview_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -148,19 +147,13 @@ void main() {
 
   // The attach button is there only in a build that can send a file
   // (kAttachmentsEnabled); without it the composer shows its lock mark.
-  testWidgets('opens attachments from the composer, in a build that has them', (tester) async {
+  testWidgets('offers no attachment from the composer while attachments are switched off', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      if (!kAttachmentsEnabled) {
-        expect(find.byTooltip('Attach'), findsNothing);
-        expect(
-          find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline_rounded)),
-          findsOneWidget,
-        );
-        return;
-      }
-      await tester.tap(find.byTooltip('Attach'));
-      await pumpFrames(tester);
-      expect(find.byType(AttachmentPreviewScreen), findsOneWidget);
+      expect(find.byTooltip('Attach'), kAttachmentsEnabled ? findsOneWidget : findsNothing);
+      expect(
+        find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline_rounded)),
+        kAttachmentsEnabled ? findsNothing : findsOneWidget,
+      );
     });
   });
 

@@ -4,7 +4,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/app/router/app_router.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
-import 'package:veil_mobile/src/features/calls/calls_feature.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_parts.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
@@ -292,8 +291,6 @@ void main() {
       for (final tab in ['채팅', '연락처', '설정']) {
         expect(find.text(tab), findsOneWidget);
       }
-      expect(find.text('통화'), kCallsEnabled ? findsOneWidget : findsNothing,
-          reason: 'the Calls tab is there only while calls are switched on (kCallsEnabled)');
       expect(find.text('Chats'), findsNothing);
       expect(find.byTooltip('새 대화'), findsOneWidget);
     });

@@ -1,19 +1,11 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/veil_theme.dart';
-import '../../features/ai/ai_feature.dart';
 import '../../features/app_lock/presentation/app_lock_screen.dart';
-import '../../features/attachments/attachments_feature.dart';
-import '../../features/attachments/presentation/attachment_preview_screen.dart';
 import '../../features/auth/presentation/choose_handle_screen.dart';
 import '../../features/auth/presentation/create_account_screen.dart';
-import '../../features/ai/presentation/ai_chat_screen.dart';
-import '../../features/calls/calls_feature.dart';
-import '../../features/calls/presentation/call_history_screen.dart';
-import '../../features/calls/presentation/call_screen.dart';
 import '../../features/chat/presentation/chat_room_screen.dart';
 import '../../features/secret_link/presentation/one_time_link_screen.dart';
 import '../../features/contacts/presentation/contacts_screen.dart';
@@ -22,8 +14,6 @@ import '../../features/conversations/presentation/conversation_list_screen.dart'
 import '../../features/conversations/presentation/start_direct_chat_screen.dart';
 import '../../features/conversations/presentation/start_group_screen.dart';
 import '../../features/device_transfer/presentation/device_transfer_screen.dart';
-import '../../features/media/media_feature.dart';
-import '../../features/media/presentation/media_picker_screen.dart';
 import '../../features/onboarding/presentation/onboarding_warning_screen.dart';
 import '../../features/onboarding/presentation/privacy_consent_screen.dart';
 import '../../features/onboarding/presentation/splash_screen.dart';
@@ -32,16 +22,8 @@ import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/settings/presentation/trusted_devices_screen.dart';
-import '../../features/stickers/presentation/sticker_picker_screen.dart';
-import '../../features/stickers/stickers_feature.dart';
-import '../../features/stories/presentation/stories_screen.dart';
-import '../../features/stories/presentation/story_viewer_screen.dart';
-import '../../features/stories/stories_feature.dart';
-import '../../features/voice/presentation/voice_recorder_screen.dart';
-import '../../features/voice/voice_feature.dart';
-import '../../l10n/generated/app_localizations.dart';
-import '../../shared/presentation/veil_ui.dart';
 import '../app_state.dart';
+import 'main_tab_shell.dart';
 import 'route_guard.dart';
 
 /// The app's route table. Separate from [appRouterProvider] so tests can
@@ -64,10 +46,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     refreshListenable: guard,
     redirect: (context, state) => redirectFor(guard.value, state.uri),
     routes: ref.read(appRoutesProvider),
-    // A location no route has (a link into a feature this build has
-    // switched off, a mistyped one) has nothing to show. It opens the app
-    // where it normally opens instead of a dead end, and the guard above
-    // still has the last word on where that is.
+    // A location no route has (an old link, a mistyped one) has nothing to
+    // show. It opens the app where it normally opens instead of a dead end,
+    // and the guard above still has the last word on where that is.
     onException: (context, state, router) => router.go('/conversations'),
   );
 
@@ -133,12 +114,10 @@ List<RouteBase> _buildRoutes() {
       // Per route table, so two routers (e.g. consecutive tests) never share
       // one GlobalKey.
       navigatorKey: GlobalKey<NavigatorState>(),
-      builder: (context, state, child) => _VeilMainShell(child: child),
+      builder: (context, state, child) => MainTabShell(child: child),
       routes: [
         GoRoute(path: '/conversations', builder: (context, state) => const ConversationListScreen()),
         GoRoute(path: '/contacts', builder: (context, state) => const ContactsScreen()),
-        if (kStoriesEnabled) GoRoute(path: '/stories', builder: (context, state) => const StoriesScreen()),
-        if (kCallsEnabled) GoRoute(path: '/calls', builder: (context, state) => const CallHistoryScreen()),
         GoRoute(path: '/settings', builder: (context, state) => const SettingsScreen()),
       ],
     ),
@@ -169,49 +148,6 @@ List<RouteBase> _buildRoutes() {
         ),
       ),
     ),
-    // The routes of a feature this build has switched off are left out, so
-    // no location reaches its screen (see each *_feature.dart).
-    if (kAttachmentsEnabled)
-      GoRoute(
-        path: '/attachment/:conversationId',
-        builder: (context, state) => AttachmentPreviewScreen(
-          conversationId: state.pathParameters['conversationId']!,
-        ),
-      ),
-    if (kMediaPickerEnabled)
-      GoRoute(
-        path: '/media/:conversationId',
-        builder: (context, state) => const MediaPickerScreen(),
-      ),
-    if (kVoiceMessagesEnabled)
-      GoRoute(
-        path: '/voice/:conversationId',
-        builder: (context, state) => const VoiceRecorderScreen(),
-      ),
-    if (kStickerPickerEnabled)
-      GoRoute(
-        path: '/stickers/:conversationId',
-        builder: (context, state) => const StickerPickerScreen(),
-      ),
-    if (kCallsEnabled)
-      GoRoute(
-        path: '/call/:conversationId',
-        builder: (context, state) => CallScreen(
-          contactName: switch (state.extra) { {'name': final String name} => name, _ => '' },
-        ),
-      ),
-    if (kStoriesEnabled)
-      GoRoute(
-        path: '/story-viewer/:userId',
-        builder: (context, state) => StoryViewerScreen(
-          authorUserId: state.pathParameters['userId']!,
-        ),
-      ),
-    if (kAssistantEnabled)
-      GoRoute(
-        path: '/ai-chat',
-        pageBuilder: (context, state) => _veilPushPage(state, const AiChatScreen()),
-      ),
     GoRoute(
       path: '/profile',
       pageBuilder: (context, state) => _veilPushPage(state, const ProfileScreen()),
@@ -309,137 +245,4 @@ CustomTransitionPage<void> _veilModalPage(GoRouterState state, Widget child) {
       return SlideTransition(position: slide, child: child);
     },
   );
-}
-
-class _VeilMainShell extends StatelessWidget {
-  const _VeilMainShell({required this.child});
-
-  final Widget child;
-
-  // Chats, Contacts and Settings, with the tab of each switched-on feature
-  // between them.
-  static const _tabs = <_VeilNavTab>[
-    _VeilNavTab(path: '/conversations', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: _chatsLabel),
-    _VeilNavTab(path: '/contacts', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: _contactsLabel),
-    if (kStoriesEnabled)
-      _VeilNavTab(path: '/stories', icon: Icons.amp_stories_outlined, activeIcon: Icons.amp_stories_rounded, label: _storiesLabel),
-    if (kCallsEnabled)
-      _VeilNavTab(path: '/calls', icon: Icons.call_outlined, activeIcon: Icons.call_rounded, label: _callsLabel),
-    _VeilNavTab(path: '/settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded, label: _settingsLabel),
-  ];
-
-  static String _chatsLabel(AppLocalizations l10n) => l10n.navChats;
-  static String _contactsLabel(AppLocalizations l10n) => l10n.navContacts;
-  static String _storiesLabel(AppLocalizations l10n) => l10n.navStories;
-  static String _callsLabel(AppLocalizations l10n) => l10n.navCalls;
-  static String _settingsLabel(AppLocalizations l10n) => l10n.navSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    final l10n = AppLocalizations.of(context);
-    final currentPath = GoRouterState.of(context).fullPath ?? '/conversations';
-    var currentIndex = _tabs.indexWhere((tab) => currentPath.startsWith(tab.path));
-    if (currentIndex < 0) {
-      currentIndex = 0;
-    }
-
-    return Scaffold(
-      extendBody: true,
-      body: child,
-      bottomNavigationBar: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: palette.stroke.withValues(alpha: 0.5),
-              width: 0.5,
-            ),
-          ),
-        ),
-        child: VeilBlur(
-          intensity: 28,
-          tintAlpha: 0.72,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: VeilSpace.md,
-                vertical: VeilSpace.xs,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(_tabs.length, (index) {
-                  final tab = _tabs[index];
-                  final selected = index == currentIndex;
-                  return Expanded(
-                    child: VeilPressable(
-                      haptic: false,
-                      onTap: () {
-                        if (!selected) {
-                          VeilHaptics.selection();
-                        }
-                        context.go(tab.path);
-                      },
-                      scale: 0.92,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedContainer(
-                              duration: VeilMotion.fast,
-                              curve: VeilMotion.springGentle,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(VeilRadius.pill),
-                                color: selected ? palette.primarySoft : Colors.transparent,
-                              ),
-                              child: Icon(
-                                selected ? tab.activeIcon : tab.icon,
-                                size: 22,
-                                color: selected ? palette.primary : palette.textSubtle,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              tab.label(l10n),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                                color: selected ? palette.primary : palette.textSubtle,
-                                letterSpacing: 0.1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VeilNavTab {
-  const _VeilNavTab({
-    required this.path,
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-  });
-
-  final String path;
-  final IconData icon;
-  final IconData activeIcon;
-
-  /// The tab's name in the user's language.
-  final String Function(AppLocalizations l10n) label;
 }

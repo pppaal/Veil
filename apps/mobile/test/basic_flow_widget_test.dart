@@ -147,12 +147,16 @@ void main() {
     expect(find.text('This device'), findsOneWidget);
     expect(find.text('Revoked'), findsOneWidget);
     expect(find.text('Revoke'), findsOneWidget);
-    // The server keeps only the UTC day of device activity: it is shown as
-    // that day, with no time of day that never happened.
-    expect(find.text('Last seen Apr 2 (UTC)'), findsOneWidget);
-    expect(find.text('Last synced Mar 30 (UTC)'), findsOneWidget);
-    expect(find.text('Last active Apr 2 (UTC)'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^Last (seen|synced|active|activity) .*\d\d:\d\d')), findsNothing);
+    // One line on when a device was last seen. The server keeps only the
+    // UTC day of device activity: it is shown as that day, a bare date with
+    // no time of day that never happened and no time zone after it.
+    expect(find.text('Last seen Apr 1'), findsOneWidget);
+    expect(find.text('Revoked Apr 1'), findsOneWidget);
+    expect(find.text('Approved by Pixel Fold'), findsOneWidget);
+    expect(find.textContaining('UTC'), findsNothing);
+    expect(find.textContaining(RegExp(r'\d\d:\d\d')), findsNothing);
+    // Synced and active said again what last seen says.
+    expect(find.textContaining(RegExp(r'^Last (synced|active)')), findsNothing);
   });
 }
 

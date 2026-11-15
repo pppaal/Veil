@@ -124,7 +124,7 @@ void main() {
         final devices = await read(tester);
         expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android']),
             reason: 'the devices were on screen');
-        for (final text in ['Last seen Apr 2 (UTC)', 'Approved by Pixel 9 Pro Fold', l10n.settingsDeviceNoteStale]) {
+        for (final text in ['Last seen Apr 2', 'Approved by Pixel 9 Pro Fold', l10n.settingsDeviceNoteStale]) {
           expect(devices, contains(text));
         }
         // No count of what the list already shows.

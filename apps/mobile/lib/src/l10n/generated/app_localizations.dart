@@ -910,24 +910,6 @@ abstract class AppLocalizations {
   /// **'Last seen {when}'**
   String settingsDeviceSeen(String when);
 
-  /// No description provided for @settingsDeviceSynced.
-  ///
-  /// In en, this message translates to:
-  /// **'Last synced {when}'**
-  String settingsDeviceSynced(String when);
-
-  /// No description provided for @settingsDeviceActivity.
-  ///
-  /// In en, this message translates to:
-  /// **'Last active {when}'**
-  String settingsDeviceActivity(String when);
-
-  /// No description provided for @settingsDeviceTrustedAt.
-  ///
-  /// In en, this message translates to:
-  /// **'Approved {when}'**
-  String settingsDeviceTrustedAt(String when);
-
   /// No description provided for @settingsDeviceJoinedFrom.
   ///
   /// In en, this message translates to:
@@ -1102,12 +1084,6 @@ abstract class AppLocalizations {
   /// **'Connecting…'**
   String get chatBannerRelayReconnecting;
 
-  /// No description provided for @chatBannerDeliveryStalled.
-  ///
-  /// In en, this message translates to:
-  /// **'Couldn\'t send'**
-  String get chatBannerDeliveryStalled;
-
   /// No description provided for @chatBannerQueuedLocally.
   ///
   /// In en, this message translates to:
@@ -1168,29 +1144,23 @@ abstract class AppLocalizations {
   /// **'Disappearing messages'**
   String get chatTtlSheetTitle;
 
+  /// No description provided for @chatTtlSheetFooter.
+  ///
+  /// In en, this message translates to:
+  /// **'The timer starts when a message is sent.'**
+  String get chatTtlSheetFooter;
+
   /// No description provided for @chatTtlOff.
   ///
   /// In en, this message translates to:
   /// **'Off'**
   String get chatTtlOff;
 
-  /// No description provided for @chatTtlOffCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Messages don\'t disappear.'**
-  String get chatTtlOffCaption;
-
   /// No description provided for @chatTtl10s.
   ///
   /// In en, this message translates to:
   /// **'10 seconds'**
   String get chatTtl10s;
-
-  /// No description provided for @chatTtl10sCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Gone 10 seconds after it\'s sent.'**
-  String get chatTtl10sCaption;
 
   /// No description provided for @chatTtl1m.
   ///
@@ -1215,12 +1185,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'1 day'**
   String get chatTtl1d;
-
-  /// No description provided for @chatTtl1dCaption.
-  ///
-  /// In en, this message translates to:
-  /// **'Gone a day after it\'s sent.'**
-  String get chatTtl1dCaption;
 
   /// No description provided for @chatTtlCustom.
   ///

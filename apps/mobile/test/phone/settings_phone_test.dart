@@ -167,7 +167,7 @@ void main() {
       expect(find.byType(DeviceRow, skipOffstage: false), findsNWidgets(3));
       expect(find.descendant(of: laptop, matching: find.text('MacBook Air')), findsOneWidget);
       expect(find.descendant(of: laptop, matching: find.text(en.settingsDeviceStateStale)), findsOneWidget);
-      expect(find.descendant(of: laptop, matching: find.text('Last seen Apr 2 (UTC)')), findsOneWidget);
+      expect(find.descendant(of: laptop, matching: find.text('Last seen Apr 2')), findsOneWidget);
       expect(find.text(en.settingsDeviceStateCurrent, skipOffstage: false), findsOneWidget);
       expect(find.text(en.settingsDeviceStateRevoked, skipOffstage: false), findsOneWidget);
       final stale = find.byKey(const ValueKey('settings-devices-stale'), skipOffstage: false);

@@ -217,10 +217,12 @@ class ChatStatusBanners extends StatelessWidget {
         ),
       if (pendingCount > 0)
         _Notice(
+          // Sends that failed are said once, in one line with its action:
+          // a title over it would say the same thing twice.
           title: !connected
               ? l10n.chatBannerRelayReconnecting
               : failedCount > 0
-                  ? l10n.chatBannerDeliveryStalled
+                  ? null
                   : l10n.chatBannerQueuedLocally,
           message: !connected
               ? networkRecoveryMessage(
@@ -286,7 +288,8 @@ class _Notice {
     this.onAction,
   });
 
-  final String title;
+  /// Null for a notice whose one line says it all.
+  final String? title;
   final String message;
   final VeilTone tone;
   final String? actionLabel;

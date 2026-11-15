@@ -5,41 +5,19 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 class _TtlOption {
-  const _TtlOption({required this.label, required this.duration, this.caption});
+  const _TtlOption({required this.label, required this.duration});
 
   final String label;
   final Duration? duration;
-  final String? caption;
 }
 
 List<_TtlOption> _ttlOptions(AppLocalizations l10n) => <_TtlOption>[
-      _TtlOption(
-        label: l10n.chatTtlOff,
-        duration: null,
-        caption: l10n.chatTtlOffCaption,
-      ),
-      _TtlOption(
-        label: l10n.chatTtl10s,
-        duration: const Duration(seconds: 10),
-        caption: l10n.chatTtl10sCaption,
-      ),
-      _TtlOption(
-        label: l10n.chatTtl1m,
-        duration: const Duration(minutes: 1),
-      ),
-      _TtlOption(
-        label: l10n.chatTtl5m,
-        duration: const Duration(minutes: 5),
-      ),
-      _TtlOption(
-        label: l10n.chatTtl1h,
-        duration: const Duration(hours: 1),
-      ),
-      _TtlOption(
-        label: l10n.chatTtl1d,
-        duration: const Duration(days: 1),
-        caption: l10n.chatTtl1dCaption,
-      ),
+      _TtlOption(label: l10n.chatTtlOff, duration: null),
+      _TtlOption(label: l10n.chatTtl10s, duration: const Duration(seconds: 10)),
+      _TtlOption(label: l10n.chatTtl1m, duration: const Duration(minutes: 1)),
+      _TtlOption(label: l10n.chatTtl5m, duration: const Duration(minutes: 5)),
+      _TtlOption(label: l10n.chatTtl1h, duration: const Duration(hours: 1)),
+      _TtlOption(label: l10n.chatTtl1d, duration: const Duration(days: 1)),
     ];
 
 /// The label of the disappearing-message timer [current] (null is off).
@@ -65,9 +43,9 @@ Future<({Duration? ttl})?> showDisappearingTimerSheet(
   final selected = await showModalBottomSheet<Duration?>(
     context: context,
     showDragHandle: true,
-    // Six options with their captions are taller than the half screen a
-    // sheet gets by default: this one takes the height it needs, up to most
-    // of the screen, and scrolls beyond that.
+    // Six options and their footer are taller than the half screen a sheet
+    // gets by default: this one takes the height it needs, up to most of
+    // the screen, and scrolls beyond that.
     isScrollControlled: true,
     builder: (sheetContext) {
       final theme = Theme.of(sheetContext);
@@ -84,14 +62,16 @@ Future<({Duration? ttl})?> showDisappearingTimerSheet(
                   padding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.xs),
                   child: Text(l10n.chatTtlSheetTitle, style: theme.textTheme.titleLarge),
                 ),
+                // One line under the choices says when a timer starts; no
+                // row repeats it in a caption of its own.
                 VeilGroup(
+                  footer: l10n.chatTtlSheetFooter,
                   children: [
                     for (final option in options)
                       Semantics(
                         selected: current() == option.duration,
                         child: VeilRow(
                           title: option.label,
-                          subtitle: option.caption,
                           // The chosen timer is ticked; the others keep its
                           // room, and no row has a chevron: a tap chooses.
                           trailing: current() == option.duration

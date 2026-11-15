@@ -6,15 +6,25 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/trusted_devices.dart';
 
-/// A device's last activity as the server keeps it: the UTC day only, so it
-/// is shown as that day, never as a local time of day that never happened
-/// (or the day before, west of UTC).
-String deviceUtcDay(String locale, DateTime at) => '${DateFormat.MMMd(locale).format(at.toUtc())} (UTC)';
+/// The day a device was last seen. The server keeps only the UTC day of a
+/// device's activity, so it is shown as that day and never as a time of
+/// day: a bare date already says it is a day, not a moment.
+String deviceSeenDay(String locale, DateTime at) => DateFormat.MMMd(locale).format(at.toUtc());
 
-/// A moment on this device's clock: the day and the time.
-String _localTime(String locale, DateTime at) {
-  final local = at.toLocal();
-  return '${DateFormat.MMMd(locale).format(local)}, ${DateFormat('HH:mm').format(local)}';
+/// The day of a moment on this phone's clock (when a device was added or
+/// revoked).
+String _localDay(String locale, DateTime at) => DateFormat.MMMd(locale).format(at.toLocal());
+
+/// The one line under a device's name: what it is, for this phone; when it
+/// was revoked, for one that is; when it was last seen, for the others.
+String _deviceSubtitle(AppLocalizations l10n, TrustedDevice device) {
+  final locale = l10n.localeName;
+  return switch (device.trustState) {
+    DeviceTrustState.current => _platformLabel(device.platform),
+    DeviceTrustState.revoked when device.revokedAt != null =>
+      l10n.settingsDeviceRevokedAt(_localDay(locale, device.revokedAt!)),
+    _ => l10n.settingsDeviceSeen(deviceSeenDay(locale, device.lastSeenAt)),
+  };
 }
 
 /// A platform's name, which is a trademark and written the same everywhere.
@@ -53,8 +63,8 @@ Widget _kindIcon(String platform) => Icon(_platformIcon(platform), size: VeilIco
 const double deviceRowTextInset = VeilSpace.md + VeilIconSize.md + VeilSpace.sm;
 
 /// One device of the account in the settings list: what kind it is, its
-/// name, when it was last seen (or what it is, for this phone, or when it
-/// was revoked), and its state as a word.
+/// name, one line on when it was last seen (or what it is, for this phone,
+/// or when it was revoked), and its state as a word.
 class DeviceRow extends StatelessWidget {
   const DeviceRow({super.key, required this.device, this.onTap});
 
@@ -64,26 +74,19 @@ class DeviceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final locale = l10n.localeName;
-    final subtitle = switch (device.trustState) {
-      DeviceTrustState.current => _platformLabel(device.platform),
-      DeviceTrustState.revoked when device.revokedAt != null =>
-        l10n.settingsDeviceRevokedAt(_localTime(locale, device.revokedAt!)),
-      _ => l10n.settingsDeviceSeen(deviceUtcDay(locale, device.lastSeenAt)),
-    };
     return VeilRow(
       leading: _kindIcon(device.platform),
       // The name its owner gave it: drawn as typed.
       title: device.deviceName,
-      subtitle: subtitle,
+      subtitle: _deviceSubtitle(l10n, device),
       status: _status(l10n, device.trustState),
       onTap: onTap,
     );
   }
 }
 
-/// One device on the devices screen, as one group: the device and its
-/// state, what the server knows of when it was added, seen and approved,
+/// One device on the devices screen, as one group: the device as the
+/// settings list shows it, when it was added and which device approved it,
 /// and, for another device still trusted, the row that revokes it. A
 /// preferred or a stale device says under the group what that means.
 class DeviceDetailsGroup extends StatelessWidget {
@@ -99,15 +102,9 @@ class DeviceDetailsGroup extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final palette = context.veilPalette;
-    final locale = l10n.localeName;
     final facts = [
-      l10n.settingsDeviceCreated(_localTime(locale, device.createdAt)),
-      l10n.settingsDeviceSeen(deviceUtcDay(locale, device.lastSeenAt)),
-      if (device.lastSyncAt case final at?) l10n.settingsDeviceSynced(deviceUtcDay(locale, at)),
-      l10n.settingsDeviceActivity(deviceUtcDay(locale, device.lastTrustedActivityAt)),
-      if (device.trustedAt case final at?) l10n.settingsDeviceTrustedAt(_localTime(locale, at)),
+      l10n.settingsDeviceCreated(_localDay(l10n.localeName, device.createdAt)),
       if (device.joinedFromDeviceId case final id?) l10n.settingsDeviceJoinedFrom(device.joinedFromDeviceName ?? id),
-      if (device.revokedAt case final at?) l10n.settingsDeviceRevokedAt(_localTime(locale, at)),
     ];
     final note = switch (device.trustState) {
       DeviceTrustState.preferred => l10n.settingsDeviceNotePreferred,
@@ -122,7 +119,7 @@ class DeviceDetailsGroup extends StatelessWidget {
         VeilRow(
           leading: _kindIcon(device.platform),
           title: device.deviceName,
-          subtitle: _platformLabel(device.platform),
+          subtitle: _deviceSubtitle(l10n, device),
           status: _status(l10n, device.trustState),
         ),
         Padding(

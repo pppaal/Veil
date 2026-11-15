@@ -492,21 +492,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String settingsDeviceSynced(String when) {
-    return 'Last synced $when';
-  }
-
-  @override
-  String settingsDeviceActivity(String when) {
-    return 'Last active $when';
-  }
-
-  @override
-  String settingsDeviceTrustedAt(String when) {
-    return 'Approved $when';
-  }
-
-  @override
   String settingsDeviceJoinedFrom(String device) {
     return 'Approved by $device';
   }
@@ -628,9 +613,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatBannerRelayReconnecting => 'Connecting…';
 
   @override
-  String get chatBannerDeliveryStalled => 'Couldn\'t send';
-
-  @override
   String get chatBannerQueuedLocally => 'Sending…';
 
   @override
@@ -685,16 +667,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlSheetTitle => 'Disappearing messages';
 
   @override
+  String get chatTtlSheetFooter => 'The timer starts when a message is sent.';
+
+  @override
   String get chatTtlOff => 'Off';
 
   @override
-  String get chatTtlOffCaption => 'Messages don\'t disappear.';
-
-  @override
   String get chatTtl10s => '10 seconds';
-
-  @override
-  String get chatTtl10sCaption => 'Gone 10 seconds after it\'s sent.';
 
   @override
   String get chatTtl1m => '1 minute';
@@ -707,9 +686,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatTtl1d => '1 day';
-
-  @override
-  String get chatTtl1dCaption => 'Gone a day after it\'s sent.';
 
   @override
   String get chatTtlCustom => 'Custom';

@@ -188,7 +188,10 @@ void main() {
         _message('m2', MessageDeliveryState.pending),
       ]));
 
-      expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
+      // One line says it, with its action: no title over it saying the same.
+      final notice = tester.widget<VeilNotice>(find.byType(VeilNotice));
+      expect(notice.title, isNull);
+      expect(notice.message, "1 message wasn't sent.");
       expect(find.text("1 message wasn't sent."), findsOneWidget);
       await tester.tap(find.text(l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
@@ -258,7 +261,6 @@ void main() {
       // The error has no action to offer: it is one plain line, not a notice.
       expect(find.text('keystore unavailable'), findsOneWidget);
       expect(find.ancestor(of: find.text('keystore unavailable'), matching: find.byType(VeilNotice)), findsNothing);
-      expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
       expect(find.text(l10n.chatBannerFailedSends(1)), findsOneWidget);
 
       Finder inBanner(String title, String action) => find.descendant(
@@ -270,7 +272,7 @@ void main() {
       await tester.tap(inBanner(l10n.chatAccountHoldOtherTitle, l10n.chatAccountHoldAcknowledge));
       expect(acknowledged.single.$1, same(messenger.hold));
       expect(acknowledged.single.$2, 'selene');
-      await tester.tap(inBanner(l10n.chatBannerDeliveryStalled, l10n.chatRetryFailedSendsAction));
+      await tester.tap(inBanner(l10n.chatBannerFailedSends(1), l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
       for (final action in [
         l10n.chatIdentityChangedReview,

@@ -200,7 +200,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     // With nothing loaded, the message area says why and offers to retry:
     // one statement of the error, not a banner above it as well.
     final loadFailedShown = _loadFailed && messages.isEmpty;
-    final error = controller.errorMessage;
+    // The note about a dropped relay link is not why a load failed.
+    final error = controller.errorIsRelayInterruption ? null : controller.errorMessage;
 
     final banners = ChatStatusBanners(
       controller: controller,

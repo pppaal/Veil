@@ -119,7 +119,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String appLockLockoutBody(String retry) {
-    return 'PIN entry is paused for now. $retry';
+    return 'PIN entry is paused. $retry';
   }
 
   @override
@@ -127,12 +127,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String appLockRetrySeconds(int seconds) {
-    return 'Try again in ${seconds}s.';
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'Try again in $seconds seconds.',
+      one: 'Try again in 1 second.',
+    );
+    return '$_temp0';
   }
 
   @override
   String appLockRetryMinutes(int minutes) {
-    return 'Try again in ${minutes}m.';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'Try again in $minutes minutes.',
+      one: 'Try again in 1 minute.',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -362,7 +374,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentCollectItem2 =>
-      'Device platform, device name and push token. Push wake-ups carry no message content';
+      'Device type, device name and push token (notifications carry no message content)';
 
   @override
   String get privacyConsentCollectItem3 =>
@@ -370,7 +382,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentCollectItem4 =>
-      'Your in-app contact list: which accounts you added. The names you give them stay on this phone';
+      'Your contact list in the app: which accounts you added (the names you give them stay on this phone)';
 
   @override
   String get privacyConsentCollectItem5 =>
@@ -378,7 +390,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentCollectItem6 =>
-      'Call records: chat, who started the call, call type, start and end time, duration (kept 30 days)';
+      'Call records: which chat, who started the call, call type, start and end time, duration (kept 30 days)';
 
   @override
   String get privacyConsentCollectItem7 =>
@@ -397,7 +409,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentPurposeItem3 =>
-      'Finding people by handle and routing chats';
+      'Finding people by handle and delivering messages to their devices';
 
   @override
   String get privacyConsentRetentionTitle => 'How long';
@@ -423,7 +435,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentRightsItem2 =>
-      'Delete everything from Settings, then Delete account';
+      'You can delete everything in Settings with Delete account';
 
   @override
   String get privacyConsentRightsItem3 =>
@@ -503,6 +515,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Lowercase letters, digits and underscores. It can\'t be changed later.';
 
   @override
+  String get authHandleFindCaption =>
+      'People find you by this handle. Veil has no phone number, email or contact upload.';
+
+  @override
   String get authHandleInputLabel => 'Handle';
 
   @override
@@ -573,7 +589,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsProfileTitle => 'Profile';
 
   @override
-  String get settingsLoadingDeviceGraph => 'Loading devices';
+  String get settingsLoadingDeviceGraph => 'Loading devices…';
 
   @override
   String get settingsLoadingDeviceGraphBody => '';
@@ -614,14 +630,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsReadReceiptsSubtitle =>
-      'When off, people don\'t see what you\'ve read, and you don\'t see what they\'ve read.';
+      'When off, people don\'t see when you\'ve read their messages, and you don\'t see when they\'ve read yours.';
 
   @override
   String get settingsTypingIndicatorsTitle => 'Send typing indicators';
 
   @override
   String get settingsTypingIndicatorsSubtitle =>
-      'People see when you\'re typing. Off unless you turn it on.';
+      'Lets people see when you\'re typing. It\'s off until you turn it on.';
 
   @override
   String get settingsLockNow => 'Lock now';
@@ -643,7 +659,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDeleteAccountBody =>
-      'Permanently removes your account, messages and contacts from this phone and the server. This cannot be undone.';
+      'This deletes your account, messages and contacts from this phone and the server. There is no backup, so this can\'t be undone.';
 
   @override
   String get settingsDeleteAccountAction => 'Delete account';
@@ -744,14 +760,14 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLogoutSubtitle =>
-      'Erases this phone\'s keys, session and messages. To use the account here again you need to move it from another phone.';
+      'Erases your keys and messages on this phone. To use the account here again, move it from another phone.';
 
   @override
   String get settingsLogoutConfirmTitle => 'Sign out of this phone?';
 
   @override
   String get settingsLogoutConfirmBody =>
-      'This erases the keys that make this phone yours. If this is your only device, the account and its messages are gone. There is no backup and no way to recover them.';
+      'This erases your keys and messages on this phone. If this is your only device, the account and its messages are gone. There is no backup and no way to recover them.';
 
   @override
   String get settingsLogoutConfirmPhrase => 'Sign out';
@@ -846,8 +862,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDeviceNoteCurrent => 'This is the phone you\'re using.';
 
   @override
-  String get settingsDeviceNotePreferred =>
-      'Messages are routed to this device first.';
+  String get settingsDeviceNotePreferred => 'Messages go to this device first.';
 
   @override
   String get settingsDeviceNoteTrusted =>
@@ -882,7 +897,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsGraphPreferredDiffersBody(String preferred, String current) {
-    return 'Messages are routed to $preferred first. $current still has the account.';
+    return 'Messages go to $preferred first. $current can still use the account.';
   }
 
   @override
@@ -921,7 +936,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAttachAction => 'Attach';
 
   @override
-  String get chatLoadingTitle => 'Loading messages';
+  String get chatLoadingTitle => 'Loading messages…';
 
   @override
   String get chatLoadingBody => '';
@@ -1001,8 +1016,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count messages couldn\'t be sent.',
-      one: '1 message couldn\'t be sent.',
+      other: '$count messages weren\'t sent.',
+      one: '1 message wasn\'t sent.',
     );
     return '$_temp0';
   }
@@ -1033,13 +1048,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatRetryFailedSendsAction => 'Retry now';
 
   @override
-  String get chatLoadOlder => 'Load older';
+  String get chatLoadOlder => 'Load older messages';
 
   @override
-  String get chatLoadingOlder => 'Loading older';
+  String get chatLoadingOlder => 'Loading older messages…';
 
   @override
-  String get chatSearchEmptyTitle => 'No matches';
+  String get chatSearchEmptyTitle => 'No messages found';
 
   @override
   String get chatSearchEmptyBody => 'Only messages on this phone are searched.';
@@ -1057,7 +1072,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtl10s => '10 seconds';
 
   @override
-  String get chatTtl10sCaption => 'Gone 10 seconds after it\'s read.';
+  String get chatTtl10sCaption => 'Gone 10 seconds after it\'s sent.';
 
   @override
   String get chatTtl1m => '1 minute';
@@ -1072,7 +1087,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtl1d => '1 day';
 
   @override
-  String get chatTtl1dCaption => 'Gone a day after it\'s read.';
+  String get chatTtl1dCaption => 'Gone a day after it\'s sent.';
 
   @override
   String get chatTtlCustom => 'Custom';
@@ -1081,11 +1096,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatTtlDisabledLabel => 'Off';
 
   @override
-  String get chatAttachmentTicketTitle => 'Download approved';
+  String get chatAttachmentTicketTitle => 'File not downloaded';
 
   @override
   String chatAttachmentTicketBody(String summary) {
-    return 'The server allowed this phone to download the file.\n\n$summary\n\nThis version can\'t download or open it yet.';
+    return 'The server would send this file, but this version can\'t download or open it yet.\n\n$summary';
   }
 
   @override
@@ -1124,7 +1139,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatScreenshotToast =>
-      'Screenshot taken. The app can\'t block it on this phone, so a notice is being sent to the other person.';
+      'You took a screenshot. Screenshots can\'t be blocked on this phone, so a notice is being sent to the other person.';
 
   @override
   String get chatScreenshotSystemNotice =>
@@ -1295,11 +1310,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatPhaseDescFinalizing => 'Attaching the file to the message.';
 
   @override
-  String get chatPhaseDescFailed => 'The upload failed. Retry to try again.';
+  String get chatPhaseDescFailed => 'The upload failed.';
 
   @override
-  String get chatPhaseDescCanceled =>
-      'The upload was stopped. Retry to start over.';
+  String get chatPhaseDescCanceled => 'The upload was canceled.';
 
   @override
   String chatAttachmentSizeBytes(int count) {
@@ -1312,7 +1326,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get chatTypingUnnamed => 'typing…';
+  String get chatTypingUnnamed => 'Typing…';
 
   @override
   String chatReactionSemantics(String emoji, int count) {
@@ -1346,10 +1360,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count messages are',
-      one: '1 message is',
+      other: '$count messages weren\'t sent.',
+      one: '1 message wasn\'t sent.',
     );
-    return '$_temp0 waiting to be sent. $retryLabel';
+    return '$_temp0 $retryLabel';
   }
 
   @override
@@ -1357,10 +1371,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count attachments are',
-      one: '1 attachment is',
+      other: '$count attachments are waiting.',
+      one: '1 attachment is waiting.',
     );
-    return '$_temp0 paused until you\'re back online. $retryLabel';
+    return '$_temp0 $retryLabel';
   }
 
   @override
@@ -1368,10 +1382,10 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count messages are',
-      one: '1 message is',
+      other: '$count messages are waiting.',
+      one: '1 message is waiting.',
     );
-    return '$_temp0 waiting to be sent. $retryLabel';
+    return '$_temp0 $retryLabel';
   }
 
   @override
@@ -1499,7 +1513,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get errorRejected =>
-      'The server rejected these values. Check them and try again.';
+      'The server didn\'t accept this. Check what you entered and try again.';
 
   @override
   String get errorRelayFailed =>
@@ -1555,10 +1569,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsPreviewMessage => 'Encrypted message';
 
   @override
-  String get conversationsPreviewImage => 'Encrypted image';
+  String get conversationsPreviewImage => 'Photo';
 
   @override
-  String get conversationsPreviewAttachment => 'Encrypted attachment';
+  String get conversationsPreviewAttachment => 'File';
 
   @override
   String get conversationsPreviewSystem => 'Security notice';
@@ -1696,10 +1710,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsResultFromPeer => 'Them';
 
   @override
-  String get conversationsKindImage => 'Image';
+  String get conversationsKindImage => 'Photo';
 
   @override
-  String get conversationsKindAttachment => 'Attachment';
+  String get conversationsKindAttachment => 'File';
 
   @override
   String get conversationsKindSystem => 'Notice';
@@ -1717,7 +1731,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsKindCall => 'Call';
 
   @override
-  String get conversationsLoadingMore => 'Loading more';
+  String get conversationsLoadingMore => 'Loading more…';
 
   @override
   String get conversationsLoadMore => 'Load more';
@@ -1759,7 +1773,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get oneTimeLinkSettingsSubtitle =>
-      'Send a secret that can be opened once. No app needed.';
+      'Send a secret that can be opened once. The other person doesn\'t need the app.';
 
   @override
   String get oneTimeLinkSecretLabel => 'Secret';
@@ -1822,7 +1836,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get oneTimeLinkLimitReader =>
-      'The reader can copy or screenshot it. One-time means one opening, not copy protection.';
+      'The person who opens it can copy it or take a screenshot. One-time means it opens once, not that it can\'t be copied.';
 
   @override
   String get oneTimeLinkLimitRelay =>
@@ -1834,7 +1848,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get contactsNotice =>
-      'The server keeps which accounts you added. The names you give them stay on this phone.';
+      'The server knows which accounts you added. The nicknames you give them stay on this phone.';
 
   @override
   String get contactsSearchHint => 'Search';
@@ -2010,13 +2024,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get startGroupNote =>
-      'The group\'s name, description and member list are stored on the server as you type them here.';
+      'The server can read the group name, description and member list.';
 
   @override
   String get safetyNumbersTitle => 'Safety number';
 
   @override
-  String get safetyNumbersLoadingTitle => 'Working out the safety number';
+  String get safetyNumbersLoadingTitle => 'Working out the safety number…';
 
   @override
   String get safetyNumbersLoadingBody => '';
@@ -2029,7 +2043,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersRotateDialogBody =>
-      'This agrees fresh keys with your contact, and your next message starts the new session. Messages already on their way still open. Use it if you think this phone or your contact\'s was briefly in someone else\'s hands: a copy of the old session can\'t read the new one.';
+      'This sets up new keys with your contact. Your next message uses them, and messages already on their way still open. Do this if you think your phone or theirs was briefly in someone else\'s hands: anyone who copied the old keys can\'t read new messages.';
 
   @override
   String get safetyNumbersCancel => 'Cancel';
@@ -2125,7 +2139,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersRotateBody =>
-      'Agrees fresh keys with your contact. Your next message starts the new session, and messages already on their way still open. Use it if this phone or theirs was briefly in someone else\'s hands.';
+      'Sets up new keys with your contact. Your next message uses them, and messages already on their way still open. Do this if your phone or theirs was briefly in someone else\'s hands.';
 
   @override
   String get safetyNumbersRotating => 'Starting…';
@@ -2363,7 +2377,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferOldHandTitle => 'Enter the code on the new phone';
 
   @override
-  String get deviceTransferOldHandBody => 'It appears here once you have it.';
+  String get deviceTransferOldHandBody =>
+      'The code shows here once you get it.';
 
   @override
   String get deviceTransferOldApproveTitle => 'Approve the new phone';
@@ -2465,7 +2480,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String deviceTransferStatusClaimApproved(String claimId, String fingerprint) {
-    return 'Approved $claimId. Key fingerprint: $fingerprint';
+    return 'Approved code $claimId. Key fingerprint: $fingerprint';
   }
 
   @override
@@ -2558,8 +2573,8 @@ class AppLocalizationsEn extends AppLocalizations {
     String _temp0 = intl.Intl.pluralLogic(
       count,
       locale: localeName,
-      other: '$count items need a look',
-      one: '1 item needs a look',
+      other: '$count items need attention',
+      one: '1 item needs attention',
     );
     return '$_temp0';
   }
@@ -2612,7 +2627,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'There is no backup, no password reset and no way for anyone, including us, to recover an account.';
 
   @override
-  String get securityStatusChecking => 'Checking';
+  String get securityStatusChecking => 'Checking…';
 
   @override
   String get securityStatusAvailable => 'Available';
@@ -2630,7 +2645,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusReady => 'Ready';
 
   @override
-  String get securityStatusStarting => 'Starting';
+  String get securityStatusStarting => 'Starting…';
 
   @override
   String get securityStatusBlocked => 'Blocked';
@@ -2782,7 +2797,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusRelayConnectedDetail =>
-      'Connected. The server sees only encrypted messages.';
+      'Messages arrive as they\'re sent.';
 
   @override
   String get securityStatusRelayIdleDetail => 'Not connected or still syncing.';
@@ -2850,7 +2865,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusLocalWipeDetail =>
-      'Local only. Erases this phone\'s messages, keys and app lock.';
+      'Erases the messages, keys and app lock on this phone.';
 
   @override
   String get securityStatusCryptoAdapter => 'Encryption';
@@ -2880,7 +2895,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get securityStatusPushPlaintext => 'Push content';
+  String get securityStatusPushPlaintext => 'Message text in notifications';
 
   @override
   String get securityStatusPushPlaintextForbidden => 'None';
@@ -2904,7 +2919,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'No server address is configured, so there are no push notifications.';
 
   @override
-  String get securityStatusPushPayloads => 'Push payloads';
+  String get securityStatusPushPayloads => 'Notification content';
 
   @override
   String get securityStatusPushPayloadsMetadata => 'Metadata only';

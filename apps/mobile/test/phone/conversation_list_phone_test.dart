@@ -93,7 +93,7 @@ void main() {
       expect(previews['Jonas Weber'], 'See you at nine.');
       expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
       // Only text is quoted: other kinds are named by what they are.
-      expect(previews['Omar Haddad'], 'Encrypted image');
+      expect(previews['Omar Haddad'], 'Photo');
       expect(previews['Alexandra Montgomery-Whitfield'], 'Voice message');
       expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));

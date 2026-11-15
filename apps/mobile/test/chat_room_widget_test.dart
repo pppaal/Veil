@@ -128,7 +128,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'nothing like it');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
-    expect(find.text('No matches'), findsWidgets);
+    expect(find.text('No matches'), findsOneWidget);
     expect(find.text('Orbit relay window'), findsNothing);
   });
 
@@ -216,21 +216,21 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Load older'), findsOneWidget);
+    expect(find.text('Load older messages'), findsOneWidget);
     expect(find.text('Newest relay note'), findsOneWidget);
 
-    await tester.tap(find.text('Load older'));
+    await tester.tap(find.text('Load older messages'));
     await tester.pump();
     // The button says so while the page is on its way, and cannot be
     // pressed again.
     expect(find.text('Loading older'), findsOneWidget);
-    expect(find.text('Load older'), findsNothing);
+    expect(find.text('Load older messages'), findsNothing);
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
 
     expect(find.text('Older relay note'), findsOneWidget);
     expect(find.text('Newest relay note'), findsOneWidget);
-    expect(find.text('Load older'), findsNothing);
+    expect(find.text('Load older messages'), findsNothing);
     expect(find.text('Loading older'), findsNothing);
   });
 

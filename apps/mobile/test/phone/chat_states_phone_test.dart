@@ -153,7 +153,7 @@ void main() {
       await withPhoneApp(tester, identities, location: _chat, body: (world) async {
         world.messenger.presenceTyping.typingStarted(chatConversationId, peerHandle);
         await tester.pump();
-        expect(find.text('typing…'), findsOneWidget);
+        expect(find.text('Typing…'), findsOneWidget);
         expect(find.textContaining('@$peerHandle is'), findsNothing);
         await tester.pump(const Duration(seconds: 6));
       });
@@ -205,7 +205,7 @@ void main() {
         location: _emptyChat,
         attention: const ChatAttention(loading: true),
         body: (world) async {
-          expect(find.text('Loading messages'), findsOneWidget);
+          expect(find.text('Loading messages…'), findsOneWidget);
           expect(find.text('No messages yet'), findsNothing);
           expect(find.text('Compare safety numbers'), findsNothing);
         },

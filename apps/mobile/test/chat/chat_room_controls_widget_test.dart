@@ -189,7 +189,7 @@ void main() {
       ]));
 
       expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
-      expect(find.text("1 message couldn't be sent."), findsOneWidget);
+      expect(find.text("1 message wasn't sent."), findsOneWidget);
       await tester.tap(find.text(l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
 
@@ -198,7 +198,7 @@ void main() {
         _message('m1', MessageDeliveryState.failed),
         _message('m2', MessageDeliveryState.failed),
       ]));
-      expect(find.text("2 messages couldn't be sent."), findsOneWidget);
+      expect(find.text("2 messages weren't sent."), findsOneWidget);
       expect(find.textContaining('(s)'), findsNothing);
     });
 

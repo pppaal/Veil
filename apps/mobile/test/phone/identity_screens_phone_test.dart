@@ -515,7 +515,7 @@ void main() {
 
     test('counts what needs a look in words that agree with the number', () {
       expect(l10n.securityStatusAttentionTitle(1), '1 item needs a look');
-      expect(l10n.securityStatusAttentionTitle(3), '3 items need a look');
+      expect(l10n.securityStatusAttentionTitle(3), '3 items need attention');
       expect(l10n.appLockStatusPinMismatchAttempts(1), 'PIN mismatch. 1 attempt left before temporary lock.');
       expect(l10n.appLockStatusPinMismatchAttempts(2), 'PIN mismatch. 2 attempts left before temporary lock.');
     });

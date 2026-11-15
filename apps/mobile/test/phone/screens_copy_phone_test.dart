@@ -104,7 +104,7 @@ void main() {
       expect(labels[4], contains('claim-7'));
       expect(labels[5], allOf(contains('claim-7'), contains('AB12 CD34')));
       expect(transferStatusLabel(l10n, null), isNull);
-      expect(transferStatusLabel(l10n, const TransferClaimApproved('c', 'f')), 'Approved c. Key fingerprint: f');
+      expect(transferStatusLabel(l10n, const TransferClaimApproved('c', 'f')), 'Approved code c. Key fingerprint: f');
     });
   });
 

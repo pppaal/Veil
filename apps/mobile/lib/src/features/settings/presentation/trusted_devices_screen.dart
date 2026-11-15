@@ -11,7 +11,8 @@ import 'trusted_device_card.dart';
 
 /// The devices that hold this account, as the relay lists them: this one
 /// first, then the others, each with what its state means and, where it
-/// still can be, the button that revokes it. Opened from the settings tab.
+/// still can be, the button that revokes it. The route `/trusted-devices`,
+/// opened from the settings tab.
 class TrustedDevicesScreen extends ConsumerWidget {
   const TrustedDevicesScreen({super.key});
 
@@ -69,8 +70,11 @@ class TrustedDevicesScreen extends ConsumerWidget {
     return [
       _Summary(
         parts: [
-          l10n.settingsDevicesTrustedCount(list.activeCount),
-          if (list.staleCount > 0) l10n.settingsGraphStaleCount(list.staleCount),
+          // A stale device is still a trusted one: counted inside the
+          // trusted, not beside them, so the parts add up to the list.
+          list.staleCount > 0
+              ? l10n.settingsDevicesTrustedWithStale(list.activeCount, list.staleCount)
+              : l10n.settingsDevicesTrustedCount(list.activeCount),
           if (list.revokedCount > 0) l10n.settingsGraphRevokedCount(list.revokedCount),
         ],
         detail: recent == null ? null : l10n.settingsGraphRecentActivity(deviceUtcDay(l10n.localeName, recent)),

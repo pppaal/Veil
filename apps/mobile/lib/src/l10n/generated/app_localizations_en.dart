@@ -722,6 +722,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String settingsDevicesTrustedWithStale(int count, int stale) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trusted devices',
+      one: '1 trusted device',
+    );
+    return '$_temp0 ($stale stale)';
+  }
+
+  @override
   String get settingsDestructiveNoticeBody =>
       'What you erase here stays erased. VEIL keeps no backup and has no way to restore a device or an account.';
 
@@ -1894,7 +1905,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'The relay deletes it the first time it is opened, and when it expires unopened.';
 
   @override
-  String get oneTimeLinkLimitsLabel => 'WHAT IT DOES NOT';
+  String get oneTimeLinkLimitsLabel => 'WHAT IT DOES NOT PROTECT';
 
   @override
   String get oneTimeLinkLimitHolder =>
@@ -2372,7 +2383,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileNicknameNotSet => 'Not set';
 
   @override
-  String get profilePrivacyTitle => 'Nothing about you on the relay';
+  String get profilePrivacyTitle => 'No profile on the relay';
 
   @override
   String get profilePrivacyBody =>

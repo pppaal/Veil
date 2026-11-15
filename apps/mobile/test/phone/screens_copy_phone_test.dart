@@ -102,7 +102,14 @@ void main() {
 
         await openDevices(tester);
         final (devices, _) = await read(tester, 'ko');
-        for (final text in ['신뢰 기기 2대  ·  ', '해지 1대', '이 기기', '해지됨', '접속 4월 2일 (UTC)', l10n.settingsGraphStaleBody]) {
+        for (final text in [
+          '신뢰 기기 2대 (장기 미사용 1대)  ·  ',
+          '해지 1대',
+          '이 기기',
+          '해지됨',
+          '접속 4월 2일 (UTC)',
+          l10n.settingsGraphStaleBody,
+        ]) {
           expect(devices, contains(text));
         }
       });
@@ -117,7 +124,7 @@ void main() {
         await openDevices(tester);
         final (devices, foreignDevices) = await read(tester, 'en');
         expect(foreignDevices, isEmpty);
-        expect(devices, containsAll(['2 trusted devices  ·  ', '1 stale  ·  ', '1 revoked', 'Seen Apr 2 (UTC)']));
+        expect(devices, containsAll(['2 trusted devices (1 stale)  ·  ', '1 revoked', 'Seen Apr 2 (UTC)']));
       });
     });
 

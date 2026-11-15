@@ -108,7 +108,8 @@ them.
   cannot be undone form one group of their own, last on the screen, under a
   `VeilDestructiveNotice`.
 - Section labels are written in capitals in English, like every
-  `VeilSectionLabel`.
+  `VeilSectionLabel`. A Korean label is set without the tracking of that
+  capitals style, which would pull its syllables apart.
 
 ### `VeilMetricStrip`
 

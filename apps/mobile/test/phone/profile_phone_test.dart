@@ -42,6 +42,32 @@ void main() {
     });
   }
 
+  // The relay keeps the handle, the devices and who was added as a contact:
+  // the note is about the profile, which it does not keep, and no wider.
+  test('the note on the relay claims no more than that it keeps no profile', () {
+    expect(en.profilePrivacyTitle.toLowerCase(), contains('profile'));
+    expect(en.profilePrivacyTitle.toLowerCase(), isNot(contains('nothing')));
+    expect(ko.profilePrivacyTitle, contains('프로필'));
+  });
+
+  // One thing, one word: the name only this device knows, the user's own on
+  // the profile and a contact's in the contacts.
+  test('a nickname has one Korean word on the profile and in the contacts', () {
+    for (final text in [
+      ko.profileNicknameLabel,
+      ko.profileNicknameSaved,
+      ko.profileEditNickname,
+      ko.profilePrivacyBody,
+      ko.contactsNicknameLabel,
+      ko.contactsEditNickname,
+      ko.contactsSaveNickname,
+      ko.contactsNicknameCaption,
+    ]) {
+      expect(text, contains('별명'));
+      expect(text, isNot(contains('닉네임')));
+    }
+  });
+
   testWidgets('the nickname is edited in place: cancel keeps it, an empty one clears it', (tester) async {
     await withPhoneApp(tester, identities, location: '/profile', keyboardHeight: 300, body: (world) async {
       String? nickname() => world.container.read(appSessionProvider).displayName;

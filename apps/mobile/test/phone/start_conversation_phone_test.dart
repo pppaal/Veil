@@ -139,6 +139,45 @@ void main() {
       });
     });
 
+    // This build cannot add members to a group later, and the relay puts
+    // the creator in by itself: a group made without anyone else would stay
+    // a group of one.
+    testWidgets('waits for a name and for a member other than the creator', (tester) async {
+      await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
+        final fields = find.byType(TextField);
+        FilledButton create() => tester.widget(find.byType(FilledButton));
+        expect(create().onPressed, isNull, reason: 'nothing typed');
+
+        await tester.enterText(fields.at(0), 'Movers');
+        await tester.pump();
+        expect(create().onPressed, isNull, reason: 'a name and no member');
+
+        // The creator's own handle, however it is written, is nobody else.
+        await tester.enterText(fields.at(1), '@Atlas, atlas');
+        await tester.pump();
+        expect(create().onPressed, isNull, reason: 'only the creator');
+        expect(find.textContaining(RegExp(r'^\d+ handles?$')), findsNothing, reason: 'no member is counted');
+
+        await tester.enterText(fields.at(1), 'atlas, mira');
+        await tester.pump();
+        expect(find.text('1 handle'), findsOneWidget);
+        expect(create().onPressed, isNotNull);
+
+        await tester.enterText(fields.at(0), '   ');
+        await tester.pump();
+        expect(create().onPressed, isNull, reason: 'a member and no name');
+
+        await tester.enterText(fields.at(0), 'Movers');
+        await tester.pump();
+        await tester.tap(find.byType(FilledButton));
+        await pumpFrames(tester, frames: 10);
+        expect(world.api.createdGroups.single['memberHandles'], ['mira'], reason: 'the creator is not sent as a member');
+        // Opened by itself, with no list under it to go back to.
+        expect(find.byType(StartGroupScreen, skipOffstage: false), findsNothing);
+        expect(find.byType(ConversationListScreen), findsOneWidget);
+      });
+    });
+
     testWidgets('creates the group with its name and members, never public, and returns to the list',
         (tester) async {
       await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
@@ -148,6 +187,8 @@ void main() {
         expect(tester.widget<FilledButton>(create).onPressed, isNull, reason: 'no name yet');
 
         await tester.enterText(fields.at(0), 'Movers');
+        await tester.pump();
+        expect(tester.widget<FilledButton>(create).onPressed, isNull, reason: 'no member yet');
         await tester.enterText(fields.at(1), 'mira, @noor');
         await tester.enterText(fields.at(2), 'The 14th');
         await tester.pump();

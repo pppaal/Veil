@@ -115,6 +115,14 @@ void main() {
       // and neither under its whole first syllable.
       expect(headers, ['ㄱ', 'ㅎ', 'M', 'N', 'R', 'S', 'T']);
       expect(find.text('ㅎ'), findsOneWidget);
+
+      // A consonant alone is a small glyph: at the size of a caption, in
+      // the faintest text colour, ㄱ and ㅎ were hard to tell.
+      tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
+      await pumpFrames(tester, frames: 2);
+      final index = tester.widget<Text>(find.text('ㄱ')).style!;
+      expect(index.fontSize, greaterThanOrEqualTo(14));
+      expect(index.color, isNot(tester.element(find.text('ㄱ')).veilPalette.textSubtle));
     });
   });
 

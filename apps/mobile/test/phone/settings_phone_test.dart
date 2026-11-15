@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:veil_mobile/src/app/app_state.dart';
+import 'package:veil_mobile/src/app/router/app_router.dart';
 import 'package:veil_mobile/src/app/theme_mode_provider.dart';
+import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
+import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_danger_zone.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_device_card.dart';
@@ -77,6 +82,23 @@ void main() {
     });
   });
 
+  // The label style is tracked for capitals. The same tracking pulled the
+  // syllables of a Korean label apart ("화 면", "보 안").
+  testWidgets('a Korean section label is set without the tracking of an English one', (tester) async {
+    double? tracking(String label) => tester.widget<Text>(find.text(label)).style!.letterSpacing;
+
+    await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
+      for (final label in [ko.settingsSectionAppearance, ko.settingsSectionPrivacy]) {
+        expect(tracking(label), 0, reason: '"$label" is pulled apart');
+      }
+    });
+    await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
+      final label = Theme.of(tester.element(find.byType(SettingsScreen))).textTheme.labelLarge!;
+      expect(label.letterSpacing, greaterThan(1));
+      expect(tracking(en.settingsSectionAppearance), label.letterSpacing);
+    });
+  });
+
   for (final (locale, l10n) in [('en', en), ('ko', ko)]) {
     testWidgets('at 360x640 the theme and the first privacy switch are on the first screenful ($locale)',
         (tester) async {
@@ -136,12 +158,78 @@ void main() {
       expect(find.text(en.navChats), findsNothing, reason: 'the list covers the tab bar');
       expect(find.byType(TrustedDeviceCard), findsWidgets);
       expect(findCopy(en.settingsGraphStaleTitle), findsOneWidget, reason: 'the warning is whole on the list');
+      // Three devices: the quiet one is one of the two trusted, not a third
+      // beside them and the revoked one.
+      expect(find.text('2 trusted devices (1 stale)  ·  '), findsOneWidget);
+      expect(find.text('1 revoked'), findsOneWidget);
+      expect(find.textContaining('·'), findsOneWidget, reason: 'two parts, which add up to the list');
 
       await tester.tap(find.byType(VeilBackButton));
       await pumpFrames(tester, frames: 6);
       expect(find.byType(SettingsScreen), findsOneWidget);
       expect(find.byType(TrustedDevicesScreen), findsNothing);
     });
+  });
+
+  // The list was pushed past the router, which could then neither take it
+  // down nor put it back: a location opened from elsewhere stayed hidden
+  // under it, and an unlock returned to the settings tab instead.
+  testWidgets('the devices list is a route: another location replaces it, and an unlock brings it back',
+      (tester) async {
+    usePhoneView(tester, phoneSmall);
+    final world = await LayoutWorld.create(identities: identities, account: LayoutAccount.signedIn, locale: 'en');
+    try {
+      // The app's own router: its guard, and the stack it keeps over a lock.
+      final router = world.container.read(appRouterProvider);
+      await tester.pumpWidget(UncontrolledProviderScope(
+        container: world.container,
+        child: MaterialApp.router(
+          theme: VeilTheme.dark(),
+          locale: const Locale('en'),
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ));
+      await pumpFrames(tester);
+      router.go('/settings');
+      await pumpFrames(tester);
+
+      Future<void> openDevices() async {
+        final row = find.byKey(const ValueKey('settings-devices'));
+        await scrollTo(tester, row);
+        await tester.tap(row);
+        await pumpFrames(tester, frames: 6);
+        expect(find.byType(TrustedDevicesScreen), findsOneWidget);
+        expect(router.state.uri.path, '/trusted-devices');
+      }
+
+      await openDevices();
+      final session = world.container.read(appSessionProvider.notifier);
+      session.lock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(AppLockScreen), findsOneWidget);
+      expect(find.byType(TrustedDevicesScreen), findsNothing, reason: 'nothing of the account shows behind the lock');
+
+      session.unlock();
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(AppLockScreen), findsNothing);
+      expect(find.byType(TrustedDevicesScreen), findsOneWidget, reason: 'back where the lock interrupted');
+      await tester.tap(find.byType(VeilBackButton));
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(SettingsScreen), findsOneWidget, reason: 'with the settings tab under it');
+
+      // A location opened from elsewhere (a link, the router's fallback).
+      await openDevices();
+      router.go('/contacts');
+      await pumpFrames(tester, frames: 6);
+      expect(find.byType(TrustedDevicesScreen), findsNothing, reason: 'the list does not stay on top of it');
+      expect(find.byType(ContactsScreen), findsOneWidget);
+    } finally {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+      world.dispose();
+    }
   });
 
   testWidgets('revoking a listed device asks first, then lists it as revoked', (tester) async {
@@ -165,6 +253,11 @@ void main() {
       expect(world.api.revokedDevices, ['dev-laptop']);
       expect(find.widgetWithText(OutlinedButton, en.settingsDeviceRevokeAction), findsNothing);
       expect(findCopy(en.settingsGraphStaleTitle, skipOffstage: false), findsNothing);
+      // Nothing quiet is left to count among the trusted.
+      tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
+      await pumpFrames(tester, frames: 2);
+      expect(find.text('1 trusted device  ·  '), findsOneWidget);
+      expect(find.text('2 revoked'), findsOneWidget);
     });
   });
 

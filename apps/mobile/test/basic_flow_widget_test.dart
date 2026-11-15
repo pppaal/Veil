@@ -146,10 +146,11 @@ void main() {
     expect(find.text('Old iPhone'), findsOneWidget);
     expect(find.text('MacBook Air'), findsOneWidget);
     // Two devices hold the account (this one and the quiet laptop); the
-    // third was revoked.
-    expect(find.text('2 trusted devices  ·  '), findsOneWidget);
-    expect(find.text('1 stale  ·  '), findsOneWidget);
+    // third was revoked. The quiet one is counted among the trusted, not
+    // beside them: the parts add up to the three devices listed.
+    expect(find.text('2 trusted devices (1 stale)  ·  '), findsOneWidget);
     expect(find.text('1 revoked'), findsOneWidget);
+    expect(find.text('1 stale  ·  '), findsNothing);
     expect(find.textContaining('stale'), findsWidgets);
     expect(find.text('This device'), findsOneWidget);
     expect(find.text('Revoked'), findsOneWidget);

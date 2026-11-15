@@ -13,6 +13,8 @@ import 'veil_ui.dart';
 class VeilGroup extends StatelessWidget {
   const VeilGroup({super.key, required this.children, this.label, this.footer});
 
+  static final _hangul = RegExp('[\u3131-\u318E\uAC00-\uD7A3]');
+
   final String? label;
   final List<Widget> children;
 
@@ -31,7 +33,15 @@ class VeilGroup extends StatelessWidget {
             padding: const EdgeInsets.only(left: VeilSpace.xxs, bottom: VeilSpace.xs),
             child: Semantics(
               header: true,
-              child: Text(label!, style: theme.textTheme.labelLarge?.copyWith(color: palette.textMuted)),
+              child: Text(
+                label!,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: palette.textMuted,
+                  // The label style is tracked for capitals; the same
+                  // tracking pulls the syllables of a Korean word apart.
+                  letterSpacing: _hangul.hasMatch(label!) ? 0 : null,
+                ),
+              ),
             ),
           ),
         Material(

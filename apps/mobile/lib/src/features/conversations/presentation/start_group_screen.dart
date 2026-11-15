@@ -8,9 +8,9 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// Creates a group: its name, the handles of its members, an optional
-/// description and the button, then one note on what of a group is
-/// encrypted and what the relay keeps.
+/// Creates a group: its name, the handles of its members (at least one
+/// besides the creator), an optional description and the button, then one
+/// note on what of a group is encrypted and what the relay keeps.
 class StartGroupScreen extends ConsumerStatefulWidget {
   const StartGroupScreen({super.key});
 
@@ -36,15 +36,24 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
     super.dispose();
   }
 
-  List<String> get _handles => _membersController.text
-      .split(RegExp(r'[\s,]+'))
-      .map((entry) => entry.trim().replaceAll(RegExp(r'^@'), ''))
-      .where((entry) => entry.isNotEmpty)
-      .toList();
+  // The handles typed, without the creator's own: whoever creates a group
+  // is in it already.
+  List<String> get _handles {
+    final own = ref.read(appSessionProvider).handle?.toLowerCase();
+    return _membersController.text
+        .split(RegExp(r'[\s,]+'))
+        .map((entry) => entry.trim().replaceAll(RegExp(r'^@'), ''))
+        .where((entry) => entry.isNotEmpty && entry.toLowerCase() != own)
+        .toList();
+  }
+
+  // A group needs someone besides its creator, and this build cannot add
+  // members to a group later: one without any would stay a group of one.
+  bool get _ready => _nameController.text.trim().isNotEmpty && _handles.isNotEmpty;
 
   Future<void> _create() async {
     final name = _nameController.text.trim();
-    if (name.isEmpty || _creating) return;
+    if (!_ready || _creating) return;
     setState(() {
       _creating = true;
       _failed = false;
@@ -63,7 +72,9 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
       });
       return;
     }
-    context.pop();
+    // Back to the list the screen was opened from; opened by itself (a
+    // link), it has nothing under it to go back to.
+    context.canPop() ? context.pop() : context.go('/conversations');
   }
 
   @override
@@ -127,7 +138,7 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
           ],
           const SizedBox(height: VeilSpace.md),
           VeilButton(
-            onPressed: _creating || _nameController.text.trim().isEmpty ? null : _create,
+            onPressed: _creating || !_ready ? null : _create,
             label: _creating ? l10n.startGroupCreating : l10n.startGroupCreateButton,
             icon: Icons.group_add_rounded,
           ),

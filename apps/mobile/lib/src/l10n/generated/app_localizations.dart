@@ -1364,6 +1364,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 trusted device} other{{count} trusted devices}}'**
   String settingsDevicesTrustedCount(int count);
 
+  /// No description provided for @settingsDevicesTrustedWithStale.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 trusted device} other{{count} trusted devices}} ({stale} stale)'**
+  String settingsDevicesTrustedWithStale(int count, int stale);
+
   /// No description provided for @settingsDestructiveNoticeBody.
   ///
   /// In en, this message translates to:
@@ -3323,7 +3329,7 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkLimitsLabel.
   ///
   /// In en, this message translates to:
-  /// **'WHAT IT DOES NOT'**
+  /// **'WHAT IT DOES NOT PROTECT'**
   String get oneTimeLinkLimitsLabel;
 
   /// No description provided for @oneTimeLinkLimitHolder.
@@ -4139,7 +4145,7 @@ abstract class AppLocalizations {
   /// No description provided for @profilePrivacyTitle.
   ///
   /// In en, this message translates to:
-  /// **'Nothing about you on the relay'**
+  /// **'No profile on the relay'**
   String get profilePrivacyTitle;
 
   /// No description provided for @profilePrivacyBody.

@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart' show CupertinoPageRoute;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,7 +11,6 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/trusted_devices.dart';
 import 'settings_danger_zone.dart';
-import 'trusted_devices_screen.dart';
 
 /// The settings tab: what the user changes day to day first (appearance,
 /// privacy, the lock), then the devices of the account, and last, set apart,
@@ -235,10 +233,10 @@ class _TrustedDevicesRow extends ConsumerWidget {
                 Icon(Icons.chevron_right_rounded, size: VeilIconSize.md, color: context.veilPalette.textSubtle),
               ],
             ),
-      // Above the tab bar, like every other screen a settings row opens.
-      onTap: () => Navigator.of(context, rootNavigator: true).push(
-        CupertinoPageRoute<void>(builder: (_) => const TrustedDevicesScreen()),
-      ),
+      // A route of its own, above the tab bar like every other screen a
+      // settings row opens: the router can take it down again (a link that
+      // opens another screen) and puts it back after an unlock.
+      onTap: () => context.push('/trusted-devices'),
     );
   }
 }

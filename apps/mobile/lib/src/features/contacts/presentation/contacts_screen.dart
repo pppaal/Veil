@@ -133,9 +133,11 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                           padding: const EdgeInsets.fromLTRB(VeilSpace.xs, VeilSpace.sm, VeilSpace.xs, VeilSpace.xxs),
                           child: Semantics(
                             header: true,
+                            // Large enough to tell ㄱ from ㅋ and ㅎ from
+                            // ㅇ at a glance: a consonant alone is small.
                             child: Text(
                               section.letter,
-                              style: theme.textTheme.labelMedium?.copyWith(color: palette.textSubtle),
+                              style: theme.textTheme.titleSmall?.copyWith(color: palette.textMuted),
                             ),
                           ),
                         ),

@@ -691,6 +691,16 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
+  String settingsDevicesTrustedWithStale(int count, int stale) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '신뢰 기기 $count대',
+    );
+    return '$_temp0 (장기 미사용 $stale대)';
+  }
+
+  @override
   String get settingsDestructiveNoticeBody =>
       '여기서 지운 것은 되돌릴 수 없습니다. VEIL은 백업을 보관하지 않으며, 기기나 계정을 복원할 방법도 없습니다.';
 
@@ -2257,7 +2267,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileTitle => '프로필';
 
   @override
-  String get profileNicknameSaved => '닉네임을 이 기기에 저장했습니다';
+  String get profileNicknameSaved => '별명을 이 기기에 저장했습니다';
 
   @override
   String get profileHandleLabel => '핸들';
@@ -2267,7 +2277,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '다른 사람은 이 핸들로 나를 찾고 메시지를 보냅니다. 핸들은 변경할 수 없습니다.';
 
   @override
-  String get profileNicknameLabel => '닉네임';
+  String get profileNicknameLabel => '별명';
 
   @override
   String get profileNicknameCaption => '이 기기만 알고 있습니다. 상대방에게는 핸들이 보입니다.';
@@ -2279,17 +2289,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileNicknameNotSet => '설정되지 않음';
 
   @override
-  String get profilePrivacyTitle => '릴레이에는 나에 대한 정보가 없습니다';
+  String get profilePrivacyTitle => '릴레이에는 프로필이 저장되지 않습니다';
 
   @override
   String get profilePrivacyBody =>
-      '릴레이는 핸들로만 메시지를 전달하며 이름, 소개, 상태를 저장하지 않습니다. 닉네임은 이 기기에만 남고 기기와 함께 지워집니다.';
+      '릴레이는 핸들로만 메시지를 전달하며 이름, 소개, 상태를 저장하지 않습니다. 별명은 이 기기에만 남고 기기와 함께 지워집니다.';
 
   @override
   String get profileSaveNickname => '저장';
 
   @override
-  String get profileEditNickname => '닉네임 수정';
+  String get profileEditNickname => '별명 변경';
 
   @override
   String get profileCancel => '취소';

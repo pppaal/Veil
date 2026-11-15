@@ -46,7 +46,8 @@
 - On a fresh device, open `Transfer from old device`, import the payload, register the claim, and complete the trusted-device join.
 - Let a transfer or claim expire and confirm the UI blocks completion and clearly requires a fresh session.
 - Confirm the new device becomes authenticated and the old device is logged out after completion.
-- Open Settings, then `Trusted devices`, and confirm the list shows current, preferred, trusted, stale, and revoked device states clearly where applicable. A stale device is also flagged on the Settings row itself.
+- Open Settings, then `Trusted devices`, and confirm the list shows current, preferred, trusted, stale, and revoked device states clearly where applicable. A stale device is also flagged on the Settings row itself, and the list's summary counts it among the trusted devices, not beside them.
+- With `Trusted devices` open, lock the app and unlock it: confirm the list is back, with Settings under it.
 - If another trusted device is still listed, confirm it can be explicitly revoked without implying any recovery path.
 - Open Settings and confirm revoke and logout copy do not imply recovery, and that log out, wipe, revoke and delete each ask for a typed phrase first. Logging out erases this device's keys: confirm the copy says so.
 - Revoke the current device and confirm the session is cleared locally.

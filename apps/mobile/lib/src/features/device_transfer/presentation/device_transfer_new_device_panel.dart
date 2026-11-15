@@ -92,21 +92,15 @@ class TransferNewDevicePanel extends StatelessWidget {
     final expired = claimId != null && claimExpired;
     final codeRead = hasCode && !expired;
     final pasting = !codeRead || editingCode;
-    // Where the notice goes: its own step, or else the one in hand.
+    // Where the notice goes: under the button of its own step, or else of
+    // the one in hand. The field and the button stay where they were.
     final noticeStep = notice?.step ?? (claimLive ? 3 : (codeRead ? 2 : 1));
     List<Widget> noticeFor(int step) => [
           if (notice != null && noticeStep == step)
-            Padding(
-              padding: const EdgeInsets.only(bottom: VeilSpace.md),
-              child: TransferControls(
-                children: [
-                  TransferStepResult(
-                    title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
-                    message: veilErrorText(l10n, notice!.message),
-                    tone: notice!.isError ? VeilTone.danger : VeilTone.good,
-                  ),
-                ],
-              ),
+            TransferStepResult(
+              title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
+              message: veilErrorText(l10n, notice!.message),
+              tone: notice!.isError ? VeilTone.danger : VeilTone.good,
             ),
         ];
     final muted = theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted);
@@ -140,13 +134,15 @@ class TransferNewDevicePanel extends StatelessWidget {
                   : claimLive
                       ? StepRowState.done
                       : StepRowState.current,
-              body: claimLive ? null : l10n.deviceTransferNewDeviceCaption,
+              // A step whose turn has not come is its title: the line
+              // about it comes with its controls.
+              body: codeRead && !claimLive ? l10n.deviceTransferNewDeviceCaption : null,
             ),
             StepRow(
               number: 3,
               title: l10n.deviceTransferNewCompleteTitle,
               state: claimLive ? StepRowState.current : StepRowState.upcoming,
-              body: claimLive ? l10n.deviceTransferNewCompleteBody : l10n.deviceTransferNewCompleteBodyUpcoming,
+              body: claimLive ? l10n.deviceTransferNewCompleteBody : null,
             ),
           ],
         ),
@@ -154,7 +150,6 @@ class TransferNewDevicePanel extends StatelessWidget {
         // steps: the code to paste, the phone's name, or the claim's code
         // and Finish.
         if (pasting) ...[
-          ...noticeFor(1),
           VeilGroup(
             children: [
               VeilRow.field(
@@ -179,12 +174,12 @@ class TransferNewDevicePanel extends StatelessWidget {
               // A step reopened over a code that still holds can be closed
               // again, keeping that code.
               if (codeRead) VeilButton(tone: VeilButtonTone.ghost, onPressed: onKeepCode, label: l10n.commonCancel),
+              ...noticeFor(1),
             ],
           ),
         ],
         if (codeRead && !claimLive) ...[
           if (pasting) const SizedBox(height: VeilSpace.md),
-          ...noticeFor(2),
           VeilGroup(
             children: [
               VeilRow.field(
@@ -199,6 +194,7 @@ class TransferNewDevicePanel extends StatelessWidget {
                 onPressed: isClaiming ? null : onClaim,
                 label: isClaiming ? l10n.deviceTransferRegisteringClaim : l10n.deviceTransferRegisterNewDevice,
               ),
+              ...noticeFor(2),
             ],
           ),
         ],
@@ -207,7 +203,6 @@ class TransferNewDevicePanel extends StatelessWidget {
         // first, with the key it stands for and how long it holds, then
         // what finishing leads to, then the button.
         if (claimLive) ...[
-          ...noticeFor(3),
           VeilGroup(
             footer: l10n.deviceTransferNewCompleteNote,
             children: [
@@ -237,6 +232,7 @@ class TransferNewDevicePanel extends StatelessWidget {
                 onPressed: isCompleting ? null : onComplete,
                 label: isCompleting ? l10n.deviceTransferCompleting : l10n.deviceTransferCompleteOnDevice,
               ),
+              ...noticeFor(3),
             ],
           ),
         ],

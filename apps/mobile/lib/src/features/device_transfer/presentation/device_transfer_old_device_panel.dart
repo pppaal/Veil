@@ -111,15 +111,16 @@ class TransferOldDevicePanel extends StatelessWidget {
               number: 2,
               title: l10n.deviceTransferOldHandTitle,
               state: live ? StepRowState.current : StepRowState.upcoming,
+              // A step whose turn has not come is its title: the line
+              // about it comes with its controls.
               body: live
                   ? l10n.deviceTransferStep1BodyExpires(formatTransferExpiry(transferExpiresAt!, now, l10n))
-                  : l10n.deviceTransferOldHandBody,
+                  : null,
             ),
             StepRow(
               number: 3,
               title: l10n.deviceTransferOldApproveTitle,
               state: live ? StepRowState.current : StepRowState.upcoming,
-              body: live ? null : l10n.deviceTransferOldApproveBody,
             ),
           ],
         ),

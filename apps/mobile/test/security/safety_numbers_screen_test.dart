@@ -23,9 +23,12 @@ import '../support/strict_mock_crypto_adapter.dart';
 
 const conv = 'conv-1';
 
-/// The label over the one number when no change is pending. The screen's bar
-/// says "Safety number" too, so the label is found inside its card.
-final _plainNumberLabel = find.descendant(of: find.byType(SafetyNumberCard), matching: find.text('Safety number'));
+/// The one number when no change is pending: its digits on the page.
+final _number = find.byType(SafetyNumberCard);
+
+/// Any words inside the number's block: there are none while it is the only
+/// number on screen (the bar says what the page is).
+final _labelOverNumber = find.descendant(of: _number, matching: find.textContaining(RegExp('[a-z]')));
 
 /// A signed-in atlas, as the screen reads the session.
 class _SignedIn extends AppSessionController {
@@ -117,10 +120,11 @@ void main() {
     final fixture = _Fixture();
     await fixture.setUp(tester);
 
-    await fixture.pumpScreen(tester, until: _plainNumberLabel);
+    await fixture.pumpScreen(tester, until: _number);
 
     expect(find.text('The server lists a different key'), findsOneWidget);
-    expect(_plainNumberLabel, findsOneWidget);
+    expect(_number, findsOneWidget);
+    expect(_labelOverNumber, findsNothing);
     expect(find.text('Not verified'), findsOneWidget);
   });
 
@@ -133,7 +137,7 @@ void main() {
     await fixture.setUp(tester);
     await tester.runAsync(() => fixture.trust.markVerified('user-selene', 'dev-selene', fixture.pinnedKey));
 
-    await fixture.pumpScreen(tester, until: _plainNumberLabel);
+    await fixture.pumpScreen(tester, until: _number);
 
     expect(find.text('The server lists a different key'), findsOneWidget);
     expect(await tester.runAsync(() => fixture.controller.isUserVerified('user-selene')), isTrue);

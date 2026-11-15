@@ -58,7 +58,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
 
     // The handle, then the button that creates the account. While it
     // works, the button holds a spinner and one line under it says which
-    // stage it is at; a failure is said under the field.
+    // stage it is at; a failure is said under the button that was tapped.
     return VeilShell(
       title: l10n.authHandleTitle,
       padding: VeilShell.formPadding,
@@ -77,8 +77,6 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
               prefixText: '@',
               helperText: l10n.authHandleFindCaption,
               helperMaxLines: 3,
-              errorText: error == null || working ? null : veilErrorText(l10n, error),
-              errorMaxLines: 3,
             ),
           ),
           const SizedBox(height: VeilSpace.xl),
@@ -101,6 +99,14 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
               _stageLabelFor(session, l10n),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            ),
+          ] else if (error != null) ...[
+            const SizedBox(height: VeilSpace.sm),
+            VeilNotice(
+              tone: VeilTone.danger,
+              margin: EdgeInsets.zero,
+              title: l10n.authHandleFailedTitle,
+              message: veilErrorText(l10n, error),
             ),
           ],
         ],

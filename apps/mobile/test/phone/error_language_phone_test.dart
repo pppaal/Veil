@@ -9,7 +9,7 @@ import 'package:veil_mobile/src/features/conversations/data/veil_messenger_contr
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_old_device_panel.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
-import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
@@ -109,7 +109,10 @@ void main() {
       expect(find.byType(DeviceTransferScreen), findsOneWidget);
       final failure = findCopy(_en.errorRelayFailed);
       expect(failure, findsOneWidget);
-      expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 1);
+      // With the first step's controls, under the steps.
+      expect(tester.getRect(failure).top, greaterThanOrEqualTo(tester.getRect(find.byType(StepRow).last).bottom));
+      expect(tester.getRect(failure).top,
+          greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.deviceTransferImportPayload)).bottom));
       expect(findCopy(_en.deviceTransferFailedTitle), findsOneWidget);
       expect(findCopy(UserFacingErrorCode.relayFailed.sentence), findsNothing);
     });
@@ -132,6 +135,7 @@ void main() {
           onCopyCode: () {},
           onClear: () {},
           now: now,
+          stepsFooter: _en.deviceTransferOldPhoneNeeded,
         ));
     tester.view
       ..physicalSize = const Size(400, 3000)
@@ -142,7 +146,9 @@ void main() {
     await tester.pump();
     final failure = findCopy(_en.errorConflict);
     expect(failure, findsOneWidget);
-    expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 3);
+    // Under the button that approves.
+    expect(tester.getRect(failure).top,
+        greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim)).bottom));
     expect(findCopy(UserFacingErrorCode.conflict.sentence), findsNothing);
 
     await tester.pumpWidget(panel(_relaysOwn));

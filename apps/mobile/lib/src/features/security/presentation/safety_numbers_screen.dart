@@ -32,6 +32,11 @@ class SafetyNumbersScreen extends ConsumerStatefulWidget {
     super.key,
   });
 
+  // What the tests find: the spinner, the failed state, the change-elsewhere notice.
+  static const loadingKey = ValueKey('safety-number-loading');
+  static const errorKey = ValueKey('safety-number-error');
+  static const changeElsewhereKey = ValueKey('safety-number-change-elsewhere');
+
   final String conversationId;
   // When set and the conversation is a group, renders the safety-number
   // detail for that specific member. When null on a group, renders the
@@ -374,10 +379,15 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         future: _loader,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            // The layout gate and the phone tests wait for this widget to
-            // go (it draws the 20dp spinner and one line of the design
-            // system); wave 2 replaces it together with those waits.
-            return VeilLoadingBlock(title: l10n.safetyNumbersLoadingTitle, body: '');
+            final muted = Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted);
+            return Center(
+              key: SafetyNumbersScreen.loadingKey,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(height: VeilSpace.sm),
+                Text(l10n.safetyNumbersLoadingTitle, style: muted),
+              ]),
+            );
           }
           if (snapshot.hasError) {
             return _buildErrorBody(context);
@@ -392,13 +402,11 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
   }
 
-  // The error itself is for a log, not for the user: it is in English and
-  // names internals.
+  // The error itself is for a log, not for the user: it names internals.
   Widget _buildErrorBody(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // VeilErrorState (it draws VeilEmptyState.error) is what the layout gate
-    // checks for; wave 2 swaps both.
-    return VeilErrorState(
+    return VeilEmptyState.error(
+      key: SafetyNumbersScreen.errorKey,
       title: l10n.safetyNumbersErrorTitle,
       body: l10n.safetyNumbersErrorBody,
       action: VeilButton(
@@ -477,10 +485,10 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         ] else if (elsewhere != null) ...[
           // The way to where the change is reviewed, in place of what would
           // confirm the pinned key (its code, "mark as verified", a scan).
-          // A VeilInlineBanner (a VeilNotice) because the layout gate finds
-          // the notice by that type; wave 2 swaps both.
-          VeilInlineBanner(
+          VeilNotice(
+            key: SafetyNumbersScreen.changeElsewhereKey,
             tone: VeilTone.warn,
+            margin: EdgeInsets.zero,
             title: l10n.safetyNumbersChangedElsewhereTitle,
             message: l10n.safetyNumbersChangedElsewhereBody(data.peer.title),
             actionLabel: l10n.safetyNumbersReviewChange,

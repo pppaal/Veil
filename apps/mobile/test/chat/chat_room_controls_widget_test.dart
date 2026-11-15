@@ -228,8 +228,6 @@ void main() {
       await tester.pumpWidget(banners(messages: [_message('m1', MessageDeliveryState.read)]));
 
       expect(find.byType(VeilNotice), findsNothing);
-      expect(find.byType(VeilMetricStrip), findsNothing);
-      expect(find.byType(VeilStatusPill), findsNothing);
       expect(find.text(l10n.chatPeerVerified), findsNothing, reason: 'the bar carries the verified mark');
       expect(tester.getSize(find.byType(ChatStatusBanners)).height, 0);
     });

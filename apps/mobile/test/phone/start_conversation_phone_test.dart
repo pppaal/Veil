@@ -35,12 +35,6 @@ void main() {
   // Within the start screen: the list under it has a field of its own.
   Finder on(Type screen, Type widget) => find.descendant(of: find.byType(screen), matching: find.byType(widget));
 
-  void expectNoDecoration() {
-    expect(find.byType(VeilHeroPanel), findsNothing);
-    expect(find.byType(VeilStatusPill), findsNothing);
-    expect(find.byType(VeilMetricStrip), findsNothing);
-  }
-
   group('a direct chat', () {
     testWidgets('opens on the handle, how to type it under it, and the button', (tester) async {
       await withPhoneApp(tester, identities, location: '/start-chat', body: (world) async {
@@ -52,7 +46,6 @@ void main() {
         expect(helper.bottom, lessThan(button.top), reason: 'the button comes after the field');
         expect(button.bottom, lessThan(640 / 2), reason: 'the button is on the upper half of a 360x640 phone');
         expect(find.byType(VeilNotice), findsNothing, reason: 'no notice for information');
-        expectNoDecoration();
         expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull, reason: 'no handle yet');
       });
     });
@@ -114,7 +107,6 @@ void main() {
         expect(tester.getRect(fields.first).top, lessThan(140));
         expect(tester.getRect(fields.last).bottom, lessThan(button.top));
         expect(button.bottom, lessThanOrEqualTo(640));
-        expectNoDecoration();
 
         // This build has no public groups and cannot add members later:
         // the screen offers neither, and says the second.

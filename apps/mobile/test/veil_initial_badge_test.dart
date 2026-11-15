@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_initial_badge.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_avatar.dart';
 
 // The letter an avatar shows for a name.
 void main() {

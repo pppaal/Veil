@@ -101,22 +101,3 @@ class VeilBubble extends StatelessWidget {
     );
   }
 }
-
-/// The bubble of the previous pass, kept so the chat compiles until wave 1
-/// moves it to [VeilBubble] with a position. It is a single [VeilBubble].
-@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilBubble.')
-class VeilMessageBubbleCard extends StatelessWidget {
-  const VeilMessageBubbleCard({
-    super.key,
-    required this.child,
-    required this.isMine,
-    this.highlighted = false,
-  });
-
-  final Widget child;
-  final bool isMine;
-  final bool highlighted;
-
-  @override
-  Widget build(BuildContext context) => VeilBubble(isMine: isMine, highlighted: highlighted, child: child);
-}

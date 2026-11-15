@@ -4,17 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_grouped.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_initial_badge.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import 'layout/support/phone_layout_probe.dart';
 
 // What the shared components owe every screen on both themes: nothing
 // decorated (no gradient, glow, blur, pill fill or oversized corner), and
-// words that read on the fill they sit on. The deprecated widgets of the
-// previous pass are held to the same rule until wave 1 removes them.
+// words that read on the fill they sit on.
 
 Widget _app(Widget child, {Brightness brightness = Brightness.dark, double width = 360}) => MaterialApp(
       theme: brightness == Brightness.dark
@@ -63,37 +59,26 @@ void _expectUndecorated(WidgetTester tester, Finder of) {
 void main() {
   setUpAll(loadTestFonts);
 
-  group('the deprecated widgets of the previous pass are flattened', () {
-    // ignore_for_file: deprecated_member_use_from_same_package
+  group('nothing is decorated', () {
     final components = <String, Widget>{
-      'hero panel': const VeilHeroPanel(eyebrow: 'SYSTEM', title: 'Create account', body: 'A line under it.'),
-      'status pill': const VeilStatusPill(label: 'Verified', tone: VeilTone.good),
-      'inline banner': const VeilInlineBanner(title: 'Safety number changed', message: 'Nothing is sent until you review it.', tone: VeilTone.warn),
-      'notice row': const VeilNoticeRow(title: '2 messages not sent', tone: VeilTone.warn, actionLabel: 'Retry', onAction: _noop),
-      'destructive notice': const VeilDestructiveNotice(title: 'No backup', body: 'If you lose this phone, you lose this account.'),
-      'surface card': const VeilSurfaceCard(toned: true, child: Text('In a card')),
-      'section label': const VeilSectionLabel('PRIVACY'),
-      'field block': const VeilFieldBlock(label: 'Handle', caption: 'Lowercase letters.', child: SizedBox(height: 10)),
-      'list tile card': const VeilListTileCard(title: 'This phone', subtitle: 'Last seen now', eyebrow: 'DEVICE'),
-      'value row': const VeilValueRow(label: 'TLS pinning', value: 'Pinned', valueTone: VeilTone.good, detail: 'Every request.'),
-      'step row': const VeilStepRow(step: 1, title: 'Scan the code', body: 'On the old phone.', active: true),
-      'loading block': const VeilLoadingBlock(title: 'Loading', body: 'ignored'),
-      'skeleton line': const VeilSkeletonLine(width: 120),
-      'metric strip': const VeilMetricStrip(items: [VeilMetricItem(label: 'Relay', value: 'Linked')]),
-      'screen intro': const VeilScreenIntro(eyebrow: 'IDENTITY', title: 'Choose a handle', body: 'People find you by it.'),
-      'initial badge': const VeilInitialBadge(name: 'Alex Kim', size: 72),
-      'group row': const VeilGroupRow(title: 'App lock', value: 'Off', icon: Icons.lock_outline, onTap: _noop),
-      'group switch row': const VeilGroupSwitchRow(title: 'Read receipts', value: true, onChanged: null),
-      'message bubble card': const VeilMessageBubbleCard(isMine: true, child: Text('hello')),
-      'conversation card': const VeilConversationCard(
-        title: 'Alex Kim',
-        handle: 'alex',
-        subtitle: 'See you at 6',
-        timestamp: '08:45',
-        expiryLabel: '1 day',
-        semanticLabel: 'Chat with Alex Kim',
-        meta: VeilStatusPill(label: 'Queued', tone: VeilTone.warn),
-      ),
+      'notice': const VeilNotice(title: 'Safety number changed', message: 'Nothing is sent until you review it.', tone: VeilTone.warn, actionLabel: 'Review', onAction: _noop),
+      'dense notice': const VeilNotice(message: '2 messages not sent', tone: VeilTone.danger, dense: true, actionLabel: 'Retry', onAction: _noop),
+      'group': const VeilGroup(header: 'Privacy', footer: 'Only you see this.', children: [
+        VeilRow(title: 'TLS pinning', subtitle: 'Every request.', status: ('Pinned', VeilTone.good)),
+        VeilRow(title: 'App lock', value: 'Off', onTap: _noop),
+        VeilRow(title: 'Send read receipts', switchValue: true, onSwitch: null),
+      ]),
+      'avatar': const VeilAvatar(name: 'Alex Kim', seed: 'alex', size: 72),
+      'own bubble': const VeilBubble(isMine: true, child: Text('hello')),
+      'their bubble': const VeilBubble(isMine: false, position: VeilBubblePosition.first, child: Text('hi')),
+      'failed bubble': const VeilBubble(isMine: true, failed: true, failedText: 'Not sent. Tap to retry.', child: Text('hey')),
+      'empty state': const VeilEmptyState(title: 'No chats yet', body: 'Start a chat with a handle.', icon: Icons.chat_bubble_outline),
+      'error state': const VeilEmptyState.error(title: 'Could not load', body: 'Try again.'),
+      'buttons': const Column(children: [
+        VeilButton(label: 'Continue', onPressed: _noop),
+        VeilButton(label: 'Scan their code', onPressed: _noop, tone: VeilButtonTone.secondary),
+        VeilButton(label: 'Wipe this device', onPressed: _noop, tone: VeilButtonTone.destructive),
+      ]),
     };
     for (final brightness in Brightness.values) {
       for (final MapEntry(key: name, value: component) in components.entries) {
@@ -105,77 +90,6 @@ void main() {
         });
       }
     }
-
-    testWidgets('eyebrows, pills and metric tiles draw nothing', (tester) async {
-      await tester.pumpWidget(_app(const Column(children: [
-        VeilHeroPanel(eyebrow: 'SYSTEM', title: 'Title', body: 'Body'),
-        VeilScreenIntro(eyebrow: 'IDENTITY', title: 'Title 2'),
-        VeilListTileCard(title: 'Row', subtitle: 'Sub', eyebrow: 'DEVICE'),
-        VeilMetricStrip(items: [VeilMetricItem(label: 'Relay', value: 'Linked')]),
-        VeilSkeletonLine(width: 120, height: 14),
-        VeilStatusPill(label: 'Verified', tone: VeilTone.good),
-      ])));
-      expect(find.text('SYSTEM'), findsNothing);
-      expect(find.text('IDENTITY'), findsNothing);
-      expect(find.text('DEVICE'), findsNothing);
-      expect(find.text('Linked'), findsNothing);
-      expect(tester.getSize(find.byType(VeilMetricStrip)), Size.zero);
-      expect(tester.getSize(find.byType(VeilSkeletonLine)), Size.zero);
-      // A status pill is now a word in the tone colour with no box.
-      expect(find.ancestor(of: find.text('Verified'), matching: find.byType(DecoratedBox)), findsNothing);
-      expect(tester.widget<Text>(find.text('Verified')).style?.color, VeilPalette.dark.success);
-    });
-
-    testWidgets('a conversation card is a full-bleed row with a solid avatar and a timer glyph', (tester) async {
-      const name = 'Alex Kim';
-      const preview = 'See you at 6';
-      await tester.pumpWidget(_app(
-        const VeilConversationCard(
-          title: name,
-          handle: 'alex',
-          subtitle: preview,
-          timestamp: '08:21',
-          expiryLabel: '1 day',
-          semanticLabel: 'Chat with $name',
-        ),
-      ));
-      expect(find.text(name), findsOneWidget);
-      expect(find.text(preview), findsOneWidget);
-      expect(find.byType(VeilAvatar), findsOneWidget);
-      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
-      expect(tester.getRect(find.byType(VeilConversationCard)).width, 360);
-      expect(tester.getSize(find.byType(VeilConversationCard)).height, greaterThanOrEqualTo(72));
-      // A screen reader hears that the row is a chat, and with whom.
-      expect(find.bySemanticsLabel(RegExp(RegExp.escape('Chat with $name'))), findsOneWidget);
-    });
-
-    testWidgets('a group switch row without onChanged keeps a disabled switch', (tester) async {
-      // One-time link passes onChanged: null while a link is being made; the
-      // switch must stay and keep showing its state.
-      await tester.pumpWidget(_app(const Column(children: [
-        VeilGroupSwitchRow(title: 'Lock with a passphrase', value: true, onChanged: null),
-        VeilGroupSwitchRow(title: 'Send typing indicators', value: false, onChanged: null),
-      ])));
-      final switches = tester.widgetList<Switch>(find.byType(Switch)).toList();
-      expect([for (final s in switches) s.value], [true, false]);
-      expect([for (final s in switches) s.onChanged], [null, null]);
-    });
-
-    testWidgets('the initial badge is the neutral disc, not a colour seeded by the display name', (tester) async {
-      // Lists seed a person's colour by handle; the badge only knows the
-      // name, so a colour here would give one person two colours.
-      await tester.pumpWidget(_app(const VeilInitialBadge(name: 'Alexandra Montgomery-Whitfield', size: 56)));
-      final avatar = tester.widget<VeilAvatar>(find.byType(VeilAvatar));
-      expect(avatar.unknown, isTrue);
-      final disc = tester.widget<Container>(find.descendant(of: find.byType(VeilAvatar), matching: find.byType(Container)));
-      expect((disc.decoration! as BoxDecoration).color, VeilAvatar.neutralDark);
-      expect(find.byIcon(Icons.person_outline), findsOneWidget);
-    });
-
-    test('the old tone name still resolves', () {
-      expect(VeilBannerTone.warn, VeilTone.warn);
-      expect(VeilBannerTone.values, VeilTone.values);
-    });
   });
 
   group('on both themes', () {

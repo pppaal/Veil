@@ -148,15 +148,6 @@ class VeilPalette {
   /// Time and ticks inside an own bubble (on [primary]).
   final Color outgoingMeta;
 
-  @Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. There is one brand colour: primary.')
-  Color get accent => primary;
-
-  @Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use primarySoft.')
-  Color get accentSoft => primarySoft;
-
-  @Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use surfaceAlt.')
-  Color get surfaceOverlay => surfaceAlt;
-
   static const dark = VeilPalette(
     canvas: Color(0xFF000000),
     canvasAlt: Color(0xFF000000),
@@ -213,6 +204,8 @@ class VeilTheme {
 
   static ThemeData _build(VeilPalette palette, Brightness brightness, String? fontFamily) {
     final light = brightness == Brightness.light;
+    // Dialogs, sheets and menus cast the one shadow, in the light theme only.
+    final modalShadow = light ? VeilElevation.modal.first.color : Colors.transparent;
     final scheme = ColorScheme(
       brightness: brightness,
       primary: palette.primary,
@@ -486,7 +479,7 @@ class VeilTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: palette.surfaceRaised,
         surfaceTintColor: Colors.transparent,
-        shadowColor: light ? const Color(0x2E000000) : Colors.transparent,
+        shadowColor: modalShadow,
         elevation: light ? 8 : 0,
         shape: rounded(VeilRadius.lg),
         titleTextStyle: titleLarge,
@@ -498,7 +491,7 @@ class VeilTheme {
         surfaceTintColor: Colors.transparent,
         modalElevation: light ? 8 : 0,
         elevation: 0,
-        shadowColor: light ? const Color(0x2E000000) : Colors.transparent,
+        shadowColor: modalShadow,
         dragHandleColor: palette.strokeStrong,
         dragHandleSize: const Size(36, 4),
         // In the dark theme a sheet has no shadow; its tier and a hairline
@@ -512,7 +505,7 @@ class VeilTheme {
         color: palette.surfaceRaised,
         surfaceTintColor: Colors.transparent,
         elevation: light ? 8 : 0,
-        shadowColor: light ? const Color(0x2E000000) : Colors.transparent,
+        shadowColor: modalShadow,
         shape: rounded(VeilRadius.md),
         textStyle: bodyMedium,
         iconColor: palette.textMuted,
@@ -591,20 +584,6 @@ class _VeilSwitchAdaptation extends Adaptation<SwitchThemeData> {
           ),
         _ => defaultValue,
       };
-}
-
-/// The one type style a screen still names outside the text theme.
-@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use Theme.of(context).textTheme.titleLarge.')
-class VeilTypography {
-  const VeilTypography._();
-
-  /// The bar title: the same metrics as the theme's titleLarge.
-  static const TextStyle headline = TextStyle(
-    fontSize: 17,
-    height: 1.3,
-    fontWeight: FontWeight.w600,
-    letterSpacing: -0.2,
-  );
 }
 
 /// The outline of a sheet: rounded top corners, and its [side] drawn along

@@ -5,8 +5,8 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dar
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_labels.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_number_cards.dart';
+import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
@@ -29,7 +29,7 @@ void main() {
   // The safety number is derived on a background isolate, which only real
   // time moves forward.
   Future<void> awaitSafetyNumber(WidgetTester tester) async {
-    final loading = find.byType(VeilLoadingBlock);
+    final loading = find.byKey(SafetyNumbersScreen.loadingKey);
     for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await tester.pump();
@@ -167,7 +167,6 @@ void main() {
         await awaitSafetyNumber(tester);
         final warning = tester.getRect(find.text('Safety number changed'));
         final intro = tester.getRect(find.byType(SafetyPeerHeader));
-        expect(find.byType(VeilHeroPanel), findsNothing);
         expect(warning.bottom, lessThan(intro.top));
         expect(warning.top, lessThan(screenHeight(tester) / 2), reason: 'on the first screenful');
         expect(find.text('Safety number changed'), findsOneWidget, reason: 'said once');

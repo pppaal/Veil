@@ -18,7 +18,6 @@ class VeilGroup extends StatelessWidget {
     this.header,
     this.footer,
     this.inset = VeilSpace.md,
-    @Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use header.') this.label,
   });
 
   final String? header;
@@ -27,8 +26,6 @@ class VeilGroup extends StatelessWidget {
 
   /// Where the hairlines between rows start, from the group's edge.
   final double inset;
-
-  final String? label;
 
   /// Whether [context] is inside a [VeilGroup]: a notice there draws as a
   /// row, without its own margin and corners.
@@ -45,7 +42,7 @@ class VeilGroup extends StatelessWidget {
     final raised = grouped || ModalRoute.of(context) is PopupRoute;
     final hairline = raised && dark ? palette.strokeStrong : palette.stroke;
     final side = grouped ? VeilSpace.md : 0.0;
-    final header = this.header ?? label;
+    final header = this.header;
     final textStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
 
     final rows = Column(

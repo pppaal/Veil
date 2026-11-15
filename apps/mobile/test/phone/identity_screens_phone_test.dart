@@ -43,7 +43,7 @@ void main() {
   double top(WidgetTester tester, Finder finder) => tester.getTopLeft(finder.first).dy;
 
   // The safety number is derived on a background isolate, which only real
-  // time moves forward. (The page shows VeilLoadingBlock until it is.)
+  // time moves forward. (The page shows a spinner and one line until it is.)
   Future<void> awaitSafetyNumber(WidgetTester tester) async {
     final loading = find.text(l10n.safetyNumbersLoadingTitle);
     for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {

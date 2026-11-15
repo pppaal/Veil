@@ -18,7 +18,6 @@ import 'package:veil_mobile/src/features/conversations/presentation/conversation
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 void main() {
   group('ConversationRow', () {
@@ -133,13 +132,9 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // Two panes, each with the content a phone shows and nothing above it:
-    // no hero card, no stat tiles, no pills.
+    // Two panes, each with the content a phone shows and nothing above it.
     expect(find.byType(ConversationListPhone), findsOneWidget);
     expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).embedded, isTrue);
-    expect(find.byType(VeilHeroPanel), findsNothing);
-    expect(find.byType(VeilMetricStrip), findsNothing);
-    expect(find.byType(VeilStatusPill), findsNothing);
     expect(find.text('Selene'), findsWidgets);
     expect(_inChatPane(find.text('Orbit relay window')), findsOneWidget);
     // The list starts right under its bar, and so do the messages' pane.

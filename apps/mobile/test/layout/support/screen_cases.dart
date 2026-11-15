@@ -883,18 +883,18 @@ Future<void> _openTrustedDevices(WidgetTester tester) async {
 // The safety number is derived on a background isolate, which only real
 // time moves forward.
 Future<void> _awaitSafetyNumber(WidgetTester tester) async {
-  final loading = find.byType(VeilLoadingBlock);
+  final loading = find.byKey(SafetyNumbersScreen.loadingKey);
   for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
     await tester.pump();
   }
   expect(loading, findsNothing, reason: 'the safety number never loaded');
-  expect(find.byType(VeilErrorState), findsNothing, reason: 'the safety number failed to load');
+  expect(find.byKey(SafetyNumbersScreen.errorKey), findsNothing, reason: 'the safety number failed to load');
   await pumpFrames(tester, frames: 3);
 }
 
 Future<void> _awaitChangeElsewhere(WidgetTester tester) async {
   await _awaitSafetyNumber(tester);
   // The page opens on the notice; a verified contact's page has none.
-  expect(find.byType(VeilInlineBanner), findsOneWidget, reason: 'the page does not say a change waits elsewhere');
+  expect(find.byKey(SafetyNumbersScreen.changeElsewhereKey), findsOneWidget, reason: 'the page does not say a change waits elsewhere');
 }

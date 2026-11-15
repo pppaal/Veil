@@ -35,8 +35,6 @@ void main() {
 
   testWidgets('starts with the search and the chats, under a bar titled Chats', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      expect(find.byType(VeilHeroPanel), findsNothing);
-      expect(find.byType(VeilMetricStrip), findsNothing);
       expect(find.text('Chats'), findsWidgets, reason: 'the bar and the tab');
       expect(find.text('VEIL'), findsNothing);
       // No status line: no count, no standing reminder, no connection while

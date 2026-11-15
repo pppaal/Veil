@@ -21,7 +21,6 @@ import 'package:veil_mobile/src/features/conversations/data/conversation_models.
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import 'support/memory_secure_store.dart';
 
@@ -116,10 +115,6 @@ void main() {
       find.byWidgetPredicate((widget) => widget is Semantics && (widget.properties.label ?? '').contains('Delivered')),
       findsOneWidget,
     );
-    // The pane shows the messages, not cards about them.
-    expect(find.byType(VeilHeroPanel), findsNothing);
-    expect(find.byType(VeilMetricStrip), findsNothing);
-    expect(find.byType(VeilStatusPill), findsNothing);
 
     // The search is in the pane's bar, as on a phone.
     await tester.tap(find.byTooltip('Search'));

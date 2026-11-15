@@ -37,9 +37,6 @@ void main() {
     testWidgets('shows the list and the open chat with nothing above the rows or the messages ($size)',
         (tester) async {
       await withPhoneApp(tester, identities, size: size, location: '/conversations', body: (world) async {
-        expect(find.byType(VeilHeroPanel), findsNothing);
-        expect(find.byType(VeilMetricStrip), findsNothing);
-        expect(find.byType(VeilStatusPill), findsNothing);
 
         final list = tester.getRect(find.byType(ConversationListPhone));
         final chat = tester.getRect(find.byType(ChatRoomScreen));
@@ -115,7 +112,7 @@ void main() {
       await tester.tap(inChat(find.byTooltip('Safety number')));
       await pumpFrames(tester);
       expect(find.byType(SafetyNumbersScreen), findsOneWidget);
-      final loading = find.byType(VeilLoadingBlock);
+      final loading = find.byKey(SafetyNumbersScreen.loadingKey);
       for (var i = 0; i < 250 && loading.evaluate().isNotEmpty; i++) {
         await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
         await tester.pump();

@@ -809,9 +809,11 @@ Future<void> _reactToMessages(WidgetTester tester) async {
   expect(find.byType(ReactionChipsRow), findsNWidgets(2), reason: 'the reactions did not show under their messages');
 }
 
+// In a 1:1 the indicator is its bubble of dots, with no words beside it.
 Future<void> _expectTypingIndicator(WidgetTester tester) async {
-  expect(find.descendant(of: find.byType(TypingIndicator), matching: find.byType(Text)), findsOneWidget,
-      reason: 'the typing indicator is not on screen');
+  final indicator = find.byType(TypingIndicator);
+  expect(indicator, findsOneWidget, reason: 'the typing indicator is not on screen');
+  expect(tester.getSize(indicator).height, greaterThan(0), reason: 'the typing indicator is not on screen');
 }
 
 // The two-pane shell with the chat of the cases in its second pane.

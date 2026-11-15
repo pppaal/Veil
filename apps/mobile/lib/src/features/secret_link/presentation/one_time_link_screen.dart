@@ -213,9 +213,7 @@ class _CreatedLink extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
                   child: SelectableText(
                     link.url,
-                    // `monospace` is Android's name for its mono font; iOS has Menlo.
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(fontFamily: 'monospace', fontFamilyFallback: const ['Menlo'], height: 1.4),
+                    style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.4),
                   ),
                 ),
               ),

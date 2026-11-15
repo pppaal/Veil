@@ -5,9 +5,9 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 /// Someone is typing: a small incoming bubble with three muted dots, on the
-/// side the peer's messages are on, and who it is beside it; nothing when
-/// no one is. A 1:1 only says that they are typing; a group ([named]) says
-/// who.
+/// side the peer's messages are on; nothing when no one is. In a 1:1 the
+/// dots are all (a screen reader hears that they are typing); a group
+/// ([named]) says beside them who it is.
 class TypingIndicator extends StatelessWidget {
   const TypingIndicator({super.key, required this.handle, this.named = true});
 
@@ -24,6 +24,7 @@ class TypingIndicator extends StatelessWidget {
     }
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
+    final label = named ? l10n.chatTypingSuffix(handle!) : l10n.chatTypingUnnamed;
     return Padding(
       // In line with the peer's bubbles above it.
       padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.md, VeilSpace.xxs),
@@ -41,18 +42,23 @@ class TypingIndicator extends StatelessWidget {
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
-              child: _TypingDots(color: palette.textMuted),
+              child: Semantics(
+                label: named ? null : label,
+                child: _TypingDots(color: palette.textMuted),
+              ),
             ),
           ),
-          const SizedBox(width: VeilSpace.xs),
-          Flexible(
-            child: Text(
-              named ? l10n.chatTypingSuffix(handle!) : l10n.chatTypingUnnamed,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+          if (named) ...[
+            const SizedBox(width: VeilSpace.xs),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

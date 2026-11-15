@@ -19,7 +19,7 @@ import 'phone_app.dart';
 // the hero cards, stat tiles and header cards of the old panes were for is
 // in the two bars.
 
-const _latest = 'Section 7 is fine. Let us sign tomorrow.';
+const _latest = "Section 7 is fine. Let's sign tomorrow.";
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -101,6 +101,8 @@ void main() {
     expect(l10n.chatGroupMemberCount(4), '4 members');
     expect(l10n.conversationsQueued(1), '1 message waiting to be sent');
     expect(l10n.conversationsQueued(3), '3 messages waiting to be sent');
+    expect(l10n.conversationsNotSent(1), "1 message wasn't sent");
+    expect(l10n.conversationsNotSent(3), "3 messages weren't sent");
     expect(l10n.chatDurationMinutes(1), '1 minute');
     expect(l10n.chatDurationMinutes(5), '5 minutes');
     for (final text in [

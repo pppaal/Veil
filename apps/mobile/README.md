@@ -160,8 +160,9 @@ and Before you start keep their button in a bar under the text that
 scrolls. Move to a new phone is three numbered steps per phone, of which
 only the step in hand shows its controls; a code to carry to the other phone
 is shown with a copy button, and what approving or finishing leads to is
-said above the button that does it. What an action came to is said in the
-step that was acted on and scrolls itself into view. A session or claim that ran out puts the first
+said above the button that does it. What an action came to is one line
+under the button of the step that was acted on, and scrolls itself into
+view. A session or claim that ran out puts the first
 step back in hand on its side: the claim's window is the session's, so the
 new device can neither register again nor finish on the code it holds, and
 the step that says so is the one that takes the new code

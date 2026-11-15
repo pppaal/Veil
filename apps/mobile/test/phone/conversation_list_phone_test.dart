@@ -80,7 +80,7 @@ void main() {
         for (final row in tester.widgetList<ConversationRow>(find.byType(ConversationRow))) row.title: row.snippet,
       };
       expect(previews, hasLength(8));
-      expect(previews['Sam Rivera'], 'Section 7 is fine. Let us sign tomorrow.');
+      expect(previews['Sam Rivera'], "Section 7 is fine. Let's sign tomorrow.");
       expect(previews['Jonas Weber'], 'See you at nine.');
       expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
       // Only text is quoted: other kinds are named by what they are.
@@ -88,7 +88,7 @@ void main() {
       expect(previews['Alexandra Montgomery-Whitfield'], 'Voice message');
       expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));
-      expect(find.text('Section 7 is fine. Let us sign tomorrow.'), findsOneWidget, reason: 'drawn on its row');
+      expect(find.text("Section 7 is fine. Let's sign tomorrow."), findsOneWidget, reason: 'drawn on its row');
 
       expect(find.byType(ChatRoomScreen), findsNothing);
       expect(world.messenger.activeConversationId, isNull);

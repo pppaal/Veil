@@ -46,7 +46,8 @@ words:
   and no way for anyone, including us, to recover an account."
 - Move to a new phone: "You need the old phone. If it is gone, the account
   is gone."
-- The confirm dialogs of Wipe this device, Revoke and Delete account.
+- The confirm dialogs of Sign out (signing out erases this phone's keys),
+  Wipe this device, Revoke and Delete account.
 
 It is not repeated on Create account, App lock, Chats, the Security rows or
 the splash, and it is never a slogan.

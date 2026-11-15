@@ -68,7 +68,7 @@ void main() {
           l10n.settingsSectionSecurity,
           l10n.settingsSectionDevices,
           l10n.settingsSectionAccount,
-          '${l10n.securityFooterEncryption} ${l10n.securityFooterNoRecovery}',
+          '${l10n.securityFooterEncryption} ${l10n.securityFooterDevice} ${l10n.securityFooterNoRecovery}',
           l10n.settingsLogout,
           l10n.settingsWipeLocal,
           l10n.settingsRevokeTitle,
@@ -79,7 +79,7 @@ void main() {
         // The security footer is the only text of the screen that names
         // the backup there is not.
         expect([for (final text in said) if (text.toLowerCase().contains('backup')) text],
-            ['${l10n.securityFooterEncryption} ${l10n.securityFooterNoRecovery}']);
+            ['${l10n.securityFooterEncryption} ${l10n.securityFooterDevice} ${l10n.securityFooterNoRecovery}']);
       });
     });
 

@@ -68,6 +68,26 @@ void main() {
     );
   });
 
+  testWidgets('biometrics that fail are said under the PIN field, and the app stays locked', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/lock',
+      account: LayoutAccount.locked,
+      body: (world) async {
+        // The layout world's biometrics always refuse.
+        await tester.tap(find.widgetWithText(TextButton, l10n.appLockUseBiometrics));
+        await pumpFrames(tester, frames: 3);
+
+        final field = tester.widget<TextField>(find.byType(TextField));
+        expect(field.decoration?.errorText, l10n.appLockStatusBiometricFailed);
+        expect(find.byType(VeilNotice, skipOffstage: false), findsNothing, reason: 'the field says it, not a box');
+        expect(findCopy(l10n.appLockLockedTitle), findsOneWidget, reason: 'still locked');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   testWidgets('choosing a PIN: the two fields in a group, the footer once, then "Turn on"', (tester) async {
     usePhoneView(tester, phoneSmall);
     final storage = SecureStorageService(MemorySecureStore());

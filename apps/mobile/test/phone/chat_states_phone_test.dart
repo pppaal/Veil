@@ -78,7 +78,7 @@ void main() {
 
         expect(nameOn('The movers can do the 14th or the 16th.'), 'Sam Rivera');
         expect(nameOn('The 14th works for me.'), 'Priya Nair');
-        expect(nameOn('14th then. I will book the lift for the morning.'), isNull);
+        expect(nameOn("14th then. I'll book the lift for the morning."), isNull);
         expect(nameOn('I can bring the van after six, if someone helps me carry the shelves down.'), 'Omar Haddad');
         // Drawn, above the words, inside the bubble.
         final name = tester.getRect(find.text('Priya Nair'));
@@ -153,7 +153,9 @@ void main() {
       await withPhoneApp(tester, identities, location: _chat, body: (world) async {
         world.messenger.presenceTyping.typingStarted(chatConversationId, peerHandle);
         await tester.pump();
-        expect(find.text('Typing…'), findsOneWidget);
+        // The dots alone; a screen reader still hears it.
+        expect(find.bySemanticsLabel('Typing…'), findsOneWidget);
+        expect(find.text('Typing…'), findsNothing);
         expect(find.textContaining('@$peerHandle is'), findsNothing);
         await tester.pump(const Duration(seconds: 6));
       });

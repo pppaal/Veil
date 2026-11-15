@@ -58,8 +58,9 @@ class SettingsScreen extends ConsumerWidget {
           VeilGroup(
             header: l10n.settingsSectionSecurity,
             // The one place Settings says what the account's security rests
-            // on, and that nothing brings a lost account back.
-            footer: '${l10n.securityFooterEncryption} ${l10n.securityFooterNoRecovery}',
+            // on, where the account lives, and that nothing brings a lost
+            // account back.
+            footer: '${l10n.securityFooterEncryption} ${l10n.securityFooterDevice} ${l10n.securityFooterNoRecovery}',
             children: [
               _AppLockRow(onTurnOn: lockNow),
               VeilRow(

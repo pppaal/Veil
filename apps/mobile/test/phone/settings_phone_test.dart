@@ -151,7 +151,7 @@ void main() {
       for (final key in ['settings-lock-now', 'settings-security-details', 'settings-one-time-link']) {
         expect(find.byKey(ValueKey(key), skipOffstage: false), findsOneWidget, reason: key);
       }
-      final footer = '${en.securityFooterEncryption} ${en.securityFooterNoRecovery}';
+      final footer = '${en.securityFooterEncryption} ${en.securityFooterDevice} ${en.securityFooterNoRecovery}';
       expect(find.text(footer, skipOffstage: false), findsOneWidget);
       final security = tester.widgetList<VeilGroup>(find.byType(VeilGroup, skipOffstage: false))
           .singleWhere((group) => group.header == en.settingsSectionSecurity);
@@ -294,7 +294,7 @@ void main() {
     testWidgets('is the last group, four red rows that each open their own dialog', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
         await scrollTo(tester, find.byKey(const ValueKey('settings-delete-account')));
-        final footer = '${en.securityFooterEncryption} ${en.securityFooterNoRecovery}';
+        final footer = '${en.securityFooterEncryption} ${en.securityFooterDevice} ${en.securityFooterNoRecovery}';
         for (final key in ['settings-logout', 'settings-wipe', 'settings-revoke', 'settings-delete-account']) {
           final row = find.byKey(ValueKey(key), skipOffstage: false);
           expect(row, findsOneWidget);

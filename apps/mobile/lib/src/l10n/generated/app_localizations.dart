@@ -1966,6 +1966,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 message waiting to be sent} other{{count} messages waiting to be sent}}'**
   String conversationsQueued(int count);
 
+  /// No description provided for @conversationsNotSent.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 message wasn\'t sent} other{{count} messages weren\'t sent}}'**
+  String conversationsNotSent(int count);
+
   /// No description provided for @conversationsPreviewExpired.
   ///
   /// In en, this message translates to:
@@ -2677,13 +2683,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotateDialogTitle.
   ///
   /// In en, this message translates to:
-  /// **'Start a new session?'**
+  /// **'Renew the keys?'**
   String get safetyNumbersRotateDialogTitle;
 
   /// No description provided for @safetyNumbersRotateDialogBody.
   ///
   /// In en, this message translates to:
-  /// **'This sets up new keys with your contact. Your next message uses them, and messages already on their way still open. Do this if you think your phone or theirs was briefly in someone else\'s hands: anyone who copied the old keys can\'t read new messages.'**
+  /// **'Your next message uses new keys, and messages already on their way still open. Do this if you think your phone or theirs was briefly in someone else\'s hands: anyone who copied the old keys can\'t read new messages.'**
   String get safetyNumbersRotateDialogBody;
 
   /// No description provided for @safetyNumbersCancel.
@@ -2695,25 +2701,25 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotate.
   ///
   /// In en, this message translates to:
-  /// **'Start'**
+  /// **'Renew'**
   String get safetyNumbersRotate;
 
   /// No description provided for @safetyNumbersSessionRotated.
   ///
   /// In en, this message translates to:
-  /// **'New session ready. Your next message starts it.'**
+  /// **'New keys ready. Your next message uses them.'**
   String get safetyNumbersSessionRotated;
 
   /// No description provided for @safetyNumbersNoSessionYet.
   ///
   /// In en, this message translates to:
-  /// **'No session yet. Send a message first.'**
+  /// **'There are no keys to renew yet. Send a message first.'**
   String get safetyNumbersNoSessionYet;
 
   /// No description provided for @safetyNumbersRotationFailed.
   ///
   /// In en, this message translates to:
-  /// **'Couldn\'t start a new session. Try again in a moment.'**
+  /// **'Couldn\'t renew the keys. Try again in a moment.'**
   String get safetyNumbersRotationFailed;
 
   /// No description provided for @safetyNumbersErrorTitle.
@@ -2803,13 +2809,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersRotating.
   ///
   /// In en, this message translates to:
-  /// **'Starting…'**
+  /// **'Renewing…'**
   String get safetyNumbersRotating;
 
   /// No description provided for @safetyNumbersRotateButton.
   ///
   /// In en, this message translates to:
-  /// **'Start a new session'**
+  /// **'Renew keys'**
   String get safetyNumbersRotateButton;
 
   /// No description provided for @safetyNumbersNewNumberHeader.
@@ -2887,7 +2893,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersScanAction.
   ///
   /// In en, this message translates to:
-  /// **'Compare a scanned code'**
+  /// **'Compare their code'**
   String get safetyNumbersScanAction;
 
   /// No description provided for @safetyNumbersScanFieldLabel.
@@ -3429,6 +3435,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Messages are end-to-end encrypted. Keys exist only on your devices.'**
   String get securityFooterEncryption;
+
+  /// No description provided for @securityFooterDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your account lives on this phone.'**
+  String get securityFooterDevice;
 
   /// No description provided for @securityFooterNoRecovery.
   ///

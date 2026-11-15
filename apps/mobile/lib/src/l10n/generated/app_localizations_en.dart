@@ -1222,6 +1222,17 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String conversationsNotSent(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count messages weren\'t sent',
+      one: '1 message wasn\'t sent',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get conversationsPreviewExpired => 'Message expired';
 
   @override
@@ -1622,29 +1633,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersMarkedVerified => 'Marked as verified';
 
   @override
-  String get safetyNumbersRotateDialogTitle => 'Start a new session?';
+  String get safetyNumbersRotateDialogTitle => 'Renew the keys?';
 
   @override
   String get safetyNumbersRotateDialogBody =>
-      'This sets up new keys with your contact. Your next message uses them, and messages already on their way still open. Do this if you think your phone or theirs was briefly in someone else\'s hands: anyone who copied the old keys can\'t read new messages.';
+      'Your next message uses new keys, and messages already on their way still open. Do this if you think your phone or theirs was briefly in someone else\'s hands: anyone who copied the old keys can\'t read new messages.';
 
   @override
   String get safetyNumbersCancel => 'Cancel';
 
   @override
-  String get safetyNumbersRotate => 'Start';
+  String get safetyNumbersRotate => 'Renew';
 
   @override
   String get safetyNumbersSessionRotated =>
-      'New session ready. Your next message starts it.';
+      'New keys ready. Your next message uses them.';
 
   @override
   String get safetyNumbersNoSessionYet =>
-      'No session yet. Send a message first.';
+      'There are no keys to renew yet. Send a message first.';
 
   @override
   String get safetyNumbersRotationFailed =>
-      'Couldn\'t start a new session. Try again in a moment.';
+      'Couldn\'t renew the keys. Try again in a moment.';
 
   @override
   String get safetyNumbersErrorTitle => 'Couldn\'t load the safety number';
@@ -1695,10 +1706,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersMarkVerified => 'Mark as verified';
 
   @override
-  String get safetyNumbersRotating => 'Starting…';
+  String get safetyNumbersRotating => 'Renewing…';
 
   @override
-  String get safetyNumbersRotateButton => 'Start a new session';
+  String get safetyNumbersRotateButton => 'Renew keys';
 
   @override
   String get safetyNumbersNewNumberHeader => 'New safety number';
@@ -1744,7 +1755,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersKeepCurrentKey => 'Keep the old one';
 
   @override
-  String get safetyNumbersScanAction => 'Compare a scanned code';
+  String get safetyNumbersScanAction => 'Compare their code';
 
   @override
   String get safetyNumbersScanFieldLabel => 'Their code';
@@ -2073,6 +2084,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get securityFooterEncryption =>
       'Messages are end-to-end encrypted. Keys exist only on your devices.';
+
+  @override
+  String get securityFooterDevice => 'Your account lives on this phone.';
 
   @override
   String get securityFooterNoRecovery =>

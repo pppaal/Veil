@@ -28,8 +28,8 @@ String conversationRowSemantics(AppLocalizations l10n, ConversationPreview item,
       : l10n.conversationsGroupRowSemantics(title);
 }
 
-/// The line under a conversation's name: what waits to be sent, or the last
-/// message. Only a text this device decrypted is quoted; every other kind is
+/// The line under a conversation's name: what was not sent or waits to be
+/// sent (in the words the chat's own notice uses), or the last message. Only a text this device decrypted is quoted; every other kind is
 /// named by its decrypted kind, never by the envelope's unauthenticated one.
 String conversationPreviewLine(
   AppLocalizations l10n,
@@ -37,7 +37,10 @@ String conversationPreviewLine(
   VeilMessengerController controller,
 ) {
   final pendingCount = controller.pendingCountFor(item.id);
-  if (pendingCount > 0) return l10n.conversationsQueued(pendingCount);
+  if (pendingCount > 0) {
+    final failedCount = controller.messagesFor(item.id).where((message) => message.hasFailed).length;
+    return failedCount > 0 ? l10n.conversationsNotSent(failedCount) : l10n.conversationsQueued(pendingCount);
+  }
 
   final envelope = item.lastEnvelope;
   if (envelope == null) {

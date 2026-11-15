@@ -16,7 +16,7 @@ import 'phone_app.dart';
 // A chat on a phone: the messages have the screen, and everything the
 // header cards carried in the wide layout is still one tap away in the bar.
 
-const _latest = 'Section 7 is fine. Let us sign tomorrow.';
+const _latest = "Section 7 is fine. Let's sign tomorrow.";
 const _first = 'Did the signed lease come through on your side?';
 const _chat = '/chat/$chatConversationId';
 

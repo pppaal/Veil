@@ -42,6 +42,12 @@ void main() {
       expect(find.byType(VeilNotice), findsNothing);
       // Nothing to save until the nickname changes.
       expect(find.widgetWithText(TextButton, en.profileSaveNickname), findsNothing);
+      // The header names the field on screen; a screen reader hears the
+      // name on the field itself.
+      final semantics = tester.ensureSemantics();
+      await tester.pump();
+      expect(tester.getSemantics(field()).label, contains(en.profileNicknameHeader));
+      semantics.dispose();
     });
   });
 

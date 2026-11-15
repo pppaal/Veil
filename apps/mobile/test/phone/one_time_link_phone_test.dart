@@ -93,6 +93,12 @@ void main() {
     final footer = tester.getRect(find.text(en.oneTimeLinkFooter));
     expect(footer.top, greaterThan(passphrase.bottom));
     expect(footer.bottom, lessThan(button.top));
+    // The header names the field on screen; a screen reader hears the name
+    // on the field itself.
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    expect(tester.getSemantics(find.byType(TextField)).label, contains(en.oneTimeLinkSecretLabel));
+    semantics.dispose();
 
     // Then what it does not protect, sentence by sentence.
     final said = <String>[];

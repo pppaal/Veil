@@ -16,10 +16,64 @@ import 'package:veil_mobile/src/features/conversations/data/conversation_models.
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 void main() {
+  group('ConversationRow', () {
+    Widget row({int unreadCount = 0, String? timerLabel}) => MaterialApp(
+          theme: VeilTheme.light(),
+          home: Scaffold(
+            body: ConversationRow(
+              title: 'Sam Rivera',
+              seed: 'sam',
+              snippet: 'Section 7 is fine.',
+              timestamp: '09:45',
+              semanticLabel: 'Chat with Sam Rivera',
+              unreadCount: unreadCount,
+              unreadLabel: unreadCount == 0 ? null : '$unreadCount unread messages',
+              timerLabel: timerLabel,
+            ),
+          ),
+        );
+
+    testWidgets('an unread chat shows its count in a brand badge, its name bold and its message in the text colour',
+        (tester) async {
+      await tester.pumpWidget(row(unreadCount: 3));
+      final palette = VeilPalette.light;
+      expect(find.text('3'), findsOneWidget);
+      final badge = tester.widget<Container>(
+        find.ancestor(of: find.text('3'), matching: find.byType(Container)).first,
+      );
+      expect((badge.decoration! as BoxDecoration).color, palette.primary);
+      expect(tester.getSize(find.byType(UnreadBadge)).height, greaterThanOrEqualTo(20));
+      expect(tester.widget<Text>(find.text('Sam Rivera')).style?.fontWeight, FontWeight.w700);
+      expect(tester.widget<Text>(find.text('Section 7 is fine.')).style?.color, palette.text);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && widget.properties.label == 'Chat with Sam Rivera, 3 unread messages',
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSize(find.byType(ConversationRow)).height, greaterThanOrEqualTo(72));
+    });
+
+    testWidgets('a read chat has no badge, and a chat whose messages disappear has the timer glyph', (tester) async {
+      await tester.pumpWidget(row(timerLabel: 'Disappearing: 1 day'));
+      expect(find.byType(UnreadBadge), findsNothing);
+      expect(tester.widget<Text>(find.text('Sam Rivera')).style?.fontWeight, isNot(FontWeight.w700));
+      expect(tester.widget<Text>(find.text('Section 7 is fine.')).style?.color, VeilPalette.light.textMuted);
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && widget.properties.label == 'Chat with Sam Rivera, Disappearing: 1 day',
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('the wide layout shows the list and the open chat, and searches both from the list', (tester) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;

@@ -9,8 +9,9 @@ import '../../../shared/presentation/veil_ui.dart';
 // same ones at the top of the chat's pane (see ChatPaneBar).
 
 /// Who a chat is with: their avatar, the name with the verified mark, and
-/// under it one muted line about them (online, their handle, how many are
-/// in a group) and the disappearing timer when one is set.
+/// under it one muted line: the disappearing timer while one is set (it
+/// changes what is sent), otherwise whether they are online, their handle,
+/// or how many are in a group.
 class ChatBarTitle extends StatelessWidget {
   const ChatBarTitle({
     super.key,
@@ -76,10 +77,9 @@ class ChatBarTitle extends StatelessWidget {
           const SizedBox(height: 2),
           Row(
             children: [
-              if (presence != null)
-                Flexible(child: Text(presence, maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle)),
+              if (timerLabel == null)
+                Flexible(child: Text(presence!, maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle)),
               if (timerLabel != null) ...[
-                if (presence != null) const SizedBox(width: VeilSpace.xs),
                 Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.warning),
                 const SizedBox(width: 2),
                 Flexible(

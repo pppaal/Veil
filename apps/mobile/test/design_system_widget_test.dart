@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:veil_mobile/src/app/router/main_tab_shell.dart';
@@ -81,26 +80,97 @@ void main() {
         expect(theme.navigationBarTheme.iconTheme?.resolve({})?.color, palette.textMuted);
       }
     });
+
+    test('the switch track is the brand on iOS too, where Flutter would draw it green', () {
+      for (final theme in [VeilTheme.dark(), VeilTheme.light()]) {
+        final palette = VeilPalette.forBrightness(theme.brightness);
+        for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+          final onPlatform = theme.copyWith(platform: platform);
+          final adapted = onPlatform.getAdaptation<SwitchThemeData>()!.adapt(onPlatform, onPlatform.switchTheme);
+          expect(adapted.trackColor?.resolve({WidgetState.selected}), palette.primary, reason: platform.name);
+        }
+      }
+    });
+  });
+
+  group('tap targets', () {
+    testWidgets('every control is at least 44 by 44', (tester) async {
+      var segment = 'Light';
+      var checked = false;
+      await _pump(
+        tester,
+        _App(
+          light: true,
+          child: VeilShell(
+            title: 'Settings',
+            actions: [IconButton(onPressed: _noop, icon: const Icon(Icons.edit_outlined), tooltip: 'New chat')],
+            child: StatefulBuilder(
+              builder: (context, setState) => Column(children: [
+                SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'Light', label: Text('Light')),
+                    ButtonSegment(value: 'Dark', label: Text('Dark')),
+                    ButtonSegment(value: 'System', label: Text('System')),
+                  ],
+                  selected: {segment},
+                  onSelectionChanged: (value) => setState(() => segment = value.first),
+                ),
+                ChoiceChip(label: const Text('Chats'), selected: true, onSelected: (_) {}),
+                Checkbox(value: checked, onChanged: (value) => setState(() => checked = value!)),
+                const TextField(decoration: InputDecoration(hintText: 'Search')),
+                VeilRow(title: 'Send read receipts', switchValue: checked, onSwitch: (value) {}),
+              ]),
+            ),
+          ),
+        ),
+      );
+      void expectTarget(Finder finder, String what) {
+        final size = tester.getSize(finder);
+        expect(size.width, greaterThanOrEqualTo(44), reason: '$what width');
+        expect(size.height, greaterThanOrEqualTo(44), reason: '$what height');
+      }
+
+      expectTarget(find.byType(IconButton), 'bar action');
+      expectTarget(find.byType(SegmentedButton<String>), 'segmented control');
+      expectTarget(find.byType(ChoiceChip), 'chip');
+      expectTarget(find.byType(Checkbox), 'checkbox');
+      expectTarget(find.byType(TextField), 'text field');
+      expectTarget(find.byType(VeilRow), 'switch row');
+      final barAction = tester.widget<IconButton>(find.byType(IconButton));
+      expect(barAction.style, isNull, reason: 'a bar action has no tile of its own');
+      expect(
+        Theme.of(tester.element(find.byType(IconButton))).iconButtonTheme.style?.backgroundColor?.resolve({}),
+        Colors.transparent,
+      );
+    });
   });
 
   group('VeilShell', () {
     testWidgets('draws an opaque 52dp bar with a hairline and no blur, gradient or shadow', (tester) async {
-      await tester.pumpWidget(const _App(child: VeilShell(title: 'Chats', child: SizedBox.expand())));
+      await _pump(tester, const _App(child: VeilShell(title: 'Chats', child: SizedBox.expand(key: Key('page')))));
       expect(find.byType(BackdropFilter), findsNothing);
+      // The bar is 52 in all, hairline included, and its content has all 52.
       expect(tester.getSize(find.byType(NavigationToolbar)).height, 52);
+      expect(tester.getTopLeft(find.byKey(const Key('page'))).dy, 52, reason: 'the page starts under the bar');
       final decorations = tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).map((box) => box.decoration);
       for (final decoration in decorations.whereType<BoxDecoration>()) {
         expect(decoration.gradient, isNull);
         expect(decoration.boxShadow, anyOf(isNull, isEmpty));
       }
-      final bar = decorations.whereType<BoxDecoration>().firstWhere((decoration) => decoration.border != null);
+      final hairline = decorations.whereType<BoxDecoration>().firstWhere((decoration) => decoration.border != null);
+      expect((hairline.border! as Border).bottom.width, 0.5);
+      expect((hairline.border! as Border).bottom.color, VeilPalette.dark.stroke);
+      final bar = tester.widget<Material>(
+        find.ancestor(of: find.byType(NavigationToolbar), matching: find.byType(Material)).first,
+      );
       expect(bar.color, VeilPalette.dark.canvas);
-      expect((bar.border! as Border).bottom.width, 0.5);
+      expect(bar.elevation, 0);
       expect(find.text('Chats'), findsOneWidget);
     });
 
     testWidgets('a grouped page is canvasAlt and shows the subtitle under the title', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           light: true,
           child: VeilShell(title: 'Chats', subtitle: 'Connecting…', grouped: true, child: SizedBox.expand()),
@@ -111,19 +181,44 @@ void main() {
       expect(scaffold.backgroundColor, VeilPalette.light.canvasAlt);
     });
 
-    testWidgets('the back glyph is the platform\'s', (tester) async {
-      await tester.pumpWidget(const _App(child: VeilShell(title: 'x', leading: VeilBackButton(), child: SizedBox())));
-      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
-      await tester.pumpWidget(
-        const _App(platform: TargetPlatform.iOS, child: VeilShell(title: 'x', leading: VeilBackButton(), child: SizedBox())),
+    testWidgets('puts no coloured box between the page and its rows, so their ink shows', (tester) async {
+      await _pump(
+        tester,
+        const _App(
+          child: VeilShell(
+            title: 'Chats',
+            child: Column(children: [
+              VeilRow(title: 'Alex Kim', onTap: _noop),
+              ListTile(title: Text('A plain tile'), onTap: _noop),
+            ]),
+          ),
+        ),
       );
+      // ListTile reports a coloured box between it and its Material.
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the back glyph is the platform\'s', (tester) async {
+      await _pump(tester, const _App(child: VeilShell(title: 'x', leading: VeilBackButton(), child: SizedBox())));
+      expect(find.byIcon(Icons.arrow_back), findsOneWidget);
+      expect(tester.getSize(find.byType(VeilBackButton)).width, greaterThanOrEqualTo(44));
+      expect(tester.getSize(find.byType(VeilBackButton)).height, greaterThanOrEqualTo(44));
+      await _pump(
+        tester,
+        const _App(
+            platform: TargetPlatform.iOS, child: VeilShell(title: 'x', leading: VeilBackButton(), child: SizedBox())),
+      );
+      // MaterialApp animates a theme change; the platform flips half way.
+      await tester.pumpAndSettle();
       expect(find.byIcon(Icons.arrow_back_ios_new), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_back), findsNothing);
     });
   });
 
   group('VeilGroup and VeilRow', () {
     testWidgets('on a grouped page the rows sit in a container with hairlines inset to the text', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           light: true,
           child: VeilShell(
@@ -140,14 +235,16 @@ void main() {
       // 16 in, at the text edge.
       expect(tester.getRect(find.byType(VeilRow).first).left, 16);
       expect(tester.getTopLeft(find.byType(Divider)).dx, 32);
-      final container = tester.widgetList<Material>(find.byType(Material)).firstWhere((m) => m.color == VeilPalette.light.surface);
+      final container =
+          tester.widgetList<Material>(find.byType(Material)).firstWhere((m) => m.color == VeilPalette.light.surface);
       expect((container.shape! as RoundedRectangleBorder).borderRadius, BorderRadius.circular(10));
       expect(find.text('Privacy'), findsOneWidget);
       expect(find.text('A line under it.'), findsOneWidget);
     });
 
     testWidgets('on a white page the rows run full-bleed, and the inset follows the leading', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: VeilShell(
             title: 'Contacts',
@@ -167,7 +264,8 @@ void main() {
     });
 
     testWidgets('rows are 44, 52 with a subtitle and 60 with a leading avatar', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: VeilShell(
             title: 'x',
@@ -179,7 +277,9 @@ void main() {
           ),
         ),
       );
-      final heights = [for (final row in find.byType(VeilRow).evaluate()) tester.getSize(find.byWidget(row.widget)).height];
+      final heights = [
+        for (final row in find.byType(VeilRow).evaluate()) tester.getSize(find.byWidget(row.widget)).height
+      ];
       expect(heights[0], 44);
       expect(heights[1], greaterThanOrEqualTo(52));
       expect(heights[2], 60);
@@ -188,7 +288,8 @@ void main() {
     testWidgets('status is a word in the tone colour; a destination gets a chevron; destructive gets none',
         (tester) async {
       var switched = false;
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         _App(
           light: true,
           child: VeilShell(
@@ -229,7 +330,8 @@ void main() {
     });
 
     testWidgets('a field row hosts a borderless text field', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: VeilShell(
             title: 'Profile',
@@ -250,7 +352,8 @@ void main() {
   group('VeilNotice', () {
     testWidgets('is a grey box with the tone as its icon and one text button', (tester) async {
       var acted = false;
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         _App(
           light: true,
           child: VeilShell(
@@ -263,7 +366,8 @@ void main() {
                 actionLabel: 'Review',
                 onAction: () => acted = true,
               ),
-              const VeilNotice(message: '2 messages not sent', tone: VeilTone.danger, actionLabel: 'Retry now', onAction: _noop),
+              const VeilNotice(
+                  message: '2 messages not sent', tone: VeilTone.danger, actionLabel: 'Retry now', onAction: _noop),
               const VeilNotice(message: 'Just so you know'),
             ]),
           ),
@@ -273,7 +377,8 @@ void main() {
       expect(tester.widget<Icon>(find.byIcon(Icons.warning_amber_outlined)).color, palette.warning);
       expect(tester.widget<Icon>(find.byIcon(Icons.error_outline)).color, palette.danger);
       expect(tester.widget<Icon>(find.byIcon(Icons.info_outlined)).color, palette.textMuted);
-      for (final box in tester.widgetList<Container>(find.descendant(of: find.byType(VeilNotice), matching: find.byType(Container)))) {
+      for (final box in tester
+          .widgetList<Container>(find.descendant(of: find.byType(VeilNotice), matching: find.byType(Container)))) {
         final decoration = box.decoration! as BoxDecoration;
         expect(decoration.color, palette.surfaceAlt);
         expect(decoration.border, isNull);
@@ -290,16 +395,27 @@ void main() {
     });
 
     testWidgets('dense is one 44dp row, and inside a group it is a row without corners', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: VeilShell(
             title: 'x',
             grouped: true,
             child: Column(children: [
-              VeilNotice(title: '2 messages not sent', message: 'later', tone: VeilTone.warn, dense: true, actionLabel: 'Retry', onAction: _noop),
+              VeilNotice(
+                  title: '2 messages not sent',
+                  message: 'later',
+                  tone: VeilTone.warn,
+                  dense: true,
+                  actionLabel: 'Retry',
+                  onAction: _noop),
               VeilGroup(children: [
                 VeilRow(title: 'Old phone', status: ('Stale', VeilTone.warn)),
-                VeilNotice(message: 'A device has not been seen for 30 days.', tone: VeilTone.warn, actionLabel: 'Review', onAction: _noop),
+                VeilNotice(
+                    message: 'A device has not been seen for 30 days.',
+                    tone: VeilTone.warn,
+                    actionLabel: 'Review',
+                    onAction: _noop),
               ]),
             ]),
           ),
@@ -327,7 +443,8 @@ void main() {
     });
 
     testWidgets('is a flat disc with a white initial, a glyph for a group, and no semantics', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: Scaffold(
             body: Row(children: [
@@ -343,28 +460,41 @@ void main() {
       expect(letter.style?.fontSize, 48 * 0.42);
       expect(find.text('W'), findsNothing, reason: 'a group never shows a letter');
       expect(find.byIcon(Icons.group_outlined), findsOneWidget);
-      for (final disc in tester.widgetList<Container>(find.descendant(of: find.byType(VeilAvatar), matching: find.byType(Container)))) {
+      for (final disc in tester
+          .widgetList<Container>(find.descendant(of: find.byType(VeilAvatar), matching: find.byType(Container)))) {
         final decoration = disc.decoration! as BoxDecoration;
         expect(decoration.shape, BoxShape.circle);
         expect(decoration.gradient, isNull);
         expect(decoration.border, isNull);
         expect(decoration.boxShadow, isNull);
       }
-      expect(tester.widgetList(find.byType(VeilAvatar)).first, isA<VeilAvatar>());
       expect(tester.getSize(find.byType(VeilAvatar).first), const Size(48, 48));
-      expect(find.byType(ExcludeSemantics), findsNWidgets(2));
+      // A screen reader hears nothing of it: the row carries the name.
+      final semantics = tester.ensureSemantics();
+      expect(find.bySemanticsLabel('A'), findsNothing);
+      for (final avatar in find.byType(VeilAvatar).evaluate()) {
+        final excluded = find.descendant(of: find.byWidget(avatar.widget), matching: find.byType(ExcludeSemantics));
+        expect(tester.widget<ExcludeSemantics>(excluded.first).excluding, isTrue);
+      }
+      semantics.dispose();
     });
 
     testWidgets('the name tint follows the theme', (tester) async {
       late Color dark, light;
-      await tester.pumpWidget(_App(child: Builder(builder: (context) {
+      await _pump(tester, _App(child: Builder(builder: (context) {
         dark = VeilAvatar.nameTint(context, 'alex');
         return const SizedBox();
       })));
-      await tester.pumpWidget(_App(light: true, child: Builder(builder: (context) {
-        light = VeilAvatar.nameTint(context, 'alex');
-        return const SizedBox();
-      })));
+      await _pump(
+          tester,
+          _App(
+              light: true,
+              child: Builder(builder: (context) {
+                light = VeilAvatar.nameTint(context, 'alex');
+                return const SizedBox();
+              })));
+      // MaterialApp animates a theme change; the brightness flips half way.
+      await tester.pumpAndSettle();
       expect(dark, VeilAvatar.nameTintsDark[5]);
       expect(light, VeilAvatar.nameTintsLight[5]);
     });
@@ -376,7 +506,8 @@ void main() {
             as BoxDecoration;
 
     testWidgets('corners: 18, with the tail corner 4 at the end of a run and 6 inside it', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: Scaffold(
             body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -401,7 +532,8 @@ void main() {
     });
 
     testWidgets('fills: brand for mine, surfaceAlt for theirs and for a failed send with its line', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: Scaffold(
             body: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -432,14 +564,16 @@ void main() {
     });
 
     testWidgets('takes at most 78% of the width it is given', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: Scaffold(
             body: SizedBox(
               width: 300,
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: VeilBubble(isMine: false, child: Text('a message long enough to need every pixel of width it can get')),
+                child: VeilBubble(
+                    isMine: false, child: Text('a message long enough to need every pixel of width it can get')),
               ),
             ),
           ),
@@ -450,7 +584,8 @@ void main() {
   });
 
   group('VeilComposer', () {
-    testWidgets('five lines at most, no padlock, a hairline above, the reason as the hint when disabled', (tester) async {
+    testWidgets('five lines at most, no padlock, a hairline above, the reason as the hint when disabled',
+        (tester) async {
       final controller = TextEditingController(text: 'Draft');
       final focusNode = FocusNode();
       addTearDown(() {
@@ -466,7 +601,8 @@ void main() {
             helper: 'Review the safety number first',
             trailing: const SizedBox(width: 32, height: 32),
           );
-      await tester.pumpWidget(_App(child: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: composer(enabled: true)))));
+      await _pump(tester,
+          _App(child: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: composer(enabled: true)))));
       final field = tester.widget<TextField>(find.byType(TextField));
       expect(field.maxLines, 5);
       expect(field.decoration?.hintText, 'Message');
@@ -477,18 +613,24 @@ void main() {
       expect(strip.color, VeilPalette.dark.canvas);
       expect((strip.border! as Border).top.width, 0.5);
 
-      await tester.pumpWidget(_App(child: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: composer(enabled: false)))));
+      await _pump(tester,
+          _App(child: Scaffold(body: Align(alignment: Alignment.bottomCenter, child: composer(enabled: false)))));
       expect(tester.widget<TextField>(find.byType(TextField)).decoration?.hintText, 'Review the safety number first');
     });
   });
 
   group('VeilEmptyState and VeilButton', () {
     testWidgets('an empty state is a title, one line and one button; compact drops the line', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           child: Scaffold(
             body: Column(children: [
-              Expanded(child: VeilEmptyState(title: 'No chats yet', body: 'Start a chat with someone\'s handle.', icon: Icons.chat_bubble_outline)),
+              Expanded(
+                  child: VeilEmptyState(
+                      title: 'No chats yet',
+                      body: 'Start a chat with someone\'s handle.',
+                      icon: Icons.chat_bubble_outline)),
               Expanded(child: VeilEmptyState(title: 'No messages yet', body: 'Hidden', compact: true)),
               Expanded(child: VeilEmptyState.error(title: 'Could not load', body: 'Try again.')),
             ]),
@@ -503,7 +645,8 @@ void main() {
     });
 
     testWidgets('a destructive button is a text button in the danger colour; nothing is filled red', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         const _App(
           light: true,
           child: Scaffold(
@@ -526,7 +669,8 @@ void main() {
     });
 
     testWidgets('a toast is a snackbar on surfaceRaised with the tone as an icon', (tester) async {
-      await tester.pumpWidget(
+      await _pump(
+        tester,
         _App(
           child: Scaffold(
             body: Builder(
@@ -544,7 +688,8 @@ void main() {
       expect(find.byType(SnackBar), findsOneWidget);
       expect(find.text('Nickname saved'), findsOneWidget);
       expect(find.byIcon(Icons.check_circle_outline), findsOneWidget);
-      expect(Theme.of(tester.element(find.byType(SnackBar))).snackBarTheme.backgroundColor, VeilPalette.dark.surfaceRaised);
+      expect(Theme.of(tester.element(find.byType(SnackBar))).snackBarTheme.backgroundColor,
+          VeilPalette.dark.surfaceRaised);
     });
   });
 
@@ -563,12 +708,14 @@ void main() {
         ],
       );
       addTearDown(router.dispose);
-      await tester.pumpWidget(MaterialApp.router(
-        theme: VeilTheme.light(fontFamily: layoutFontFamily),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        routerConfig: router,
-      ));
+      await _pump(
+          tester,
+          MaterialApp.router(
+            theme: VeilTheme.light(fontFamily: layoutFontFamily),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            routerConfig: router,
+          ));
       await tester.pumpAndSettle();
       final bar = find.byType(NavigationBar);
       expect(bar, findsOneWidget);
@@ -586,11 +733,40 @@ void main() {
       expect(tester.widget<NavigationBar>(bar).selectedIndex, 2);
       expect(find.byIcon(Icons.settings), findsOneWidget);
       expect(find.byType(InkSplash), findsNothing);
+
+      // 56 tall on the page colour with a hairline above; each tab is a
+      // full-height target.
+      expect(tester.getSize(bar).height, 56);
+      final edge = tester
+          .widget<DecoratedBox>(
+            find.ancestor(of: bar, matching: find.byType(DecoratedBox)).first,
+          )
+          .decoration as BoxDecoration;
+      expect(edge.color, VeilPalette.light.canvas);
+      expect((edge.border! as Border).top.width, 0.5);
+      expect((edge.border! as Border).top.color, VeilPalette.light.stroke);
+      for (final tab in find.byType(NavigationDestination).evaluate()) {
+        final size = tester.getSize(find.byWidget(tab.widget));
+        expect(size.height, greaterThanOrEqualTo(44));
+        expect(size.width, greaterThanOrEqualTo(44));
+      }
+      final label = tester.widget<Text>(find.text('Settings'));
+      expect(label.style?.color ?? DefaultTextStyle.of(tester.element(find.text('Settings'))).style.color,
+          VeilPalette.light.primaryStrong);
     });
   });
 }
 
 void _noop() {}
+
+/// Pumps [widget] in a 390x844 phone view at 1x, so positions and widths
+/// read in logical pixels.
+Future<void> _pump(WidgetTester tester, Widget widget) async {
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  await tester.pumpWidget(widget);
+}
 
 class _App extends StatelessWidget {
   const _App({required this.child, this.light = false, this.platform});
@@ -606,10 +782,7 @@ class _App extends StatelessWidget {
       theme: platform == null ? theme : theme.copyWith(platform: platform),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: MediaQuery(
-        data: MediaQueryData(size: const Size(390, 844), padding: EdgeInsets.zero),
-        child: child,
-      ),
+      home: child,
     );
   }
 }

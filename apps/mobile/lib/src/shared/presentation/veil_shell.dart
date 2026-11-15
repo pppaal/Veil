@@ -93,18 +93,17 @@ class VeilShell extends StatelessWidget {
             );
     }
 
-    final body = ColoredBox(
-      color: page,
-      child: SafeArea(
-        child: Align(
-          alignment: Alignment.topCenter,
-          child: maxWidth == null
-              ? Padding(padding: padding, child: child)
-              : ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxWidth!),
-                  child: Padding(padding: padding, child: child),
-                ),
-        ),
+    // The page colour is the scaffold's own: a coloured box between the
+    // scaffold's Material and the rows would hide their ink.
+    final body = SafeArea(
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: maxWidth == null
+            ? Padding(padding: padding, child: child)
+            : ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth!),
+                child: Padding(padding: padding, child: child),
+              ),
       ),
     );
 
@@ -118,32 +117,40 @@ class VeilShell extends StatelessWidget {
                 preferredSize: const Size.fromHeight(barHeight),
                 child: Semantics(
                   container: true,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: page,
-                      border: Border(bottom: BorderSide(color: palette.stroke, width: 0.5)),
-                    ),
-                    child: SafeArea(
-                      bottom: false,
-                      child: SizedBox(
-                        height: barHeight,
-                        // The bar has one fixed height: past this size its
-                        // text would not fit it, so it stops growing there.
-                        child: MediaQuery.withClampedTextScaling(
-                          maxScaleFactor: 1.3,
-                          child: NavigationToolbar(
-                            centerMiddle: centred,
-                            middleSpacing: leading == null ? VeilSpace.md : VeilSpace.xs,
-                            leading: leading == null
-                                ? null
-                                : Padding(padding: const EdgeInsets.only(left: VeilSpace.xxs), child: leading),
-                            middle: middle,
-                            trailing: actions == null
-                                ? null
-                                : Padding(
-                                    padding: const EdgeInsets.only(right: VeilSpace.xxs),
-                                    child: Row(mainAxisSize: MainAxisSize.min, children: actions!),
-                                  ),
+                  // A Material, so a control in the bar draws its ink on the
+                  // bar and not under it.
+                  child: Material(
+                    color: page,
+                    child: DecoratedBox(
+                      // The hairline is drawn over the bar's last half point
+                      // rather than under it, so the bar stays 52 and its
+                      // content keeps the whole 52.
+                      position: DecorationPosition.foreground,
+                      decoration: BoxDecoration(
+                        border: Border(bottom: BorderSide(color: palette.stroke, width: 0.5)),
+                      ),
+                      child: SafeArea(
+                        bottom: false,
+                        child: SizedBox(
+                          height: barHeight,
+                          // The bar has one fixed height: past this size its
+                          // text would not fit it, so it stops growing there.
+                          child: MediaQuery.withClampedTextScaling(
+                            maxScaleFactor: 1.3,
+                            child: NavigationToolbar(
+                              centerMiddle: centred,
+                              middleSpacing: leading == null ? VeilSpace.md : VeilSpace.xs,
+                              leading: leading == null
+                                  ? null
+                                  : Padding(padding: const EdgeInsets.only(left: VeilSpace.xxs), child: leading),
+                              middle: middle,
+                              trailing: actions == null
+                                  ? null
+                                  : Padding(
+                                      padding: const EdgeInsets.only(right: VeilSpace.xxs),
+                                      child: Row(mainAxisSize: MainAxisSize.min, children: actions!),
+                                    ),
+                            ),
                           ),
                         ),
                       ),

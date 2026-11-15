@@ -221,7 +221,10 @@ class VeilRow extends StatelessWidget {
                   onTap!();
                 },
     );
-    return isSwitch ? MergeSemantics(child: tile) : tile;
+    // The row draws its own ink: on a page or in a sheet a coloured box may
+    // sit between it and the nearest Material, which would hide the ink.
+    final row = Material(type: MaterialType.transparency, child: tile);
+    return isSwitch ? MergeSemantics(child: row) : row;
   }
 
   Widget _buildField(BuildContext context, Widget field) {

@@ -199,8 +199,7 @@ class VeilPalette {
 
   /// Resolve the palette matching a [Brightness]. Screens should prefer
   /// `context.veilPalette` which reads the brightness from [Theme.of].
-  static VeilPalette forBrightness(Brightness brightness) =>
-      brightness == Brightness.light ? light : dark;
+  static VeilPalette forBrightness(Brightness brightness) => brightness == Brightness.light ? light : dark;
 }
 
 class VeilTheme {
@@ -249,6 +248,7 @@ class VeilTheme {
       splashFactory: InkRipple.splashFactory,
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.standard,
+      adaptations: <Adaptation<Object>>[_VeilSwitchAdaptation(palette)],
     );
 
     // The scale sits on the platform's text theme (which carries the
@@ -293,7 +293,6 @@ class VeilTheme {
 
     return base.copyWith(
       textTheme: textTheme,
-      primaryTextTheme: textTheme,
       iconTheme: IconThemeData(color: palette.textMuted, size: VeilIconSize.md),
       // The bar: 52dp, opaque, the title in titleLarge, centred on iOS and
       // at the start on Android (centerTitle is left to the platform).
@@ -341,8 +340,9 @@ class VeilTheme {
         prefixStyle: TextStyle(color: palette.textMuted),
         prefixIconColor: palette.textMuted,
         suffixIconColor: palette.textMuted,
-        // 11 above and below a 16/1.4 line make the 44 of a field.
-        contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 11),
+        // Flutter keeps a field that is not dense at least 48 tall, so the
+        // field clears the 44dp tap target whatever this padding is.
+        contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 10),
         border: fieldBorder(palette.stroke, 0.5),
         enabledBorder: fieldBorder(palette.stroke, 0.5),
         focusedBorder: fieldBorder(palette.strokeStrong, 1),
@@ -556,6 +556,26 @@ class VeilTheme {
       ),
     );
   }
+}
+
+/// The switch theme `Switch.adaptive` uses. On iOS Flutter drops the
+/// Material switch theme and draws the Cupertino switch in system green;
+/// this keeps the iOS shape and thumb and puts the brand on the track when
+/// it is on, as on Android. Elsewhere the theme is used as it is.
+class _VeilSwitchAdaptation extends Adaptation<SwitchThemeData> {
+  const _VeilSwitchAdaptation(this.palette);
+
+  final VeilPalette palette;
+
+  @override
+  SwitchThemeData adapt(ThemeData theme, SwitchThemeData defaultValue) => switch (theme.platform) {
+        TargetPlatform.iOS || TargetPlatform.macOS => SwitchThemeData(
+            trackColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected) ? palette.primary : null,
+            ),
+          ),
+        _ => defaultValue,
+      };
 }
 
 /// The one type style a screen still names outside the text theme.

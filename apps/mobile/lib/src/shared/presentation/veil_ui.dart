@@ -215,9 +215,6 @@ void showVeilToast(BuildContext context, String message, {VeilTone tone = VeilTo
 // Deprecated: the previous pass's widgets, flattened. Deleted in phase 2.
 // ---------------------------------------------------------------------------
 
-@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Text wraps on its own.')
-String veilKeepWordsWhole(String text) => text;
-
 @Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use Text.')
 class VeilCopy extends StatelessWidget {
   const VeilCopy(this.text, {super.key, this.style, this.textAlign, this.maxLines, this.overflow});
@@ -231,47 +228,6 @@ class VeilCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(text, style: style, textAlign: textAlign, maxLines: maxLines, overflow: overflow);
-  }
-}
-
-@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use NavigationBar, InkWell or GestureDetector.')
-class VeilPressable extends StatelessWidget {
-  const VeilPressable({
-    super.key,
-    required this.child,
-    this.onTap,
-    this.onLongPress,
-    this.scale = 0.96,
-    this.haptic = true,
-    this.destructive = false,
-    this.behavior = HitTestBehavior.opaque,
-  });
-
-  final Widget child;
-  final VoidCallback? onTap;
-  final VoidCallback? onLongPress;
-
-  /// Ignored: nothing scales on press.
-  final double scale;
-  final bool haptic;
-  final bool destructive;
-  final HitTestBehavior behavior;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: behavior,
-      onTap: onTap == null
-          ? null
-          : () {
-              if (haptic) {
-                destructive ? VeilHaptics.medium() : VeilHaptics.light();
-              }
-              onTap!();
-            },
-      onLongPress: onLongPress,
-      child: child,
-    );
   }
 }
 
@@ -702,7 +658,8 @@ class VeilConversationCard extends StatelessWidget {
                                   const SizedBox(width: VeilSpace.xs),
                                   Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.textMuted),
                                   const SizedBox(width: VeilSpace.xxs),
-                                  Text(expiryLabel!, style: theme.textTheme.labelSmall?.copyWith(color: palette.textMuted)),
+                                  Text(expiryLabel!,
+                                      style: theme.textTheme.labelSmall?.copyWith(color: palette.textMuted)),
                                 ],
                               ],
                             ),

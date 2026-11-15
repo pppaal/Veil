@@ -94,12 +94,17 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
             footer: l10n.oneTimeLinkFooter,
             children: [
               VeilRow.field(
-                field: TextField(
-                  controller: _secret,
-                  minLines: 3,
-                  maxLines: 5,
-                  onChanged: (_) => _edited(),
-                  decoration: InputDecoration(hintText: l10n.oneTimeLinkSecretHint),
+                // The group's header names the field on screen; a screen
+                // reader hears it on the field itself.
+                field: Semantics(
+                  label: l10n.oneTimeLinkSecretLabel,
+                  child: TextField(
+                    controller: _secret,
+                    minLines: 3,
+                    maxLines: 5,
+                    onChanged: (_) => _edited(),
+                    decoration: InputDecoration(hintText: l10n.oneTimeLinkSecretHint),
+                  ),
                 ),
               ),
               VeilRow(
@@ -208,7 +213,9 @@ class _CreatedLink extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
                   child: SelectableText(
                     link.url,
-                    style: theme.textTheme.bodySmall?.copyWith(fontFamily: 'monospace', height: 1.4),
+                    // `monospace` is Android's name for its mono font; iOS has Menlo.
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(fontFamily: 'monospace', fontFamilyFallback: const ['Menlo'], height: 1.4),
                   ),
                 ),
               ),

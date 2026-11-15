@@ -2983,7 +2983,7 @@ abstract class AppLocalizations {
   /// No description provided for @oneTimeLinkUsePassphraseCaption.
   ///
   /// In en, this message translates to:
-  /// **'You send the passphrase another way.'**
+  /// **'The secret can\'t be read without it.'**
   String get oneTimeLinkUsePassphraseCaption;
 
   /// No description provided for @oneTimeLinkPassphraseLabel.

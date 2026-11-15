@@ -1817,7 +1817,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get oneTimeLinkUsePassphraseCaption =>
-      'You send the passphrase another way.';
+      'The secret can\'t be read without it.';
 
   @override
   String get oneTimeLinkPassphraseLabel => 'Passphrase';

@@ -648,7 +648,7 @@
   "oneTimeLinkSecretHint": "A password, an account number, a note",
   "oneTimeLinkUsePassphrase": "Protect with a passphrase",
   "oneTimeLinkUsePassphraseBody": "The key stays out of the link. Send the passphrase another way.",
-  "oneTimeLinkUsePassphraseCaption": "You send the passphrase another way.",
+  "oneTimeLinkUsePassphraseCaption": "The secret can't be read without it.",
   "oneTimeLinkPassphraseLabel": "Passphrase",
   "oneTimeLinkCreate": "Create link",
   "oneTimeLinkCreating": "Creating…",

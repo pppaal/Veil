@@ -18,8 +18,10 @@ Future<void> _showSheet(BuildContext context, WidgetBuilder builder) => showModa
       context: context,
       useRootNavigator: true,
       // A sheet with a field grows above the keyboard, and three rows under a
-      // header are taller than the half screen a sheet gets by default.
+      // header are taller than the half screen a sheet gets by default; it
+      // stops under the status bar.
       isScrollControlled: true,
+      useSafeArea: true,
       showDragHandle: true,
       builder: builder,
     );

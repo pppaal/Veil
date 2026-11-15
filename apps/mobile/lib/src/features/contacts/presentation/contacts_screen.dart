@@ -48,7 +48,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
         IconButton(
           tooltip: l10n.contactsAdd,
           onPressed: controller.isMutating ? null : () => showAddContactSheet(context, ref),
-          icon: const Icon(Icons.person_add_outlined),
+          icon: const Icon(Icons.person_add_alt_1_outlined),
         ),
       ],
       child: RefreshIndicator(

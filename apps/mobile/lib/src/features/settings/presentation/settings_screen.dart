@@ -200,8 +200,13 @@ class _DevicesGroup extends ConsumerWidget {
     // opens another screen) and puts it back after an unlock.
     void openDevices() => context.push('/trusted-devices');
 
+    final listed = list != null && list.devices.isNotEmpty && !(devices.hasError && !devices.isLoading);
     return VeilGroup(
       header: l10n.settingsSectionDevices,
+      // Each line belongs to the row above it: under a device, at its text.
+      // The rows under the devices (the notice, with its own icon, and
+      // moving to a new phone, the last row) have no line of their own.
+      inset: listed ? deviceRowTextInset : VeilSpace.md,
       children: [
         if (devices.hasError && !devices.isLoading)
           VeilNotice(

@@ -94,17 +94,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             footer: l10n.profileNicknameFooter,
             children: [
               VeilRow.field(
-                field: TextField(
-                  key: const ValueKey('profile-nickname'),
-                  controller: _nickname,
-                  focusNode: _focus,
-                  textInputAction: TextInputAction.done,
-                  textCapitalization: TextCapitalization.words,
-                  onChanged: (_) => setState(() {}),
-                  onSubmitted: (_) {
-                    if (_changed(ref.read(appSessionProvider).displayName)) _save();
-                  },
-                  decoration: InputDecoration(hintText: l10n.profileNicknameHint),
+                // The group's header names the field on screen; a screen
+                // reader hears it on the field itself.
+                field: Semantics(
+                  label: l10n.profileNicknameHeader,
+                  child: TextField(
+                    key: const ValueKey('profile-nickname'),
+                    controller: _nickname,
+                    focusNode: _focus,
+                    textInputAction: TextInputAction.done,
+                    textCapitalization: TextCapitalization.words,
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (_) {
+                      if (_changed(ref.read(appSessionProvider).displayName)) _save();
+                    },
+                    decoration: InputDecoration(hintText: l10n.profileNicknameHint),
+                  ),
                 ),
                 trailing: !changed
                     ? null

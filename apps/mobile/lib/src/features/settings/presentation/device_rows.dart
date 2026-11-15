@@ -47,6 +47,11 @@ IconData _platformIcon(String platform) => switch (platform) {
 
 Widget _kindIcon(String platform) => Icon(_platformIcon(platform), size: VeilIconSize.md);
 
+/// Where a [DeviceRow]'s text starts: the row's 16 gutter, the kind icon
+/// and the theme's 12 gap after a leading. The hairlines between device
+/// rows start here, under the text rather than under the icon.
+const double deviceRowTextInset = VeilSpace.md + VeilIconSize.md + VeilSpace.sm;
+
 /// One device of the account in the settings list: what kind it is, its
 /// name, when it was last seen (or what it is, for this phone, or when it
 /// was revoked), and its state as a word.

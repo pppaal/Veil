@@ -103,6 +103,11 @@ final List<NotOwnCopy> notOwnCopy = [
     'a transfer code is read by a device, not by a person',
     pattern: RegExp(r'\bVEIL_TRANSFER::'),
   ),
+  const NotOwnCopy(
+    'the index letters of the contacts list',
+    'the letter a contact is filed under comes from its name: the first consonant of a Korean one',
+    alone: ['ㄱ', 'ㄴ', 'ㄷ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅅ', 'ㅇ', 'ㅈ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'],
+  ),
 ];
 
 final _hangul = RegExp(r'[ᄀ-ᇿ㄰-㆏가-힯]');

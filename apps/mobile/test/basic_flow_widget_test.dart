@@ -13,7 +13,7 @@ import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.d
 import 'package:veil_mobile/src/features/auth/presentation/create_account_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/onboarding_warning_screen.dart';
-import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
+import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 
 void main() {
   testWidgets('onboarding warning keeps no-recovery copy explicit',
@@ -103,7 +103,12 @@ void main() {
     expect(find.text('Use biometrics'), findsOneWidget);
   });
 
-  testWidgets('settings screen shows the trusted device graph', (tester) async {
+  testWidgets('the devices screen shows the trusted devices of the account', (tester) async {
+    // Tall enough for the three devices at once: the list builds what is
+    // near the screen.
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     final storage = SecureStorageService(_MemorySecureKeyValueStore());
     final sessionController = AppSessionController(
       storage,
@@ -129,18 +134,23 @@ void main() {
           apiClientProvider.overrideWithValue(_FakeSettingsApiClient()),
         ],
         child: const _TestApp(
-          child: SettingsScreen(),
+          child: TrustedDevicesScreen(),
         ),
       ),
     );
 
     await tester.pumpAndSettle();
 
-    expect(find.text('TRUSTED DEVICE GRAPH'), findsOneWidget);
+    expect(find.text('Trusted devices'), findsOneWidget);
     expect(find.text('Pixel Fold'), findsOneWidget);
     expect(find.text('Old iPhone'), findsOneWidget);
     expect(find.text('MacBook Air'), findsOneWidget);
-    expect(find.text('GRAPH SUMMARY'), findsOneWidget);
+    // Two devices hold the account (this one and the quiet laptop); the
+    // third was revoked. The quiet one is counted among the trusted, not
+    // beside them: the parts add up to the three devices listed.
+    expect(find.text('2 trusted devices (1 stale)  ·  '), findsOneWidget);
+    expect(find.text('1 revoked'), findsOneWidget);
+    expect(find.text('1 stale  ·  '), findsNothing);
     expect(find.textContaining('stale'), findsWidgets);
     expect(find.text('This device'), findsOneWidget);
     expect(find.text('Revoked'), findsOneWidget);

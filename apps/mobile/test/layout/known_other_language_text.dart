@@ -23,9 +23,6 @@ const knownOtherLanguageText = <String, Map<String, Set<String>>>{
   // --- Onboarding, account and device transfer.
 
   // --- Chat and conversation list, starting a chat or a group.
-  'start_group_screen.dart': {
-    'ko': {'Signal Boost'},
-  },
 
   // --- Settings, security status, safety numbers, contacts, one-time link.
 

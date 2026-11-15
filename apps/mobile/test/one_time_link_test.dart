@@ -75,6 +75,29 @@ void main() {
       );
     });
 
+    // What a screen says about a link (send the passphrase apart, or not)
+    // is read from the link, so it must be true of the link.
+    test('a created link says whether it was sealed with a passphrase', () async {
+      final service = OneTimeLinkService(
+        apiBaseUrl: 'https://api.veil.test/v1',
+        client: MockClient((request) async => http.Response(jsonEncode({'id': 'link-1'}), 201)),
+      );
+
+      final keyed = await service.create(secret);
+      expect(keyed.passphraseLocked, isFalse);
+      expect(Uri.parse(keyed.url).fragment, startsWith('link-1.k.'));
+
+      final locked = await service.create(secret, passphrase: 'open-sesame');
+      expect(locked.passphraseLocked, isTrue);
+      expect(Uri.parse(locked.url).fragment, 'link-1.p');
+
+      // An empty passphrase locks nothing: the key goes into the link, and
+      // the link says so.
+      final empty = await service.create(secret, passphrase: '');
+      expect(empty.passphraseLocked, isFalse);
+      expect(Uri.parse(empty.url).fragment, startsWith('link-1.k.'));
+    });
+
     test('a stalled request times out instead of hanging the screen', () async {
       final service = OneTimeLinkService(
         apiBaseUrl: 'https://api.veil.test/v1',

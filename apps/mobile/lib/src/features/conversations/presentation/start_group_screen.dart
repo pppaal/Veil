@@ -8,6 +8,9 @@ import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
+/// Creates a group: its name, the handles of its members (at least one
+/// besides the creator), an optional description and the button, then one
+/// note on what of a group is encrypted and what the relay keeps.
 class StartGroupScreen extends ConsumerStatefulWidget {
   const StartGroupScreen({super.key});
 
@@ -19,7 +22,11 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
   final _nameController = TextEditingController();
   final _descriptionController = TextEditingController();
   final _membersController = TextEditingController();
-  bool _isPublic = false;
+  bool _creating = false;
+
+  // Whether the last attempt of this screen failed; a failure elsewhere in
+  // the messenger is not this screen's to show.
+  bool _failed = false;
 
   @override
   void dispose() {
@@ -29,119 +36,114 @@ class _StartGroupScreenState extends ConsumerState<StartGroupScreen> {
     super.dispose();
   }
 
-  List<String> _parseHandles(String raw) {
-    return raw
+  // The handles typed, without the creator's own: whoever creates a group
+  // is in it already.
+  List<String> get _handles {
+    final own = ref.read(appSessionProvider).handle?.toLowerCase();
+    return _membersController.text
         .split(RegExp(r'[\s,]+'))
         .map((entry) => entry.trim().replaceAll(RegExp(r'^@'), ''))
-        .where((entry) => entry.isNotEmpty)
+        .where((entry) => entry.isNotEmpty && entry.toLowerCase() != own)
         .toList();
+  }
+
+  // A group needs someone besides its creator, and this build cannot add
+  // members to a group later: one without any would stay a group of one.
+  bool get _ready => _nameController.text.trim().isNotEmpty && _handles.isNotEmpty;
+
+  Future<void> _create() async {
+    final name = _nameController.text.trim();
+    if (!_ready || _creating) return;
+    setState(() {
+      _creating = true;
+      _failed = false;
+    });
+    final messenger = ref.read(messengerControllerProvider);
+    await messenger.createGroup(
+      name: name,
+      description: _descriptionController.text.trim(),
+      memberHandles: _handles,
+    );
+    if (!mounted) return;
+    if (messenger.errorMessage != null) {
+      setState(() {
+        _creating = false;
+        _failed = true;
+      });
+      return;
+    }
+    // Back to the list the screen was opened from; opened by itself (a
+    // link), it has nothing under it to go back to.
+    context.canPop() ? context.pop() : context.go('/conversations');
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(messengerControllerProvider);
     final l10n = AppLocalizations.of(context);
-    final trimmedName = _nameController.text.trim();
-    final parsedHandles = _parseHandles(_membersController.text);
+    final memberCount = _handles.length;
+    void edited(String _) => setState(() => _failed = false);
 
     return VeilShell(
       title: l10n.startGroupTitle,
+      maxWidth: 560,
+      padding: EdgeInsets.zero,
       child: ListView(
+        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
         children: [
-          VeilHeroPanel(
-            eyebrow: l10n.startGroupEyebrow,
-            title: l10n.startGroupHeroTitle,
-            body: l10n.startGroupHeroBody,
-            bottom: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                VeilStatusPill(label: l10n.startGroupPillInviteOnly),
-                VeilStatusPill(label: l10n.startGroupPillManualRoster),
-                VeilStatusPill(label: l10n.startGroupPillE2E),
-              ],
+          TextField(
+            controller: _nameController,
+            autofocus: true,
+            textInputAction: TextInputAction.next,
+            onChanged: edited,
+            decoration: InputDecoration(labelText: l10n.startGroupNameInput, hintText: l10n.startGroupNameHint),
+          ),
+          const SizedBox(height: VeilSpace.sm),
+          TextField(
+            controller: _membersController,
+            autocorrect: false,
+            enableSuggestions: false,
+            textInputAction: TextInputAction.next,
+            onChanged: edited,
+            decoration: InputDecoration(
+              labelText: l10n.startGroupMembersInput,
+              hintText: 'icarus, daedalus, minos',
+              suffixText: memberCount == 0 ? null : l10n.startGroupMembersCount(memberCount),
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilFieldBlock(
-            label: l10n.startGroupNameLabel,
-            trailing: trimmedName.isEmpty
-                ? VeilStatusPill(label: l10n.startGroupRequired, tone: VeilBannerTone.warn)
-                : VeilStatusPill(label: trimmedName),
-            caption: l10n.startGroupNameCaption,
-            child: TextField(
-              controller: _nameController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: l10n.startGroupNameInput,
-                hintText: 'Signal Boost',
-              ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(VeilSpace.xxs, VeilSpace.xs, VeilSpace.xxs, 0),
+            child: VeilCopy(
+              l10n.startGroupMembersCaption,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilFieldBlock(
-            label: l10n.startGroupDescriptionLabel,
-            caption: l10n.startGroupDescriptionCaption,
-            child: TextField(
-              controller: _descriptionController,
-              onChanged: (_) => setState(() {}),
-              maxLines: 3,
-              decoration: InputDecoration(
-                labelText: l10n.startGroupDescriptionInput,
-                hintText: l10n.startGroupDescriptionHint,
-              ),
+          const SizedBox(height: VeilSpace.sm),
+          TextField(
+            controller: _descriptionController,
+            minLines: 1,
+            maxLines: 3,
+            onChanged: edited,
+            decoration: InputDecoration(
+              labelText: l10n.startGroupDescriptionInput,
+              hintText: l10n.startGroupDescriptionHint,
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilFieldBlock(
-            label: l10n.startGroupMembersLabel,
-            trailing: parsedHandles.isEmpty
-                ? VeilStatusPill(label: l10n.startGroupNoneYet, tone: VeilBannerTone.warn)
-                : VeilStatusPill(label: l10n.startGroupMembersCount(parsedHandles.length)),
-            caption: l10n.startGroupMembersCaption,
-            child: TextField(
-              controller: _membersController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: l10n.startGroupMembersInput,
-                hintText: 'icarus, daedalus, minos',
-              ),
-            ),
-          ),
-          const SizedBox(height: VeilSpace.md),
-          SwitchListTile(
-            value: _isPublic,
-            onChanged: (value) => setState(() => _isPublic = value),
-            title: Text(l10n.startGroupPublicTitle),
-            subtitle: Text(l10n.startGroupPublicSubtitle),
-          ),
-          if (controller.errorMessage != null) ...[
-            const SizedBox(height: VeilSpace.md),
+          if (_failed) ...[
+            const SizedBox(height: VeilSpace.sm),
             VeilInlineBanner(
               title: l10n.startGroupErrorTitle,
-              message: controller.errorMessage!,
+              message: l10n.startGroupErrorBody,
               tone: VeilBannerTone.danger,
             ),
           ],
-          const SizedBox(height: VeilSpace.xl),
+          const SizedBox(height: VeilSpace.md),
           VeilButton(
-            onPressed: controller.isBusy || trimmedName.isEmpty
-                ? null
-                : () async {
-                    await ref.read(messengerControllerProvider).createGroup(
-                          name: trimmedName,
-                          description: _descriptionController.text.trim(),
-                          memberHandles: parsedHandles,
-                          isPublic: _isPublic,
-                        );
-                    if (context.mounted &&
-                        ref.read(messengerControllerProvider).errorMessage == null) {
-                      context.pop();
-                    }
-                  },
-            label: controller.isBusy ? l10n.startGroupCreating : l10n.startGroupCreateButton,
+            onPressed: _creating || !_ready ? null : _create,
+            label: _creating ? l10n.startGroupCreating : l10n.startGroupCreateButton,
             icon: Icons.group_add_rounded,
           ),
+          const SizedBox(height: VeilSpace.lg),
+          VeilInlineBanner(icon: Icons.lock_outline_rounded, message: l10n.startGroupNote),
         ],
       ),
     );

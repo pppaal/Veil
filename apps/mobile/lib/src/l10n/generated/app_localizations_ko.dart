@@ -529,36 +529,19 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsTitle => '설정';
 
   @override
+  String get settingsSectionAppearance => '화면';
+
+  @override
   String get settingsProfileTitle => '프로필';
 
   @override
-  String get settingsProfileSubtitle => '내 핸들과 이 기기에서 부르는 닉네임';
-
-  @override
-  String get settingsEyebrow => '로컬 기기';
-
-  @override
-  String get settingsNoDeviceBound => '연결된 기기 세션이 없습니다.';
-
-  @override
-  String settingsCurrentDevice(String deviceId) {
-    return '현재 기기 세션: $deviceId';
-  }
-
-  @override
-  String get settingsPillPrivateByDesign => '설계상 프라이빗';
-
-  @override
-  String get settingsSectionDeviceGraph => '신뢰 기기 그래프';
-
-  @override
-  String get settingsLoadingDeviceGraph => '기기 그래프 불러오는 중';
+  String get settingsLoadingDeviceGraph => '기기 목록 불러오는 중';
 
   @override
   String get settingsLoadingDeviceGraphBody => '이 계정에 등록된 기기들을 확인하고 있습니다.';
 
   @override
-  String get settingsDeviceGraphUnavailable => '기기 그래프를 불러올 수 없습니다';
+  String get settingsDeviceGraphUnavailable => '기기 목록을 불러올 수 없습니다';
 
   @override
   String get settingsNoTrustedDevices => '표시할 신뢰 기기가 없습니다';
@@ -567,7 +550,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsAppLockTitle => '앱 잠금';
 
   @override
-  String get settingsAppLockSubtitle => '이 기기에만 적용되는 생체 인식 및 PIN 잠금';
+  String get settingsAppLockSubtitle => '이 기기에만 적용되는 생체 인식·PIN 잠금';
 
   @override
   String get settingsDeviceTransferTitle => '기기 이전';
@@ -579,13 +562,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsSecurityStatusTitle => '보안 상태';
 
   @override
-  String get settingsSecurityStatusSubtitle => '로컬 가드레일과 런타임 상태 확인';
+  String get settingsSecurityStatusSubtitle => '이 기기의 키, 잠금, 릴레이 연결 상태 확인';
 
   @override
-  String get settingsNoRecoveryPath => '복구 경로 없음';
+  String get settingsNoRecoveryPath => '복구할 방법이 없습니다';
 
   @override
-  String get settingsSectionPrivacy => '개인정보';
+  String get settingsSectionPrivacy => '개인정보 보호';
 
   @override
   String get settingsReadReceiptsTitle => '읽음 확인 보내기';
@@ -605,10 +588,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsLockNow => '지금 잠그기';
 
   @override
-  String get settingsWipeLocal => '이 기기에서 로컬 상태 삭제';
+  String get settingsWipeLocal => '이 기기의 VEIL 데이터 삭제';
 
   @override
-  String get settingsWipeConfirmTitle => '이 기기에서 로컬 상태를 삭제할까요?';
+  String get settingsWipeConfirmTitle => '이 기기의 VEIL 데이터를 삭제할까요?';
 
   @override
   String get settingsRevokeTitle => '이 기기 해지';
@@ -620,72 +603,122 @@ class AppLocalizationsKo extends AppLocalizations {
   String get settingsLogout => '로그아웃';
 
   @override
-  String get settingsIrreversible => '되돌릴 수 없습니다';
-
-  @override
-  String get settingsDeleteAccountTitle => '계정 삭제';
-
-  @override
   String get settingsDeleteAccountBody =>
       '계정, 메시지, 연락처가 영구적으로 삭제됩니다. 되돌릴 수 없습니다.';
-
-  @override
-  String get settingsDeleteAccountConfirmLabel => '확인을 위해 DELETE를 입력하세요';
 
   @override
   String get settingsDeleteAccountAction => '계정 삭제';
 
   @override
-  String get settingsDeleteAccountConfirmHeadline => '계정을 삭제하시겠습니까?';
+  String get settingsDeleteAccountConfirmHeadline => '계정을 삭제할까요?';
 
   @override
   String get settingsDeviceGraphLoadFailedBody =>
-      '이 기기에서 현재 신뢰 그래프를 불러오지 못했습니다. 로컬 보안 기능은 계속 사용할 수 있습니다.';
+      '신뢰 기기 목록을 불러오지 못했습니다. 이 기기의 보안 기능은 계속 사용할 수 있습니다.';
 
   @override
   String get settingsNoTrustedDevicesBody =>
-      '이 계정에는 아직 읽을 수 있는 기기 그래프가 없습니다. 기기에 묶인 기능은 여전히 이 기기에만 있으며 복구할 수 없습니다.';
+      '릴레이에 이 계정의 기기 목록이 아직 없습니다. 이 기기에 묶인 것은 이 기기에만 있으며 복구할 수 없습니다.';
 
   @override
-  String get settingsRefreshDeviceGraph => '기기 그래프 새로 고침';
+  String get settingsRefreshDeviceGraph => '기기 목록 새로 고침';
 
   @override
   String get settingsSectionSecurity => '보안';
 
   @override
-  String get settingsSectionSession => '세션';
+  String get settingsSectionDevices => '기기';
+
+  @override
+  String get settingsSectionTools => '도구';
+
+  @override
+  String get settingsSectionIrreversible => '되돌릴 수 없는 작업';
+
+  @override
+  String get settingsDevicesTitle => '신뢰 기기';
+
+  @override
+  String settingsDevicesRowCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '기기 $count대가 이 계정을 사용합니다',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String settingsDevicesTrustedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '신뢰 기기 $count대',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String settingsDevicesTrustedWithStale(int count, int stale) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '신뢰 기기 $count대',
+    );
+    return '$_temp0 (장기 미사용 $stale대)';
+  }
 
   @override
   String get settingsDestructiveNoticeBody =>
-      '이 기기에서 실행한 삭제 작업은 되돌릴 수 없습니다. VEIL은 백업도, 복원 권한도 보관하지 않습니다.';
+      '여기서 지운 것은 되돌릴 수 없습니다. VEIL은 백업을 보관하지 않으며, 기기나 계정을 복원할 방법도 없습니다.';
 
   @override
   String get settingsLockNowSubtitle => '현재 세션을 지금 바로 앱 잠금 뒤로 숨깁니다';
 
   @override
   String get settingsWipeLocalSubtitle =>
-      '이 기기에 있는 세션 상태, 비밀 키, 암호화된 캐시, PIN, 온보딩 상태만 삭제합니다.';
+      '세션, 비밀 키, 암호화된 캐시, PIN, 온보딩 기록을 이 기기에서만 삭제합니다. 릴레이에는 알리지 않습니다.';
 
   @override
   String get settingsWipeConfirmBody =>
-      '이 기기의 VEIL 로컬 상태를 지웁니다. 복구 경로는 생기지 않습니다. 이 기기가 유일한 활성 기기라면 다시는 접근할 수 없습니다.';
+      '이 기기에 저장된 VEIL 데이터를 모두 지웁니다. 복구할 방법은 생기지 않습니다. 이 기기가 유일한 신뢰 기기라면 계정에 다시 접근할 수 없습니다.';
 
   @override
-  String get settingsWipeConfirmAction => '로컬 상태 삭제';
+  String get settingsWipeConfirmAction => '데이터 삭제';
 
   @override
   String get settingsRevokeSubtitle =>
-      '이 기기에 묶인 세션을 없애고 이 기기의 로컬 상태를 삭제합니다. 복구할 수 없습니다.';
+      '릴레이에서 이 기기를 해지하고 이 기기의 VEIL 데이터를 삭제합니다. 복구할 수 없습니다.';
 
   @override
   String get settingsRevokeConfirmBody =>
-      '이 계정과 이 기기의 연결을 끊고 이 기기의 로컬 상태를 삭제합니다. VEIL은 이를 복원할 수 없습니다.';
+      '이 계정에서 이 기기를 해지하고 이 기기의 VEIL 데이터를 삭제합니다. VEIL은 이를 되돌릴 수 없습니다.';
 
   @override
   String get settingsRevokeConfirmAction => '기기 해지';
 
   @override
-  String get settingsLogoutSubtitle => '온보딩 동의와 앱 잠금은 그대로 두고 이 기기의 세션만 지웁니다.';
+  String get settingsLogoutSubtitle =>
+      '이 기기의 키, 세션, 메시지를 지웁니다. 다시 로그인할 수 없으며, 다른 신뢰 기기에서 이전받아야만 이 기기에서 계정을 다시 쓸 수 있습니다.';
+
+  @override
+  String get settingsLogoutConfirmTitle => '이 기기에서 로그아웃할까요?';
+
+  @override
+  String get settingsLogoutConfirmBody =>
+      '이 기기를 내 기기로 만들어 주는 키가 지워집니다. VEIL은 다시 로그인시켜 드릴 수 없습니다. 이 기기가 유일한 신뢰 기기라면 계정에 다시 접근할 수 없습니다.';
+
+  @override
+  String get settingsLogoutConfirmPhrase => '로그아웃';
+
+  @override
+  String get settingsWipeConfirmPhrase => '삭제';
+
+  @override
+  String get settingsRevokeConfirmPhrase => '해지';
+
+  @override
+  String get settingsDeleteAccountConfirmPhrase => '계정 삭제';
 
   @override
   String settingsTypePhraseToContinue(String phrase) {
@@ -699,12 +732,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String settingsRevokeListedBody(String deviceName) {
-    return '신뢰 기기 그래프에서 $deviceName 기기를 제거합니다. VEIL은 그 기기를 위한 복구 경로를 만들지 않습니다.';
+    return '$deviceName 기기를 신뢰 기기에서 제외합니다. VEIL은 그 기기를 복구할 방법을 만들지 않습니다.';
   }
 
   @override
   String settingsRevokeListedDone(String deviceName) {
-    return '신뢰 그래프에서 $deviceName 기기를 제거했습니다.';
+    return '$deviceName 기기를 신뢰 기기에서 제외했습니다.';
   }
 
   @override
@@ -784,14 +817,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 기기는 더 이상 신뢰되지 않으며 세션을 다시 시작할 수 없습니다.';
 
   @override
-  String get settingsGraphSummary => '그래프 요약';
-
-  @override
-  String settingsGraphTrustedCount(int count) {
-    return '신뢰 $count대';
-  }
-
-  @override
   String settingsGraphStaleCount(int count) {
     return '장기 미사용 $count대';
   }
@@ -811,7 +836,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String settingsGraphPreferredDiffersBody(String preferred, String current) {
-    return '현재 메시지 전달과 디렉터리 호환의 우선 기기는 $preferred입니다. $current도 계속 신뢰됩니다.';
+    return '지금 메시지를 우선 전달받는 기기는 $preferred입니다. $current 기기도 계속 신뢰됩니다.';
   }
 
   @override
@@ -1660,29 +1685,32 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get oneTimeLinkSettingsSubtitle =>
-      '한 번 읽히면 사라지는 암호화 메시지 — 받는 사람은 앱 없이 열람';
-
-  @override
-  String get oneTimeLinkIntro =>
-      '한 번 읽히면 사라지는 메시지를 만듭니다. 받는 사람은 앱이 없어도 됩니다. 복호화 키는 링크에만 담겨 서버로 전송되지 않습니다.';
+      '한 번 열면 사라지는 암호화 메시지입니다. 받는 사람은 앱 없이 엽니다.';
 
   @override
   String get oneTimeLinkSecretLabel => '비밀 내용';
 
   @override
-  String get oneTimeLinkSecretHint => '비밀번호, 계좌, 민감한 메모…';
+  String get oneTimeLinkSecretHint => '비밀번호, 계좌번호, 민감한 메모…';
 
   @override
-  String get oneTimeLinkUsePassphrase => '암호문구 추가 (링크에 키를 넣지 않음 — 더 안전)';
+  String get oneTimeLinkUsePassphrase => '암호문구로 잠그기';
+
+  @override
+  String get oneTimeLinkUsePassphraseBody =>
+      '링크에 키를 넣지 않습니다. 암호문구는 링크와 다른 경로로 전하세요.';
 
   @override
   String get oneTimeLinkPassphraseLabel => '암호문구';
 
   @override
-  String get oneTimeLinkCreate => '보안 링크 생성';
+  String get oneTimeLinkCreate => '링크 만들기';
 
   @override
-  String get oneTimeLinkFailed => '링크 생성에 실패했습니다. 잠시 후 다시 시도하세요.';
+  String get oneTimeLinkCreating => '만드는 중…';
+
+  @override
+  String get oneTimeLinkFailed => '링크를 만들지 못했습니다. 잠시 후 다시 시도하세요.';
 
   @override
   String get oneTimeLinkCopy => '링크 복사';
@@ -1691,20 +1719,48 @@ class AppLocalizationsKo extends AppLocalizations {
   String get oneTimeLinkCopied => '링크를 복사했습니다';
 
   @override
-  String get oneTimeLinkPillEncrypted => '종단간 암호화';
+  String oneTimeLinkExpires(String when) {
+    return '열리지 않으면 $when에 릴레이에서 삭제됩니다.';
+  }
 
   @override
-  String get oneTimeLinkPillServerBlind => '서버는 평문·키를 못 봄';
+  String get oneTimeLinkSendPassphraseApart => '암호문구는 링크와 따로 전하세요.';
 
   @override
-  String get oneTimeLinkPillBurns => '읽으면 소멸';
+  String get oneTimeLinkProtectsLabel => '보호되는 것';
+
+  @override
+  String get oneTimeLinkProtectsEncrypted =>
+      '비밀 내용은 이 기기에서 암호화됩니다. 릴레이에는 암호문만 저장되고, 키는 릴레이로 보내지 않습니다.';
+
+  @override
+  String get oneTimeLinkProtectsBurn =>
+      '처음 열리는 순간 릴레이에서 삭제되며, 열리지 않아도 만료되면 삭제됩니다.';
+
+  @override
+  String get oneTimeLinkLimitsLabel => '보호되지 않는 것';
+
+  @override
+  String get oneTimeLinkLimitHolder =>
+      '링크 전체를 먼저 손에 넣은 사람은 누구든 읽을 수 있습니다. 전달 경로를 믿기 어렵다면 암호문구로 잠그세요.';
+
+  @override
+  String get oneTimeLinkLimitReader =>
+      '읽은 사람은 내용을 복사하거나 캡처할 수 있습니다. 일회성은 한 번만 열린다는 뜻이며, 복사를 막아 주지는 않습니다.';
+
+  @override
+  String get oneTimeLinkLimitRelay =>
+      '릴레이는 링크가 만들어지고 열린 시각, 크기, 네트워크 주소를 알 수 있습니다. 받는 사람의 브라우저에서 링크를 여는 페이지도 릴레이가 제공하므로, 링크는 릴레이를 믿을 수 있는 만큼만 안전합니다.';
 
   @override
   String get contactsNotice =>
       '어떤 계정을 추가했는지는 릴레이에 저장됩니다. 직접 붙인 이름은 이 기기에만 남습니다.';
 
   @override
-  String get contactsSearchHint => '연락처 검색…';
+  String get contactsSearchHint => '연락처 검색';
+
+  @override
+  String get contactsSearchClear => '검색 지우기';
 
   @override
   String get contactsAdd => '연락처 추가';
@@ -1713,16 +1769,22 @@ class AppLocalizationsKo extends AppLocalizations {
   String get contactsWorking => '처리 중…';
 
   @override
-  String get contactsErrorTitle => '연락처 오류';
+  String get contactsErrorTitle => '연락처를 불러오지 못했습니다';
 
   @override
-  String get contactsEmptyTitle => '연락처가 없습니다';
+  String get contactsErrorBody => '아래 목록은 마지막으로 불러온 상태입니다.';
 
   @override
-  String get contactsEmptySearchBody => '검색과 일치하는 연락처가 없습니다.';
+  String get contactsEmptyTitle => '아직 연락처가 없습니다';
 
   @override
-  String get contactsEmptyBody => '연락처를 추가하고 안전하게 대화를 시작하세요.';
+  String get contactsEmptySearchTitle => '일치하는 연락처가 없습니다';
+
+  @override
+  String get contactsEmptySearchBody => '검색어와 일치하는 이름이나 핸들이 없습니다.';
+
+  @override
+  String get contactsEmptyBody => '핸들로 사람을 추가해 두면 바로 대화를 시작할 수 있습니다.';
 
   @override
   String get contactsAddSheetBody => '정확한 핸들을 입력하세요. VEIL은 주소록을 읽지 않습니다.';
@@ -1740,6 +1802,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get contactsSave => '연락처 저장';
 
   @override
+  String get contactsAddFailed => '추가하지 못했습니다. 핸들 철자와 릴레이 연결을 확인하세요.';
+
+  @override
   String contactsAdded(String handle) {
     return '@$handle 님을 연락처에 추가했습니다';
   }
@@ -1751,7 +1816,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get contactsStartChatFailed => '대화를 시작하지 못했습니다';
 
   @override
-  String get contactsViewProfile => '프로필 보기';
+  String get contactsEditNickname => '별명 변경';
+
+  @override
+  String get contactsSaveNickname => '별명 저장';
+
+  @override
+  String get contactsNicknameCaption => '별명은 이 기기만 알고 있습니다. 비워 두면 핸들이 표시됩니다.';
 
   @override
   String get contactsRemove => '연락처 삭제';
@@ -1765,8 +1836,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get contactsRemoveFailed => '연락처를 삭제하지 못했습니다';
 
   @override
-  String contactsYourNickname(String nickname) {
-    return '내가 붙인 별명: $nickname';
+  String contactsRowSemantics(String name) {
+    return '연락처 $name';
   }
 
   @override
@@ -1813,151 +1884,77 @@ class AppLocalizationsKo extends AppLocalizations {
   String get notificationNewMessageBody => '새로운 암호화 메시지';
 
   @override
-  String get startDirectTitle => '핸들로 찾기';
-
-  @override
-  String get startDirectEyebrow => '다이렉트 검색';
-
-  @override
-  String get startDirectHeroTitle => '연락처 동기화 없음';
-
-  @override
-  String get startDirectHeroBody =>
-      '핸들을 직접 입력하세요. VEIL은 연락처·전화번호부·소셜 그래프를 스캔하지 않습니다.';
-
-  @override
-  String get startDirectPillManual => '수동 검색';
-
-  @override
-  String get startDirectPillNoGraph => '소셜 그래프 없음';
-
-  @override
-  String get startDirectPillDirectOnly => '다이렉트 전용';
-
-  @override
-  String get startDirectBannerTitle => '의도된 검색';
-
-  @override
-  String get startDirectBannerBody =>
-      '정확한 핸들을 알고 있을 때만 대화가 열립니다. 그래프로 인맥을 넓히는 기능은 없습니다.';
-
-  @override
-  String get startDirectMetricDiscovery => '검색';
-
-  @override
-  String get startDirectMetricDiscoveryValue => '수동';
-
-  @override
-  String get startDirectMetricGraph => '그래프';
-
-  @override
-  String get startDirectMetricGraphValue => '없음';
-
-  @override
-  String get startDirectMetricMode => '모드';
-
-  @override
-  String get startDirectMetricModeValue => '1:1 다이렉트';
-
-  @override
-  String get startDirectFieldLabel => '대상 핸들';
-
-  @override
-  String get startDirectAwaitingInput => '입력 대기 중';
-
-  @override
-  String get startDirectFieldCaption => '검색은 수동이며, 다이렉트 대화만 가능합니다.';
+  String get startDirectTitle => '새 1:1 대화';
 
   @override
   String get startDirectInputLabel => '핸들';
 
   @override
-  String get startDirectErrorTitle => '대화를 열 수 없음';
+  String get startDirectErrorTitle => '대화를 열 수 없습니다';
 
   @override
-  String get startDirectOpening => '대화 여는 중';
+  String get startDirectErrorBody => '핸들이 정확한지, 릴레이에 연결되어 있는지 확인한 뒤 다시 시도하세요.';
 
   @override
-  String get startDirectOpenButton => '다이렉트 대화 열기';
+  String get startDirectOpening => '여는 중…';
 
   @override
-  String get startGroupTitle => '그룹 채팅 시작';
+  String get startDirectOpenButton => '대화 열기';
 
   @override
-  String get startGroupEyebrow => '그룹 생성';
+  String get startDirectNoteTitle => '연락처 동기화 없음';
 
   @override
-  String get startGroupHeroTitle => '초대로만 참여';
+  String get startDirectNote =>
+      'VEIL은 연락처나 전화번호부를 읽지 않고, 지인을 추천하지도 않습니다. 정확한 핸들을 알고 있을 때만 대화가 열립니다.';
 
   @override
-  String get startGroupHeroBody =>
-      '그룹은 명시적입니다. 핸들로 멤버를 추가하세요 — VEIL은 연락처 그래프로 초대를 확장하지 않습니다.';
+  String get startGroupTitle => '새 그룹';
 
   @override
-  String get startGroupPillInviteOnly => '초대 전용';
+  String get startGroupNameInput => '그룹 이름';
 
   @override
-  String get startGroupPillManualRoster => '수동 명단';
+  String get startGroupNameHint => '주말 등산';
 
   @override
-  String get startGroupPillE2E => '종단간 암호화';
-
-  @override
-  String get startGroupNameLabel => '그룹 이름';
-
-  @override
-  String get startGroupRequired => '필수';
-
-  @override
-  String get startGroupNameCaption => '멤버에게 표시됩니다. 나중에 변경할 수 있어요.';
-
-  @override
-  String get startGroupNameInput => '이름';
-
-  @override
-  String get startGroupDescriptionLabel => '설명';
-
-  @override
-  String get startGroupDescriptionCaption => '선택. 그룹의 목적이나 배경을 적어주세요.';
-
-  @override
-  String get startGroupDescriptionInput => '설명';
+  String get startGroupDescriptionInput => '설명 (선택)';
 
   @override
   String get startGroupDescriptionHint => '이 그룹은 어떤 모임인가요?';
 
   @override
-  String get startGroupMembersLabel => '초기 멤버';
-
-  @override
-  String get startGroupNoneYet => '아직 없음';
-
-  @override
   String startGroupMembersCount(int count) {
-    return '핸들 $count개';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '핸들 $count개',
+    );
+    return '$_temp0';
   }
 
   @override
   String get startGroupMembersCaption =>
-      '쉼표나 공백으로 핸들을 구분하세요. 생성 후에도 추가할 수 있어요.';
+      '쉼표나 공백으로 구분합니다. 이 버전에서는 나중에 멤버를 추가할 수 없으니 지금 모두 입력하세요.';
 
   @override
   String get startGroupMembersInput => '멤버 핸들';
 
   @override
-  String get startGroupPublicTitle => '공개 디렉터리';
+  String get startGroupErrorTitle => '그룹을 만들 수 없습니다';
 
   @override
-  String get startGroupPublicSubtitle => '공개 그룹은 핸들로 검색됩니다. 초대 전용 그룹은 꺼두세요.';
+  String get startGroupErrorBody => '핸들이 정확한지, 릴레이에 연결되어 있는지 확인한 뒤 다시 시도하세요.';
 
   @override
-  String get startGroupErrorTitle => '그룹을 만들 수 없음';
-
-  @override
-  String get startGroupCreating => '그룹 만드는 중';
+  String get startGroupCreating => '만드는 중…';
 
   @override
   String get startGroupCreateButton => '그룹 만들기';
+
+  @override
+  String get startGroupNote =>
+      '그룹의 메시지는 종단간 암호화됩니다. 그룹 이름, 설명, 멤버 목록은 암호화되지 않으며, 여기 입력한 그대로 릴레이에 저장됩니다.';
 
   @override
   String get safetyNumbersTitle => '안전 번호';
@@ -2183,16 +2180,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileTitle => '프로필';
 
   @override
-  String get profileNicknameSaved => '닉네임을 이 기기에 저장했습니다';
+  String get profileNicknameSaved => '별명을 이 기기에 저장했습니다';
 
   @override
   String get profileHandleLabel => '핸들';
 
   @override
-  String get profileHandleCaption => '핸들은 변경할 수 없습니다.';
+  String get profileHandleCaption =>
+      '다른 사람은 이 핸들로 나를 찾고 메시지를 보냅니다. 핸들은 변경할 수 없습니다.';
 
   @override
-  String get profileNicknameLabel => '닉네임';
+  String get profileNicknameLabel => '별명';
 
   @override
   String get profileNicknameCaption => '이 기기만 알고 있습니다. 상대방에게는 핸들이 보입니다.';
@@ -2204,20 +2202,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get profileNicknameNotSet => '설정되지 않음';
 
   @override
-  String get profilePrivacyEyebrow => '개인정보';
-
-  @override
-  String get profilePrivacyTitle => '릴레이에는 나에 대한 정보가 없습니다';
+  String get profilePrivacyTitle => '릴레이에는 프로필이 저장되지 않습니다';
 
   @override
   String get profilePrivacyBody =>
-      '릴레이는 핸들로만 메시지를 전달하며 이름, 소개, 상태를 저장하지 않습니다. 닉네임은 이 기기에만 남고 기기와 함께 지워집니다.';
+      '릴레이는 핸들로만 메시지를 전달하며 이름, 소개, 상태를 저장하지 않습니다. 별명은 이 기기에만 남고 기기와 함께 지워집니다.';
 
   @override
-  String get profileSaveNickname => '닉네임 저장';
+  String get profileSaveNickname => '저장';
 
   @override
-  String get profileEditNickname => '닉네임 수정';
+  String get profileEditNickname => '별명 변경';
 
   @override
   String get profileCancel => '취소';
@@ -2460,9 +2455,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get themeModeTitle => '테마';
-
-  @override
-  String get themeModeSubtitle => '이 기기에서 VEIL의 표시 방식을 선택하세요.';
 
   @override
   String get themeModeLight => '라이트';

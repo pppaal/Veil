@@ -561,38 +561,20 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsTitle => 'Settings';
 
   @override
+  String get settingsSectionAppearance => 'APPEARANCE';
+
+  @override
   String get settingsProfileTitle => 'Profile';
 
   @override
-  String get settingsProfileSubtitle =>
-      'Your handle, and the nickname this device calls you by';
-
-  @override
-  String get settingsEyebrow => 'LOCAL DEVICE';
-
-  @override
-  String get settingsNoDeviceBound => 'No active device session is bound.';
-
-  @override
-  String settingsCurrentDevice(String deviceId) {
-    return 'Current device session: $deviceId';
-  }
-
-  @override
-  String get settingsPillPrivateByDesign => 'Private by design';
-
-  @override
-  String get settingsSectionDeviceGraph => 'TRUSTED DEVICE GRAPH';
-
-  @override
-  String get settingsLoadingDeviceGraph => 'Loading device graph';
+  String get settingsLoadingDeviceGraph => 'Loading devices';
 
   @override
   String get settingsLoadingDeviceGraphBody =>
       'Reviewing the bound devices known to this account.';
 
   @override
-  String get settingsDeviceGraphUnavailable => 'Device graph unavailable';
+  String get settingsDeviceGraphUnavailable => 'Device list unavailable';
 
   @override
   String get settingsNoTrustedDevices => 'No trusted devices visible';
@@ -616,7 +598,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsSecurityStatusSubtitle =>
-      'Review local guardrails and runtime state';
+      'Keys, lock and relay connection on this device';
 
   @override
   String get settingsNoRecoveryPath => 'No recovery path';
@@ -657,17 +639,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsLogout => 'Log out';
 
   @override
-  String get settingsIrreversible => 'This cannot be undone';
-
-  @override
-  String get settingsDeleteAccountTitle => 'Delete account';
-
-  @override
   String get settingsDeleteAccountBody =>
       'Permanently removes your account, messages, and contacts. This cannot be undone.';
-
-  @override
-  String get settingsDeleteAccountConfirmLabel => 'Type DELETE to confirm';
 
   @override
   String get settingsDeleteAccountAction => 'Delete my account';
@@ -677,24 +650,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDeviceGraphLoadFailedBody =>
-      'This device could not load the current trust graph. Local security controls remain available.';
+      'The list of trusted devices could not be loaded. The security controls of this device still work.';
 
   @override
   String get settingsNoTrustedDevicesBody =>
-      'This account has no readable device graph yet. Bound-device controls still remain local and unrecoverable.';
+      'The relay lists no device for this account yet. What is bound to this device stays on it and cannot be recovered.';
 
   @override
-  String get settingsRefreshDeviceGraph => 'Refresh device graph';
+  String get settingsRefreshDeviceGraph => 'Refresh device list';
 
   @override
   String get settingsSectionSecurity => 'SECURITY';
 
   @override
-  String get settingsSectionSession => 'SESSION';
+  String get settingsSectionDevices => 'DEVICES';
+
+  @override
+  String get settingsSectionTools => 'TOOLS';
+
+  @override
+  String get settingsSectionIrreversible => 'CANNOT BE UNDONE';
+
+  @override
+  String get settingsDevicesTitle => 'Trusted devices';
+
+  @override
+  String settingsDevicesRowCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count devices hold this account',
+      one: '1 device holds this account',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String settingsDevicesTrustedCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trusted devices',
+      one: '1 trusted device',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String settingsDevicesTrustedWithStale(int count, int stale) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count trusted devices',
+      one: '1 trusted device',
+    );
+    return '$_temp0 ($stale stale)';
+  }
 
   @override
   String get settingsDestructiveNoticeBody =>
-      'Destructive device actions are permanent on this device. VEIL does not keep a backup or restore authority.';
+      'What you erase here stays erased. VEIL keeps no backup and has no way to restore a device or an account.';
 
   @override
   String get settingsLockNowSubtitle =>
@@ -702,7 +717,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsWipeLocalSubtitle =>
-      'Deletes local session state, local secrets, encrypted cache, PIN, and onboarding state on this device only.';
+      'Deletes the session, keys, encrypted cache, PIN and onboarding state from this device only. The relay is not told.';
 
   @override
   String get settingsWipeConfirmBody =>
@@ -713,7 +728,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsRevokeSubtitle =>
-      'Destroys this bound device session and wipes local state on this device. No recovery exists.';
+      'Revokes this device on the relay and wipes its local state. No recovery exists.';
 
   @override
   String get settingsRevokeConfirmBody =>
@@ -724,7 +739,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLogoutSubtitle =>
-      'Clears this local session while leaving the onboarding acknowledgment and local barrier intact.';
+      'Erases this device\'s keys, session and messages. You cannot sign back in: the account returns here only by transfer from another trusted device.';
+
+  @override
+  String get settingsLogoutConfirmTitle => 'Log out of this device?';
+
+  @override
+  String get settingsLogoutConfirmBody =>
+      'This erases the keys that make this device yours. VEIL cannot sign you back in. If this is your only trusted device, the account is gone.';
+
+  @override
+  String get settingsLogoutConfirmPhrase => 'LOG OUT';
+
+  @override
+  String get settingsWipeConfirmPhrase => 'WIPE';
+
+  @override
+  String get settingsRevokeConfirmPhrase => 'REVOKE';
+
+  @override
+  String get settingsDeleteAccountConfirmPhrase => 'DELETE';
 
   @override
   String settingsTypePhraseToContinue(String phrase) {
@@ -738,12 +772,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String settingsRevokeListedBody(String deviceName) {
-    return 'This removes $deviceName from the trusted device graph. VEIL will not create a recovery path for that device.';
+    return 'This removes $deviceName from your trusted devices. VEIL will not create a recovery path for that device.';
   }
 
   @override
   String settingsRevokeListedDone(String deviceName) {
-    return '$deviceName was removed from the trusted graph.';
+    return '$deviceName is no longer a trusted device.';
   }
 
   @override
@@ -822,14 +856,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get settingsDeviceNoteRevoked =>
       'This device is no longer trusted and cannot resume the session.';
-
-  @override
-  String get settingsGraphSummary => 'GRAPH SUMMARY';
-
-  @override
-  String settingsGraphTrustedCount(int count) {
-    return '$count trusted';
-  }
 
   @override
   String settingsGraphStaleCount(int count) {
@@ -1823,11 +1849,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get oneTimeLinkSettingsSubtitle =>
-      'An encrypted message that disappears once read. The recipient opens it without the app.';
-
-  @override
-  String get oneTimeLinkIntro =>
-      'Create a message that disappears once it is read. The recipient does not need the app. The decryption key travels only in the link and is not sent to the server.';
+      'An encrypted message that is gone once opened. The recipient needs no app.';
 
   @override
   String get oneTimeLinkSecretLabel => 'Secret';
@@ -1837,14 +1859,20 @@ class AppLocalizationsEn extends AppLocalizations {
       'A password, an account number, a sensitive note…';
 
   @override
-  String get oneTimeLinkUsePassphrase =>
-      'Add a passphrase (the key is kept out of the link: safer)';
+  String get oneTimeLinkUsePassphrase => 'Lock with a passphrase';
+
+  @override
+  String get oneTimeLinkUsePassphraseBody =>
+      'Keeps the key out of the link. Send the passphrase another way.';
 
   @override
   String get oneTimeLinkPassphraseLabel => 'Passphrase';
 
   @override
-  String get oneTimeLinkCreate => 'Create secure link';
+  String get oneTimeLinkCreate => 'Create link';
+
+  @override
+  String get oneTimeLinkCreating => 'Creating…';
 
   @override
   String get oneTimeLinkFailed =>
@@ -1857,20 +1885,49 @@ class AppLocalizationsEn extends AppLocalizations {
   String get oneTimeLinkCopied => 'Link copied';
 
   @override
-  String get oneTimeLinkPillEncrypted => 'End-to-end encrypted';
+  String oneTimeLinkExpires(String when) {
+    return 'Unopened, the relay deletes it on $when.';
+  }
 
   @override
-  String get oneTimeLinkPillServerBlind => 'Server sees no text or key';
+  String get oneTimeLinkSendPassphraseApart =>
+      'Send the passphrase separately from the link.';
 
   @override
-  String get oneTimeLinkPillBurns => 'Gone once read';
+  String get oneTimeLinkProtectsLabel => 'WHAT IT PROTECTS';
+
+  @override
+  String get oneTimeLinkProtectsEncrypted =>
+      'The secret is encrypted on this device. The relay stores only ciphertext and is never sent the key.';
+
+  @override
+  String get oneTimeLinkProtectsBurn =>
+      'The relay deletes it the first time it is opened, and when it expires unopened.';
+
+  @override
+  String get oneTimeLinkLimitsLabel => 'WHAT IT DOES NOT PROTECT';
+
+  @override
+  String get oneTimeLinkLimitHolder =>
+      'Whoever gets the whole link first can read it. If the channel is not safe, lock it with a passphrase.';
+
+  @override
+  String get oneTimeLinkLimitReader =>
+      'The reader can copy or screenshot it. One-time means one opening, not copy protection.';
+
+  @override
+  String get oneTimeLinkLimitRelay =>
+      'The relay sees when a link is made and opened, its size and the network addresses. It also serves the page that opens the link in the recipient\'s browser, so a link is only as trustworthy as the relay.';
 
   @override
   String get contactsNotice =>
       'The relay keeps which accounts you added. The names you give them stay on this device.';
 
   @override
-  String get contactsSearchHint => 'Search contacts…';
+  String get contactsSearchHint => 'Search contacts';
+
+  @override
+  String get contactsSearchClear => 'Clear search';
 
   @override
   String get contactsAdd => 'Add contact';
@@ -1879,16 +1936,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsWorking => 'Working…';
 
   @override
-  String get contactsErrorTitle => 'Contacts error';
+  String get contactsErrorTitle => 'Contacts could not be loaded';
 
   @override
-  String get contactsEmptyTitle => 'No contacts found';
+  String get contactsErrorBody => 'The list below is as it was last loaded.';
 
   @override
-  String get contactsEmptySearchBody => 'No contacts match your search.';
+  String get contactsEmptyTitle => 'No contacts yet';
 
   @override
-  String get contactsEmptyBody => 'Add contacts to start messaging securely.';
+  String get contactsEmptySearchTitle => 'No matches';
+
+  @override
+  String get contactsEmptySearchBody =>
+      'No name or handle matches your search.';
+
+  @override
+  String get contactsEmptyBody =>
+      'Add someone by their handle to keep them at hand.';
 
   @override
   String get contactsAddSheetBody =>
@@ -1907,6 +1972,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsSave => 'Save contact';
 
   @override
+  String get contactsAddFailed =>
+      'That handle could not be added. Check the spelling and your connection.';
+
+  @override
   String contactsAdded(String handle) {
     return 'Contact @$handle added';
   }
@@ -1918,7 +1987,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsStartChatFailed => 'Could not start conversation';
 
   @override
-  String get contactsViewProfile => 'View profile';
+  String get contactsEditNickname => 'Edit nickname';
+
+  @override
+  String get contactsSaveNickname => 'Save nickname';
+
+  @override
+  String get contactsNicknameCaption =>
+      'Only this device knows the nickname. Leave it empty to show the handle.';
 
   @override
   String get contactsRemove => 'Remove contact';
@@ -1932,8 +2008,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactsRemoveFailed => 'Could not remove contact';
 
   @override
-  String contactsYourNickname(String nickname) {
-    return 'Your nickname: $nickname';
+  String contactsRowSemantics(String name) {
+    return 'Contact $name';
   }
 
   @override
@@ -1980,61 +2056,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get notificationNewMessageBody => 'New encrypted message';
 
   @override
-  String get startDirectTitle => 'Find by Handle';
-
-  @override
-  String get startDirectEyebrow => 'DIRECT DISCOVERY';
-
-  @override
-  String get startDirectHeroTitle => 'No contact sync.';
-
-  @override
-  String get startDirectHeroBody =>
-      'Enter the handle directly. VEIL does not scan contacts, phone books, or social graphs.';
-
-  @override
-  String get startDirectPillManual => 'Manual discovery';
-
-  @override
-  String get startDirectPillNoGraph => 'No social graph';
-
-  @override
-  String get startDirectPillDirectOnly => 'Direct only';
-
-  @override
-  String get startDirectBannerTitle => 'Deliberate discovery';
-
-  @override
-  String get startDirectBannerBody =>
-      'Conversations open only when you know the exact handle. There is no graph expansion layer here.';
-
-  @override
-  String get startDirectMetricDiscovery => 'Discovery';
-
-  @override
-  String get startDirectMetricDiscoveryValue => 'Manual';
-
-  @override
-  String get startDirectMetricGraph => 'Graph';
-
-  @override
-  String get startDirectMetricGraphValue => 'None';
-
-  @override
-  String get startDirectMetricMode => 'Mode';
-
-  @override
-  String get startDirectMetricModeValue => 'Direct 1:1';
-
-  @override
-  String get startDirectFieldLabel => 'TARGET HANDLE';
-
-  @override
-  String get startDirectAwaitingInput => 'Awaiting input';
-
-  @override
-  String get startDirectFieldCaption =>
-      'Discovery stays manual. Direct conversations only.';
+  String get startDirectTitle => 'New direct chat';
 
   @override
   String get startDirectInputLabel => 'Handle';
@@ -2043,92 +2065,71 @@ class AppLocalizationsEn extends AppLocalizations {
   String get startDirectErrorTitle => 'Unable to open conversation';
 
   @override
-  String get startDirectOpening => 'Opening conversation';
+  String get startDirectErrorBody =>
+      'Check the handle and your connection, then try again.';
 
   @override
-  String get startDirectOpenButton => 'Open direct conversation';
+  String get startDirectOpening => 'Opening…';
 
   @override
-  String get startGroupTitle => 'Start Group Chat';
+  String get startDirectOpenButton => 'Open conversation';
 
   @override
-  String get startGroupEyebrow => 'GROUP CREATION';
+  String get startDirectNoteTitle => 'No contact sync';
 
   @override
-  String get startGroupHeroTitle => 'Private by invitation.';
+  String get startDirectNote =>
+      'VEIL does not read your contacts or phone book, and suggests no one. A conversation opens only when you know the exact handle.';
 
   @override
-  String get startGroupHeroBody =>
-      'Groups are explicit. Add members by handle — VEIL never expands invites through contact graphs.';
+  String get startGroupTitle => 'New group';
 
   @override
-  String get startGroupPillInviteOnly => 'Invite-only';
+  String get startGroupNameInput => 'Group name';
 
   @override
-  String get startGroupPillManualRoster => 'Manual roster';
+  String get startGroupNameHint => 'Weekend hiking';
 
   @override
-  String get startGroupPillE2E => 'E2E encrypted';
-
-  @override
-  String get startGroupNameLabel => 'GROUP NAME';
-
-  @override
-  String get startGroupRequired => 'Required';
-
-  @override
-  String get startGroupNameCaption =>
-      'Visible to members. You can rename later.';
-
-  @override
-  String get startGroupNameInput => 'Name';
-
-  @override
-  String get startGroupDescriptionLabel => 'DESCRIPTION';
-
-  @override
-  String get startGroupDescriptionCaption =>
-      'Optional. Purpose, charter, or context for members.';
-
-  @override
-  String get startGroupDescriptionInput => 'Description';
+  String get startGroupDescriptionInput => 'Description (optional)';
 
   @override
   String get startGroupDescriptionHint => 'What is this group for?';
 
   @override
-  String get startGroupMembersLabel => 'INITIAL MEMBERS';
-
-  @override
-  String get startGroupNoneYet => 'None yet';
-
-  @override
   String startGroupMembersCount(int count) {
-    return '$count handle(s)';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count handles',
+      one: '1 handle',
+    );
+    return '$_temp0';
   }
 
   @override
   String get startGroupMembersCaption =>
-      'Comma or space separated handles. You can add more after creation.';
+      'Separate handles with commas or spaces. This version cannot add members later, so list everyone now.';
 
   @override
   String get startGroupMembersInput => 'Member handles';
 
   @override
-  String get startGroupPublicTitle => 'Public directory';
-
-  @override
-  String get startGroupPublicSubtitle =>
-      'Public groups are discoverable by handle. Keep off for invite-only groups.';
-
-  @override
   String get startGroupErrorTitle => 'Unable to create group';
 
   @override
-  String get startGroupCreating => 'Creating group';
+  String get startGroupErrorBody =>
+      'Check the handles and your connection, then try again.';
+
+  @override
+  String get startGroupCreating => 'Creating…';
 
   @override
   String get startGroupCreateButton => 'Create group';
+
+  @override
+  String get startGroupNote =>
+      'Messages in a group are end-to-end encrypted. Its name, description and member list are not: the relay stores them as you type them here.';
 
   @override
   String get safetyNumbersTitle => 'Safety Number';
@@ -2369,7 +2370,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileHandleLabel => 'HANDLE';
 
   @override
-  String get profileHandleCaption => 'Your handle cannot be changed.';
+  String get profileHandleCaption =>
+      'Others find and message you by this handle. It cannot be changed.';
 
   @override
   String get profileNicknameLabel => 'NICKNAME';
@@ -2385,17 +2387,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileNicknameNotSet => 'Not set';
 
   @override
-  String get profilePrivacyEyebrow => 'PRIVACY';
-
-  @override
-  String get profilePrivacyTitle => 'Nothing about you on the relay';
+  String get profilePrivacyTitle => 'No profile on the relay';
 
   @override
   String get profilePrivacyBody =>
       'The relay routes by handle and stores no name, bio or status. Your nickname stays on this device and is erased with it.';
 
   @override
-  String get profileSaveNickname => 'Save nickname';
+  String get profileSaveNickname => 'Save';
 
   @override
   String get profileEditNickname => 'Edit nickname';
@@ -2651,9 +2650,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themeModeTitle => 'Theme';
-
-  @override
-  String get themeModeSubtitle => 'Choose how VEIL appears on this device.';
 
   @override
   String get themeModeLight => 'Light';

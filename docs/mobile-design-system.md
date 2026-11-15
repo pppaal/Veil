@@ -102,6 +102,24 @@ for a paragraph of its own.
 Never for what a person wrote (a message, a name, a note): that goes into a
 plain `Text`, as typed.
 
+### `VeilGroup`, `VeilGroupRow`, `VeilGroupSwitchRow`
+
+Rows that belong together, in one card with a hairline between them, under an
+optional section label and over an optional footnote
+(`shared/presentation/veil_grouped.dart`). A settings-like screen is a list of
+groups, not a card per row: Settings, the profile and the one-time link use
+them.
+
+- A row that opens something ends in a chevron; a row that changes a setting
+  carries its control (`VeilGroupSwitchRow` takes the tap anywhere on the row
+  and reads as one switch).
+- A `destructive` row draws its icon and title in the danger colour. Rows that
+  cannot be undone form one group of their own, last on the screen, under a
+  `VeilDestructiveNotice`.
+- Section labels are written in capitals in English, like every
+  `VeilSectionLabel`. A Korean label is set without the tracking of that
+  capitals style, which would pull its syllables apart.
+
 ### `VeilMetricStrip`
 
 Use for:
@@ -166,9 +184,15 @@ The composer should feel stable, deliberate, and operational.
 
 ### Contacts
 
-- "Start chat" creates a direct conversation and navigates to the chat room.
-- "View profile" opens a bottom sheet showing the public profile fetched from `GET /profile/:handle`.
-- Contact list is local-first and device-scoped.
+- The list is the screen: search is its first row and scrolls away with it,
+  adding a contact is an action of the bar, and what the relay keeps of the
+  list is said under it and in the add sheet.
+- Rows are filed under index letters: a Korean name under its first consonant
+  (ㄱ, ㄴ, …), which lead the list in a Korean app.
+- A contact's sheet offers "Start chat" (creates the direct conversation and
+  opens the chat room), "Edit nickname" (the name this device shows; the relay
+  never learns it) and "Remove contact". There is no profile view: a profile
+  on the relay is the handle and nothing else.
 
 ### Group Chat
 
@@ -180,6 +204,14 @@ The composer should feel stable, deliberate, and operational.
 
 - These screens are product philosophy surfaces.
 - Make trust state, device state, and destructive actions unambiguous.
+- Settings is grouped rows in this order: the account, appearance, privacy,
+  security, devices, tools, and last, set apart under the no-recovery notice,
+  what cannot be undone (log out, wipe, revoke this device, delete the
+  account). Each of those four says what it erases and asks for a typed
+  phrase; logging out erases this device's keys like the others.
+- The devices of the account are a screen of their own, opened from the
+  devices row, which counts them and flags a trusted device that has gone
+  quiet on the row itself.
 
 ## Accessibility Notes
 

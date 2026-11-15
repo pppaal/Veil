@@ -5,7 +5,6 @@ import 'package:veil_mobile/src/features/security/presentation/safety_number_car
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations_en.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/layout_seed.dart';
@@ -119,7 +118,7 @@ void main() {
         // Said before anything else on the page.
         final banner = onScreen(tester, findCopy(l10n.safetyNumbersChangedElsewhereTitle));
         expect(banner.height, greaterThan(0));
-        expect(banner.top, lessThan(onScreen(tester, find.byType(VeilScreenIntro)).top));
+        expect(banner.top, lessThan(onScreen(tester, find.byType(SafetyPeerHeader)).top));
         expectInQuestion(await textsOfScreen(tester));
 
         // The review is Sam's page in the group that holds the change.
@@ -199,7 +198,7 @@ void main() {
       location: '/safety-numbers/$groupConversationId',
       body: (world) async {
         await awaitSafetyNumber(tester);
-        final row = find.widgetWithText(VeilListTileCard, peerName);
+        final row = find.widgetWithText(VeilRow, peerName);
         expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsOneWidget);
 
         // Raised while the list is open: the app's own check of the 1:1 at
@@ -229,11 +228,11 @@ void main() {
       body: (world) async {
         await awaitSafetyNumber(tester);
         // Of the group's members only Sam was compared.
-        expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+        expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
         expect(find.text(l10n.safetyNumbersVerified), findsOneWidget);
         expect(
           find.descendant(
-            of: find.widgetWithText(VeilListTileCard, peerName),
+            of: find.widgetWithText(VeilRow, peerName),
             matching: find.text(l10n.safetyNumbersVerified),
           ),
           findsOneWidget,
@@ -244,13 +243,13 @@ void main() {
         await raiseChange(tester, world, chatConversationId);
         await pumpFrames(tester, frames: 3);
         await awaitSafetyNumber(tester);
-        expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+        expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
         expect(find.text(l10n.safetyNumbersVerified), findsNothing);
         expect(find.text(l10n.safetyNumbersUnverified), findsNWidgets(groupMemberHandles.length));
 
         // Her page in the group says why, and leads to the 1:1 that holds
         // the change.
-        await tester.tap(find.widgetWithText(VeilListTileCard, peerName));
+        await tester.tap(find.widgetWithText(VeilRow, peerName));
         await pumpFrames(tester);
         await awaitSafetyNumber(tester);
         final member = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
@@ -281,7 +280,7 @@ void main() {
       },
       body: (world) async {
         await awaitSafetyNumber(tester);
-        final row = find.widgetWithText(VeilListTileCard, peerNames['priya']!);
+        final row = find.widgetWithText(VeilRow, peerNames['priya']!);
         expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersUnverified)), findsOneWidget);
 
         await tester.tap(row);

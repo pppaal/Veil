@@ -6,6 +6,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dar
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -67,8 +68,8 @@ void main() {
 
   testWidgets('a tap on a row opens that chat in the pane and marks the row', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
-      VeilConversationCard row(String title) =>
-          tester.widget<VeilConversationCard>(inList(find.widgetWithText(VeilConversationCard, title)));
+      ConversationRow row(String title) =>
+          tester.widget<ConversationRow>(inList(find.widgetWithText(ConversationRow, title)));
       expect(row('Sam Rivera').selected, isTrue);
       expect(row('Jonas Weber').selected, isFalse);
 
@@ -144,7 +145,7 @@ void main() {
         location: '/conversations',
         attention: const ChatAttention(identityChanged: true, failedSends: 2),
         body: (world) async {
-          expect(inChat(find.byType(VeilInlineBanner)), findsNWidgets(2));
+          expect(inChat(find.byType(VeilNotice)), findsNWidgets(2));
           for (final action in ['Review', 'Retry now']) {
             final button = tester.renderObject<RenderBox>(inChat(find.widgetWithText(TextButton, action)));
             expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');

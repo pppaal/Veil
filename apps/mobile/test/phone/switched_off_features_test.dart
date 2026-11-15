@@ -115,7 +115,8 @@ void main() {
   testWidgets('the bottom bar is Chats, Contacts and Settings', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
       for (final tab in [l10n.navChats, l10n.navContacts, l10n.navSettings]) {
-        expect(find.text(tab), findsOneWidget, reason: 'the $tab tab');
+        expect(find.descendant(of: find.byType(NavigationBar), matching: find.text(tab)), findsOneWidget,
+            reason: 'the $tab tab');
       }
 
       // Settings is a tab: it opens with the bar still under it, and with
@@ -140,11 +141,9 @@ void main() {
       await pumpFrames(tester);
       expect(find.byType(ProfileScreen), findsOneWidget);
 
-      await tester.scrollUntilVisible(find.text(l10n.profileEditNickname), 200,
-          scrollable: find.byType(Scrollable).last);
-      await tester.tap(find.text(l10n.profileEditNickname));
-      await pumpFrames(tester, frames: 2);
+      // The nickname is a field of its own row; Save appears once it changes.
       await tester.enterText(find.byType(TextField), 'Moreau');
+      await pumpFrames(tester, frames: 2);
       await tester.scrollUntilVisible(find.text(l10n.profileSaveNickname), 200,
           scrollable: find.byType(Scrollable).last);
       await tester.tap(find.text(l10n.profileSaveNickname));

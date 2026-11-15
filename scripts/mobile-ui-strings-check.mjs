@@ -75,18 +75,7 @@ export const NOT_TRANSLATED = new Set([
 // alone. Add a line only for what is not copy, and say why; a sentence the
 // app wrote belongs in app_en.arb. A line whose literal the file no longer
 // holds fails.
-export const NOT_COPY = {
-  'features/contacts/presentation/contact_sheets.dart': {
-    icarus: "an example handle in the field's hint; a handle is lower-case Latin by rule",
-  },
-  'features/conversations/presentation/start_direct_chat_screen.dart': {
-    icarus: "an example handle in the field's hint; a handle is lower-case Latin by rule",
-  },
-  'features/conversations/presentation/start_group_screen.dart': {
-    'icarus, daedalus, minos':
-      "example handles in the field's hint; a handle is lower-case Latin by rule",
-  },
-};
+export const NOT_COPY = {};
 
 // Today's hard-coded copy, by file (relative to MOBILE_SRC) and grouped by
 // who owns the screen: each literal as the gate prints it (`--list`), once

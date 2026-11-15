@@ -95,7 +95,7 @@ void main() {
       await awaitSafetyNumber(tester);
       final opened = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
       expect((opened.conversationId, opened.memberUserId), (groupConversationId, null));
-      expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
+      expect(find.byType(VeilRow), findsNWidgets(groupMemberHandles.length));
       expect(tester.takeException(), isNull);
     });
   });

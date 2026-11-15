@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.da
 import 'package:veil_mobile/src/features/chat/presentation/typing_indicator.dart';
 import 'package:veil_mobile/src/features/contacts/presentation/contacts_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_row.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_group_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
@@ -25,6 +26,7 @@ import 'package:veil_mobile/src/features/security/presentation/safety_numbers_sc
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
+import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import 'layout_seed.dart';
@@ -206,6 +208,25 @@ const List<ScreenCase> screenCases = [
     file: 'conversation_list_screen.dart',
     location: '/conversations',
     account: LayoutAccount.signedInEmpty,
+  ),
+  // The first screen of a new account with the search field focused, and
+  // on a phone on its side: the empty state is taller than the space under
+  // the field and must scroll, not overflow.
+  ScreenCase(
+    'conversation-list-empty-keyboard',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    account: LayoutAccount.signedInEmpty,
+    keyboardHeight: 300,
+  ),
+  ScreenCase(
+    'conversation-list-empty-landscape',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    account: LayoutAccount.signedInEmpty,
+    sizes: [PhoneSize(640, 360, topInset: 0, bottomInset: 0)],
   ),
   ScreenCase(
     'conversation-list-search',
@@ -677,7 +698,7 @@ Finder _primaryButton() => find.byType(FilledButton);
 Finder _firstInput() => find.byType(TextField);
 
 // What adds a contact, wherever the screen puts it.
-Finder _addContact() => find.byIcon(Icons.person_add_outlined);
+Finder _addContact() => find.byIcon(Icons.person_add_alt_1_outlined);
 
 // The first control of the settings screen that changes a setting: the
 // theme selector or a switch, whichever the screen puts first. A row that
@@ -713,12 +734,11 @@ double chatMessagesExtent(WidgetTester tester) {
 /// the first conversation row to the bottom of the list it scrolls in.
 /// What sits above the first row (a header, a search field) is not it,
 /// whether it scrolls with the rows or stays put.
-double conversationRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
+double conversationRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(ConversationRow));
 
 /// The same for the contacts: from the top of the first contact's row to
-/// the bottom of the list it scrolls in. A contact's row is drawn with the
-/// card of a conversation's.
-double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
+/// the bottom of the list it scrolls in.
+double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(ContactRow));
 
 double _rowsExtent(WidgetTester tester, Finder rows) {
   if (rows.evaluate().isEmpty) return 0;
@@ -741,7 +761,7 @@ Future<void> _searchConversations(WidgetTester tester) async {
 }
 
 Future<void> _searchChat(WidgetTester tester) async {
-  await tester.tap(find.widgetWithIcon(IconButton, Icons.search_rounded));
+  await tester.tap(find.widgetWithIcon(IconButton, Icons.search));
   await pumpFrames(tester, frames: 2);
   // Typed where the focus is: opening the search moves it to the bar's field.
   tester.testTextInput.enterText(chatSearchQuery);
@@ -763,9 +783,12 @@ Future<void> _expectGroupMessages(WidgetTester tester) async {
 }
 
 Future<void> _expectLegacyBadge(WidgetTester tester) async {
-  // The badge sits on the peer's first message, at the top of the history.
+  // The line sits under the peer's first message, at the top of the history.
   await tester.dragUntilVisible(
-    find.descendant(of: find.byType(MessageBubble), matching: find.byType(VeilStatusPill)),
+    find.descendant(
+      of: find.byType(MessageBubble),
+      matching: find.text(lookupAppLocalizations(const Locale('en')).chatLegacySenderLine),
+    ),
     find.byType(ChatMessageList),
     const Offset(0, 200),
   );
@@ -778,7 +801,7 @@ Future<void> _reactToMessages(WidgetTester tester) async {
   for (final (bubble, emoji) in [(0, '\u{1F44D}'), (1, '\u{2764}\u{FE0F}')]) {
     // The card, not its row: a short message does not reach the middle.
     // The list is built from its end, so the first cards are the newest.
-    await tester.longPress(find.byType(VeilMessageBubbleCard).at(bubble));
+    await tester.longPress(find.byType(VeilBubble).at(bubble));
     await pumpFrames(tester, frames: 4);
     await tester.tap(find.descendant(of: find.byType(ReactionPickerWidget), matching: find.text(emoji)));
     await pumpFrames(tester, frames: 6);
@@ -829,31 +852,32 @@ Future<void> _openReactionSheet(WidgetTester tester) async {
 }
 
 Future<void> _openNewConversationMenu(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.edit_square));
+  await tester.tap(find.byIcon(Icons.edit_outlined));
   await pumpFrames(tester, frames: 3);
   expect(find.byType(PopupMenuItem<String>), findsNWidgets(2), reason: 'the menu did not open');
 }
 
 Future<void> _openAddContactSheet(WidgetTester tester) async {
-  await tester.tap(find.byIcon(Icons.person_add_outlined));
+  await tester.tap(find.byIcon(Icons.person_add_alt_1_outlined));
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the add-contact sheet did not open');
 }
 
 Future<void> _openContactActionsSheet(WidgetTester tester) async {
-  await tester.tap(find.byType(VeilConversationCard).first);
+  await tester.tap(find.byType(ContactRow).first);
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the contact sheet did not open');
 }
 
 Future<void> _openTrustedDevices(WidgetTester tester) async {
-  // The row is under the day-to-day settings, below the first screenful.
-  final row = find.byKey(const ValueKey('settings-devices'), skipOffstage: false);
+  // A device's row is under the day-to-day settings, below the first
+  // screenful.
+  final row = find.byKey(const ValueKey('settings-device-dev-laptop'), skipOffstage: false);
   await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
   await pumpFrames(tester, frames: 2);
   await tester.tap(row);
   await pumpFrames(tester, frames: 6);
-  expect(find.byType(VeilSurfaceCard), findsWidgets, reason: 'the device list did not load');
+  expect(find.byKey(const ValueKey('device-dev-laptop')), findsOneWidget, reason: 'the device list did not load');
 }
 
 // The safety number is derived on a background isolate, which only real

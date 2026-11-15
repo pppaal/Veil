@@ -6,7 +6,6 @@ import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_co
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_labels.dart';
 import 'package:veil_mobile/src/features/security/presentation/safety_number_cards.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/copy_finder.dart';
@@ -167,7 +166,7 @@ void main() {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
         final warning = tester.getRect(find.text('Safety number changed'));
-        final intro = tester.getRect(find.byType(VeilScreenIntro));
+        final intro = tester.getRect(find.byType(SafetyPeerHeader));
         expect(find.byType(VeilHeroPanel), findsNothing);
         expect(warning.bottom, lessThan(intro.top));
         expect(warning.top, lessThan(screenHeight(tester) / 2), reason: 'on the first screenful');
@@ -207,10 +206,11 @@ void main() {
       });
     });
 
-    testWidgets('with no change there is one number, under its plain label', (tester) async {
+    testWidgets('with no change there is one number, with no label over it', (tester) async {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
         await awaitSafetyNumber(tester);
-        expect(plainLabel, findsOneWidget);
+        expect(find.byType(SafetyNumberCard), findsOneWidget);
+        expect(plainLabel, findsNothing);
         expect(find.text('Safety number changed', skipOffstage: false), findsNothing);
       });
     });
@@ -277,9 +277,12 @@ void main() {
       });
     });
 
-    testWidgets('with the whole screen shows its icon too', (tester) async {
+    testWidgets('with the whole screen shows the line that messages are end-to-end encrypted too', (tester) async {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
-        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget, reason: 'the state\'s; the composer has none');
+        expect(find.text('Messages are end-to-end encrypted.'), findsOneWidget);
+        // No padlock, in the state or in the composer (design system 11.2).
+        expect(find.byIcon(Icons.lock_outline), findsNothing);
+        expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
         expect(find.text('No messages yet'), findsOneWidget);
         expect(find.widgetWithText(OutlinedButton, 'Compare safety numbers'), findsOneWidget);
       });

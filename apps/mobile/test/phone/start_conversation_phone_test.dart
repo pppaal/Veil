@@ -42,16 +42,16 @@ void main() {
   }
 
   group('a direct chat', () {
-    testWidgets('opens on the handle and its button, with one note under them', (tester) async {
+    testWidgets('opens on the handle, how to type it under it, and the button', (tester) async {
       await withPhoneApp(tester, identities, location: '/start-chat', body: (world) async {
         final field = tester.getRect(find.byType(TextField));
         final button = tester.getRect(find.byType(FilledButton));
-        final note = tester.getRect(findCopy(en.startDirectNote));
+        final helper = tester.getRect(findCopy(en.startDirectFieldCaption));
         expect(field.top, lessThan(140), reason: 'the field is the first thing under the bar');
-        expect(field.bottom, lessThan(button.top));
+        expect(helper.top, greaterThanOrEqualTo(field.top), reason: 'the field\'s helper text, under its input');
+        expect(helper.bottom, lessThan(button.top), reason: 'the button comes after the field');
         expect(button.bottom, lessThan(640 / 2), reason: 'the button is on the upper half of a 360x640 phone');
-        expect(button.bottom, lessThan(note.top), reason: 'the explanation comes after');
-        expect(note.bottom, lessThanOrEqualTo(640));
+        expect(find.byType(VeilNotice), findsNothing, reason: 'no notice for information');
         expectNoDecoration();
         expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNull, reason: 'no handle yet');
       });
@@ -85,7 +85,7 @@ void main() {
         expect(world.messenger.errorMessage, isNotNull);
         return null;
       }, body: (world) async {
-        expect(findCopy(en.startDirectErrorTitle), findsNothing, reason: 'another screen\'s failure is not shown here');
+        expect(findCopy(en.startDirectHandleError), findsNothing, reason: 'another screen\'s failure is not shown here');
 
         // An example handle nobody has: what is typed is the user's own.
         await tester.enterText(find.byType(TextField), 'icarus');
@@ -93,12 +93,14 @@ void main() {
         await tester.tap(find.byType(FilledButton));
         await pumpFrames(tester, frames: 6);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
-        expect(findCopy(en.startDirectErrorTitle), findsOneWidget);
-        expect(findCopy(en.startDirectErrorBody), findsOneWidget);
+        // The field says it, as its error, in place of how to type a handle.
+        expect(tester.widget<TextField>(find.byType(TextField)).decoration?.errorText, en.startDirectHandleError);
+        expect(findCopy(en.startDirectHandleError), findsOneWidget);
+        expect(find.byType(VeilNotice), findsNothing);
 
         await tester.enterText(find.byType(TextField), 'icaru');
-        await tester.pump();
-        expect(findCopy(en.startDirectErrorTitle), findsNothing, reason: 'a new handle clears the failure');
+        await pumpFrames(tester, frames: 3);
+        expect(findCopy(en.startDirectHandleError), findsNothing, reason: 'a new handle clears the failure');
       });
     });
   });
@@ -213,8 +215,9 @@ void main() {
 
         expect(world.api.createdGroups, isEmpty);
         expect(find.byType(StartGroupScreen), findsOneWidget);
-        expect(findCopy(en.startGroupErrorTitle), findsOneWidget);
-        expect(findCopy(en.startGroupErrorBody), findsOneWidget);
+        // The members' field says it, as its error.
+        expect(findCopy(en.startGroupMembersError), findsOneWidget);
+        expect(find.byType(VeilNotice), findsNothing);
         expect(find.text('Moving day'), findsOneWidget);
       });
     });

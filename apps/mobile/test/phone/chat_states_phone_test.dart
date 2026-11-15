@@ -95,7 +95,7 @@ void main() {
         withGroup: true,
         location: _group,
         prepare: (world) async {
-          await _injectGroupLine(world, from: 'omar', body: 'And the lamp.');
+          await _injectGroupLine(world, from: 'omar', body: 'And the lamp.', at: _lastGroupLineAt.add(const Duration(minutes: 2)));
           return null;
         },
         body: (world) async {
@@ -171,7 +171,7 @@ void main() {
           expect(find.text("Couldn't load messages"), findsOneWidget);
           expect(find.text('The server could not complete the request. Try again shortly.'), findsOneWidget,
               reason: 'the reason, said once');
-          expect(find.byType(VeilInlineBanner), findsNothing, reason: 'no banner repeats it');
+          expect(find.byType(VeilNotice), findsNothing, reason: 'no notice repeats it');
           expect(find.text('No messages yet'), findsNothing, reason: 'nobody knows that yet');
 
           final before = world.api.messageFetches;
@@ -182,14 +182,14 @@ void main() {
       );
     });
 
-    testWidgets('with messages on screen an error is a banner above them, in the app\'s words', (tester) async {
+    testWidgets('with messages on screen an error is a notice above them, in the app\'s words', (tester) async {
       await withPhoneApp(
         tester,
         identities,
         location: _chat,
         attention: const ChatAttention(relayError: true),
         body: (world) async {
-          expect(find.byType(VeilInlineBanner), findsOneWidget);
+          expect(find.byType(VeilNotice), findsOneWidget);
           expect(findCopy('Something went wrong'), findsOneWidget);
           expect(findCopy('The server could not complete the request. Try again shortly.'), findsOneWidget);
           expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
@@ -248,7 +248,7 @@ void main() {
       textScale: 1.3,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
+        expect(find.byWidgetPredicate((widget) => widget is VeilNotice && widget.dense), findsNWidgets(2));
         for (final action in ['Review', 'Retry now']) {
           final button = tester.renderObject<RenderBox>(find.widgetWithText(TextButton, action));
           expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
@@ -301,7 +301,7 @@ final _sealer = createDefaultCryptoAdapter();
 
 /// A text message from [from] at the end of the group's history, as the
 /// relay lists it.
-Future<void> _injectGroupLine(LayoutWorld world, {required String from, required String body}) async {
+Future<void> _injectGroupLine(LayoutWorld world, {required String from, required String body, DateTime? at}) async {
   final envelope = await _sealer.messaging.encryptMessage(
     conversationId: groupConversationId,
     senderDeviceId: 'dev-$from',
@@ -321,8 +321,12 @@ Future<void> _injectGroupLine(LayoutWorld world, {required String from, required
     conversationId: groupConversationId,
     envelope: _sealer.envelopeCodec.encodeApiEnvelope(envelope),
   );
-  stored['serverReceivedAt'] = DateTime.utc(2026, 4, 7, 11).toIso8601String();
+  stored['serverReceivedAt'] = (at ?? DateTime.utc(2026, 4, 7, 11)).toIso8601String();
 }
+
+/// When the seed's last group line (Omar's) was sent: the seed sends a line
+/// every seven minutes from 08:00 (layout_seed.dart).
+final _lastGroupLineAt = DateTime.utc(2026, 4, 7, 10, 13);
 
 /// The peer reacts to the newest message of the chat.
 Future<void> _reactToLatest(LayoutWorld world, String emoji) async {

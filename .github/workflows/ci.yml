@@ -73,15 +73,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # Cheap static gates first, so contract or locale drift fails before
-      # the Flutter toolchain is even downloaded.
+      # Cheap static gates first, so contract drift fails before the Flutter
+      # toolchain is even downloaded.
       - name: Realtime contract matches the mobile event list
         run: node scripts/realtime-contract-check.mjs
 
-      - name: Mobile locales match the English ARB
-        run: node scripts/arb-parity-check.mjs
-
-      - name: Mobile UI text comes from the ARB files
+      - name: Mobile UI text comes from the ARB file
         run: node scripts/mobile-ui-strings-check.mjs
 
       - name: Setup Flutter

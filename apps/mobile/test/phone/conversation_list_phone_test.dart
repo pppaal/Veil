@@ -57,30 +57,25 @@ void main() {
   // Where the line is too long (360 px at 1.3x) it breaks between two
   // parts, and the dot that separates parts is drawn only between two that
   // share a line: no line ends with one, and none starts with one.
-  for (final (locale, lines) in [
-    ('en', ['Relay linked  ·  8 conversations', 'No backup']),
-    ('ko', ['릴레이 연결됨  ·  대화 8개  ·  백업 없음']),
-  ]) {
-    testWidgets('with larger text the status line wraps between its parts, with no separator left hanging ($locale)',
-        (tester) async {
-      await withPhoneApp(tester, identities, location: '/conversations', locale: locale, textScale: 1.3,
-          body: (world) async {
-        final rects = [for (final line in lines) tester.getRect(find.text(line))];
-        for (final (index, rect) in rects.indexed) {
-          expect(rect.height, rects.first.height, reason: '"${lines[index]}" is one line');
-          expect(rect.right, lessThanOrEqualTo(360), reason: '"${lines[index]}" fits the screen');
-          if (index > 0) expect(rect.top, greaterThanOrEqualTo(rects[index - 1].bottom));
-        }
-        // Nothing drawn on the list starts or ends with the separator.
-        final hanging = tester
-            .widgetList<Text>(find.byType(Text))
-            .map((text) => text.data ?? '')
-            .where((data) => data.trim().startsWith('·') || data.trim().endsWith('·'));
-        expect(hanging, isEmpty);
-        expect(tester.takeException(), isNull);
-      });
+  testWidgets('with larger text the status line wraps between its parts, with no separator left hanging',
+      (tester) async {
+    const lines = ['Relay linked  ·  8 conversations', 'No backup'];
+    await withPhoneApp(tester, identities, location: '/conversations', textScale: 1.3, body: (world) async {
+      final rects = [for (final line in lines) tester.getRect(find.text(line))];
+      for (final (index, rect) in rects.indexed) {
+        expect(rect.height, rects.first.height, reason: '"${lines[index]}" is one line');
+        expect(rect.right, lessThanOrEqualTo(360), reason: '"${lines[index]}" fits the screen');
+        if (index > 0) expect(rect.top, greaterThanOrEqualTo(rects[index - 1].bottom));
+      }
+      // Nothing drawn on the list starts or ends with the separator.
+      final hanging = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((text) => text.data ?? '')
+          .where((data) => data.trim().startsWith('·') || data.trim().endsWith('·'));
+      expect(hanging, isEmpty);
+      expect(tester.takeException(), isNull);
     });
-  }
+  });
 
   // A row says what its last message is. The text comes from this device's
   // own store of what it decrypted, for every conversation the list names
@@ -94,13 +89,13 @@ void main() {
           row.title: row.subtitle,
       };
       expect(previews, hasLength(8));
-      expect(previews['Selene Park'], 'Section 7 is fine. Let us sign tomorrow.');
-      expect(previews['Rowan'], 'See you at nine.');
-      expect(previews['김서연 (디자인팀)'], 'The second mock-up is closer, but the header still feels heavy to me.');
+      expect(previews['Sam Rivera'], 'Section 7 is fine. Let us sign tomorrow.');
+      expect(previews['Jonas Weber'], 'See you at nine.');
+      expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
       // Only text is quoted: other kinds are named by what they are.
-      expect(previews['Noor Al-Hashimi'], 'Encrypted image');
-      expect(previews['Maximilian Alexander von Hohenberg-Schwarzenfeld'], 'Encrypted voice note');
-      expect(previews['Mira'], 'No messages yet');
+      expect(previews['Omar Haddad'], 'Encrypted image');
+      expect(previews['Alexandra Montgomery-Whitfield'], 'Encrypted voice note');
+      expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));
       expect(find.text('Section 7 is fine. Let us sign tomorrow.'), findsOneWidget, reason: 'drawn on its row');
 
@@ -141,7 +136,7 @@ void main() {
         expect(find.byType(ChatRoomScreen), findsNothing, reason: location);
         expect(find.byType(VeilConversationCard), findsNothing, reason: location);
         expect(find.textContaining('Section 7'), findsNothing, reason: location);
-        expect(find.text('Selene Park'), findsNothing, reason: location);
+        expect(find.text('Sam Rivera'), findsNothing, reason: location);
       }
       expect(tester.takeException(), isNull);
     } finally {
@@ -155,9 +150,9 @@ void main() {
       (tester) async {
     await withPhoneApp(tester, identities, withGroup: true, location: '/conversations', body: (world) async {
       final row = tester.widget<VeilConversationCard>(find.byType(VeilConversationCard).first);
-      expect(row.title, 'Selene Park, 한지우, Noor Al-Hashimi');
+      expect(row.title, 'Sam Rivera, Priya Nair, Omar Haddad');
       expect(row.titleIcon, Icons.group_rounded);
-      expect(row.semanticLabel, 'Group conversation with Selene Park, 한지우, Noor Al-Hashimi');
+      expect(row.semanticLabel, 'Group conversation with Sam Rivera, Priya Nair, Omar Haddad');
       expect(row.subtitle, 'I can bring the van after six, if someone helps me carry the shelves down.');
       expect(find.textContaining('9 conversations'), findsOneWidget);
 
@@ -190,17 +185,16 @@ void main() {
     );
   });
 
-  testWidgets('a sync error is one banner above the rows, in the user\'s language', (tester) async {
+  testWidgets('a sync error is one banner above the rows, in the app\'s words', (tester) async {
     await withPhoneApp(
       tester,
       identities,
       location: '/conversations',
-      locale: 'ko',
       attention: const ChatAttention(relayError: true),
       body: (world) async {
         expect(find.byType(VeilInlineBanner), findsOneWidget);
-        expect(findCopy('VEIL 릴레이가 요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.'), findsOneWidget);
-        expect(find.textContaining('The VEIL relay'), findsNothing);
+        expect(findCopy('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget);
+        expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
         expect(find.byType(VeilConversationCard), findsWidgets);
       },
     );
@@ -244,7 +238,7 @@ void main() {
   testWidgets('a search shows its filters, says it stays on the device, and lists what it found',
       (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.enterText(find.byType(TextField), 'se');
+      await tester.enterText(find.byType(TextField), conversationSearchQuery);
       // The archive search waits 180 ms for the typing to stop.
       await pumpFrames(tester, frames: 4);
 
@@ -282,17 +276,5 @@ void main() {
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
       },
     );
-  });
-
-  testWidgets('is in Korean in a Korean app, tabs included', (tester) async {
-    await withPhoneApp(tester, identities, location: '/conversations', locale: 'ko', body: (world) async {
-      expect(find.text('릴레이 연결됨  ·  대화 8개  ·  백업 없음'), findsOneWidget);
-      expect(find.widgetWithText(TextField, '대화와 메시지 검색'), findsOneWidget);
-      for (final tab in ['채팅', '연락처', '설정']) {
-        expect(find.text(tab), findsOneWidget);
-      }
-      expect(find.text('Chats'), findsNothing);
-      expect(find.byTooltip('새 대화'), findsOneWidget);
-    });
   });
 }

@@ -8,23 +8,23 @@ import '../../support/fake_relay.dart';
 import 'layout_world.dart';
 
 // What the layout cases show: eight conversations with names of every
-// length and script, one chat with a real exchange in it (a long message,
-// a reply, an attachment, a long link, a disappearing message, a system
-// notice), one conversation with no message yet, a group for the cases that
-// ask for one, contacts, calls, devices and stories. Message bodies follow
-// the locale of the run, because Korean and English wrap differently.
+// length, one chat with a real exchange in it (a long message, a reply, an
+// attachment, a long link, a disappearing message, a system notice), one
+// conversation with no message yet, a group for the cases that ask for one,
+// contacts and devices.
 
-/// Peers by handle, with the name the relay lists them under. Names are
-/// user data, so both locales see the same mix of scripts and lengths.
+/// Peers by handle, with the name the relay lists them under. One of them
+/// set no name and is listed by handle; one name is long enough to overflow
+/// a row.
 const peerNames = <String, String?>{
-  peerHandle: 'Selene Park',
-  'jiwoo': '한지우',
-  'rowan': 'Rowan',
-  'maximilian': 'Maximilian Alexander von Hohenberg-Schwarzenfeld',
-  'seoyeon': '김서연 (디자인팀)',
-  'noor': 'Noor Al-Hashimi',
-  'tomasz_k': null,
-  emptyChatPeerHandle: 'Mira',
+  peerHandle: 'Sam Rivera',
+  'priya': 'Priya Nair',
+  timerChatPeerHandle: 'Jonas Weber',
+  'alexandra': 'Alexandra Montgomery-Whitfield',
+  'mia': 'Mia Chen',
+  'omar': 'Omar Haddad',
+  'tom_walsh': null,
+  emptyChatPeerHandle: 'Lena Fischer',
 };
 
 void seedParties(FakeRelay relay, LayoutIdentities identities) {
@@ -49,8 +49,7 @@ void seedParties(FakeRelay relay, LayoutIdentities identities) {
 class _Line {
   const _Line(
     this.mine,
-    this.en,
-    this.ko, {
+    this.body, {
     this.kind = MessageKind.text,
     this.attachment = false,
     this.expires = false,
@@ -58,8 +57,7 @@ class _Line {
   });
 
   final bool mine;
-  final String en;
-  final String ko;
+  final String body;
   final MessageKind kind;
   final bool attachment;
   final bool expires;
@@ -69,28 +67,21 @@ class _Line {
 }
 
 const _chat = <_Line>[
-  _Line(false, 'Did the signed lease come through on your side?', '서명한 임대 계약서 그쪽에도 도착했어?'),
-  _Line(true, 'Yes. Sending the scan here so it never touches email.', '응. 이메일 안 거치게 여기로 스캔본 보낼게.'),
-  _Line(true, 'lease-signed.pdf', 'lease-signed.pdf', kind: MessageKind.file, attachment: true),
+  _Line(false, 'Did the signed lease come through on your side?'),
+  _Line(true, 'Yes. Sending the scan here so it never touches email.'),
+  _Line(true, 'lease-signed.pdf', kind: MessageKind.file, attachment: true),
   _Line(
     false,
     'Got it, thank you. Before we send the deposit I want to go over three things: the move-in date moved '
-        'to the 14th, the landlord wants the first two months up front, and the clause about subletting is '
-        'stricter than the draft we saw last week. Can you read section 7 again tonight and tell me if it '
-        'still works for you? I would rather lose a day than sign something we have to fight about later.',
-    '확인했어, 고마워. 보증금 보내기 전에 세 가지만 다시 짚고 싶어. 입주일이 14일로 바뀌었고, 집주인이 첫 두 달 '
-        '치 월세를 선불로 원하고, 전대 조항이 지난주에 본 초안보다 더 엄격해졌어. 오늘 밤에 7조를 다시 읽어 보고 '
-        '여전히 괜찮은지 알려 줄래? 나중에 다툴 일을 만드느니 하루 늦어지는 편이 낫다고 생각해.',
+    'to the 14th, the landlord wants the first two months up front, and the clause about subletting is '
+    'stricter than the draft we saw last week. Can you read section 7 again tonight and tell me if it '
+    'still works for you? I would rather lose a day than sign something we have to fight about later.',
   ),
-  _Line(true, 'Reading it now.', '지금 읽어 볼게.'),
-  _Line(
-    false,
-    'The registry entry is at https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true',
-    '등기부는 여기 있어 https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true',
-  ),
-  _Line(false, 'Screenshot taken', '스크린샷이 촬영되었습니다', kind: MessageKind.system),
-  _Line(true, 'Account number for the deposit, gone in a week.', '보증금 보낼 계좌번호야. 일주일 뒤에 사라져.', expires: true),
-  _Line(true, 'Section 7 is fine. Let us sign tomorrow.', '7조 괜찮아. 내일 서명하자.'),
+  _Line(true, 'Reading it now.'),
+  _Line(false, 'The registry entry is at https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true'),
+  _Line(false, 'Screenshot taken', kind: MessageKind.system),
+  _Line(true, 'Account number for the deposit, gone in a week.', expires: true),
+  _Line(true, 'Section 7 is fine. Let us sign tomorrow.'),
 ];
 
 /// How many messages the chat's conversation holds.
@@ -100,25 +91,24 @@ int get chatLineCount => _chat.length;
 // One conversation has none yet.
 const _others = <String, _Line?>{
   emptyChatPeerHandle: null,
-  'tomasz_k': _Line(true, 'Keys rotated, you should see a new safety number.', '키를 교체했어. 새 안전 번호가 보일 거야.'),
-  'noor': _Line(false, 'Photo from the site visit', '현장 방문 사진', kind: MessageKind.image),
-  'seoyeon': _Line(false, 'The second mock-up is closer, but the header still feels heavy to me.', '두 번째 시안이 더 낫긴 한데 헤더가 아직 무거워 보여요.'),
-  'maximilian': _Line(false, 'Voice note', '음성 메모', kind: MessageKind.voice),
-  'rowan': _Line(true, 'See you at nine.', '아홉 시에 봐.'),
-  'jiwoo': _Line(false, '내일 회의 자료는 여기로 보낼게', '내일 회의 자료는 여기로 보낼게'),
+  'tom_walsh': _Line(true, 'Keys rotated, you should see a new safety number.'),
+  'omar': _Line(false, 'Photo from the site visit', kind: MessageKind.image),
+  'mia': _Line(false, 'The second mock-up is closer, but the header still feels heavy to me.'),
+  'alexandra': _Line(false, 'Voice note', kind: MessageKind.voice),
+  timerChatPeerHandle: _Line(true, 'See you at nine.'),
+  'priya': _Line(false, 'I will send the slides for tomorrow here.'),
 };
 
 /// The group of the group cases: this user and three of the peers, in a
 /// legacy group (frames through the pairwise engine, like every 1:1 here).
 const groupConversationId = 'conv-group';
-const groupMemberHandles = [peerHandle, 'jiwoo', 'noor'];
+const groupMemberHandles = [peerHandle, 'priya', 'omar'];
 
 const _group = <_Line>[
-  _Line(false, 'The movers can do the 14th or the 16th.', '이삿짐 센터는 14일이나 16일에 된대.', from: peerHandle),
-  _Line(false, 'The 14th works for me.', '저는 14일 괜찮아요.', from: 'jiwoo'),
-  _Line(true, '14th then. I will book the lift for the morning.', '그럼 14일로 하자. 오전에 엘리베이터 예약해 둘게.'),
-  _Line(false, 'I can bring the van after six, if someone helps me carry the shelves down.',
-      '여섯 시 이후에 밴 가져갈 수 있어요. 책장 내리는 것만 누가 도와주면 돼요.', from: 'noor'),
+  _Line(false, 'The movers can do the 14th or the 16th.', from: peerHandle),
+  _Line(false, 'The 14th works for me.', from: 'priya'),
+  _Line(true, '14th then. I will book the lift for the morning.'),
+  _Line(false, 'I can bring the van after six, if someone helps me carry the shelves down.', from: 'omar'),
 ];
 
 /// How many messages the group's conversation holds.
@@ -127,19 +117,12 @@ int get groupLineCount => _group.length;
 /// Fills the relay with the conversations above and stores the content of
 /// this device's own messages, which no device can decrypt back. With
 /// [withGroup] the newest conversation is the group.
-Future<void> seedConversations(
-  FakeRelay relay,
-  LayoutMemoryCache cache, {
-  required String locale,
-  bool withGroup = false,
-}) async {
+Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {bool withGroup = false}) async {
   final sealer = createDefaultCryptoAdapter();
-  final korean = locale == 'ko';
   final day = DateTime.utc(2026, 4, 7, 8);
   var minute = 0;
 
   Future<void> send(String conversationId, String peer, _Line line) async {
-    final body = korean ? line.ko : line.en;
     final sender = line.mine ? selfHandle : peer;
     final recipient = line.mine ? peer : selfHandle;
     final attachment = line.attachment
@@ -158,7 +141,7 @@ Future<void> seedConversations(
       conversationId: conversationId,
       senderDeviceId: 'dev-$sender',
       recipientUserId: 'user-$recipient',
-      body: body,
+      body: line.body,
       messageKind: line.kind,
       recipientBundle: KeyBundle(
         userId: 'user-$recipient',
@@ -184,7 +167,7 @@ Future<void> seedConversations(
       conversationId: conversationId,
       serverMessageId: stored['id'] as String,
       senderDeviceId: 'dev-$selfHandle',
-      body: body,
+      body: line.body,
       kind: line.kind,
       attachment: attachment,
       innerExpiresAt: expiresAt,
@@ -214,46 +197,16 @@ Future<void> seedConversations(
   }
 }
 
-// What the story cases show; a caption follows the run's language, except
-// one that is Korean in both.
-const _storyCaptions = <(String handle, String en, String ko)>[
-  (peerHandle, 'Sunset over the river tonight', '오늘 한강에서 본 노을'),
-  (peerHandle, 'Packing is done!', '이사 준비 끝!'),
-  ('maximilian', 'First day at the new office', '새 사무실 첫날'),
-  ('jiwoo', '주말 등산', '주말 등산'),
-  ('noor', 'Site visit', '현장 답사'),
-];
-
 /// The devices the settings screen lists.
 const _deviceNames = ['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone'];
 
 const _transferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
 const _transferToken = 'vt_3QmZ8xT1uKcR7pLwN5sYhB2dJ9aFgE4o';
 
-/// What a case types into a search field.
-const conversationSearchQuery = 'se';
+/// What a case types into a search field: a part of two names (Sam Rivera,
+/// Priya Nair) and of nothing else, and a word of two messages.
+const conversationSearchQuery = 'ri';
 const chatSearchQuery = 'lease';
-
-/// The names of the fixtures: people, handles and devices. A screen may show
-/// one whole, one word of it, or its first letter (an avatar).
-List<String> get fixtureNames => [
-      selfHandle,
-      selfDisplayName,
-      ...peerNames.keys,
-      ...peerNames.values.nonNulls,
-      ..._deviceNames,
-    ];
-
-/// Everything else of the fixtures a screen shows as it is: message
-/// bodies, story captions, ids and codes.
-List<String> get fixtureTexts => [
-      for (final line in [..._chat, ..._others.values.nonNulls, ..._group]) ...[line.en, line.ko],
-      for (final (_, en, ko) in _storyCaptions) ...[en, ko],
-      for (final handle in [selfHandle, ...peerNames.keys]) ...['user-$handle', 'dev-$handle', 'conv-$handle'],
-      groupConversationId,
-      _transferSessionId,
-      _transferToken,
-    ];
 
 /// The body of message [number] of a history made by [seedHistory].
 String historyLine(int number) => 'History line $number';
@@ -289,13 +242,11 @@ Future<List<String>> seedHistory(FakeRelay relay, {required String peer, require
   return ids;
 }
 
-/// The relay as atlas's device reaches it, with the routes the screens
-/// outside the messenger call: contacts, call history, stories, the device
-/// list and the old-device half of a transfer.
+/// The relay as alex's device reaches it, with the routes the screens
+/// outside the messenger call: contacts, the device list and the old-device
+/// half of a transfer.
 class LayoutRelayClient extends FakeRelayClient {
-  LayoutRelayClient(super.relay, super.me, {required this.locale});
-
-  final String locale;
+  LayoutRelayClient(super.relay, super.me);
 
   /// The disappearing timer of each conversation that has one, in seconds,
   /// as the relay keeps it: seeded for one conversation, set by the chat.
@@ -353,10 +304,6 @@ class LayoutRelayClient extends FakeRelayClient {
             },
       ];
 
-  /// What the relay has on record instead of the seeded calls, when a test
-  /// sets it.
-  List<Map<String, dynamic>>? callRecords;
-
   @override
   Future<Map<String, dynamic>> addContact(String accessToken, Map<String, dynamic> body) async {
     final handle = body['handle'] as String;
@@ -406,75 +353,6 @@ class LayoutRelayClient extends FakeRelayClient {
 
   @override
   Future<Map<String, dynamic>> logoutAuth(String accessToken, {String? refreshToken}) async => const {};
-
-  @override
-  Future<List<dynamic>> getCallHistory(String accessToken) async {
-    if (callRecords case final records?) return records;
-    // A day old, so every row reads "Yesterday, hh:mm" whenever it runs.
-    final yesterday = DateTime.now().subtract(const Duration(days: 1)).toUtc();
-    Map<String, dynamic> call(String handle, String type, String status, {required bool mine, int? seconds}) => {
-          'id': 'call-$handle-$status',
-          'conversationId': 'conv-$handle',
-          'counterparty': peerNames[handle] ?? handle,
-          'counterpartyHandle': handle,
-          'callType': type,
-          'status': status,
-          'initiatedByMe': mine,
-          'duration': seconds,
-          'startedAt': yesterday.toIso8601String(),
-        };
-    return [
-      call(peerHandle, 'voice', 'ended', mine: true, seconds: 754),
-      call('maximilian', 'video', 'missed', mine: false),
-      call('jiwoo', 'voice', 'ended', mine: false, seconds: 3725),
-      call('noor', 'video', 'declined', mine: true),
-      call('rowan', 'voice', 'missed', mine: false),
-      call('seoyeon', 'voice', 'ended', mine: true, seconds: 42),
-    ];
-  }
-
-  /// The stories the relay lists instead of the seeded ones, when a test
-  /// sets it.
-  List<Map<String, dynamic>>? storyRecords;
-
-  @override
-  Future<List<dynamic>> getStories(String accessToken) async {
-    if (storyRecords case final records?) return records;
-    final now = DateTime.now().toUtc();
-    Map<String, dynamic> story(String handle, int index, String caption, {required bool viewed}) => {
-          'id': 'story-$handle-$index',
-          'userId': 'user-$handle',
-          'handle': handle,
-          'displayName': peerNames[handle],
-          'contentType': 'text',
-          'contentUrl': '',
-          'caption': caption,
-          'viewCount': 3 + index,
-          'viewedByMe': viewed,
-          'createdAt': now.subtract(Duration(hours: 2 + index)).toIso8601String(),
-          'expiresAt': now.add(Duration(hours: 22 - index)).toIso8601String(),
-        };
-    final korean = locale == 'ko';
-    final seen = <String, int>{};
-    return [
-      for (final (handle, en, ko) in _storyCaptions)
-        story(
-          handle,
-          seen.update(handle, (count) => count + 1, ifAbsent: () => 0),
-          korean ? ko : en,
-          viewed: handle == 'maximilian' || handle == 'noor',
-        ),
-    ];
-  }
-
-  /// The stories this device told the relay it viewed, in order.
-  final List<String> viewedStories = [];
-
-  @override
-  Future<Map<String, dynamic>> viewStory(String accessToken, String storyId) async {
-    viewedStories.add(storyId);
-    return {'storyId': storyId};
-  }
 
   @override
   Future<Map<String, dynamic>> listDevices(String accessToken) async {

@@ -6,8 +6,9 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_error_text.dart';
 
 // The messenger reports an error as one line of text. For the failures the
-// app has words of its own for, that line is English (logs, callers without
-// a locale), and a screen shows it in the user's language by its code.
+// app has words of its own for, that line is the formatter's sentence (logs,
+// callers without a locale), and a screen shows the ARB's sentence for it,
+// found by its code.
 
 // What each failure the app knows was reported as before it had a code.
 const _reported = <String, String>{
@@ -32,7 +33,6 @@ const _reported = <String, String>{
 
 void main() {
   final en = lookupAppLocalizations(const Locale('en'));
-  final ko = lookupAppLocalizations(const Locale('ko'));
 
   test('formatUserFacingError reports each known failure in the words it always had', () {
     for (final MapEntry(key: raw, value: sentence) in _reported.entries) {
@@ -42,29 +42,20 @@ void main() {
         reason: 'every code is reachable, and nothing else is');
   });
 
-  test('every known failure has a code, and words in both languages', () {
+  test('every known failure has a code, and a sentence of the ARB behind it', () {
     final english = <String>{};
-    final korean = <String>{};
     for (final raw in _reported.keys) {
       final reported = formatUserFacingError(raw);
       expect(userFacingErrorCodeOf(reported), isNotNull, reason: raw);
       english.add(veilErrorText(en, reported));
-      final translated = veilErrorText(ko, reported);
-      korean.add(translated);
-      expect(translated, isNot(reported), reason: 'Korean for "$reported"');
-      expect(translated, matches(RegExp('[가-힣]')), reason: translated);
-      // Names stay as they are written; nothing else of the sentence is Latin.
-      expect(translated.replaceAll(RegExp('VEIL|API|TLS'), ''), isNot(matches(RegExp('[A-Za-z]'))), reason: translated);
     }
     expect(english, hasLength(UserFacingErrorCode.values.length), reason: 'one sentence per code');
-    expect(korean, hasLength(UserFacingErrorCode.values.length), reason: 'one sentence per code');
   });
 
-  test('what the app did not write is shown as it is, redacted, in any language', () {
+  test('what the app did not write is shown as it is, redacted', () {
     const relayText = 'handle_not_found';
     expect(formatUserFacingError(Exception(relayText)), relayText);
     expect(userFacingErrorCodeOf(relayText), isNull);
-    expect(veilErrorText(ko, relayText), relayText);
     expect(veilErrorText(en, relayText), relayText);
   });
 }

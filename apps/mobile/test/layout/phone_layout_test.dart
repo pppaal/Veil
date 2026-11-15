@@ -5,16 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 
-import 'known_other_language_text.dart';
 import 'known_phone_layout_failures.dart';
 import 'support/layout_seed.dart';
 import 'support/layout_world.dart';
 import 'support/phone_layout_probe.dart';
 import 'support/screen_cases.dart';
 
-// The layout gate. Every screen of the app is opened at three phone sizes
-// in both languages, with the bundled fonts, and scrolled to its end. A
-// case fails
+// The layout gate. Every screen of the app is opened at three phone sizes,
+// with the bundled fonts, and scrolled to its end. A case fails
 // - when the framework reports a layout error (an overflowing flex,
 //   unbounded constraints, a build that throws);
 // - when the messages of a chat or the rows of the conversation list get
@@ -24,41 +22,37 @@ import 'support/screen_cases.dart';
 // - when the action of a chat's warning is not wholly on screen where a tap
 //   reaches it;
 // - when the control a screen is for (the first input or primary button its
-//   case names) is not on the first screenful;
-// - when a text of the app's own copy is in the other language (see
-//   support/language_probe.dart for what is not the app's own copy).
+//   case names) is not on the first screenful.
 //
-// Each case is rendered once more in the light theme (390x844, Korean, every
+// Each case is rendered once more in the light theme (390x844, every
 // screenful), held to layout errors and tap targets. Nothing reads colours:
 // that a light render passes does not say its text can be read, so look at
 // the PNGs. The wide cases open the two-pane shell and a tablet, held to
 // layout errors, the messages' share, the warning actions and tap targets.
 //
-// Cases known to fail are listed in known_phone_layout_failures.dart, and
-// the texts screens are known to show in the other language in
-// known_other_language_text.dart. The gate only lets both lists shrink, and
-// both are empty: a test below keeps them so.
+// Cases known to fail are listed in known_phone_layout_failures.dart. The
+// gate only lets that list shrink, and it is empty: a test below keeps it
+// so.
 //
 //   flutter test test/layout
 //
 // With --dart-define=SHOTS_DIR=/abs/dir the same run also writes one 2x PNG
-// per case and a report.json (defects, measured shares, small tap targets,
-// texts in the other language) into that directory. Adding
-// --dart-define=SHOTS_PAGES=all writes a PNG for every further screenful of
-// a scrolling screen. Without SHOTS_DIR no file is written.
+// per case and a report.json (defects, measured shares, small tap targets)
+// into that directory. Adding --dart-define=SHOTS_PAGES=all writes a PNG for
+// every further screenful of a scrolling screen. Without SHOTS_DIR no file
+// is written.
 
-const _locales = ['en', 'ko'];
+const _locales = ['en'];
 
 /// The one size and language of the light-theme renders.
 const _lightSize = phoneMedium;
-const _lightLocale = 'ko';
+const _lightLocale = 'en';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late LayoutIdentities identities;
   final report = LayoutReport();
-  final language = _LanguageLedger();
 
   setUpAll(() async {
     await loadBundledFonts();
@@ -83,7 +77,7 @@ void main() {
         reason: 'these cases name a screen file that no longer exists');
   });
 
-  test('the allow-lists name existing cases and screens, once each', () {
+  test('the allow-list names existing cases, once each', () {
     final cases = {for (final screenCase in allCases) screenCase.id: screenCase};
     expect(cases, hasLength(allCases.length), reason: 'case ids must be unique');
     final listed = <String>{};
@@ -108,97 +102,13 @@ void main() {
         }
       }
     }
-
-    final files = {for (final screenCase in allCases) screenCase.file};
-    for (final MapEntry(key: file, value: byLocale) in knownOtherLanguageText.entries) {
-      expect(files, contains(file), reason: '$file has no case');
-      expect(byLocale, isNotEmpty, reason: file);
-      for (final MapEntry(key: locale, value: texts) in byLocale.entries) {
-        expect(_locales, contains(locale), reason: file);
-        expect(texts, isNotEmpty, reason: '$file $locale: delete the entry instead of listing none');
-        for (final text in texts) {
-          expect(isOtherLanguage(text, locale), isTrue,
-              reason: '$file $locale: "$text" is not text in the other language, and cannot be listed as one');
-        }
-      }
-    }
   });
 
-  // Every case fits and every screen speaks the language of its run. A
-  // screen that stops doing so is fixed, not listed: the lists exist to say
-  // what was known to fail while it was being fixed, and nothing is.
+  // Every case fits. A screen that stops doing so is fixed, not listed: the
+  // list exists to say what was known to fail while it was being fixed, and
+  // nothing is.
   test('nothing is listed as known to fail', () {
     expect(knownPhoneLayoutFailures, isEmpty, reason: 'fix the screen instead of listing its case');
-    expect(knownOtherLanguageText, isEmpty, reason: 'move the text to app_en.arb and app_ko.arb instead of listing it');
-  });
-
-  // The list names texts, not a number of them: a screen cannot trade a
-  // listed text for a new one, and only a run of every case can tell that a
-  // listed text is gone.
-  test('the language ledger fails a text that is not listed, and a listed one that is gone', () {
-    // A list of the test's own, for whichever screen comes first: the real
-    // list is empty, and what the ledger does with a listed text must still
-    // hold on the day a text is listed again.
-    final file = allCases.first.file;
-    final cases = [for (final screenCase in allCases) if (screenCase.file == file) screenCase];
-    expect(cases, isNotEmpty);
-    const listed = {'Listed English label', 'Another listed label'};
-    final list = {
-      file: {'ko': listed},
-    };
-
-    LayoutFindings showing(Set<String> texts) => LayoutFindings()..otherLanguageTexts.addAll(texts);
-    _LanguageLedger renderAll(Set<String> koTexts) {
-      final ledger = _LanguageLedger(list);
-      for (final screenCase in cases) {
-        for (final size in screenCase.sizes) {
-          for (final locale in _locales) {
-            final findings = showing(locale == 'ko' ? koTexts : {});
-            ledger.record(screenCase, size, locale, findings);
-            expect(findings.defects, isEmpty, reason: 'listed texts are no defect');
-          }
-        }
-      }
-      return ledger;
-    }
-
-    expect(renderAll(listed).problems().where((problem) => problem.contains(file)), isEmpty);
-
-    // One more text than listed fails the case that shows it, at once.
-    final more = showing({...listed, 'Hard-coded English'});
-    _LanguageLedger(list).record(cases.first, cases.first.sizes.first, 'ko', more);
-    expect(more.defects, {LayoutDefect.otherLanguage});
-    expect(more.describe(), contains('not Korean: "Hard-coded English"'));
-    expect(more.describe(), isNot(contains(listed.first)));
-
-    // A listed text swapped for another: the new one fails its case, and
-    // the full run says the old one is gone.
-    final swapped = showing({'Unlisted English text'});
-    final ledger = renderAll(const {});
-    ledger.record(cases.first, cases.first.sizes.first, 'ko', swapped);
-    expect(swapped.defects, {LayoutDefect.otherLanguage});
-    final gone = ledger.problems().where((problem) => problem.contains(file)).toList();
-    expect(gone, hasLength(1));
-    expect(gone.single, contains('no longer shows'));
-    expect(gone.single, contains('"${listed.first}"'));
-
-    // A run that left some of the screen's renders out has not seen all of
-    // its texts, and says nothing about what is gone.
-    final partial = _LanguageLedger(list)..record(cases.first, cases.first.sizes.first, 'ko', showing(const {}));
-    expect(partial.problems().where((problem) => problem.contains(file)), isEmpty);
-
-    // On a screen with no entry, any such text is a defect.
-    final unlisted = allCases.firstWhere((screenCase) => screenCase.file != file);
-    final findings = showing({'보내기'});
-    _LanguageLedger(list).record(unlisted, unlisted.sizes.first, 'en', findings);
-    expect(findings.describe(), contains('not English: "보내기"'));
-
-    // So it is on every screen under the gate's own list, which has none:
-    // the text a moment ago listed for this screen fails it.
-    final real = showing({listed.first});
-    _LanguageLedger().record(cases.first, cases.first.sizes.first, 'ko', real);
-    expect(real.defects, {LayoutDefect.otherLanguage});
-    expect(_LanguageLedger().problems(), isEmpty);
   });
 
   // The framework's own tap target check passes over a control that
@@ -268,44 +178,6 @@ void main() {
     expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), isEmpty);
   });
 
-  test('the language check tells the app\'s copy from what it only shows', () {
-    // Fixtures, data and the brand are nobody's translation.
-    for (final shown in [
-      'VEIL',
-      'Selene Park',
-      'Selene',
-      'S',
-      '@selene',
-      'Maximilian Alexander von Hohenberg-Schwarzenfeld',
-      'lease-signed.pdf',
-      '2.3 MB · application/pdf',
-      'Pixel 9 Pro Fold',
-      'iPhone / iPad',
-      'PIN',
-      'cold.operator',
-      'dev-atlas',
-      'The registry entry is at https://registry.example.org/property/KR-11680-2026-0419-0031/owners?verify=true',
-      '08:49',
-    ]) {
-      expect(isOtherLanguage(shown, 'ko'), isFalse, reason: '"$shown" is not the app\'s copy');
-    }
-    for (final shown in ['한지우', '김', '김서연 (디자인팀)', '주말 등산', '내일 회의 자료는 여기로 보낼게']) {
-      expect(isOtherLanguage(shown, 'en'), isFalse, reason: '"$shown" is not the app\'s copy');
-    }
-
-    // The app's own words are, whatever they stand beside.
-    for (final copy in ['Send', 'Conversation with Selene Park', 'Connected 00:02', 'VEIL Assistant', '2h ago']) {
-      expect(isOtherLanguage(copy, 'ko'), isTrue, reason: '"$copy" is English copy');
-    }
-    for (final copy in ['보내기', 'Selene Park님과의 대화', '2시간 전']) {
-      expect(isOtherLanguage(copy, 'en'), isTrue, reason: '"$copy" is Korean copy');
-    }
-    // A sentence in the run's language may name what is Latin by nature.
-    expect(isOtherLanguage('VEIL 릴레이에 연결됨', 'ko'), isFalse);
-    expect(isOtherLanguage('PIN 입력', 'ko'), isFalse);
-    expect(isOtherLanguage('Relay linked · 8 conversations', 'en'), isFalse);
-  });
-
   // The chat cannot show its messages on a phone today, so nothing on
   // screen proves they are there. This does.
   testWidgets('the seeded account holds what the cases are about', (tester) async {
@@ -351,7 +223,6 @@ void main() {
         for (final locale in _locales) {
           testWidgets('$size $locale', (tester) async {
             final findings = await _render(tester, screenCase, size, locale, identities);
-            language.record(screenCase, size, locale, findings);
             final known = knownPhoneLayoutFailure(screenCase.id, size, locale);
             report.record(
               caseId: screenCase.id,
@@ -389,13 +260,6 @@ void main() {
       });
     }
   });
-
-  // After every case: the texts each screen showed in the other language,
-  // added up over its cases and sizes, against the texts listed for it.
-  test('each screen shows the other language exactly as listed', () {
-    final problems = language.problems();
-    expect(problems, isEmpty, reason: problems.join('\n'));
-  });
 }
 
 // A small tap target with a semantics node of its own, as a button's is.
@@ -419,59 +283,6 @@ void _expectAsListed(LayoutFindings findings, KnownPhoneLayoutFailure? known, St
   expect(findings.isClean, isFalse, reason: '$what now passes: remove it from knownPhoneLayoutFailures');
   expect(findings.defects, known.defects,
       reason: '$what fails in another way than listed ("${known.reason}"):\n${findings.describe()}');
-}
-
-/// What every screen showed in the other language, over all of its cases.
-class _LanguageLedger {
-  /// Reads the gate's list, knownOtherLanguageText, unless a test of the
-  /// ledger itself brings its own.
-  _LanguageLedger([this._listed = knownOtherLanguageText]);
-
-  // screen file -> locale -> the texts the screen is known to show
-  final Map<String, Map<String, Set<String>>> _listed;
-
-  // screen file -> locale -> the listed texts that were shown
-  final Map<String, Map<String, Set<String>>> _shown = {};
-  final Set<String> _rendered = {};
-
-  /// Takes the case's texts in the other language. One that is not listed
-  /// for the case's screen fails the case on the spot; the listed ones are
-  /// held until the end of the run, which says which of them no case showed
-  /// any more.
-  void record(ScreenCase screenCase, PhoneSize size, String locale, LayoutFindings findings) {
-    _rendered.add('${screenCase.id} $size $locale');
-    final listed = _listed[screenCase.file]?[locale] ?? const <String>{};
-    for (final text in findings.otherLanguageTexts) {
-      if (listed.contains(text)) {
-        _shown.putIfAbsent(screenCase.file, () => {}).putIfAbsent(locale, () => {}).add(text);
-      } else {
-        findings.add(
-          LayoutDefect.otherLanguage,
-          '${locale == 'ko' ? 'not Korean' : 'not English'}: "$text" '
-          '(move it to app_en.arb and app_ko.arb)',
-        );
-      }
-    }
-  }
-
-  List<String> problems() {
-    final problems = <String>[];
-    for (final MapEntry(key: file, value: byLocale) in _listed.entries) {
-      // A run that left out some of the screen's cases (--name) has not
-      // seen all of its texts, and cannot say one is gone.
-      final complete = allCases.where((screenCase) => screenCase.file == file).every((screenCase) =>
-          screenCase.sizes.every((size) => _locales.every((locale) => _rendered.contains('${screenCase.id} $size $locale'))));
-      if (!complete) continue;
-      for (final MapEntry(key: locale, value: listed) in byLocale.entries) {
-        final gone = listed.difference(_shown[file]?[locale] ?? const <String>{}).toList()..sort();
-        if (gone.isEmpty) continue;
-        problems.add('$file no longer shows these texts in a $locale run: delete them from knownOtherLanguageText'
-            '${gone.length == listed.length ? ', and the $locale entry of the screen with them' : ''}\n'
-            '${gone.map((text) => '    "$text"').join('\n')}');
-      }
-    }
-    return problems;
-  }
 }
 
 Future<LayoutFindings> _render(
@@ -501,9 +312,6 @@ Future<LayoutFindings> _render(
         findings.add(LayoutDefect.smallTapTarget, 'smaller than 44x44: $target');
       }
     }
-    // The light render is held to layout errors and tap targets only: the
-    // dark renders of the same case already read its language.
-    if (!light) findings.otherLanguageTexts.addAll(otherLanguageTextsOnScreen(tester, locale));
     if (writesShots) findings.smallTapTargets.addAll(await smallTapTargetsOnScreen(tester));
   }
 

@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart' show conversationTitle;
@@ -40,15 +38,6 @@ void main() {
 
     expect(formatRetryCountdown(l10n, soon), matches(RegExp(r'^[0-9]+s$')));
     expect(formatRetryCountdown(l10n, medium), matches(RegExp(r'^2m [0-9]+s$')));
-  });
-
-  test('formatRetryCountdown counts in the language of the screen', () {
-    final ko = lookupAppLocalizations(const Locale('ko'));
-    final soon = DateTime.now().add(const Duration(seconds: 9));
-    final medium = DateTime.now().add(const Duration(minutes: 2, seconds: 5));
-
-    expect(formatRetryCountdown(ko, soon), matches(RegExp(r'^[0-9]+초$')));
-    expect(formatRetryCountdown(ko, medium), matches(RegExp(r'^2분 [0-9]+초$')));
   });
 
   group('conversationTitle', () {
@@ -92,8 +81,7 @@ void main() {
     });
   });
 
-  test('counts read as counts in both languages: no "(s)", and no "(으)"', () {
-    final ko = lookupAppLocalizations(const Locale('ko'));
+  test('counts read as counts: no "(s)"', () {
     expect(l10n.chatBannerFailedSends(1), startsWith('1 message was not sent.'));
     expect(l10n.chatBannerFailedSends(2), startsWith('2 messages were not sent.'));
     expect(l10n.chatGroupMemberCount(1), '1 member');
@@ -112,15 +100,9 @@ void main() {
       l10n.chatDurationDays(2),
       l10n.chatDurationHours(2),
       l10n.chatDurationSeconds(2),
-      ko.chatBannerFailedSends(2),
-      ko.chatAccountHoldOtherBody('selene'),
-      ko.chatAccountHoldOwnBody('atlas'),
     ]) {
       expect(text, isNot(contains('(s)')), reason: text);
-      expect(text, isNot(contains('(으)')), reason: text);
     }
-    expect(ko.chatGroupMemberCount(4), '멤버 4명');
-    expect(ko.conversationsQueued(3), '보내기 대기 중인 메시지 3개');
   });
 
   test('messageDeliveryLabel handles all delivery states exhaustively', () {

@@ -27,21 +27,21 @@ import 'layout_seed.dart';
 
 // The app as one layout case sees it: the real route table, theme and
 // localizations over the test fakes (FakeRelay, a mock-keyed messenger,
-// memory stores), signed in as atlas or signed out, with seeded content.
+// memory stores), signed in as alex or signed out, with seeded content.
 
-const selfHandle = 'atlas';
-const selfDisplayName = 'Atlas Moreau';
-const peerHandle = 'selene';
+const selfHandle = 'alex';
+const selfDisplayName = 'Alex Kim';
+const peerHandle = 'sam';
 
-/// The conversation the chat, safety-number and attachment cases open.
-const chatConversationId = 'conv-selene';
+/// The conversation the chat and safety-number cases open.
+const chatConversationId = 'conv-$peerHandle';
 
 /// A peer nobody has written to yet, and the conversation with them.
-const emptyChatPeerHandle = 'mira';
+const emptyChatPeerHandle = 'lena';
 const emptyChatConversationId = 'conv-$emptyChatPeerHandle';
 
 /// The conversation whose messages disappear after a day.
-const timerChatPeerHandle = 'rowan';
+const timerChatPeerHandle = 'jonas';
 const timerChatConversationId = 'conv-$timerChatPeerHandle';
 
 /// Real identity keys, generated once per run: safety numbers take 32-byte
@@ -202,9 +202,9 @@ class LayoutWorld {
     _attention = attention;
     seedParties(relay, identities);
     if (account == LayoutAccount.signedIn || account == LayoutAccount.locked) {
-      await seedConversations(relay, cache, locale: locale, withGroup: withGroup);
+      await seedConversations(relay, cache, withGroup: withGroup);
     }
-    api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!, locale: locale);
+    api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!);
 
     if (_hasAccount) {
       await storage.persistDeviceSecretRefs(
@@ -282,23 +282,21 @@ class LayoutWorld {
 
   /// The app at [location]: the real route table (so tab screens get their
   /// bottom bar), [locale], and the dark theme the product is designed in
-  /// unless [themeMode] asks for the light one. [extraRoutes] reach screens
-  /// the route table leaves out.
+  /// unless [themeMode] asks for the light one.
   Widget app({
     required String location,
     Object? extra,
-    List<RouteBase> extraRoutes = const [],
     ThemeMode themeMode = ThemeMode.dark,
   }) {
     final router = _router = GoRouter(
       initialLocation: location,
       initialExtra: extra,
-      routes: [...container.read(appRoutesProvider), ...extraRoutes],
+      routes: container.read(appRoutesProvider),
     );
     return UncontrolledProviderScope(
       container: container,
       child: MaterialApp.router(
-        title: 'VEIL',
+        title: 'Veil',
         theme: VeilTheme.light(),
         darkTheme: VeilTheme.dark(),
         themeMode: themeMode,

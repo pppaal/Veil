@@ -55,15 +55,6 @@ Future<void> withPhoneApp(
   }
 }
 
-/// Scrolls the screen to its end a screenful at a time and returns every
-/// text that was on screen in the language the run is not in (see
-/// [otherLanguageTextsOnScreen]): names and values included.
-Future<Set<String>> otherLanguageTextsOfScreen(WidgetTester tester, String locale) async {
-  final texts = otherLanguageTextsOnScreen(tester, locale);
-  await scrollToEnd(tester, onPage: (_) async => texts.addAll(otherLanguageTextsOnScreen(tester, locale)));
-  return texts;
-}
-
 /// The part of [finder]'s first widget that is on screen.
 Rect onScreen(WidgetTester tester, Finder finder) =>
     visibleRect(tester, tester.renderObject<RenderBox>(finder.first));

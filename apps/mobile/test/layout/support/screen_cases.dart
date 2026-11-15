@@ -484,7 +484,7 @@ const List<ScreenCase> screenCases = [
   ScreenCase('safety-numbers-unpinned',
       screen: SafetyNumbersScreen,
       file: 'safety_numbers_screen.dart',
-      location: '/safety-numbers/conv-jiwoo',
+      location: '/safety-numbers/conv-priya',
       settle: _awaitSafetyNumber),
   ScreenCase(
     'chat-room-legacy-badge',

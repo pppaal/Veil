@@ -18,31 +18,31 @@ import 'phone_app.dart';
 // open, not their safety number, not a group's member list. And every such
 // screen leads to where the change is reviewed.
 //
-// Selene is the seeded contact the user compared numbers with. She is the
-// peer of the 1:1 `chatConversationId` and a member of the group.
+// Sam is the seeded contact the user compared numbers with: the peer of
+// the 1:1 `chatConversationId` and a member of the group.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late LayoutIdentities identities;
   final AppLocalizations l10n = AppLocalizationsEn();
-  const seleneId = 'user-$peerHandle';
-  final seleneName = peerNames[peerHandle]!;
+  const peerId = 'user-$peerHandle';
+  final peerName = peerNames[peerHandle]!;
 
   setUpAll(() async {
     await loadBundledFonts();
     identities = await LayoutIdentities.generate();
   });
 
-  // Selene's device presents another key in [conversationId]: held there
+  // Sam's device presents another key in [conversationId]: held there
   // for review. The pin the user verified stays as it is.
   Future<void> raiseChange(WidgetTester tester, LayoutWorld world, String conversationId) async {
-    final selene = world.relay.partiesByHandle[peerHandle]!;
+    final peer = world.relay.partiesByHandle[peerHandle]!;
     final admitted = await tester.runAsync(
-      () => world.trust.admit(conversationId, selene.userId, selene.deviceId, identities.self.identityPublicKey),
+      () => world.trust.admit(conversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey),
     );
     expect(admitted, isFalse);
-    expect(world.messenger.pendingIdentityChangeFor(conversationId)?.userId, seleneId);
-    expect((await world.trust.resolver.pinsForUser(seleneId)).every((pin) => pin.isVerified), isTrue,
+    expect(world.messenger.pendingIdentityChangeFor(conversationId)?.userId, peerId);
+    expect((await world.trust.resolver.pinsForUser(peerId)).every((pin) => pin.isVerified), isTrue,
         reason: 'the pin that was verified is untouched while the change is pending');
   }
 
@@ -63,7 +63,7 @@ void main() {
   Future<Set<String>> textsOfScreen(WidgetTester tester) async {
     Set<String> shown() => {
           for (final text in tester.widgetList<Text>(find.byType(Text)))
-            plainCopy(text.data ?? text.textSpan?.toPlainText() ?? ''),
+            text.data ?? text.textSpan?.toPlainText() ?? '',
         };
     final list = find.descendant(of: find.byType(SafetyNumbersScreen), matching: find.byType(Scrollable)).first;
     tester.state<ScrollableState>(list).position.jumpTo(0);
@@ -79,7 +79,7 @@ void main() {
   // verified because another conversation holds a change of theirs.
   void expectInQuestion(Set<String> texts) {
     expect(texts, contains(l10n.safetyNumbersChangedElsewhereTitle));
-    expect(texts, contains(l10n.safetyNumbersChangedElsewhereBody(seleneName)));
+    expect(texts, contains(l10n.safetyNumbersChangedElsewhereBody(peerName)));
     expect(texts, contains(l10n.safetyNumbersUnverified));
     expect(texts, isNot(contains(l10n.safetyNumbersVerified)));
     expect(texts.where((text) => text.startsWith(verifiedOn)), isEmpty, reason: 'no "Verified on" card');
@@ -122,11 +122,11 @@ void main() {
         expect(banner.top, lessThan(onScreen(tester, find.byType(VeilScreenIntro)).top));
         expectInQuestion(await textsOfScreen(tester));
 
-        // The review is Selene's page in the group that holds the change.
+        // The review is Sam's page in the group that holds the change.
         await tapReview(tester);
         expect(find.byType(SafetyNumbersScreen), findsOneWidget, reason: 'the page under it is off stage');
         final review = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
-        expect((review.conversationId, review.memberUserId), (groupConversationId, seleneId));
+        expect((review.conversationId, review.memberUserId), (groupConversationId, peerId));
         final reviewTexts = await textsOfScreen(tester);
         expect(reviewTexts, contains(l10n.safetyNumbersKeyChangedTitle));
         expect(reviewTexts, contains(l10n.safetyNumbersCardLabelNew));
@@ -140,7 +140,7 @@ void main() {
         await tester.tap(keep);
         await pumpFrames(tester, frames: 3);
         await awaitSafetyNumber(tester);
-        expect(world.messenger.pendingIdentityChangeAbout(seleneId), isNull);
+        expect(world.messenger.pendingIdentityChangeAbout(peerId), isNull);
         await tester.pageBack();
         await pumpFrames(tester);
         await awaitSafetyNumber(tester);
@@ -199,7 +199,7 @@ void main() {
       location: '/safety-numbers/$groupConversationId',
       body: (world) async {
         await awaitSafetyNumber(tester);
-        final row = find.widgetWithText(VeilListTileCard, seleneName);
+        final row = find.widgetWithText(VeilListTileCard, peerName);
         expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersVerified)), findsOneWidget);
 
         // Raised while the list is open: the app's own check of the 1:1 at
@@ -228,12 +228,12 @@ void main() {
       location: '/safety-numbers/$groupConversationId',
       body: (world) async {
         await awaitSafetyNumber(tester);
-        // Of the group's members only Selene was compared.
+        // Of the group's members only Sam was compared.
         expect(find.byType(VeilListTileCard), findsNWidgets(groupMemberHandles.length));
         expect(find.text(l10n.safetyNumbersVerified), findsOneWidget);
         expect(
           find.descendant(
-            of: find.widgetWithText(VeilListTileCard, seleneName),
+            of: find.widgetWithText(VeilListTileCard, peerName),
             matching: find.text(l10n.safetyNumbersVerified),
           ),
           findsOneWidget,
@@ -250,11 +250,11 @@ void main() {
 
         // Her page in the group says why, and leads to the 1:1 that holds
         // the change.
-        await tester.tap(find.widgetWithText(VeilListTileCard, seleneName));
+        await tester.tap(find.widgetWithText(VeilListTileCard, peerName));
         await pumpFrames(tester);
         await awaitSafetyNumber(tester);
         final member = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
-        expect((member.conversationId, member.memberUserId), (groupConversationId, seleneId));
+        expect((member.conversationId, member.memberUserId), (groupConversationId, peerId));
         expectInQuestion(await textsOfScreen(tester));
 
         await tapReview(tester);
@@ -266,7 +266,7 @@ void main() {
   });
 
   testWidgets('a member verified on their page is verified in the group list on the way back', (tester) async {
-    const jiwooId = 'user-jiwoo';
+    const priyaId = 'user-priya';
     await withPhoneApp(
       tester,
       identities,
@@ -274,14 +274,14 @@ void main() {
       withGroup: true,
       location: '/safety-numbers/$groupConversationId',
       prepare: (world) async {
-        // This device has talked to Jiwoo: there is a pin to compare.
-        final jiwoo = world.relay.partiesByHandle['jiwoo']!;
-        await world.trust.resolver.evaluate(jiwoo.userId, jiwoo.deviceId, jiwoo.identity.identityPublicKey);
+        // This device has talked to Priya: there is a pin to compare.
+        final priya = world.relay.partiesByHandle['priya']!;
+        await world.trust.resolver.evaluate(priya.userId, priya.deviceId, priya.identity.identityPublicKey);
         return null;
       },
       body: (world) async {
         await awaitSafetyNumber(tester);
-        final row = find.widgetWithText(VeilListTileCard, peerNames['jiwoo']!);
+        final row = find.widgetWithText(VeilListTileCard, peerNames['priya']!);
         expect(find.descendant(of: row, matching: find.text(l10n.safetyNumbersUnverified)), findsOneWidget);
 
         await tester.tap(row);
@@ -293,7 +293,7 @@ void main() {
         await tester.tap(mark);
         await pumpFrames(tester, frames: 3);
         await awaitSafetyNumber(tester);
-        expect(await world.messenger.isUserVerified(jiwooId), isTrue);
+        expect(await world.messenger.isUserVerified(priyaId), isTrue);
 
         await tester.pageBack();
         await pumpFrames(tester);

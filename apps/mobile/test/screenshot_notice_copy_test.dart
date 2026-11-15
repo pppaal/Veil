@@ -11,9 +11,5 @@ void main() {
     final en = lookupAppLocalizations(const Locale('en'));
     expect(en.chatScreenshotToast, contains('a notice is being sent'));
     expect(en.chatScreenshotToast, isNot(contains('has been notified')));
-
-    final ko = lookupAppLocalizations(const Locale('ko'));
-    expect(ko.chatScreenshotToast, contains('알림을 보내는 중'));
-    expect(ko.chatScreenshotToast, isNot(contains('전송되었습니다')));
   });
 }

@@ -9,7 +9,6 @@ void main() {
     final expiresAt = now.add(const Duration(seconds: 30));
 
     expect(formatMessageExpiry(lookupAppLocalizations(const Locale('en')), expiresAt, now: now), 'Expires in 30s');
-    expect(formatMessageExpiry(lookupAppLocalizations(const Locale('ko')), expiresAt, now: now), '30초 후 만료');
   });
 
   test('marks expired messages as expired', () {

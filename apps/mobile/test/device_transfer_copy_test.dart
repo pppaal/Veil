@@ -18,13 +18,5 @@ void main() {
     }
     expect(en.deviceTransferComplete, contains('old device has been signed out'));
     expect(en.deviceTransferComplete, isNot(contains('joined the trusted graph')));
-
-    final ko = lookupAppLocalizations(const Locale('ko'));
-    for (final text in [ko.deviceTransferNewCompleteNote, ko.deviceTransferCompleteOnNewNote]) {
-      expect(text, contains('로그아웃'));
-      expect(text, contains('대화 기록은'));
-      expect(text, isNot(contains('계속 신뢰됩니다')));
-    }
-    expect(ko.deviceTransferComplete, contains('로그아웃'));
   });
 }

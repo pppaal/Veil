@@ -96,8 +96,8 @@ void main() {
     });
   });
 
-  testWidgets('files Korean names under consonants, which lead the list in a Korean app', (tester) async {
-    await withPhoneApp(tester, identities, location: '/contacts', locale: 'ko', size: phoneLarge, body: (world) async {
+  testWidgets('files names under their first letter, which heads each run of the list', (tester) async {
+    await withPhoneApp(tester, identities, location: '/contacts', size: phoneLarge, body: (world) async {
       const prefix = 'contacts-index-';
       final headers = <String>[];
       void collect() {
@@ -111,29 +111,29 @@ void main() {
 
       collect();
       await scrollToEnd(tester, onPage: (_) async => collect());
-      // The consonants first in a Korean app: 김서연 under ㄱ, 한지우 under ㅎ,
-      // and neither under its whole first syllable.
-      expect(headers, ['ㄱ', 'ㅎ', 'M', 'N', 'R', 'S', 'T']);
-      expect(find.text('ㅎ'), findsOneWidget);
+      // A contact who set no name is filed under the handle's first letter.
+      expect(headers, ['A', 'J', 'L', 'M', 'O', 'P', 'S', 'T']);
+      expect(find.byKey(const ValueKey('${prefix}T')), findsOneWidget);
 
-      // A consonant alone is a small glyph: at the size of a caption, in
-      // the faintest text colour, ㄱ and ㅎ were hard to tell.
+      // A letter alone is a small glyph: at the size of a caption, in the
+      // faintest text colour, the letters were hard to tell apart.
       tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
       await pumpFrames(tester, frames: 2);
-      final index = tester.widget<Text>(find.text('ㄱ')).style!;
+      final letter = find.descendant(of: find.byKey(const ValueKey('${prefix}A')), matching: find.text('A'));
+      final index = tester.widget<Text>(letter).style!;
       expect(index.fontSize, greaterThanOrEqualTo(14));
-      expect(index.color, isNot(tester.element(find.text('ㄱ')).veilPalette.textSubtle));
+      expect(index.color, isNot(tester.element(letter).veilPalette.textSubtle));
     });
   });
 
   testWidgets('a search narrows the list by name or handle, and says when nothing matches', (tester) async {
     await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
-      await tester.enterText(find.byType(TextField), 'se');
+      await tester.enterText(find.byType(TextField), 'ri');
       await pumpFrames(tester, frames: 2);
-      // Selene by name and handle, 김서연 by her handle (seoyeon).
+      // Sam Rivera and Priya Nair by name, Priya by her handle as well.
       expect(rows(), findsNWidgets(2));
-      expect(find.text('Selene Park'), findsOneWidget);
-      expect(find.text('김서연 (디자인팀)'), findsOneWidget);
+      expect(find.text('Sam Rivera'), findsOneWidget);
+      expect(find.text('Priya Nair'), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'nobody');
       await pumpFrames(tester, frames: 2);
@@ -190,45 +190,47 @@ void main() {
 
   testWidgets('a contact\'s nickname is changed from its sheet, and only this device learns it', (tester) async {
     await withPhoneApp(tester, identities, location: '/contacts', keyboardHeight: 300, body: (world) async {
-      await tester.tap(find.text('Mira'));
+      // The first row: with the keyboard up a 360x640 phone builds few.
+      const name = 'Alexandra Montgomery-Whitfield';
+      await tester.tap(find.text(name));
       await pumpFrames(tester, frames: 4);
-      expect(inSheet(find.text('@mira')), findsOneWidget);
+      expect(inSheet(find.text('@alexandra')), findsOneWidget);
       await tester.tap(find.text(en.contactsEditNickname));
       await pumpFrames(tester, frames: 6);
 
       final save = inSheet(find.widgetWithText(FilledButton, en.contactsSaveNickname));
       expect(tester.getRect(save).bottom, lessThanOrEqualTo(640 - 300), reason: 'the button is above the keyboard');
-      await tester.enterText(inSheet(find.byType(TextField)), 'Mimi');
+      await tester.enterText(inSheet(find.byType(TextField)), 'Alexa');
       await tester.tap(save);
       await pumpFrames(tester, frames: 6);
 
       expect(find.byType(BottomSheet), findsNothing);
-      expect(find.text('Mimi'), findsOneWidget);
-      expect(find.text('Mira'), findsNothing);
+      expect(find.text('Alexa'), findsOneWidget);
+      expect(find.text(name), findsNothing);
       final stored = await ContactNicknames(world.storage.scoped(SecureScope.contacts)).readAll();
-      expect(stored, {'mira': 'Mimi'});
+      expect(stored, {'alexandra': 'Alexa'});
       expect(world.api.addedContacts, isEmpty, reason: 'the relay is not told');
     });
   });
 
   testWidgets('a contact is removed from its sheet, and a chat with one opens from it', (tester) async {
     await withPhoneApp(tester, identities, location: '/contacts', body: (world) async {
-      await tester.tap(find.text('Mira'));
+      await tester.tap(find.text('Lena Fischer'));
       await pumpFrames(tester, frames: 4);
       // Nothing in the sheet pretends to a profile the relay does not keep.
       expect(inSheet(find.byType(FilledButton)), findsOneWidget);
       expect(inSheet(find.byType(OutlinedButton)), findsNWidgets(2));
       await tester.tap(find.text(en.contactsRemove));
       await pumpFrames(tester, frames: 6);
-      expect(world.api.removedContacts, {'mira'});
-      expect(find.text('Mira'), findsNothing);
-      expect(findCopy(en.contactsRemoved('Mira')), findsOneWidget);
+      expect(world.api.removedContacts, {'lena'});
+      expect(find.text('Lena Fischer'), findsNothing);
+      expect(findCopy(en.contactsRemoved('Lena Fischer')), findsOneWidget);
 
-      await tester.tap(find.text('Noor Al-Hashimi'));
+      await tester.tap(find.text('Jonas Weber'));
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.text(en.contactsStartChat));
       await pumpFrames(tester, frames: 8);
-      expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, 'conv-noor');
+      expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
     });
   });
 }

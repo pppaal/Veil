@@ -24,7 +24,6 @@ import '../support/copy_finder.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   final en = lookupAppLocalizations(const Locale('en'));
-  final ko = lookupAppLocalizations(const Locale('ko'));
   const secret = 'The door code is 4471';
 
   setUpAll(loadBundledFonts);
@@ -46,7 +45,6 @@ void main() {
 
   Future<void> open(
     WidgetTester tester, {
-    String locale = 'en',
     int status = 201,
     double keyboardHeight = 0,
     OneTimeLinkService? service,
@@ -54,7 +52,6 @@ void main() {
     usePhoneView(tester, phoneSmall, keyboardHeight: keyboardHeight);
     await tester.pumpWidget(MaterialApp(
       theme: VeilTheme.dark(),
-      locale: Locale(locale),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: OneTimeLinkScreen(service: service ?? relay(status: status)),
@@ -95,7 +92,7 @@ void main() {
     final said = <String>[];
     void collect() {
       for (final element in find.byType(Text).evaluate()) {
-        final text = plainCopy((element.widget as Text).data ?? '');
+        final text = (element.widget as Text).data ?? '';
         if (text.isNotEmpty && !said.contains(text)) said.add(text);
       }
     }
@@ -313,31 +310,16 @@ void main() {
     });
   });
 
-  testWidgets('says in Korean that the relay refused, and keeps the form', (tester) async {
-    await open(tester, locale: 'ko', status: 503);
-    await tester.enterText(find.byType(TextField), '현관 비밀번호 4471');
+  testWidgets('says that the relay refused, and keeps the form', (tester) async {
+    await open(tester, status: 503);
+    await tester.enterText(find.byType(TextField), secret);
     await tester.pump();
     await tapCreate(tester);
-    expect(findCopy(ko.oneTimeLinkFailed), findsOneWidget);
+    expect(findCopy(en.oneTimeLinkFailed), findsOneWidget);
     expect(find.byType(QrImageView), findsNothing);
     expect(create(tester).onPressed, isNotNull, reason: 'ready for another try');
     // The field may have scrolled out above the button: it is still there.
-    expect(tester.widget<TextField>(find.byType(TextField, skipOffstage: false)).controller!.text, '현관 비밀번호 4471');
-  });
-
-  testWidgets('in a Korean app the form, the link that was made and the explanation are Korean', (tester) async {
-    await open(tester, locale: 'ko');
-    await tester.enterText(find.byType(TextField), '현관 비밀번호 4471');
-    await tester.pump();
-    await tapCreate(tester);
-    expect(find.byType(QrImageView), findsOneWidget);
-
-    tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
-    await tester.pump();
-    final foreign = otherLanguageTextsOnScreen(tester, 'ko');
-    await scrollToEnd(tester, onPage: (_) async => foreign.addAll(otherLanguageTextsOnScreen(tester, 'ko')));
-    // The link itself is an address, which the check leaves out.
-    expect(foreign, isEmpty);
+    expect(tester.widget<TextField>(find.byType(TextField, skipOffstage: false)).controller!.text, secret);
   });
 }
 

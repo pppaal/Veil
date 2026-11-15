@@ -16,23 +16,22 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// A failure the app has words of its own for reaches a screen as the English
-// sentence formatUserFacingError returned for it. The chat and the list say
-// it in the app's language (veilErrorText); so does every other screen that
-// shows a controller's error: the splash, the handle form, both sides of a
-// device transfer, and an attachment in a chat. What has no code (a relay's
-// own message, or a failure the data layer words itself and
+// A failure the app has words of its own for reaches a screen as the
+// sentence formatUserFacingError returned for it: the words of a log line,
+// not of the ARB. The chat and the list show the ARB's sentence for it
+// instead (veilErrorText); so does every other screen that shows a
+// controller's error: the splash, the handle form, both sides of a device
+// transfer, and an attachment in a chat. What has no code (a relay's own
+// message, or a failure the data layer words itself and
 // formatUserFacingError does not know) is shown as it came.
 
-final _ko = lookupAppLocalizations(const Locale('ko'));
 final _en = lookupAppLocalizations(const Locale('en'));
 
-// What a relay says in its own words: no code, no translation.
+// What a relay says in its own words: no code, no sentence of the ARB.
 const _relaysOwn = 'handle_taken';
 
-Widget _alone(Widget child, {String locale = 'ko'}) => MaterialApp(
+Widget _alone(Widget child) => MaterialApp(
       theme: VeilTheme.dark(),
-      locale: Locale(locale),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: SingleChildScrollView(child: child)),
@@ -47,21 +46,25 @@ void main() {
     identities = await LayoutIdentities.generate();
   });
 
-  test('the English of the app and the sentence a controller reports are not always the same words', () {
-    // Which is why a test of an English run cannot tell a translated error
-    // from a printed one, and these run in Korean.
-    expect(_en.errorRelayFailed, isNot(UserFacingErrorCode.relayFailed.sentence));
-    for (final code in UserFacingErrorCode.values) {
-      expect(isOtherLanguage(code.sentence, 'ko'), isTrue, reason: '${code.name} is English copy');
+  test('the ARB and the sentence a controller reports are not the same words', () {
+    // Which is why a screen that shows the controller's sentence as it came
+    // can be told from one that looked the ARB's up.
+    for (final (code, arb) in [
+      (UserFacingErrorCode.relayFailed, _en.errorRelayFailed),
+      (UserFacingErrorCode.uploadFailed, _en.errorUploadFailed),
+      (UserFacingErrorCode.notFound, _en.errorNotFound),
+      (UserFacingErrorCode.conflict, _en.errorConflict),
+    ]) {
+      expect(arb, isNot(code.sentence), reason: code.name);
     }
   });
 
-  testWidgets('the splash says why the app cannot start in the app\'s language', (tester) async {
+  testWidgets('the splash says why the app cannot start in the ARB\'s words', (tester) async {
     usePhoneView(tester, phoneSmall);
     final world = await LayoutWorld.create(
       identities: identities,
       account: LayoutAccount.signedOut,
-      locale: 'ko',
+      locale: 'en',
       bootstrapping: true,
       sessionError: UserFacingErrorCode.apiNeedsTls.sentence,
     );
@@ -69,54 +72,50 @@ void main() {
       await tester.pumpWidget(world.app(location: '/splash'));
       await pumpFrames(tester);
       expect(find.byType(SplashScreen), findsOneWidget);
-      expect(findCopy(_ko.splashErrorTitle), findsOneWidget);
-      expect(findCopy(_ko.errorApiNeedsTls), findsOneWidget);
-      expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+      expect(findCopy(_en.splashErrorTitle), findsOneWidget);
+      expect(findCopy(_en.errorApiNeedsTls), findsOneWidget);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
       world.dispose();
     }
   });
 
-  testWidgets('the handle form says a refused handle in the app\'s language, and a relay\'s own words as they came',
+  testWidgets('the handle form says a refused handle in the ARB\'s words, and a relay\'s own words as they came',
       (tester) async {
     await withPhoneApp(tester, identities,
         location: '/choose-handle',
         account: LayoutAccount.signedOut,
-        locale: 'ko',
         sessionError: UserFacingErrorCode.conflict.sentence, body: (world) async {
       expect(find.byType(ChooseHandleScreen), findsOneWidget);
-      expect(findCopy(_ko.authHandleFailedTitle), findsOneWidget);
-      expect(findCopy(_ko.errorConflict), findsOneWidget);
-      expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
+      expect(findCopy(_en.authHandleFailedTitle), findsOneWidget);
+      expect(findCopy(_en.errorConflict), findsOneWidget);
+      expect(findCopy(UserFacingErrorCode.conflict.sentence), findsNothing);
     });
 
     await withPhoneApp(tester, identities,
         location: '/choose-handle',
         account: LayoutAccount.signedOut,
-        locale: 'ko',
         sessionError: _relaysOwn, body: (world) async {
-      expect(findCopy(_ko.authHandleFailedTitle), findsOneWidget);
+      expect(findCopy(_en.authHandleFailedTitle), findsOneWidget);
       expect(findCopy(_relaysOwn), findsOneWidget);
     });
   });
 
-  testWidgets('a new device says a failed login in the app\'s language, in the step in hand', (tester) async {
+  testWidgets('a new device says a failed login in the ARB\'s words, in the step in hand', (tester) async {
     await withPhoneApp(tester, identities,
         location: '/device-transfer',
         account: LayoutAccount.signedOut,
-        locale: 'ko',
         sessionError: UserFacingErrorCode.relayFailed.sentence, body: (world) async {
       expect(find.byType(DeviceTransferScreen), findsOneWidget);
-      final failure = findCopy(_ko.errorRelayFailed);
+      final failure = findCopy(_en.errorRelayFailed);
       expect(failure, findsOneWidget);
       expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 1);
-      expect(findCopy(_ko.deviceTransferFailedTitle), findsOneWidget);
-      expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
+      expect(findCopy(_en.deviceTransferFailedTitle), findsOneWidget);
+      expect(findCopy(UserFacingErrorCode.relayFailed.sentence), findsNothing);
     });
   });
 
-  testWidgets('an old device says a failed approval in the app\'s language', (tester) async {
+  testWidgets('an old device says a failed approval in the ARB\'s words', (tester) async {
     final now = DateTime(2026, 4, 2, 12);
     Widget panel(String error) => _alone(TransferOldDevicePanel(
           isAuthenticated: true,
@@ -139,12 +138,12 @@ void main() {
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(panel(UserFacingErrorCode.notAllowed.sentence));
+    await tester.pumpWidget(panel(UserFacingErrorCode.conflict.sentence));
     await tester.pump();
-    final failure = findCopy(_ko.errorNotAllowed);
+    final failure = findCopy(_en.errorConflict);
     expect(failure, findsOneWidget);
     expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 3);
-    expect(findCopy(UserFacingErrorCode.notAllowed.sentence), findsNothing);
+    expect(findCopy(UserFacingErrorCode.conflict.sentence), findsNothing);
 
     await tester.pumpWidget(panel(_relaysOwn));
     await tester.pump();
@@ -163,34 +162,33 @@ void main() {
           canCancel: false,
         );
 
-    testWidgets('says a failed upload in the app\'s language', (tester) async {
+    testWidgets('says a failed upload in the ARB\'s words', (tester) async {
       await tester.pumpWidget(_alone(AttachmentTransferPanel(
         snapshot: transfer(AttachmentTransferPhase.failed, UserFacingErrorCode.uploadFailed.sentence),
         onRetry: () {},
       )));
 
       // The error is the description and the banner's message.
-      expect(findCopy(_ko.errorUploadFailed), findsNWidgets(2));
-      expect(findCopy(_ko.chatAttachmentStateBanner), findsOneWidget);
-      expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+      expect(findCopy(_en.errorUploadFailed), findsNWidgets(2));
+      expect(findCopy(_en.chatAttachmentStateBanner), findsOneWidget);
+      expect(findCopy(UserFacingErrorCode.uploadFailed.sentence), findsNothing);
     });
 
     // The outbox marks a canceled upload with a sentence of its own, which
-    // has no translation and says what the description already does.
-    testWidgets('says a canceled upload once, in the app\'s language', (tester) async {
+    // has no code and says what the description already does.
+    testWidgets('says a canceled upload once, in the ARB\'s words', (tester) async {
       await tester.pumpWidget(_alone(AttachmentTransferPanel(
         snapshot: transfer(AttachmentTransferPhase.canceled, 'Attachment upload was canceled on this device.'),
         onRetry: () {},
       )));
 
-      expect(findCopy(_ko.chatPhaseDescCanceled), findsOneWidget);
-      expect(findCopy(_ko.chatPhaseCanceled), findsOneWidget);
-      expect(findCopy(_ko.chatAttachmentStateBanner), findsNothing);
-      expect(findCopyContaining('canceled'), findsNothing);
-      expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+      expect(findCopy(_en.chatPhaseDescCanceled), findsOneWidget);
+      expect(findCopy(_en.chatPhaseCanceled), findsOneWidget);
+      expect(findCopy(_en.chatAttachmentStateBanner), findsNothing);
+      expect(findCopyContaining('canceled on this device'), findsNothing);
     });
 
-    testWidgets('says a refused download in the app\'s language', (tester) async {
+    testWidgets('says a refused download in the ARB\'s words', (tester) async {
       await tester.pumpWidget(_alone(MessageAttachmentCard(
         attachment: const AttachmentReference(
           attachmentId: 'att-1',
@@ -206,9 +204,9 @@ void main() {
         onResolve: () {},
       )));
 
-      expect(findCopy(_ko.chatAttachmentTicketFailed), findsOneWidget);
-      expect(findCopy(_ko.errorNotFound), findsOneWidget);
-      expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+      expect(findCopy(_en.chatAttachmentTicketFailed), findsOneWidget);
+      expect(findCopy(_en.errorNotFound), findsOneWidget);
+      expect(findCopy(UserFacingErrorCode.notFound.sentence), findsNothing);
     });
   });
 }

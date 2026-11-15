@@ -38,42 +38,57 @@ class VeilComposer extends StatelessWidget {
   /// The hint in the empty draft.
   final String label;
 
+  /// How far the grey field sits inside the text field's 44, top and bottom.
+  static const double fieldInset = 4;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
     final hint = enabled ? label : (helper ?? label);
 
-    final field = DecoratedBox(
-      decoration: BoxDecoration(
-        color: palette.surfaceAlt,
-        borderRadius: BorderRadius.circular(VeilRadius.xl),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 36),
-        child: TextField(
-          controller: controller,
-          focusNode: focusNode,
-          minLines: 1,
-          maxLines: 5,
-          enabled: enabled,
-          textInputAction: TextInputAction.send,
-          onSubmitted: (_) => onSubmit(),
-          style: theme.textTheme.bodyLarge,
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: palette.textMuted),
-            filled: false,
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            // 7 above and below a 16/1.4 line make the 36 of the field.
-            contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 7),
-            isDense: true,
+    // The text field takes the whole 44 of the row, so the whole height is
+    // the tap target; the grey field drawn behind it is 4 shorter at the
+    // top and the bottom (36 for one line) and grows with the text.
+    final field = Stack(
+      children: [
+        Positioned.fill(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: fieldInset),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: palette.surfaceAlt,
+                borderRadius: BorderRadius.circular(VeilRadius.xl),
+              ),
+            ),
           ),
         ),
-      ),
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            minLines: 1,
+            maxLines: 5,
+            enabled: enabled,
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => onSubmit(),
+            style: theme.textTheme.bodyLarge,
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: palette.textMuted),
+              filled: false,
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+              disabledBorder: InputBorder.none,
+              // 11 above and below a 16/1.4 line: 7 inside the grey field.
+              contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 11),
+              isDense: true,
+            ),
+          ),
+        ),
+      ],
     );
 
     return DecoratedBox(
@@ -89,9 +104,9 @@ class VeilComposer extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               if (leading != null) ...[leading!, const SizedBox(width: VeilSpace.xxs)],
-              // 4 above and below the 36 field centre it on the 44 of the
-              // buttons beside it; more lines grow it upward.
-              Expanded(child: Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: field)),
+              // More lines grow the field upward; the buttons stay at the
+              // bottom, on its first line.
+              Expanded(child: field),
               const SizedBox(width: VeilSpace.xs),
               trailing,
             ],

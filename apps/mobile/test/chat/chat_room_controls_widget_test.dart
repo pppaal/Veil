@@ -335,7 +335,8 @@ void main() {
     testWidgets('shows an attach button only where the screen gives it somewhere to go', (tester) async {
       await tester.pumpWidget(composer());
       expect(find.byTooltip(l10n.chatAttachAction), findsNothing);
-      expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget);
+      // The composer has no padlock (design system 7.7): nothing before the draft.
+      expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
       expect(find.text(l10n.chatComposeHint), findsOneWidget);
 
       var attached = 0;

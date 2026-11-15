@@ -146,13 +146,14 @@ void main() {
   });
 
   // The attach button is there only in a build that can send a file
-  // (kAttachmentsEnabled); without it the composer shows its lock mark.
+  // (kAttachmentsEnabled); without it nothing stands before the draft (the
+  // composer has no padlock, design system 7.7).
   testWidgets('offers no attachment from the composer while attachments are switched off', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       expect(find.byTooltip('Attach'), kAttachmentsEnabled ? findsOneWidget : findsNothing);
       expect(
         find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline_rounded)),
-        kAttachmentsEnabled ? findsNothing : findsOneWidget,
+        findsNothing,
       );
     });
   });

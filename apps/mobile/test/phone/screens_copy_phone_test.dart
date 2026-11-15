@@ -204,12 +204,13 @@ void main() {
   group('an empty chat', () {
     const location = '/chat/$emptyChatConversationId';
 
-    testWidgets('above the keyboard shows its words and its button whole, without the icon', (tester) async {
+    // A compact empty state is its title and its button (design system
+    // 7.8): the line under the title and the icon wait for the whole screen.
+    testWidgets('above the keyboard shows its title and its button whole, without the icon', (tester) async {
       await withPhoneApp(tester, identities, location: location, keyboardHeight: 300, body: (world) async {
         final area = onScreen(tester, find.byType(ChatMessageList));
         for (final finder in [
           find.text('No messages yet'),
-          find.textContaining('encrypted on this device'),
           find.widgetWithText(OutlinedButton, 'Compare safety numbers'),
         ]) {
           final box = tester.renderObject<RenderBox>(finder);
@@ -217,14 +218,16 @@ void main() {
           expect(rect.top, greaterThanOrEqualTo(area.top), reason: '$finder');
           expect(rect.bottom, lessThanOrEqualTo(area.bottom), reason: '$finder');
         }
-        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget, reason: 'the composer\'s, not the state\'s');
+        expect(find.textContaining('encrypted on this device'), findsNothing);
+        // Neither the state's icon nor a padlock in the composer, which has none.
+        expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
         expect(tester.takeException(), isNull);
       });
     });
 
     testWidgets('with the whole screen shows its icon too', (tester) async {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
-        expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(2), reason: 'the state\'s and the composer\'s');
+        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget, reason: 'the state\'s; the composer has none');
         expect(find.text('No messages yet'), findsOneWidget);
         expect(find.widgetWithText(OutlinedButton, 'Compare safety numbers'), findsOneWidget);
       });

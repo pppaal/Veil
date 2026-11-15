@@ -52,6 +52,10 @@ class VeilShell extends StatelessWidget {
   /// The height of the bar below the status bar.
   static const double barHeight = 52;
 
+  /// The [padding] of a form screen (a field and its buttons, not a list):
+  /// the 16 side gutter, 16 under the bar, 24 above the bottom.
+  static const EdgeInsets formPadding = EdgeInsets.fromLTRB(16, 16, 16, 24);
+
   /// Whether the nearest shell above [context] is a grouped page. True
   /// where there is none (a sheet, a test), so a group draws its container.
   static bool groupedOf(BuildContext context) =>

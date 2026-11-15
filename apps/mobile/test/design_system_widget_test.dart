@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:veil_mobile/src/app/router/main_tab_shell.dart';
@@ -24,7 +27,6 @@ void main() {
       for (final theme in [VeilTheme.dark(), VeilTheme.light()]) {
         expect(theme.textTheme.bodyMedium?.fontFamily, platformFamily);
         expect(theme.textTheme.titleLarge?.fontFamily, platformFamily);
-        expect(theme.textTheme.bodyMedium?.fontFamily, isNot('Pretendard'));
       }
       final harnessed = VeilTheme.dark(fontFamily: layoutFontFamily);
       expect(harnessed.textTheme.bodyMedium?.fontFamily, layoutFontFamily);
@@ -34,6 +36,12 @@ void main() {
       // family itself.
       expect(harnessed.filledButtonTheme.style?.textStyle?.resolve({})?.fontFamily, layoutFontFamily);
       expect(harnessed.textButtonTheme.style?.textStyle?.resolve({})?.fontFamily, layoutFontFamily);
+    });
+
+    test('the app bundles no UI font, only icon fonts', () async {
+      final manifest = json.decode(await rootBundle.loadString('FontManifest.json')) as List<dynamic>;
+      final families = [for (final entry in manifest.cast<Map<String, dynamic>>()) entry['family'] as String];
+      expect(families, unorderedEquals(['MaterialIcons', 'packages/cupertino_icons/CupertinoIcons']));
     });
 
     test('the scale is the spec\'s, with a height on every style and no positive tracking', () {
@@ -607,7 +615,24 @@ void main() {
       expect(field.maxLines, 5);
       expect(field.decoration?.hintText, 'Message');
       expect(find.byIcon(Icons.lock_outline), findsNothing);
+      expect(find.byIcon(Icons.lock_outline_rounded), findsNothing);
       expect(find.text('Draft'), findsOneWidget);
+      // The text field is the 44dp tap target; the grey field inside it is
+      // 4 shorter at the top and the bottom.
+      final fieldSize = tester.getSize(find.byType(TextField));
+      expect(fieldSize.height, greaterThanOrEqualTo(44));
+      final pill = find.descendant(
+        of: find.byType(VeilComposer),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is DecoratedBox && (widget.decoration as BoxDecoration).color == VeilPalette.dark.surfaceAlt,
+        ),
+      );
+      expect(tester.getSize(pill).height, closeTo(fieldSize.height - 2 * VeilComposer.fieldInset, 0.01));
+      expect(
+        ((tester.widget<DecoratedBox>(pill).decoration as BoxDecoration).borderRadius! as BorderRadius).topLeft,
+        const Radius.circular(18),
+      );
       expect(tester.getSize(find.byType(VeilComposer)).height, greaterThanOrEqualTo(44 + 12));
       final strip = tester.widget<DecoratedBox>(find.byType(DecoratedBox).first).decoration as BoxDecoration;
       expect(strip.color, VeilPalette.dark.canvas);
@@ -737,12 +762,11 @@ void main() {
       // 56 tall on the page colour with a hairline above; each tab is a
       // full-height target.
       expect(tester.getSize(bar).height, 56);
-      final edge = tester
-          .widget<DecoratedBox>(
-            find.ancestor(of: bar, matching: find.byType(DecoratedBox)).first,
-          )
-          .decoration as BoxDecoration;
-      expect(edge.color, VeilPalette.light.canvas);
+      expect(Theme.of(tester.element(bar)).navigationBarTheme.backgroundColor, VeilPalette.light.canvas);
+      // The hairline is painted over the opaque bar, not under it.
+      final edgeBox = tester.widget<DecoratedBox>(find.ancestor(of: bar, matching: find.byType(DecoratedBox)).first);
+      expect(edgeBox.position, DecorationPosition.foreground);
+      final edge = edgeBox.decoration as BoxDecoration;
       expect((edge.border! as Border).top.width, 0.5);
       expect((edge.border! as Border).top.color, VeilPalette.light.stroke);
       for (final tab in find.byType(NavigationDestination).evaluate()) {

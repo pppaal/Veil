@@ -59,7 +59,9 @@ class VeilBubble extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth.isFinite ? constraints.maxWidth * widthShare : 340.0;
+        // In a row the width is unbounded; the screen's then stands in.
+        final available = constraints.maxWidth.isFinite ? constraints.maxWidth : MediaQuery.sizeOf(context).width;
+        final maxWidth = available * widthShare;
         return ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: DecoratedBox(

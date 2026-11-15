@@ -372,6 +372,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     ref.listen(messengerControllerProvider, (_, __) => _reloadIfPendingChanged());
     return VeilShell(
       title: l10n.safetyNumbersTitle,
+      padding: VeilShell.formPadding,
       child: FutureBuilder<SafetyNumbersViewData>(
         future: _loader,
         builder: (context, snapshot) {

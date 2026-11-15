@@ -26,7 +26,9 @@ import 'package:flutter_test/flutter_test.dart';
 // - `monospace`, which the safety number's digits ask for: Roboto stands
 //   in (the SDK ships no Roboto Mono); with tabular figures its digits are
 //   about as wide as a monospace's, where the test font's are far wider.
-// Roboto is wider than SF, so the gate measures the worst case.
+// Roboto is wider than SF, so the gate measures the worst case. The icon
+// fonts (Material Icons, Cupertino Icons) are the app's own assets and are
+// loaded from its font manifest, which holds nothing else.
 
 /// Where the suite writes PNGs and its report. Empty unless the run passes
 /// `--dart-define=SHOTS_DIR=<dir>`; without it nothing is written anywhere.
@@ -79,8 +81,10 @@ const String layoutFontFamily = 'VeilTestSans';
 const String testFontsDir = 'test/fonts';
 
 /// Loads the test fonts (see the file comment), so text is measured and
-/// drawn with real glyphs instead of the test font's boxes. Call from
-/// setUpAll: inside testWidgets the fake clock never completes the reads.
+/// drawn with real glyphs instead of the test font's boxes, and the icon
+/// fonts the app declares (the only fonts in its manifest), so icons are
+/// drawn as glyphs. Call from setUpAll: inside testWidgets the fake clock
+/// never completes the reads.
 Future<void> loadTestFonts() async {
   final regular = _fontBytes('Roboto-Regular.ttf');
   final medium = _fontBytes('Roboto-Medium.ttf');
@@ -93,6 +97,15 @@ Future<void> loadTestFonts() async {
         .load();
   }
   await (FontLoader('monospace')..addFont(Future.value(regular))).load();
+
+  final manifest = json.decode(await rootBundle.loadString('FontManifest.json')) as List<dynamic>;
+  for (final entry in manifest.cast<Map<String, dynamic>>()) {
+    final loader = FontLoader(entry['family'] as String);
+    for (final font in (entry['fonts'] as List<dynamic>).cast<Map<String, dynamic>>()) {
+      loader.addFont(rootBundle.load(font['asset'] as String));
+    }
+    await loader.load();
+  }
 }
 
 /// [loadTestFonts] under the name the tests call it by.
@@ -223,7 +236,8 @@ String _summarize(FlutterErrorDetails details) {
 /// Lets a screen finish what it starts when opened: its first frames, the
 /// microtask-driven loads of the fakes, and entry animations. A fixed
 /// number of fixed steps, because several screens animate forever.
-Future<void> pumpFrames(WidgetTester tester, {int frames = 8, Duration step = const Duration(milliseconds: 150)}) async {
+Future<void> pumpFrames(WidgetTester tester,
+    {int frames = 8, Duration step = const Duration(milliseconds: 150)}) async {
   await tester.pump();
   for (var i = 0; i < frames; i++) {
     await tester.pump(step);
@@ -247,7 +261,8 @@ double screenHeight(WidgetTester tester) => tester.view.physicalSize.height / te
 String? whyNotWhollyTappable(WidgetTester tester, RenderBox box) {
   final view = tester.view;
   final screen = view.physicalSize / view.devicePixelRatio;
-  final aboveKeyboard = Rect.fromLTRB(0, 0, screen.width, screen.height - view.viewInsets.bottom / view.devicePixelRatio);
+  final aboveKeyboard =
+      Rect.fromLTRB(0, 0, screen.width, screen.height - view.viewInsets.bottom / view.devicePixelRatio);
   final rect = box.localToGlobal(Offset.zero) & box.size;
   if (rect.isEmpty) return 'has no size';
   if (rect.left < aboveKeyboard.left ||

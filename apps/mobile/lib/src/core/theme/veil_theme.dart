@@ -340,9 +340,10 @@ class VeilTheme {
         prefixStyle: TextStyle(color: palette.textMuted),
         prefixIconColor: palette.textMuted,
         suffixIconColor: palette.textMuted,
-        // Flutter keeps a field that is not dense at least 48 tall, so the
-        // field clears the 44dp tap target whatever this padding is.
-        contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 10),
+        // 11 above and below a 16/1.4 line make a dense field 44, the tap
+        // target (10 made one 42 and failed the layout gate); a field that
+        // is not dense is 48 in Flutter whatever this padding is.
+        contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 11),
         border: fieldBorder(palette.stroke, 0.5),
         enabledBorder: fieldBorder(palette.stroke, 0.5),
         focusedBorder: fieldBorder(palette.strokeStrong, 1),
@@ -489,8 +490,12 @@ class VeilTheme {
         shadowColor: light ? const Color(0x2E000000) : Colors.transparent,
         dragHandleColor: palette.strokeStrong,
         dragHandleSize: const Size(36, 4),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(VeilRadius.lg)),
+        // In the dark theme a sheet has no shadow; its tier and a hairline
+        // along its top edge lift it (a sheet spans the width, so only the
+        // top of the outline shows).
+        shape: RoundedRectangleBorder(
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(VeilRadius.lg)),
+          side: light ? BorderSide.none : BorderSide(color: palette.strokeStrong, width: 0.5),
         ),
       ),
       popupMenuTheme: PopupMenuThemeData(

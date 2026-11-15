@@ -47,9 +47,11 @@ class MainTabShell extends StatelessWidget {
 
     return Scaffold(
       body: child,
+      // The hairline is drawn over the bar, which is opaque and would
+      // otherwise cover it.
       bottomNavigationBar: DecoratedBox(
+        position: DecorationPosition.foreground,
         decoration: BoxDecoration(
-          color: palette.canvas,
           border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
         ),
         child: Theme(
@@ -66,6 +68,9 @@ class MainTabShell extends StatelessWidget {
                   icon: Icon(tab.icon),
                   selectedIcon: Icon(tab.activeIcon),
                   label: tab.label(l10n),
+                  // The label is always shown; a tooltip would only say it
+                  // again.
+                  tooltip: '',
                 ),
             ],
           ),

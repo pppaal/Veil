@@ -93,8 +93,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('VEIL never unlocks itself remotely.'), findsOneWidget);
-    expect(find.text('Required'), findsOneWidget);
-    expect(find.text('Available'), findsOneWidget);
+    // The metric strip that showed "Required" and "Available" draws nothing
+    // any more (design system 7.10): PIN and biometrics are Security rows.
     await tester.scrollUntilVisible(
       find.text('Use biometrics'),
       200,

@@ -8,9 +8,27 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 // What the phone layout gate measures on one rendered screen, and how it
-// renders it: the bundled fonts, a phone-sized view with its system insets,
+// renders it: the test fonts, a phone-sized view with its system insets,
 // every error the framework reports while the screen is built and scrolled,
 // and (only when asked) a PNG of what was on screen.
+//
+// Fonts. The app bundles no UI font: it draws the platform's own (SF on
+// iOS, Roboto on Android), which a test process does not have, so text
+// would render as the test font's boxes and nothing could be measured. The
+// gate loads Roboto Regular, Medium and Bold from test/fonts (Apache-2.0,
+// LICENSE.txt alongside; test files, not app assets) under three names:
+// - `VeilTestSans` ([layoutFontFamily]), which the layout world passes to
+//   VeilTheme so the gate's renders name a font explicitly whatever the
+//   platform;
+// - `Roboto`, the family the theme resolves on the test platform (Android)
+//   when no family is passed, for the widget tests that build the theme
+//   themselves;
+// - `monospace`, which the safety number's digits ask for: Roboto stands
+//   in (the SDK ships no Roboto Mono); with tabular figures its digits are
+//   about as wide as a monospace's, where the test font's are far wider.
+// Roboto is wider than SF, so the gate measures the worst case. The icon
+// fonts (Material Icons, Cupertino Icons) are the app's own assets and are
+// loaded from its font manifest, which holds nothing else.
 
 /// Where the suite writes PNGs and its report. Empty unless the run passes
 /// `--dart-define=SHOTS_DIR=<dir>`; without it nothing is written anywhere.
@@ -56,31 +74,49 @@ const wideSmall = PhoneSize(1280, 800, topInset: 0, bottomInset: 0);
 const wideLarge = PhoneSize(1440, 1000, topInset: 0, bottomInset: 0);
 const tabletUpright = PhoneSize(1024, 1366, topInset: 24, bottomInset: 20);
 
-/// Loads every font the app bundles (Pretendard, the icon fonts), so text is
-/// measured and drawn with real glyphs instead of the test font's boxes.
-/// Call from setUpAll: inside testWidgets the fake clock never completes the
-/// asset reads.
-///
-/// The platform's own `monospace` family (the safety number's digits ask for
-/// it) does not exist in a test process either. Pretendard stands in for
-/// it: with the tabular figures those digits also ask for, its digits are
-/// about as wide as a monospace's, where the test font's are far wider.
-Future<void> loadBundledFonts() async {
+/// The family the layout world passes to VeilTheme (see the file comment).
+const String layoutFontFamily = 'VeilTestSans';
+
+/// Where the test fonts are, from apps/mobile (where `flutter test` runs).
+const String testFontsDir = 'test/fonts';
+
+/// Loads the test fonts (see the file comment), so text is measured and
+/// drawn with real glyphs instead of the test font's boxes, and the icon
+/// fonts the app declares (the only fonts in its manifest), so icons are
+/// drawn as glyphs. Call from setUpAll: inside testWidgets the fake clock
+/// never completes the reads.
+Future<void> loadTestFonts() async {
+  final regular = _fontBytes('Roboto-Regular.ttf');
+  final medium = _fontBytes('Roboto-Medium.ttf');
+  final bold = _fontBytes('Roboto-Bold.ttf');
+  for (final family in [layoutFontFamily, 'Roboto']) {
+    await (FontLoader(family)
+          ..addFont(Future.value(regular))
+          ..addFont(Future.value(medium))
+          ..addFont(Future.value(bold)))
+        .load();
+  }
+  await (FontLoader('monospace')..addFont(Future.value(regular))).load();
+
   final manifest = json.decode(await rootBundle.loadString('FontManifest.json')) as List<dynamic>;
   for (final entry in manifest.cast<Map<String, dynamic>>()) {
-    final family = entry['family'] as String;
-    final assets = [
-      for (final font in (entry['fonts'] as List<dynamic>).cast<Map<String, dynamic>>()) font['asset'] as String,
-    ];
-    final loader = FontLoader(family);
-    for (final asset in assets) {
-      loader.addFont(rootBundle.load(asset));
+    final loader = FontLoader(entry['family'] as String);
+    for (final font in (entry['fonts'] as List<dynamic>).cast<Map<String, dynamic>>()) {
+      loader.addFont(rootBundle.load(font['asset'] as String));
     }
     await loader.load();
-    if (family == 'Pretendard') {
-      await (FontLoader('monospace')..addFont(rootBundle.load(assets.first))).load();
-    }
   }
+}
+
+/// [loadTestFonts] under the name the tests call it by.
+Future<void> loadBundledFonts() => loadTestFonts();
+
+ByteData _fontBytes(String name) {
+  final file = File('$testFontsDir/$name');
+  if (!file.existsSync()) {
+    throw StateError('$name is not in $testFontsDir: run the tests from apps/mobile');
+  }
+  return file.readAsBytesSync().buffer.asByteData();
 }
 
 /// Makes the test view a phone of [size] at 2x. [keyboardHeight] opens the
@@ -128,9 +164,6 @@ enum LayoutDefect {
   /// The control a screen is for (its first input or primary button) is
   /// not on the first screenful.
   primaryActionBelowFold,
-
-  /// A text of the app's own copy is in the language the run is not in.
-  otherLanguage,
 }
 
 /// The defects of one case, with a line of evidence for each.
@@ -145,10 +178,6 @@ class LayoutFindings {
   /// under 48x48.
   double? mainListShare;
   final Set<String> smallTapTargets = {};
-
-  /// The app's own texts in the language the run is not in, wherever the
-  /// case showed them.
-  final Set<String> otherLanguageTexts = {};
 
   void add(LayoutDefect defect, String evidence) {
     final lines = _evidence.putIfAbsent(defect, () => []);
@@ -171,7 +200,6 @@ class LayoutFindings {
         if (primaryShare != null) 'primaryShare': double.parse(primaryShare!.toStringAsFixed(3)),
         if (mainListShare != null) 'mainListShare': double.parse(mainListShare!.toStringAsFixed(3)),
         if (smallTapTargets.isNotEmpty) 'smallTapTargets': smallTapTargets.toList(),
-        if (otherLanguageTexts.isNotEmpty) 'otherLanguageTexts': otherLanguageTexts.toList()..sort(),
       };
 }
 
@@ -208,7 +236,8 @@ String _summarize(FlutterErrorDetails details) {
 /// Lets a screen finish what it starts when opened: its first frames, the
 /// microtask-driven loads of the fakes, and entry animations. A fixed
 /// number of fixed steps, because several screens animate forever.
-Future<void> pumpFrames(WidgetTester tester, {int frames = 8, Duration step = const Duration(milliseconds: 150)}) async {
+Future<void> pumpFrames(WidgetTester tester,
+    {int frames = 8, Duration step = const Duration(milliseconds: 150)}) async {
   await tester.pump();
   for (var i = 0; i < frames; i++) {
     await tester.pump(step);
@@ -232,7 +261,8 @@ double screenHeight(WidgetTester tester) => tester.view.physicalSize.height / te
 String? whyNotWhollyTappable(WidgetTester tester, RenderBox box) {
   final view = tester.view;
   final screen = view.physicalSize / view.devicePixelRatio;
-  final aboveKeyboard = Rect.fromLTRB(0, 0, screen.width, screen.height - view.viewInsets.bottom / view.devicePixelRatio);
+  final aboveKeyboard =
+      Rect.fromLTRB(0, 0, screen.width, screen.height - view.viewInsets.bottom / view.devicePixelRatio);
   final rect = box.localToGlobal(Offset.zero) & box.size;
   if (rect.isEmpty) return 'has no size';
   if (rect.left < aboveKeyboard.left ||

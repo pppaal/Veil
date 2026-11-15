@@ -367,11 +367,11 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    // The messenger says when a change is settled, which no event of its
-    // stream does: a page that stays open then reads again.
+    // Only the messenger, not its stream, says when a change is settled: an open page then reads again.
     ref.listen(messengerControllerProvider, (_, __) => _reloadIfPendingChanged());
     return VeilShell(
       title: l10n.safetyNumbersTitle,
+      padding: VeilShell.formPadding,
       child: FutureBuilder<SafetyNumbersViewData>(
         future: _loader,
         builder: (context, snapshot) {

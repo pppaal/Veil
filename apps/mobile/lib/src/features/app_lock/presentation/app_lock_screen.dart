@@ -79,6 +79,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     final l10n = AppLocalizations.of(context);
     return VeilShell(
       title: l10n.appLockTitle,
+      padding: VeilShell.formPadding,
       child: _loading
           ? VeilLoadingBlock(
               title: l10n.appLockLoadingTitle,

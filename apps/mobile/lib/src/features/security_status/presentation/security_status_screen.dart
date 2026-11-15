@@ -260,6 +260,7 @@ class SecurityStatusScreen extends ConsumerWidget {
     // rows. A wide window also keeps the build's marks and its three tiles.
     return VeilShell(
       title: l10n.securityStatusTitle,
+      padding: VeilShell.formPadding,
       child: ListView(
         children: [
           VeilScreenIntro(

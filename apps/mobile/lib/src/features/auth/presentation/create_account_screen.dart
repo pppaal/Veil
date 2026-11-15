@@ -35,6 +35,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
 
     return VeilShell(
       title: l10n.authCreateTitle,
+      padding: VeilShell.formPadding,
       child: ListView(
         children: [
           // What losing the device means is said by the notice below, once.

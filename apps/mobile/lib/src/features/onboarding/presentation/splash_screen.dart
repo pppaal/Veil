@@ -74,6 +74,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     // The name, the line VEIL stands for, and what the app is doing right
     // now (or why it cannot start). Nothing here is for reading twice.
     return VeilShell(
+      padding: VeilShell.formPadding,
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420),

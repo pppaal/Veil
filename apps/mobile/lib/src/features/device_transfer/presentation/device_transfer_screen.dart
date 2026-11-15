@@ -124,6 +124,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
 
     return VeilShell(
       title: l10n.deviceTransferTitle,
+      padding: VeilShell.formPadding,
       child: ListView(
         children: [
           Wrap(

@@ -113,6 +113,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
     // binding runs through show their progress under the button.
     return VeilShell(
       title: l10n.authHandleTitle,
+      padding: VeilShell.formPadding,
       child: ListView(
         children: [
           VeilScreenIntro(

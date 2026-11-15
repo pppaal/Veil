@@ -4828,11 +4828,23 @@ abstract class AppLocalizations {
   /// **'Erases the messages, keys and app lock on this phone.'**
   String get securityStatusLocalWipeDetail;
 
+  /// No description provided for @securityStatusLocalWipeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone only'**
+  String get securityStatusLocalWipeValue;
+
   /// No description provided for @securityStatusCryptoAdapter.
   ///
   /// In en, this message translates to:
   /// **'Encryption'**
   String get securityStatusCryptoAdapter;
+
+  /// No description provided for @securityStatusCryptoImplementation.
+  ///
+  /// In en, this message translates to:
+  /// **'Implementation'**
+  String get securityStatusCryptoImplementation;
 
   /// No description provided for @securityStatusCryptoVeilRatchet.
   ///

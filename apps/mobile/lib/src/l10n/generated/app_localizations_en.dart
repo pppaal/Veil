@@ -2883,7 +2883,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Erases the messages, keys and app lock on this phone.';
 
   @override
+  String get securityStatusLocalWipeValue => 'This phone only';
+
+  @override
   String get securityStatusCryptoAdapter => 'Encryption';
+
+  @override
+  String get securityStatusCryptoImplementation => 'Implementation';
 
   @override
   String get securityStatusCryptoVeilRatchet => 'Production (unaudited)';

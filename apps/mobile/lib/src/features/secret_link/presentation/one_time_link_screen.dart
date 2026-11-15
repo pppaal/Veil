@@ -133,14 +133,19 @@ class _OneTimeLinkScreenState extends State<OneTimeLinkScreen> {
               onPressed: _busy || !_ready ? null : _generate,
             ),
           ),
-          if (_failed) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilNotice(
-              margin: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-              message: l10n.oneTimeLinkFailed,
-              tone: VeilTone.warn,
+          // A failure is one line under the button that tries again, not a
+          // notice: there is nothing to decide, and the button is the retry.
+          if (_failed)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.xs, VeilSpace.md, 0),
+              child: Semantics(
+                liveRegion: true,
+                child: Text(
+                  l10n.oneTimeLinkFailed,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.danger),
+                ),
+              ),
             ),
-          ],
           if (link != null) ...[
             const SizedBox(height: VeilSpace.lg),
             _CreatedLink(key: _resultKey, link: link),

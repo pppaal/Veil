@@ -2227,14 +2227,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusCryptoVeilRatchet => 'Production (unaudited)';
 
   @override
-  String get securityStatusCryptoVeilRatchetDetail => 'X3DH and Double Ratchet';
+  String securityStatusCryptoVeilRatchetDetail(String adapterId) {
+    return 'X3DH and Double Ratchet ($adapterId)';
+  }
 
   @override
   String get securityStatusCryptoLibsignal => 'libsignal bridge (unaudited)';
 
   @override
-  String get securityStatusCryptoLibsignalDetail =>
-      'Signal\'s libsignal through a native bridge';
+  String securityStatusCryptoLibsignalDetail(String adapterId) {
+    return 'Signal\'s libsignal through a native bridge ($adapterId)';
+  }
 
   @override
   String get securityStatusCryptoDevelopment => 'Development only';

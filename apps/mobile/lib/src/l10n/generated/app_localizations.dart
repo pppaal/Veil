@@ -3709,8 +3709,8 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoVeilRatchetDetail.
   ///
   /// In en, this message translates to:
-  /// **'X3DH and Double Ratchet'**
-  String get securityStatusCryptoVeilRatchetDetail;
+  /// **'X3DH and Double Ratchet ({adapterId})'**
+  String securityStatusCryptoVeilRatchetDetail(String adapterId);
 
   /// No description provided for @securityStatusCryptoLibsignal.
   ///
@@ -3721,8 +3721,8 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoLibsignalDetail.
   ///
   /// In en, this message translates to:
-  /// **'Signal\'s libsignal through a native bridge'**
-  String get securityStatusCryptoLibsignalDetail;
+  /// **'Signal\'s libsignal through a native bridge ({adapterId})'**
+  String securityStatusCryptoLibsignalDetail(String adapterId);
 
   /// No description provided for @securityStatusCryptoDevelopment.
   ///

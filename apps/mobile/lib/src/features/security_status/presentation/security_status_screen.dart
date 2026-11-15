@@ -226,20 +226,19 @@ class SecurityStatusScreen extends ConsumerWidget {
 
   // What protects this build's messages, read from the adapter it runs:
   // the libsignal bridge and a development adapter must not be shown as
-  // Veil's own ratchet. A production adapter is named in words; only a
-  // development one also gives its id, which is what to report.
+  // Veil's own ratchet.
   static SecuritySignal _cryptoSignal(AppLocalizations l10n, String adapterId) =>
       switch (cryptoAdapterKindOf(adapterId)) {
         CryptoAdapterKind.veilRatchet => SecuritySignal(
             label: l10n.securityStatusCryptoImplementation,
             value: l10n.securityStatusCryptoVeilRatchet,
-            detail: l10n.securityStatusCryptoVeilRatchetDetail,
+            detail: l10n.securityStatusCryptoVeilRatchetDetail(adapterId),
             tone: SecuritySignalTone.neutral,
           ),
         CryptoAdapterKind.libsignal => SecuritySignal(
             label: l10n.securityStatusCryptoImplementation,
             value: l10n.securityStatusCryptoLibsignal,
-            detail: l10n.securityStatusCryptoLibsignalDetail,
+            detail: l10n.securityStatusCryptoLibsignalDetail(adapterId),
             tone: SecuritySignalTone.neutral,
           ),
         CryptoAdapterKind.development => SecuritySignal(

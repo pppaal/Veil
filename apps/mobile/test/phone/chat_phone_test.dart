@@ -213,7 +213,8 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        for (final text in ['Safety number changed', 'Review', "Couldn't send", 'Retry now']) {
+        // Failed sends are one line with no title over it.
+        for (final text in ['Safety number changed', 'Review', "2 messages weren't sent.", 'Retry now']) {
           final rect = onScreen(tester, find.text(text));
           expect(rect.height, greaterThan(0), reason: '"$text" is on screen');
         }
@@ -232,7 +233,8 @@ void main() {
   // would not fit there, and a strip that scrolls them cuts the first one's
   // action off, which is the one thing the user must be able to reach.
   testWidgets('with the keyboard up, each warning keeps its title and its action on one row', (tester) async {
-    const titles = ['Safety number changed', "Couldn't send"];
+    // A notice's title, or its one line when it has no title.
+    const titles = ['Safety number changed', "2 messages weren't sent."];
     const actions = ['Review', 'Retry now'];
     await withPhoneApp(
       tester,

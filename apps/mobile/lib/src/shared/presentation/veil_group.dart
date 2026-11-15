@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme/veil_theme.dart';
@@ -170,6 +172,18 @@ class VeilRow extends StatelessWidget {
 
     final hasSubtitle = subtitle != null || subtitleWidget != null;
     final minHeight = leading != null ? 60.0 : (hasSubtitle ? 52.0 : 44.0);
+    // A title over a subtitle that does not fit ListTile's own baseline
+    // grid is laid out at its text height plus minVerticalPadding (its
+    // "compact" mode), whatever minTileHeight says: a row with an avatar
+    // and a handle came out 54, not 60. The padding grows so that one line
+    // of each still fills the row; longer text makes the row taller.
+    double? minVerticalPadding;
+    if (hasSubtitle) {
+      final scaler = MediaQuery.textScalerOf(context);
+      double lineOf(TextStyle? style) => scaler.scale(style?.fontSize ?? 14) * (style?.height ?? 1.2);
+      final text = lineOf(theme.textTheme.titleMedium) + lineOf(theme.textTheme.bodyMedium);
+      minVerticalPadding = math.max(6, (minHeight - text) / 2);
+    }
     // A switch row is one with a value: a disabled switch (no [onSwitch])
     // still shows whether it is on.
     final switchValue = this.switchValue;
@@ -197,6 +211,7 @@ class VeilRow extends StatelessWidget {
       // A disabled switch row says so, to the eye and to a screen reader.
       enabled: !disabledSwitch,
       minTileHeight: minHeight,
+      minVerticalPadding: minVerticalPadding,
       leading: leading,
       title: Text(
         title!,

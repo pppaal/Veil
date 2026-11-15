@@ -360,6 +360,7 @@ void main() {
               VeilRow(title: 'One line'),
               VeilRow(title: 'Two', subtitle: 'lines'),
               VeilRow(title: 'Avatar', leading: VeilAvatar(name: 'A', seed: 'a')),
+              VeilRow(title: 'Avatar', subtitle: '@a', leading: VeilAvatar(name: 'A', seed: 'a')),
             ]),
           ),
         ),
@@ -370,6 +371,9 @@ void main() {
       expect(heights[0], 44);
       expect(heights[1], greaterThanOrEqualTo(52));
       expect(heights[2], 60);
+      // A subtitle does not let ListTile's compact layout shrink the row
+      // under its minimum (it drew this one 54).
+      expect(heights[3], inInclusiveRange(60, 61));
     });
 
     testWidgets('status is a word in the tone colour; a destination gets a chevron; destructive gets none',
@@ -507,6 +511,13 @@ void main() {
       }
       // The box keeps 12 from the sides of a white page.
       expect(tester.getRect(find.byType(Container).first).left, 12);
+      // The button ends the box: its label is about as far from the bottom
+      // as the icon is from the top, with no empty band under it.
+      final first = tester.getRect(find.byType(VeilNotice).first);
+      final iconGap = tester.getRect(find.byIcon(Icons.warning_amber_outlined)).top - first.top;
+      final labelGap = first.bottom - tester.getRect(find.text('Review')).bottom;
+      expect((labelGap - iconGap).abs(), lessThanOrEqualTo(4), reason: 'icon $iconGap, label $labelGap');
+      expect(tester.getSize(find.widgetWithText(TextButton, 'Review')).height, greaterThanOrEqualTo(44));
       expect(find.byType(TextButton), findsNWidgets(2));
       final retry = tester.widget<TextButton>(find.widgetWithText(TextButton, 'Retry now'));
       expect(retry.style?.foregroundColor?.resolve({}), palette.danger, reason: 'a danger notice acts in danger');

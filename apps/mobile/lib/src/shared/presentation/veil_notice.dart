@@ -111,8 +111,14 @@ class VeilNotice extends StatelessWidget {
                 if (hasAction)
                   Align(
                     alignment: AlignmentDirectional.centerEnd,
+                    // 44 tall with no padded tap area under it: the button
+                    // ends the box, its label about as far from the bottom
+                    // as the icon is from the top.
                     child: TextButton(
-                      style: TextButton.styleFrom(foregroundColor: actionColor),
+                      style: TextButton.styleFrom(
+                        foregroundColor: actionColor,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
                       onPressed: onAction,
                       child: Text(actionLabel!),
                     ),
@@ -127,7 +133,7 @@ class VeilNotice extends StatelessWidget {
     final box = Container(
       padding: dense
           ? EdgeInsets.only(left: VeilSpace.sm, right: hasAction ? VeilSpace.xxs : VeilSpace.sm)
-          : const EdgeInsets.all(VeilSpace.sm),
+          : EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.sm, VeilSpace.sm, hasAction ? 0 : VeilSpace.sm),
       decoration: BoxDecoration(
         color: palette.surfaceAlt,
         borderRadius: inGroup ? null : BorderRadius.circular(VeilRadius.md),

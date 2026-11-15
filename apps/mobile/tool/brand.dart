@@ -17,6 +17,10 @@ import 'package:image/image.dart' as img;
 // wordmark. Each PNG has exactly two colours (or one colour and
 // transparency): the edges are not antialiased here, since the platform
 // generators resample these sources to every icon size anyway.
+//
+// A transparent pixel keeps the mark's colour with alpha 0, not black: the
+// generators average straight (not premultiplied) RGBA when they scale
+// down, so a black transparent ground would give every edge a dark fringe.
 
 const _blue = (0x1F, 0x5F, 0xD6);
 const _white = (0xFF, 0xFF, 0xFF);
@@ -48,9 +52,9 @@ void _write(String path, img.Image image) {
 /// it would be on a tile [markTile] wide, centred.
 img.Image _tile(int size, {required (int, int, int)? background, required (int, int, int) mark, required double markTile}) {
   final image = img.Image(width: size, height: size, numChannels: 4);
-  final (br, bg, bb) = background ?? (0, 0, 0);
-  final backgroundAlpha = background == null ? 0 : 255;
   final (mr, mg, mb) = mark;
+  final (br, bg, bb) = background ?? mark;
+  final backgroundAlpha = background == null ? 0 : 255;
 
   final geometry = _MarkGeometry(tile: markTile, centre: size / 2);
   for (var y = 0; y < size; y++) {

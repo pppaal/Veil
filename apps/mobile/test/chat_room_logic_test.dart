@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_message_runs.dart' show chatDayLabel;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart' show conversationTitle;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
@@ -16,6 +18,17 @@ void main() {
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.sent)), 'Sent');
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.delivered)), 'Delivered');
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.read)), 'Read');
+  });
+
+  test('a day divider says today, yesterday, a weekday within the week, then the date', () async {
+    // The app's localizations load the date names; a bare test loads them.
+    await initializeDateFormatting('en');
+    final now = DateTime(2026, 11, 15, 10);
+    expect(chatDayLabel(l10n, DateTime(2026, 11, 15, 0, 5), now: now), 'Today');
+    expect(chatDayLabel(l10n, DateTime(2026, 11, 14, 23, 50), now: now), 'Yesterday');
+    expect(chatDayLabel(l10n, DateTime(2026, 11, 11, 9), now: now), 'Wednesday');
+    expect(chatDayLabel(l10n, DateTime(2026, 4, 7, 9), now: now), 'April 7');
+    expect(chatDayLabel(l10n, DateTime(2025, 12, 31, 9), now: now), 'December 31, 2025');
   });
 
   test('messageBubbleSemanticsLabel includes delivery state for sent messages', () {

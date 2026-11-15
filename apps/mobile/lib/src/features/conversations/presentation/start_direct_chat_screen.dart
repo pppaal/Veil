@@ -9,8 +9,8 @@ import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import 'conversation_list_logic.dart';
 
-/// Opens a 1:1 conversation with the person whose handle is typed: the
-/// field, its button, and under them one note on how people are found.
+/// Opens a 1:1 chat with the person whose handle is typed: the field, with
+/// how to type it under it (or why it opened nothing), and the button.
 class StartDirectChatScreen extends ConsumerStatefulWidget {
   const StartDirectChatScreen({super.key});
 
@@ -66,9 +66,8 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
     return VeilShell(
       title: l10n.startDirectTitle,
       maxWidth: 560,
-      padding: EdgeInsets.zero,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
+        padding: VeilShell.formPadding,
         children: [
           TextField(
             controller: _handleController,
@@ -80,29 +79,18 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
             onSubmitted: (_) => _open(),
             decoration: InputDecoration(
               labelText: l10n.startDirectInputLabel,
-              hintText: 'icarus',
+              hintText: l10n.startDirectHandleHint,
               prefixText: '@',
+              helperText: l10n.startDirectFieldCaption,
+              helperMaxLines: 2,
+              errorText: _failed ? l10n.startDirectHandleError : null,
+              errorMaxLines: 2,
             ),
           ),
-          if (_failed) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilInlineBanner(
-              title: l10n.startDirectErrorTitle,
-              message: l10n.startDirectErrorBody,
-              tone: VeilBannerTone.danger,
-            ),
-          ],
           const SizedBox(height: VeilSpace.md),
           VeilButton(
             onPressed: _opening || _handle.isEmpty ? null : _open,
             label: _opening ? l10n.startDirectOpening : l10n.startDirectOpenButton,
-            icon: Icons.arrow_forward_rounded,
-          ),
-          const SizedBox(height: VeilSpace.lg),
-          VeilInlineBanner(
-            icon: Icons.person_search_outlined,
-            title: l10n.startDirectNoteTitle,
-            message: l10n.startDirectNote,
           ),
         ],
       ),

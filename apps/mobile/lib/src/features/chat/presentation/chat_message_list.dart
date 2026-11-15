@@ -10,7 +10,7 @@ import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
-import 'animated_bubble_entry.dart';
+import 'chat_message_runs.dart';
 import 'message_bubble.dart';
 import 'reaction_chips_row.dart';
 import 'system_notice_bubble.dart';
@@ -19,6 +19,12 @@ import 'system_notice_bubble.dart';
 /// messages with their reactions and, above the first, a button that loads
 /// older history. Each message is built under its key in [messageKeys], so
 /// the screen can scroll one into view.
+///
+/// Messages run in groups: one sender's messages within five minutes of
+/// each other on the same day share a group, 2 px apart with the tail on the
+/// last bubble only; groups are 8 apart. A day starts under its date in
+/// small muted type. In a group chat the first bubble of a group carries the
+/// sender's name and the last one their avatar beside it.
 class ChatMessageList extends ConsumerWidget {
   const ChatMessageList({
     super.key,
@@ -40,6 +46,8 @@ class ChatMessageList extends ConsumerWidget {
     this.onRetryLoad,
     this.onVerifyPeer,
     this.senderNameOf,
+    this.senderHandleOf,
+    this.keyboardUp = false,
     this.padding = EdgeInsets.zero,
   });
 
@@ -79,6 +87,20 @@ class ChatMessageList extends ConsumerWidget {
   /// a 1:1, where the side a bubble is on says it.
   final String? Function(ChatMessage message)? senderNameOf;
 
+  /// The handle of who of a group wrote a message, which their avatar and
+  /// the tint of their name are drawn from; null where it is not known.
+  final String? Function(ChatMessage message)? senderHandleOf;
+
+  /// The gap between two bubbles of one group, and between two groups.
+  static const double runGap = 2;
+  static const double groupGap = VeilSpace.xs;
+
+
+  /// Whether the keyboard is open, which an empty chat answers with its
+  /// compact form: the title and the button. The screen asks, from above
+  /// the shell whose body no longer knows about the keyboard.
+  final bool keyboardUp;
+
   /// Space around the messages, inside the area they scroll in.
   final EdgeInsets padding;
 
@@ -87,26 +109,19 @@ class ChatMessageList extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
 
     if (messages.isEmpty && controller.isBusy) {
-      return _CenteredState(
-        child: VeilLoadingBlock(
-          title: l10n.chatLoadingTitle,
-          body: l10n.chatLoadingBody,
-        ),
-      );
+      return _CenteredState(child: ChatLoadingState(label: l10n.chatLoadingTitle));
     }
 
     if (messages.isEmpty && loadFailed) {
       return _CenteredState(
-        child: VeilEmptyState(
+        child: VeilEmptyState.error(
           title: l10n.chatLoadFailedTitle,
           body: loadFailedReason ?? l10n.chatLoadFailedBody,
-          icon: Icons.cloud_off_rounded,
           action: onRetryLoad == null
               ? null
               : VeilButton(
                   expanded: false,
                   tone: VeilButtonTone.secondary,
-                  icon: Icons.refresh_rounded,
                   label: l10n.commonRetry,
                   onPressed: onRetryLoad,
                 ),
@@ -116,21 +131,19 @@ class ChatMessageList extends ConsumerWidget {
 
     if (messages.isEmpty) {
       // Nothing to read yet, and the composer is right below: the state says
-      // what is true of whatever is sent here, and offers the one thing
-      // worth doing before the first message, comparing safety numbers.
-      // Above an open keyboard there is no room for the icon and the space
-      // around it: the same words and button then show without them.
+      // what every messenger says here, that messages are end-to-end
+      // encrypted, and offers the one thing worth doing before the first
+      // message, comparing safety numbers. Above an open keyboard there is
+      // no room for the line: the title and the button then show alone.
       Widget emptyState({required bool compact}) => VeilEmptyState(
             compact: compact,
             title: l10n.chatEmptyTitle,
-            body: l10n.chatEmptyBody,
-            icon: Icons.lock_outline_rounded,
+            body: l10n.chatEmptyEncrypted,
             action: onVerifyPeer == null
                 ? null
                 : VeilButton(
                     expanded: false,
                     tone: VeilButtonTone.secondary,
-                    icon: Icons.verified_user_outlined,
                     label: l10n.chatEmptyVerifyAction,
                     onPressed: onVerifyPeer,
                   ),
@@ -138,7 +151,7 @@ class ChatMessageList extends ConsumerWidget {
       return Center(
         child: VeilFirstThatFits(
           children: [
-            emptyState(compact: false),
+            if (!keyboardUp) emptyState(compact: false),
             SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               child: emptyState(compact: true),
@@ -153,7 +166,6 @@ class ChatMessageList extends ConsumerWidget {
         child: VeilEmptyState(
           title: l10n.chatSearchEmptyTitle,
           body: l10n.chatSearchEmptyBody,
-          icon: Icons.search_off_rounded,
         ),
       );
     }
@@ -179,7 +191,30 @@ class ChatMessageList extends ConsumerWidget {
   Widget _buildMessageEntry(BuildContext context, WidgetRef ref, int index) {
     final l10n = AppLocalizations.of(context);
     final message = filteredMessages[index];
+    // A reaction shows on its target, not as a row: the bubbles around it
+    // are neighbours. The envelope's kind is the relay's word, so it only
+    // decides the spacing; what is drawn is decided by the decrypted kind.
+    final hidden = chatReactionHint(message);
+    final previous = hidden ? null : _neighbour(index, -1);
+    final next = hidden ? null : _neighbour(index, 1);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
+    final startsDay = !hidden && (previous == null || !sameChatDay(previous.sentAt, message.sentAt));
+    final runsOn = previous != null && sameChatRun(previous, message);
+    final runsInto = next != null && sameChatRun(message, next);
+    final position = switch ((runsOn, runsInto)) {
+      (false, false) => VeilBubblePosition.single,
+      (false, true) => VeilBubblePosition.first,
+      (true, true) => VeilBubblePosition.middle,
+      (true, false) => VeilBubblePosition.last,
+    };
+    // The next day's date brings its own space above it.
+    final gapBelow = hidden
+        ? groupGap
+        : next == null || !sameChatDay(message.sentAt, next.sentAt)
+            ? 0.0
+            : runsInto
+                ? runGap
+                : groupGap;
     final decryptFuture = controller.decryptMessage(message);
     final entry = RepaintBoundary(
       child: KeyedSubtree(
@@ -196,60 +231,100 @@ class ChatMessageList extends ConsumerWidget {
               messageKind: MessageKind.reaction,
             ) =>
               const SizedBox.shrink(),
-            DecryptedMessage(isOk: true, messageKind: MessageKind.system) =>
-              SystemNoticeBubble(message: message, notice: snapshot.data!),
-            _ => AnimatedBubbleEntry(
-                fromRight: message.isMine,
-                child: _buildBubbleWithReactions(ref, message, decryptFuture, _senderNameAt(index)),
+            DecryptedMessage(isOk: true, messageKind: MessageKind.system) => Padding(
+                padding: EdgeInsets.only(bottom: gapBelow),
+                child: SystemNoticeBubble(message: message, notice: snapshot.data!),
+              ),
+            _ => Padding(
+                padding: EdgeInsets.only(bottom: gapBelow),
+                child: _buildBubbleRow(ref, message, decryptFuture, position),
               ),
           },
         ),
       ),
     );
-    final gap = EdgeInsets.only(bottom: index == filteredMessages.length - 1 ? 0 : VeilSpace.sm);
-    if (!showLoadOlder) {
-      return Padding(padding: gap, child: entry);
-    }
+    if (!showLoadOlder && !startsDay) return entry;
 
-    return Padding(
-      padding: gap,
-      child: Column(
-        children: [
-          VeilButton(
-            onPressed: isLoadingHistory
-                ? null
-                : () => ref
-                    .read(messengerControllerProvider)
-                    .loadOlderConversationMessages(conversationId),
-            tone: VeilButtonTone.secondary,
-            label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (showLoadOlder)
+          Center(
+            child: VeilButton(
+              expanded: false,
+              onPressed: isLoadingHistory
+                  ? null
+                  : () => ref.read(messengerControllerProvider).loadOlderConversationMessages(conversationId),
+              tone: VeilButtonTone.ghost,
+              label: isLoadingHistory ? l10n.chatLoadingOlder : l10n.chatLoadOlder,
+            ),
           ),
-          const SizedBox(height: VeilSpace.sm),
-          entry,
-        ],
-      ),
+        if (startsDay) ChatDayDivider(day: message.sentAt, first: index == 0 && !showLoadOlder),
+        entry,
+      ],
     );
   }
 
-  // Named on the first of a sender's messages in a row, as far as the rows
-  // tell: the one before is someone else's.
-  String? _senderNameAt(int index) {
-    final message = filteredMessages[index];
+  /// A bubble with its reactions under it, on its sender's side. In a group
+  /// chat the peer's bubbles keep a column for the sender's avatar, which
+  /// the last bubble of a group shows.
+  Widget _buildBubbleRow(
+    WidgetRef ref,
+    ChatMessage message,
+    Future<DecryptedMessage> decryptFuture,
+    VeilBubblePosition position,
+  ) {
+    final group = senderNameOf != null;
+    final opensRun = position == VeilBubblePosition.first || position == VeilBubblePosition.single;
+    final closesRun = position == VeilBubblePosition.last || position == VeilBubblePosition.single;
     final name = message.isMine ? null : senderNameOf?.call(message);
-    if (name == null || index == 0) return name;
-    final previous = filteredMessages[index - 1];
-    return previous.senderDeviceId == message.senderDeviceId && !previous.isLocalNotice ? null : name;
+    final handle = message.isMine ? null : senderHandleOf?.call(message);
+    final bubble = _buildBubbleWithReactions(
+      ref,
+      message,
+      decryptFuture,
+      senderName: opensRun ? name : null,
+      senderSeed: handle,
+      position: position,
+    );
+    if (!group || message.isMine) return bubble;
+    final Widget avatar = !closesRun || name == null
+        ? const SizedBox(width: 32)
+        : handle == null
+            ? const VeilAvatar(name: '', seed: '', size: 32, unknown: true)
+            : VeilAvatar(name: name, seed: handle, size: 32);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        avatar,
+        const SizedBox(width: VeilSpace.xs),
+        Expanded(child: bubble),
+      ],
+    );
+  }
+
+  // The nearest message before ([step] -1) or after (1) the one at [index]
+  // that is not a reaction, or null.
+  ChatMessage? _neighbour(int index, int step) {
+    for (var i = index + step; i >= 0 && i < filteredMessages.length; i += step) {
+      if (!chatReactionHint(filteredMessages[i])) return filteredMessages[i];
+    }
+    return null;
   }
 
   Widget _buildBubbleWithReactions(
     WidgetRef ref,
     ChatMessage message,
-    Future<DecryptedMessage> decryptFuture,
-    String? senderName,
-  ) {
+    Future<DecryptedMessage> decryptFuture, {
+    required String? senderName,
+    required String? senderSeed,
+    required VeilBubblePosition position,
+  }) {
     final bubble = MessageBubble(
       message: message,
       senderName: senderName,
+      senderSeed: senderSeed,
+      position: position,
       highlighted: message.id == highlightedMessageId,
       sentAtFormat: sentAtFormat,
       decryptFuture: decryptFuture,

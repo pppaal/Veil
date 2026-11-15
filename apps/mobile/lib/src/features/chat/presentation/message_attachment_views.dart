@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
+import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
 
-/// The attachment a message carries, from its authenticated payload: what
-/// kind of file and how large, the button that asks for a download
-/// ticket, and a retry when the message did not send. Without [onResolve]
-/// (a build that cannot open attachments) a line says so in the button's
-/// place.
+/// The attachment a received message carries, from its authenticated
+/// payload: a flat grey tile with what kind of file it is and how large,
+/// and the line that this version cannot open it. Where a build can open
+/// attachments ([onResolve]), a text button asks for the download instead.
+///
+/// In a grey bubble the bubble is the tile; on the brand fill of the
+/// user's own bubble ([framed]) the tile is drawn, so its text reads.
 class MessageAttachmentCard extends StatelessWidget {
   const MessageAttachmentCard({
     super.key,
@@ -19,7 +22,7 @@ class MessageAttachmentCard extends StatelessWidget {
     required this.resolving,
     required this.downloadError,
     required this.onResolve,
-    this.onRetry,
+    this.framed = false,
   });
 
   final AttachmentReference attachment;
@@ -28,113 +31,81 @@ class MessageAttachmentCard extends StatelessWidget {
 
   /// Asks for the download; null when this build cannot open attachments.
   final VoidCallback? onResolve;
-  final VoidCallback? onRetry;
+
+  /// Whether to draw the tile's own grey fill.
+  final bool framed;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      // Dark and neutral, so it reads on the violet of the user's own
-      // bubbles as well as on a peer's.
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.black.withValues(alpha: 0.26),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                attachmentIcon(attachment.contentType),
-                size: 28,
-                color: Theme.of(context).colorScheme.onSurface,
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    final muted = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(attachmentIcon(attachment.contentType), size: VeilIconSize.md, color: palette.textMuted),
+            const SizedBox(width: VeilSpace.sm),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    attachmentLabel(l10n, attachment.contentType),
+                    style: theme.textTheme.titleSmall?.copyWith(color: palette.text),
+                  ),
+                  Text(formatFileSize(attachment.sizeBytes), style: muted),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      attachmentLabel(l10n, attachment.contentType),
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${formatFileSize(attachment.sizeBytes)} · ${attachment.contentType}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withValues(alpha: 0.72),
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
+        ),
+        const SizedBox(height: VeilSpace.xs),
+        if (onResolve == null)
+          Text(l10n.chatAttachmentCannotOpen, style: muted)
+        else ...[
           if (downloadError != null) ...[
-            const SizedBox(height: 10),
-            VeilInlineBanner(
-              title: l10n.chatAttachmentTicketFailed,
-              message: veilErrorText(l10n, downloadError!),
-              tone: VeilBannerTone.warn,
-            ),
+            Text(l10n.chatAttachmentTicketFailed, style: muted?.copyWith(color: palette.danger)),
+            Text(veilErrorText(l10n, downloadError!), style: muted),
           ],
-          if (onResolve == null) ...[
-            const SizedBox(height: 8),
-            Text(
-              l10n.chatAttachmentCannotOpen,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
-                  ),
-            ),
-          ],
-          if (onResolve != null || onRetry != null) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (onResolve != null)
-                  VeilButton(
-                    expanded: false,
-                    tone: VeilButtonTone.secondary,
-                    onPressed: resolving ? null : onResolve,
-                    label: resolving
-                        ? l10n.chatAttachmentResolvingAction
-                        : l10n.chatAttachmentResolveAction,
-                  ),
-                if (onRetry != null)
-                  VeilButton(
-                    expanded: false,
-                    tone: VeilButtonTone.secondary,
-                    onPressed: onRetry,
-                    label: l10n.chatRetrySend,
-                  ),
-              ],
-            ),
-          ],
+          TextButton(
+            onPressed: resolving ? null : onResolve,
+            child: Text(resolving ? l10n.chatAttachmentResolvingAction : l10n.chatAttachmentResolveAction),
+          ),
         ],
-      ),
+      ],
+    );
+    if (!framed) return content;
+    return DecoratedBox(
+      decoration: BoxDecoration(color: palette.surfaceAlt, borderRadius: BorderRadius.circular(VeilRadius.md)),
+      child: Padding(padding: const EdgeInsets.all(VeilSpace.sm), child: content),
     );
   }
 }
 
-/// How far an attachment this device is sending has got, with retry and
-/// cancel where the transfer allows them.
+/// How far an attachment this device is sending has got: its name, one line
+/// on what is happening, a thin progress bar with the phase and the share
+/// done in words under it, the error when there is one, and retry and
+/// cancel where the transfer allows them. Drawn in [color] and [mutedColor],
+/// the bubble's own text colours (the text colours of the page when null).
 class AttachmentTransferPanel extends StatelessWidget {
   const AttachmentTransferPanel({
     super.key,
     required this.snapshot,
+    this.color,
+    this.mutedColor,
     this.onRetry,
     this.onCancel,
   });
 
   final AttachmentTransferSnapshot snapshot;
+  final Color? color;
+  final Color? mutedColor;
   final VoidCallback? onRetry;
   final VoidCallback? onCancel;
 
@@ -142,107 +113,89 @@ class AttachmentTransferPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final progressLabel = '${(snapshot.progress * 100).round()}%';
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color:
-            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.24),
-        border: Border.all(color: theme.colorScheme.outline),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                attachmentIcon(snapshot.contentType ?? 'application/octet-stream'),
-                size: 22,
-                color: theme.colorScheme.primary,
+    final palette = context.veilPalette;
+    final color = this.color ?? palette.text;
+    final mutedColor = this.mutedColor ?? palette.textMuted;
+    final contentType = snapshot.contentType ?? 'application/octet-stream';
+    final muted = theme.textTheme.bodySmall?.copyWith(color: mutedColor);
+    final status = theme.textTheme.labelMedium?.copyWith(color: mutedColor);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(attachmentIcon(contentType), size: VeilIconSize.md, color: mutedColor),
+            const SizedBox(width: VeilSpace.sm),
+            Flexible(
+              child: Text(
+                snapshot.filename ?? attachmentLabel(l10n, contentType),
+                style: theme.textTheme.titleSmall?.copyWith(color: color),
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  snapshot.filename ?? attachmentLabel(l10n, snapshot.contentType ?? 'application/octet-stream'),
-                  style: theme.textTheme.titleSmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _phaseDescription(l10n, snapshot),
-            style: theme.textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 10),
-          LinearProgressIndicator(
-            value: switch (snapshot.phase) {
-              AttachmentTransferPhase.staged => 0,
-              AttachmentTransferPhase.preparing => null,
-              AttachmentTransferPhase.uploading => snapshot.progress,
-              AttachmentTransferPhase.finalizing => null,
-              AttachmentTransferPhase.failed => snapshot.progress.clamp(0, 1),
-              AttachmentTransferPhase.canceled => snapshot.progress.clamp(0, 1),
-            },
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              VeilStatusPill(
-                label: _phaseLabel(l10n, snapshot.phase),
-                tone: switch (snapshot.phase) {
-                  AttachmentTransferPhase.failed ||
-                  AttachmentTransferPhase.canceled =>
-                    VeilBannerTone.warn,
-                  AttachmentTransferPhase.finalizing => VeilBannerTone.good,
-                  _ => VeilBannerTone.info,
-                },
-              ),
-              VeilStatusPill(
-                label: progressLabel,
-                tone: VeilBannerTone.info,
-              ),
-            ],
-          ),
-          // A cancel is said by the description above. The outbox's own
-          // sentence for it has no translation and would only repeat it.
-          if (snapshot.errorMessage != null && snapshot.phase != AttachmentTransferPhase.canceled) ...[
-            const SizedBox(height: 10),
-            VeilInlineBanner(
-              title: l10n.chatAttachmentStateBanner,
-              message: veilErrorText(l10n, snapshot.errorMessage!),
-              tone: VeilBannerTone.warn,
             ),
           ],
-          if (onRetry != null || onCancel != null) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-              if (onRetry != null)
-                  VeilButton(
-                    expanded: false,
-                    tone: VeilButtonTone.secondary,
-                    onPressed: onRetry,
-                    label: l10n.chatRetryUpload,
-                  ),
-                if (onCancel != null)
-                  VeilButton(
-                    expanded: false,
-                    tone: VeilButtonTone.ghost,
-                    onPressed: onCancel,
-                    label: l10n.chatCancelAction,
-                  ),
-              ],
-            ),
+        ),
+        const SizedBox(height: VeilSpace.xxs),
+        Text(_phaseDescription(l10n, snapshot), style: muted),
+        const SizedBox(height: VeilSpace.xs),
+        LinearProgressIndicator(
+          minHeight: 2,
+          color: color,
+          backgroundColor: mutedColor.withValues(alpha: 0.3),
+          value: switch (snapshot.phase) {
+            AttachmentTransferPhase.staged => 0,
+            AttachmentTransferPhase.preparing => null,
+            AttachmentTransferPhase.uploading => snapshot.progress,
+            AttachmentTransferPhase.finalizing => null,
+            AttachmentTransferPhase.failed => snapshot.progress.clamp(0, 1),
+            AttachmentTransferPhase.canceled => snapshot.progress.clamp(0, 1),
+          },
+        ),
+        const SizedBox(height: VeilSpace.xxs),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_phaseLabel(l10n, snapshot.phase), style: status),
+            const SizedBox(width: VeilSpace.xs),
+            Text('${(snapshot.progress * 100).round()}%', style: status),
           ],
+        ),
+        // A cancel is said by the description above. The outbox's own
+        // sentence for it has no translation and would only repeat it.
+        if (snapshot.errorMessage != null && snapshot.phase != AttachmentTransferPhase.canceled) ...[
+          const SizedBox(height: VeilSpace.xs),
+          VeilNotice(
+            title: l10n.chatAttachmentStateBanner,
+            message: veilErrorText(l10n, snapshot.errorMessage!),
+            tone: VeilTone.warn,
+            margin: EdgeInsets.zero,
+          ),
         ],
-      ),
+        // The gap is padding, not the Wrap's spacing: the bubble takes this
+        // panel's intrinsic width, and a Wrap leaves its spacing out of it.
+        if (onRetry != null || onCancel != null)
+          Wrap(
+            children: [
+              if (onRetry != null)
+                TextButton(
+                  style: TextButton.styleFrom(foregroundColor: color),
+                  onPressed: onRetry,
+                  child: Text(l10n.chatRetryUpload),
+                ),
+              if (onCancel != null)
+                Padding(
+                  padding: EdgeInsetsDirectional.only(start: onRetry != null ? VeilSpace.xs : 0),
+                  child: TextButton(
+                    style: TextButton.styleFrom(foregroundColor: color),
+                    onPressed: onCancel,
+                    child: Text(l10n.chatCancelAction),
+                  ),
+                ),
+            ],
+          ),
+      ],
     );
   }
 
@@ -257,14 +210,10 @@ class AttachmentTransferPanel extends StatelessWidget {
     };
   }
 
-  String _phaseDescription(
-      AppLocalizations l10n, AttachmentTransferSnapshot snapshot) {
-    final sizeLabel = snapshot.sizeBytes == null
-        ? ''
-        : l10n.chatAttachmentSizeBytes(snapshot.sizeBytes!);
+  String _phaseDescription(AppLocalizations l10n, AttachmentTransferSnapshot snapshot) {
+    final sizeLabel = snapshot.sizeBytes == null ? '' : l10n.chatAttachmentSizeBytes(snapshot.sizeBytes!);
     return switch (snapshot.phase) {
-      AttachmentTransferPhase.staged =>
-        l10n.chatPhaseDescStaged(sizeLabel),
+      AttachmentTransferPhase.staged => l10n.chatPhaseDescStaged(sizeLabel),
       AttachmentTransferPhase.preparing => l10n.chatPhaseDescPreparing,
       AttachmentTransferPhase.uploading => l10n.chatPhaseDescUploading,
       AttachmentTransferPhase.finalizing => l10n.chatPhaseDescFinalizing,

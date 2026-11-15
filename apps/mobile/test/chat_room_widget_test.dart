@@ -109,7 +109,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Orbit relay window'), findsOneWidget);
-    expect(find.text('Delivered'), findsOneWidget);
+    // Delivered is two ticks, the word only for a screen reader.
+    expect(find.text('Delivered'), findsNothing);
+    expect(find.byIcon(Icons.done_all), findsOneWidget);
+    expect(
+      find.byWidgetPredicate((widget) => widget is Semantics && (widget.properties.label ?? '').contains('Delivered')),
+      findsOneWidget,
+    );
     // The pane shows the messages, not cards about them.
     expect(find.byType(VeilHeroPanel), findsNothing);
     expect(find.byType(VeilMetricStrip), findsNothing);

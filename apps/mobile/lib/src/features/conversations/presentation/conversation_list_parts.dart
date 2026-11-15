@@ -136,66 +136,49 @@ class _SearchChip<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChoiceChip(
       label: Text(label),
+      showCheckmark: false,
       selected: value == groupValue,
       onSelected: (_) => onSelected(value),
     );
   }
 }
 
-/// The placeholder rows shown while the first list is on its way: the
-/// shape of the rows that will take their place, so nothing jumps when they
-/// do. A screen reader hears that the list is loading.
-class ConversationListSkeleton extends StatelessWidget {
-  const ConversationListSkeleton({super.key});
+/// The heading of a part of the list while searching ("Chats",
+/// "Messages"): small muted type at the text edge, with [trailing] (a
+/// spinner) at the end.
+class ConversationListHeader extends StatelessWidget {
+  const ConversationListHeader({super.key, required this.label, this.trailing});
 
-  // How wide the name of each placeholder row is.
-  static const _nameWidths = [132.0, 88.0, 164.0, 112.0, 148.0];
+  final String label;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    return Semantics(
-      label: AppLocalizations.of(context).commonLoading,
-      child: ExcludeSemantics(
-        child: Column(
-          children: [
-            for (final nameWidth in _nameWidths)
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                padding: const EdgeInsets.all(VeilSpace.sm),
-                decoration: BoxDecoration(
-                  color: palette.surface,
-                  borderRadius: BorderRadius.circular(VeilRadius.md),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      decoration: BoxDecoration(color: palette.surfaceAlt, shape: BoxShape.circle),
-                    ),
-                    const SizedBox(width: VeilSpace.sm + 2),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          VeilSkeletonLine(width: nameWidth, height: 14),
-                          const SizedBox(height: VeilSpace.xs),
-                          const FractionallySizedBox(widthFactor: 0.72, child: VeilSkeletonLine()),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.md, VeilSpace.md, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: Text(
+                label,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
               ),
-          ],
-        ),
+            ),
+          ),
+          if (trailing != null) trailing!,
+        ],
       ),
     );
   }
 }
 
-/// One message the local search found, with the query marked in its text.
+/// One message the local search found: a 60 px row with the avatar of the
+/// chat it is in, the chat's name and the day it was sent, and the message
+/// with the query in the text colour. The avatar and the name are the ones
+/// the chat's own row shows: a group's neutral disc and its name, never the
+/// letter or the name of the member the search result happens to carry.
 class MessageSearchResultTile extends StatelessWidget {
   const MessageSearchResultTile({
     super.key,
@@ -203,104 +186,147 @@ class MessageSearchResultTile extends StatelessWidget {
     required this.query,
     required this.timeFormat,
     required this.onTap,
+    this.conversation,
+    this.localUserId,
   });
+
+  /// Where the hairline under the row starts: the text edge.
+  static const double textInset = VeilSpace.md + 40 + VeilSpace.sm;
 
   final MessageSearchResult result;
   final String query;
   final DateFormat timeFormat;
   final VoidCallback onTap;
 
+  /// The chat the message is in, when this device still lists it.
+  final ConversationPreview? conversation;
+
+  /// The user's own id, which a group named after its members leaves out.
+  final String? localUserId;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final palette = context.veilPalette;
-    return VeilListTileCard(
-      // Who sent it, what it is and when: "You · Text · 09:45".
-      eyebrow: '${messageResultOrigin(l10n, result)} · '
-          '${messageDateLabel(result.sentAt, timeFormat, l10n.localeName)}',
-      leading: Icon(messageKindIcon(result.messageKind)),
-      title: result.title,
-      subtitle: result.bodySnippet,
-      // The snippet is a person's words: drawn as they wrote them, with
-      // the query marked.
-      subtitleWidget: RichText(
-        text: TextSpan(
-          style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
-          children: buildSearchHighlightTextSpans(
-            text: result.bodySnippet,
-            query: query,
-            highlightStyle: theme.textTheme.bodyMedium?.copyWith(
-              color: palette.text,
-              fontWeight: FontWeight.w700,
+    final snippetStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
+    final chat = conversation;
+    final group = chat?.type == ConversationType.group;
+    final title = chat == null ? result.title : conversationRowTitle(l10n, chat, localUserId: localUserId);
+    return Semantics(
+      button: true,
+      // Who sent it and what it is, for a screen reader: "You · Text".
+      label: messageResultOrigin(l10n, result),
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 60),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xs),
+            child: Row(
+              children: [
+                // Seeded as the chat's row is: a group has no handle of its own.
+                VeilAvatar(name: title, seed: group ? chat!.id : result.peerHandle, size: 40, group: group),
+                const SizedBox(width: VeilSpace.sm),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                          const SizedBox(width: VeilSpace.xs),
+                          Text(
+                            messageDateLabel(result.sentAt, timeFormat, l10n.localeName),
+                            style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      // The snippet is a person's words: drawn as they wrote
+                      // them, with the query in the text colour.
+                      RichText(
+                        text: TextSpan(
+                          style: snippetStyle,
+                          children: buildSearchHighlightTextSpans(
+                            text: result.bodySnippet,
+                            query: query,
+                            highlightStyle: snippetStyle?.copyWith(color: palette.text, fontWeight: FontWeight.w600),
+                            baseStyle: snippetStyle,
+                          ),
+                        ),
+                        textScaler: MediaQuery.textScalerOf(context),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-            baseStyle: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
           ),
         ),
-        textScaler: MediaQuery.textScalerOf(context),
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
       ),
-      trailing: const Icon(Icons.north_east_rounded, size: 18),
-      onTap: onTap,
     );
   }
 }
 
-/// The messages the local search found under the conversations it matched:
-/// their heading with a count, the results or a line saying there are
-/// none, and the button that loads more.
+/// The messages the local search found under the chats it matched: their
+/// heading, the results or a line saying there are none, and the button
+/// that loads more.
 List<Widget> messageSearchResultSection(BuildContext context, ConversationListView view) {
   final l10n = AppLocalizations.of(context);
   final results = view.archiveResults;
   return [
-    const SizedBox(height: VeilSpace.md),
-    VeilSectionLabel(
-      l10n.conversationsMessagesSection,
+    ConversationListHeader(
+      label: l10n.conversationsMessagesSection,
       trailing: view.searchingArchive
-          ? const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Text(
-              l10n.conversationsResultCount(results.length),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
+          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+          : null,
     ),
-    const SizedBox(height: VeilSpace.sm),
     if (!view.searchingArchive && results.isEmpty)
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
-        child: VeilCopy(
+        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+        child: Text(
           l10n.conversationsNoMessageMatchBody,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
         ),
       )
     else ...[
-      for (final result in results)
-        Padding(
-          padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-          child: RepaintBoundary(
-            child: MessageSearchResultTile(
-              result: result,
-              query: view.searchController.text,
-              timeFormat: view.timeFormat,
-              onTap: () => view.onSelectMessageResult(result),
+      VeilGroup(
+        inset: MessageSearchResultTile.textInset,
+        children: [
+          for (final result in results)
+            RepaintBoundary(
+              child: MessageSearchResultTile(
+                result: result,
+                conversation: view.controller.conversationById(result.conversationId),
+                localUserId: view.session.userId,
+                query: view.searchController.text,
+                timeFormat: view.timeFormat,
+                onTap: () => view.onSelectMessageResult(result),
+              ),
             ),
-          ),
-        ),
+        ],
+      ),
       if (view.archiveHasMore)
         Padding(
-          padding: const EdgeInsets.only(top: VeilSpace.xs, bottom: VeilSpace.sm),
+          padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
           child: Align(
-            alignment: Alignment.centerLeft,
+            alignment: AlignmentDirectional.centerStart,
             child: VeilButton(
               expanded: false,
               onPressed: view.searchingArchive ? null : view.onLoadMoreMessageResults,
-              tone: VeilButtonTone.secondary,
+              tone: VeilButtonTone.ghost,
               label: view.searchingArchive ? l10n.conversationsLoadingMore : l10n.conversationsLoadMore,
-              icon: Icons.expand_more_rounded,
             ),
           ),
         ),

@@ -3,9 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/presence_typing_service.dart';
 import 'chat_bar.dart';
@@ -125,8 +125,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
     final isDirect = conversation?.type == ConversationType.direct;
     final peerUserId = conversation?.recipientBundle.userId;
     final timerLabel = widget.messageTtl == null ? null : disappearingTimerLabel(l10n, widget.messageTtl);
-    // Asked above the shell, whose body no longer knows about the keyboard.
-    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
     // A 1:1 names the peer's handle under their name; a group says how many
     // are in it.
     final detail = conversation == null
@@ -155,6 +153,9 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
               verified: isDirect && widget.peerVerified,
               online: online,
               timerLabel: timerLabel,
+              // A group has no handle of its own: its id stands in.
+              avatarSeed: conversation == null ? null : (isDirect ? conversation.peerHandle : conversation.id),
+              group: conversation != null && !isDirect,
             ),
           );
     final actions = _searchOpen
@@ -168,41 +169,34 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
             ),
           ];
 
-    final body = Column(
-      children: [
-        // The composer takes what it needs first; the warnings and the
-        // messages share the rest.
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) => Column(
-              children: [
-                ConstrainedBox(
-                  constraints: BoxConstraints(maxHeight: _warningsMaxHeight(constraints.maxHeight)),
-                  child: widget.banners,
-                ),
-                Expanded(child: widget.messages),
-              ],
+    // The composer takes what it needs first; the warnings and the messages
+    // share the rest.
+    final warningsAndMessages = Expanded(
+      child: LayoutBuilder(
+        builder: (context, constraints) => Column(
+          children: [
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: _warningsMaxHeight(constraints.maxHeight)),
+              child: widget.banners,
             ),
-          ),
+            Expanded(child: widget.messages),
+          ],
         ),
-        widget.typing,
-        Padding(
-          // Right above the keyboard the composer needs less room around
-          // it, and the messages and warnings need every pixel.
-          padding: EdgeInsets.fromLTRB(
-            VeilSpace.xs,
-            keyboardUp ? VeilSpace.xxs : VeilSpace.xs,
-            VeilSpace.xs,
-            keyboardUp ? VeilSpace.xxs : VeilSpace.xs,
-          ),
-          child: widget.composer,
-        ),
-      ],
+      ),
     );
 
     if (!widget.pane) {
-      return VeilShell(padding: EdgeInsets.zero, leading: leading, titleWidget: title, actions: actions, child: body);
+      return VeilShell(
+        padding: EdgeInsets.zero,
+        leading: leading,
+        titleWidget: title,
+        actions: actions,
+        // The composer strip runs the full width, over its own hairline.
+        child: Column(children: [warningsAndMessages, widget.typing, widget.composer]),
+      );
     }
+    const paneContent = BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth);
+    final palette = context.veilPalette;
     // A pane brings its own material for its fields and ink: it does not
     // count on what it is placed in.
     return Material(
@@ -213,9 +207,20 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
           Expanded(
             child: Center(
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth),
-                child: body,
+                constraints: paneContent,
+                child: Column(children: [warningsAndMessages, widget.typing]),
               ),
+            ),
+          ),
+          // The strip and its hairline run across the whole pane, as the
+          // bar's do; the field keeps to the messages' width.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.canvas,
+              border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
+            ),
+            child: Center(
+              child: ConstrainedBox(constraints: paneContent, child: widget.composer),
             ),
           ),
         ],

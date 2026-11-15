@@ -4,7 +4,8 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// The quick reactions in a row. The "more" button appears only where
+/// The quick reactions in a row of 44 px buttons, drawn on the sheet that
+/// holds it. The "more" button appears only where
 /// [onExpandPressed] gives it something to open: with it the row is wider
 /// than a 360 px screen, so it scrolls sideways rather than overflow.
 class ReactionPickerWidget extends StatelessWidget {
@@ -30,11 +31,8 @@ class ReactionPickerWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
 
-    return VeilSurfaceCard(
-      padding: const EdgeInsets.symmetric(
-        horizontal: VeilSpace.sm,
-        vertical: VeilSpace.xs,
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -50,27 +48,18 @@ class ReactionPickerWidget extends StatelessWidget {
               ),
             if (onExpandPressed != null) ...[
               Container(
-                width: 1,
+                width: 0.5,
                 height: 24,
                 margin: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
-                color: palette.stroke,
+                color: palette.strokeStrong,
               ),
-              SizedBox(
-                width: 44,
-                height: 44,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: Icon(
-                    Icons.add_rounded,
-                    size: VeilIconSize.sm,
-                    color: palette.textMuted,
-                  ),
-                  tooltip: AppLocalizations.of(context).reactionsMoreTooltip,
-                  onPressed: () {
-                    VeilHaptics.selection();
-                    onExpandPressed!();
-                  },
-                ),
+              IconButton(
+                icon: Icon(Icons.add, size: VeilIconSize.md, color: palette.textMuted),
+                tooltip: AppLocalizations.of(context).reactionsMoreTooltip,
+                onPressed: () {
+                  VeilHaptics.selection();
+                  onExpandPressed!();
+                },
               ),
             ],
           ],

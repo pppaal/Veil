@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
@@ -106,11 +107,16 @@ void main() {
       expect(find.widgetWithText(TextField, 'Search this chat'), findsOneWidget);
       expect(find.text('Sam Rivera'), findsNothing);
       expect(find.byTooltip('Safety number'), findsNothing);
+      final searchField = find.descendant(of: find.byType(ChatBarSearchField), matching: find.byType(TextField));
+      final emptyHeight = tester.getSize(searchField).height;
 
       // Typed where the focus is: opening the search moved it to the bar.
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
       expect(find.text('2 matches'), findsOneWidget);
+      // The clear button is as tall as the field: nothing moves under it.
+      expect(find.byTooltip('Clear search'), findsOneWidget);
+      expect(tester.getSize(searchField).height, emptyHeight);
       expect(find.text(_first), findsOneWidget);
       expect(find.text(_latest), findsNothing);
 
@@ -152,7 +158,7 @@ void main() {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       expect(find.byTooltip('Attach'), kAttachmentsEnabled ? findsOneWidget : findsNothing);
       expect(
-        find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline_rounded)),
+        find.descendant(of: find.byType(ChatComposerBar), matching: find.byIcon(Icons.lock_outline)),
         findsNothing,
       );
     });
@@ -194,7 +200,7 @@ void main() {
       location: _chat,
       attention: const ChatAttention(accountHeld: true),
       body: (world) async {
-        expect(find.byType(VeilInlineBanner), findsOneWidget);
+        expect(_fullNotices(), findsOneWidget);
         expect(find.byTooltip('Verified'), findsNothing);
         expect(await world.messenger.isPeerVerified(chatConversationId), isFalse);
       },
@@ -237,8 +243,8 @@ void main() {
       keyboardHeight: 300,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
-        expect(find.byType(VeilInlineBanner), findsNothing, reason: 'the banners are not what is shown');
+        expect(_denseNotices(), findsNWidgets(2));
+        expect(_fullNotices(), findsNothing, reason: 'the full notices are not what is shown');
         for (final title in titles) {
           final box = tester.renderObject<RenderBox>(findCopy(title));
           expect(visibleRect(tester, box).size, box.size, reason: '"$title" is whole');
@@ -269,19 +275,19 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilInlineBanner), findsNWidgets(2));
-        expect(find.byType(VeilNoticeRow), findsNothing);
+        expect(_fullNotices(), findsNWidgets(2));
+        expect(_denseNotices(), findsNothing);
         expect(find.text('Nothing is sent until you review it.'), findsOneWidget);
 
         // The keyboard comes up, and goes again.
         tester.view.viewInsets = const FakeViewPadding(bottom: 600);
         await pumpFrames(tester, frames: 3);
-        expect(find.byType(VeilNoticeRow), findsNWidgets(2));
+        expect(_denseNotices(), findsNWidgets(2));
         expect(find.text('Nothing is sent until you review it.'), findsNothing);
         tester.view.viewInsets = FakeViewPadding.zero;
         await pumpFrames(tester, frames: 3);
-        expect(find.byType(VeilInlineBanner), findsNWidgets(2));
-        expect(find.byType(VeilNoticeRow), findsNothing);
+        expect(_fullNotices(), findsNWidgets(2));
+        expect(_denseNotices(), findsNothing);
         expect(tester.takeException(), isNull);
       },
     );
@@ -295,7 +301,7 @@ void main() {
       keyboardHeight: 300,
       attention: const ChatAttention(identityChanged: true, accountHeld: true, failedSends: 2),
       body: (world) async {
-        expect(find.byType(VeilNoticeRow), findsNWidgets(3));
+        expect(_denseNotices(), findsNWidgets(3));
         Finder action(String label) => find.widgetWithText(TextButton, label);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Review'))), isNull);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Talk to this account'))), isNull);
@@ -348,3 +354,8 @@ void main() {
     });
   });
 }
+
+// The warnings of a chat in their full form (title, explanation, action)
+// and as one row each.
+Finder _fullNotices() => find.byWidgetPredicate((widget) => widget is VeilNotice && !widget.dense);
+Finder _denseNotices() => find.byWidgetPredicate((widget) => widget is VeilNotice && widget.dense);

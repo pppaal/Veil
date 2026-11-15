@@ -1137,6 +1137,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'This version can\'t open attachments.';
 
   @override
+  String get chatAttachmentKindPhoto => 'Photo';
+
+  @override
+  String get chatAttachmentKindVideo => 'Video';
+
+  @override
+  String get chatAttachmentKindAudio => 'Audio';
+
+  @override
+  String get chatAttachmentKindDocument => 'Document';
+
+  @override
+  String get chatAttachmentKindFile => 'File';
+
+  @override
   String get reactionsMoreTooltip => 'More reactions';
 
   @override
@@ -1175,6 +1190,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatNotSentTapToRetry => 'Not sent. Tap to retry.';
+
+  @override
+  String get chatDayToday => 'Today';
+
+  @override
+  String get chatDayYesterday => 'Yesterday';
 
   @override
   String get chatNoticeIdentityChanged =>
@@ -1618,6 +1639,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get conversationsBarOffline => 'Offline';
 
   @override
+  String conversationsUnreadSemantics(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count unread messages',
+      one: '1 unread message',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get conversationsSyncIssueTitle => 'Couldn\'t refresh';
 
   @override
@@ -1979,6 +2011,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Enter their handle exactly as they gave it to you.';
 
   @override
+  String get startDirectHandleHint => 'alex';
+
+  @override
+  String get startDirectHandleError =>
+      'Couldn\'t start the chat. Check the handle and your connection.';
+
+  @override
   String get startGroupTitle => 'New group';
 
   @override
@@ -2027,6 +2066,16 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get startGroupNote =>
       'The server can read the group name, description and member list.';
+
+  @override
+  String get startGroupNameRequired => 'Required';
+
+  @override
+  String get startGroupMembersHint => 'alex, sam, priya';
+
+  @override
+  String get startGroupMembersError =>
+      'Couldn\'t create the group. Check the handles and your connection.';
 
   @override
   String get safetyNumbersTitle => 'Safety number';

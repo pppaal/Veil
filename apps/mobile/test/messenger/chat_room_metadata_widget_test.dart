@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/app/app_state.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
+import 'package:veil_mobile/src/features/chat/presentation/system_notice_bubble.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
@@ -92,8 +93,8 @@ void main() {
     await openChat(tester);
 
     expect(find.text('Just a normal message'), findsOneWidget);
-    expect(find.byType(VeilMessageBubbleCard), findsOneWidget);
-    expect(find.byIcon(Icons.camera_alt_outlined), findsNothing);
+    expect(find.byType(VeilBubble), findsOneWidget);
+    expect(find.byType(SystemNoticeBubble), findsNothing);
   });
 
   testWidgets('inner system kind renders as a system notice whatever the envelope says', (tester) async {
@@ -106,8 +107,8 @@ void main() {
     await openChat(tester);
 
     expect(find.text('Screenshot taken'), findsOneWidget);
-    expect(find.byIcon(Icons.camera_alt_outlined), findsOneWidget);
-    expect(find.byType(VeilMessageBubbleCard), findsNothing);
+    expect(find.byType(SystemNoticeBubble), findsOneWidget);
+    expect(find.byType(VeilBubble), findsNothing);
   });
 
   testWidgets('the conversation list labels the last message by its decrypted kind', (tester) async {

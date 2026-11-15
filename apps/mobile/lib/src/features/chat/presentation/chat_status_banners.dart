@@ -10,16 +10,16 @@ import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
 
-/// What sits between a chat's bar and its messages: a banner for each thing
+/// What sits between a chat's bar and its messages: a notice for each thing
 /// the user has to decide or should be warned about (an identity change or
 /// held account that pauses the 1:1, a key change of the peer's that waits
 /// in another chat, an error, sends still waiting), each with its action
 /// inside it, and a line about a running search. A quiet chat shows nothing
 /// here: the bar carries the verified mark, and the messages keep the height.
 ///
-/// Given less height than its banners need, it shows each warning as one
-/// row (title and action), and only when even those do not fit do the rows
-/// scroll.
+/// Given less height than its notices need, it shows each warning as one
+/// full-bleed row (title and action), and only when even those do not fit
+/// do the rows scroll.
 class ChatStatusBanners extends StatelessWidget {
   const ChatStatusBanners({
     super.key,
@@ -61,32 +61,30 @@ class ChatStatusBanners extends StatelessWidget {
     return VeilFirstThatFits(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xs, VeilSpace.sm, 0),
+          padding: const EdgeInsets.only(top: VeilSpace.xs),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (final (index, notice) in notices.indexed) ...[
                 if (index > 0) const SizedBox(height: VeilSpace.xs),
-                VeilInlineBanner(
-                  dense: true,
+                VeilNotice(
                   title: notice.title,
                   message: notice.message,
                   tone: notice.tone,
-                  icon: notice.icon,
                   actionLabel: notice.actionLabel,
                   onAction: notice.onAction,
                 ),
               ],
               if (hasSearchQuery)
                 Padding(
-                  padding: EdgeInsets.fromLTRB(VeilSpace.xxs, notices.isEmpty ? 0 : VeilSpace.xs, VeilSpace.xxs, 0),
+                  padding: EdgeInsets.fromLTRB(VeilSpace.md, notices.isEmpty ? 0 : VeilSpace.xs, VeilSpace.md, 0),
                   child: _searchLine(context, l10n),
                 ),
             ],
           ),
         ),
-        // With the keyboard up on a small phone the banners above would be
+        // With the keyboard up on a small phone the notices above would be
         // cut off, the action of the first among them: each warning then
         // keeps its title and its action in one row.
         _ScrollingRows(
@@ -94,14 +92,22 @@ class ChatStatusBanners extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final notice in notices)
-                VeilNoticeRow(
-                  title: notice.title,
-                  message: notice.message,
-                  tone: notice.tone,
-                  icon: notice.icon,
-                  actionLabel: notice.actionLabel,
-                  onAction: notice.onAction,
+              if (notices.isNotEmpty)
+                VeilGroup(
+                  // Grey rows edge to edge: a line that started at the text
+                  // would leave a notch of page colour at the start.
+                  inset: 0,
+                  children: [
+                    for (final notice in notices)
+                      VeilNotice(
+                        dense: true,
+                        title: notice.title,
+                        message: notice.message,
+                        tone: notice.tone,
+                        actionLabel: notice.actionLabel,
+                        onAction: notice.onAction,
+                      ),
+                  ],
                 ),
               if (hasSearchQuery)
                 Padding(
@@ -116,18 +122,9 @@ class ChatStatusBanners extends StatelessWidget {
   }
 
   Widget _searchLine(BuildContext context, AppLocalizations l10n) {
-    final palette = context.veilPalette;
-    return Row(
-      children: [
-        Icon(Icons.manage_search_rounded, size: VeilIconSize.sm, color: palette.textMuted),
-        const SizedBox(width: VeilSpace.xs),
-        Expanded(
-          child: Text(
-            searching ? l10n.chatSearchSearching : l10n.chatSearchMatchCount(searchHitCount),
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-          ),
-        ),
-      ],
+    return Text(
+      searching ? l10n.chatSearchSearching : l10n.chatSearchMatchCount(searchHitCount),
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
     );
   }
 
@@ -162,8 +159,7 @@ class ChatStatusBanners extends StatelessWidget {
         _Notice(
           title: l10n.chatIdentityChangedTitle,
           message: l10n.chatIdentityChangedBody,
-          tone: VeilBannerTone.warn,
-          icon: Icons.gpp_maybe_outlined,
+          tone: VeilTone.warn,
           actionLabel: l10n.chatIdentityChangedReview,
           onAction: onReviewIdentity,
         ),
@@ -171,8 +167,7 @@ class ChatStatusBanners extends StatelessWidget {
         _Notice(
           title: l10n.chatIdentityChangedElsewhereTitle,
           message: l10n.chatIdentityChangedElsewhereBody,
-          tone: VeilBannerTone.warn,
-          icon: Icons.gpp_maybe_outlined,
+          tone: VeilTone.warn,
           actionLabel: l10n.chatIdentityChangedReview,
           onAction: onReviewIdentity,
         ),
@@ -193,8 +188,7 @@ class ChatStatusBanners extends StatelessWidget {
             PeerAccountHoldReason.unissuedHandle => l10n.chatAccountHoldUnissuedBody,
             PeerAccountHoldReason.ownHandle => l10n.chatAccountHoldOwnBody(conversation?.peerHandle ?? ''),
           },
-          tone: VeilBannerTone.danger,
-          icon: Icons.person_off_outlined,
+          tone: VeilTone.warn,
           actionLabel: l10n.chatAccountHoldAcknowledge,
           onAction: () => onAcknowledgeHold(accountHold, conversation?.peerHandle ?? ''),
         ),
@@ -202,7 +196,7 @@ class ChatStatusBanners extends StatelessWidget {
         _Notice(
           title: l10n.chatBannerConversationIssue,
           message: veilErrorText(l10n, error),
-          tone: VeilBannerTone.danger,
+          tone: VeilTone.warn,
         ),
       if (pendingCount > 0)
         _Notice(
@@ -224,7 +218,11 @@ class ChatStatusBanners extends StatelessWidget {
                   : uploadingCount > 0
                       ? l10n.chatBannerUploadingAttachments(uploadingCount)
                       : l10n.chatBannerQueuedMessages(queuedCount),
-          tone: !connected || failedCount > 0 ? VeilBannerTone.warn : VeilBannerTone.info,
+          tone: failedCount > 0
+              ? VeilTone.danger
+              : !connected
+                  ? VeilTone.warn
+                  : VeilTone.info,
           actionLabel: failedCount > 0 ? l10n.chatRetryFailedSendsAction : null,
           onAction: failedCount > 0 ? onRetryFailed : null,
         ),
@@ -267,15 +265,13 @@ class _Notice {
     required this.title,
     required this.message,
     required this.tone,
-    this.icon,
     this.actionLabel,
     this.onAction,
   });
 
   final String title;
   final String message;
-  final VeilBannerTone tone;
-  final IconData? icon;
+  final VeilTone tone;
   final String? actionLabel;
   final VoidCallback? onAction;
 }

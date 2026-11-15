@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart';
 import 'package:veil_mobile/src/features/chat/presentation/message_attachment_views.dart';
+import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
@@ -57,7 +59,26 @@ double? _progressValue(WidgetTester tester) =>
 
 void main() {
   group('MessageAttachmentCard', () {
-    testWidgets('names the kind and size of the file and asks for a download ticket', (tester) async {
+    testWidgets('in a build that cannot open attachments: the kind, the size and the line that says so',
+        (tester) async {
+      await tester.pumpWidget(_app(MessageAttachmentCard(
+        attachment: _reference('application/pdf', 3 * 1024 * 1024),
+        resolving: false,
+        downloadError: null,
+        onResolve: null,
+      )));
+
+      expect(find.byIcon(Icons.picture_as_pdf_outlined), findsOneWidget);
+      expect(find.text('Document'), findsOneWidget);
+      expect(find.text('3.0 MB'), findsOneWidget);
+      expect(find.text(l10n.chatAttachmentCannotOpen), findsOneWidget);
+      expect(find.byType(TextButton), findsNothing);
+      // Nothing restates that the file is encrypted, and no pill or banner.
+      expect(find.textContaining('Encrypted'), findsNothing);
+      expect(find.byType(VeilNotice), findsNothing);
+    });
+
+    testWidgets('where a build can open them, a text button asks for the download ticket', (tester) async {
       var resolved = 0;
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('application/pdf', 3 * 1024 * 1024),
@@ -65,57 +86,78 @@ void main() {
         downloadError: null,
         onResolve: () => resolved++,
       )));
-
-      expect(find.byIcon(Icons.picture_as_pdf_rounded), findsOneWidget);
-      expect(find.text('Encrypted document'), findsOneWidget);
-      expect(find.text('3.0 MB · application/pdf'), findsOneWidget);
-      expect(find.text(l10n.chatAttachmentTicketFailed), findsNothing);
-      expect(find.text(l10n.chatRetrySend), findsNothing);
-
+      expect(find.text(l10n.chatAttachmentCannotOpen), findsNothing);
       await tester.tap(find.text(l10n.chatAttachmentResolveAction));
       expect(resolved, 1);
     });
 
-    testWidgets('while a ticket resolves it cannot be asked for again; a refusal and a failed send show',
-        (tester) async {
+    testWidgets('while a ticket resolves it cannot be asked for again, and a refusal says so', (tester) async {
       var resolved = 0;
-      var retried = 0;
       await tester.pumpWidget(_app(MessageAttachmentCard(
         attachment: _reference('image/png', 512),
         resolving: true,
         downloadError: 'ticket refused',
         onResolve: () => resolved++,
-        onRetry: () => retried++,
       )));
 
-      expect(find.text('Encrypted image'), findsOneWidget);
-      expect(find.text('512 B · image/png'), findsOneWidget);
-      final resolve = tester.widget<VeilButton>(find.widgetWithText(VeilButton, l10n.chatAttachmentResolvingAction));
+      expect(find.text('Photo'), findsOneWidget);
+      expect(find.text('512 B'), findsOneWidget);
+      final resolve = tester.widget<TextButton>(find.widgetWithText(TextButton, l10n.chatAttachmentResolvingAction));
       expect(resolve.onPressed, isNull);
       expect(find.text(l10n.chatAttachmentTicketFailed), findsOneWidget);
       expect(find.text('ticket refused'), findsOneWidget);
-
-      await tester.tap(find.text(l10n.chatRetrySend));
-      expect(retried, 1);
       expect(resolved, 0);
+    });
+
+    testWidgets('a flat tile: grey only on the brand fill of an own bubble, never a border', (tester) async {
+      Future<BoxDecoration?> tile({required bool framed}) async {
+        await tester.pumpWidget(_app(MessageAttachmentCard(
+          attachment: _reference('image/png', 512),
+          resolving: false,
+          downloadError: null,
+          onResolve: null,
+          framed: framed,
+        )));
+        final boxes = tester.widgetList<DecoratedBox>(
+          find.descendant(of: find.byType(MessageAttachmentCard), matching: find.byType(DecoratedBox)),
+        );
+        return boxes.isEmpty ? null : boxes.first.decoration as BoxDecoration;
+      }
+
+      expect(await tile(framed: false), isNull, reason: 'in a grey bubble the bubble is the tile');
+      final framed = await tile(framed: true);
+      final palette = tester.element(find.byType(MessageAttachmentCard)).veilPalette;
+      expect(framed?.color, palette.surfaceAlt);
+      expect(framed?.border, isNull);
+      expect(framed?.borderRadius, BorderRadius.circular(VeilRadius.md));
     });
   });
 
   group('AttachmentTransferPanel', () {
-    testWidgets('an upload in flight shows its file, phase and progress, and cancel only where offered',
+    Widget panel(AttachmentTransferSnapshot snapshot, {VoidCallback? onRetry, VoidCallback? onCancel}) => _app(
+          AttachmentTransferPanel(
+            snapshot: snapshot,
+            color: Colors.white,
+            mutedColor: Colors.white70,
+            onRetry: onRetry,
+            onCancel: onCancel,
+          ),
+        );
+
+    testWidgets('an upload in flight shows its file, what is happening and its progress, and cancel where offered',
         (tester) async {
       var canceled = 0;
-      await tester.pumpWidget(_app(AttachmentTransferPanel(
-        snapshot: _transfer(AttachmentTransferPhase.uploading,
-            progress: 0.42, filename: 'scan.pdf', contentType: 'application/pdf'),
+      await tester.pumpWidget(panel(
+        _transfer(AttachmentTransferPhase.uploading, progress: 0.42, filename: 'scan.pdf', contentType: 'application/pdf'),
         onCancel: () => canceled++,
-      )));
+      ));
 
       expect(find.text('scan.pdf'), findsOneWidget);
-      expect(find.text(l10n.chatPhaseUploading), findsOneWidget);
       expect(find.text(l10n.chatPhaseDescUploading), findsOneWidget);
-      expect(find.text('42%'), findsOneWidget);
       expect(_progressValue(tester), 0.42);
+      // The phase and the share done are words under the bar, not pills.
+      expect(find.text(l10n.chatPhaseUploading), findsOneWidget);
+      expect(find.text('42%'), findsOneWidget);
       expect(find.text(l10n.chatRetryUpload), findsNothing);
       expect(find.text(l10n.chatAttachmentStateBanner), findsNothing);
 
@@ -125,17 +167,16 @@ void main() {
 
     testWidgets('a failed upload of an unnamed file says what failed and offers a retry', (tester) async {
       var retried = 0;
-      await tester.pumpWidget(_app(AttachmentTransferPanel(
-        snapshot: _transfer(AttachmentTransferPhase.failed,
-            progress: 0.6, contentType: 'image/jpeg', errorMessage: 'upload refused'),
+      await tester.pumpWidget(panel(
+        _transfer(AttachmentTransferPhase.failed, progress: 0.6, contentType: 'image/jpeg', errorMessage: 'upload refused'),
         onRetry: () => retried++,
-      )));
+      ));
 
-      expect(find.text('Encrypted image'), findsOneWidget);
+      expect(find.text('Photo'), findsOneWidget);
       expect(find.text(l10n.chatPhaseFailed), findsOneWidget);
-      // The error is the description and the banner's message.
+      // The error is the description and the notice's message.
       expect(find.text('upload refused'), findsNWidgets(2));
-      expect(find.text(l10n.chatAttachmentStateBanner), findsOneWidget);
+      expect(find.widgetWithText(VeilNotice, l10n.chatAttachmentStateBanner), findsOneWidget);
       expect(_progressValue(tester), 0.6);
       expect(find.text(l10n.chatCancelAction), findsNothing);
 
@@ -145,19 +186,93 @@ void main() {
 
     testWidgets('a staged upload states its size; preparing and finalizing have no fixed progress',
         (tester) async {
-      await tester.pumpWidget(_app(AttachmentTransferPanel(
-        snapshot: _transfer(AttachmentTransferPhase.staged, sizeBytes: 512),
-      )));
+      await tester.pumpWidget(panel(_transfer(AttachmentTransferPhase.staged, sizeBytes: 512)));
       expect(find.text(l10n.chatPhaseDescStaged(' 512 bytes.')), findsOneWidget);
-      expect(find.text('Encrypted file'), findsOneWidget);
+      expect(find.text('File'), findsOneWidget);
       expect(_progressValue(tester), 0);
-      expect(find.byType(VeilButton), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
 
       for (final phase in [AttachmentTransferPhase.preparing, AttachmentTransferPhase.finalizing]) {
-        await tester.pumpWidget(_app(AttachmentTransferPanel(snapshot: _transfer(phase, progress: 0.5))));
+        await tester.pumpWidget(panel(_transfer(phase, progress: 0.5)));
         expect(_progressValue(tester), isNull, reason: '$phase');
       }
     });
+  });
+
+  group('MessageBubble meta', () {
+    ChatMessage message({required MessageDeliveryState state, DateTime? expiresAt, bool mine = true}) => ChatMessage(
+          id: 'msg-1',
+          senderDeviceId: 'device-1',
+          sentAt: DateTime(2026, 4, 7, 9, 17),
+          isMine: mine,
+          deliveryState: state,
+          expiresAt: expiresAt,
+          envelope: const CryptoEnvelope(
+            version: 'v',
+            conversationId: 'conv-1',
+            senderDeviceId: 'device-1',
+            recipientUserId: 'user-1',
+            ciphertext: 'x',
+            nonce: 'n',
+            messageKind: MessageKind.text,
+          ),
+        );
+
+    Future<void> pumpBubble(WidgetTester tester, String body, ChatMessage message) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: VeilTheme.dark(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: Center(
+            child: SizedBox(
+              width: 390,
+              child: MessageBubble(
+                message: message,
+                highlighted: false,
+                sentAtFormat: DateFormat('HH:mm'),
+                decryptFuture: Future.value(DecryptedMessage(body: body, messageKind: MessageKind.text)),
+                onResolveAttachment: (_) async {},
+                onCancelAttachment: null,
+                isResolvingAttachment: (_) => false,
+                attachmentDownloadError: (_) => null,
+                transferSnapshot: null,
+                expiryNow: () => DateTime(2026, 4, 7, 9, 18),
+                onRetryMessage: () {},
+              ),
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    // The bubble is as wide as its widest line. On a short message that is
+    // the meta, which must then fit on the one line it was measured for.
+    for (final body in ['ok', 'Yes', 'Sure, see you then']) {
+      testWidgets('a read "$body": "Read" sits on the line of the time', (tester) async {
+        await pumpBubble(tester, body, message(state: MessageDeliveryState.read));
+        final time = tester.getRect(find.text('09:17'));
+        final read = tester.getRect(find.text(l10n.chatDeliveryRead));
+        expect(read.center.dy, closeTo(time.center.dy, 1), reason: '"Read" wrapped under the time');
+        expect(read.left, greaterThan(time.right));
+      });
+    }
+
+    for (final mine in [true, false]) {
+      testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the time left sits on the line of the time',
+          (tester) async {
+        await pumpBubble(
+          tester,
+          'ok',
+          message(state: MessageDeliveryState.sent, expiresAt: DateTime(2026, 4, 13, 9, 17), mine: mine),
+        );
+        final time = tester.getRect(find.text('09:17'));
+        final timer = tester.getRect(find.byIcon(Icons.timer_outlined));
+        expect(timer.center.dy, closeTo(time.center.dy, 1), reason: 'the time left wrapped under the time');
+        expect(timer.left, greaterThan(time.right));
+      });
+    }
   });
 
   group('ReactionChipsRow', () {
@@ -224,12 +339,12 @@ void main() {
 
   group('labels', () {
     test('attachments are named and drawn by their content type', () {
-      expect(attachmentLabel(l10n, 'video/mp4'), 'Encrypted video');
-      expect(attachmentLabel(l10n, 'audio/ogg'), 'Encrypted audio');
-      expect(attachmentLabel(l10n, 'application/zip'), 'Encrypted file');
-      expect(attachmentIcon('video/mp4'), Icons.videocam_rounded);
-      expect(attachmentIcon('audio/ogg'), Icons.audiotrack_rounded);
-      expect(attachmentIcon('application/zip'), Icons.insert_drive_file_rounded);
+      expect(attachmentLabel(l10n, 'video/mp4'), 'Video');
+      expect(attachmentLabel(l10n, 'audio/ogg'), 'Audio');
+      expect(attachmentLabel(l10n, 'application/zip'), 'File');
+      expect(attachmentIcon('video/mp4'), Icons.videocam_outlined);
+      expect(attachmentIcon('audio/ogg'), Icons.audiotrack_outlined);
+      expect(attachmentIcon('application/zip'), Icons.insert_drive_file_outlined);
     });
 
     test('sizes and durations read in their largest whole unit', () {

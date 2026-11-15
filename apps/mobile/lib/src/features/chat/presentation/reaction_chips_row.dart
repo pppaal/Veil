@@ -72,8 +72,8 @@ class _ReactionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = mine ? palette.primarySoft : palette.surfaceAlt;
-    final border = mine ? palette.primary : palette.stroke;
     final textColor = mine ? palette.primaryStrong : palette.textMuted;
+    final countStyle = Theme.of(context).textTheme.labelMedium?.copyWith(color: textColor);
     return Semantics(
       button: true,
       selected: mine,
@@ -83,32 +83,30 @@ class _ReactionChip extends StatelessWidget {
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-        borderRadius: BorderRadius.circular(VeilRadius.pill),
-        onTap: onTap,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 44),
-          child: Center(
-            widthFactor: 1,
-            heightFactor: 1,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
-              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.xxs + 1),
-              decoration: BoxDecoration(
-                color: background,
-                borderRadius: BorderRadius.circular(VeilRadius.pill),
-                border: Border.all(color: border),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(emoji, style: const TextStyle(fontSize: 14)),
-                  const SizedBox(width: 4),
-                  Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor)),
-                ],
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          // The tap takes 44 px whatever the chip draws.
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+            child: Center(
+              widthFactor: 1,
+              heightFactor: 1,
+              child: Container(
+                height: 28,
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
+                decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(14)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(emoji, style: const TextStyle(fontSize: 14, height: 1.2)),
+                    const SizedBox(width: VeilSpace.xxs),
+                    Text('$count', style: countStyle),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
         ),
       ),
     );

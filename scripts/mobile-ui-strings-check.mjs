@@ -98,10 +98,6 @@ export const NOT_COPY = {
 // last of them. Never add a line.
 export const KNOWN_HARDCODED = {
   // --- Onboarding, account and device transfer.
-  'features/device_transfer/presentation/device_transfer_screen.dart': [
-    'VEIL New Device',
-    'VEIL_TRANSFER::<sessionId>::<token>',
-  ],
 
   // --- Chat and conversation list, starting a chat or a group.
   'features/conversations/presentation/start_group_screen.dart': ['Signal Boost'],

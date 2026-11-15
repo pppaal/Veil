@@ -232,6 +232,7 @@ class LayoutWorld {
       trust: trust,
       attention: attention,
       peer: peer,
+      changedKey: identities.self.identityPublicKey,
     );
     if (_hasAccount) await messenger.applySession(_session);
     // After the session is applied, which forgets what was pending before it.
@@ -364,6 +365,7 @@ class _LayoutMessenger extends VeilMessengerController {
     required IdentityTrust trust,
     required this.attention,
     required this.peer,
+    required this.changedKey,
   }) : super(
           apiClient: apiClient,
           cryptoEngine: adapter.messaging,
@@ -377,6 +379,11 @@ class _LayoutMessenger extends VeilMessengerController {
 
   final ChatAttention attention;
   final RelayParty peer;
+
+  /// The key the peer's device presents in a case whose identity changed:
+  /// another key than the pinned one, so the safety number page shows two
+  /// numbers that differ, as it does after a real change.
+  final String changedKey;
 
   @override
   bool get isBusy => attention.loading || super.isBusy;
@@ -393,7 +400,7 @@ class _LayoutMessenger extends VeilMessengerController {
               conversationId: conversationId,
               userId: peer.userId,
               deviceId: peer.deviceId,
-              presentedKey: peer.identity.identityPublicKey,
+              presentedKey: changedKey,
               previousKey: peer.identity.identityPublicKey,
               requiresReverification: true,
             )

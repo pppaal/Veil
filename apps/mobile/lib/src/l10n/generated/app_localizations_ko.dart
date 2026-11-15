@@ -91,20 +91,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get appLockTitle => '앱 잠금';
 
   @override
-  String get appLockLoadingTitle => '로컬 잠금 확인 중';
+  String get appLockLoadingTitle => '앱 잠금 확인 중';
 
   @override
   String get appLockLoadingBody => '저장된 PIN과 생체 인식 사용 가능 여부를 확인합니다.';
 
   @override
-  String get appLockHeroEyebrow => '로컬 잠금';
+  String get appLockHeroEyebrow => '이 기기 전용 잠금';
 
   @override
   String get appLockHeroTitle => 'VEIL은 원격으로 잠금을 풀지 않습니다.';
 
   @override
   String get appLockHeroBody =>
-      'PIN과 생체 인식은 이 기기에서만 확인합니다. 원격 재설정도, 복구 수단도, 서버의 개입도 없습니다.';
+      'PIN과 생체 인식은 이 기기에서만 확인합니다. 서버가 재설정하거나 대신 풀어 줄 수 없습니다.';
 
   @override
   String get appLockPillLocalOnly => '이 기기 전용';
@@ -199,8 +199,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '계속하려면 이 기기에서만 쓰는 숫자 PIN을 정하세요. VEIL은 이 PIN을 대신 재설정해 줄 수 없습니다.';
 
   @override
-  String get appLockCaptionUnlock =>
-      '이 기기의 PIN이나 생체 인식으로 잠금을 해제하세요. 서버와는 통신하지 않습니다.';
+  String get appLockCaptionUnlock => '이 기기의 PIN이나 생체 인식으로 잠금을 해제하세요.';
 
   @override
   String get appLockFieldSetPin => 'PIN 설정';
@@ -265,16 +264,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get splashEyebrow => '비공개 베타';
 
   @override
-  String get splashBody => '백업 없음. 복구 없음. 유출 없음.';
+  String get splashBody => '백업 없음. 복구 없음. 유출 없음.';
 
   @override
-  String get splashErrorTitle => '런타임 구성이 차단됨';
+  String get splashErrorTitle => 'VEIL을 시작할 수 없습니다';
 
   @override
-  String get splashPreparingTitle => '로컬 상태 준비 중';
+  String get splashPreparingTitle => 'VEIL을 여는 중입니다';
 
   @override
-  String get splashPreparingBody => '온보딩, 세션 연결, 로컬 보안 상태를 확인하는 중입니다.';
+  String get splashPreparingBody => '이 기기의 세션과 보안 상태를 확인하고 있습니다.';
 
   @override
   String get onboardingWarnEyebrow => '제품 원칙';
@@ -284,26 +283,26 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get onboardingWarnBody =>
-      'VEIL은 설계상 기기에 귀속됩니다. 기기 분실은 곧 계정 상실입니다. 복구는 불가능하며, 클라우드 수신함이 아닙니다.';
+      'VEIL은 처음부터 기기에 귀속되도록 만들었습니다. 클라우드 수신함이 아닙니다.';
 
   @override
-  String get onboardingWarnDestructiveTitle => '복구 불가한 설계';
+  String get onboardingWarnDestructiveTitle => '복구 기능이 없습니다';
 
   @override
   String get onboardingWarnDestructiveBody =>
-      '기기를 분실하면 계정과 메시지가 모두 사라집니다. VEIL은 접근 권한을 복원해 드릴 수 없습니다.';
+      '기기를 분실하면 계정과 메시지가 모두 사라집니다. VEIL도 되살려 드릴 수 없습니다.';
 
   @override
   String get onboardingWarnIdentityTitle => '신원';
 
   @override
-  String get onboardingWarnIdentityLine1 => '이 기기가 당신의 신원이 됩니다.';
+  String get onboardingWarnIdentityLine1 => '이 기기가 곧 내 신원이 됩니다.';
 
   @override
-  String get onboardingWarnIdentityLine2 => '개인 정보는 기기 안에만 저장됩니다.';
+  String get onboardingWarnIdentityLine2 => '개인 키는 이 기기에만 보관됩니다.';
 
   @override
-  String get onboardingWarnIdentityLine3 => '비밀번호 재설정 경로가 존재하지 않습니다.';
+  String get onboardingWarnIdentityLine3 => '비밀번호 재설정 기능이 없습니다.';
 
   @override
   String get onboardingWarnTransferTitle => '이전';
@@ -324,12 +323,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentSubtitle => 'VEIL을 사용하기 전에 꼭 읽어주세요';
 
   @override
-  String get privacyConsentEyebrow => '개인정보 보호';
-
-  @override
-  String get privacyConsentHeroTitle => '개인정보 &\n데이터 보호';
-
-  @override
   String get privacyConsentHeroBody =>
       'VEIL은 개인정보보호법(PIPA)을 준수합니다. 서비스 이용 전 아래 내용을 확인하고 동의해 주세요.';
 
@@ -343,11 +336,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentCollectTitle => '수집하는 개인정보';
 
   @override
-  String get privacyConsentCollectItem1 => '사용자 핸들과 이에 연결된 무작위 계정 ID 및 디바이스 ID';
+  String get privacyConsentCollectItem1 => '사용자 핸들과 이에 연결된 무작위 계정 ID 및 기기 ID';
 
   @override
   String get privacyConsentCollectItem2 =>
-      '디바이스 정보 (플랫폼, 디바이스 이름)와 푸시 토큰 (푸시 알림에는 메시지 내용이 포함되지 않음)';
+      '기기 정보 (플랫폼, 기기 이름)와 푸시 토큰 (푸시 알림에는 메시지 내용이 포함되지 않음)';
 
   @override
   String get privacyConsentCollectItem3 => '공개 신원 키와 프리키 (암호화 통신용)';
@@ -358,7 +351,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get privacyConsentCollectItem5 =>
-      '대화 참여 정보와 전송 메타데이터: 메시지 도착 시각, 전달·읽음 확인 시각, 디바이스의 마지막 접속일';
+      '대화 참여 정보와 전송 메타데이터: 메시지 도착 시각, 전달·읽음 확인 시각, 기기의 마지막 접속일';
 
   @override
   String get privacyConsentCollectItem6 =>
@@ -375,7 +368,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get privacyConsentPurposeItem1 => '종단간 암호화 메시징 서비스 제공';
 
   @override
-  String get privacyConsentPurposeItem2 => '디바이스 인증 및 세션 관리';
+  String get privacyConsentPurposeItem2 => '기기 인증 및 세션 관리';
 
   @override
   String get privacyConsentPurposeItem3 => '연락처 검색 및 대화 연결';
@@ -388,7 +381,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get privacyConsentRetentionItem2 =>
-      '디바이스 해제 시 해당 디바이스 정보 삭제, 디바이스 기록은 약 30일 이내 삭제';
+      '기기 연결 해제 시 해당 기기 정보 삭제, 기기 기록은 약 30일 이내 삭제';
 
   @override
   String get privacyConsentRetentionItem3 => '만료된 메시지는 자동 삭제';
@@ -431,39 +424,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authCreateEyebrow => '기기 귀속';
 
   @override
-  String get authCreateHeroTitle => '이 기기가 당신의 신원이 됩니다.';
+  String get authCreateHeroTitle => '이 기기가 곧 내 신원이 됩니다.';
 
   @override
-  String get authCreateHeroBody =>
-      'VEIL은 지금 손에 든 이 하드웨어에 접근 권한을 묶습니다. 기기를 잃어버리면 계정도 함께 사라집니다.';
-
-  @override
-  String get authCreateRestoreTitle => '복원 경로 없음';
+  String get authCreateRestoreTitle => '복구할 방법이 없습니다';
 
   @override
   String get authCreateRestoreBody =>
-      '이 기기를 분실하면 계정과 메시지가 모두 사라집니다. VEIL은 접근을 복원할 수 없으며, 이는 의도된 설계입니다.';
+      '이 기기를 분실하면 계정과 메시지가 모두 사라집니다. VEIL도 되살릴 수 없으며, 처음부터 그렇게 설계했습니다.';
 
   @override
-  String get authCreateMetricIdentity => '신원';
-
-  @override
-  String get authCreateMetricIdentityValue => '로컬';
-
-  @override
-  String get authCreateMetricRecovery => '복구';
-
-  @override
-  String get authCreateMetricRecoveryValue => '없음';
-
-  @override
-  String get authCreateMetricTransfer => '이전';
-
-  @override
-  String get authCreateMetricTransferValue => '기존 기기';
-
-  @override
-  String get authCreateFieldLabel => '프로필 레이블';
+  String get authCreateFieldLabel => '프로필';
 
   @override
   String get authCreateFieldCaption =>
@@ -473,7 +444,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authCreateDisplayName => '표시 이름';
 
   @override
-  String get authCreateDisplayHint => '이 계정의 선택 레이블';
+  String get authCreateDisplayHint => '선택 사항';
 
   @override
   String get authCreateTransferLabel => '기존 기기에서 이전하기';
@@ -489,7 +460,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get authHandleHeroBody =>
-      '검색용 핸들을 정해 주세요. 로컬 신원 정보가 생성된 뒤, VEIL이 핸들을 이 기기에 묶습니다.';
+      '사람들이 나를 찾을 때 쓸 핸들을 정하세요. 기기의 키가 만들어지면 VEIL이 핸들을 이 기기에 묶습니다.';
 
   @override
   String get authHandleFieldLabel => '핸들';
@@ -504,13 +475,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleInputHint => 'cold.operator';
 
   @override
-  String get authHandleChoosePrompt => '핸들을 입력하세요';
-
-  @override
   String get authHandleBindingSection => '등록 절차';
 
   @override
-  String get authHandleStep1Title => '로컬 신원 생성';
+  String get authHandleStep1Title => '기기에서 신원 생성';
 
   @override
   String get authHandleStep1Body => '기기에 귀속된 암호화 정보를 만들고, 개인 키는 이 기기에만 둡니다.';
@@ -522,10 +490,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleStep2Body => '공개 기기 정보와 핸들 메타데이터만 서버에 게시합니다.';
 
   @override
-  String get authHandleStep3Title => '기기 챌린지';
+  String get authHandleStep3Title => '기기 확인 요청';
 
   @override
-  String get authHandleStep3Body => '등록된 기기에 대한 짧은 수명의 서버 챌린지를 요청합니다.';
+  String get authHandleStep3Body => '등록한 기기가 맞는지 확인할 일회용 값을 서버에 요청합니다.';
 
   @override
   String get authHandleStep4Title => '검증 및 기기 연결';
@@ -540,13 +508,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleBindCta => '이 기기에 연결';
 
   @override
-  String get authStageGeneratingKeys => '로컬 신원 생성 중';
+  String get authStageGeneratingKeys => '기기에서 신원 생성 중';
 
   @override
   String get authStageRegistering => '핸들 등록 중';
 
   @override
-  String get authStageRequestingChallenge => '챌린지 요청 중';
+  String get authStageRequestingChallenge => '기기 확인 요청 중';
 
   @override
   String get authStageVerifying => '기기 확인 중';
@@ -1998,7 +1966,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersLoadingTitle => '안전 번호 생성 중';
 
   @override
-  String get safetyNumbersLoadingBody => '신원 키를 로컬에서 해싱하는 중입니다.';
+  String get safetyNumbersLoadingBody => '이 기기에서 신원 키로 번호를 계산하는 중입니다.';
 
   @override
   String get safetyNumbersMarkedVerified => '확인됨으로 표시했습니다';
@@ -2023,12 +1991,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get safetyNumbersNoSessionYet => '아직 세션이 없습니다 — 먼저 메시지를 보내세요';
 
   @override
-  String safetyNumbersRotationFailed(String error) {
-    return '새 세션을 시작하지 못했습니다: $error';
-  }
+  String get safetyNumbersRotationFailed => '새 세션을 시작하지 못했습니다. 잠시 후 다시 시도하세요.';
 
   @override
   String get safetyNumbersErrorTitle => '안전 번호를 불러올 수 없음';
+
+  @override
+  String get safetyNumbersErrorBody =>
+      '이 기기에서 안전 번호를 계산하지 못했습니다. 잠시 후 다시 시도하세요.';
 
   @override
   String get safetyNumbersRetry => '다시 시도';
@@ -2053,7 +2023,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get safetyNumbersGroupBody =>
-      '멤버를 탭하면 60자리 안전 번호가 표시됩니다. 신뢰할 수 있는 채널로 비교하세요 — 통화로 읽어주거나 QR을 스캔하세요. 번호가 일치하지 않으면 해당 멤버의 기기가 위협받았을 수 있습니다.';
+      '멤버를 탭하면 60자리 안전 번호가 표시됩니다. 신뢰할 수 있는 채널로 비교하세요 — 통화로 읽어주거나 QR을 스캔하세요. 번호가 일치하지 않으면 해당 멤버의 기기가 안전하지 않을 수 있습니다.';
 
   @override
   String get safetyNumbersUnverified => '미확인';
@@ -2126,10 +2096,11 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 QR에는 양쪽의 공개 신원 키와 사용자 ID만 담겨 있으며, 비밀 정보는 없습니다.';
 
   @override
-  String get safetyNumbersNoPinTitle => '아직 고정된 신원이 없습니다';
+  String get safetyNumbersNoPinTitle => '아직 안전 번호가 없습니다';
 
   @override
-  String get safetyNumbersNoPinBody => '먼저 메시지를 주고받으세요. 이 기기는 대화하는 신원을 고정합니다.';
+  String get safetyNumbersNoPinBody =>
+      '먼저 메시지를 주고받으세요. 이 기기가 대화 상대의 신원을 고정하면 여기에 번호가 표시됩니다.';
 
   @override
   String get safetyNumbersDirectoryMismatchTitle => '키 서버가 다른 키를 제공합니다';
@@ -2143,7 +2114,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get safetyNumbersDirectoryOtherDeviceBody =>
-      '이 대화는 키 서버가 지금 이 연락처에 제공하는 기기와 다른 기기로 암호화됩니다. 위 번호는 이 대화가 암호화하는 기기의 번호입니다. 신뢰하기 전에 연락처와 비교하세요.';
+      '이 대화는 키 서버가 지금 이 연락처에 제공하는 기기와 다른 기기로 암호화됩니다. 이 화면의 안전 번호는 이 대화가 암호화하는 기기의 번호입니다. 상대방이 기기를 바꿨다면 번호를 다시 비교하세요.';
 
   @override
   String get safetyNumbersPendingBody =>
@@ -2255,80 +2226,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get deviceTransferTitle => '기기 이전';
 
   @override
-  String get deviceTransferHeroEyebrow => '이전';
-
-  @override
-  String get deviceTransferHeroTitle => '기존 기기가 필요합니다.';
-
-  @override
-  String get deviceTransferHeroBody =>
-      '이전은 핸들을 새 기기로 옮깁니다. 기존 기기가 세션을 발급하고 새 기기가 보낸 바로 그 등록 요청을 승인하며, 이전이 완료되면 기존 기기는 로그아웃됩니다. 대화 기록은 옮겨지지 않습니다. VEIL은 복구 수단을 만들지 않습니다.';
-
-  @override
-  String get deviceTransferPillTrustedJoin => '신뢰된 기기 연결';
-
-  @override
-  String get deviceTransferPillNoFallback => '대체 수단 없음';
-
-  @override
-  String get deviceTransferPillNoCloud => '클라우드 복구 없음';
-
-  @override
   String get deviceTransferChipOldDevice => '기존 기기';
 
   @override
   String get deviceTransferChipNewDevice => '새 기기';
 
   @override
-  String get deviceTransferNoFallbackTitle => '대체 경로 없음';
+  String get deviceTransferNoFallbackTitle => '다른 방법은 없습니다';
 
   @override
   String get deviceTransferNoFallbackBody =>
       '기존 기기가 없으면 이전은 실패합니다. VEIL은 복구·초기화·내보내기·관리자 복원을 제공하지 않습니다.';
-
-  @override
-  String get deviceTransferWindowExpiredTitle => '이전 가능 시간 만료';
-
-  @override
-  String get deviceTransferSessionExpiredMessage =>
-      '기존 기기의 이전 세션이 만료되었습니다. 기존 기기에서 새 세션을 발급하세요.';
-
-  @override
-  String get deviceTransferClaimExpiredMessage =>
-      '이 새 기기의 등록 요청이 만료되었습니다. 새로 등록 요청을 보내고 다시 승인을 요청하세요.';
-
-  @override
-  String get deviceTransferMetricMode => '모드';
-
-  @override
-  String get deviceTransferMetricModeOld => '기존 기기';
-
-  @override
-  String get deviceTransferMetricModeNew => '새 기기';
-
-  @override
-  String get deviceTransferMetricSession => '세션';
-
-  @override
-  String get deviceTransferSessionExpired => '만료됨';
-
-  @override
-  String get deviceTransferSessionIdle => '대기';
-
-  @override
-  String get deviceTransferSessionLive => '활성';
-
-  @override
-  String get deviceTransferMetricClaim => '등록 요청';
-
-  @override
-  String get deviceTransferClaimMissing => '없음';
-
-  @override
-  String get deviceTransferClaimExpired => '만료됨';
-
-  @override
-  String get deviceTransferClaimIssued => '발급됨';
 
   @override
   String get deviceTransferPayloadCopied => '이전 코드를 복사했습니다.';
@@ -2340,15 +2248,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get deviceTransferPayloadInvalid => '이전 코드 형식이 올바르지 않습니다.';
 
   @override
-  String get deviceTransferPayloadImported =>
-      '이전 코드를 가져왔습니다. 이전 가능 시간이 끝나기 전에 이 새 기기를 등록하세요.';
-
-  @override
-  String get deviceTransferImportFirst => '먼저 올바른 이전 코드를 가져오세요.';
-
-  @override
-  String get deviceTransferClaimRegistered =>
-      '등록 요청을 보냈습니다. 이 요청 코드를 기존 기기에 전달하고 만료 전에 승인을 요청하세요.';
+  String get deviceTransferImportFirst => '먼저 올바른 이전 코드를 입력하세요.';
 
   @override
   String get deviceTransferClaimFailed => '등록 요청에 실패했습니다.';
@@ -2358,12 +2258,11 @@ class AppLocalizationsKo extends AppLocalizations {
       '완료하기 전에 이 새 기기의 등록 요청을 보내세요.';
 
   @override
-  String get deviceTransferClaimExpiredRegisterFresh =>
-      '이 새 기기의 등록 요청이 만료되었습니다. 먼저 새로 등록 요청을 보내세요.';
+  String get deviceTransferCodeExpired => '만료된 코드입니다. 기존 기기에서 코드를 새로 발급하세요.';
 
   @override
   String get deviceTransferFinishStartedFirst =>
-      '이 기기는 릴레이가 이미 마쳤을 수 있는 이전을 완료하는 중이었습니다. 다른 이전을 가져오기 전에 이 기기에서 그 이전을 완료하세요.';
+      '이 기기는 릴레이가 이미 마쳤을 수 있는 이전을 완료하는 중이었습니다. 다른 코드를 사용하기 전에 이 기기에서 그 이전을 완료하세요.';
 
   @override
   String get deviceTransferComplete =>
@@ -2377,13 +2276,60 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deviceTransferOldRequiredBody =>
-      '현재 신뢰된 기기에서 로그인하여 이전을 발급하고 승인하세요.';
+      '계정에 로그인된 기존 기기에서 이전 코드를 발급하고 승인하세요.';
 
   @override
-  String get deviceTransferStep1Title => '1. 기존 기기에서 시작';
+  String get deviceTransferOldIssueTitle => '이전 코드 발급';
 
   @override
-  String get deviceTransferStep1BodyReady => '다음 기기를 위한 단기 세션과 토큰을 생성합니다.';
+  String get deviceTransferOldIssueBody => '새 기기가 사용할 단기 이전 세션을 엽니다.';
+
+  @override
+  String get deviceTransferOldIssueExpiredBody =>
+      '이전 세션이 만료되었습니다. 코드를 새로 발급하세요.';
+
+  @override
+  String get deviceTransferOldHandTitle => '새 기기에 코드 전달';
+
+  @override
+  String get deviceTransferOldHandBody => '코드를 발급하면 여기에 표시됩니다.';
+
+  @override
+  String get deviceTransferOldApproveTitle => '새 기기 승인';
+
+  @override
+  String get deviceTransferOldApproveBody =>
+      '새 기기가 등록 요청을 보내면 요청 코드가 표시됩니다. 그 코드를 여기서 승인합니다.';
+
+  @override
+  String get deviceTransferNewCodeTitle => '이전 코드 붙여넣기';
+
+  @override
+  String get deviceTransferNewCodeBody => '기존 기기에서 코드를 발급한 뒤 여기에 붙여넣으세요.';
+
+  @override
+  String get deviceTransferNewCodeExpiredBody =>
+      '기기 이전을 마치기 전에 코드가 만료되었습니다. 기존 기기에서 코드를 새로 발급해 여기에 붙여넣으세요.';
+
+  @override
+  String get deviceTransferNewCodeChange => '변경';
+
+  @override
+  String get deviceTransferNewRegisterTitle => '이 기기 등록';
+
+  @override
+  String get deviceTransferNewCompleteTitle => '기존 기기에서 승인 후 완료';
+
+  @override
+  String get deviceTransferNewCompleteBodyUpcoming =>
+      '등록하면 기존 기기에서 승인할 요청 코드가 여기에 표시됩니다.';
+
+  @override
+  String get deviceTransferNewCompleteBody => '기존 기기에 이 요청 코드를 입력하고 승인하세요.';
+
+  @override
+  String get deviceTransferNewCompleteNote =>
+      '완료하면 기존 기기는 로그아웃됩니다. 대화 기록은 이 기기로 옮겨지지 않습니다.';
 
   @override
   String deviceTransferStep1BodyExpires(String when) {
@@ -2391,42 +2337,13 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get deviceTransferStatusReady => '준비됨';
-
-  @override
   String get deviceTransferStatusExpired => '만료됨';
 
   @override
-  String get deviceTransferStatusIssued => '발급됨';
+  String get deviceTransferIssuingToken => '코드 발급 중';
 
   @override
-  String get deviceTransferIssuingToken => '토큰 발급 중';
-
-  @override
-  String get deviceTransferIssueToken => '이전 토큰 발급';
-
-  @override
-  String get deviceTransferStep2Title => '2. 기존 기기에서 승인';
-
-  @override
-  String get deviceTransferStep2BodyWaiting => '아직 이전 세션이 없습니다.';
-
-  @override
-  String get deviceTransferStep2BodyExpired =>
-      '이 이전 세션이 만료되었습니다. 지우고 새로 발급하세요.';
-
-  @override
-  String get deviceTransferStep2BodyAwaiting =>
-      '새 기기가 등록 요청을 보낼 때까지 기다린 뒤, 여기서 그 요청 코드를 승인하세요.';
-
-  @override
-  String get deviceTransferStatusWaiting => '대기 중';
-
-  @override
-  String get deviceTransferStatusAwaitingClaim => '등록 요청 대기 중';
-
-  @override
-  String get deviceTransferClaimFieldLabel => '새 기기 등록 요청';
+  String get deviceTransferIssueToken => '이전 코드 발급';
 
   @override
   String get deviceTransferClaimFieldCaption =>
@@ -2442,24 +2359,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get deviceTransferApproveClaim => '이 요청 승인';
 
   @override
-  String get deviceTransferStep3Title => '3. 새 기기에 이전 코드 전달';
-
-  @override
-  String get deviceTransferReadyToCopy => '복사 준비됨';
-
-  @override
-  String get deviceTransferIssueTokenFirst => '먼저 이전 토큰을 발급하세요.';
-
-  @override
-  String get deviceTransferPayloadExpiredNote =>
-      '이 이전 코드는 더 이상 유효하지 않습니다. 지우고 새 이전 세션을 발급하세요.';
-
-  @override
   String get deviceTransferCompleteOnNewNote =>
-      '새 기기에서 완료하세요. 완료되면 이 기기는 로그아웃되고 로컬 기록이 지워집니다. 대화 기록은 새 기기로 옮겨지지 않습니다.';
+      '승인한 뒤 새 기기에서 완료하세요. 완료되면 이 기기는 로그아웃되고 로컬 기록이 지워집니다. 대화 기록은 새 기기로 옮겨지지 않습니다.';
 
   @override
-  String get deviceTransferCopyPayload => '이전 코드 복사';
+  String get deviceTransferCopyPayload => '코드 복사';
 
   @override
   String get deviceTransferClear => '지우기';
@@ -2468,10 +2372,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get deviceTransferStatusTitle => '이전 상태';
 
   @override
-  String get deviceTransferStatusNeedsApi => '기기 이전은 API 모드에서만 할 수 있습니다.';
+  String get deviceTransferStatusNeedsApi =>
+      '이 빌드는 릴레이에 연결되어 있지 않아 기기를 이전할 수 없습니다.';
 
   @override
-  String get deviceTransferStatusTokenReady => '이전 세션을 열었습니다. 토큰이 준비되었습니다.';
+  String get deviceTransferStatusTokenReady => '이전 세션을 열었습니다. 코드가 준비되었습니다.';
 
   @override
   String get deviceTransferStatusNotStarted => '먼저 이전을 시작하세요.';
@@ -2493,45 +2398,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get deviceTransferFailedTitle => '이전 실패';
 
   @override
-  String get deviceTransferPayloadFieldLabel => '이전 코드';
+  String get deviceTransferPayloadInputLabel => '이전 코드';
 
   @override
-  String get deviceTransferPayloadFieldCaption =>
-      '신뢰된 기존 기기가 발급한 단기 세션과 토큰을 가져오세요.';
-
-  @override
-  String get deviceTransferPayloadInputLabel => '이전 코드 붙여넣기';
-
-  @override
-  String get deviceTransferImportPayload => '이전 코드 가져오기';
-
-  @override
-  String get deviceTransferNewDeviceLabel => '새 기기';
+  String get deviceTransferImportPayload => '이 코드 사용';
 
   @override
   String get deviceTransferNewDeviceCaption =>
-      '이 기기는 등록 요청이 자신의 것임을 증명합니다. 기존 기기는 바로 그 요청만 승인합니다.';
+      '이 기기가 자체 키를 만들고, 기존 기기만 승인할 수 있는 등록 요청을 보냅니다. 이전 코드가 만료되기 전에 등록하세요.';
 
   @override
   String get deviceTransferDeviceNameLabel => '기기 이름';
-
-  @override
-  String get deviceTransferSessionIdLabel => '세션 ID';
-
-  @override
-  String get deviceTransferTokenLabel => '이전 토큰';
-
-  @override
-  String get deviceTransferClaimNotRegistered => '등록 요청 전';
-
-  @override
-  String get deviceTransferClaimExpiredPill => '등록 요청 만료됨';
-
-  @override
-  String get deviceTransferClaimRegisteredPill => '등록 요청 보냄';
-
-  @override
-  String get deviceTransferOldApprovesExact => '기존 기기가 이 요청만 승인';
 
   @override
   String deviceTransferClaimCode(String claimId) {
@@ -2606,20 +2483,22 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityStatusTitle => '보안 상태';
 
   @override
-  String get securityStatusEyebrow => '보안 상태';
-
-  @override
-  String get securityStatusHeroTitle => '백업 없음. 복구 없음. 유출 없음.';
+  String get securityStatusHeroTitle => '백업 없음. 복구 없음. 유출 없음.';
 
   @override
   String get securityStatusHeroBody =>
-      '신원과 런타임 항목은 이 기기와 이 빌드에서 읽어 옵니다. 제품 규칙은 모든 VEIL 빌드에 똑같이 적용됩니다.';
+      '신원과 실행 환경 항목은 이 기기와 이 빌드에서 읽어 옵니다. 제품 규칙은 모든 VEIL 빌드에 똑같이 적용됩니다.';
+
+  @override
+  String securityStatusAttentionTitle(int count) {
+    return '살펴볼 항목 $count개';
+  }
 
   @override
   String get securityStatusPillPrivateBeta => '비공개 베타';
 
   @override
-  String get securityStatusMetricRuntime => '런타임';
+  String get securityStatusMetricRuntime => '실행 환경';
 
   @override
   String get securityStatusMetricRelay => '릴레이';
@@ -2637,7 +2516,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityStatusSectionIdentity => '신원';
 
   @override
-  String get securityStatusSectionRuntime => '런타임';
+  String get securityStatusSectionRuntime => '실행 환경';
 
   @override
   String get securityStatusSectionProductRules => '제품 규칙';
@@ -2683,7 +2562,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 기기가 현재 활성 VEIL 세션을 보유하고 있습니다.';
 
   @override
-  String get securityStatusSecretRefs => '로컬 비밀 키 참조';
+  String get securityStatusSecretRefs => '기기 비밀 키';
 
   @override
   String get securityStatusSecretRefsPresent => '있음';
@@ -2720,7 +2599,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusPrivacyShieldDetail =>
-      'VEIL이 백그라운드로 가면 미리보기를 가리고 로컬 잠금을 다시 겁니다.';
+      'VEIL이 백그라운드로 가면 미리보기를 가리고 앱 잠금을 다시 겁니다.';
 
   @override
   String get securityStatusAppPreview => '최근 앱 미리보기';
@@ -2746,7 +2625,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusScreenCaptureSupportedDetail =>
-      'Android에서는 켜져 있을 때 보안 창 플래그로 스크린샷을 차단합니다.';
+      'Android에서는 켜져 있을 때 화면 보안 설정으로 스크린샷을 차단합니다.';
 
   @override
   String get securityStatusScreenCaptureUnsupportedDetail =>
@@ -2774,7 +2653,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusTransportDetail =>
-      '설정된 엔드포인트가 현재 비공개 베타 전송 정책을 충족합니다.';
+      '설정된 릴레이 주소가 현재 비공개 베타 전송 정책을 충족합니다.';
 
   @override
   String get securityStatusTlsPins => 'TLS 고정';
@@ -2795,17 +2674,17 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 빌드에는 TLS 고정 값(VEIL_TLS_PINS)이 없어, 릴레이 연결이 플랫폼이 신뢰하는 인증서를 모두 받아들입니다. 릴리스 빌드는 고정 값이 없으면 설정 오류에서 멈춥니다.';
 
   @override
-  String get securityStatusApiMode => 'API 모드';
+  String get securityStatusApiMode => '릴레이 주소';
 
   @override
-  String get securityStatusApiAttached => '연결됨';
+  String get securityStatusApiAttached => '설정됨';
 
   @override
-  String get securityStatusApiAttachedDetail => '이 빌드에는 REST API가 설정되어 있습니다.';
+  String get securityStatusApiAttachedDetail => '이 빌드에는 릴레이 주소가 설정되어 있습니다.';
 
   @override
   String get securityStatusApiUnavailableDetail =>
-      'API 엔드포인트가 설정되지 않아 메시지를 주고받을 수 없습니다.';
+      '릴레이 주소가 설정되지 않아 메시지를 주고받을 수 없습니다.';
 
   @override
   String get securityStatusRelayLink => '릴레이 연결';
@@ -2829,7 +2708,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusLocalCacheDetail =>
-      '대화와 엔벨로프는 현재 비공개 베타의 저장 시 암호화 계층 뒤에 로컬로 캐시되고, 앱 전환 화면 미리보기에서 가려지며, 기기 데이터를 지우는 이벤트가 일어나면 삭제됩니다.';
+      '대화와 암호화된 메시지는 현재 비공개 베타의 저장 시 암호화 계층으로 보호되어 이 기기에 캐시되고, 앱 전환 화면 미리보기에서 가려지며, 기기 데이터를 지울 때 함께 삭제됩니다.';
 
   @override
   String get securityStatusIntegrity => '기기 무결성';
@@ -2842,7 +2721,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusIntegrityCompromisedDetail =>
-      '이 기기에서 루팅 또는 탈옥 징후가 감지되었습니다. 이 상태에서는 VEIL이 로컬 잠금 해제를 막습니다.';
+      '이 기기에서 루팅 또는 탈옥 징후가 감지되었습니다. 이 상태에서는 VEIL이 앱 잠금 해제를 막습니다.';
 
   @override
   String securityStatusIntegrityCompromisedReasons(String reasons) {
@@ -2891,11 +2770,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityStatusCryptoAdapter => '암호 어댑터';
 
   @override
-  String get securityStatusCryptoVeilRatchet => '프로덕션 (감사 전)';
+  String get securityStatusCryptoVeilRatchet => '정식 암호화 (감사 전)';
 
   @override
   String securityStatusCryptoVeilRatchetDetail(String adapterId) {
-    return 'VEIL 자체 X3DH와 더블 래칫(X25519, AES-256-GCM, Ed25519)이 동작 중입니다($adapterId). 외부 감사는 아직 진행 전입니다.';
+    return 'VEIL 자체 X3DH와 더블 래칫(X25519, AES-256-GCM, Ed25519)이 동작 중입니다. 어댑터: $adapterId. 외부 감사는 아직 진행 전입니다.';
   }
 
   @override
@@ -2903,7 +2782,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String securityStatusCryptoLibsignalDetail(String adapterId) {
-    return '세션과 메시지 암호화는 VEIL 네이티브 브리지를 거쳐 Signal의 libsignal에서 동작합니다($adapterId). 이 브리지는 아직 감사를 받지 않았습니다.';
+    return '세션과 메시지 암호화는 VEIL 네이티브 브리지를 거쳐 Signal의 libsignal에서 동작합니다. 어댑터: $adapterId. 이 브리지는 아직 감사를 받지 않았습니다.';
   }
 
   @override
@@ -2911,7 +2790,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String securityStatusCryptoDevelopmentDetail(String adapterId) {
-    return '이 빌드는 프로덕션 암호화가 아닌 개발용 어댑터($adapterId)로 동작합니다. 실제 대화에 쓰지 마세요.';
+    return '이 빌드는 프로덕션 암호화가 아닌 개발용 어댑터로 동작합니다. 어댑터: $adapterId. 실제 대화에 쓰지 마세요.';
   }
 
   @override
@@ -2928,15 +2807,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityStatusPushProvider => '푸시 제공자';
 
   @override
-  String get securityStatusPushProviderSeam => '연결부만 있음';
+  String get securityStatusPushProviderSeam => '연결 안 됨';
 
   @override
   String get securityStatusPushProviderSeamDetail =>
-      '메타데이터만 담는 깨우기 경로는 정의되어 있지만, 이 빌드에는 실제 APNs/FCM 제공자가 연결되어 있지 않습니다.';
+      '메타데이터만 담는 푸시 경로는 준비되어 있지만, 이 빌드에는 실제 APNs/FCM 제공자가 연결되어 있지 않습니다.';
 
   @override
   String get securityStatusPushProviderUnavailableDetail =>
-      'API 엔드포인트가 설정되지 않아 이 빌드에서는 푸시를 받을 수 없습니다.';
+      '릴레이 주소가 설정되지 않아 이 빌드에서는 푸시를 받을 수 없습니다.';
 
   @override
   String get securityStatusPushPayloads => '푸시 알림 데이터';
@@ -2946,9 +2825,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusPushPayloadsMetadataDetail =>
-      '나중에 푸시가 켜지더라도 깨우기 신호에는 메타데이터만 담아야 합니다. 메시지 본문은 푸시에 담기지 않습니다.';
+      '나중에 푸시가 켜지더라도 푸시에는 메타데이터만 담습니다. 메시지 본문은 푸시에 담기지 않습니다.';
 
   @override
   String get securityStatusPushPayloadsUnavailableDetail =>
-      'API 엔드포인트가 설정되지 않아 이 빌드에서는 푸시 알림 데이터를 만들지 않습니다.';
+      '릴레이 주소가 설정되지 않아 이 빌드에서는 푸시 알림 데이터를 만들지 않습니다.';
 }

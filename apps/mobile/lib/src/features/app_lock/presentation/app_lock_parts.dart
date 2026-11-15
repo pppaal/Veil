@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_screen_intro.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 // What the lock screen says about itself: the outcome of the last attempt,
@@ -87,7 +87,7 @@ class AppLockFacts {
         ),
       ];
 
-  /// What never changes about the barrier, as pills.
+  /// What never changes about the barrier, as pills: the wide layout's.
   static List<Widget> principlePills(AppLocalizations l10n) => [
         VeilStatusPill(label: l10n.appLockPillLocalOnly),
         VeilStatusPill(label: l10n.appLockPillNoRemoteReset),
@@ -119,17 +119,10 @@ class AppLockCompactIntro extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final palette = context.veilPalette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(l10n.appLockHeroEyebrow, style: theme.textTheme.labelLarge?.copyWith(color: palette.primaryStrong)),
-        const SizedBox(height: VeilSpace.xs),
-        Text(l10n.appLockHeroTitle, style: theme.textTheme.headlineSmall),
-        const SizedBox(height: VeilSpace.xs),
-        Text(l10n.appLockHeroBody, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
-      ],
+    return VeilScreenIntro(
+      eyebrow: l10n.appLockHeroEyebrow,
+      title: l10n.appLockHeroTitle,
+      body: l10n.appLockHeroBody,
     );
   }
 }

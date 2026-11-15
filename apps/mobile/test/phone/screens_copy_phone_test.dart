@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dar
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_labels.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/screen_cases.dart' show layoutOnlyRoutes;
@@ -118,7 +119,7 @@ void main() {
   });
 
   group('device transfer', () {
-    testWidgets('the old device says in Korean that its token is ready', (tester) async {
+    testWidgets('the old device says in Korean that its code is ready', (tester) async {
       await withPhoneApp(
         tester,
         identities,
@@ -128,7 +129,8 @@ void main() {
         body: (world) async {
           // The transfer code is data, which the check leaves out.
           expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
-          expect(findCopy('이전 세션을 열었습니다. 토큰이 준비되었습니다.', skipOffstage: false), findsOneWidget);
+          // "Code", as every other line of the screen calls it; not "token".
+          expect(findCopy('이전 세션을 열었습니다. 코드가 준비되었습니다.', skipOffstage: false), findsOneWidget);
         },
       );
     });
@@ -191,38 +193,47 @@ void main() {
     const change = ChatAttention(identityChanged: true);
     const location = '/safety-numbers/$chatConversationId';
 
-    testWidgets('a phone opens on the warning, before the hero', (tester) async {
+    testWidgets('a phone opens on the warning, before anything else', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = tester.getRect(find.text('Peer identity key changed'));
-        final hero = tester.getRect(find.byType(VeilHeroPanel));
-        expect(warning.bottom, lessThan(hero.top));
+        final warning = tester.getRect(find.text("This contact's identity key changed"));
+        final intro = tester.getRect(find.byType(VeilScreenIntro));
+        expect(find.byType(VeilHeroPanel), findsNothing);
+        expect(warning.bottom, lessThan(intro.top));
         expect(warning.top, lessThan(screenHeight(tester) / 2), reason: 'on the first screenful');
-        expect(find.text('Peer identity key changed'), findsOneWidget, reason: 'said once');
+        expect(find.text("This contact's identity key changed"), findsOneWidget, reason: 'said once');
       });
     });
 
-    testWidgets('says which number is the current one and which the new', (tester) async {
+    // The number to compare is the new one, so it comes first with the
+    // decision under it; the pinned number follows for reference.
+    testWidgets('says which number is the new one and which the current, the new one first', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
         final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
         final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
-        await tester.dragUntilVisible(next, find.byType(ListView), const Offset(0, -200));
-        expect(current, findsOneWidget);
+        final decide = find.text('Re-verify with new key', skipOffstage: false);
         expect(next, findsOneWidget);
-        expect(tester.getTopLeft(current).dy, lessThan(tester.getTopLeft(next).dy));
+        final newTop = tester.getTopLeft(next).dy;
+        final decideTop = tester.getTopLeft(decide).dy;
+        await tester.dragUntilVisible(current, find.byType(ListView), const Offset(0, -200));
+        expect(current, findsOneWidget);
+        expect(newTop, lessThan(decideTop));
         expect(find.text('SAFETY NUMBER', skipOffstage: false), findsNothing);
+        // Scrolled by now: compared within one frame.
+        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
     });
 
-    testWidgets('a wide window keeps the warning beside the new number', (tester) async {
+    testWidgets('a wide window opens on the warning too, with the new number before the current one', (tester) async {
       const wide = PhoneSize(900, 1400, topInset: 0, bottomInset: 0);
       await withPhoneApp(tester, identities, size: wide, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = find.text('Peer identity key changed', skipOffstage: false);
+        final warning = find.text("This contact's identity key changed", skipOffstage: false);
         final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
-        await tester.dragUntilVisible(warning, find.byType(ListView), const Offset(0, -200));
-        expect(tester.getTopLeft(warning).dy, greaterThan(tester.getTopLeft(current).dy));
+        final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
+        expect(tester.getTopLeft(warning).dy, lessThan(tester.getTopLeft(next).dy));
+        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
     });
 
@@ -230,7 +241,7 @@ void main() {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
         await awaitSafetyNumber(tester);
         expect(find.text('SAFETY NUMBER', skipOffstage: false), findsOneWidget);
-        expect(find.text('Peer identity key changed', skipOffstage: false), findsNothing);
+        expect(find.text("This contact's identity key changed", skipOffstage: false), findsNothing);
       });
     });
   });
@@ -239,7 +250,7 @@ void main() {
     // Every word of the headline is on one line: no syllable is left alone.
     void expectWordsWhole(WidgetTester tester) {
       final title = find.descendant(
-        of: find.byType(VeilHeroPanel),
+        of: find.byType(VeilScreenIntro),
         matching: find.byWidgetPredicate((widget) => widget is Text && widget.semanticsLabel != null),
       );
       final paragraph = tester.renderObject<RenderParagraph>(
@@ -258,6 +269,7 @@ void main() {
     for (final (name, location, account) in [
       ('create account', '/create-account', LayoutAccount.signedOut),
       ('security status', '/security-status', LayoutAccount.signedIn),
+      ('the app lock', '/lock', LayoutAccount.locked),
     ]) {
       testWidgets('wraps between words on $name', (tester) async {
         await withPhoneApp(tester, identities, location: location, account: account, locale: 'ko', body: (world) async {
@@ -304,15 +316,13 @@ void main() {
 
   group('privacy consent', () {
     // The framework's tap target check never measured this row: it starts
-    // at the left edge of the list. It was 24 px tall in Korean.
+    // at the left edge of its column. It was 24 px tall in Korean.
     testWidgets('the consent sentence and its box are one target, 44 px tall, and either toggles it',
         (tester) async {
       await withPhoneApp(tester, identities, location: '/privacy-consent', account: LayoutAccount.signedOut, locale: 'ko',
           body: (world) async {
-        final sentence = find.text('위 개인정보 수집·이용에 동의합니다. (필수)');
-        // The button under the sentence ends the screen.
-        await tester.dragUntilVisible(find.text('동의하고 계속하기'), find.byType(ListView), const Offset(0, -300));
-        await pumpFrames(tester, frames: 2);
+        // Under the notice from the start: nothing is scrolled to reach it.
+        final sentence = findCopy('위 개인정보 수집·이용에 동의합니다. (필수)');
         expect(sentence, findsOneWidget);
 
         final row = find.ancestor(of: sentence, matching: find.byType(MergeSemantics)).first;

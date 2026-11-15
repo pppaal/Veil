@@ -5,9 +5,14 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_shell.dart';
+import '../../../shared/presentation/veil_screen_intro.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import 'onboarding_action_scaffold.dart';
 
+/// What VEIL does not do, before there is an account: the three rules as
+/// the screen's headline, the no-recovery notice once, and what follows
+/// from it for the identity and for moving to another device. "I
+/// understand" stays under the text, in reach on any screen height.
 class OnboardingWarningScreen extends ConsumerWidget {
   const OnboardingWarningScreen({super.key});
 
@@ -16,107 +21,87 @@ class OnboardingWarningScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
 
-    return VeilShell(
-      child: ListView(
-        children: [
-          VeilHeroPanel(
-            eyebrow: l10n.onboardingWarnEyebrow,
-            title: l10n.onboardingWarnTitle,
-            body: l10n.onboardingWarnBody,
-            trailing: Container(
-              width: 64,
-              height: 64,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: theme.colorScheme.outline),
-                color: theme.colorScheme.primary.withValues(alpha: 0.08),
-              ),
-              child: Icon(Icons.shield_outlined, color: theme.colorScheme.primary),
-            ),
-            bottom: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                VeilStatusPill(label: l10n.pillDeviceBound),
-                VeilStatusPill(label: l10n.pillNoPasswordReset),
-                VeilStatusPill(label: l10n.pillOldDeviceRequired),
-              ],
-            ),
-          ),
-          const SizedBox(height: VeilSpace.lg),
-          VeilDestructiveNotice(
-            title: l10n.onboardingWarnDestructiveTitle,
-            body: l10n.onboardingWarnDestructiveBody,
-          ),
-          const SizedBox(height: VeilSpace.md),
-          _WarningCard(
-            title: l10n.onboardingWarnIdentityTitle,
-            lines: [
-              l10n.onboardingWarnIdentityLine1,
-              l10n.onboardingWarnIdentityLine2,
-              l10n.onboardingWarnIdentityLine3,
-            ],
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          _WarningCard(
-            title: l10n.onboardingWarnTransferTitle,
-            lines: [
-              l10n.onboardingWarnTransferLine1,
-              l10n.onboardingWarnTransferLine2,
-              l10n.onboardingWarnTransferLine3,
-            ],
-          ),
-          const SizedBox(height: VeilSpace.xl),
-          VeilButton(
-            onPressed: () async {
-              await ref.read(appSessionProvider.notifier).acceptOnboarding();
-              if (!context.mounted) {
-                return;
-              }
-              context.go('/create-account');
-            },
-            label: l10n.commonIUnderstand,
-            icon: Icons.arrow_forward_rounded,
-          ),
-        ],
-      ),
+    return OnboardingActionScaffold(
+      actions: [
+        VeilButton(
+          onPressed: () async {
+            await ref.read(appSessionProvider.notifier).acceptOnboarding();
+            if (!context.mounted) {
+              return;
+            }
+            context.go('/create-account');
+          },
+          label: l10n.commonIUnderstand,
+          icon: Icons.arrow_forward_rounded,
+        ),
+      ],
+      children: [
+        VeilScreenIntro(
+          eyebrow: l10n.onboardingWarnEyebrow,
+          title: l10n.onboardingWarnTitle,
+          titleStyle: theme.textTheme.headlineLarge,
+          body: l10n.onboardingWarnBody,
+        ),
+        const SizedBox(height: VeilSpace.lg),
+        VeilDestructiveNotice(
+          title: l10n.onboardingWarnDestructiveTitle,
+          body: l10n.onboardingWarnDestructiveBody,
+        ),
+        const SizedBox(height: VeilSpace.lg),
+        _RuleGroup(
+          title: l10n.onboardingWarnIdentityTitle,
+          lines: [
+            l10n.onboardingWarnIdentityLine1,
+            l10n.onboardingWarnIdentityLine2,
+            l10n.onboardingWarnIdentityLine3,
+          ],
+        ),
+        const SizedBox(height: VeilSpace.md),
+        _RuleGroup(
+          title: l10n.onboardingWarnTransferTitle,
+          lines: [
+            l10n.onboardingWarnTransferLine1,
+            l10n.onboardingWarnTransferLine2,
+            l10n.onboardingWarnTransferLine3,
+          ],
+        ),
+      ],
     );
   }
 }
 
-class _WarningCard extends StatelessWidget {
-  const _WarningCard({required this.title, required this.lines});
+/// A heading with the rules under it, one to a line.
+class _RuleGroup extends StatelessWidget {
+  const _RuleGroup({required this.title, required this.lines});
 
   final String title;
   final List<String> lines;
 
   @override
   Widget build(BuildContext context) {
-    return VeilSurfaceCard(
-      toned: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: VeilSpace.sm),
-          for (final line in lines) ...[
-            Row(
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        VeilCopy(title, style: theme.textTheme.titleMedium),
+        const SizedBox(height: VeilSpace.xs),
+        for (final line in lines)
+          Padding(
+            padding: const EdgeInsets.only(bottom: VeilSpace.xs),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.remove,
-                  size: VeilIconSize.sm,
-                  color: Theme.of(context).colorScheme.primary,
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(Icons.remove, size: VeilIconSize.sm, color: palette.primary),
                 ),
                 const SizedBox(width: VeilSpace.xs),
-                Expanded(child: Text(line)),
+                Expanded(child: VeilCopy(line, style: theme.textTheme.bodyMedium)),
               ],
             ),
-            const SizedBox(height: VeilSpace.sm),
-          ],
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

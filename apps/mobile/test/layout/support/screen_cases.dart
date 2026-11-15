@@ -217,7 +217,8 @@ const List<ScreenCase> screenCases = [
       screen: OnboardingWarningScreen,
       file: 'onboarding_warning_screen.dart',
       location: '/onboarding',
-      account: _signedOut),
+      account: _signedOut,
+      primaryAction: _primaryButton),
   ScreenCase('create-account',
       screen: CreateAccountScreen,
       file: 'create_account_screen.dart',
@@ -503,6 +504,12 @@ const List<ScreenCase> screenCases = [
       location: '/device-transfer',
       transferStarted: true,
       primaryAction: _firstInput),
+  // The old device before it issued a code: its first step is the button.
+  ScreenCase('device-transfer-old-device-start',
+      screen: DeviceTransferScreen,
+      file: 'device_transfer_screen.dart',
+      location: '/device-transfer',
+      primaryAction: _primaryButton),
   ScreenCase('ai-chat', screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat'),
 
   // States the gate did not open before: a group (its chat, its row in the
@@ -543,6 +550,13 @@ const List<ScreenCase> screenCases = [
       withGroup: true,
       attention: ChatAttention(identityChangedInGroup: true),
       settle: _awaitChangeElsewhere),
+  // A contact this device has not exchanged a message with: no identity is
+  // pinned, so there is no number yet and the page says how to get one.
+  ScreenCase('safety-numbers-unpinned',
+      screen: SafetyNumbersScreen,
+      file: 'safety_numbers_screen.dart',
+      location: '/safety-numbers/conv-jiwoo',
+      settle: _awaitSafetyNumber),
   ScreenCase(
     'chat-room-legacy-badge',
     screen: ChatRoomScreen,

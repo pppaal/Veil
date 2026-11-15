@@ -66,6 +66,15 @@ Use for:
 
 Do not use hero panels for routine form sections.
 
+### `VeilScreenIntro`
+
+The opening words of a screen without a panel around them: a small label,
+one headline and one sentence (`shared/presentation/veil_screen_intro.dart`).
+Use it where a screen has a field or a button to get to: the control then
+follows on the first screenful of a phone. Its headline and sentence are
+drawn with `VeilCopy`. It takes no pills; a state the user acts on (verified
+or not) follows it on a line of its own.
+
 ### `VeilInlineBanner`
 
 Use banners for:

@@ -42,9 +42,9 @@
 
 ## Transfer And Settings
 - Open Device Transfer on the old device and confirm the flow makes the old-device requirement explicit.
-- Run init and approve on the old device and confirm a copyable transfer payload is produced.
-- On a fresh device, open `Transfer from old device`, import the payload, register the claim, and complete the trusted-device join.
-- Let a transfer or claim expire and confirm the UI blocks completion and clearly requires a fresh session.
+- Issue a transfer code on the old device and confirm it can be copied; approve the claim there once the new device shows one.
+- On a fresh device, open `Transfer from old device`, paste the code, register the device, and complete the trusted-device join.
+- Let a transfer or claim expire and confirm the UI no longer offers completion and clearly requires a fresh session: step 1 is marked `Expired` on both devices, the old device issues a new code there and the new device pastes it there. The expired code is refused if it is pasted again.
 - Confirm the new device becomes authenticated and the old device is logged out after completion.
 - Open Settings and confirm the trusted device graph shows current, preferred, trusted, stale, and revoked device states clearly where applicable.
 - If another trusted device is still listed, confirm it can be explicitly revoked without implying any recovery path.

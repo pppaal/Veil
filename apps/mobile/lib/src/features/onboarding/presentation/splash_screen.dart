@@ -67,58 +67,46 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 
     final session = ref.watch(appSessionProvider);
     final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
 
+    // The name, the line VEIL stands for, and what the app is doing right
+    // now (or why it cannot start). Nothing here is for reading twice.
     return VeilShell(
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            VeilHeroPanel(
-              eyebrow: l10n.splashEyebrow,
-              title: l10n.appTitle,
-              body: l10n.splashBody,
-              bottom: Column(
-                children: [
-                  Wrap(
-                    spacing: VeilSpace.xs,
-                    runSpacing: VeilSpace.xs,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      VeilStatusPill(label: l10n.pillDeviceBoundMessenger),
-                      VeilStatusPill(label: l10n.pillPrivateBeta),
-                    ],
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  l10n.splashEyebrow,
+                  style: theme.textTheme.labelLarge?.copyWith(color: palette.primaryStrong),
+                ),
+                const SizedBox(height: VeilSpace.sm),
+                Text(l10n.appTitle, style: theme.textTheme.displayLarge),
+                const SizedBox(height: VeilSpace.xs),
+                VeilCopy(
+                  l10n.splashBody,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(color: palette.textMuted),
+                ),
+                if (session.errorMessage != null) ...[
+                  const SizedBox(height: VeilSpace.xxl),
+                  VeilInlineBanner(
+                    title: l10n.splashErrorTitle,
+                    message: session.errorMessage!,
+                    tone: VeilBannerTone.danger,
                   ),
-                  const SizedBox(height: VeilSpace.lg),
-                  if (session.errorMessage != null)
-                    VeilInlineBanner(
-                      title: l10n.splashErrorTitle,
-                        message: session.errorMessage!,
-                        tone: VeilBannerTone.danger,
-                      )
-                  else
-                    VeilSurfaceCard(
-                      toned: true,
-                      child: Column(
-                        children: [
-                          VeilLoadingBlock(
-                            title: l10n.splashPreparingTitle,
-                            body: l10n.splashPreparingBody,
-                          ),
-                          const SizedBox(height: VeilSpace.md),
-                          const Row(
-                            children: [
-                              Expanded(child: VeilSkeletonLine()),
-                              SizedBox(width: VeilSpace.sm),
-                              VeilSkeletonLine(width: 72),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
+                ] else
+                  VeilLoadingBlock(
+                    title: l10n.splashPreparingTitle,
+                    body: l10n.splashPreparingBody,
+                  ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -21,12 +21,6 @@
 /// One entry per screen, grouped by who owns the screen.
 const knownOtherLanguageText = <String, Map<String, Set<String>>>{
   // --- Onboarding, account and device transfer.
-  'device_transfer_screen.dart': {
-    'ko': {
-      'VEIL New Device',
-      'VEIL_TRANSFER::<sessionId>::<token>',
-    },
-  },
 
   // --- Chat and conversation list, starting a chat or a group.
   'start_group_screen.dart': {

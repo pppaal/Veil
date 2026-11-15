@@ -156,6 +156,29 @@ app was closed is quoted without its chat being opened. Nothing is marked
 read for a preview, an expired message is not quoted, and the list is not
 built behind the app lock.
 
+The screens around the account (consent, onboarding warning, create account,
+choose handle, app lock, device transfer, safety numbers, security status)
+open on `VeilScreenIntro` on a phone: a label, one headline and at most a
+sentence, with no panel around them, and then the field or button the screen
+is for. A no-recovery notice stands once, beside the control that decides.
+The consent and the onboarding warning keep their button in a bar under the
+text that scrolls (`OnboardingActionScaffold`). Device transfer is three
+numbered steps per device (`TransferStep`), of which only the step in hand
+shows its controls; a code to carry to the other device sits in a
+`TransferCodeBox`, and what approving or finishing leads to is said above
+the button that does it. A step's state pill and its small action share the
+title's line and never take width from the words under it. What an action
+came to (`TransferStepResult`) is said in the step that was acted on and
+scrolls itself into view. A session or claim that ran out puts the first
+step back in hand on its side: the claim's window is the session's, so the
+new device can neither register again nor finish on the code it holds, and
+the step that says so is the one that takes the new code
+(`test/phone/device_transfer_expired_claim_phone_test.dart`). A safety number comes before how to compare it and
+the button that records the comparison; a change to review comes before
+everything else. The security status names what needs a look before its
+rows, which are grouped (`SecuritySignalGroup`).
+`test/phone/identity_screens_phone_test.dart` holds that behaviour.
+
 A chat's warnings are banners while they fit above the messages, which keep
 96 px. When they do not (a small phone with the keyboard up), each warning
 is one row with its title and its action, and only more rows than fit

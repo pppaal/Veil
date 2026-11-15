@@ -105,7 +105,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockHeroBody =>
-      'PIN and biometrics are local only. No remote reset. No recovery fallback. No server override.';
+      'PIN and biometrics are checked on this device only. No server can reset or override them.';
 
   @override
   String get appLockPillLocalOnly => 'Local only';
@@ -201,7 +201,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockCaptionUnlock =>
-      'Unlock with your local PIN or biometrics. This never contacts the server.';
+      'Unlock with this device\'s PIN or biometrics.';
 
   @override
   String get appLockFieldSetPin => 'Set PIN';
@@ -244,7 +244,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String appLockStatusPinMismatchAttempts(int count) {
-    return 'PIN mismatch. $count attempt(s) left before temporary lock.';
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'PIN mismatch. $count attempts left before temporary lock.',
+      one: 'PIN mismatch. 1 attempt left before temporary lock.',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -267,17 +273,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get splashEyebrow => 'PRIVATE BETA';
 
   @override
-  String get splashBody => 'No backup. No recovery. No leaks.';
+  String get splashBody => 'No backup. No recovery. No leaks.';
 
   @override
-  String get splashErrorTitle => 'Runtime configuration blocked';
+  String get splashErrorTitle => 'VEIL cannot start';
 
   @override
-  String get splashPreparingTitle => 'Preparing local state';
+  String get splashPreparingTitle => 'Opening VEIL';
 
   @override
   String get splashPreparingBody =>
-      'Checking onboarding, session binding, and local security state.';
+      'Checking this device\'s session and security state.';
 
   @override
   String get onboardingWarnEyebrow => 'PRODUCT RULES';
@@ -287,7 +293,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingWarnBody =>
-      'VEIL is device-bound by design. Loss is final. Restore is unavailable. This is not a cloud inbox.';
+      'VEIL is bound to this device by design. It is not a cloud inbox.';
 
   @override
   String get onboardingWarnDestructiveTitle => 'Unrecoverable by design';
@@ -305,7 +311,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get onboardingWarnIdentityLine2 =>
-      'Your private material stays on the device.';
+      'Your private keys stay on this device.';
 
   @override
   String get onboardingWarnIdentityLine3 => 'There is no password reset path.';
@@ -329,12 +335,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentSubtitle => 'Read before using VEIL';
-
-  @override
-  String get privacyConsentEyebrow => 'PRIVACY PROTECTION';
-
-  @override
-  String get privacyConsentHeroTitle => 'Privacy &\nData Protection';
 
   @override
   String get privacyConsentHeroBody =>
@@ -454,10 +454,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authCreateHeroTitle => 'This device becomes your identity.';
 
   @override
-  String get authCreateHeroBody =>
-      'VEIL binds access to the hardware in your hand. If the device is lost, the account is lost with it.';
-
-  @override
   String get authCreateRestoreTitle => 'No restore path';
 
   @override
@@ -465,35 +461,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'If you lose this device, your account and messages are gone. VEIL cannot restore access. This is intentional.';
 
   @override
-  String get authCreateMetricIdentity => 'Identity';
-
-  @override
-  String get authCreateMetricIdentityValue => 'Local';
-
-  @override
-  String get authCreateMetricRecovery => 'Recovery';
-
-  @override
-  String get authCreateMetricRecoveryValue => 'None';
-
-  @override
-  String get authCreateMetricTransfer => 'Transfer';
-
-  @override
-  String get authCreateMetricTransferValue => 'Old device';
-
-  @override
-  String get authCreateFieldLabel => 'PROFILE LABEL';
+  String get authCreateFieldLabel => 'PROFILE';
 
   @override
   String get authCreateFieldCaption =>
-      'Handles are the discovery layer. This label is presentation only.';
+      'People find you by your handle. This name is only shown, never searched.';
 
   @override
   String get authCreateDisplayName => 'Display name';
 
   @override
-  String get authCreateDisplayHint => 'Optional label for this account';
+  String get authCreateDisplayHint => 'Optional';
 
   @override
   String get authCreateTransferLabel => 'Transfer from old device';
@@ -509,7 +487,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authHandleHeroBody =>
-      'Pick a direct handle for discovery. VEIL binds the handle to this device after local identity material is generated.';
+      'Pick the handle people will find you by. VEIL binds it to this device once the device\'s keys are generated.';
 
   @override
   String get authHandleFieldLabel => 'HANDLE';
@@ -523,9 +501,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authHandleInputHint => 'cold.operator';
-
-  @override
-  String get authHandleChoosePrompt => 'Choose a handle';
 
   @override
   String get authHandleBindingSection => 'BINDING FLOW';
@@ -545,7 +520,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Publish only public device material and handle metadata.';
 
   @override
-  String get authHandleStep3Title => 'Challenge device';
+  String get authHandleStep3Title => 'Check the device';
 
   @override
   String get authHandleStep3Body =>
@@ -2189,12 +2164,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'No session yet — send a message first';
 
   @override
-  String safetyNumbersRotationFailed(String error) {
-    return 'Could not start a new session: $error';
-  }
+  String get safetyNumbersRotationFailed =>
+      'Could not start a new session. Try again in a moment.';
 
   @override
   String get safetyNumbersErrorTitle => 'Could not load safety number';
+
+  @override
+  String get safetyNumbersErrorBody =>
+      'This device could not work out the safety number. Try again in a moment.';
 
   @override
   String get safetyNumbersRetry => 'Retry';
@@ -2241,11 +2219,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Both of you should see the same 60-digit number. Compare on a channel you trust — read it aloud over a call, or scan the QR. If the numbers don\'t match, someone is in the middle of your conversation.';
 
   @override
-  String get safetyNumbersKeyChangedTitle => 'Peer identity key changed';
+  String get safetyNumbersKeyChangedTitle =>
+      'This contact\'s identity key changed';
 
   @override
   String safetyNumbersKeyChangedMessage(String date) {
-    return 'The identity key for this peer is different from the one you verified on $date. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.';
+    return 'This contact\'s identity key is different from the one you verified on $date. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.';
   }
 
   @override
@@ -2255,7 +2234,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersVerifiedNote =>
-      'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.';
+      'If this contact reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.';
 
   @override
   String get safetyNumbersReVerify => 'Re-verify with new key';
@@ -2293,11 +2272,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'This QR holds both public identity keys and user ids, nothing secret.';
 
   @override
-  String get safetyNumbersNoPinTitle => 'No identity pinned yet';
+  String get safetyNumbersNoPinTitle => 'No safety number yet';
 
   @override
   String get safetyNumbersNoPinBody =>
-      'Exchange a message first: this device pins the identity it talks to.';
+      'Exchange a message first. This device then pins the identity it talks to, and the number appears here.';
 
   @override
   String get safetyNumbersDirectoryMismatchTitle =>
@@ -2313,7 +2292,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersDirectoryOtherDeviceBody =>
-      'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.';
+      'This conversation encrypts to a different device than the one the key server now lists for this contact. The safety number on this page belongs to the device it encrypts to. If your contact changed devices, compare numbers with them again.';
 
   @override
   String get safetyNumbersPendingBody =>
@@ -2428,25 +2407,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferTitle => 'Device Transfer';
 
   @override
-  String get deviceTransferHeroEyebrow => 'TRANSFER';
-
-  @override
-  String get deviceTransferHeroTitle => 'Old device required.';
-
-  @override
-  String get deviceTransferHeroBody =>
-      'Transfer moves your handle to a new device. The old device issues the session and approves the exact new-device claim, and is signed out when the transfer completes. Conversation history is not transferred. VEIL does not create recovery.';
-
-  @override
-  String get deviceTransferPillTrustedJoin => 'Trusted-device join';
-
-  @override
-  String get deviceTransferPillNoFallback => 'No fallback';
-
-  @override
-  String get deviceTransferPillNoCloud => 'No cloud recovery';
-
-  @override
   String get deviceTransferChipOldDevice => 'Old device';
 
   @override
@@ -2460,70 +2420,17 @@ class AppLocalizationsEn extends AppLocalizations {
       'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.';
 
   @override
-  String get deviceTransferWindowExpiredTitle => 'Transfer window expired';
-
-  @override
-  String get deviceTransferSessionExpiredMessage =>
-      'The old-device transfer session expired. Issue a fresh session from the old device.';
-
-  @override
-  String get deviceTransferClaimExpiredMessage =>
-      'This new-device claim expired. Register a fresh claim and request approval again.';
-
-  @override
-  String get deviceTransferMetricMode => 'Mode';
-
-  @override
-  String get deviceTransferMetricModeOld => 'Old device';
-
-  @override
-  String get deviceTransferMetricModeNew => 'New device';
-
-  @override
-  String get deviceTransferMetricSession => 'Session';
-
-  @override
-  String get deviceTransferSessionExpired => 'Expired';
-
-  @override
-  String get deviceTransferSessionIdle => 'Idle';
-
-  @override
-  String get deviceTransferSessionLive => 'Live';
-
-  @override
-  String get deviceTransferMetricClaim => 'Claim';
-
-  @override
-  String get deviceTransferClaimMissing => 'Missing';
-
-  @override
-  String get deviceTransferClaimExpired => 'Expired';
-
-  @override
-  String get deviceTransferClaimIssued => 'Issued';
-
-  @override
-  String get deviceTransferPayloadCopied => 'Transfer payload copied.';
+  String get deviceTransferPayloadCopied => 'Transfer code copied.';
 
   @override
   String get deviceTransferReturnToConversations => 'Return to conversations';
 
   @override
   String get deviceTransferPayloadInvalid =>
-      'Transfer payload format is invalid.';
+      'The transfer code\'s format is not valid.';
 
   @override
-  String get deviceTransferPayloadImported =>
-      'Transfer payload imported. Register this new device before the transfer window closes.';
-
-  @override
-  String get deviceTransferImportFirst =>
-      'Import a valid transfer payload first.';
-
-  @override
-  String get deviceTransferClaimRegistered =>
-      'Claim registered. Give this claim code to the old device and request approval before it expires.';
+  String get deviceTransferImportFirst => 'Use a valid transfer code first.';
 
   @override
   String get deviceTransferClaimFailed => 'Claim failed.';
@@ -2533,12 +2440,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Register this new-device claim before completion.';
 
   @override
-  String get deviceTransferClaimExpiredRegisterFresh =>
-      'This new-device claim has expired. Register a fresh claim first.';
+  String get deviceTransferCodeExpired =>
+      'This transfer code has expired. Issue a new one on the old device.';
 
   @override
   String get deviceTransferFinishStartedFirst =>
-      'This device already started completing a transfer that the relay may have finished. Complete that transfer on this device before importing another.';
+      'This device already started completing a transfer that the relay may have finished. Complete that transfer on this device before using another code.';
 
   @override
   String get deviceTransferComplete =>
@@ -2555,11 +2462,62 @@ class AppLocalizationsEn extends AppLocalizations {
       'Sign in on a currently trusted device to issue and approve a transfer.';
 
   @override
-  String get deviceTransferStep1Title => '1. Initiate on old device';
+  String get deviceTransferOldIssueTitle => 'Issue a transfer code';
 
   @override
-  String get deviceTransferStep1BodyReady =>
-      'Generate a short-lived session and token for the next device.';
+  String get deviceTransferOldIssueBody =>
+      'Opens a short-lived transfer session for your new device.';
+
+  @override
+  String get deviceTransferOldIssueExpiredBody =>
+      'The transfer session expired. Issue a new code.';
+
+  @override
+  String get deviceTransferOldHandTitle => 'Give the code to the new device';
+
+  @override
+  String get deviceTransferOldHandBody =>
+      'The code appears here once it is issued.';
+
+  @override
+  String get deviceTransferOldApproveTitle => 'Approve the new device';
+
+  @override
+  String get deviceTransferOldApproveBody =>
+      'After it registers, the new device shows a claim code. You approve that code here.';
+
+  @override
+  String get deviceTransferNewCodeTitle => 'Paste the transfer code';
+
+  @override
+  String get deviceTransferNewCodeBody =>
+      'Issue the code on your old device, then paste it here.';
+
+  @override
+  String get deviceTransferNewCodeExpiredBody =>
+      'The transfer code expired before the transfer was finished. Issue a new code on the old device and paste it here.';
+
+  @override
+  String get deviceTransferNewCodeChange => 'Change';
+
+  @override
+  String get deviceTransferNewRegisterTitle => 'Register this device';
+
+  @override
+  String get deviceTransferNewCompleteTitle =>
+      'Approve on the old device, then finish';
+
+  @override
+  String get deviceTransferNewCompleteBodyUpcoming =>
+      'Once registered, this device shows a claim code for the old device to approve.';
+
+  @override
+  String get deviceTransferNewCompleteBody =>
+      'Enter this claim code on the old device and approve it there.';
+
+  @override
+  String get deviceTransferNewCompleteNote =>
+      'When you finish, the old device is signed out. Conversation history does not move to this device.';
 
   @override
   String deviceTransferStep1BodyExpires(String when) {
@@ -2567,43 +2525,13 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get deviceTransferStatusReady => 'Ready';
-
-  @override
   String get deviceTransferStatusExpired => 'Expired';
 
   @override
-  String get deviceTransferStatusIssued => 'Issued';
+  String get deviceTransferIssuingToken => 'Issuing code';
 
   @override
-  String get deviceTransferIssuingToken => 'Issuing token';
-
-  @override
-  String get deviceTransferIssueToken => 'Issue transfer token';
-
-  @override
-  String get deviceTransferStep2Title => '2. Approve on old device';
-
-  @override
-  String get deviceTransferStep2BodyWaiting =>
-      'No transfer session exists yet.';
-
-  @override
-  String get deviceTransferStep2BodyExpired =>
-      'This transfer session expired. Clear it and issue a fresh one.';
-
-  @override
-  String get deviceTransferStep2BodyAwaiting =>
-      'Wait for the new device to register its claim, then approve that specific claim code here.';
-
-  @override
-  String get deviceTransferStatusWaiting => 'Waiting';
-
-  @override
-  String get deviceTransferStatusAwaitingClaim => 'Awaiting claim';
-
-  @override
-  String get deviceTransferClaimFieldLabel => 'NEW-DEVICE CLAIM';
+  String get deviceTransferIssueToken => 'Issue transfer code';
 
   @override
   String get deviceTransferClaimFieldCaption =>
@@ -2620,24 +2548,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferApproveClaim => 'Approve this claim';
 
   @override
-  String get deviceTransferStep3Title => '3. Hand payload to new device';
-
-  @override
-  String get deviceTransferReadyToCopy => 'Ready to copy';
-
-  @override
-  String get deviceTransferIssueTokenFirst => 'Issue a transfer token first.';
-
-  @override
-  String get deviceTransferPayloadExpiredNote =>
-      'This payload is no longer valid. Clear it and issue a fresh transfer session.';
-
-  @override
   String get deviceTransferCompleteOnNewNote =>
-      'Complete on the new device. When it completes, this device is signed out and its local history is erased. Conversation history does not move to the new device.';
+      'After you approve, finish on the new device. This device is then signed out and its local history is erased. Conversation history does not move to the new device.';
 
   @override
-  String get deviceTransferCopyPayload => 'Copy payload';
+  String get deviceTransferCopyPayload => 'Copy code';
 
   @override
   String get deviceTransferClear => 'Clear';
@@ -2646,11 +2561,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferStatusTitle => 'Transfer status';
 
   @override
-  String get deviceTransferStatusNeedsApi => 'Transfer requires API mode.';
+  String get deviceTransferStatusNeedsApi =>
+      'This build is not connected to a relay, so it cannot transfer.';
 
   @override
   String get deviceTransferStatusTokenReady =>
-      'Transfer session open. The token is ready.';
+      'Transfer session open. The code is ready.';
 
   @override
   String get deviceTransferStatusNotStarted => 'Start transfer first.';
@@ -2673,46 +2589,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferFailedTitle => 'Transfer failed';
 
   @override
-  String get deviceTransferPayloadFieldLabel => 'TRANSFER PAYLOAD';
+  String get deviceTransferPayloadInputLabel => 'Transfer code';
 
   @override
-  String get deviceTransferPayloadFieldCaption =>
-      'Import the short-lived session and token issued by the trusted old device.';
-
-  @override
-  String get deviceTransferPayloadInputLabel => 'Paste transfer payload';
-
-  @override
-  String get deviceTransferImportPayload => 'Import payload';
-
-  @override
-  String get deviceTransferNewDeviceLabel => 'NEW DEVICE';
+  String get deviceTransferImportPayload => 'Use this code';
 
   @override
   String get deviceTransferNewDeviceCaption =>
-      'This device proves its own claim. The old device only approves that exact claim.';
+      'This device creates its own keys and sends a claim that only the old device can approve. Register before the transfer code expires.';
 
   @override
   String get deviceTransferDeviceNameLabel => 'Device name';
-
-  @override
-  String get deviceTransferSessionIdLabel => 'Session id';
-
-  @override
-  String get deviceTransferTokenLabel => 'Transfer token';
-
-  @override
-  String get deviceTransferClaimNotRegistered => 'Claim not registered';
-
-  @override
-  String get deviceTransferClaimExpiredPill => 'Claim expired';
-
-  @override
-  String get deviceTransferClaimRegisteredPill => 'Claim registered';
-
-  @override
-  String get deviceTransferOldApprovesExact =>
-      'Old device approves exact claim';
 
   @override
   String deviceTransferClaimCode(String claimId) {
@@ -2788,14 +2675,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusTitle => 'Security Status';
 
   @override
-  String get securityStatusEyebrow => 'SECURITY STATUS';
-
-  @override
-  String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
+  String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
 
   @override
   String get securityStatusHeroBody =>
       'The identity and runtime rows are read from this device and this build. The product rules hold for every VEIL build.';
+
+  @override
+  String securityStatusAttentionTitle(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count items need a look',
+      one: '1 item needs a look',
+    );
+    return '$_temp0';
+  }
 
   @override
   String get securityStatusPillPrivateBeta => 'Private beta';
@@ -2866,7 +2761,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'This device currently holds the active VEIL session.';
 
   @override
-  String get securityStatusSecretRefs => 'Local secret refs';
+  String get securityStatusSecretRefs => 'Device secret keys';
 
   @override
   String get securityStatusSecretRefsPresent => 'Present';
@@ -2978,18 +2873,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'This build sets no TLS pins (VEIL_TLS_PINS), so the relay connection accepts any certificate the platform trusts. Release builds stop at a configuration error without them.';
 
   @override
-  String get securityStatusApiMode => 'API mode';
+  String get securityStatusApiMode => 'Relay address';
 
   @override
-  String get securityStatusApiAttached => 'Attached';
+  String get securityStatusApiAttached => 'Configured';
 
   @override
   String get securityStatusApiAttachedDetail =>
-      'REST API is configured for this build.';
+      'A relay address is configured for this build.';
 
   @override
   String get securityStatusApiUnavailableDetail =>
-      'No API endpoint is configured. Messaging is unavailable.';
+      'No relay address is configured. Messaging is unavailable.';
 
   @override
   String get securityStatusRelayLink => 'Relay link';
@@ -3114,7 +3009,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusPushProvider => 'Push provider';
 
   @override
-  String get securityStatusPushProviderSeam => 'Seam only';
+  String get securityStatusPushProviderSeam => 'Not connected';
 
   @override
   String get securityStatusPushProviderSeamDetail =>
@@ -3122,7 +3017,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusPushProviderUnavailableDetail =>
-      'No API endpoint is configured, so push delivery is unavailable in this build.';
+      'No relay address is configured, so push delivery is unavailable in this build.';
 
   @override
   String get securityStatusPushPayloads => 'Push payloads';
@@ -3136,5 +3031,5 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusPushPayloadsUnavailableDetail =>
-      'No API endpoint is configured, so push payload generation is unavailable in this build.';
+      'No relay address is configured, so push payload generation is unavailable in this build.';
 }

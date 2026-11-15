@@ -54,12 +54,12 @@ void main() {
     });
   });
 
-  // Where the line is too long (360 px at 1.3x) it breaks between two
-  // parts, and the dot that separates parts is drawn only between two that
-  // share a line: no line ends with one, and none starts with one.
-  testWidgets('with larger text the status line wraps between its parts, with no separator left hanging',
-      (tester) async {
-    const lines = ['Connected  ·  8 chats', 'No backup'];
+  // The line breaks only between two parts when it is too long, and the dot
+  // that separates parts is drawn only between two that share a line: no
+  // line ends with one, and none starts with one. With the shorter words it
+  // has now, the whole line fits a 360 px phone at 1.3x.
+  testWidgets('with larger text the status line fits, with no separator left hanging', (tester) async {
+    const lines = ['Connected  ·  8 chats  ·  No backup'];
     await withPhoneApp(tester, identities, location: '/conversations', textScale: 1.3, body: (world) async {
       final rects = [for (final line in lines) tester.getRect(find.text(line))];
       for (final (index, rect) in rects.indexed) {

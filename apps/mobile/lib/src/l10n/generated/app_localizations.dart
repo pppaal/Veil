@@ -259,7 +259,7 @@ abstract class AppLocalizations {
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:
-  /// **''**
+  /// **'Your PIN and biometrics are checked on this phone only.'**
   String get appLockHeroBody;
 
   /// deprecated: deleted in W0-ARB phase 2
@@ -637,7 +637,7 @@ abstract class AppLocalizations {
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:
-  /// **'Your keys stay on this phone.'**
+  /// **'Your private keys stay on this phone.'**
   String get onboardingWarnIdentityLine2;
 
   /// deprecated: deleted in W0-ARB phase 2
@@ -751,7 +751,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentCollectItem4.
   ///
   /// In en, this message translates to:
-  /// **'Your contact list in the app: which accounts you added (the names you give them stay on this phone)'**
+  /// **'Your in-app contact list: which accounts you added (the names you give them stay on this phone)'**
   String get privacyConsentCollectItem4;
 
   /// No description provided for @privacyConsentCollectItem5.
@@ -811,7 +811,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentRetentionItem2.
   ///
   /// In en, this message translates to:
-  /// **'Device data is removed when a device is signed out, and its record within about 30 days'**
+  /// **'Device data is removed when a device is signed out, and its device record within about 30 days'**
   String get privacyConsentRetentionItem2;
 
   /// No description provided for @privacyConsentRetentionItem3.
@@ -865,7 +865,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentNotCollectedItem3.
   ///
   /// In en, this message translates to:
-  /// **'Your phone\'s address book, call log or other personal data on your device'**
+  /// **'Your phone\'s address book, its call log or other personal data on your device'**
   String get privacyConsentNotCollectedItem3;
 
   /// No description provided for @privacyConsentThirdPartyTitle.
@@ -1765,7 +1765,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatBannerDeliveryStalled.
   ///
   /// In en, this message translates to:
-  /// **'Not sent'**
+  /// **'Couldn\'t send'**
   String get chatBannerDeliveryStalled;
 
   /// No description provided for @chatBannerQueuedLocally.
@@ -3805,7 +3805,7 @@ abstract class AppLocalizations {
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:
-  /// **'Only on this phone'**
+  /// **'No profile on the server'**
   String get profilePrivacyTitle;
 
   /// deprecated: deleted in W0-ARB phase 2
@@ -3847,13 +3847,13 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferChipOldDevice.
   ///
   /// In en, this message translates to:
-  /// **'This is the old phone'**
+  /// **'Old phone'**
   String get deviceTransferChipOldDevice;
 
   /// No description provided for @deviceTransferChipNewDevice.
   ///
   /// In en, this message translates to:
-  /// **'This is the new phone'**
+  /// **'New phone'**
   String get deviceTransferChipNewDevice;
 
   /// deprecated: deleted in W0-ARB phase 2
@@ -4237,13 +4237,13 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferExpiryInSeconds.
   ///
   /// In en, this message translates to:
-  /// **'in {seconds}s'**
+  /// **'{seconds, plural, =1{in 1 second} other{in {seconds} seconds}}'**
   String deviceTransferExpiryInSeconds(int seconds);
 
   /// No description provided for @deviceTransferExpiryInMinutes.
   ///
   /// In en, this message translates to:
-  /// **'in {minutes}m'**
+  /// **'{minutes, plural, =1{in 1 minute} other{in {minutes} minutes}}'**
   String deviceTransferExpiryInMinutes(int minutes);
 
   /// No description provided for @deviceTransferExpiryAt.
@@ -4285,13 +4285,13 @@ abstract class AppLocalizations {
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:
-  /// **''**
+  /// **'How this phone is protected'**
   String get securityStatusHeroTitle;
 
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:
-  /// **''**
+  /// **'These rows are read from this phone and this version of the app.'**
   String get securityStatusHeroBody;
 
   /// No description provided for @securityStatusAttentionTitle.

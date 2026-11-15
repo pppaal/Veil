@@ -249,7 +249,7 @@ void main() {
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
         expect(find.byType(VeilNoticeRow), findsNWidgets(2));
-        for (final action in ['Review', 'Retry failed sends']) {
+        for (final action in ['Review', 'Retry now']) {
           final button = tester.renderObject<RenderBox>(find.widgetWithText(TextButton, action));
           expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
           expect(button.size.height, greaterThanOrEqualTo(44), reason: '"$action"');

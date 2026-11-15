@@ -90,7 +90,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appLockHeroTitle => 'Veil is locked';
 
   @override
-  String get appLockHeroBody => '';
+  String get appLockHeroBody =>
+      'Your PIN and biometrics are checked on this phone only.';
 
   @override
   String get appLockPillLocalOnly => 'This phone only';
@@ -313,7 +314,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onboardingWarnIdentityLine1 => 'Your account lives on this phone.';
 
   @override
-  String get onboardingWarnIdentityLine2 => 'Your keys stay on this phone.';
+  String get onboardingWarnIdentityLine2 =>
+      'Your private keys stay on this phone.';
 
   @override
   String get onboardingWarnIdentityLine3 =>
@@ -382,7 +384,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentCollectItem4 =>
-      'Your contact list in the app: which accounts you added (the names you give them stay on this phone)';
+      'Your in-app contact list: which accounts you added (the names you give them stay on this phone)';
 
   @override
   String get privacyConsentCollectItem5 =>
@@ -420,7 +422,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentRetentionItem2 =>
-      'Device data is removed when a device is signed out, and its record within about 30 days';
+      'Device data is removed when a device is signed out, and its device record within about 30 days';
 
   @override
   String get privacyConsentRetentionItem3 =>
@@ -453,7 +455,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyConsentNotCollectedItem3 =>
-      'Your phone\'s address book, call log or other personal data on your device';
+      'Your phone\'s address book, its call log or other personal data on your device';
 
   @override
   String get privacyConsentThirdPartyTitle => 'Third parties';
@@ -1006,7 +1008,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatBannerRelayReconnecting => 'Connecting…';
 
   @override
-  String get chatBannerDeliveryStalled => 'Not sent';
+  String get chatBannerDeliveryStalled => 'Couldn\'t send';
 
   @override
   String get chatBannerQueuedLocally => 'Sending…';
@@ -2282,7 +2284,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileNicknameNotSet => 'Not set';
 
   @override
-  String get profilePrivacyTitle => 'Only on this phone';
+  String get profilePrivacyTitle => 'No profile on the server';
 
   @override
   String get profilePrivacyBody =>
@@ -2305,10 +2307,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get deviceTransferTitle => 'Move to a new phone';
 
   @override
-  String get deviceTransferChipOldDevice => 'This is the old phone';
+  String get deviceTransferChipOldDevice => 'Old phone';
 
   @override
-  String get deviceTransferChipNewDevice => 'This is the new phone';
+  String get deviceTransferChipNewDevice => 'New phone';
 
   @override
   String get deviceTransferNoFallbackTitle => 'Both phones are needed';
@@ -2534,12 +2536,24 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String deviceTransferExpiryInSeconds(int seconds) {
-    return 'in ${seconds}s';
+    String _temp0 = intl.Intl.pluralLogic(
+      seconds,
+      locale: localeName,
+      other: 'in $seconds seconds',
+      one: 'in 1 second',
+    );
+    return '$_temp0';
   }
 
   @override
   String deviceTransferExpiryInMinutes(int minutes) {
-    return 'in ${minutes}m';
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: 'in $minutes minutes',
+      one: 'in 1 minute',
+    );
+    return '$_temp0';
   }
 
   @override
@@ -2563,10 +2577,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusTitle => 'Security';
 
   @override
-  String get securityStatusHeroTitle => '';
+  String get securityStatusHeroTitle => 'How this phone is protected';
 
   @override
-  String get securityStatusHeroBody => '';
+  String get securityStatusHeroBody =>
+      'These rows are read from this phone and this version of the app.';
 
   @override
   String securityStatusAttentionTitle(int count) {

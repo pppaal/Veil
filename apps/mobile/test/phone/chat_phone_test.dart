@@ -208,7 +208,7 @@ void main() {
       location: _chat,
       attention: const ChatAttention(identityChanged: true, failedSends: 2),
       body: (world) async {
-        for (final text in ['Safety number changed', 'Review', 'Delivery stalled', 'Retry failed sends']) {
+        for (final text in ['Safety number changed', 'Review', "Couldn't send", 'Retry now']) {
           final rect = onScreen(tester, find.text(text));
           expect(rect.height, greaterThan(0), reason: '"$text" is on screen');
         }
@@ -227,8 +227,8 @@ void main() {
   // would not fit there, and a strip that scrolls them cuts the first one's
   // action off, which is the one thing the user must be able to reach.
   testWidgets('with the keyboard up, each warning keeps its title and its action on one row', (tester) async {
-    const titles = ['Safety number changed', 'Delivery stalled'];
-    const actions = ['Review', 'Retry failed sends'];
+    const titles = ['Safety number changed', "Couldn't send"];
+    const actions = ['Review', 'Retry now'];
     await withPhoneApp(
       tester,
       identities,
@@ -298,13 +298,13 @@ void main() {
         Finder action(String label) => find.widgetWithText(TextButton, label);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Review'))), isNull);
         expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Talk to this account'))), isNull);
-        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry failed sends'))), isNotNull,
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry now'))), isNotNull,
             reason: 'three rows are more than this screen has room for');
         expect(onScreen(tester, find.byType(ChatMessageList)).height, greaterThanOrEqualTo(96));
 
-        await tester.ensureVisible(action('Retry failed sends'));
+        await tester.ensureVisible(action('Retry now'));
         await pumpFrames(tester, frames: 2);
-        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry failed sends'))), isNull);
+        expect(whyNotWhollyTappable(tester, tester.renderObject<RenderBox>(action('Retry now'))), isNull);
         expect(tester.takeException(), isNull);
       },
     );

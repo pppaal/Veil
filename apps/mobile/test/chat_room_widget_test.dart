@@ -223,7 +223,7 @@ void main() {
     await tester.pump();
     // The button says so while the page is on its way, and cannot be
     // pressed again.
-    expect(find.text('Loading older'), findsOneWidget);
+    expect(find.text('Loading older messages…'), findsOneWidget);
     expect(find.text('Load older messages'), findsNothing);
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
@@ -231,7 +231,7 @@ void main() {
     expect(find.text('Older relay note'), findsOneWidget);
     expect(find.text('Newest relay note'), findsOneWidget);
     expect(find.text('Load older messages'), findsNothing);
-    expect(find.text('Loading older'), findsNothing);
+    expect(find.text('Loading older messages…'), findsNothing);
   });
 
   group('a disappearing message on a device whose clock runs 15 minutes fast', () {

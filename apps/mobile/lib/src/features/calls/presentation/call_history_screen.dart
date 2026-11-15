@@ -4,15 +4,18 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../app/app_state.dart';
+import '../../../core/domain/conversation_preview.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/call_history_providers.dart';
 
 /// The calls the relay has on record for this account, newest first. This
 /// build cannot place or take a call, so a row does what it can: it opens
-/// the chat with that person. The line above the rows says so.
+/// the chat with that person, when this device has that chat. The line
+/// above the rows says so.
 class CallHistoryScreen extends ConsumerWidget {
   const CallHistoryScreen({super.key});
 
@@ -26,7 +29,11 @@ class CallHistoryScreen extends ConsumerWidget {
       child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(callHistoryProvider);
-          await ref.read(callHistoryProvider.future);
+          try {
+            await ref.read(callHistoryProvider.future);
+          } catch (_) {
+            // The banner below already says that the list did not load.
+          }
         },
         child: callsAsync.when(
           loading: () => ListView(
@@ -89,7 +96,10 @@ class _CallRow extends ConsumerWidget {
     final palette = context.veilPalette;
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final title = _title(l10n, ref);
+    // The chat this call belongs to, if this device has it. A record can
+    // name one it does not have (left, or not loaded yet).
+    final conversation = ref.watch(messengerControllerProvider).conversationById(call.conversationId);
+    final title = _title(l10n, conversation);
     final isMissed = call.outcome == CallOutcome.missed;
     final duration = _formatDuration(call.duration);
     // Two phrases that each stay whole: on a narrow screen the time moves
@@ -109,20 +119,7 @@ class _CallRow extends ConsumerWidget {
         ],
       ),
       destructive: isMissed,
-      leading: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: palette.primarySoft,
-          border: Border.all(color: palette.stroke),
-        ),
-        child: Text(
-          title.replaceFirst('@', '').characters.first.toUpperCase(),
-          style: theme.textTheme.titleMedium?.copyWith(color: isMissed ? palette.danger : palette.primary),
-        ),
-      ),
+      leading: VeilInitialBadge(name: title, danger: isMissed),
       // What kind of call it was. Nothing here places one.
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -136,17 +133,19 @@ class _CallRow extends ConsumerWidget {
           ),
         ],
       ),
-      onTap: () => context.push('/chat/${call.conversationId}'),
+      // Without the chat there is nothing to open, so the row is not a
+      // button: opening the route anyway would show a chat that is not there.
+      onTap: conversation == null ? null : () => context.push('/chat/${call.conversationId}'),
     );
   }
 
   // A person goes by the name their chat shows; a group or channel by the
   // name the relay keeps for it.
-  String _title(AppLocalizations l10n, WidgetRef ref) {
+  String _title(AppLocalizations l10n, ConversationPreview? conversation) {
     final handle = call.counterpartyHandle;
     if (handle == null) return call.counterparty ?? l10n.callsUnknownCounterparty;
-    final conversation = ref.watch(messengerControllerProvider).conversationById(call.conversationId);
-    return conversation?.peerDisplayName ?? '@$handle';
+    final name = conversation?.peerDisplayName?.trim() ?? '';
+    return name.isEmpty ? '@$handle' : name;
   }
 
   IconData get _directionIcon {

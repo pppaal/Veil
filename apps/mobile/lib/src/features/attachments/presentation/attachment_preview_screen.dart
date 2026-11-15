@@ -28,6 +28,12 @@ class AttachmentPreviewScreen extends ConsumerStatefulWidget {
 class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScreen> {
   final _filenameController = TextEditingController(text: 'dossier.enc');
 
+  // Whether the last send from this screen failed. The messenger has one
+  // error line for everything it does, so the line alone does not say that
+  // a send from here went wrong: it may be left from before the screen
+  // opened.
+  bool _sendFailed = false;
+
   @override
   void dispose() {
     _filenameController.dispose();
@@ -36,9 +42,15 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
 
   Future<void> _send() async {
     final messenger = ref.read(messengerControllerProvider);
+    setState(() => _sendFailed = false);
     await messenger.sendAttachmentPlaceholder(widget.conversationId, filename: _filenameController.text.trim());
+    if (!mounted) return;
+    if (messenger.errorMessage != null) {
+      setState(() => _sendFailed = true);
+      return;
+    }
     // From here the transfer goes on in the chat, on the message itself.
-    if (mounted && messenger.errorMessage == null) veilLeaveScreen(context);
+    veilLeaveScreen(context);
   }
 
   @override
@@ -46,7 +58,7 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final controller = ref.watch(messengerControllerProvider);
-    final error = controller.errorMessage;
+    final error = _sendFailed ? controller.errorMessage : null;
     final isSending = controller.isBusy;
     final filename = _filenameController.text.trim();
 
@@ -81,21 +93,12 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
             ),
           ],
           const SizedBox(height: VeilSpace.lg),
-          VeilActionCluster(
-            children: [
-              VeilButton(
-                onPressed: isSending || filename.isEmpty ? null : _send,
-                label: isSending ? l10n.attachmentSendingAction : l10n.attachmentSendAction,
-                icon: Icons.arrow_upward_rounded,
-              ),
-              if (error != null)
-                VeilButton(
-                  onPressed:
-                      isSending ? null : () => ref.read(messengerControllerProvider).retryPendingMessages(widget.conversationId),
-                  tone: VeilButtonTone.secondary,
-                  label: l10n.chatRetryFailedSendsAction,
-                ),
-            ],
+          // Also the way to try again: a send that failed here left nothing
+          // queued to retry.
+          VeilButton(
+            onPressed: isSending || filename.isEmpty ? null : _send,
+            label: isSending ? l10n.attachmentSendingAction : l10n.attachmentSendAction,
+            icon: Icons.arrow_upward_rounded,
           ),
         ],
       ),

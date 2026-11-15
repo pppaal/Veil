@@ -1958,7 +1958,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storiesNotice =>
-      'This version cannot open or post stories: nothing in it opens an encrypted story yet. Nothing is marked as viewed.';
+      'Stories are encrypted, and this version cannot open or post them yet. Nothing is marked as viewed.';
 
   @override
   String get storiesUnavailableTitle => 'Stories could not be loaded';
@@ -1972,6 +1972,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get storiesEmptyBody =>
       'Nobody has shared a story with you in the last 24 hours.';
+
+  @override
+  String get storiesUnknownAuthor => 'Unknown';
 
   @override
   String storiesRowCount(int count) {
@@ -2014,7 +2017,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get storyViewerUnavailableBody =>
-      'This version has nothing that opens an encrypted story yet. The story was not marked as viewed.';
+      'Stories are encrypted, and this version cannot open them yet. The story was not marked as viewed.';
 
   @override
   String get notificationNewMessageTitle => 'VEIL';
@@ -2796,7 +2799,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeModeSystem => 'System';
 
   @override
-  String get aiDemoBannerTitle => 'Scripted demo';
+  String get aiDemoBannerTitle => 'Prepared answers';
 
   @override
   String get aiDemoBannerBody =>

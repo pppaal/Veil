@@ -11,10 +11,10 @@ enum AiTopic { backup, newDevice, groups, calls }
 
 /// The assistant as this build has it: no model, four questions, and a
 /// prepared answer to each. The screen says so in a notice that stays put,
-/// offers the questions as buttons (there is no field to type into, because
-/// nothing would read what was typed), and shows an answer the moment its
-/// question is tapped, with no pretended thinking. Nothing leaves the
-/// device.
+/// offers the questions as buttons under the conversation (there is no
+/// field to type into, because nothing would read what was typed), and
+/// shows an answer the moment its question is tapped, with no pretended
+/// thinking. Nothing leaves the device.
 ///
 /// An answer may only state what this build does.
 class AiChatScreen extends StatefulWidget {
@@ -86,22 +86,25 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   const SizedBox(height: VeilSpace.sm),
                   _Bubble(speaker: l10n.aiTitle, text: _answer(l10n, topic)),
                 ],
+                // What can still be asked follows the last answer and
+                // scrolls with it, so the conversation has the whole height
+                // on a short phone too.
+                if (open.isNotEmpty) ...[
+                  const SizedBox(height: VeilSpace.sm),
+                  Wrap(
+                    spacing: VeilSpace.xs,
+                    children: [
+                      for (final topic in open)
+                        ActionChip(
+                          label: Text(_question(l10n, topic)),
+                          onPressed: () => _ask(topic),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
-          if (open.isNotEmpty) ...[
-            const SizedBox(height: VeilSpace.sm),
-            Wrap(
-              spacing: VeilSpace.xs,
-              children: [
-                for (final topic in open)
-                  ActionChip(
-                    label: Text(_question(l10n, topic)),
-                    onPressed: () => _ask(topic),
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );

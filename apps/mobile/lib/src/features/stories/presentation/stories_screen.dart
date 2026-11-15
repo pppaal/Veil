@@ -5,6 +5,7 @@ import '../../../app/app_state.dart';
 import '../../../core/domain/conversation_preview.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/story_feed_providers.dart';
@@ -27,7 +28,11 @@ class StoriesScreen extends ConsumerWidget {
       child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(storyFeedProvider);
-          await ref.read(storyFeedProvider.future);
+          try {
+            await ref.read(storyFeedProvider.future);
+          } catch (_) {
+            // The banner below already says that the list did not load.
+          }
         },
         child: storiesAsync.when(
           loading: () => ListView(
@@ -86,42 +91,29 @@ class _StoryAuthorRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
-    final name = _name(ref);
+    final name = _name(l10n, ref);
 
     return VeilListTileCard(
       title: name,
       subtitle: '${l10n.storiesRowCount(author.count)}  ·  ${storyAgeLabel(l10n, author.latest)}',
-      leading: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: palette.primarySoft,
-          border: Border.all(color: palette.stroke),
-        ),
-        child: Text(
-          name.replaceFirst('@', '').characters.first.toUpperCase(),
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(color: palette.primary),
-        ),
-      ),
+      leading: VeilInitialBadge(name: name),
       // Sealed, and it stays so here: the row has nothing to open.
       trailing: Icon(Icons.lock_outline_rounded, size: VeilIconSize.sm, color: palette.textSubtle),
     );
   }
 
   // The relay names an author by handle only. Someone this account chats
-  // with goes by the name their chat shows.
-  String _name(WidgetRef ref) {
+  // with goes by the name their chat shows; a story that came with no
+  // handle at all is from someone the row cannot name.
+  String _name(AppLocalizations l10n, WidgetRef ref) {
     final conversations = ref.watch(messengerControllerProvider).conversations;
     for (final conversation in conversations) {
-      if (conversation.type == ConversationType.direct &&
-          conversation.recipientBundle.userId == author.userId &&
-          conversation.peerDisplayName != null) {
-        return conversation.peerDisplayName!;
-      }
+      if (conversation.type != ConversationType.direct || conversation.recipientBundle.userId != author.userId) continue;
+      final name = conversation.peerDisplayName?.trim() ?? '';
+      if (name.isNotEmpty) return name;
     }
-    return '@${author.handle}';
+    final handle = author.handle.trim();
+    return handle.isEmpty ? l10n.storiesUnknownAuthor : '@$handle';
   }
 }
 

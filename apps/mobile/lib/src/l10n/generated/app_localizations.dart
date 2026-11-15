@@ -3449,7 +3449,7 @@ abstract class AppLocalizations {
   /// No description provided for @storiesNotice.
   ///
   /// In en, this message translates to:
-  /// **'This version cannot open or post stories: nothing in it opens an encrypted story yet. Nothing is marked as viewed.'**
+  /// **'Stories are encrypted, and this version cannot open or post them yet. Nothing is marked as viewed.'**
   String get storiesNotice;
 
   /// No description provided for @storiesUnavailableTitle.
@@ -3475,6 +3475,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Nobody has shared a story with you in the last 24 hours.'**
   String get storiesEmptyBody;
+
+  /// No description provided for @storiesUnknownAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get storiesUnknownAuthor;
 
   /// No description provided for @storiesRowCount.
   ///
@@ -3509,7 +3515,7 @@ abstract class AppLocalizations {
   /// No description provided for @storyViewerUnavailableBody.
   ///
   /// In en, this message translates to:
-  /// **'This version has nothing that opens an encrypted story yet. The story was not marked as viewed.'**
+  /// **'Stories are encrypted, and this version cannot open them yet. The story was not marked as viewed.'**
   String get storyViewerUnavailableBody;
 
   /// No description provided for @notificationNewMessageTitle.
@@ -4889,7 +4895,7 @@ abstract class AppLocalizations {
   /// No description provided for @aiDemoBannerTitle.
   ///
   /// In en, this message translates to:
-  /// **'Scripted demo'**
+  /// **'Prepared answers'**
   String get aiDemoBannerTitle;
 
   /// No description provided for @aiDemoBannerBody.

@@ -1118,7 +1118,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get attachmentPlaceholderNotice =>
-      '이 버전에는 파일을 고르는 기능이 없습니다. 대신 자리표시용 파일을 보냅니다. 임의의 바이트 2KB를, 고른 파일과 같은 방식으로 암호화해 올립니다.';
+      '이 버전에는 파일을 고르는 기능이 없습니다. 대신 무작위 데이터로 채운 2KB 크기의 시험용 파일을 보냅니다. 실제 파일을 보낼 때와 같은 방식으로 암호화해 올립니다.';
 
   @override
   String attachmentNameCaption(String contentType) {
@@ -1797,7 +1797,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get callsDeclined => '거절함';
 
   @override
-  String get callsRinging => '연결 중';
+  String get callsRinging => '호출 중';
 
   @override
   String get callsIncoming => '수신';
@@ -1851,7 +1851,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get mediaPickerUnavailableBody =>
-      '이 버전은 사진 보관함을 읽거나 카메라를 사용하지 않습니다. 선택되거나 전송된 것은 없습니다.';
+      '이 버전은 사진 보관함을 읽거나 카메라를 사용하지 않습니다. 선택하거나 보낸 항목은 없습니다.';
 
   @override
   String get voiceRecorderTitle => '음성 메시지';
@@ -1861,7 +1861,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get voiceRecorderUnavailableBody =>
-      '이 버전은 마이크를 사용하지 않습니다. 녹음되거나 전송된 것은 없습니다.';
+      '이 버전은 마이크를 사용하지 않습니다. 녹음하거나 보낸 것은 없습니다.';
 
   @override
   String get stickerPickerTitle => '이모지';
@@ -1890,6 +1890,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get storiesEmptyBody => '지난 24시간 동안 나에게 공유된 스토리가 없습니다.';
+
+  @override
+  String get storiesUnknownAuthor => '알 수 없음';
 
   @override
   String storiesRowCount(int count) {

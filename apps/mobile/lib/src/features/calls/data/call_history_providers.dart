@@ -33,7 +33,7 @@ class CallHistoryEntry {
   /// neither.
   final String? counterparty;
 
-  /// The peer's handle; null for a group or channel.
+  /// The peer's handle, never empty; null for a group or channel.
   final String? counterpartyHandle;
   final CallMediaKind media;
   final CallDirection direction;
@@ -53,7 +53,10 @@ class CallHistoryEntry {
         final String name when name.isNotEmpty && name != _relayUnnamed => name,
         _ => null,
       },
-      counterpartyHandle: json['counterpartyHandle'] as String?,
+      counterpartyHandle: switch (json['counterpartyHandle']) {
+        final String handle when handle.isNotEmpty => handle,
+        _ => null,
+      },
       media: rawType == 'video' ? CallMediaKind.video : CallMediaKind.voice,
       direction:
           initiatedByMe ? CallDirection.outgoing : CallDirection.incoming,

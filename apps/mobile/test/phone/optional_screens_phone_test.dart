@@ -18,6 +18,7 @@ import 'package:veil_mobile/src/features/stories/presentation/stories_screen.dar
 import 'package:veil_mobile/src/features/stories/presentation/story_viewer_screen.dart';
 import 'package:veil_mobile/src/features/voice/presentation/voice_recorder_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_initial_badge.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/screen_cases.dart' show layoutOnlyRoutes;
@@ -67,6 +68,41 @@ void main() {
       return result;
     };
   }
+
+  // Pulls the list down far enough to reload it, and waits the reload out.
+  Future<void> pullToRefresh(WidgetTester tester) async {
+    await tester.fling(find.byType(ListView), const Offset(0, 300), 1000);
+    await tester.pump();
+    for (var i = 0; i < 3; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+  }
+
+  // A call as the relay lists it.
+  Map<String, dynamic> callRecord(String id, {String? counterparty, String? handle, String? conversationId}) => {
+        'id': id,
+        'conversationId': conversationId ?? 'conv-$id',
+        'counterparty': counterparty,
+        'counterpartyHandle': handle,
+        'callType': 'voice',
+        'status': 'ended',
+        'initiatedByMe': true,
+        'duration': 5,
+        'startedAt': DateTime.now().toUtc().toIso8601String(),
+      };
+
+  group('the initial that stands for a name', () {
+    test('is its first letter, and never fails on a name with none', () {
+      expect(veilInitialOf('selene'), 'S');
+      expect(veilInitialOf('@selene'), 'S');
+      expect(veilInitialOf('  @ noor'), 'N');
+      expect(veilInitialOf('한지우'), '한');
+      expect(veilInitialOf('👩‍👩‍👧 family'), '👩‍👩‍👧', reason: 'one character as a person sees it');
+      for (final nothing in ['', '   ', '@', ' @ ']) {
+        expect(veilInitialOf(nothing), '#', reason: '"$nothing"');
+      }
+    });
+  });
 
   group('call screen', () {
     testWidgets('says no call can be made, and never plays one', (tester) async {
@@ -145,18 +181,64 @@ void main() {
       });
     });
 
+    testWidgets('a call whose chat this device does not have opens nothing', (tester) async {
+      await withPhoneApp(tester, identities,
+          location: '/calls',
+          extraRoutes: layoutOnlyRoutes,
+          prepare: (world) async {
+            world.api.callRecords = [
+              callRecord('stranger', counterparty: 'stranger', handle: 'stranger'),
+              callRecord('group', counterparty: 'Hiking club'),
+              callRecord('gone', counterparty: 'Unknown'),
+              callRecord(peerHandle, counterparty: peerHandle, handle: peerHandle, conversationId: chatConversationId),
+            ];
+            return null;
+          },
+          body: (world) async {
+        for (final id in ['conv-stranger', 'conv-group', 'conv-gone']) {
+          expect(world.messenger.conversationById(id), isNull, reason: 'the record names a chat this device lacks');
+        }
+        for (final title in ['@stranger', 'Hiking club', en.callsUnknownCounterparty]) {
+          await tester.tap(find.text(title));
+          await pumpFrames(tester);
+          expect(tester.takeException(), isNull);
+          expect(find.byType(ChatRoomScreen), findsNothing, reason: '$title: there is no chat to open');
+          expect(find.byType(CallHistoryScreen), findsOneWidget);
+          final row = find.ancestor(of: find.text(title), matching: find.byType(VeilListTileCard));
+          expect(tester.widget<VeilListTileCard>(row).onTap, isNull, reason: '$title: not offered as a button');
+        }
+
+        // In the same list, the call from a chat it has still opens it.
+        await tester.tap(find.text('Selene Park'));
+        await pumpFrames(tester);
+        expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, chatConversationId);
+      });
+    });
+
+    testWidgets('a record with an empty handle or name is still a row', (tester) async {
+      await withPhoneApp(tester, identities,
+          location: '/calls',
+          locale: 'ko',
+          extraRoutes: layoutOnlyRoutes,
+          prepare: (world) async {
+            world.api.callRecords = [
+              callRecord('blank', counterparty: '', handle: ''),
+              callRecord('named', counterparty: 'Hiking club', handle: ''),
+            ];
+            return null;
+          },
+          body: (world) async {
+        expect(tester.takeException(), isNull);
+        expect(find.byType(VeilListTileCard), findsNWidgets(2));
+        // Nobody to name: said in words, not as a bare "@".
+        expect(find.text(ko.callsUnknownCounterparty), findsOneWidget);
+        expect(find.text('Hiking club'), findsOneWidget, reason: 'an empty handle is no handle');
+        expect(find.text('@'), findsNothing);
+      });
+    });
+
     testWidgets('names a person as their chat does, and nobody as "Unknown" in Korean', (tester) async {
-      Map<String, dynamic> record(String id, {String? counterparty, String? handle}) => {
-            'id': id,
-            'conversationId': 'conv-$id',
-            'counterparty': counterparty,
-            'counterpartyHandle': handle,
-            'callType': 'voice',
-            'status': 'ended',
-            'initiatedByMe': true,
-            'duration': 5,
-            'startedAt': DateTime.now().toUtc().toIso8601String(),
-          };
+      final record = callRecord;
       await withPhoneApp(tester, identities,
           location: '/calls',
           locale: 'ko',
@@ -207,6 +289,37 @@ void main() {
       expect(findCopy(ko.callsUnavailableTitle), findsOneWidget);
       expect(findCopy(ko.callsUnavailableBody), findsOneWidget);
       expect(find.textContaining('SocketException'), findsNothing);
+    });
+
+    testWidgets('pulling down after a failed load tries again, however that ends', (tester) async {
+      var loads = 0;
+      await tester.pumpWidget(alone(
+        const CallHistoryScreen(),
+        overrides: [
+          callHistoryProvider.overrideWith((ref) async {
+            loads++;
+            if (loads < 3) throw StateError('SocketException: errno 111');
+            return const <CallHistoryEntry>[];
+          }),
+        ],
+      ));
+      await tester.pump();
+      await tester.pump();
+      expect(findCopy(en.callsUnavailableBody), findsOneWidget, reason: 'it says to pull down');
+      expect(loads, 1);
+
+      // The reload fails as well: the screen says the same, and nothing
+      // escapes the pull.
+      await pullToRefresh(tester);
+      expect(loads, 2);
+      expect(tester.takeException(), isNull);
+      expect(findCopy(en.callsUnavailableTitle), findsOneWidget);
+
+      await pullToRefresh(tester);
+      expect(loads, 3);
+      expect(tester.takeException(), isNull);
+      expect(findCopy(en.callsUnavailableTitle), findsNothing);
+      expect(findCopy(en.callsEmptyTitle), findsOneWidget);
     });
   });
 
@@ -404,6 +517,66 @@ void main() {
       });
     });
 
+    testWidgets('a story that names no author is still a row', (tester) async {
+      final posted = DateTime.now().toUtc().subtract(const Duration(minutes: 5));
+      Map<String, dynamic> record(Map<String, dynamic> author) => {
+            'ciphertext': 'b3BhcXVlIGVudmVsb3Bl',
+            'envelopeVersion': 'veil-story-v1',
+            'createdAt': posted.toIso8601String(),
+            'expiresAt': posted.add(const Duration(hours: 24)).toIso8601String(),
+            ...author,
+          };
+      await withPhoneApp(tester, identities,
+          location: '/stories',
+          locale: 'ko',
+          extraRoutes: layoutOnlyRoutes,
+          prepare: (world) async {
+            world.api.storyRecords = [
+              // The handle missing, and the handle empty.
+              record({'id': 'story-1', 'userId': 'user-1'}),
+              record({'id': 'story-2', 'userId': 'user-2', 'handle': ''}),
+            ];
+            return null;
+          },
+          body: (world) async {
+        expect(tester.takeException(), isNull);
+        expect(find.byType(VeilListTileCard), findsNWidgets(2));
+        // Nobody to name: said in words, not as a bare "@".
+        expect(find.text(ko.storiesUnknownAuthor), findsNWidgets(2));
+        expect(find.text('@'), findsNothing);
+      });
+    });
+
+    testWidgets('pulling down after a failed load tries again, however that ends', (tester) async {
+      var loads = 0;
+      await tester.pumpWidget(alone(
+        const StoriesScreen(),
+        overrides: [
+          storyFeedProvider.overrideWith((ref) async {
+            loads++;
+            if (loads < 3) throw StateError('SocketException: errno 111');
+            return const <StoryFeedEntry>[];
+          }),
+        ],
+      ));
+      await tester.pump();
+      await tester.pump();
+      expect(findCopy(en.storiesUnavailableBody), findsOneWidget, reason: 'it says to pull down');
+      expect(find.textContaining('SocketException'), findsNothing);
+      expect(loads, 1);
+
+      await pullToRefresh(tester);
+      expect(loads, 2);
+      expect(tester.takeException(), isNull);
+      expect(findCopy(en.storiesUnavailableTitle), findsOneWidget);
+
+      await pullToRefresh(tester);
+      expect(loads, 3);
+      expect(tester.takeException(), isNull);
+      expect(findCopy(en.storiesUnavailableTitle), findsNothing);
+      expect(findCopy(en.storiesEmptyTitle), findsOneWidget);
+    });
+
     testWidgets('with no story it says so under the same notice', (tester) async {
       await tester.pumpWidget(alone(
         const StoriesScreen(),
@@ -491,6 +664,36 @@ void main() {
         await tester.pump();
         expect(send().onPressed, isNull);
         expect(find.byType(AttachmentPreviewScreen), findsOneWidget);
+      });
+    });
+
+    // The layout world has nowhere to stage a file, so a send in it fails:
+    // once before the screen opens, by something else, and once from the
+    // screen's own button.
+    testWidgets('calls only its own failed send a failed send', (tester) async {
+      await withPhoneApp(tester, identities,
+          location: '/attachment/$chatConversationId',
+          extraRoutes: layoutOnlyRoutes,
+          prepare: (world) async {
+            await world.messenger.sendAttachmentPlaceholder(chatConversationId, filename: 'earlier.bin');
+            return null;
+          },
+          body: (world) async {
+        final earlier = world.messenger.errorMessage;
+        expect(earlier, isNotNull, reason: 'the messenger still holds the error from before');
+        expect(findCopy(en.attachmentSendFailedTitle), findsNothing, reason: 'nothing was sent from this screen');
+        expect(find.text(earlier!), findsNothing);
+        expect(find.byType(FilledButton), findsOneWidget);
+
+        await tester.tap(find.byType(FilledButton));
+        await pumpFrames(tester);
+        expect(findCopy(en.attachmentSendFailedTitle), findsOneWidget);
+        expect(find.byType(AttachmentPreviewScreen), findsOneWidget, reason: 'it did not leave as if it had sent');
+        // Sending again is the retry: nothing was queued that a second
+        // button could retry.
+        expect(find.byType(FilledButton), findsOneWidget);
+        expect(find.byType(OutlinedButton), findsNothing);
+        expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed, isNotNull);
       });
     });
   });

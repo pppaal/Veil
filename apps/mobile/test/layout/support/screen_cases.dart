@@ -34,6 +34,7 @@ import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
+import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/features/stickers/presentation/sticker_picker_screen.dart';
 import 'package:veil_mobile/src/features/stickers/stickers_feature.dart';
 import 'package:veil_mobile/src/features/stories/presentation/stories_screen.dart';
@@ -494,6 +495,12 @@ const List<ScreenCase> screenCases = [
   // Account, device and security.
   ScreenCase('settings',
       screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', primaryAction: _firstSetting),
+  // The devices of the account, opened from the settings tab's row.
+  ScreenCase('settings-devices',
+      screen: TrustedDevicesScreen,
+      file: 'trusted_devices_screen.dart',
+      location: '/settings',
+      settle: _openTrustedDevices),
   ScreenCase('profile', screen: ProfileScreen, file: 'profile_screen.dart', location: '/profile'),
   ScreenCase('security-status',
       screen: SecurityStatusScreen, file: 'security_status_screen.dart', location: '/security-status'),
@@ -698,8 +705,9 @@ double chatMessagesExtent(WidgetTester tester) {
 double conversationRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
 
 /// The same for the contacts: from the top of the first contact's row to
-/// the bottom of the list it scrolls in.
-double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilListTileCard));
+/// the bottom of the list it scrolls in. A contact's row is drawn with the
+/// card of a conversation's.
+double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
 
 double _rowsExtent(WidgetTester tester, Finder rows) {
   if (rows.evaluate().isEmpty) return 0;
@@ -811,9 +819,19 @@ Future<void> _openAddContactSheet(WidgetTester tester) async {
 }
 
 Future<void> _openContactActionsSheet(WidgetTester tester) async {
-  await tester.tap(find.byType(VeilListTileCard).first);
+  await tester.tap(find.byType(VeilConversationCard).first);
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the contact sheet did not open');
+}
+
+Future<void> _openTrustedDevices(WidgetTester tester) async {
+  // The row is under the day-to-day settings, below the first screenful.
+  final row = find.byKey(const ValueKey('settings-devices'), skipOffstage: false);
+  await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+  await pumpFrames(tester, frames: 2);
+  await tester.tap(row);
+  await pumpFrames(tester, frames: 6);
+  expect(find.byType(VeilSurfaceCard), findsWidgets, reason: 'the device list did not load');
 }
 
 // The safety number is derived on a background isolate, which only real

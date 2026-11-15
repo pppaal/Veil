@@ -79,7 +79,7 @@ export const NOT_COPY = {
   'features/attachments/presentation/attachment_preview_screen.dart': {
     'dossier.enc': 'the file name the placeholder attachment goes out under; a file name is data',
   },
-  'features/contacts/presentation/contacts_screen.dart': {
+  'features/contacts/presentation/contact_sheets.dart': {
     icarus: "an example handle in the field's hint; a handle is lower-case Latin by rule",
   },
   'features/conversations/presentation/start_direct_chat_screen.dart': {
@@ -104,10 +104,8 @@ export const KNOWN_HARDCODED = {
   ],
 
   // --- Chat and conversation list, starting a chat or a group.
-  'features/conversations/presentation/start_group_screen.dart': ['Signal Boost'],
 
   // --- Settings, security status, safety numbers, contacts, one-time link.
-  'features/settings/presentation/settings_screen.dart': ['WIPE', 'REVOKE', 'DELETE'],
 
   // --- Switched-off surfaces (calls, media picker, voice recorder, sticker
   // picker, assistant, stories): whoever switches one on localizes it first.

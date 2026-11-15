@@ -127,7 +127,9 @@ void main() {
   // listed text for a new one, and only a run of every case can tell that a
   // listed text is gone.
   test('the language ledger fails a text that is not listed, and a listed one that is gone', () {
-    const file = 'start_group_screen.dart';
+    // Whichever screen is listed first: a screen leaves the list once it is
+    // localized, so no one screen can be named here.
+    final file = knownOtherLanguageText.keys.first;
     final cases = [for (final screenCase in allCases) if (screenCase.file == file) screenCase];
     expect(cases, isNotEmpty);
     final listed = knownOtherLanguageText[file]!['ko']!;

@@ -55,8 +55,6 @@ const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[
       'the claim field comes after the hero, the notice, the tiles and the transfer code'),
 
   // --- Chat and conversation list (phone and wide), starting a chat or a group.
-  KnownPhoneLayoutFailure('start-group', _phones, _both, {LayoutDefect.primaryActionBelowFold},
-      'Create comes after the hero and three field cards'),
   KnownPhoneLayoutFailure('chat-room-warnings-keyboard-larger-text', _small, _both, {LayoutDefect.hiddenAction},
       'at 360x640 with the keyboard, two warnings and 1.3x text the second warning row is cut off'),
   KnownPhoneLayoutFailure('wide-chat', [wideSmall], _both,
@@ -82,10 +80,6 @@ const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[
           'Retry failed sends is cut to a 9 px strip under the composer'),
 
   // --- Settings, security status, safety numbers, contacts, one-time link.
-  KnownPhoneLayoutFailure('settings', _phones, _both, {LayoutDefect.primaryActionBelowFold},
-      'the first setting (the theme, then the privacy switches) comes after the hero, the profile row and the device list'),
-  KnownPhoneLayoutFailure('contacts', [phoneSmall, phoneMedium], _both, {LayoutDefect.primaryContentSqueezed},
-      'the notice and the add button above the list leave the contacts a quarter to a third of the screen'),
 
   // --- Switched-off surfaces (calls, media, voice, stickers, assistant,
   // stories, attachments): fixed by whoever switches one on.

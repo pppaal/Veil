@@ -7,7 +7,10 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import 'conversation_list_logic.dart';
 
+/// Opens a 1:1 conversation with the person whose handle is typed: the
+/// field, its button, and under them one note on how people are found.
 class StartDirectChatScreen extends ConsumerStatefulWidget {
   const StartDirectChatScreen({super.key});
 
@@ -17,6 +20,11 @@ class StartDirectChatScreen extends ConsumerStatefulWidget {
 
 class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
   final _handleController = TextEditingController();
+  bool _opening = false;
+
+  // Whether the last attempt of this screen failed; a failure elsewhere in
+  // the messenger is not this screen's to show.
+  bool _failed = false;
 
   @override
   void dispose() {
@@ -24,100 +32,78 @@ class _StartDirectChatScreenState extends ConsumerState<StartDirectChatScreen> {
     super.dispose();
   }
 
+  String get _handle => _handleController.text.trim().replaceAll(RegExp(r'^@'), '');
+
+  Future<void> _open() async {
+    final handle = _handle;
+    if (handle.isEmpty || _opening) return;
+    setState(() {
+      _opening = true;
+      _failed = false;
+    });
+    final conversationId = await ref.read(messengerControllerProvider).startConversationByHandle(handle);
+    if (!mounted) return;
+    if (conversationId == null) {
+      setState(() {
+        _opening = false;
+        _failed = true;
+      });
+      return;
+    }
+    // Beside the list the new conversation is already on screen; on a phone
+    // it opens in this screen's place.
+    if (shouldUseWideConversationLayout(MediaQuery.sizeOf(context).width)) {
+      context.pop();
+    } else {
+      context.pushReplacement('/chat/$conversationId');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final controller = ref.watch(messengerControllerProvider);
     final l10n = AppLocalizations.of(context);
-    // On a phone the field and its button come first; the note on how
-    // discovery works follows them.
-    final phone = context.veilPhoneWidth;
-    final notice = VeilInlineBanner(
-      title: l10n.startDirectBannerTitle,
-      message: l10n.startDirectBannerBody,
-    );
 
     return VeilShell(
       title: l10n.startDirectTitle,
+      maxWidth: 560,
+      padding: EdgeInsets.zero,
       child: ListView(
+        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
         children: [
-          VeilHeroPanel(
-            eyebrow: l10n.startDirectEyebrow,
-            title: l10n.startDirectHeroTitle,
-            body: l10n.startDirectHeroBody,
-            bottom: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                VeilStatusPill(label: l10n.startDirectPillManual),
-                VeilStatusPill(label: l10n.startDirectPillNoGraph),
-                VeilStatusPill(label: l10n.startDirectPillDirectOnly),
-              ],
+          TextField(
+            controller: _handleController,
+            autofocus: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            textInputAction: TextInputAction.go,
+            onChanged: (_) => setState(() => _failed = false),
+            onSubmitted: (_) => _open(),
+            decoration: InputDecoration(
+              labelText: l10n.startDirectInputLabel,
+              hintText: 'icarus',
+              prefixText: '@',
             ),
           ),
-          if (!phone) ...[const SizedBox(height: VeilSpace.md), notice],
-          // Three fixed facts the panel above already states: on a phone they
-          // would only push the field off the first screenful.
-          if (!phone) ...[
-            const SizedBox(height: VeilSpace.md),
-            VeilMetricStrip(
-              items: [
-                VeilMetricItem(
-                  label: l10n.startDirectMetricDiscovery,
-                  value: l10n.startDirectMetricDiscoveryValue,
-                ),
-                VeilMetricItem(
-                  label: l10n.startDirectMetricGraph,
-                  value: l10n.startDirectMetricGraphValue,
-                ),
-                VeilMetricItem(
-                  label: l10n.startDirectMetricMode,
-                  value: l10n.startDirectMetricModeValue,
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: VeilSpace.md),
-          VeilFieldBlock(
-            label: l10n.startDirectFieldLabel,
-            trailing: _handleController.text.trim().isEmpty
-                ? VeilStatusPill(label: l10n.startDirectAwaitingInput, tone: VeilBannerTone.warn)
-                : VeilStatusPill(label: '@${_handleController.text.trim()}'),
-            caption: l10n.startDirectFieldCaption,
-            child: TextField(
-              controller: _handleController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                labelText: l10n.startDirectInputLabel,
-                hintText: 'icarus',
-                prefixText: '@',
-              ),
-            ),
-          ),
-          if (controller.errorMessage != null) ...[
-            const SizedBox(height: VeilSpace.md),
+          if (_failed) ...[
+            const SizedBox(height: VeilSpace.sm),
             VeilInlineBanner(
               title: l10n.startDirectErrorTitle,
-              message: controller.errorMessage!,
+              message: l10n.startDirectErrorBody,
               tone: VeilBannerTone.danger,
             ),
           ],
-          SizedBox(height: phone ? VeilSpace.md : VeilSpace.xl),
+          const SizedBox(height: VeilSpace.md),
           VeilButton(
-            onPressed: controller.isBusy || _handleController.text.trim().isEmpty
-                ? null
-                : () async {
-                    await ref
-                        .read(messengerControllerProvider)
-                        .startConversationByHandle(_handleController.text.trim());
-                    if (context.mounted &&
-                        ref.read(messengerControllerProvider).errorMessage == null) {
-                      context.pop();
-                    }
-                  },
-            label: controller.isBusy ? l10n.startDirectOpening : l10n.startDirectOpenButton,
+            onPressed: _opening || _handle.isEmpty ? null : _open,
+            label: _opening ? l10n.startDirectOpening : l10n.startDirectOpenButton,
             icon: Icons.arrow_forward_rounded,
           ),
-          if (phone) ...[const SizedBox(height: VeilSpace.md), notice],
+          const SizedBox(height: VeilSpace.lg),
+          VeilInlineBanner(
+            icon: Icons.person_search_outlined,
+            title: l10n.startDirectNoteTitle,
+            message: l10n.startDirectNote,
+          ),
         ],
       ),
     );

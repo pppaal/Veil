@@ -10,9 +10,9 @@ void main() {
   final AppLocalizations l10n = AppLocalizationsEn();
 
   test('messageDeliveryLabel maps send states to clear user-facing copy', () {
-    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.pending)), 'Queued');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.pending)), 'Waiting');
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.uploading)), 'Uploading');
-    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.failed)), 'Retry required');
+    expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.failed)), 'Not sent');
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.sent)), 'Sent');
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.delivered)), 'Delivered');
     expect(messageDeliveryLabel(l10n, _message(MessageDeliveryState.read)), 'Read');
@@ -82,8 +82,8 @@ void main() {
   });
 
   test('counts read as counts: no "(s)"', () {
-    expect(l10n.chatBannerFailedSends(1), startsWith('1 message was not sent.'));
-    expect(l10n.chatBannerFailedSends(2), startsWith('2 messages were not sent.'));
+    expect(l10n.chatBannerFailedSends(1), startsWith("1 message wasn't sent."));
+    expect(l10n.chatBannerFailedSends(2), startsWith("2 messages weren't sent."));
     expect(l10n.chatGroupMemberCount(1), '1 member');
     expect(l10n.chatGroupMemberCount(4), '4 members');
     expect(l10n.conversationsQueued(1), '1 message waiting to be sent');

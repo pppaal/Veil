@@ -37,9 +37,9 @@ void main() {
       expect(find.byType(VeilMetricStrip), findsNothing);
       // What the hero card said: the relay, the count, and that nothing is
       // backed up.
-      expect(find.text('Relay linked  ·  8 conversations  ·  No backup'), findsOneWidget,
+      expect(find.text('Connected  ·  8 chats  ·  No backup'), findsOneWidget,
           reason: 'one line at the default text size');
-      expect(find.widgetWithText(TextField, 'Search chats and messages'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Search'), findsOneWidget);
 
       final rows = find.byType(VeilConversationCard);
       final firstRow = onScreen(tester, rows);
@@ -54,12 +54,12 @@ void main() {
     });
   });
 
-  // Where the line is too long (360 px at 1.3x) it breaks between two
-  // parts, and the dot that separates parts is drawn only between two that
-  // share a line: no line ends with one, and none starts with one.
-  testWidgets('with larger text the status line wraps between its parts, with no separator left hanging',
-      (tester) async {
-    const lines = ['Relay linked  ·  8 conversations', 'No backup'];
+  // The line breaks only between two parts when it is too long, and the dot
+  // that separates parts is drawn only between two that share a line: no
+  // line ends with one, and none starts with one. With the shorter words it
+  // has now, the whole line fits a 360 px phone at 1.3x.
+  testWidgets('with larger text the status line fits, with no separator left hanging', (tester) async {
+    const lines = ['Connected  ·  8 chats  ·  No backup'];
     await withPhoneApp(tester, identities, location: '/conversations', textScale: 1.3, body: (world) async {
       final rects = [for (final line in lines) tester.getRect(find.text(line))];
       for (final (index, rect) in rects.indexed) {
@@ -93,8 +93,8 @@ void main() {
       expect(previews['Jonas Weber'], 'See you at nine.');
       expect(previews['Mia Chen'], 'The second mock-up is closer, but the header still feels heavy to me.');
       // Only text is quoted: other kinds are named by what they are.
-      expect(previews['Omar Haddad'], 'Encrypted image');
-      expect(previews['Alexandra Montgomery-Whitfield'], 'Encrypted voice note');
+      expect(previews['Omar Haddad'], 'Photo');
+      expect(previews['Alexandra Montgomery-Whitfield'], 'Voice message');
       expect(previews['Lena Fischer'], 'No messages yet');
       expect(previews.values, isNot(contains('Encrypted message')));
       expect(find.text('Section 7 is fine. Let us sign tomorrow.'), findsOneWidget, reason: 'drawn on its row');
@@ -152,9 +152,9 @@ void main() {
       final row = tester.widget<VeilConversationCard>(find.byType(VeilConversationCard).first);
       expect(row.title, 'Sam Rivera, Priya Nair, Omar Haddad');
       expect(row.titleIcon, Icons.group_rounded);
-      expect(row.semanticLabel, 'Group conversation with Sam Rivera, Priya Nair, Omar Haddad');
+      expect(row.semanticLabel, 'Group chat with Sam Rivera, Priya Nair, Omar Haddad');
       expect(row.subtitle, 'I can bring the van after six, if someone helps me carry the shelves down.');
-      expect(find.textContaining('9 conversations'), findsOneWidget);
+      expect(find.textContaining('9 chats'), findsOneWidget);
 
       await tester.tap(find.byType(VeilConversationCard).first);
       await pumpFrames(tester);
@@ -171,10 +171,10 @@ void main() {
       attention: const ChatAttention(loading: true),
       body: (world) async {
         expect(find.byType(ConversationListSkeleton), findsOneWidget);
-        expect(find.text('No conversations yet'), findsNothing);
+        expect(find.text('No chats yet'), findsNothing);
         // Nobody knows the count yet, so the status line does not give one.
-        expect(find.text('Relay linked  ·  No backup'), findsOneWidget);
-        expect(find.textContaining('0 conversations'), findsNothing);
+        expect(find.text('Connected  ·  No backup'), findsOneWidget);
+        expect(find.textContaining('0 chats'), findsNothing);
         expect(find.byType(VeilSurfaceCard), findsNothing, reason: 'placeholders have the shape of rows, not of cards');
         expect(
           find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == 'Loading…'),
@@ -193,7 +193,7 @@ void main() {
       attention: const ChatAttention(relayError: true),
       body: (world) async {
         expect(find.byType(VeilInlineBanner), findsOneWidget);
-        expect(findCopy('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget);
+        expect(findCopy('The server could not complete the request. Try again shortly.'), findsOneWidget);
         expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
         expect(find.byType(VeilConversationCard), findsWidgets);
       },
@@ -202,15 +202,15 @@ void main() {
 
   testWidgets('starts a direct chat or a group from the bar', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New conversation'));
+      await tester.tap(find.byTooltip('New chat'));
       await pumpFrames(tester, frames: 3);
       expect(find.text('New group'), findsOneWidget);
-      await tester.tap(find.text('New direct chat'));
+      await tester.tap(find.text('New chat'));
       await pumpFrames(tester);
       expect(find.byType(StartDirectChatScreen), findsOneWidget);
     });
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New conversation'));
+      await tester.tap(find.byTooltip('New chat'));
       await pumpFrames(tester, frames: 3);
       await tester.tap(find.text('New group'));
       await pumpFrames(tester);
@@ -222,7 +222,7 @@ void main() {
   // has no tab: security status.
   testWidgets('keeps security status in the bar, and has settings as a tab', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('Security status'));
+      await tester.tap(find.byTooltip('Security'));
       await pumpFrames(tester);
       expect(find.byType(SecurityStatusScreen), findsOneWidget);
       await tester.tap(find.byTooltip('Back'));
@@ -243,23 +243,23 @@ void main() {
       await pumpFrames(tester, frames: 4);
 
       expect(find.text('All senders'), findsOneWidget);
-      expect(find.text('Search stays on this device.'), findsOneWidget);
-      expect(find.text('CONVERSATIONS'), findsOneWidget);
+      expect(find.text('Only messages on this phone are searched.'), findsOneWidget);
+      expect(find.widgetWithText(VeilSectionLabel, 'Chats'), findsOneWidget);
       expect(find.text('2 matches'), findsOneWidget);
-      expect(find.text('MESSAGES'), findsOneWidget);
+      expect(find.text('Messages'), findsOneWidget);
       expect(find.byType(VeilConversationCard), findsNWidgets(2));
       // No message matches: the heading counts none and one line says so,
       // without a second empty state under the rows that did match.
       expect(find.text('0 results'), findsOneWidget);
-      expect(find.text('No message on this device matches with these filters.'), findsOneWidget);
+      expect(find.text('No message matches these filters.'), findsOneWidget);
       expect(find.byType(VeilEmptyState), findsNothing);
       // The status line still counts every conversation, not the matches.
-      expect(find.textContaining('8 conversations'), findsOneWidget);
+      expect(find.textContaining('8 chats'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Clear search'));
       await pumpFrames(tester, frames: 4);
       expect(find.text('All senders'), findsNothing);
-      expect(find.text('MESSAGES'), findsNothing);
+      expect(find.text('Messages'), findsNothing);
     });
   });
 
@@ -270,8 +270,8 @@ void main() {
       location: '/conversations',
       account: LayoutAccount.signedInEmpty,
       body: (world) async {
-        expect(find.text('No conversations yet'), findsOneWidget);
-        await tester.tap(find.text('Start direct chat'));
+        expect(find.text('No chats yet'), findsOneWidget);
+        await tester.tap(find.text('New chat'));
         await pumpFrames(tester);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
       },

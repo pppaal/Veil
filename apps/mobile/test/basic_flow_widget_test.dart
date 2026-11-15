@@ -26,11 +26,11 @@ void main() {
       ),
     );
 
-    expect(find.text('No backup.\nNo recovery.\nNo leaks.'), findsOneWidget);
-    expect(find.text('Unrecoverable by design'), findsOneWidget);
+    expect(find.text('Before you start'), findsOneWidget);
+    expect(find.text('No backup'), findsOneWidget);
     expect(
       find.textContaining(
-          'If you lose your device, your account and messages are gone.'),
+          'If you lose this phone, you lose this account and its messages.'),
       findsOneWidget,
     );
     await tester.scrollUntilVisible(
@@ -52,15 +52,14 @@ void main() {
       ),
     );
 
-    expect(find.text('This device becomes your identity.'), findsOneWidget);
-    expect(find.text('No restore path'), findsOneWidget);
+    expect(find.text('Already have an account?'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('Continue'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('Continue'), findsOneWidget);
-    expect(find.text('Transfer from old device'), findsOneWidget);
+    expect(find.text('Move from another phone'), findsOneWidget);
   });
 
   testWidgets('app lock screen surfaces local-only barrier status',
@@ -92,7 +91,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('VEIL never unlocks itself remotely.'), findsOneWidget);
+    expect(find.text('Veil is locked'), findsOneWidget);
     // The metric strip that showed "Required" and "Available" draws nothing
     // any more (design system 7.10): PIN and biometrics are Security rows.
     await tester.scrollUntilVisible(
@@ -141,14 +140,14 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Trusted devices'), findsOneWidget);
+    expect(find.text('Devices'), findsOneWidget);
     expect(find.text('Pixel Fold'), findsOneWidget);
     expect(find.text('Old iPhone'), findsOneWidget);
     expect(find.text('MacBook Air'), findsOneWidget);
     // Two devices hold the account (this one and the quiet laptop); the
     // third was revoked. The quiet one is counted among the trusted, not
     // beside them: the parts add up to the three devices listed.
-    expect(find.text('2 trusted devices (1 stale)  ·  '), findsOneWidget);
+    expect(find.text('2 devices (1 stale)  ·  '), findsOneWidget);
     expect(find.text('1 revoked'), findsOneWidget);
     expect(find.text('1 stale  ·  '), findsNothing);
     expect(find.textContaining('stale'), findsWidgets);
@@ -157,10 +156,10 @@ void main() {
     expect(find.text('Revoke'), findsOneWidget);
     // The server keeps only the UTC day of device activity: it is shown as
     // that day, with no time of day that never happened.
-    expect(find.text('Seen Apr 2 (UTC)'), findsOneWidget);
-    expect(find.text('Synced Mar 30 (UTC)'), findsOneWidget);
-    expect(find.text('Recent trusted activity Apr 2 (UTC)'), findsOneWidget);
-    expect(find.textContaining(RegExp(r'^(Seen|Synced|Activity) .*\d\d:\d\d')), findsNothing);
+    expect(find.text('Last seen Apr 2 (UTC)'), findsOneWidget);
+    expect(find.text('Last synced Mar 30 (UTC)'), findsOneWidget);
+    expect(find.text('Last activity Apr 2 (UTC)'), findsOneWidget);
+    expect(find.textContaining(RegExp(r'^Last (seen|synced|active|activity) .*\d\d:\d\d')), findsNothing);
   });
 }
 

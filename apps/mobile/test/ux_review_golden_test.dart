@@ -233,7 +233,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Load older'));
+    await tester.tap(find.text('Load older messages'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();

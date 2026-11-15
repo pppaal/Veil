@@ -132,7 +132,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Encrypted image'), findsOneWidget);
+    expect(find.text('Photo'), findsOneWidget);
     expect(find.text('System envelope'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();

@@ -118,7 +118,7 @@ void main() {
     // Typing here shows, in the indicator alone.
     realtime.typing('conv-selene', 'selene');
     await tester.pump();
-    expect(find.text('typing…'), findsOneWidget, reason: 'a 1:1 does not need to say who');
+    expect(find.text('Typing…'), findsOneWidget, reason: 'a 1:1 does not need to say who');
     expect(identical(strip(), before), isTrue);
 
     // The probe does see a rebuild when the messenger itself changes.
@@ -128,7 +128,7 @@ void main() {
 
     // Both indicators clear by themselves.
     await tester.pump(const Duration(seconds: 6));
-    expect(find.text('typing…'), findsNothing);
+    expect(find.text('Typing…'), findsNothing);
     expect(controller.typingHandleFor('conv-lyra'), isNull);
   });
 }

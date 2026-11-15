@@ -104,6 +104,6 @@ void main() {
     await pumpStatus(tester, adapter: LibCryptoAdapter(), tlsPins: 'pin-one, pin-two');
 
     expect(find.text('Pinned'), findsOneWidget);
-    expect(find.textContaining("pins the relay's TLS keys (2)"), findsOneWidget);
+    expect(find.textContaining("pins the server's TLS keys (2)"), findsOneWidget);
   });
 }

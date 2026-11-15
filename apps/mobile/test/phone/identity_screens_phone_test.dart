@@ -69,8 +69,7 @@ void main() {
         await pumpFrames(tester);
         expectNoDashboard();
         expect(find.byType(VeilStatusPill), findsNothing);
-        expect(find.text('VEIL'), findsOneWidget);
-        expect(findCopy(l10n.splashBody), findsOneWidget);
+        expect(find.text('Veil'), findsOneWidget);
         expect(findCopy(l10n.splashPreparingTitle), findsOneWidget);
         expect(tester.takeException(), isNull);
       } finally {
@@ -436,25 +435,17 @@ void main() {
       });
     });
 
-    testWidgets('its headline breaks between sentences, never inside one', (tester) async {
+    // The headline was the three-sentence slogan "No backup. No recovery. No
+    // leaks."; the rules it stated are rows below it now, so it is a plain
+    // title.
+    testWidgets('its headline is a plain title, not a slogan', (tester) async {
       await withPhoneApp(tester, identities, location: '/security-status', body: (world) async {
         final paragraph = tester.renderObject<RenderParagraph>(
           find.descendant(of: findCopy(l10n.securityStatusHeroTitle), matching: find.byType(RichText)),
         );
         final shown = paragraph.text.toPlainText();
-        final sentences = RegExp(r'[^.]+\.').allMatches(shown).toList();
-        expect(sentences, hasLength(3));
-        final lines = <double>{};
-        for (final sentence in sentences) {
-          final start = sentence.start + (sentence[0]!.length - sentence[0]!.trimLeft().length);
-          final tops = {
-            for (final box in paragraph.getBoxesForSelection(TextSelection(baseOffset: start, extentOffset: sentence.end)))
-              box.top,
-          };
-          expect(tops, hasLength(1), reason: '"${sentence[0]}" is split over lines in "$shown"');
-          lines.addAll(tops);
-        }
-        expect(lines.length, greaterThan(1), reason: 'the headline is meant to wrap here');
+        expect(shown, isNot(contains('.')), reason: 'a title, not sentences');
+        expect(shown.toLowerCase(), isNot(contains('backup')));
       });
     });
 
@@ -515,10 +506,10 @@ void main() {
     });
 
     test('counts what needs a look in words that agree with the number', () {
-      expect(l10n.securityStatusAttentionTitle(1), '1 item needs a look');
-      expect(l10n.securityStatusAttentionTitle(3), '3 items need a look');
-      expect(l10n.appLockStatusPinMismatchAttempts(1), 'PIN mismatch. 1 attempt left before temporary lock.');
-      expect(l10n.appLockStatusPinMismatchAttempts(2), 'PIN mismatch. 2 attempts left before temporary lock.');
+      expect(l10n.securityStatusAttentionTitle(1), '1 item needs attention');
+      expect(l10n.securityStatusAttentionTitle(3), '3 items need attention');
+      expect(l10n.appLockStatusPinMismatchAttempts(1), 'Wrong PIN. 1 attempt left.');
+      expect(l10n.appLockStatusPinMismatchAttempts(2), 'Wrong PIN. 2 attempts left.');
     });
   });
 }

@@ -23,6 +23,12 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
     final privacy = ref.watch(privacyPreferencesProvider);
+    // Locking opens the lock screen, which asks for the PIN, or has one
+    // chosen while this phone has none; unlocking comes back here.
+    void lockNow() {
+      ref.read(appSessionProvider.notifier).lock();
+      context.go('/lock');
+    }
 
     return VeilShell(
       title: l10n.settingsTitle,
@@ -55,16 +61,13 @@ class SettingsScreen extends ConsumerWidget {
             // on, and that nothing brings a lost account back.
             footer: '${l10n.securityFooterEncryption} ${l10n.securityFooterNoRecovery}',
             children: [
-              const _AppLockRow(),
+              _AppLockRow(onTurnOn: lockNow),
               VeilRow(
                 key: const ValueKey('settings-lock-now'),
                 title: l10n.settingsLockNow,
                 // An action, not a screen: no chevron.
                 trailing: const SizedBox.shrink(),
-                onTap: () {
-                  ref.read(appSessionProvider.notifier).lock();
-                  context.go('/lock');
-                },
+                onTap: lockNow,
               ),
               VeilRow(
                 key: const ValueKey('settings-security-details'),
@@ -147,24 +150,34 @@ class _ThemeModeRow extends ConsumerWidget {
   }
 }
 
-/// The app lock, with whether it is on: a PIN set on this phone is a lock.
+/// Whether this phone has a PIN, which is what turns the app lock on. The
+/// keystore is asked each time Settings opens and again whenever the app
+/// locks or unlocks: the first PIN is chosen on the lock screen (after Lock
+/// now, or the lock that follows the app into the background), and Settings
+/// may still be on screen, or be put back, when the app is unlocked.
+final _appLockOnProvider = FutureProvider.autoDispose<bool>((ref) {
+  ref.watch(appSessionProvider.select((session) => session.locked));
+  return ref.read(appLockServiceProvider).hasPin();
+});
+
+/// The app lock, with whether it is on. While it is off the row turns it
+/// on: it locks the app, and the lock screen has a PIN chosen. Once it is
+/// on there is nothing to set here, so the row only says so.
 class _AppLockRow extends ConsumerWidget {
-  const _AppLockRow();
+  const _AppLockRow({required this.onTurnOn});
+
+  final VoidCallback onTurnOn;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
-    final hasPin = ref.watch(localSecuritySnapshotProvider).valueOrNull?.hasPin;
+    final on = ref.watch(_appLockOnProvider).valueOrNull;
     return VeilRow(
       key: const ValueKey('settings-app-lock'),
       title: l10n.settingsAppLockTitle,
       // Nothing until the keystore has answered, rather than a guess.
-      value: switch (hasPin) { true => l10n.commonOn, false => l10n.commonOff, null => null },
-      onTap: () async {
-        await context.push('/lock');
-        // A PIN may have been set meanwhile.
-        if (context.mounted) ref.invalidate(localSecuritySnapshotProvider);
-      },
+      value: switch (on) { true => l10n.commonOn, false => l10n.commonOff, null => null },
+      onTap: on == false ? onTurnOn : null,
     );
   }
 }

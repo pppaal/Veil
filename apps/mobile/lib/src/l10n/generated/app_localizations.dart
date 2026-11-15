@@ -3592,6 +3592,12 @@ abstract class AppLocalizations {
   /// **'New safety number'**
   String get safetyNumbersNewNumberHeader;
 
+  /// No description provided for @safetyNumbersCurrentNumberHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Current safety number'**
+  String get safetyNumbersCurrentNumberHeader;
+
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:

@@ -2162,6 +2162,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersNewNumberHeader => 'New safety number';
 
   @override
+  String get safetyNumbersCurrentNumberHeader => 'Current safety number';
+
+  @override
   String get safetyNumbersScanLabel => 'Scan to compare';
 
   @override

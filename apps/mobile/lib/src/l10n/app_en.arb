@@ -772,6 +772,7 @@
   "safetyNumbersCardLabelNew": "New safety number",
   "@safetyNumbersCardLabelNew": {"description": "deprecated: deleted in W0-ARB phase 2"},
   "safetyNumbersNewNumberHeader": "New safety number",
+  "safetyNumbersCurrentNumberHeader": "Current safety number",
   "safetyNumbersScanLabel": "Scan to compare",
   "@safetyNumbersScanLabel": {"description": "deprecated: deleted in W0-ARB phase 2"},
   "safetyNumbersQrNote": "The code holds both public keys and account IDs, nothing secret.",

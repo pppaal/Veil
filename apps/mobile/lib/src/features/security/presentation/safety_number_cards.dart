@@ -5,232 +5,139 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// A safety number in its groups of digits, under a label.
-class SafetyNumberCard extends StatelessWidget {
-  const SafetyNumberCard({super.key, required this.groups, this.label});
+// The parts of the safety number page: who it is about, the number, and the
+// code to scan. Plain parts on the page: no card around any of them.
 
-  final List<String> groups;
+/// Who the safety number is about: their avatar, name and handle, and
+/// whether they are verified, as a word.
+class SafetyPeerHeader extends StatelessWidget {
+  const SafetyPeerHeader({super.key, required this.name, required this.handle, required this.verified});
 
-  /// Says which number this is while two are on screen.
-  final String? label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    final l10n = AppLocalizations.of(context);
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label ?? l10n.safetyNumbersCardLabel,
-            style: TextStyle(color: palette.textSubtle, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.4),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          Wrap(
-            spacing: 12,
-            runSpacing: 10,
-            children: [
-              for (final g in groups)
-                Text(
-                  g,
-                  style: TextStyle(
-                    color: palette.text,
-                    fontFamily: 'monospace',
-                    fontSize: 20,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    letterSpacing: 1.2,
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Whether the contact counts as verified, as a pill, with their handle
-/// beside it: what the "Verified on" card under it says, and the mark in
-/// the chat. [warn] colours "unverified" as a warning, for a page that has
-/// one up (a change to review, a directory that serves another key, a scan
-/// that did not match).
-class SafetyVerifiedStateRow extends StatelessWidget {
-  const SafetyVerifiedStateRow({super.key, required this.handle, required this.verified, required this.warn});
-
+  final String name;
   final String handle;
   final bool verified;
-  final bool warn;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
     return Row(
       children: [
-        VeilStatusPill(
-          label: verified ? l10n.safetyNumbersVerified : l10n.safetyNumbersUnverified,
-          tone: verified
-              ? VeilBannerTone.good
-              : warn
-                  ? VeilBannerTone.warn
-                  : VeilBannerTone.info,
+        VeilAvatar(name: name, seed: handle, size: 56),
+        const SizedBox(width: VeilSpace.sm),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge),
+              Text(
+                '@$handle',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+              ),
+            ],
+          ),
         ),
         const SizedBox(width: VeilSpace.xs),
-        Expanded(
-          child: Text(
-            '@$handle',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
-          ),
+        Text(
+          verified ? l10n.safetyNumbersVerified : l10n.safetyNumbersUnverified,
+          style: theme.textTheme.labelMedium?.copyWith(color: verified ? palette.success : palette.textMuted),
         ),
       ],
     );
   }
 }
 
-/// How to compare the number above it, and what a mismatch means: said
-/// under the number, in line with the digits, before the button that
-/// records the comparison.
-class SafetyCompareNote extends StatelessWidget {
-  const SafetyCompareNote(this.text, {super.key});
+/// A safety number: its twelve groups of five digits in four columns, on
+/// the page, under [header] when two numbers are on screen. (The name is
+/// older than the look: there is no card.)
+class SafetyNumberCard extends StatelessWidget {
+  const SafetyNumberCard({super.key, required this.groups, this.header});
 
-  final String text;
+  final List<String> groups;
+
+  /// Says which number this is while two are on screen.
+  final String? header;
+
+  static const double _columnGap = 24;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
-      child: VeilCopy(
-        text,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
+    final theme = Theme.of(context);
+    final palette = context.veilPalette;
+    final style = TextStyle(
+      color: palette.text,
+      fontFamily: 'monospace',
+      fontSize: 20,
+      height: 1.3,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    final painter = TextPainter(
+      text: TextSpan(text: groups.isEmpty ? '' : groups.first, style: style),
+      textScaler: MediaQuery.textScalerOf(context),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final groupWidth = painter.width.ceilToDouble();
+    painter.dispose();
+    return SizedBox(
+      width: double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (header != null) ...[
+            Semantics(
+              header: true,
+              child: Text(header!, style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted)),
+            ),
+            const SizedBox(height: 6),
+          ],
+          // Four columns, or fewer where four do not fit (very large text,
+          // a dialog): each group as wide as five digits, so the columns
+          // line up.
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 4 * groupWidth + 3 * _columnGap),
+            child: Wrap(
+              spacing: _columnGap,
+              runSpacing: VeilSpace.xxs,
+              children: [
+                for (final group in groups) SizedBox(width: groupWidth, child: Text(group, style: style)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-/// The QR code the peer scans to compare both identities in one step.
+/// The QR code the contact scans to compare both identities in one step,
+/// on a white panel in both themes, and what it holds.
 class SafetyQrCard extends StatelessWidget {
-  const SafetyQrCard({super.key, required this.content, required this.palette});
+  const SafetyQrCard({super.key, required this.content});
 
   final String content;
-  final VeilPalette palette;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              l10n.safetyNumbersScanLabel,
-              style: TextStyle(
-                color: palette.textSubtle,
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.4,
-              ),
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          Container(
-            padding: const EdgeInsets.all(VeilSpace.md),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(VeilRadius.md),
-            ),
-            child: QrImageView(
-              data: content,
-              version: QrVersions.auto,
-              size: 220,
-              backgroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilCopy(
-            l10n.safetyNumbersQrNote,
-            style: TextStyle(color: palette.textSubtle, fontSize: 12),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// When the pinned identity was verified, and what ends that.
-class SafetyVerifiedCard extends StatelessWidget {
-  const SafetyVerifiedCard({super.key, required this.verifiedOn});
-
-  /// The day and time of the verification, already formatted.
-  final String verifiedOn;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    final l10n = AppLocalizations.of(context);
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          VeilCopy(
-            l10n.safetyNumbersVerifiedOn(verifiedOn),
-            style: TextStyle(color: palette.text, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: VeilSpace.xs),
-          VeilCopy(
-            l10n.safetyNumbersVerifiedNote,
-            style: TextStyle(color: palette.textSubtle, fontSize: 13),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Starting a fresh session with the contact's current keys: what it does,
-/// and the button for it.
-class SafetyNewSessionCard extends StatelessWidget {
-  const SafetyNewSessionCard({super.key, required this.renewing, required this.onRenew});
-
-  final bool renewing;
-  final VoidCallback onRenew;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    final l10n = AppLocalizations.of(context);
-    return VeilSurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            l10n.safetyNumbersRotateEyebrow,
-            style: TextStyle(
-              color: palette.textSubtle,
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.4,
-            ),
-          ),
-          const SizedBox(height: VeilSpace.xs),
-          // A paragraph to read, so in the body's colour: the label's is too
-          // faint for it on a white card.
-          VeilCopy(
-            l10n.safetyNumbersRotateBody,
-            style: TextStyle(color: palette.textMuted, fontSize: 13),
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilButton(
-            label: renewing ? l10n.safetyNumbersRotating : l10n.safetyNumbersRotateButton,
-            tone: VeilButtonTone.secondary,
-            onPressed: renewing ? null : onRenew,
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        Container(
+          width: 220,
+          height: 220,
+          padding: const EdgeInsets.all(VeilSpace.sm),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(VeilRadius.md)),
+          child: QrImageView(data: content, version: QrVersions.auto, backgroundColor: Colors.white),
+        ),
+        const SizedBox(height: VeilSpace.xs),
+        Text(
+          l10n.safetyNumbersQrNote,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
+        ),
+      ],
     );
   }
 }

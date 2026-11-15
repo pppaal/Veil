@@ -13,6 +13,7 @@ import 'package:veil_mobile/src/features/secret_link/data/one_time_link_service.
 import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_shell.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/phone_layout_probe.dart';
 import '../support/copy_finder.dart';
@@ -319,16 +320,40 @@ void main() {
     });
   });
 
-  testWidgets('says that the relay refused, and keeps the form', (tester) async {
-    await open(tester, status: 503);
+  testWidgets('says that the relay refused in one line under the button, keeps the form, and the button tries again',
+      (tester) async {
+    var status = 503;
+    final service = OneTimeLinkService(
+      apiBaseUrl: 'https://relay.example.org/v1',
+      client: MockClient((request) async {
+        posted.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          jsonEncode({'id': 'link-7', 'expiresAt': DateTime.utc(2026, 4, 8, 9, 30).toIso8601String()}),
+          status,
+        );
+      }),
+    );
+    await open(tester, service: service);
     await tester.enterText(find.byType(TextField), secret);
     await tester.pump();
     await tapCreate(tester);
-    expect(findCopy(en.oneTimeLinkFailed), findsOneWidget);
+    final failure = findCopy(en.oneTimeLinkFailed);
+    expect(failure, findsOneWidget);
+    // Plain text, not a notice: the button above it is the retry.
+    expect(find.byType(VeilNotice), findsNothing);
+    expect(tester.getTopLeft(failure).dy, greaterThanOrEqualTo(tester.getBottomLeft(find.byType(FilledButton)).dy));
     expect(find.byType(QrImageView), findsNothing);
     expect(create(tester).onPressed, isNotNull, reason: 'ready for another try');
     // The field may have scrolled out above the button: it is still there.
     expect(tester.widget<TextField>(find.byType(TextField, skipOffstage: false)).controller!.text, secret);
+
+    // The relay answers the next try: the line goes, the link comes.
+    status = 201;
+    posted.clear();
+    await tapCreate(tester);
+    expect(posted, hasLength(1));
+    expect(findCopy(en.oneTimeLinkFailed), findsNothing);
+    expect(find.byType(QrImageView, skipOffstage: false), findsOneWidget);
   });
 }
 

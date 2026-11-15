@@ -2456,6 +2456,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'After you approve, finish on the new phone. This phone is then signed out and its history is erased. Your message history does not move to the new phone.';
 
   @override
+  String get deviceTransferApproveFooter =>
+      'Approve only the code your new phone shows. When the move finishes, this phone is signed out and your message history does not move to the new phone.';
+
+  @override
   String get deviceTransferCopyPayload => 'Copy';
 
   @override

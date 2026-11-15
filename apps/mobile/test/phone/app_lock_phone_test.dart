@@ -109,6 +109,14 @@ void main() {
     await tester.pump();
     expect(find.text(l10n.appLockFieldPinError), findsOneWidget);
     expect(find.text(l10n.appLockConfirmMismatch), findsOneWidget);
+    // Each error keeps the row's padding under it: off the hairline under
+    // the first row and off the group's bottom edge under the second.
+    final rows = find.byType(VeilRow);
+    expect(rows, findsNWidgets(2));
+    expect(tester.getRect(rows.first).bottom - tester.getRect(find.text(l10n.appLockFieldPinError)).bottom,
+        greaterThanOrEqualTo(8));
+    expect(tester.getRect(rows.last).bottom - tester.getRect(find.text(l10n.appLockConfirmMismatch)).bottom,
+        greaterThanOrEqualTo(8));
     expect(tester.widget<FilledButton>(turnOn).onPressed, isNull);
     await tester.enterText(fields.first, '123456');
     await tester.enterText(fields.last, '123456');

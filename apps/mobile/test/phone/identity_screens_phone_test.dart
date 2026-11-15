@@ -190,6 +190,27 @@ void main() {
         expect(find.byType(StepRow), findsNothing, reason: 'the stages are one line under the button, while it works');
       });
     });
+
+    testWidgets('a failure is the field\'s error until the handle is changed, not a box', (tester) async {
+      await withPhoneApp(tester, identities,
+          size: phoneSmall,
+          location: '/choose-handle',
+          account: signedOut,
+          sessionError: 'handle_taken', body: (world) async {
+        TextField field() => tester.widget<TextField>(find.byType(TextField));
+        expect(field().decoration?.errorText, 'handle_taken');
+        expect(find.byType(VeilNotice), findsNothing);
+        // In the helper line's place: the button stays where it was.
+        expect(findCopy(l10n.authHandleFindCaption), findsNothing);
+        expectInReach(tester, find.widgetWithText(FilledButton, l10n.authHandleBindCta));
+
+        await tester.enterText(find.byType(TextField), 'sam');
+        await pumpFrames(tester, frames: 2);
+        expect(field().decoration?.errorText, isNull);
+        expect(findCopy('handle_taken'), findsNothing);
+        expect(findCopy(l10n.authHandleFindCaption), findsOneWidget);
+      });
+    });
   });
 
   group('device transfer on the new device', () {
@@ -286,7 +307,7 @@ void main() {
         expect(claim, findsOneWidget);
         expect(top(tester, claim), lessThan(screenHeight(tester)));
         final approve = find.text(l10n.deviceTransferApproveClaim, skipOffstage: false);
-        final consequence = findCopyContaining(l10n.deviceTransferCompleteOnNewNote, skipOffstage: false);
+        final consequence = findCopy(l10n.deviceTransferApproveFooter, skipOffstage: false);
         await tester.dragUntilVisible(approve, find.byType(ListView), const Offset(0, -200));
         await pumpFrames(tester, frames: 2);
         expect(consequence, findsOneWidget);

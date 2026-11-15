@@ -3,17 +3,21 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// What an action of the step in hand came to: why it failed, as a notice,
-/// or what the server answered, as a line of text (green for an approval).
-/// It appears under the controls after a tap that may have been made at
-/// the foot of the screen, so it brings itself into view when it appears
-/// and whenever its words change. Nothing moves while it is already on
-/// screen, and a screen that opens with a result on it opens at its top.
+/// What an action of the step in hand came to, as one line of text by the
+/// button that was tapped: why it failed (in the danger colour), or what
+/// the server answered (green for an approval, muted otherwise). No box:
+/// the user has nothing to decide, only to read it and try again.
+/// It appears after a tap that may have been made at the foot of the
+/// screen, so it brings itself into view when it appears and whenever its
+/// words change. Nothing moves while it is already on screen, and a screen
+/// that opens with a result on it opens at its top.
 class TransferStepResult extends StatefulWidget {
-  const TransferStepResult({super.key, required this.message, this.title, this.tone = VeilTone.info});
+  const TransferStepResult({super.key, required this.message, this.tone = VeilTone.info});
 
-  final String? title;
   final String message;
+
+  /// [VeilTone.danger] for a failure, [VeilTone.good] for an approval,
+  /// [VeilTone.info] for any other answer.
   final VeilTone tone;
 
   @override
@@ -51,16 +55,14 @@ class _TransferStepResultState extends State<TransferStepResult> {
 
   @override
   Widget build(BuildContext context) {
-    final failed = widget.tone == VeilTone.danger || widget.tone == VeilTone.warn;
-    if (failed) {
-      return VeilNotice(title: widget.title, message: widget.message, tone: widget.tone, margin: EdgeInsets.zero);
-    }
-    final palette = context.veilPalette;
-    return Text(
-      widget.message,
-      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: widget.tone == VeilTone.good ? palette.success : palette.textMuted,
-          ),
+    // A screen reader says it as it appears, as the eye finds it by the
+    // button; the words carry the outcome, not the colour alone.
+    return Semantics(
+      liveRegion: true,
+      child: Text(
+        widget.message,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: veilToneColor(context.veilPalette, widget.tone)),
+      ),
     );
   }
 }

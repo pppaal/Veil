@@ -9,8 +9,10 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_account_relay.dart';
@@ -372,9 +374,10 @@ void main() {
     expect(session.state.isAuthenticated, isFalse);
     _expectExpired(tester, claimId: claimId);
     // Why the relay refused is said with the step that is in hand again,
-    // under its button.
-    final failure = find.text(_en.deviceTransferFailedTitle);
+    // under its button, as one line in the danger colour.
+    final failure = find.byType(TransferStepResult);
     expect(failure, findsOneWidget);
+    expect(tester.widget<TransferStepResult>(failure).tone, VeilTone.danger);
     final use = find.widgetWithText(FilledButton, _en.deviceTransferImportPayload);
     expect(tester.getRect(failure).top, greaterThanOrEqualTo(tester.getRect(use).bottom));
     expect((await tester.runAsync(storage.readPendingTransfer))?.ended, isTrue);

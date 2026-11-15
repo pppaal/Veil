@@ -12,6 +12,7 @@ import 'package:veil_mobile/src/features/device_transfer/presentation/device_tra
 import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/splash_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_notice.dart';
 
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
@@ -29,6 +30,9 @@ final _en = lookupAppLocalizations(const Locale('en'));
 
 // What a relay says in its own words: no code, no sentence of the ARB.
 const _relaysOwn = 'handle_taken';
+
+// The error under the one text field on screen.
+String? _fieldError(WidgetTester tester) => tester.widget<TextField>(find.byType(TextField)).decoration?.errorText;
 
 Widget _alone(Widget child) => MaterialApp(
       theme: VeilTheme.dark(),
@@ -87,16 +91,18 @@ void main() {
         account: LayoutAccount.signedOut,
         sessionError: UserFacingErrorCode.conflict.sentence, body: (world) async {
       expect(find.byType(ChooseHandleScreen), findsOneWidget);
-      expect(findCopy(_en.authHandleFailedTitle), findsOneWidget);
+      // The handle field's error, in place of its helper line.
+      expect(_fieldError(tester), _en.errorConflict);
       expect(findCopy(_en.errorConflict), findsOneWidget);
       expect(findCopy(UserFacingErrorCode.conflict.sentence), findsNothing);
+      expect(find.byType(VeilNotice), findsNothing);
     });
 
     await withPhoneApp(tester, identities,
         location: '/choose-handle',
         account: LayoutAccount.signedOut,
         sessionError: _relaysOwn, body: (world) async {
-      expect(findCopy(_en.authHandleFailedTitle), findsOneWidget);
+      expect(_fieldError(tester), _relaysOwn);
       expect(findCopy(_relaysOwn), findsOneWidget);
     });
   });
@@ -113,7 +119,8 @@ void main() {
       expect(tester.getRect(failure).top, greaterThanOrEqualTo(tester.getRect(find.byType(StepRow).last).bottom));
       expect(tester.getRect(failure).top,
           greaterThanOrEqualTo(tester.getRect(find.widgetWithText(FilledButton, _en.deviceTransferImportPayload)).bottom));
-      expect(findCopy(_en.deviceTransferFailedTitle), findsOneWidget);
+      // One line, not a box.
+      expect(find.byType(VeilNotice), findsNothing);
       expect(findCopy(UserFacingErrorCode.relayFailed.sentence), findsNothing);
     });
   });

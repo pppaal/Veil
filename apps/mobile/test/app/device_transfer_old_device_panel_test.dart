@@ -23,6 +23,7 @@ Future<void> _pump(
   required DateTime? expiresAt,
   String? errorMessage,
   Size view = const Size(400, 3000),
+  TextEditingController? claim,
 }) {
   tester.view
     ..physicalSize = view
@@ -43,7 +44,7 @@ Future<void> _pump(
           transferExpiresAt: expiresAt,
           transferExpired: expiresAt != null && !expiresAt.isAfter(_now),
           errorMessage: errorMessage,
-          claimIdController: TextEditingController(),
+          claimIdController: claim ?? TextEditingController(),
           onIssue: () {},
           onApprove: () {},
           onCopyCode: () {},
@@ -95,8 +96,10 @@ void main() {
       (tester) async {
     await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)));
 
+    // One step is in hand: handing the code over, until the new phone's
+    // code is typed in.
     expect([for (final step in _steps(tester)) step.state],
-        [StepRowState.done, StepRowState.current, StepRowState.current]);
+        [StepRowState.done, StepRowState.current, StepRowState.upcoming]);
     expect(_stepOf(tester, find.text(_en.deviceTransferStatusTokenReady)), 1);
     final code = find.text(_code);
     expect(_underTheSteps(tester, code), isTrue);
@@ -107,11 +110,27 @@ void main() {
     expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
     // The claim field, then what approving leads to, then the button.
     final field = find.byType(TextField);
-    final consequence = find.textContaining(_en.deviceTransferCompleteOnNewNote);
+    final consequence = find.text(_en.deviceTransferApproveFooter);
     final approve = find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim);
     expect(tester.getRect(code).bottom, lessThanOrEqualTo(tester.getRect(field).top));
     expect(tester.getRect(field).bottom, lessThanOrEqualTo(tester.getRect(consequence).top));
     expect(tester.getRect(consequence).bottom, lessThanOrEqualTo(tester.getRect(approve).top));
+  });
+
+  testWidgets('once the new phone\'s code is typed in, approving is the step in hand', (tester) async {
+    final claim = TextEditingController();
+    await _pump(tester, status: const TransferTokenReady(), expiresAt: _now.add(const Duration(minutes: 4)), claim: claim);
+
+    await tester.enterText(find.byType(TextField), 'claim-7');
+    await tester.pump();
+    expect([for (final step in _steps(tester)) step.state],
+        [StepRowState.done, StepRowState.done, StepRowState.current]);
+
+    // Cleared, it is the code's turn again.
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    expect([for (final step in _steps(tester)) step.state],
+        [StepRowState.done, StepRowState.current, StepRowState.upcoming]);
   });
 
   testWidgets('what an approval came to is said under the button that approves, in green', (tester) async {
@@ -128,6 +147,9 @@ void main() {
     final context = tester.element(approved);
     expect(tester.widget<Text>(approved).style?.color, context.veilPalette.success);
     expect(find.byType(VeilNotice), findsNothing, reason: 'good news is a line, not a notice');
+    // This phone's part is done.
+    expect([for (final step in _steps(tester)) step.state],
+        [StepRowState.done, StepRowState.done, StepRowState.done]);
   });
 
   // A failure used to stand above the first step, a screenful away from
@@ -143,8 +165,10 @@ void main() {
 
     final failure = find.text('The relay did not answer.');
     expect(failure, findsOneWidget);
-    expect(find.ancestor(of: failure, matching: find.byType(VeilNotice)), findsOneWidget);
-    expect(find.text(_en.deviceTransferFailedTitle), findsOneWidget);
+    // One line in the danger colour, not a box: there is nothing to decide.
+    expect(find.byType(VeilNotice), findsNothing);
+    expect(tester.widget<Text>(failure).style?.color, tester.element(failure).veilPalette.danger);
+    expect(find.text(_en.deviceTransferFailedTitle), findsNothing);
     final approve = find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim);
     expect(tester.getRect(approve).bottom, lessThanOrEqualTo(tester.getRect(failure).top));
     expect(find.text(_en.deviceTransferStatusClaimNotWaiting('claim-7')), findsNothing,
@@ -194,6 +218,7 @@ void main() {
 
     final failure = find.text('The relay did not answer.');
     expect(failure, findsOneWidget);
+    expect(find.byType(VeilNotice), findsNothing, reason: 'a line, not a box');
     expect(_underTheSteps(tester, failure), isTrue);
     final issue = find.widgetWithText(FilledButton, _en.deviceTransferIssueToken);
     expect(tester.getRect(failure).bottom, lessThanOrEqualTo(tester.getRect(issue).top));

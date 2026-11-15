@@ -98,7 +98,6 @@ class TransferNewDevicePanel extends StatelessWidget {
     List<Widget> noticeFor(int step) => [
           if (notice != null && noticeStep == step)
             TransferStepResult(
-              title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
               message: veilErrorText(l10n, notice!.message),
               tone: notice!.isError ? VeilTone.danger : VeilTone.good,
             ),
@@ -122,7 +121,7 @@ class TransferNewDevicePanel extends StatelessWidget {
                       ? l10n.deviceTransferNewCodeBody
                       : null,
               status: expired ? l10n.deviceTransferStatusExpired : null,
-              statusTone: VeilTone.danger,
+              statusTone: VeilTone.warn,
               // A finished step can be opened again to paste another code.
               trailing: pasting ? null : TextButton(onPressed: onEditCode, child: Text(l10n.deviceTransferNewCodeChange)),
             ),

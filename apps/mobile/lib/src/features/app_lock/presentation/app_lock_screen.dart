@@ -235,15 +235,21 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     final formatError = pin.isEmpty || appLock.isValidPinFormat(pin) ? null : l10n.appLockFieldPinError;
     final mismatch = confirmPin.isEmpty || pin == confirmPin ? null : l10n.appLockConfirmMismatch;
     final biometrics = _biometricsButton(l10n);
+    final pinError = formatError ?? _attemptError(l10n);
     // The two labels share one width, so the fields start in one column.
+    // An error line under a field keeps the row's 11 below it, off the
+    // hairline and the group's edge.
     final labelWidth = MediaQuery.textScalerOf(context).scale(112);
-    Widget labelled(String label, Widget field) => Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            SizedBox(width: labelWidth, child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
-            Expanded(child: field),
-          ],
+    Widget labelled(String label, Widget field, {required bool hasError}) => Padding(
+          padding: EdgeInsets.only(bottom: hasError ? 11 : 0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              SizedBox(width: labelWidth, child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
+              Expanded(child: field),
+            ],
+          ),
         );
 
     return [
@@ -260,9 +266,10 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
               _pinField(
                 controller: _pinController,
                 hint: l10n.appLockFieldPinHint,
-                errorText: formatError ?? _attemptError(l10n),
+                errorText: pinError,
                 onChanged: _pinChanged,
               ),
+              hasError: pinError != null,
             ),
           ),
           VeilRow.field(
@@ -274,6 +281,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                 errorText: mismatch,
                 onChanged: (_) => setState(() => _status = null),
               ),
+              hasError: mismatch != null,
             ),
           ),
         ],

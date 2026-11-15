@@ -76,53 +76,67 @@ class TransferOldDevicePanel extends StatelessWidget {
     final live = transferSessionId != null && !transferExpired;
     final statusLabel = transferStatusLabel(l10n, status);
     final aboutIssuing = status is TransferNeedsApi || status is TransferTokenReady;
-    // A failure is said under the control that was used: issuing fails
+    // A failure is one line by the control that was used: issuing fails
     // before a session is open, approving after.
     final failure = errorMessage == null
         ? null
-        : TransferStepResult(
-            title: l10n.deviceTransferFailedTitle,
-            message: veilErrorText(l10n, errorMessage!),
-            tone: VeilTone.danger,
-          );
+        : TransferStepResult(message: veilErrorText(l10n, errorMessage!), tone: VeilTone.danger);
+    final approved = live && status is TransferClaimApproved;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        VeilGroup(
-          inset: StepRow.groupInset,
-          footer: stepsFooter,
-          children: [
-            StepRow(
-              number: 1,
-              title: l10n.deviceTransferOldIssueTitle,
-              state: live ? StepRowState.done : StepRowState.current,
-              body: transferExpired
-                  ? l10n.deviceTransferOldIssueExpiredBody
-                  : aboutIssuing
-                      ? statusLabel
-                      : live
-                          ? null
-                          : l10n.deviceTransferOldIssueBody,
-              status: transferExpired ? l10n.deviceTransferStatusExpired : null,
-              statusTone: VeilTone.danger,
-            ),
-            StepRow(
-              number: 2,
-              title: l10n.deviceTransferOldHandTitle,
-              state: live ? StepRowState.current : StepRowState.upcoming,
-              // A step whose turn has not come is its title: the line
-              // about it comes with its controls.
-              body: live
-                  ? l10n.deviceTransferStep1BodyExpires(formatTransferExpiry(transferExpiresAt!, now, l10n))
-                  : null,
-            ),
-            StepRow(
-              number: 3,
-              title: l10n.deviceTransferOldApproveTitle,
-              state: live ? StepRowState.current : StepRowState.upcoming,
-            ),
-          ],
+        // One step is in hand at a time: handing the code over until the
+        // new phone's code is typed in, approving it from then on. An
+        // approval finishes this phone's part.
+        ListenableBuilder(
+          listenable: claimIdController,
+          builder: (context, _) {
+            final approving = live && (approved || claimIdController.text.trim().isNotEmpty);
+            return VeilGroup(
+              inset: StepRow.groupInset,
+              footer: stepsFooter,
+              children: [
+                StepRow(
+                  number: 1,
+                  title: l10n.deviceTransferOldIssueTitle,
+                  state: live ? StepRowState.done : StepRowState.current,
+                  body: transferExpired
+                      ? l10n.deviceTransferOldIssueExpiredBody
+                      : aboutIssuing
+                          ? statusLabel
+                          : live
+                              ? null
+                              : l10n.deviceTransferOldIssueBody,
+                  status: transferExpired ? l10n.deviceTransferStatusExpired : null,
+                  statusTone: VeilTone.warn,
+                ),
+                StepRow(
+                  number: 2,
+                  title: l10n.deviceTransferOldHandTitle,
+                  state: !live
+                      ? StepRowState.upcoming
+                      : approving
+                          ? StepRowState.done
+                          : StepRowState.current,
+                  // A step whose turn has not come is its title: the line
+                  // about it comes with its controls.
+                  body: live
+                      ? l10n.deviceTransferStep1BodyExpires(formatTransferExpiry(transferExpiresAt!, now, l10n))
+                      : null,
+                ),
+                StepRow(
+                  number: 3,
+                  title: l10n.deviceTransferOldApproveTitle,
+                  state: approved
+                      ? StepRowState.done
+                      : approving
+                          ? StepRowState.current
+                          : StepRowState.upcoming,
+                ),
+              ],
+            );
+          },
         ),
         if (!live)
           TransferControls(
@@ -157,9 +171,9 @@ class TransferOldDevicePanel extends StatelessWidget {
           ),
           const SizedBox(height: VeilSpace.md),
           // The code the new phone shows; which code to approve and what
-          // approving leads to are said under it, above the button.
+          // the move leads to are said under it, above the button.
           VeilGroup(
-            footer: '${l10n.deviceTransferClaimFieldCaption} ${l10n.deviceTransferCompleteOnNewNote}',
+            footer: l10n.deviceTransferApproveFooter,
             children: [
               VeilRow.field(
                 field: TextField(
@@ -190,7 +204,6 @@ class TransferOldDevicePanel extends StatelessWidget {
           TransferControls(
             children: [
               TransferStepResult(
-                title: l10n.deviceTransferStatusTitle,
                 message: statusLabel,
                 tone: status is TransferClaimApproved ? VeilTone.good : VeilTone.info,
               ),

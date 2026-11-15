@@ -20,6 +20,10 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
   final _handleController = TextEditingController();
   bool _submitting = false;
 
+  // The failure the user has typed over since it was shown: it goes once
+  // they change the handle, and the next attempt shows its own.
+  String? _dismissedError;
+
   @override
   void dispose() {
     _handleController.dispose();
@@ -28,7 +32,10 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
 
   Future<void> _submit(String handle, String? displayName) async {
     final l10n = AppLocalizations.of(context);
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _dismissedError = null;
+    });
     try {
       await ref.read(appSessionProvider.notifier).registerAndAuthenticate(
             handle: handle,
@@ -55,10 +62,12 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
     final palette = context.veilPalette;
     final working = _submitting || session.isAuthenticating;
     final error = session.errorMessage;
+    final shownError = working || error == null || error == _dismissedError ? null : veilErrorText(l10n, error);
 
     // The handle, then the button that creates the account. While it
     // works, the button holds a spinner and one line under it says which
-    // stage it is at; a failure is said under the button that was tapped.
+    // stage it is at. Why the account was not created is the field's
+    // error, in place of its helper line, until the handle is changed.
     return VeilShell(
       title: l10n.authHandleTitle,
       padding: VeilShell.formPadding,
@@ -67,7 +76,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
           TextField(
             controller: _handleController,
             enabled: !_submitting,
-            onChanged: (_) => setState(() {}),
+            onChanged: (_) => setState(() => _dismissedError = ref.read(appSessionProvider).errorMessage),
             textInputAction: TextInputAction.done,
             autocorrect: false,
             enableSuggestions: false,
@@ -77,6 +86,8 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
               prefixText: '@',
               helperText: l10n.authHandleFindCaption,
               helperMaxLines: 3,
+              errorText: shownError,
+              errorMaxLines: 3,
             ),
           ),
           const SizedBox(height: VeilSpace.xl),
@@ -99,14 +110,6 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
               _stageLabelFor(session, l10n),
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
-            ),
-          ] else if (error != null) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilNotice(
-              tone: VeilTone.danger,
-              margin: EdgeInsets.zero,
-              title: l10n.authHandleFailedTitle,
-              message: veilErrorText(l10n, error),
             ),
           ],
         ],

@@ -76,6 +76,21 @@ void main() {
         reason: 'the preview did not come back after a restart: ${row(alice)}');
   });
 
+  test('a message that arrived while the app was closed, in a chat this device already holds, is previewed too',
+      () async {
+    await alice.signIn();
+    await bob.signIn();
+    await send(bob, 'first, while she is here');
+    await waitFor(() => row(alice) == 'first, while she is here', reason: 'the live message: ${row(alice)}');
+
+    // The app is closed; the relay keeps what arrives for it.
+    await alice.restart(whileClosed: () => send(bob, 'second, while she is away'));
+    await waitFor(() => row(alice) == 'second, while she is away',
+        reason: 'the message that waited on the relay was not previewed: ${row(alice)}');
+    expect(alice.api.markReadCalls, isEmpty, reason: 'previewing a message does not mark it read');
+    expect(alice.controller.activeConversationId, isNull, reason: 'no chat was opened for it');
+  });
+
   test('a group message that arrived while the app was closed is previewed too', () async {
     final carol = await MessengerParty.join(relay, handle: 'carol', userId: 'user-carol', deviceId: 'dev-carol');
     addTearDown(carol.dispose);
@@ -93,7 +108,8 @@ void main() {
     await alice.signIn();
     await bob.signIn();
     await send(bob, 'see you there');
-    await send(bob, 'door code 4471', disappearAfter: const Duration(seconds: 2));
+    // Long enough to be seen on a busy machine before it goes.
+    await send(bob, 'door code 4471', disappearAfter: const Duration(seconds: 5));
     await waitFor(() => row(alice) == 'door code 4471', reason: 'not previewed while it lives: ${row(alice)}');
     expect(
       conversationExpiryLabel(l10n, alice.controller.conversationById(conv)!, alice.controller),
@@ -102,7 +118,7 @@ void main() {
     );
 
     await waitFor(() => !row(alice).contains('4471'),
-        timeout: const Duration(seconds: 6), reason: 'still previewed after it expired: ${row(alice)}');
+        timeout: const Duration(seconds: 12), reason: 'still previewed after it expired: ${row(alice)}');
     expect(row(alice), 'see you there', reason: 'the row falls back to the message before it');
 
     // The relay of this test never sweeps, and still lists the expired

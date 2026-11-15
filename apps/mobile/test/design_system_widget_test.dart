@@ -99,6 +99,32 @@ void main() {
         }
       }
     });
+
+    test('a dark sheet has a hairline along its top edge only; a light sheet has none', () {
+      const rect = Rect.fromLTWH(0, 0, 390, 300);
+      final dark = VeilTheme.dark().bottomSheetTheme.shape!;
+      void paintDark(Canvas canvas) => dark.paint(canvas, rect);
+      expect(
+        paintDark,
+        paints
+          ..something((method, arguments) {
+            if (method != #drawPath) return false;
+            final bounds = (arguments[0] as Path).getBounds();
+            final paint = arguments[1] as Paint;
+            return paint.color.toARGB32() == VeilPalette.dark.strokeStrong.toARGB32() &&
+                paint.strokeWidth == 0.5 &&
+                bounds.width >= 389 &&
+                bounds.height <= VeilRadius.lg;
+          }),
+      );
+      // No whole outline: that would draw lines down both screen edges.
+      expect(paintDark, isNot(paints..drrect()));
+      expect(paintDark, isNot(paints..rrect()));
+      expect((Canvas canvas) => VeilTheme.light().bottomSheetTheme.shape!.paint(canvas, rect), paintsNothing);
+      // The corners are still the sheet's 14.
+      expect(dark.getOuterPath(rect).getBounds(), rect);
+      expect((dark as RoundedRectangleBorder).borderRadius, const BorderRadius.vertical(top: Radius.circular(14)));
+    });
   });
 
   group('tap targets', () {
@@ -269,6 +295,44 @@ void main() {
       final divider = tester.widget<Divider>(find.byType(Divider));
       expect(divider.thickness, 0.5);
       expect(divider.color, VeilPalette.dark.stroke);
+    });
+
+    testWidgets('in a sheet the rows run full-bleed on the sheet, with lines that show on it', (tester) async {
+      await _pump(
+        tester,
+        _App(
+          child: VeilShell(
+            title: 'Contacts',
+            grouped: true,
+            child: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => showModalBottomSheet<void>(
+                  context: context,
+                  builder: (_) => const VeilGroup(children: [
+                    VeilRow(title: 'Start chat', onTap: _noop),
+                    VeilRow(title: 'Remove contact', destructive: true, onTap: _noop),
+                  ]),
+                ),
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      final palette = VeilPalette.dark;
+      expect(tester.getRect(find.byType(VeilRow).first).left, 0, reason: 'no container even over a grouped page');
+      expect(tester.getRect(find.byType(VeilRow).first).width, 390);
+      expect(
+        find.descendant(
+          of: find.byType(VeilGroup),
+          matching: find.byWidgetPredicate((w) => w is Material && w.color == palette.surface),
+        ),
+        findsNothing,
+      );
+      // `stroke` is the sheet's own colour in the dark theme.
+      expect(tester.widget<Divider>(find.byType(Divider)).color, palette.strokeStrong);
     });
 
     testWidgets('rows are 44, 52 with a subtitle and 60 with a leading avatar', (tester) async {
@@ -700,6 +764,40 @@ void main() {
       expect(find.byIcon(Icons.error_outline), findsOneWidget);
       expect(tester.widget<Icon>(find.byIcon(Icons.chat_bubble_outline)).color, VeilPalette.dark.textSubtle);
       expect(find.byType(DecoratedBox), findsNothing, reason: 'no tile behind the icon');
+    });
+
+    testWidgets('notices and the error state still render with larger text on the smallest phone', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      for (final scale in [1.4, 2.0]) {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        await tester.pumpWidget(
+          const _App(
+            light: true,
+            child: Scaffold(
+              body: Column(children: [
+                VeilNotice(
+                  title: 'Safety number changed',
+                  message: 'Nothing is sent until you review it.',
+                  tone: VeilTone.warn,
+                  actionLabel: 'Review',
+                  onAction: _noop,
+                ),
+                VeilNotice(message: '2 messages not sent', tone: VeilTone.danger, dense: true, actionLabel: 'Retry', onAction: _noop),
+                Expanded(child: VeilEmptyState.error(title: 'Could not load your chats', body: 'Check your connection.')),
+              ]),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull, reason: 'nothing overflows at $scale');
+        expect(find.text('Nothing is sent until you review it.'), findsOneWidget);
+        expect(find.text('Review'), findsOneWidget);
+        expect(find.text('Could not load your chats'), findsOneWidget);
+        expect(find.text('Check your connection.'), findsOneWidget);
+      }
     });
 
     testWidgets('a destructive button is a text button in the danger colour; nothing is filled red', (tester) async {

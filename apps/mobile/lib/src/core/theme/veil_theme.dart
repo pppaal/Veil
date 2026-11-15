@@ -491,9 +491,8 @@ class VeilTheme {
         dragHandleColor: palette.strokeStrong,
         dragHandleSize: const Size(36, 4),
         // In the dark theme a sheet has no shadow; its tier and a hairline
-        // along its top edge lift it (a sheet spans the width, so only the
-        // top of the outline shows).
-        shape: RoundedRectangleBorder(
+        // along its top edge lift it.
+        shape: _SheetTopEdgeBorder(
           borderRadius: const BorderRadius.vertical(top: Radius.circular(VeilRadius.lg)),
           side: light ? BorderSide.none : BorderSide(color: palette.strokeStrong, width: 0.5),
         ),
@@ -595,6 +594,56 @@ class VeilTypography {
     fontWeight: FontWeight.w600,
     letterSpacing: -0.2,
   );
+}
+
+/// The outline of a sheet: rounded top corners, and its [side] drawn along
+/// the top edge only. A sheet spans the screen's width and runs off its
+/// bottom, so a whole outline would also draw faint lines down both screen
+/// edges.
+class _SheetTopEdgeBorder extends RoundedRectangleBorder {
+  const _SheetTopEdgeBorder({super.side, super.borderRadius});
+
+  @override
+  _SheetTopEdgeBorder copyWith({BorderSide? side, BorderRadiusGeometry? borderRadius}) =>
+      _SheetTopEdgeBorder(side: side ?? this.side, borderRadius: borderRadius ?? this.borderRadius);
+
+  @override
+  ShapeBorder scale(double t) => _SheetTopEdgeBorder(side: side.scale(t), borderRadius: borderRadius * t);
+
+  @override
+  ShapeBorder? lerpFrom(ShapeBorder? a, double t) => a is RoundedRectangleBorder
+      ? _SheetTopEdgeBorder(
+          side: BorderSide.lerp(a.side, side, t),
+          borderRadius: BorderRadiusGeometry.lerp(a.borderRadius, borderRadius, t)!,
+        )
+      : super.lerpFrom(a, t);
+
+  @override
+  ShapeBorder? lerpTo(ShapeBorder? b, double t) => b is RoundedRectangleBorder
+      ? _SheetTopEdgeBorder(
+          side: BorderSide.lerp(side, b.side, t),
+          borderRadius: BorderRadiusGeometry.lerp(borderRadius, b.borderRadius, t)!,
+        )
+      : super.lerpTo(b, t);
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    if (side.style == BorderStyle.none || side.width == 0) return;
+    // The middle of the stroke, inside the edge as the whole outline would
+    // draw it.
+    final inset = side.strokeInset - side.width / 2;
+    final edge = rect.deflate(inset);
+    final radii = borderRadius.resolve(textDirection);
+    Radius shrink(Radius r) => Radius.elliptical(r.x > inset ? r.x - inset : 0, r.y > inset ? r.y - inset : 0);
+    final left = shrink(radii.topLeft);
+    final right = shrink(radii.topRight);
+    final path = Path()
+      ..moveTo(edge.left, edge.top + left.y)
+      ..arcToPoint(Offset(edge.left + left.x, edge.top), radius: left)
+      ..lineTo(edge.right - right.x, edge.top)
+      ..arcToPoint(Offset(edge.right, edge.top + right.y), radius: right);
+    canvas.drawPath(path, side.toPaint());
+  }
 }
 
 /// Discipline for haptics. Flutter's [HapticFeedback] exposes raw primitives,

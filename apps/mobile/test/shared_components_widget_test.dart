@@ -161,6 +161,17 @@ void main() {
       expect([for (final s in switches) s.onChanged], [null, null]);
     });
 
+    testWidgets('the initial badge is the neutral disc, not a colour seeded by the display name', (tester) async {
+      // Lists seed a person's colour by handle; the badge only knows the
+      // name, so a colour here would give one person two colours.
+      await tester.pumpWidget(_app(const VeilInitialBadge(name: 'Alexandra Montgomery-Whitfield', size: 56)));
+      final avatar = tester.widget<VeilAvatar>(find.byType(VeilAvatar));
+      expect(avatar.unknown, isTrue);
+      final disc = tester.widget<Container>(find.descendant(of: find.byType(VeilAvatar), matching: find.byType(Container)));
+      expect((disc.decoration! as BoxDecoration).color, VeilAvatar.neutralDark);
+      expect(find.byIcon(Icons.person_outline), findsOneWidget);
+    });
+
     test('the old tone name still resolves', () {
       expect(VeilBannerTone.warn, VeilTone.warn);
       expect(VeilBannerTone.values, VeilTone.values);

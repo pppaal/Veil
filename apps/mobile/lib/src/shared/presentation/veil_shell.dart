@@ -56,10 +56,15 @@ class VeilShell extends StatelessWidget {
   /// the 16 side gutter, 16 under the bar, 24 above the bottom.
   static const EdgeInsets formPadding = EdgeInsets.fromLTRB(16, 16, 16, 24);
 
-  /// Whether the nearest shell above [context] is a grouped page. True
-  /// where there is none (a sheet, a test), so a group draws its container.
-  static bool groupedOf(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_VeilPageScope>()?.grouped ?? true;
+  /// Whether the nearest shell above [context] is a grouped page. A sheet,
+  /// dialog or menu is not: it is one raised surface, so its rows run
+  /// full-bleed on it as on a white page. Where there is neither (a bare
+  /// page in a test) a group draws its container.
+  static bool groupedOf(BuildContext context) {
+    final scope = context.dependOnInheritedWidgetOfExactType<_VeilPageScope>();
+    if (scope != null) return scope.grouped;
+    return ModalRoute.of(context) is! PopupRoute;
+  }
 
   @override
   Widget build(BuildContext context) {

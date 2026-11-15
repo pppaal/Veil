@@ -6,8 +6,8 @@ import 'veil_ui.dart';
 
 /// Rows that belong together. On a grouped page (a [VeilShell] with
 /// `grouped: true`) they sit in a `surface` container with 16dp side
-/// margins, rounded by 10; on a white page there is no container and the
-/// rows run full-bleed. Either way a 0.5dp hairline separates the rows,
+/// margins, rounded by 10; on a white page, and in a sheet or dialog, there
+/// is no container and the rows run full-bleed. Either way a 0.5dp hairline separates the rows,
 /// inset to the text edge ([inset]: 16, or 56/72 where rows have a leading
 /// avatar). [header] and [footer] are small muted lines above and below.
 class VeilGroup extends StatelessWidget {
@@ -39,7 +39,10 @@ class VeilGroup extends StatelessWidget {
     final palette = context.veilPalette;
     final grouped = VeilShell.groupedOf(context);
     final dark = theme.brightness == Brightness.dark;
-    final hairline = grouped && dark ? palette.strokeStrong : palette.stroke;
+    // In the dark theme `stroke` is the colour of a raised surface itself,
+    // so on a group's container and on a sheet the lines are strokeStrong.
+    final raised = grouped || ModalRoute.of(context) is PopupRoute;
+    final hairline = raised && dark ? palette.strokeStrong : palette.stroke;
     final side = grouped ? VeilSpace.md : 0.0;
     final header = this.header ?? label;
     final textStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);

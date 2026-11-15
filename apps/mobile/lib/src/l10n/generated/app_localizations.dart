@@ -1007,7 +1007,7 @@ abstract class AppLocalizations {
   /// No description provided for @authHandleStep3Title.
   ///
   /// In en, this message translates to:
-  /// **'Challenge device'**
+  /// **'Check the device'**
   String get authHandleStep3Title;
 
   /// No description provided for @authHandleStep3Body.
@@ -3875,13 +3875,13 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersKeyChangedTitle.
   ///
   /// In en, this message translates to:
-  /// **'Peer identity key changed'**
+  /// **'This contact\'s identity key changed'**
   String get safetyNumbersKeyChangedTitle;
 
   /// No description provided for @safetyNumbersKeyChangedMessage.
   ///
   /// In en, this message translates to:
-  /// **'The identity key for this peer is different from the one you verified on {date}. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.'**
+  /// **'This contact\'s identity key is different from the one you verified on {date}. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.'**
   String safetyNumbersKeyChangedMessage(String date);
 
   /// No description provided for @safetyNumbersVerifiedOn.
@@ -3893,7 +3893,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersVerifiedNote.
   ///
   /// In en, this message translates to:
-  /// **'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.'**
+  /// **'If this contact reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.'**
   String get safetyNumbersVerifiedNote;
 
   /// No description provided for @safetyNumbersReVerify.
@@ -3995,7 +3995,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersDirectoryOtherDeviceBody.
   ///
   /// In en, this message translates to:
-  /// **'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.'**
+  /// **'This conversation encrypts to a different device than the one the key server now lists for this contact. The safety number on this page belongs to the device it encrypts to. If your contact changed devices, compare numbers with them again.'**
   String get safetyNumbersDirectoryOtherDeviceBody;
 
   /// No description provided for @safetyNumbersPendingBody.
@@ -4220,18 +4220,6 @@ abstract class AppLocalizations {
   /// **'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.'**
   String get deviceTransferNoFallbackBody;
 
-  /// No description provided for @deviceTransferWindowExpiredTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Transfer window expired'**
-  String get deviceTransferWindowExpiredTitle;
-
-  /// No description provided for @deviceTransferClaimExpiredMessage.
-  ///
-  /// In en, this message translates to:
-  /// **'This new-device claim expired. Register a fresh claim and request approval again.'**
-  String get deviceTransferClaimExpiredMessage;
-
   /// No description provided for @deviceTransferPayloadCopied.
   ///
   /// In en, this message translates to:
@@ -4268,11 +4256,11 @@ abstract class AppLocalizations {
   /// **'Register this new-device claim before completion.'**
   String get deviceTransferRegisterBeforeComplete;
 
-  /// No description provided for @deviceTransferClaimExpiredRegisterFresh.
+  /// No description provided for @deviceTransferCodeExpired.
   ///
   /// In en, this message translates to:
-  /// **'This new-device claim has expired. Register a fresh claim first.'**
-  String get deviceTransferClaimExpiredRegisterFresh;
+  /// **'This transfer code has expired. Issue a new one on the old device.'**
+  String get deviceTransferCodeExpired;
 
   /// No description provided for @deviceTransferFinishStartedFirst.
   ///
@@ -4357,6 +4345,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Issue the code on your old device, then paste it here.'**
   String get deviceTransferNewCodeBody;
+
+  /// No description provided for @deviceTransferNewCodeExpiredBody.
+  ///
+  /// In en, this message translates to:
+  /// **'The transfer code expired before the transfer was finished. Issue a new code on the old device and paste it here.'**
+  String get deviceTransferNewCodeExpiredBody;
 
   /// No description provided for @deviceTransferNewCodeChange.
   ///
@@ -4531,12 +4525,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Device name'**
   String get deviceTransferDeviceNameLabel;
-
-  /// No description provided for @deviceTransferClaimExpiredPill.
-  ///
-  /// In en, this message translates to:
-  /// **'Claim expired'**
-  String get deviceTransferClaimExpiredPill;
 
   /// No description provided for @deviceTransferClaimCode.
   ///
@@ -4811,7 +4799,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusSecretRefs.
   ///
   /// In en, this message translates to:
-  /// **'Local secret refs'**
+  /// **'Device secret keys'**
   String get securityStatusSecretRefs;
 
   /// No description provided for @securityStatusSecretRefsPresent.
@@ -5009,25 +4997,25 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusApiMode.
   ///
   /// In en, this message translates to:
-  /// **'API mode'**
+  /// **'Relay address'**
   String get securityStatusApiMode;
 
   /// No description provided for @securityStatusApiAttached.
   ///
   /// In en, this message translates to:
-  /// **'Attached'**
+  /// **'Configured'**
   String get securityStatusApiAttached;
 
   /// No description provided for @securityStatusApiAttachedDetail.
   ///
   /// In en, this message translates to:
-  /// **'REST API is configured for this build.'**
+  /// **'A relay address is configured for this build.'**
   String get securityStatusApiAttachedDetail;
 
   /// No description provided for @securityStatusApiUnavailableDetail.
   ///
   /// In en, this message translates to:
-  /// **'No API endpoint is configured. Messaging is unavailable.'**
+  /// **'No relay address is configured. Messaging is unavailable.'**
   String get securityStatusApiUnavailableDetail;
 
   /// No description provided for @securityStatusRelayLink.
@@ -5237,7 +5225,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusPushProviderSeam.
   ///
   /// In en, this message translates to:
-  /// **'Seam only'**
+  /// **'Not connected'**
   String get securityStatusPushProviderSeam;
 
   /// No description provided for @securityStatusPushProviderSeamDetail.
@@ -5249,7 +5237,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusPushProviderUnavailableDetail.
   ///
   /// In en, this message translates to:
-  /// **'No API endpoint is configured, so push delivery is unavailable in this build.'**
+  /// **'No relay address is configured, so push delivery is unavailable in this build.'**
   String get securityStatusPushProviderUnavailableDetail;
 
   /// No description provided for @securityStatusPushPayloads.
@@ -5273,7 +5261,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusPushPayloadsUnavailableDetail.
   ///
   /// In en, this message translates to:
-  /// **'No API endpoint is configured, so push payload generation is unavailable in this build.'**
+  /// **'No relay address is configured, so push payload generation is unavailable in this build.'**
   String get securityStatusPushPayloadsUnavailableDetail;
 }
 

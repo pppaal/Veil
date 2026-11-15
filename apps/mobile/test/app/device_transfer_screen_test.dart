@@ -178,6 +178,33 @@ void _tallView(WidgetTester tester) {
 
 bool _enabled(WidgetTester tester) => tester.widget<FilledButton>(_completeButton).onPressed != null;
 
+// Nothing on the screen says that the claim or its code ran out.
+void _expectNotExpired() {
+  expect(find.text(_en.deviceTransferNewCodeExpiredBody), findsNothing);
+  expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
+  expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+}
+
+// A claim that ran out: the first step says so and takes a new code, and
+// nothing the expired code could still be used for is offered. Its session
+// ran out with it, so registering again on it would be refused, and this
+// device refuses to claim a session twice.
+void _expectExpired(WidgetTester tester, {required String claimId}) {
+  final steps = tester.widgetList<TransferStep>(find.byType(TransferStep)).toList();
+  expect([for (final step in steps) step.state],
+      [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+  expect(steps.first.status, _en.deviceTransferStatusExpired);
+  expect(steps.first.body, _en.deviceTransferNewCodeExpiredBody);
+  expect(find.text(_en.deviceTransferNewCodeExpiredBody), findsOneWidget);
+  expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsOneWidget);
+  expect(find.byType(TextField), findsOneWidget);
+  expect(_completeButton, findsNothing);
+  expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
+  expect(find.text(_en.deviceTransferClaimCode(claimId)), findsNothing);
+  expect(find.text(_en.deviceTransferNewCompleteBody), findsNothing);
+  expect(find.text(_en.deviceTransferNewCompleteNote), findsNothing);
+}
+
 // Lets both the test's fake clock and real time move until [condition].
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   for (var i = 0; i < 200 && !condition(); i++) {
@@ -207,10 +234,7 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
-    expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
-    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+    _expectNotExpired();
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -243,17 +267,31 @@ void main() {
       await session.bootstrap();
     });
     expect(session.pendingTransfer?.isCompleted, isFalse);
+    final transfer = relay.transfers.values.single;
+    final claimId = session.pendingTransfer!.claimId;
 
     _tallView(tester);
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsOneWidget);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsOneWidget);
-    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsOneWidget);
-    await tester.ensureVisible(_completeButton);
-    expect(_enabled(tester), isFalse);
+    _expectExpired(tester, claimId: claimId);
     expect(relay.callsTo('POST /device-transfer/complete'), 0);
+
+    // The code the claim was made on does not bring it back.
+    await tester.enterText(
+      find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
+      'VEIL_TRANSFER::${transfer.id}::${transfer.transferToken}',
+    );
+    await tester.tap(find.text(_en.deviceTransferImportPayload));
+    await tester.pump();
+    final refusal = find.text(_en.deviceTransferCodeExpired);
+    expect(refusal, findsOneWidget);
+    expect(tester.widget<TransferStep>(find.ancestor(of: refusal, matching: find.byType(TransferStep))).number, 1);
+    _expectExpired(tester, claimId: claimId);
+    expect(relay.callsTo('POST /device-transfer/claim'), 1);
+    expect(relay.callsTo('POST /device-transfer/complete'), 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   // closing F1: the relay committed, the answer was lost and the retries
@@ -281,10 +319,7 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
-    expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
-    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+    _expectNotExpired();
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -314,13 +349,14 @@ void main() {
     });
     expect(session.pendingTransfer?.completionOutcomeUnknown, isTrue);
     expect(session.pendingTransfer?.ended, isFalse);
+    final claimId = session.pendingTransfer!.claimId;
 
     _tallView(tester);
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
     // The relay has not answered yet: completing stays possible.
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
+    _expectNotExpired();
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -332,11 +368,14 @@ void main() {
 
     expect(relay.callsTo('POST /device-transfer/complete'), 7);
     expect(session.state.isAuthenticated, isFalse);
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsOneWidget);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsOneWidget);
-    await tester.ensureVisible(_completeButton);
-    expect(_enabled(tester), isFalse);
+    _expectExpired(tester, claimId: claimId);
+    // Why the relay refused is said in the step that is in hand again.
+    final failure = find.text(_en.deviceTransferFailedTitle);
+    expect(failure, findsOneWidget);
+    expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 1);
     expect((await tester.runAsync(storage.readPendingTransfer))?.ended, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   // The step in hand opens on what the user carries to the old device, and

@@ -38,13 +38,14 @@ class TransferStep extends StatelessWidget {
   /// A line under the title, in the app's own words.
   final String? body;
 
-  /// A short state beside the title that the number does not show
-  /// ("Expired").
+  /// A short state the number does not show ("Expired"): at the end of the
+  /// title's line, or under the title when the two do not fit on one. It
+  /// never takes width from [body].
   final String? status;
   final VeilBannerTone statusTone;
 
-  /// A small action at the end of the title's row (reopening a finished
-  /// step).
+  /// A small action at the end of the title's line (reopening a finished
+  /// step, closing it again). It takes no width from [body] either.
   final Widget? trailing;
 
   /// The step's controls, each as wide as the step.
@@ -63,10 +64,18 @@ class TransferStep extends StatelessWidget {
         : upcoming
             ? palette.strokeStrong
             : palette.primary;
-    // A title alone beside a button is centred on it; anything taller hangs
+    // A title beside a button is centred on it; otherwise the line hangs
     // from the top, with a one-line title centred on the badge.
-    final centred = trailing != null && body == null;
+    final centred = trailing != null;
+    final heading = VeilCopy(
+      title,
+      style: theme.textTheme.titleMedium?.copyWith(color: upcoming ? palette.textMuted : null),
+    );
 
+    // The number, the title and what goes with the title (a state, a small
+    // action) share the first line. The words about the step start under
+    // it, from the title's edge to the step's: nothing on the first line
+    // takes width from them.
     return VeilSurfaceCard(
       toned: true,
       padding: const EdgeInsets.all(VeilSpace.md),
@@ -95,29 +104,31 @@ class TransferStep extends StatelessWidget {
               const SizedBox(width: VeilSpace.sm),
               Expanded(
                 child: Padding(
-                  padding: EdgeInsets.only(top: centred ? 0 : 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      VeilCopy(
-                        title,
-                        style: theme.textTheme.titleMedium?.copyWith(color: upcoming ? palette.textMuted : null),
-                      ),
-                      if (body != null) ...[
-                        const SizedBox(height: VeilSpace.xxs),
-                        VeilCopy(body!, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
-                      ],
-                    ],
-                  ),
+                  padding: EdgeInsets.only(top: centred || status != null ? 0 : 4),
+                  child: status == null
+                      ? heading
+                      // The state shares the title's line while both fit and
+                      // drops under the title when they do not.
+                      : SizedBox(
+                          width: double.infinity,
+                          child: Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: VeilSpace.xs,
+                            runSpacing: VeilSpace.xxs,
+                            children: [heading, VeilStatusPill(label: status!, tone: statusTone)],
+                          ),
+                        ),
                 ),
               ),
-              if (status != null) ...[
-                const SizedBox(width: VeilSpace.xs),
-                VeilStatusPill(label: status!, tone: statusTone),
-              ],
               if (trailing != null) trailing!,
             ],
           ),
+          if (body != null)
+            Padding(
+              padding: const EdgeInsets.only(left: _badge + VeilSpace.sm, top: VeilSpace.xxs),
+              child: VeilCopy(body!, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+            ),
           if (children.isNotEmpty) ...[
             const SizedBox(height: VeilSpace.sm),
             ...children,
@@ -163,6 +174,58 @@ class TransferCodeBox extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// What an action of a step came to: that it went through, or why it did
+/// not. It is said in the step that was acted on, and it appears after a
+/// tap that may have been made at the foot of the screen, so it brings
+/// itself into view when it appears and whenever its words change. Nothing
+/// moves while it is already on screen, and a screen that opens with a
+/// result on it opens at its top.
+class TransferStepResult extends StatefulWidget {
+  const TransferStepResult({super.key, required this.message, this.title, this.tone = VeilBannerTone.info});
+
+  final String? title;
+  final String message;
+  final VeilBannerTone tone;
+
+  @override
+  State<TransferStepResult> createState() => _TransferStepResultState();
+}
+
+class _TransferStepResultState extends State<TransferStepResult> {
+  @override
+  void initState() {
+    super.initState();
+    // A list that has been laid out before was on screen without this.
+    final list = context.findAncestorStateOfType<ScrollableState>();
+    if (list != null && list.position.hasContentDimensions) _reveal();
+  }
+
+  @override
+  void didUpdateWidget(TransferStepResult oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message != widget.message) _reveal();
+  }
+
+  void _reveal() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Its foot first, then its head: whichever edge is off screen comes
+      // in, and no further.
+      for (final policy in const [
+        ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+        ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      ]) {
+        Scrollable.ensureVisible(context, alignmentPolicy: policy);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return VeilInlineBanner(dense: true, title: widget.title, message: widget.message, tone: widget.tone);
   }
 }
 

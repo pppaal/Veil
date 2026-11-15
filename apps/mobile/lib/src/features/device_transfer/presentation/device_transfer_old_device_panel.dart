@@ -65,17 +65,18 @@ class TransferOldDevicePanel extends StatelessWidget {
     final live = transferSessionId != null && !transferExpired;
     final statusLabel = transferStatusLabel(l10n, status);
     final aboutIssuing = status is TransferNeedsApi || status is TransferTokenReady;
-
-    return Column(
-      children: [
-        if (errorMessage != null) ...[
-          VeilInlineBanner(
+    // A failure is said in the step that was acted on: issuing fails
+    // before a session is open, approving after.
+    final failure = errorMessage == null
+        ? null
+        : TransferStepResult(
             title: l10n.deviceTransferFailedTitle,
             message: errorMessage!,
             tone: VeilBannerTone.danger,
-          ),
-          const SizedBox(height: VeilSpace.sm),
-        ],
+          );
+
+    return Column(
+      children: [
         TransferStep(
           number: 1,
           title: l10n.deviceTransferOldIssueTitle,
@@ -90,11 +91,14 @@ class TransferOldDevicePanel extends StatelessWidget {
           status: transferExpired ? l10n.deviceTransferStatusExpired : null,
           statusTone: VeilBannerTone.danger,
           children: [
-            if (!live)
+            if (!live) ...[
+              if (failure != null) ...[failure, const SizedBox(height: VeilSpace.sm)],
               VeilButton(
-                onPressed: isBusy ? null : onIssue,
+                // A build with no relay answers the same way every time.
+                onPressed: isBusy || status is TransferNeedsApi ? null : onIssue,
                 label: isBusy ? l10n.deviceTransferIssuingToken : l10n.deviceTransferIssueToken,
               ),
+            ],
           ],
         ),
         const SizedBox(height: VeilSpace.sm),
@@ -166,10 +170,14 @@ class TransferOldDevicePanel extends StatelessWidget {
                 label: l10n.deviceTransferApproveClaim,
               ),
             ],
-            if (!aboutIssuing && statusLabel != null) ...[
+            // What the approval came to, under the button that asked for it:
+            // why it failed, or else what the relay answered.
+            if (live && failure != null) ...[
+              const SizedBox(height: VeilSpace.sm),
+              failure,
+            ] else if (!aboutIssuing && statusLabel != null) ...[
               if (live) const SizedBox(height: VeilSpace.sm),
-              VeilInlineBanner(
-                dense: true,
+              TransferStepResult(
                 title: l10n.deviceTransferStatusTitle,
                 message: statusLabel,
                 tone: status is TransferClaimApproved ? VeilBannerTone.good : VeilBannerTone.info,

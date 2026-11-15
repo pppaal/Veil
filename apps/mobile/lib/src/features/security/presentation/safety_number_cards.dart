@@ -217,9 +217,11 @@ class SafetyNewSessionCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: VeilSpace.xs),
+          // A paragraph to read, so in the body's colour: the label's is too
+          // faint for it on a white card.
           VeilCopy(
             l10n.safetyNumbersRotateBody,
-            style: TextStyle(color: palette.textSubtle, fontSize: 13),
+            style: TextStyle(color: palette.textMuted, fontSize: 13),
           ),
           const SizedBox(height: VeilSpace.md),
           VeilButton(

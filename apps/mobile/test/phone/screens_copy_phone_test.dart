@@ -196,12 +196,12 @@ void main() {
     testWidgets('a phone opens on the warning, before anything else', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = tester.getRect(find.text('Peer identity key changed'));
+        final warning = tester.getRect(find.text("This contact's identity key changed"));
         final intro = tester.getRect(find.byType(VeilScreenIntro));
         expect(find.byType(VeilHeroPanel), findsNothing);
         expect(warning.bottom, lessThan(intro.top));
         expect(warning.top, lessThan(screenHeight(tester) / 2), reason: 'on the first screenful');
-        expect(find.text('Peer identity key changed'), findsOneWidget, reason: 'said once');
+        expect(find.text("This contact's identity key changed"), findsOneWidget, reason: 'said once');
       });
     });
 
@@ -229,7 +229,7 @@ void main() {
       const wide = PhoneSize(900, 1400, topInset: 0, bottomInset: 0);
       await withPhoneApp(tester, identities, size: wide, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = find.text('Peer identity key changed', skipOffstage: false);
+        final warning = find.text("This contact's identity key changed", skipOffstage: false);
         final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
         final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
         expect(tester.getTopLeft(warning).dy, lessThan(tester.getTopLeft(next).dy));
@@ -241,7 +241,7 @@ void main() {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
         await awaitSafetyNumber(tester);
         expect(find.text('SAFETY NUMBER', skipOffstage: false), findsOneWidget);
-        expect(find.text('Peer identity key changed', skipOffstage: false), findsNothing);
+        expect(find.text("This contact's identity key changed", skipOffstage: false), findsNothing);
       });
     });
   });

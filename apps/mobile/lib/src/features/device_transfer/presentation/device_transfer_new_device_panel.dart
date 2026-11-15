@@ -22,6 +22,11 @@ class TransferNotice {
 /// code, register this device, and finish once the old device approved.
 /// Only the step in hand shows its controls, so the control to use next is
 /// the first one on the screen; a finished step shrinks to its title.
+///
+/// A claim that ran out goes back to the first step. Its transfer session
+/// ran out with it (they share one window), so nothing can be registered or
+/// finished on the code this device holds: the first step says so and takes
+/// the new code, and the other two wait for it.
 class TransferNewDevicePanel extends StatelessWidget {
   const TransferNewDevicePanel({
     super.key,
@@ -38,6 +43,7 @@ class TransferNewDevicePanel extends StatelessWidget {
     required this.notice,
     required this.onUseCode,
     required this.onEditCode,
+    required this.onKeepCode,
     required this.onClaim,
     required this.onComplete,
     required this.now,
@@ -63,6 +69,9 @@ class TransferNewDevicePanel extends StatelessWidget {
   final TransferNotice? notice;
   final VoidCallback onUseCode;
   final VoidCallback onEditCode;
+
+  /// Closes the reopened first step again, keeping the code that was read.
+  final VoidCallback onKeepCode;
   final Future<void> Function() onClaim;
   final Future<void> Function() onComplete;
   final DateTime now;
@@ -71,15 +80,16 @@ class TransferNewDevicePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final hasClaim = claimId != null;
-    final claimLive = hasClaim && !claimExpired;
-    final pasting = !hasCode || editingCode;
+    final claimLive = claimId != null && !claimExpired;
+    // The code this device holds went with the claim made on it.
+    final expired = claimId != null && claimExpired;
+    final codeRead = hasCode && !expired;
+    final pasting = !codeRead || editingCode;
     // Where the notice goes: its own step, or else the one in hand.
-    final noticeStep = notice?.step ?? (claimLive ? 3 : (hasCode ? 2 : 1));
+    final noticeStep = notice?.step ?? (claimLive ? 3 : (codeRead ? 2 : 1));
     List<Widget> noticeFor(int step) => [
           if (notice != null && noticeStep == step) ...[
-            VeilInlineBanner(
-              dense: true,
+            TransferStepResult(
               title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
               message: notice!.message,
               tone: notice!.isError ? VeilBannerTone.danger : VeilBannerTone.good,
@@ -94,10 +104,20 @@ class TransferNewDevicePanel extends StatelessWidget {
           number: 1,
           title: l10n.deviceTransferNewCodeTitle,
           state: pasting ? TransferStepState.current : TransferStepState.done,
-          body: pasting ? l10n.deviceTransferNewCodeBody : null,
-          trailing: pasting
-              ? null
-              : TextButton(onPressed: onEditCode, child: Text(l10n.deviceTransferNewCodeChange)),
+          body: expired
+              ? l10n.deviceTransferNewCodeExpiredBody
+              : pasting
+                  ? l10n.deviceTransferNewCodeBody
+                  : null,
+          status: expired ? l10n.deviceTransferStatusExpired : null,
+          statusTone: VeilBannerTone.danger,
+          // A step reopened over a code that still holds can be closed
+          // again; one that has no usable code stays open.
+          trailing: !pasting
+              ? TextButton(onPressed: onEditCode, child: Text(l10n.deviceTransferNewCodeChange))
+              : codeRead
+                  ? TextButton(onPressed: onKeepCode, child: Text(l10n.commonCancel))
+                  : null,
           children: [
             if (pasting) ...[
               ...noticeFor(1),
@@ -111,7 +131,7 @@ class TransferNewDevicePanel extends StatelessWidget {
               ),
               const SizedBox(height: VeilSpace.sm),
               VeilButton(
-                tone: hasCode ? VeilButtonTone.secondary : VeilButtonTone.primary,
+                tone: codeRead ? VeilButtonTone.secondary : VeilButtonTone.primary,
                 onPressed: onUseCode,
                 label: l10n.deviceTransferImportPayload,
               ),
@@ -122,16 +142,14 @@ class TransferNewDevicePanel extends StatelessWidget {
         TransferStep(
           number: 2,
           title: l10n.deviceTransferNewRegisterTitle,
-          state: !hasCode
+          state: !codeRead
               ? TransferStepState.upcoming
               : claimLive
                   ? TransferStepState.done
                   : TransferStepState.current,
           body: claimLive ? null : l10n.deviceTransferNewDeviceCaption,
-          status: hasClaim && claimExpired ? l10n.deviceTransferClaimExpiredPill : null,
-          statusTone: VeilBannerTone.danger,
           children: [
-            if (hasCode && !claimLive) ...[
+            if (codeRead && !claimLive) ...[
               ...noticeFor(2),
               TextField(
                 controller: deviceNameController,
@@ -151,11 +169,11 @@ class TransferNewDevicePanel extends StatelessWidget {
           number: 3,
           title: l10n.deviceTransferNewCompleteTitle,
           state: claimLive ? TransferStepState.current : TransferStepState.upcoming,
-          body: hasClaim ? l10n.deviceTransferNewCompleteBody : l10n.deviceTransferNewCompleteBodyUpcoming,
+          body: claimLive ? l10n.deviceTransferNewCompleteBody : l10n.deviceTransferNewCompleteBodyUpcoming,
           children: [
-            // A claim that ran out keeps its code and its button on screen,
-            // the button switched off: registering again replaces it.
-            if (hasClaim) ...[
+            // Only a claim that can still be approved shows its code and the
+            // button that finishes it.
+            if (claimLive) ...[
               ...noticeFor(3),
               // What the user reads off this screen comes first: the code,
               // with the key it stands for and how long it holds.
@@ -177,7 +195,7 @@ class TransferNewDevicePanel extends StatelessWidget {
               ),
               const SizedBox(height: VeilSpace.sm),
               VeilButton(
-                onPressed: isCompleting || claimExpired ? null : onComplete,
+                onPressed: isCompleting ? null : onComplete,
                 label: isCompleting ? l10n.deviceTransferCompleting : l10n.deviceTransferCompleteOnDevice,
                 icon: Icons.arrow_forward_rounded,
               ),

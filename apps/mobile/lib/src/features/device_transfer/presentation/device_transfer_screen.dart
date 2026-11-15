@@ -21,7 +21,9 @@ enum _TransferMode { oldDevice, newDevice }
 /// Moving the account to another device. A signed-in device opens as the
 /// old one, any other as the new one. Each side is three numbered steps
 /// with the step in hand first on the screen; the notice that nothing
-/// replaces a missing old device follows the steps.
+/// replaces a missing old device follows the steps. A session or a claim
+/// that ran out is said in the first step of its side, which takes the new
+/// code.
 class DeviceTransferScreen extends ConsumerStatefulWidget {
   const DeviceTransferScreen({super.key});
 
@@ -45,6 +47,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
   String? _claimId;
   String? _claimFingerprint;
   DateTime? _claimExpiresAt;
+  // The claim whose expired code was taken out of the field.
+  String? _droppedCodeOfClaim;
   TransferNotice? _notice;
   late _TransferMode _mode;
   late Timer _ticker;
@@ -64,12 +68,14 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
       _claimId = pending.claimId;
       _claimFingerprint = pending.claimantFingerprint;
       _claimExpiresAt = pending.expiresAt;
+      _dropExpiredCode();
     }
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         setState(() {
           _now = DateTime.now();
         });
+        _dropExpiredCode();
       }
     });
   }
@@ -103,9 +109,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     final transferExpired = _isExpired(controller.transferExpiresAt);
     // A claim the relay committed, or may have, has no window left to miss:
     // the old device may be revoked already, and only the completion on this
-    // device remains, however long ago the claim was made. The banner, the
-    // step's mark and the completion button all follow _claimExpired, so
-    // that completion stays reachable until the relay itself ends it.
+    // device remains, however long ago the claim was made. Which step is in
+    // hand and whether the completion button is offered both follow
+    // _claimExpired, so that completion stays reachable until the relay
+    // itself ends it.
     final claimExpired = _claimExpired();
     final windowDecides = !(_heldClaim()?.mayBeCommitted ?? false);
     final oldDevice = _mode == _TransferMode.oldDevice;
@@ -135,16 +142,6 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
               ),
             ],
           ),
-          // The old device says that its session ran out in the step that
-          // issues a new code; the new device has no step that could.
-          if (!oldDevice && claimExpired) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilInlineBanner(
-              title: l10n.deviceTransferWindowExpiredTitle,
-              message: l10n.deviceTransferClaimExpiredMessage,
-              tone: VeilBannerTone.danger,
-            ),
-          ],
           const SizedBox(height: VeilSpace.sm),
           if (oldDevice)
             TransferOldDevicePanel(
@@ -184,6 +181,10 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
                   : TransferNotice(sessionError, isError: true),
               onUseCode: _useCode,
               onEditCode: () => setState(() => _editingCode = true),
+              onKeepCode: () => setState(() {
+                _editingCode = false;
+                if (_notice?.step == 1) _notice = null;
+              }),
               onClaim: _claimTransfer,
               onComplete: _completeTransfer,
               now: _now,
@@ -229,6 +230,16 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     return held != null ? held.expiredAt(_now) : _isExpired(_claimExpiresAt);
   }
 
+  // The code a claim was made on is of no use once the claim ran out: the
+  // field is emptied, once, for the new code.
+  void _dropExpiredCode() {
+    if (_claimId == null || _droppedCodeOfClaim == _claimId || !_claimExpired()) {
+      return;
+    }
+    _droppedCodeOfClaim = _claimId;
+    _codeController.clear();
+  }
+
   Future<void> _copyCode(String transferCode) async {
     final copied = AppLocalizations.of(context).deviceTransferPayloadCopied;
     await Clipboard.setData(ClipboardData(text: transferCode));
@@ -258,6 +269,11 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     // claimed again (a second claim ends the session), so it stays, and the
     // step to finish it says what comes next.
     final held = pending != null && pending.sessionId == parsed.sessionId ? pending : null;
+    // Its claim ran out, and the session with it: only a new code goes on.
+    if (held != null && held.expiredAt(_now)) {
+      setState(() => _notice = TransferNotice(l10n.deviceTransferCodeExpired, isError: true, step: 1));
+      return;
+    }
 
     setState(() {
       _sessionId = parsed.sessionId;
@@ -325,7 +341,7 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
     // A claim the relay committed, or may have, is completed however long ago
     // it was made; the relay decides (see _claimExpired).
     if (_claimExpired()) {
-      setState(() => _notice = TransferNotice(l10n.deviceTransferClaimExpiredRegisterFresh, isError: true));
+      setState(() => _notice = TransferNotice(l10n.deviceTransferCodeExpired, isError: true, step: 1));
       return;
     }
 
@@ -357,6 +373,8 @@ class _DeviceTransferScreenState extends ConsumerState<DeviceTransferScreen> {
           isError: true,
         );
       });
+      // The relay may have ended the claim with this answer.
+      _dropExpiredCode();
     } finally {
       if (mounted) {
         setState(() {

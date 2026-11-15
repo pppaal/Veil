@@ -91,13 +91,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get appLockTitle => '앱 잠금';
 
   @override
-  String get appLockLoadingTitle => '로컬 잠금 확인 중';
+  String get appLockLoadingTitle => '앱 잠금 확인 중';
 
   @override
   String get appLockLoadingBody => '저장된 PIN과 생체 인식 사용 가능 여부를 확인합니다.';
 
   @override
-  String get appLockHeroEyebrow => '로컬 잠금';
+  String get appLockHeroEyebrow => '이 기기 전용 잠금';
 
   @override
   String get appLockHeroTitle => 'VEIL은 원격으로 잠금을 풀지 않습니다.';
@@ -478,7 +478,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleBindingSection => '등록 절차';
 
   @override
-  String get authHandleStep1Title => '로컬 신원 생성';
+  String get authHandleStep1Title => '기기에서 신원 생성';
 
   @override
   String get authHandleStep1Body => '기기에 귀속된 암호화 정보를 만들고, 개인 키는 이 기기에만 둡니다.';
@@ -508,7 +508,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleBindCta => '이 기기에 연결';
 
   @override
-  String get authStageGeneratingKeys => '로컬 신원 생성 중';
+  String get authStageGeneratingKeys => '기기에서 신원 생성 중';
 
   @override
   String get authStageRegistering => '핸들 등록 중';
@@ -2172,7 +2172,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get safetyNumbersDirectoryOtherDeviceBody =>
-      '이 대화는 키 서버가 지금 이 연락처에 제공하는 기기와 다른 기기로 암호화됩니다. 위 번호는 이 대화가 암호화하는 기기의 번호입니다. 신뢰하기 전에 연락처와 비교하세요.';
+      '이 대화는 키 서버가 지금 이 연락처에 제공하는 기기와 다른 기기로 암호화됩니다. 이 화면의 안전 번호는 이 대화가 암호화하는 기기의 번호입니다. 상대방이 기기를 바꿨다면 번호를 다시 비교하세요.';
 
   @override
   String get safetyNumbersPendingBody =>
@@ -2297,13 +2297,6 @@ class AppLocalizationsKo extends AppLocalizations {
       '기존 기기가 없으면 이전은 실패합니다. VEIL은 복구·초기화·내보내기·관리자 복원을 제공하지 않습니다.';
 
   @override
-  String get deviceTransferWindowExpiredTitle => '이전 가능 시간 만료';
-
-  @override
-  String get deviceTransferClaimExpiredMessage =>
-      '이 새 기기의 등록 요청이 만료되었습니다. 새로 등록 요청을 보내고 다시 승인을 요청하세요.';
-
-  @override
   String get deviceTransferPayloadCopied => '이전 코드를 복사했습니다.';
 
   @override
@@ -2323,8 +2316,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '완료하기 전에 이 새 기기의 등록 요청을 보내세요.';
 
   @override
-  String get deviceTransferClaimExpiredRegisterFresh =>
-      '이 새 기기의 등록 요청이 만료되었습니다. 먼저 새로 등록 요청을 보내세요.';
+  String get deviceTransferCodeExpired => '만료된 코드입니다. 기존 기기에서 코드를 새로 발급하세요.';
 
   @override
   String get deviceTransferFinishStartedFirst =>
@@ -2342,7 +2334,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deviceTransferOldRequiredBody =>
-      '현재 신뢰된 기기에서 로그인하여 이전을 발급하고 승인하세요.';
+      '계정에 로그인된 기존 기기에서 이전 코드를 발급하고 승인하세요.';
 
   @override
   String get deviceTransferOldIssueTitle => '이전 코드 발급';
@@ -2372,6 +2364,10 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deviceTransferNewCodeBody => '기존 기기에서 코드를 발급한 뒤 여기에 붙여넣으세요.';
+
+  @override
+  String get deviceTransferNewCodeExpiredBody =>
+      '기기 이전을 마치기 전에 코드가 만료되었습니다. 기존 기기에서 코드를 새로 발급해 여기에 붙여넣으세요.';
 
   @override
   String get deviceTransferNewCodeChange => '변경';
@@ -2471,9 +2467,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get deviceTransferDeviceNameLabel => '기기 이름';
-
-  @override
-  String get deviceTransferClaimExpiredPill => '등록 요청 만료됨';
 
   @override
   String deviceTransferClaimCode(String claimId) {
@@ -2627,7 +2620,7 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 기기가 현재 활성 VEIL 세션을 보유하고 있습니다.';
 
   @override
-  String get securityStatusSecretRefs => '로컬 비밀 키 참조';
+  String get securityStatusSecretRefs => '기기 비밀 키';
 
   @override
   String get securityStatusSecretRefsPresent => '있음';
@@ -2664,7 +2657,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusPrivacyShieldDetail =>
-      'VEIL이 백그라운드로 가면 미리보기를 가리고 로컬 잠금을 다시 겁니다.';
+      'VEIL이 백그라운드로 가면 미리보기를 가리고 앱 잠금을 다시 겁니다.';
 
   @override
   String get securityStatusAppPreview => '최근 앱 미리보기';
@@ -2690,7 +2683,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusScreenCaptureSupportedDetail =>
-      'Android에서는 켜져 있을 때 보안 창 플래그로 스크린샷을 차단합니다.';
+      'Android에서는 켜져 있을 때 화면 보안 설정으로 스크린샷을 차단합니다.';
 
   @override
   String get securityStatusScreenCaptureUnsupportedDetail =>
@@ -2718,7 +2711,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusTransportDetail =>
-      '설정된 엔드포인트가 현재 비공개 베타 전송 정책을 충족합니다.';
+      '설정된 릴레이 주소가 현재 비공개 베타 전송 정책을 충족합니다.';
 
   @override
   String get securityStatusTlsPins => 'TLS 고정';
@@ -2739,17 +2732,17 @@ class AppLocalizationsKo extends AppLocalizations {
       '이 빌드에는 TLS 고정 값(VEIL_TLS_PINS)이 없어, 릴레이 연결이 플랫폼이 신뢰하는 인증서를 모두 받아들입니다. 릴리스 빌드는 고정 값이 없으면 설정 오류에서 멈춥니다.';
 
   @override
-  String get securityStatusApiMode => 'API 모드';
+  String get securityStatusApiMode => '릴레이 주소';
 
   @override
-  String get securityStatusApiAttached => '연결됨';
+  String get securityStatusApiAttached => '설정됨';
 
   @override
-  String get securityStatusApiAttachedDetail => '이 빌드에는 REST API가 설정되어 있습니다.';
+  String get securityStatusApiAttachedDetail => '이 빌드에는 릴레이 주소가 설정되어 있습니다.';
 
   @override
   String get securityStatusApiUnavailableDetail =>
-      'API 엔드포인트가 설정되지 않아 메시지를 주고받을 수 없습니다.';
+      '릴레이 주소가 설정되지 않아 메시지를 주고받을 수 없습니다.';
 
   @override
   String get securityStatusRelayLink => '릴레이 연결';
@@ -2786,7 +2779,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusIntegrityCompromisedDetail =>
-      '이 기기에서 루팅 또는 탈옥 징후가 감지되었습니다. 이 상태에서는 VEIL이 로컬 잠금 해제를 막습니다.';
+      '이 기기에서 루팅 또는 탈옥 징후가 감지되었습니다. 이 상태에서는 VEIL이 앱 잠금 해제를 막습니다.';
 
   @override
   String securityStatusIntegrityCompromisedReasons(String reasons) {
@@ -2835,7 +2828,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityStatusCryptoAdapter => '암호 어댑터';
 
   @override
-  String get securityStatusCryptoVeilRatchet => '프로덕션 (감사 전)';
+  String get securityStatusCryptoVeilRatchet => '정식 암호화 (감사 전)';
 
   @override
   String securityStatusCryptoVeilRatchetDetail(String adapterId) {
@@ -2872,15 +2865,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get securityStatusPushProvider => '푸시 제공자';
 
   @override
-  String get securityStatusPushProviderSeam => '연결부만 있음';
+  String get securityStatusPushProviderSeam => '연결 안 됨';
 
   @override
   String get securityStatusPushProviderSeamDetail =>
-      '메타데이터만 담는 깨우기 경로는 정의되어 있지만, 이 빌드에는 실제 APNs/FCM 제공자가 연결되어 있지 않습니다.';
+      '메타데이터만 담는 푸시 경로는 준비되어 있지만, 이 빌드에는 실제 APNs/FCM 제공자가 연결되어 있지 않습니다.';
 
   @override
   String get securityStatusPushProviderUnavailableDetail =>
-      'API 엔드포인트가 설정되지 않아 이 빌드에서는 푸시를 받을 수 없습니다.';
+      '릴레이 주소가 설정되지 않아 이 빌드에서는 푸시를 받을 수 없습니다.';
 
   @override
   String get securityStatusPushPayloads => '푸시 알림 데이터';
@@ -2890,9 +2883,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusPushPayloadsMetadataDetail =>
-      '나중에 푸시가 켜지더라도 깨우기 신호에는 메타데이터만 담아야 합니다. 메시지 본문은 푸시에 담기지 않습니다.';
+      '나중에 푸시가 켜지더라도 푸시에는 메타데이터만 담습니다. 메시지 본문은 푸시에 담기지 않습니다.';
 
   @override
   String get securityStatusPushPayloadsUnavailableDetail =>
-      'API 엔드포인트가 설정되지 않아 이 빌드에서는 푸시 알림 데이터를 만들지 않습니다.';
+      '릴레이 주소가 설정되지 않아 이 빌드에서는 푸시 알림 데이터를 만들지 않습니다.';
 }

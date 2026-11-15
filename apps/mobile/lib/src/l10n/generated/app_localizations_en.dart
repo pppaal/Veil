@@ -520,7 +520,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Publish only public device material and handle metadata.';
 
   @override
-  String get authHandleStep3Title => 'Challenge device';
+  String get authHandleStep3Title => 'Check the device';
 
   @override
   String get authHandleStep3Body =>
@@ -2194,11 +2194,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Both of you should see the same 60-digit number. Compare on a channel you trust — read it aloud over a call, or scan the QR. If the numbers don\'t match, someone is in the middle of your conversation.';
 
   @override
-  String get safetyNumbersKeyChangedTitle => 'Peer identity key changed';
+  String get safetyNumbersKeyChangedTitle =>
+      'This contact\'s identity key changed';
 
   @override
   String safetyNumbersKeyChangedMessage(String date) {
-    return 'The identity key for this peer is different from the one you verified on $date. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.';
+    return 'This contact\'s identity key is different from the one you verified on $date. This can happen after a reinstall — or if someone is impersonating them. Verify again before trusting.';
   }
 
   @override
@@ -2208,7 +2209,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersVerifiedNote =>
-      'If this peer reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.';
+      'If this contact reinstalls or switches devices, this verification is invalidated and you\'ll see a warning.';
 
   @override
   String get safetyNumbersReVerify => 'Re-verify with new key';
@@ -2266,7 +2267,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get safetyNumbersDirectoryOtherDeviceBody =>
-      'This conversation encrypts to a different device than the one the key server now lists for this contact. The number above belongs to the device it encrypts to: compare it with your contact before you trust it.';
+      'This conversation encrypts to a different device than the one the key server now lists for this contact. The safety number on this page belongs to the device it encrypts to. If your contact changed devices, compare numbers with them again.';
 
   @override
   String get safetyNumbersPendingBody =>
@@ -2394,13 +2395,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'If the old device is gone, transfer fails. VEIL does not offer recovery, reset, export, or admin restore.';
 
   @override
-  String get deviceTransferWindowExpiredTitle => 'Transfer window expired';
-
-  @override
-  String get deviceTransferClaimExpiredMessage =>
-      'This new-device claim expired. Register a fresh claim and request approval again.';
-
-  @override
   String get deviceTransferPayloadCopied => 'Transfer code copied.';
 
   @override
@@ -2421,8 +2415,8 @@ class AppLocalizationsEn extends AppLocalizations {
       'Register this new-device claim before completion.';
 
   @override
-  String get deviceTransferClaimExpiredRegisterFresh =>
-      'This new-device claim has expired. Register a fresh claim first.';
+  String get deviceTransferCodeExpired =>
+      'This transfer code has expired. Issue a new one on the old device.';
 
   @override
   String get deviceTransferFinishStartedFirst =>
@@ -2473,6 +2467,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get deviceTransferNewCodeBody =>
       'Issue the code on your old device, then paste it here.';
+
+  @override
+  String get deviceTransferNewCodeExpiredBody =>
+      'The transfer code expired before the transfer was finished. Issue a new code on the old device and paste it here.';
 
   @override
   String get deviceTransferNewCodeChange => 'Change';
@@ -2577,9 +2575,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deviceTransferDeviceNameLabel => 'Device name';
-
-  @override
-  String get deviceTransferClaimExpiredPill => 'Claim expired';
 
   @override
   String deviceTransferClaimCode(String claimId) {
@@ -2741,7 +2736,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'This device currently holds the active VEIL session.';
 
   @override
-  String get securityStatusSecretRefs => 'Local secret refs';
+  String get securityStatusSecretRefs => 'Device secret keys';
 
   @override
   String get securityStatusSecretRefsPresent => 'Present';
@@ -2853,18 +2848,18 @@ class AppLocalizationsEn extends AppLocalizations {
       'This build sets no TLS pins (VEIL_TLS_PINS), so the relay connection accepts any certificate the platform trusts. Release builds stop at a configuration error without them.';
 
   @override
-  String get securityStatusApiMode => 'API mode';
+  String get securityStatusApiMode => 'Relay address';
 
   @override
-  String get securityStatusApiAttached => 'Attached';
+  String get securityStatusApiAttached => 'Configured';
 
   @override
   String get securityStatusApiAttachedDetail =>
-      'REST API is configured for this build.';
+      'A relay address is configured for this build.';
 
   @override
   String get securityStatusApiUnavailableDetail =>
-      'No API endpoint is configured. Messaging is unavailable.';
+      'No relay address is configured. Messaging is unavailable.';
 
   @override
   String get securityStatusRelayLink => 'Relay link';
@@ -2989,7 +2984,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusPushProvider => 'Push provider';
 
   @override
-  String get securityStatusPushProviderSeam => 'Seam only';
+  String get securityStatusPushProviderSeam => 'Not connected';
 
   @override
   String get securityStatusPushProviderSeamDetail =>
@@ -2997,7 +2992,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusPushProviderUnavailableDetail =>
-      'No API endpoint is configured, so push delivery is unavailable in this build.';
+      'No relay address is configured, so push delivery is unavailable in this build.';
 
   @override
   String get securityStatusPushPayloads => 'Push payloads';
@@ -3011,5 +3006,5 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusPushPayloadsUnavailableDetail =>
-      'No API endpoint is configured, so push payload generation is unavailable in this build.';
+      'No relay address is configured, so push payload generation is unavailable in this build.';
 }

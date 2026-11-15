@@ -25,7 +25,7 @@ export function trapFocus(dialogId, event) {
 // dialogs: src/ui/dialogs.js. Returns confirm(options) -> Promise<boolean>,
 // with Esc, a click outside and Cancel all answering false.
 export function createConfirm(dialogs) {
-  return function confirm({ title = '확인', body = '', okLabel = '확인', cancelLabel = '취소', destructive = false } = {}) {
+  return function confirm({ title = 'Confirm', body = '', okLabel = 'OK', cancelLabel = 'Cancel', destructive = false } = {}) {
     return new Promise((resolve) => {
       const dialog = $('confirm-dialog');
       if (!dialog) {

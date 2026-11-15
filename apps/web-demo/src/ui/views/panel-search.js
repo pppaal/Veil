@@ -54,7 +54,7 @@ export function createPanelSearch({ store }) {
         return true;
       };
 
-      const input = el('input', { type: 'text', placeholder: '대화에서 찾기…', 'aria-label': '메시지 검색' });
+      const input = el('input', { type: 'text', placeholder: 'Find in chat…', 'aria-label': 'Search messages' });
       input.value = search.query;
       input.addEventListener('input', () => {
         search.query = input.value;
@@ -78,9 +78,9 @@ export function createPanelSearch({ store }) {
       return el('div', { class: 'panel-search', role: 'search' }, [
         input,
         el('span', { class: 'count' }, [total > 0 ? `${search.idx + 1}/${total}` : (query ? '0/0' : '')]),
-        el('button', { title: '이전 결과 (Shift+Enter)', onclick: () => step(true) }, ['↑']),
-        el('button', { title: '다음 결과 (Enter)', onclick: () => step(false) }, ['↓']),
-        el('button', { title: '닫기 (Esc)', onclick: () => close(convId) }, ['✕']),
+        el('button', { title: 'Previous match (Shift+Enter)', onclick: () => step(true) }, ['↑']),
+        el('button', { title: 'Next match (Enter)', onclick: () => step(false) }, ['↓']),
+        el('button', { title: 'Close (Esc)', onclick: () => close(convId) }, ['✕']),
       ]);
     },
 

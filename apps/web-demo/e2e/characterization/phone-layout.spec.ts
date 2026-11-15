@@ -12,17 +12,13 @@ import { closeAll, expectNoErrors, relay, rowOf, send, stamp, watchErrors, type 
 
 test.describe.configure({ mode: 'serial' });
 
-const LOCALES = ['ko', 'en', 'ja'];
-
-// Every reason a frozen composer gives (src/ui/views/chat-view.js), in every
-// language the app ships.
+// Every reason a frozen composer gives (src/ui/views/chat-view.js), from the
+// app's one dictionary.
 function frozenReasons(): string[] {
-  return LOCALES.flatMap((locale) => {
-    const strings = JSON.parse(readFileSync(new URL(`../../i18n/${locale}.json`, import.meta.url), 'utf8')) as Record<string, string>;
-    return Object.entries(strings)
-      .filter(([key]) => key.endsWith('.composerFrozen'))
-      .map(([, text]) => text);
-  });
+  const strings = JSON.parse(readFileSync(new URL('../../i18n/en.json', import.meta.url), 'utf8')) as Record<string, string>;
+  return Object.entries(strings)
+    .filter(([key]) => key.endsWith('.composerFrozen'))
+    .map(([, text]) => text);
 }
 
 // Whether a textarea shows its whole placeholder: the height the text takes
@@ -102,7 +98,7 @@ test.describe('phone-width layout', () => {
     await expect(textarea).toBeInViewport();
     // No key hint on a phone: beside the four buttons it took two lines of a
     // one-line box.
-    await expect(textarea).toHaveAttribute('placeholder', '메시지 입력');
+    await expect(textarea).toHaveAttribute('placeholder', 'Message');
     expect(await placeholderFits(textarea)).toBe(true);
 
     // A frozen composer is a disabled one whose placeholder says why.
@@ -110,7 +106,7 @@ test.describe('phone-width layout', () => {
     // the layout treats every reason alike, so each is put on this composer,
     // at this width and at the narrowest phones still in use.
     const reasons = frozenReasons();
-    expect(reasons.length).toBeGreaterThanOrEqual(LOCALES.length * 5);
+    expect(reasons.length).toBeGreaterThanOrEqual(5);
     for (const width of [390, 360]) {
       await page.setViewportSize({ width, height: 844 });
       for (const reason of reasons) {

@@ -13,11 +13,11 @@ export function createNewChatDialog({ store, stack, history, tabs, dialogs }) {
   async function start() {
     const peer = normalizeHandle($('new-peer-input').value);
     if (!peer) {
-      $('new-peer-error').textContent = '핸들을 입력하세요';
+      $('new-peer-error').textContent = 'Enter a handle';
       return;
     }
     if (peer === store.state.me.handle) {
-      $('new-peer-error').textContent = '자기 자신과는 대화할 수 없어요';
+      $('new-peer-error').textContent = "You can't chat with yourself";
       return;
     }
     $('new-confirm').disabled = true;

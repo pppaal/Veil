@@ -14,7 +14,7 @@ import { newClientMessageId } from '../../features/sender.js';
 const PENDING_TEXT = {
   image: () => KIND_LABELS.image,
   voice: () => KIND_LABELS.voice,
-  file: (name) => `📁 ${name}`,
+  file: (name) => `File: ${name}`,
 };
 
 // send: src/app/services/send.js.

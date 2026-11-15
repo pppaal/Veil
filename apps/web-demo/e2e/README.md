@@ -24,7 +24,7 @@ those refusals.
 `characterization/*.spec.ts` drive the real app (`index.html` + `app.js`)
 in two or more browser contexts against the relay, and assert that no app
 error reaches the console: signing up and back in, a rejected session,
-wipe, settings and the ko/en switch (`session`), a direct chat with text,
+wipe and settings (`session`), a direct chat with text,
 replies, reactions, edits, deletes with undo, search, forwarding, tabs,
 read receipts, history paging and local history deletion (`messaging`),
 pushes, read receipts and typing with the realtime gateway on

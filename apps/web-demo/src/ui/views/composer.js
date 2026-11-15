@@ -43,7 +43,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       kind: 'image',
       blob: file,
       contentType: file.type,
-      failureLabel: '이미지 전송 실패',
+      failureLabel: 'Image not sent',
       local: { _imageUrl: URL.createObjectURL(file) },
     });
     if (sent) sounds.playSend();
@@ -56,7 +56,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
       blob: file,
       contentType: file.type || 'application/octet-stream',
       name,
-      failureLabel: '파일 전송 실패',
+      failureLabel: 'File not sent',
       local: { _localFile: { name, sizeBytes: file.size } },
     });
     if (sent) sounds.playSend();
@@ -71,7 +71,7 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
         return;
       }
       if (file.size > FILE_MAX_BYTES) {
-        toast('파일이 25MB 를 초과합니다', 'error');
+        toast('The file is larger than 25 MB', 'error');
         return;
       }
       sendFile(convId, file);
@@ -94,12 +94,12 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     return el('div', { class: 'reply-banner' }, [
       el('span', { class: 'reply-banner-icon' }, ['↩']),
       el('div', { class: 'reply-banner-body' }, [
-        el('div', { class: 'reply-banner-meta' }, ['답장: @' + shownHandle(draft.sender ?? peerHandle)]),
+        el('div', { class: 'reply-banner-meta' }, ['Reply to @' + shownHandle(draft.sender ?? peerHandle)]),
         el('div', { class: 'reply-banner-snippet' }, [draft.snippet]),
       ]),
       el('button', {
         class: 'reply-banner-close',
-        'aria-label': '답장 취소',
+        'aria-label': 'Cancel reply',
         onclick: () => {
           state.replyDrafts.delete(convId);
           store.notify('panels');
@@ -116,25 +116,25 @@ export function createComposer({ store, send, attachments, realtime, voice, soun
     // The composer of a conversation; a frozen one takes no text, and its
     // placeholder says why. Returns { node, textarea }.
     render(convId, { frozen, placeholder, peerHandle }) {
-      const textarea = el('textarea', { placeholder, rows: '1', 'aria-label': '메시지 입력', maxlength: String(MESSAGE_MAX_CHARS) });
+      const textarea = el('textarea', { placeholder, rows: '1', 'aria-label': 'Message', maxlength: String(MESSAGE_MAX_CHARS) });
       textarea.disabled = frozen;
       const draft = state.drafts.get(convId);
       if (draft) textarea.value = draft.slice(0, MESSAGE_MAX_CHARS);
-      const sendButton = el('button', { class: 'send-btn', 'aria-label': '전송', onclick: () => sendTyped(textarea, convId) }, [
+      const sendButton = el('button', { class: 'send-btn', 'aria-label': 'Send', onclick: () => sendTyped(textarea, convId) }, [
         el('span', { 'aria-hidden': 'true' }, ['↑']),
       ]);
       const voiceButton = voice.button(convId);
       voiceButton.disabled = frozen;
-      const fileButton = attachButton('file-btn image-btn', '파일 첨부', '파일 첨부 (PDF / 비디오 / 기타)', '📎', () => pickAnyFile(convId));
-      fileButton.style.fontSize = '16px';
-      const imageButton = attachButton('image-btn', '이미지 첨부', '이미지 첨부', '📷', () => pickFile(IMAGE_ACCEPT, (file) => offerImage(convId, file)));
+      // Plain text labels until the restyle brings icons.
+      const fileButton = attachButton('file-btn image-btn', 'Attach a file', 'Attach a file (PDF, video or other)', 'File', () => pickAnyFile(convId));
+      const imageButton = attachButton('image-btn', 'Attach an image', 'Attach an image', 'Image', () => pickFile(IMAGE_ACCEPT, (file) => offerImage(convId, file)));
 
       // On every input: grow, send typing, keep the draft. maxlength holds
       // typing back, but a paste can still land over the cap at once.
       textarea.addEventListener('input', () => {
         if (textarea.value.length > MESSAGE_MAX_CHARS) {
           textarea.value = textarea.value.slice(0, MESSAGE_MAX_CHARS);
-          toast(`메시지가 잘렸어요 (최대 ${MESSAGE_MAX_CHARS.toLocaleString()}자)`, 'error');
+          toast(`The message was cut to ${MESSAGE_MAX_CHARS.toLocaleString()} characters`, 'error');
         }
         textarea.style.height = 'auto';
         textarea.style.height = Math.min(textarea.scrollHeight, MAX_HEIGHT_PX) + 'px';

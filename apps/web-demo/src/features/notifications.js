@@ -13,7 +13,7 @@ export const NOTIFICATION_LEVELS = Object.freeze(['off', 'generic', 'sender', 's
 export const DEFAULT_NOTIFICATION_LEVEL = 'generic';
 export const NOTIFICATION_LEVEL_KEY = 'veil-demo-notification-level-v1';
 
-const DEFAULT_LABELS = Object.freeze({ appName: 'VEIL', newMessage: 'New message' });
+const DEFAULT_LABELS = Object.freeze({ appName: 'Veil', newMessage: 'New message' });
 
 export function readNotificationLevel(storage) {
   try {

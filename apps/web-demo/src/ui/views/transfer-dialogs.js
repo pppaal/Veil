@@ -14,8 +14,10 @@ import { isAuthRejection } from '../../platform/api-client.js';
 import { $ } from '../dom.js';
 import { toast } from '../toast.js';
 
-const WAITING_FOR_APPROVAL = '이전 기기에서 승인 대기 중…';
-const RETRYING = '서버 응답이 없어요 — 같은 요청으로 다시 시도 중…';
+const WAITING_FOR_APPROVAL = 'Waiting for approval on the old device…';
+const RETRYING = 'No answer from the server. Trying the same request again…';
+const USE_CODE = 'Use code';
+const TRY_AGAIN = 'Try again';
 
 // transfer: src/app/services/device-transfer.js; session:
 // src/app/services/session.js; auth: src/ui/views/auth-view.js;
@@ -45,9 +47,9 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
       // is spent, so a completed transfer is one of the two ways it goes.
       closeOldDialog();
       await session.destroyIdentity();
-      toast('이전 완료 — 이 기기의 키를 삭제했습니다', 'good');
+      toast('Transfer complete. The keys on this device were deleted.', 'good');
     } else if (outcome === 'expired' || outcome === 'closed') {
-      setText('transfer-old-status', outcome === 'expired' ? '만료되었습니다 (5분 초과). 다시 시작하세요.' : '이 이전 세션은 닫혔어요. 다시 시작하세요.');
+      setText('transfer-old-status', outcome === 'expired' ? 'The code expired after 5 minutes. Start again.' : 'This transfer was closed. Start again.');
       $('transfer-old-approve').classList.add('hidden');
     }
     // 'session-ended' and 'cancelled': the session's end or the cancel
@@ -56,7 +58,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
 
   async function startOld() {
     if (!store.state.me) {
-      toast('로그인 후 시도하세요', 'error');
+      toast('Sign in first', 'error');
       return;
     }
     stopOld();
@@ -67,19 +69,19 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
           setText('transfer-old-fingerprint', claim.claimantFingerprint);
           $('transfer-old-claim').classList.remove('hidden');
           $('transfer-old-approve').classList.remove('hidden');
-          setText('transfer-old-status', '지문 확인 후 승인하세요.');
+          setText('transfer-old-status', 'Check the fingerprint, then approve.');
         },
-        onPollError: (error) => setText('transfer-old-status', '폴링 오류: ' + error.message),
+        onPollError: (error) => setText('transfer-old-status', 'Could not check the server: ' + error.message),
       });
     } catch (error) {
-      toast('이전 시작 실패: ' + error.message, 'error');
+      toast('Could not start the transfer: ' + error.message, 'error');
       return;
     }
     $('transfer-old-token').value = started.code;
-    setText('transfer-old-status', '코드 복사 후 새 기기에 붙여넣기 — 새 기기 클레임 대기 중…');
+    setText('transfer-old-status', 'Copy the code and paste it on the new device. Waiting for the new device…');
     $('transfer-old-claim').classList.add('hidden');
     $('transfer-old-approve').classList.add('hidden');
-    setText('transfer-old-cancel', '취소');
+    setText('transfer-old-cancel', 'Cancel');
     dialogs.open('transfer-old-dialog', 'transfer-old-token');
     const outcome = await started.transfer.outcome;
     transfer.settled(started.transfer);
@@ -92,11 +94,11 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     $('transfer-old-approve').disabled = true;
     try {
       await watch.approve();
-      setText('transfer-old-status', '승인됨 — 새 기기가 완료할 때까지 대기…');
+      setText('transfer-old-status', 'Approved. Waiting for the new device to finish…');
       $('transfer-old-approve').classList.add('hidden');
-      setText('transfer-old-cancel', '닫기');
+      setText('transfer-old-cancel', 'Close');
     } catch (error) {
-      toast('승인 실패: ' + error.message, 'error');
+      toast('Could not approve: ' + error.message, 'error');
     } finally {
       $('transfer-old-approve').disabled = false;
     }
@@ -121,7 +123,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     setText('transfer-new-error', '');
     setText('transfer-new-status', '');
     $('transfer-new-fingerprint').classList.add('hidden');
-    setText('transfer-new-claim', '클레임');
+    setText('transfer-new-claim', USE_CODE);
     $('transfer-new-claim').disabled = false;
     incoming = null;
     dialogs.open('transfer-new-dialog', 'transfer-new-token');
@@ -133,8 +135,8 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     if (incoming !== null && incoming !== started) return;
     incoming = { ...started, stopped: true };
     setText('transfer-new-error', error.message);
-    setText('transfer-new-status', '이전을 완료하지 못했어요. 같은 코드로 다시 시도하거나, 새 코드를 붙여넣어 다시 클레임하세요.');
-    setText('transfer-new-claim', '다시 시도');
+    setText('transfer-new-status', 'The transfer could not be completed. Try again with the same code, or paste a new code.');
+    setText('transfer-new-claim', TRY_AGAIN);
     $('transfer-new-claim').disabled = false;
   }
 
@@ -159,20 +161,20 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
   async function saveNew() {
     $('transfer-new-claim').disabled = true;
     setText('transfer-new-error', '');
-    setText('transfer-new-status', '새 키 저장 중…');
+    setText('transfer-new-status', 'Saving the new keys…');
     let cleanupError;
     try {
       ({ cleanupError } = await transfer.storeIdentity(incoming));
     } catch (error) {
-      setText('transfer-new-error', '새 키를 저장하지 못했어요: ' + error.message);
-      setText('transfer-new-status', '이전은 완료됐고 키는 이 탭에만 있어요. 탭을 닫지 말고 다시 저장하세요.');
-      setText('transfer-new-claim', '다시 저장');
+      setText('transfer-new-error', 'Could not save the new keys: ' + error.message);
+      setText('transfer-new-status', 'The transfer is complete, but the keys exist only in this tab. Do not close it. Save again.');
+      setText('transfer-new-claim', 'Save again');
       $('transfer-new-claim').disabled = false;
       // The dialog may have been closed while /complete was in flight.
       if ($('transfer-new-dialog').classList.contains('hidden')) dialogs.open('transfer-new-dialog', 'transfer-new-claim');
       return;
     }
-    if (cleanupError) toast('이전 신원의 데이터 일부를 지우지 못했어요: ' + cleanupError.message, 'error');
+    if (cleanupError) toast('Some data of the previous account could not be deleted: ' + cleanupError.message, 'error');
     incoming = null;
     dialogs.close('transfer-new-dialog');
     try {
@@ -182,11 +184,11 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     } catch (error) {
       // The transfer went through and the identity is stored here; only the
       // first sign-in failed, so the auth screen offers Retry.
-      toast('이전은 완료됐지만 로그인하지 못했어요: ' + error.message, 'error');
+      toast('The transfer is complete, but signing in failed: ' + error.message, 'error');
       await auth.show({ rejected: isAuthRejection(error) });
       return;
     }
-    toast('이전 완료 — 새 기기로 들어왔습니다', 'good');
+    toast('Transfer complete. You are signed in on this device.', 'good');
     await session.enterApp();
   }
 
@@ -217,12 +219,12 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     const code = $('transfer-new-token').value.trim();
     const name = $('transfer-new-name').value.trim() || 'VEIL';
     if (!code) {
-      setText('transfer-new-error', '코드가 필요합니다');
+      setText('transfer-new-error', 'Enter the code');
       return;
     }
     const parsed = parseTransferCode(code);
     if (!parsed) {
-      setText('transfer-new-error', '코드 형식 오류');
+      setText('transfer-new-error', 'This is not a valid code');
       return;
     }
     // Completing the transfer replaces the identity stored here, so ask now,
@@ -230,21 +232,21 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
     const replacesIdentity = await session.hasStoredIdentity();
     if (replacesIdentity) {
       const ok = await confirm({
-        title: '기존 신원 교체',
-        body: '이 브라우저에 저장된 신원은 이전이 완료되면 영구 삭제되고, 그 핸들로는 다시 로그인할 수 없어요.',
-        okLabel: '계속',
+        title: 'Replace the account in this browser',
+        body: 'When the transfer completes, the account stored in this browser is deleted for good. You will not be able to sign in to that handle again.',
+        okLabel: 'Continue',
         destructive: true,
       });
       if (!ok) return;
     }
     $('transfer-new-claim').disabled = true;
     setText('transfer-new-error', '');
-    setText('transfer-new-status', '새 키 생성 중…');
+    setText('transfer-new-status', 'Creating new keys…');
     try {
       const { keys, published, fingerprint } = await transfer.newIdentity();
       setText('transfer-new-fingerprint-text', fingerprint);
       $('transfer-new-fingerprint').classList.remove('hidden');
-      setText('transfer-new-status', '서버에 클레임 중…');
+      setText('transfer-new-status', 'Contacting the server…');
       const claimId = await transfer.claim(parsed, { name, keys, published });
       incoming = { ...parsed, claimId, keys, replacesIdentity };
       setText('transfer-new-status', WAITING_FOR_APPROVAL);
@@ -282,7 +284,7 @@ export function createTransferDialogs({ store, transfer, session, auth, dialogs,
       $('transfer-new-claim').addEventListener('click', primaryNew);
       // Another code in the field makes the button a new claim again.
       $('transfer-new-token').addEventListener('input', () => {
-        if (incoming?.stopped) setText('transfer-new-claim', isStoppedCode() ? '다시 시도' : '클레임');
+        if (incoming?.stopped) setText('transfer-new-claim', isStoppedCode() ? TRY_AGAIN : USE_CODE);
       });
     },
   };

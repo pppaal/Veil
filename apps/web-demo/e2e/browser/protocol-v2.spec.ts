@@ -417,7 +417,7 @@ test.describe('a backlog under our own send', () => {
 // recipient's alike, with history polling as the only channel.
 test.describe('deleted and expired messages in the browser', () => {
   const stamp = Date.now().toString(36).slice(-6);
-  const DELETED = '🚫 삭제된 메시지';
+  const DELETED = 'Message deleted';
   let carol: Device;
   let dave: Device;
 

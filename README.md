@@ -173,13 +173,12 @@ those checks fails the build:
 - **KakaoTalk import**: drop a `.txt` export → read-only archive,
   parsed 100% in-browser, bytes never reach the server
 - Block / mute / report UI wired to the safety endpoints
-- Unified settings dialog: dark/light theme, language, sounds,
-  notifications
+- Unified settings dialog: dark/light theme, sounds, notifications
 - Browser notifications + tab unread badge, keyboard shortcuts
   (Ctrl/Cmd+K/N/F/+/), Web Audio send/receive tones (opt-in)
 - IndexedDB-backed session + message cache (encrypted at rest);
   blob URLs revoked on delete/logout to bound memory
-- `i18n/{ko,en,ja}.json` with `?lang=` switcher, locale-aware time
+- `i18n/en.json` as the single string dictionary (English only)
 - PWA manifest + iconography, CSP meta, themed dialogs
 - Testable helpers extracted to `lib/{markdown,format,kakao-import}.js`
 

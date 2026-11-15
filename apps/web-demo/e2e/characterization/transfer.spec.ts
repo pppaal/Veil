@@ -52,7 +52,7 @@ test.describe('device transfer', () => {
     await openMenuItem(alice, 'transfer-start');
     const oldDialog = alice.page.locator('#transfer-old-dialog');
     await expect(oldDialog).toBeVisible();
-    await expect(alice.page.locator('#transfer-old-status')).toHaveText('코드 복사 후 새 기기에 붙여넣기 — 새 기기 클레임 대기 중…');
+    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Copy the code and paste it on the new device. Waiting for the new device…');
     await expect(alice.page.locator('#transfer-old-approve')).toBeHidden();
     const code = await alice.page.locator('#transfer-old-token').inputValue();
     expect(code).toMatch(/^[A-Za-z0-9+/]+$/);
@@ -64,14 +64,14 @@ test.describe('device transfer', () => {
     // The same name for every browser, never its platform string.
     await expect(page.locator('#transfer-new-name')).toHaveValue('VEIL Web');
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-error')).toHaveText('코드가 필요합니다');
+    await expect(page.locator('#transfer-new-error')).toHaveText('Enter the code');
     await page.fill('#transfer-new-token', 'not a code');
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-error')).toHaveText('코드 형식 오류');
+    await expect(page.locator('#transfer-new-error')).toHaveText('This is not a valid code');
 
     await page.fill('#transfer-new-token', code);
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#confirm-title')).toHaveText('기존 신원 교체');
+    await expect(page.locator('#confirm-title')).toHaveText('Replace the account in this browser');
     await page.click('#confirm-cancel');
     await expect(page.locator('#transfer-new-fingerprint')).toBeHidden();
     await page.click('#transfer-new-claim');
@@ -79,18 +79,18 @@ test.describe('device transfer', () => {
 
     const fingerprint = page.locator('#transfer-new-fingerprint-text');
     await expect(fingerprint).toHaveText(/^([0-9a-f]{4} ){15}[0-9a-f]{4}$/);
-    await expect(page.locator('#transfer-new-status')).toHaveText('이전 기기에서 승인 대기 중…');
+    await expect(page.locator('#transfer-new-status')).toHaveText('Waiting for approval on the old device…');
     await expect(alice.page.locator('#transfer-old-fingerprint')).toHaveText(await fingerprint.innerText(), { timeout: 10_000 });
-    await expect(alice.page.locator('#transfer-old-status')).toHaveText('지문 확인 후 승인하세요.');
+    await expect(alice.page.locator('#transfer-old-status')).toHaveText('Check the fingerprint, then approve.');
     await alice.page.click('#transfer-old-approve');
 
     await expect(page.locator('#app')).toBeVisible({ timeout: 15_000 });
-    await expect(toast(spare, '이전 완료 — 새 기기로 들어왔습니다')).toBeVisible();
+    await expect(toast(spare, 'Transfer complete. You are signed in on this device.')).toBeVisible();
     await expect(newDialog).toBeHidden();
     await expect(page.locator('#sidebar-me')).toContainText(`@${alice.handle}`);
 
     await expect(alice.page.locator('#auth-screen')).toBeVisible({ timeout: 15_000 });
-    await expect(toast(alice, '이전 완료 — 이 기기의 키를 삭제했습니다')).toBeVisible();
+    await expect(toast(alice, 'Transfer complete. The keys on this device were deleted.')).toBeVisible();
     await expect(alice.page.locator('#restore-row')).toBeHidden();
     await expect(oldDialog).toBeHidden();
 
@@ -115,7 +115,7 @@ test.describe('device transfer', () => {
     await send(moved, 'from the new browser');
     // The peer sees a new key for the same handle and reviews it first.
     await expect(bob.page.locator('.key-change-banner')).toBeVisible({ timeout: 15_000 });
-    await bob.page.locator('.key-change-banner button', { hasText: '확인' }).click();
+    await bob.page.locator('.key-change-banner button', { hasText: 'Review' }).click();
     await bob.page.click('#confirm-ok');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['before the move', 'from the new browser']);
     expectNoErrors(bob, spare);
@@ -158,7 +158,7 @@ test.describe('device transfer completion', () => {
     await old.page.click('#transfer-old-approve');
 
     await expect(fresh.page.locator('#app')).toBeVisible({ timeout: 15_000 });
-    await expect(toast(fresh, '이전 완료 — 새 기기로 들어왔습니다')).toBeVisible();
+    await expect(toast(fresh, 'Transfer complete. You are signed in on this device.')).toBeVisible();
     await expect(fresh.page.locator('#sidebar-me')).toContainText(`@${old.handle}`);
     await expect(old.page.locator('#auth-screen')).toBeVisible({ timeout: 15_000 });
     expectNoErrors(fresh);
@@ -176,7 +176,7 @@ test.describe('device transfer completion', () => {
     await relay('/__test/revoke', { handle: old.handle });
     const { page } = fresh;
     await expect(page.locator('#transfer-new-error')).toHaveText('Old trusted device is unavailable; transfer cannot proceed', { timeout: 10_000 });
-    await expect(page.locator('#transfer-new-claim')).toHaveText('다시 시도');
+    await expect(page.locator('#transfer-new-claim')).toHaveText('Try again');
     await expect(page.locator('#transfer-new-claim')).toBeEnabled();
 
     // Closing the dialog keeps the claim: it reopens on the retry, with the
@@ -186,15 +186,15 @@ test.describe('device transfer completion', () => {
     await expect(page.locator('#transfer-new-token')).toHaveValue(code);
     await expect(page.locator('#transfer-new-fingerprint-text')).toHaveText(fingerprint);
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-claim')).toHaveText('다시 시도', { timeout: 10_000 });
+    await expect(page.locator('#transfer-new-claim')).toHaveText('Try again', { timeout: 10_000 });
     await expect(page.locator('#transfer-new-claim')).toBeEnabled();
     await expect(page.locator('#transfer-new-fingerprint-text')).toHaveText(fingerprint);
 
     // Another code is a new claim.
     await page.fill('#transfer-new-token', 'not a code');
-    await expect(page.locator('#transfer-new-claim')).toHaveText('클레임');
+    await expect(page.locator('#transfer-new-claim')).toHaveText('Use code');
     await page.click('#transfer-new-claim');
-    await expect(page.locator('#transfer-new-error')).toHaveText('코드 형식 오류');
+    await expect(page.locator('#transfer-new-error')).toHaveText('This is not a valid code');
     expectNoErrors(fresh);
   });
 });

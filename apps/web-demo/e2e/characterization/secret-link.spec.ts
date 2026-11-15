@@ -31,7 +31,7 @@ test.describe('one-time secret links', () => {
     await expect(viewer.locator('#passPrompt')).toBeHidden();
     await viewer.click('#revealBtn');
     await expect(viewer.locator('#revealText')).toHaveText('the vault code is 4711');
-    await expect(viewer.locator('#viewTitle')).toHaveText('비밀 메시지');
+    await expect(viewer.locator('#viewTitle')).toHaveText('Message');
     expect(new URL(viewer.url()).hash).toBe('');
     // A production relay serves only the viewer under /demo/, so the page
     // points at the public site, never at the demo.
@@ -42,7 +42,7 @@ test.describe('one-time secret links', () => {
     watchErrors(late, errors);
     await late.goto(link);
     await late.click('#revealBtn');
-    await expect(late.locator('#goneMsg')).toHaveText('이미 열렸거나 만료된 링크입니다');
+    await expect(late.locator('#goneMsg')).toHaveText('This link was already opened or has expired');
 
     expect(errors).toEqual([]);
     await sender.close();

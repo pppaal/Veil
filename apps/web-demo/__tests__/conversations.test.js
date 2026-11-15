@@ -72,14 +72,14 @@ describe('previewMessage', () => {
 
   it('falls back to the newest loaded message a panel shows when the last is a reaction or gone', () => {
     const shown = text('m1', 'older');
-    const reaction = { id: 'm2', kind: 'reaction', displayText: '💬 반응', expiresAtMs: null };
+    const reaction = { id: 'm2', kind: 'reaction', displayText: 'Reaction', expiresAtMs: null };
     const expired = text('m3', 'gone', { expiresAtMs: 500 });
     expect(previewMessage({ lastMessage: reaction }, [shown, reaction], now)).toBe(shown);
     expect(previewMessage({ lastMessage: expired }, [shown, expired], now)).toBe(shown);
   });
 
   it('keeps a reaction as the preview when nothing else shows, and nothing for a gone message', () => {
-    const reaction = { id: 'm2', kind: 'reaction', displayText: '💬 반응', expiresAtMs: null };
+    const reaction = { id: 'm2', kind: 'reaction', displayText: 'Reaction', expiresAtMs: null };
     expect(previewMessage({ lastMessage: reaction }, [], now)).toBe(reaction);
     expect(previewMessage({ lastMessage: text('m3', 'gone', { expiresAtMs: 500 }) }, [], now)).toBeNull();
     expect(previewMessage({ lastMessage: null }, [], now)).toBeNull();
@@ -90,6 +90,6 @@ describe('snippetOf', () => {
   it('cuts the preview label with an ellipsis', () => {
     expect(snippetOf(text('m1', 'hello world'), 5)).toBe('hello…');
     expect(snippetOf(text('m1', 'hello'), 5)).toBe('hello');
-    expect(snippetOf({ id: 'm2', kind: 'image', displayText: '🖼 이미지', expiresAtMs: null }, 80)).toBe('🖼 이미지');
+    expect(snippetOf({ id: 'm2', kind: 'image', displayText: 'Image', expiresAtMs: null }, 80)).toBe('Image');
   });
 });

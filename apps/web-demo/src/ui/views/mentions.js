@@ -34,7 +34,7 @@ export function createMentions({ store }) {
     const candidates = mentionCandidates(members, state.me?.userId, mention.prefix);
     const node = el('div', { class: 'mention-pop', role: 'listbox' });
     if (candidates.length === 0) {
-      node.appendChild(el('div', { class: 'mention-pop-empty' }, ['일치하는 핸들 없음']));
+      node.appendChild(el('div', { class: 'mention-pop-empty' }, ['No matching handles']));
     }
     candidates.forEach((member, index) => {
       const item = el('div', {

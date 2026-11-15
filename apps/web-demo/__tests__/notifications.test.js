@@ -45,7 +45,7 @@ describe('notification levels', () => {
 
   it('generic shows neither sender nor content', () => {
     const content = buildNotification({ level: 'generic', ...message });
-    expect(content).toEqual({ title: 'VEIL', body: 'New message', tag: 'veil' });
+    expect(content).toEqual({ title: 'Veil', body: 'New message', tag: 'veil' });
     expect(JSON.stringify(content)).not.toContain('alice');
     expect(JSON.stringify(content)).not.toContain('north gate');
     expect(JSON.stringify(content)).not.toContain('c-1');
@@ -63,9 +63,9 @@ describe('notification levels', () => {
     expect(buildNotification({ level: 'sender', ...message, senderHandle: 'alice​' }).title).toBe('@alice[U+200B]');
   });
 
-  it('uses localized labels', () => {
-    const labels = { appName: 'VEIL', newMessage: '새 메시지' };
-    expect(buildNotification({ level: 'generic', ...message, labels }).body).toBe('새 메시지');
-    expect(buildNotification({ level: 'sender', ...message, senderHandle: undefined, labels }).title).toBe('VEIL');
+  it('uses the labels it is given', () => {
+    const labels = { appName: 'Veil', newMessage: 'Something new' };
+    expect(buildNotification({ level: 'generic', ...message, labels }).body).toBe('Something new');
+    expect(buildNotification({ level: 'sender', ...message, senderHandle: undefined, labels }).title).toBe('Veil');
   });
 });

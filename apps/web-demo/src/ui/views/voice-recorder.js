@@ -71,7 +71,7 @@ export function createVoiceRecorder({ attachments }) {
       kind: 'voice',
       blob,
       contentType: mime,
-      failureLabel: '음성 전송 실패',
+      failureLabel: 'Voice message not sent',
       local: { _voiceUrl: URL.createObjectURL(blob) },
     });
   }
@@ -79,7 +79,7 @@ export function createVoiceRecorder({ attachments }) {
   async function start(convId, button) {
     if (recording) return;
     if (!navigator.mediaDevices?.getUserMedia) {
-      toast('이 브라우저에서 녹음 미지원', 'error');
+      toast('This browser cannot record audio', 'error');
       return;
     }
     try {
@@ -92,7 +92,7 @@ export function createVoiceRecorder({ attachments }) {
       recorder.ondataavailable = (event) => {
         if (event.data?.size) chunks.push(event.data);
       };
-      const indicator = el('div', { class: 'voice-recording-indicator' }, ['🔴 녹음 중… 손을 떼면 전송']);
+      const indicator = el('div', { class: 'voice-recording-indicator' }, ['Recording… release to send']);
       document.body.appendChild(indicator);
       button.classList.add('recording');
       recording = { convId, stream, recorder, chunks, indicator, button, startedAt: Date.now(), canceled: false, deadline: null };
@@ -100,7 +100,7 @@ export function createVoiceRecorder({ attachments }) {
       recorder.start();
       recording.deadline = setTimeout(stop, MAX_RECORDING_MS);
     } catch (error) {
-      toast('마이크 권한 필요: ' + (error.message || 'unknown'), 'error');
+      toast('Microphone access is needed: ' + (error.message || 'unknown'), 'error');
     }
   }
 
@@ -109,8 +109,8 @@ export function createVoiceRecorder({ attachments }) {
     button(convId) {
       const button = el('button', {
         class: 'voice-btn',
-        'aria-label': '음성 메시지',
-        title: '꾹 눌러 녹음',
+        'aria-label': 'Voice message',
+        title: 'Hold to record',
         onmousedown: (event) => {
           event.preventDefault();
           start(convId, button);
@@ -122,7 +122,7 @@ export function createVoiceRecorder({ attachments }) {
           start(convId, button);
         },
         ontouchend: stop,
-      }, [el('span', { 'aria-hidden': 'true' }, ['🎤'])]);
+      }, [el('span', { 'aria-hidden': 'true' }, ['Voice'])]);
       return button;
     },
   };

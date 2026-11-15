@@ -75,7 +75,7 @@ export function createKeyChangeBanner({ identityTrust, safetyDialog, confirm }) 
     try {
       outcome = await identityTrust.accept(peer, reviewed);
     } catch (error) {
-      toast('키 수락 실패: ' + error.message, 'error');
+      toast(t('keyChange.acceptFailed', { error: error.message }), 'error');
       return;
     }
     if (outcome === 'accepted') await identityTrust.reopenLockedMessages(peer.userId);

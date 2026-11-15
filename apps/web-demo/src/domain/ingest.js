@@ -23,16 +23,16 @@ import { serializeMessageForCache } from '../platform/persist.js';
 import { createMediaHandle } from './media.js';
 import { KIND_LABELS, UNSUPPORTED_TEXT } from './payload.js';
 
-export const DELETED_TEXT = '🚫 삭제된 메시지';
+export const DELETED_TEXT = 'Message deleted';
 export const LOCKED_LABELS = Object.freeze({
-  legacy: '🔒 이전 형식',
-  'no-key': '🔒 키 미해결',
-  failed: '🔒 복호화 실패',
-  identityRejected: '🔒 보안 키 변경 — 확인 필요',
+  legacy: 'Encrypted message (older format)',
+  'no-key': 'Encrypted message (no key yet)',
+  failed: 'Encrypted message (could not decrypt)',
+  identityRejected: 'Encrypted message (security key changed, review it)',
   // a key the user declined, or a device of another contact: nothing to review
-  identityRefused: '🔒 거부한 보안 키',
-  sessionMissing: '🔒 세션 없음',
-  'own-missing': '🔒 이 기기에 내용 없음',
+  identityRefused: 'Encrypted message (declined security key)',
+  sessionMissing: 'Encrypted message (no session)',
+  'own-missing': 'Not available on this device',
 });
 const PREVIEW_MAX_CHARS = 120;
 // Views with nothing left to show: no bubble, preview or search hit.
@@ -130,7 +130,7 @@ function displayTextOf(content) {
     case 'system':
       return content.text;
     case 'file':
-      return `📁 ${content.text}`;
+      return `File: ${content.text}`;
     case 'image':
     case 'voice':
     case 'reaction':

@@ -12,7 +12,7 @@ export function createNotifications({ store, preferences, peerOf }) {
 
   function updateTitle() {
     const base = document.title.replace(/^\(\d+\)\s*/, '');
-    document.title = unread > 0 ? `(${unread}) ${base}` : 'VEIL';
+    document.title = unread > 0 ? `(${unread}) ${base}` : t('appName');
   }
 
   document.addEventListener('visibilitychange', () => {
@@ -39,7 +39,7 @@ export function createNotifications({ store, preferences, peerOf }) {
         senderHandle: peerOf(message.conversationId)?.handle,
         preview: previewLabel(message),
         conversationId: message.conversationId,
-        labels: { appName: 'VEIL', newMessage: t('notifications.newMessage') },
+        labels: { appName: t('appName'), newMessage: t('notifications.newMessage') },
       });
       if (!content) return;
       try {

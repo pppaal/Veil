@@ -1517,7 +1517,7 @@ html.theme-light .msg-file-chip { background: rgba(0,0,0,0.03); border-color: rg
   overflow-y: auto;
 }
 .blocked-list:empty::before {
-  content: '차단된 사용자 없음';
+  content: 'No blocked users';
   display: block;
   padding: 12px;
   opacity: 0.55;

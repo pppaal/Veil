@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <meta name="referrer" content="no-referrer">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
-<title>VEIL · 일회성 비밀 링크</title>
+<title>Veil one-time link</title>
 <style>
   :root{
     --bg:#F4F3FA;--surf:#fff;--stroke:#E6E4F0;--text:#0B0B12;--muted:#7C7A88;
@@ -50,49 +50,49 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="brand"><span class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><rect x="5" y="11" width="14" height="9" rx="2.2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><b>VEIL</b></div>
+  <div class="brand"><span class="logo"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><rect x="5" y="11" width="14" height="9" rx="2.2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span><b>Veil</b></div>
 
   <!-- COMPOSE -->
   <div class="card" id="compose" style="display:none;">
-    <div class="eyebrow">일회성 비밀 링크</div>
-    <h1>한 번 읽히면 사라지는 메시지</h1>
-    <label for="secret">비밀 내용</label>
-    <textarea id="secret" placeholder="비밀번호, 계좌, 민감한 메모… 받는 사람은 앱 없이 한 번만 열람합니다."></textarea>
-    <label class="opt"><input type="checkbox" id="usePass"> 암호문구 추가 (링크와 암호문구가 둘 다 있어야 열림)</label>
-    <div id="passWrap" style="display:none;margin-top:10px;"><input type="password" id="pass" placeholder="상대에게 따로 알려줄 암호문구"></div>
-    <button class="btn" id="genBtn">보안 링크 생성</button>
+    <div class="eyebrow">One-time link</div>
+    <h1>Send a message that can be read once</h1>
+    <label for="secret">Message</label>
+    <textarea id="secret" placeholder="A password, an account number, a private note. The recipient opens it once, without the app."></textarea>
+    <label class="opt"><input type="checkbox" id="usePass"> Add a passphrase (the link opens only with both)</label>
+    <div id="passWrap" style="display:none;margin-top:10px;"><input type="password" id="pass" placeholder="A passphrase you tell them separately"></div>
+    <button class="btn" id="genBtn">Create link</button>
     <div id="out" style="display:none;">
       <div class="linkbox" id="linkText"></div>
-      <button class="btn ghost" id="copyBtn">링크 복사</button>
+      <button class="btn ghost" id="copyBtn">Copy link</button>
       <div class="copied" id="copied"></div>
-      <div class="pillrow"><span class="pill">🔒 종단간 암호화</span><span class="pill">🙈 서버는 평문·키 못 봄</span><span class="pill">💨 읽으면 소멸</span></div>
+      <div class="pillrow"><span class="pill">End-to-end encrypted</span><span class="pill">The server cannot read it</span><span class="pill">Gone once read</span></div>
     </div>
     <div class="err" id="cErr" style="display:none;"></div>
-    <div class="hint">암호문만 서버에 잠깐 보관되고, <b>최초 1회 열람 시 즉시 삭제</b>됩니다. 복호화 키는 링크의 <code>#</code> 뒤에만 담겨 서버로 전송되지 않으며, 받는 사람이 직접 열기 전에는 삭제되지 않습니다.</div>
+    <div class="hint">Only the encrypted message is kept on the server, and it is <b>deleted the first time it is opened</b>. The key is in the part of the link after <code>#</code>, which is never sent to the server. Nothing is deleted until the recipient opens it.</div>
   </div>
 
   <!-- VIEW -->
   <div class="card" id="view" style="display:none;">
-    <div class="eyebrow">받은 비밀 메시지</div>
-    <h1 id="viewTitle">비밀 메시지가 도착했어요</h1>
+    <div class="eyebrow">One-time link</div>
+    <h1 id="viewTitle">You have a message</h1>
     <div id="revealPanel">
-      <div class="hint">열어보는 순간 서버에서 삭제되어 다시 열 수 없습니다. 지금 읽을 준비가 되었을 때 여세요.</div>
+      <div class="hint">Opening it deletes it from the server, and it cannot be opened again. Open it when you are ready to read it.</div>
       <div id="passPrompt" style="display:none;margin-top:14px;">
-        <label for="passIn">암호문구 입력</label>
-        <input type="password" id="passIn" placeholder="보낸 사람이 알려준 암호문구">
+        <label for="passIn">Passphrase</label>
+        <input type="password" id="passIn" placeholder="The passphrase the sender gave you">
       </div>
-      <button class="btn" id="revealBtn">메시지 열기</button>
+      <button class="btn" id="revealBtn">Reveal</button>
       <div class="err" id="vErr" style="display:none;"></div>
     </div>
     <div id="revealWrap" style="display:none;">
       <div class="reveal" id="revealText"></div>
-      <div class="hint">⏱️ 이 메시지는 <b>한 번만</b> 표시됩니다. 새로고침하면 사라집니다 — 서버에서 이미 삭제되었습니다.</div>
+      <div class="hint">This message is shown <b>once</b>. It has already been deleted from the server, so a refresh will not bring it back.</div>
     </div>
     <div id="gone" class="center gone" style="display:none;padding:20px 0;">
-      <div class="big">💨</div><b id="goneMsg">이미 열렸거나 만료된 링크입니다</b>
-      <div class="hint" style="margin-top:6px;">일회성 비밀 링크는 한 번만 열 수 있습니다.</div>
+      <b id="goneMsg">This link was already opened or has expired</b>
+      <div class="hint" style="margin-top:6px;">A one-time link can be opened only once.</div>
     </div>
-    <div class="cta">VEIL — 번호 없이, 흔적 없이. <a href="https://pppaal.github.io/Veil/" rel="noreferrer">VEIL 알아보기 →</a></div>
+    <div class="cta"><a href="https://pppaal.github.io/Veil/" rel="noreferrer">About Veil</a></div>
   </div>
 </div>
 

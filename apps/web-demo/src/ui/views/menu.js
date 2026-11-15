@@ -29,12 +29,12 @@ export function createMenu({ actions }) {
 export async function copyHandle(handle) {
   try {
     await navigator.clipboard.writeText('@' + handle);
-    toast('핸들을 복사했습니다', 'good');
+    toast('Handle copied', 'good');
   } catch {
-    toast('클립보드 접근 실패', 'error');
+    toast('Could not access the clipboard', 'error');
   }
 }
 
 export function showConnectionStatus(connected, pollMs) {
-  toast('연결: ' + (connected ? '실시간 (WebSocket)' : '폴링 (' + pollMs / 1000 + '초)'), 'good');
+  toast('Connection: ' + (connected ? 'live (WebSocket)' : 'polling every ' + pollMs / 1000 + ' seconds'), 'good');
 }

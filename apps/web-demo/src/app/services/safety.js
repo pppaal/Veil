@@ -17,18 +17,18 @@ export function createSafety({ store, stack, preferences, toast }) {
     async block(userId, handle) {
       try {
         await authedApi('/safety/blocks', { method: 'POST', body: { userId } });
-        toast(`@${handle} 차단됨`, 'good');
+        toast(t('safety.blocked', { handle }), 'good');
       } catch (error) {
-        toast('차단 실패: ' + (error.message || 'unknown'), 'error');
+        toast(t('safety.blockFailed', { error: error.message || 'unknown' }), 'error');
       }
     },
 
     async unblock(userId, handle) {
       try {
         await authedApi(`/safety/blocks/${userId}`, { method: 'DELETE' });
-        toast(`@${handle} 차단 해제됨`, 'good');
+        toast(t('safety.unblocked', { handle }), 'good');
       } catch (error) {
-        toast('해제 실패: ' + (error.message || 'unknown'), 'error');
+        toast(t('safety.unblockFailed', { error: error.message || 'unknown' }), 'error');
       }
     },
 
@@ -48,15 +48,15 @@ export function createSafety({ store, stack, preferences, toast }) {
         await authedApi(`/safety/mutes/${conversationId}`, { method: 'POST', body: { mutedForSeconds: seconds } });
         if (seconds == null || seconds <= 0) {
           store.state.muted.delete(conversationId);
-          toast('알림 켜짐', 'good');
+          toast(t('notifications.on'), 'good');
         } else {
           store.state.muted.add(conversationId);
-          toast(`${muteDurationLabel(seconds)} 동안 알림 끔`, 'good');
+          toast(t('mute.off', { duration: muteDurationLabel(seconds) }), 'good');
         }
         preferences.setMutedConversations(store.state.muted);
         store.notify('panels', 'sidebar');
       } catch (error) {
-        toast('알림 설정 실패: ' + (error.message || 'unknown'), 'error');
+        toast(t('mute.failed', { error: error.message || 'unknown' }), 'error');
       }
     },
 

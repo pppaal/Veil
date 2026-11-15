@@ -44,8 +44,8 @@ export function watchErrors(page: Page, errors: string[]): void {
   page.on('pageerror', (error) => errors.push(error.message));
 }
 
-// A browser profile with the app open on its auth screen, in Korean, the
-// language most of the app's strings are written in.
+// A browser profile with the app open on its auth screen. The browser's
+// language is Korean: the app is English whatever the browser says.
 export async function openDevice(browser: Browser, handle: string): Promise<Device> {
   const context = await browser.newContext({ acceptDownloads: true, locale: 'ko-KR' });
   const page = await context.newPage();

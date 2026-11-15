@@ -20,11 +20,11 @@ export function openImageZoom(url) {
 // Whether `file` may be sent as an image; says why not when it may not.
 export function checkImage(file) {
   if (!isSendableImageType(file.type)) {
-    toast('JPG / PNG / WebP 만 지원해요', 'error');
+    toast('Only JPG, PNG and WebP images can be sent', 'error');
     return false;
   }
   if (file.size > IMAGE_MAX_BYTES) {
-    toast('이미지가 10MB 를 초과합니다', 'error');
+    toast('The image is larger than 10 MB', 'error');
     return false;
   }
   return true;
@@ -44,14 +44,14 @@ export function confirmImage(file, onSend) {
       document.removeEventListener('keydown', onKey);
     }
   };
-  const send = el('button', { class: 'btn btn-primary' }, ['전송']);
+  const send = el('button', { class: 'btn btn-primary' }, ['Send']);
   const backdrop = el('div', { class: 'image-zoom-backdrop', style: 'cursor: default;', role: 'dialog', 'aria-modal': 'true' }, [
     el('div', { style: 'background:#1c1d22;padding:16px;border-radius:14px;max-width:480px;width:90vw;display:flex;flex-direction:column;gap:12px' }, [
-      el('div', { style: 'font-size:15px;font-weight:600' }, ['이미지 전송 확인']),
-      el('div', { style: 'font-size:12px;opacity:0.7' }, [`${file.name || '이미지'} · ${(file.size / 1024).toFixed(0)} KB`]),
+      el('div', { style: 'font-size:15px;font-weight:600' }, ['Send this image?']),
+      el('div', { style: 'font-size:12px;opacity:0.7' }, [`${file.name || 'Image'}, ${(file.size / 1024).toFixed(0)} KB`]),
       el('img', { src: url, style: 'max-width:100%;max-height:50vh;border-radius:8px;object-fit:contain;background:#0b0c10' }),
       el('div', { style: 'display:flex;gap:8px;justify-content:flex-end' }, [
-        el('button', { class: 'btn btn-ghost', onclick: close }, ['취소']),
+        el('button', { class: 'btn btn-ghost', onclick: close }, ['Cancel']),
         send,
       ]),
     ]),

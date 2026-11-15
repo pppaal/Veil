@@ -18,7 +18,7 @@ src/domain/            pure logic: message views, history, content, conversation
 src/crypto/            protocol v2 (X3DH, Double Ratchet, pins, safety numbers), vector-checked
 src/platform/          IndexedDB, the REST client, the session record, the content store, wipe
 src/core/              base64url, expiry arithmetic
-lib/, i18n/            formatting, the KakaoTalk parser, translations
+lib/, i18n/            formatting, the KakaoTalk parser, the strings (i18n/en.json, English only)
 ```
 
 Rules:

@@ -21,7 +21,7 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
     const peer = stack.shownPeer(conv);
     const isActive = store.isOnScreen(conv.id);
     const last = previewMessage(conv, store.messagesOf(conv.id), now);
-    const preview = last ? previewLabel(last, now) : '아직 메시지 없음';
+    const preview = last ? previewLabel(last, now) : t('conv.noMessages');
     const time = last?.serverReceivedAt ? relativeTime(last.serverReceivedAt) : '';
     const keyChanged = peer && stack.trust.pendingChange(peer.userId);
     const directPeer = stack.peerOf(conv.id);
@@ -58,7 +58,7 @@ export function createSidebar({ store, stack, navigation, archiveRows }) {
         return;
       }
       list.replaceChildren(
-        el('div', { class: 'conv-empty' }, [query ? `"${query}" 검색 결과 없음` : '대화 없음. + 새 대화 버튼으로 시작하세요.']),
+        el('div', { class: 'conv-empty' }, [query ? t('conv.noResults', { query }) : t('conv.empty')]),
         ...archiveRows(),
       );
       return;

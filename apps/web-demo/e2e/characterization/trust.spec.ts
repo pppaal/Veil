@@ -55,23 +55,23 @@ test.describe('a contact verified by safety number', () => {
     await expect(bobDialog).toHaveCount(0);
 
     const dialog = await openSafetyDialog(alice.page);
-    await expect(dialog.locator('#safety-title')).toHaveText(`@${bob.handle} 와의 안전 번호`);
+    await expect(dialog.locator('#safety-title')).toHaveText(`Safety number with @${bob.handle}`);
     await expect(dialog.locator('#safety-their-code')).toBeFocused();
     expect((await dialog.locator('#safety-number').innerText()).trim()).toBe(bobNumber);
     expect(bobNumber.replace(/\s/g, '')).toMatch(/^\d{60}$/);
-    await expect(dialog).not.toContainText('이 키는 확인을 마쳤어요.');
+    await expect(dialog).not.toContainText('You have verified this key.');
 
     await dialog.locator('#safety-their-code').fill('not their code');
-    await dialog.locator('button', { hasText: '코드 비교' }).click();
-    await expect(dialog.locator('.dialog-error')).toHaveText('코드가 일치하지 않아요. 이 키를 신뢰하지 마세요.');
+    await dialog.locator('button', { hasText: 'Compare code' }).click();
+    await expect(dialog.locator('.dialog-error')).toHaveText('The codes do not match. Do not trust this key.');
     await dialog.locator('#safety-their-code').fill(bobCode);
-    await dialog.locator('button', { hasText: '코드 비교' }).click();
+    await dialog.locator('button', { hasText: 'Compare code' }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(toast(alice, `@${bob.handle} 확인 완료`)).toBeVisible();
+    await expect(toast(alice, `@${bob.handle} verified`)).toBeVisible();
 
     const again = await openSafetyDialog(alice.page);
-    await expect(again).toContainText('이 키는 확인을 마쳤어요.');
-    await again.locator('button', { hasText: '취소' }).click();
+    await expect(again).toContainText('You have verified this key.');
+    await again.locator('button', { hasText: 'Cancel' }).click();
     await expect(again).toHaveCount(0);
     expectNoErrors(alice, bob);
   });
@@ -82,19 +82,19 @@ test.describe('a contact verified by safety number', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${bob.handle} 의 새 보안 키가 나타났어요. 확인했던 상대예요: 이 키를 믿기 전에 새 안전 번호를 비교하세요.`,
+      `@${bob.handle} presented a new security key. You had verified them: compare the new safety number before you trust it.`,
     );
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒 보안 키 변경 — 확인 필요');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message (security key changed, review it)');
     await expect(page.locator('.panel-header .verified-badge')).toBeHidden();
     // Meanwhile Alice goes on writing to the key she verified.
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
     await send(alice, 'still to the verified key');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toContain('still to the verified key');
 
-    await banner.locator('button', { hasText: '안전 번호 비교' }).click();
+    await banner.locator('button', { hasText: 'Compare safety number' }).click();
     const dialog = page.locator('#safety-dialog');
-    await expect(dialog).toContainText('아직 수락하지 않은 새 키예요. 상대와 비교한 뒤에만 확인하세요.');
-    await dialog.locator('button', { hasText: '확인됨으로 표시' }).click();
+    await expect(dialog).toContainText('This is a new key that has not been accepted yet. Only verify it after comparing it with them.');
+    await dialog.locator('button', { hasText: 'Mark as verified' }).click();
     await expect(dialog).toHaveCount(0);
     await expect(banner).toHaveCount(0);
     await expect.poll(() => bubbleTexts(alice), { timeout: 15_000 })
@@ -130,21 +130,21 @@ test.describe('a contact never verified', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${dave.handle} 의 새 보안 키가 나타났어요. 확인하기 전까지 그 키에서 온 메시지는 잠긴 채로 있어요.`,
+      `@${dave.handle} presented a new security key. Messages from it stay locked until you review it.`,
     );
-    await expect(page.locator('.conv-item', { hasText: `@${dave.handle}` }).locator('.conv-preview')).toHaveText('⚠️ 보안 키 변경됨');
+    await expect(page.locator('.conv-item', { hasText: `@${dave.handle}` }).locator('.conv-preview')).toHaveText('Safety number changed');
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
     await send(carol, 'while the banner shows');
     await expect.poll(() => bubbleTexts(dave), { timeout: 15_000 }).toContain('while the banner shows');
 
     await banner.locator('.key-change-decline').click();
-    await expect(page.locator('#confirm-title')).toHaveText(`@${dave.handle} 의 이 키를 거절할까요?`);
+    await expect(page.locator('#confirm-title')).toHaveText(`Decline this key for @${dave.handle}?`);
     await page.click('#confirm-cancel');
     await expect(banner).toBeVisible();
     await banner.locator('.key-change-decline').click();
     await page.click('#confirm-ok');
     await expect(banner).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
     await send(carol, 'still talking to dave');
     await expect.poll(() => bubbleTexts(dave), { timeout: 15_000 }).toContain('still talking to dave');
     expectNoErrors(carol, dave);
@@ -155,9 +155,9 @@ test.describe('a contact never verified', () => {
     const { page } = carol;
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
-    await banner.locator('button', { hasText: '확인' }).click();
-    await expect(page.locator('#confirm-title')).toHaveText(`@${dave.handle} 의 새 키를 수락할까요?`);
-    await expect(page.locator('#confirm-ok')).toHaveText('새 키 수락');
+    await banner.locator('button', { hasText: 'Review' }).click();
+    await expect(page.locator('#confirm-title')).toHaveText(`Accept @${dave.handle}'s new key?`);
+    await expect(page.locator('#confirm-ok')).toHaveText('Accept new key');
     await page.click('#confirm-ok');
     await expect(banner).toHaveCount(0);
     await expect.poll(() => bubbleTexts(carol), { timeout: 15_000 }).toContain('relay try two');

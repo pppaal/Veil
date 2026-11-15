@@ -29,10 +29,11 @@ describe('local message ids', () => {
 
 describe('mute durations', () => {
   it('are worded in minutes, hours, days or for good', () => {
-    expect(muteDurationLabel(600)).toBe('10분');
-    expect(muteDurationLabel(7200)).toBe('2시간');
-    expect(muteDurationLabel(86400 * 3)).toBe('3일');
-    expect(muteDurationLabel(86400 * 365)).toBe('영구');
+    expect(muteDurationLabel(60)).toBe('for 1 minute');
+    expect(muteDurationLabel(600)).toBe('for 10 minutes');
+    expect(muteDurationLabel(7200)).toBe('for 2 hours');
+    expect(muteDurationLabel(86400 * 3)).toBe('for 3 days');
+    expect(muteDurationLabel(86400 * 365)).toBe('for good');
   });
 
   it('come from the minutes typed, at least one, an hour for anything else', () => {

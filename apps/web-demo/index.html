@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
@@ -18,33 +18,33 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:9000 http://127.0.0.1:9000; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="description" content="VEIL — 백업 없음, 복구 없음, 디바이스에 묶이는 종단간 암호화 메신저. 베타." />
+<meta name="description" content="End-to-end encrypted messenger. No phone number, no backup." />
 <meta name="color-scheme" content="dark" />
 <meta property="og:type" content="website" />
-<meta property="og:title" content="VEIL · Private Beta" />
-<meta property="og:description" content="No backup. No recovery. No leaks. 디바이스에 묶이는 E2E 메신저." />
-<meta property="og:site_name" content="VEIL" />
+<meta property="og:title" content="Veil" />
+<meta property="og:description" content="End-to-end encrypted messenger. No phone number, no backup." />
+<meta property="og:site_name" content="Veil" />
 <meta property="og:image" content="./icon.svg" />
 <meta name="twitter:card" content="summary" />
-<meta name="twitter:title" content="VEIL · Private Beta" />
-<meta name="twitter:description" content="No backup. No recovery. No leaks. 디바이스에 묶이는 E2E 메신저." />
+<meta name="twitter:title" content="Veil" />
+<meta name="twitter:description" content="End-to-end encrypted messenger. No phone number, no backup." />
 <link rel="icon" type="image/svg+xml" href="./icon.svg" />
 <link rel="apple-touch-icon" href="./icon.svg" />
 <link rel="manifest" href="./manifest.json" />
-<title>VEIL</title>
+<title>Veil</title>
 <link rel="stylesheet" href="./app.css" />
 <script src="./socket.io.min.js" defer></script>
 </head>
 <body>
 <div id="toast-root"></div>
 
-<!-- Honest banner so private-beta testers know what they're getting. -->
+<!-- Tells testers what they are getting. -->
 <div id="beta-banner" class="beta-banner hidden" role="status">
   <div class="beta-banner-body">
-    <strong>PRIVATE BETA</strong>
-    <span> · 외부 크립토 감사 미완료 · 백업/복구 없음 · 이 기기에서만 사용</span>
+    <strong>Beta</strong>
+    <span>: the encryption has not been independently audited yet.</span>
   </div>
-  <button class="beta-banner-close" id="beta-banner-close" aria-label="배너 닫기">×</button>
+  <button class="beta-banner-close" id="beta-banner-close" aria-label="Dismiss">×</button>
 </div>
 
 <!-- AUTH SCREEN -->
@@ -52,68 +52,68 @@
   <div class="auth-card">
     <div class="brand">
       <div class="brand-mark">V</div>
-      <div class="brand-title">VEIL</div>
-      <div class="brand-tag" data-i18n="appTagline">private beta</div>
+      <div class="brand-title">Veil</div>
+      <div class="brand-tag" data-i18n="appTagline">End-to-end encrypted. No phone number. No backup.</div>
     </div>
 
     <details class="auth-explainer">
-      <summary data-i18n="auth.explainer.summary">VEIL 이 뭐예요?</summary>
+      <summary data-i18n="auth.explainer.summary">How Veil works</summary>
       <div class="auth-explainer-body">
-        <p data-i18n-html="auth.explainer.body1"><strong>이 기기에서만</strong> 동작하는 종단간 암호화 메신저입니다.
-          서버는 ciphertext 만 보고, 평문은 절대 갖지 않아요.</p>
-        <p data-i18n-html="auth.explainer.body2"><strong>주의</strong>: 백업·복구·비밀번호 재설정 없습니다.
-          기기를 잃어버리거나 브라우저를 지우면 메시지·핸들 모두 영구 손실.
-          다른 기기로 옮기려면 이 기기에서 직접 이전(transfer) 절차를 밟아야 합니다.</p>
+        <p data-i18n-html="auth.explainer.body1">Your account lives in <strong>this browser</strong>. Messages are end-to-end encrypted:
+          the server stores only encrypted messages and cannot read them.</p>
+        <p data-i18n-html="auth.explainer.body2">There is no backup, no recovery and no password reset. If you lose this device or
+          clear the browser, your messages and your handle are gone. To move to another device, start the transfer from
+          this one.</p>
       </div>
     </details>
 
     <div id="restore-row" class="restore-row hidden">
       <div class="restore-info">
-        <div class="restore-label" data-i18n="auth.restore.label">저장된 세션</div>
+        <div class="restore-label" data-i18n="auth.restore.label">Saved account</div>
         <div class="restore-handle" id="restore-handle">@…</div>
-        <div id="restore-rejected" class="restore-rejected hidden" role="alert" data-i18n="auth.restore.rejected">서버가 이 기기의 세션을 거부했어요. 기기가 해지되었을 수 있어요. 키는 이 브라우저에 그대로 남아 있어요.</div>
+        <div id="restore-rejected" class="restore-rejected hidden" role="alert" data-i18n="auth.restore.rejected">Could not connect to this account. This device may have been removed from it. Your keys are still in this browser.</div>
       </div>
       <div class="restore-actions">
-        <button id="restore-btn" class="btn btn-primary btn-compact" data-i18n="auth.restore.continue">계속</button>
-        <button id="restore-delete-btn" class="link-btn link-danger" data-i18n="auth.restore.delete">이 신원 삭제</button>
+        <button id="restore-btn" class="btn btn-primary btn-compact" data-i18n="auth.restore.continue">Continue</button>
+        <button id="restore-delete-btn" class="link-btn link-danger" data-i18n="auth.restore.delete">Delete this identity</button>
       </div>
     </div>
 
     <form id="register-form" class="auth-form" autocomplete="off" novalidate>
       <label class="field">
-        <span class="field-label" data-i18n="auth.form.handle">핸들</span>
-        <input id="reg-handle" type="text" placeholder="alice" pattern="[a-z0-9_]+" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" />
-        <span class="field-hint" data-i18n="auth.form.handle.hint">소문자, 숫자, _ 만 가능. 한 번 정하면 못 바꿔요.</span>
+        <span class="field-label" data-i18n="auth.form.handle">Handle</span>
+        <input id="reg-handle" type="text" placeholder="alex" pattern="[a-z0-9_]+" maxlength="32" autocapitalize="off" autocorrect="off" spellcheck="false" />
+        <span class="field-hint" data-i18n="auth.form.handle.hint">Lowercase letters, digits and underscores. It can't be changed later.</span>
       </label>
-      <button id="reg-btn" type="submit" class="btn btn-primary" data-i18n="auth.form.start">새 핸들로 시작</button>
+      <button id="reg-btn" type="submit" class="btn btn-primary" data-i18n="auth.form.start">Create account</button>
     </form>
 
     <div class="auth-meta">
-      <div class="meta-line" data-i18n="auth.meta.line1">서버는 ciphertext만 봅니다</div>
-      <div class="meta-line" data-i18n="auth.meta.line2">백업 없음 · 복구 없음 · 이 기기에서만 사용</div>
+      <div class="meta-line" data-i18n="auth.meta.line1">The server cannot read your messages.</div>
+      <div class="meta-line" data-i18n="auth.meta.line2">There is no backup and no recovery.</div>
     </div>
 
-    <button id="transfer-new-btn" class="link-btn" data-i18n="auth.transfer.fromExisting">기존 기기에서 이전</button>
-    <button id="wipe-btn" class="link-btn link-danger" data-i18n="auth.wipe">이 브라우저의 키 · 캐시 전부 삭제</button>
+    <button id="transfer-new-btn" class="link-btn" data-i18n="auth.transfer.fromExisting">Move from another device</button>
+    <button id="wipe-btn" class="link-btn link-danger" data-i18n="auth.wipe">Delete all Veil data from this browser</button>
   </div>
 </section>
 
 <!-- MAIN APP -->
 <div id="app" class="app hidden">
   <header class="topbar">
-    <button class="icon-btn icon-btn-only-mobile" id="back-to-list" aria-label="대화 목록으로">
+    <button class="icon-btn icon-btn-only-mobile" id="back-to-list" aria-label="Back to chats">
       <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <div class="topbar-brand">
       <span class="topbar-mark">V</span>
-      <span class="topbar-name">VEIL</span>
-      <span class="topbar-pill" id="conn-pill">연결 중…</span>
+      <span class="topbar-name">Veil</span>
+      <span class="topbar-pill" id="conn-pill">Connecting…</span>
     </div>
     <div class="topbar-right">
-      <button class="icon-btn" id="split-btn" title="분할 보기" aria-label="분할 보기">
+      <button class="icon-btn" id="split-btn" title="Split view" aria-label="Split view">
         <svg viewBox="0 0 24 24" width="20" height="20"><rect x="3" y="4" width="8" height="16" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/><rect x="13" y="4" width="8" height="16" rx="1.5" stroke="currentColor" stroke-width="2" fill="none"/></svg>
       </button>
-      <button class="icon-btn" id="menu-btn" aria-label="메뉴">
+      <button class="icon-btn" id="menu-btn" aria-label="Menu">
         <svg viewBox="0 0 24 24" width="20" height="20"><circle cx="12" cy="5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/><circle cx="12" cy="19" r="1.5" fill="currentColor"/></svg>
       </button>
     </div>
@@ -121,8 +121,8 @@
 
   <!-- An identity from before protocol v2 reads its history but cannot send. -->
   <div id="legacy-banner" class="legacy-banner hidden" role="alert">
-    <span data-i18n="legacy.banner">이 브라우저의 신원은 이전 데모 형식이에요. 기록은 읽을 수 있지만 보낼 수 없어요. 계속 대화하려면 새 신원을 만드세요.</span>
-    <button id="legacy-new-identity" class="btn btn-secondary btn-compact" data-i18n="legacy.createNew">새 신원 만들기</button>
+    <span data-i18n="legacy.banner">This browser's identity uses the old format. You can read its history but not send. Create a new identity to keep messaging.</span>
+    <button id="legacy-new-identity" class="btn btn-secondary btn-compact" data-i18n="legacy.createNew">Create a new identity</button>
   </div>
 
   <aside class="sidebar" id="sidebar">
@@ -130,13 +130,13 @@
     <div class="sidebar-actions">
       <button id="new-chat-btn" class="btn btn-secondary btn-block">
         <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        새 대화
+        New chat
       </button>
     </div>
     <div class="sidebar-search">
-      <input id="search-input" type="text" placeholder="대화 검색…" autocomplete="off" />
+      <input id="search-input" type="text" placeholder="Search chats" autocomplete="off" />
     </div>
-    <nav class="conv-list" id="conv-list" aria-label="대화 목록"></nav>
+    <nav class="conv-list" id="conv-list" aria-label="Chats"></nav>
   </aside>
 
   <main class="main" id="main">
@@ -147,28 +147,28 @@
   <!-- New chat dialog -->
   <div class="dialog-backdrop hidden" id="new-chat-dialog" role="presentation">
     <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="new-chat-title">
-      <div class="dialog-title" id="new-chat-title" data-i18n="newChat.title">새 다이렉트 챗</div>
-      <div class="dialog-sub" data-i18n="newChat.sub">상대 핸들을 입력하세요. 같은 서버에 등록된 핸들이어야 해요.</div>
-      <input id="new-peer-input" type="text" placeholder="bob" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <div class="dialog-title" id="new-chat-title" data-i18n="newChat.title">New chat</div>
+      <div class="dialog-sub" data-i18n="newChat.sub">Enter their handle. They need an account on the same server.</div>
+      <input id="new-peer-input" type="text" placeholder="sam" autocapitalize="off" autocorrect="off" spellcheck="false" />
       <div class="dialog-error" id="new-peer-error" role="alert" aria-live="polite"></div>
       <div class="dialog-actions">
-        <button class="btn btn-ghost" id="new-cancel" data-i18n="newChat.cancel">취소</button>
-        <button class="btn btn-primary" id="new-confirm" data-i18n="newChat.start">시작</button>
+        <button class="btn btn-ghost" id="new-cancel" data-i18n="newChat.cancel">Cancel</button>
+        <button class="btn btn-primary" id="new-confirm" data-i18n="newChat.start">Start</button>
       </div>
     </div>
   </div>
 
   <!-- Menu dropdown -->
   <div class="menu hidden" id="menu" role="menu">
-    <button class="menu-item" data-action="copy-handle" role="menuitem" data-i18n="menu.copyHandle">내 핸들 복사</button>
-    <button class="menu-item" data-action="ws-info" role="menuitem" data-i18n="menu.connectionStatus">연결 상태</button>
-    <button class="menu-item" data-action="transfer-start" role="menuitem" data-i18n="menu.transferStart">다른 기기로 이전</button>
-    <button class="menu-item" data-action="toggle-sounds" role="menuitem">🔔 사운드 토글</button>
-    <button class="menu-item" data-action="show-help" role="menuitem">⌨️ 단축키</button>
-    <button class="menu-item" data-action="open-settings" role="menuitem">⚙️ 설정</button>
-    <button class="menu-item" data-action="kakao-import" role="menuitem">📥 카카오톡 가져오기</button>
+    <button class="menu-item" data-action="copy-handle" role="menuitem" data-i18n="menu.copyHandle">Copy my handle</button>
+    <button class="menu-item" data-action="ws-info" role="menuitem" data-i18n="menu.connectionStatus">Connection status</button>
+    <button class="menu-item" data-action="transfer-start" role="menuitem" data-i18n="menu.transferStart">Move to another device</button>
+    <button class="menu-item" data-action="toggle-sounds" role="menuitem" data-i18n="menu.sounds">Sounds</button>
+    <button class="menu-item" data-action="show-help" role="menuitem" data-i18n="menu.shortcuts">Keyboard shortcuts</button>
+    <button class="menu-item" data-action="open-settings" role="menuitem" data-i18n="menu.settings">Settings</button>
+    <button class="menu-item" data-action="kakao-import" role="menuitem" data-i18n="menu.kakaoImport">Import a KakaoTalk export</button>
     <div class="menu-sep"></div>
-    <button class="menu-item menu-danger" data-action="wipe" role="menuitem" data-i18n="menu.wipe">로그아웃 + 키 삭제</button>
+    <button class="menu-item menu-danger" data-action="wipe" role="menuitem" data-i18n="menu.wipe">Sign out and delete keys</button>
   </div>
 </div>
 
@@ -176,23 +176,23 @@
      authenticated session. -->
 <div class="dialog-backdrop hidden" id="transfer-old-dialog" role="presentation">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-old-title">
-    <div class="dialog-title" id="transfer-old-title">이 핸들을 다른 기기로 이전</div>
+    <div class="dialog-title" id="transfer-old-title">Move this account to another device</div>
     <div class="dialog-sub">
-      새 기기에 아래 코드를 붙여넣으세요. 새 기기가 클레임하면 지문이
-      여기 표시됩니다 — 일치 확인 후 승인하면 이 기기는 자동 로그아웃,
-      같은 핸들로 다시는 못 들어옵니다.
-      <strong>5분 안에 완료</strong>.
+      Paste the code below on the new device. When the new device uses it, its
+      fingerprint shows here. Check that it matches, then approve. This device
+      is then signed out and can't sign in to this account again.
+      <strong>Finish within 5 minutes.</strong>
     </div>
     <textarea id="transfer-old-token" readonly rows="3" style="width:100%;font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.04);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;resize:none"></textarea>
-    <div class="dialog-sub" id="transfer-old-status" style="margin-top:8px">대기 중…</div>
+    <div class="dialog-sub" id="transfer-old-status" style="margin-top:8px">Waiting…</div>
     <div id="transfer-old-claim" class="hidden" style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.04);border-radius:8px">
-      <div style="font-size:12px;opacity:0.7">새 기기가 클레임 했습니다</div>
+      <div style="font-size:12px;opacity:0.7">The new device is ready</div>
       <div id="transfer-old-fingerprint" style="font-family:ui-monospace,monospace;font-size:14px;margin:4px 0"></div>
-      <div style="font-size:11px;opacity:0.7">이 지문이 새 기기 화면에 표시된 것과 일치하는지 확인하고 승인하세요.</div>
+      <div style="font-size:11px;opacity:0.7">Check that this fingerprint matches the one on the new device's screen, then approve.</div>
     </div>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" id="transfer-old-cancel">취소</button>
-      <button class="btn btn-primary hidden" id="transfer-old-approve">승인 + 이 기기 로그아웃</button>
+      <button class="btn btn-ghost" id="transfer-old-cancel">Cancel</button>
+      <button class="btn btn-primary hidden" id="transfer-old-approve">Approve and sign out this device</button>
     </div>
   </div>
 </div>
@@ -201,11 +201,11 @@
      it works on both the auth screen and the main app. -->
 <div class="dialog-backdrop hidden" id="confirm-dialog" role="presentation">
   <div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body">
-    <div class="dialog-title" id="confirm-title">확인</div>
+    <div class="dialog-title" id="confirm-title">Confirm</div>
     <div class="dialog-sub" id="confirm-body"></div>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" id="confirm-cancel">취소</button>
-      <button class="btn btn-primary" id="confirm-ok">확인</button>
+      <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-primary" id="confirm-ok">OK</button>
     </div>
   </div>
 </div>
@@ -214,27 +214,27 @@
      the auth screen (where #app is hidden). -->
 <div class="dialog-backdrop hidden" id="transfer-new-dialog" role="presentation">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-new-title">
-    <div class="dialog-title" id="transfer-new-title">기존 기기에서 이전</div>
+    <div class="dialog-title" id="transfer-new-title">Move from another device</div>
     <div class="dialog-sub">
-      이전 기기에서 받은 코드를 붙여넣으세요. 클레임을 누르면 이 기기의
-      지문이 표시됩니다 — 이전 기기 화면과 일치하는지 확인하고, 이전
-      기기에서 승인해야 핸들이 옮겨옵니다.
+      Paste the code from your old device. When you use it, this device's
+      fingerprint shows here. Check that it matches the one on the old
+      device's screen, then approve there to finish the move.
     </div>
     <label class="field">
-      <span class="field-label">새 기기 이름</span>
+      <span class="field-label">Name for this device</span>
       <input id="transfer-new-name" type="text" placeholder="VEIL Web" maxlength="40" />
     </label>
-    <textarea id="transfer-new-token" rows="3" placeholder="이전 기기에서 복사한 코드를 여기에…" style="width:100%;font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.04);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;resize:none;box-sizing:border-box"></textarea>
+    <textarea id="transfer-new-token" rows="3" placeholder="Paste the code from the old device here" style="width:100%;font-family:ui-monospace,monospace;font-size:11px;background:rgba(255,255,255,0.04);color:inherit;border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:8px;resize:none;box-sizing:border-box"></textarea>
     <div id="transfer-new-fingerprint" class="hidden" style="margin:12px 0;padding:10px;background:rgba(255,255,255,0.04);border-radius:8px">
-      <div style="font-size:12px;opacity:0.7">이 기기의 지문</div>
+      <div style="font-size:12px;opacity:0.7">This device's fingerprint</div>
       <div id="transfer-new-fingerprint-text" style="font-family:ui-monospace,monospace;font-size:14px;margin:4px 0"></div>
-      <div style="font-size:11px;opacity:0.7">이전 기기 화면의 지문과 일치하는지 확인하세요.</div>
+      <div style="font-size:11px;opacity:0.7">Check that it matches the fingerprint on the old device's screen.</div>
     </div>
     <div class="dialog-error" id="transfer-new-error" role="alert" aria-live="polite"></div>
     <div class="dialog-sub" id="transfer-new-status"></div>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" id="transfer-new-cancel">취소</button>
-      <button class="btn btn-primary" id="transfer-new-claim">클레임</button>
+      <button class="btn btn-ghost" id="transfer-new-cancel">Cancel</button>
+      <button class="btn btn-primary" id="transfer-new-claim">Use code</button>
     </div>
   </div>
 </div>

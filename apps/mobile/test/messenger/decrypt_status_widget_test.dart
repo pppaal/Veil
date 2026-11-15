@@ -224,7 +224,7 @@ void main() {
     ]);
 
     expect(find.text('old client'), findsOneWidget);
-    expect(find.text('Unverified sender (legacy)'), findsOneWidget);
+    expect(find.text('Sender not verified (old format)'), findsOneWidget);
   });
 
   testWidgets('inbound reaction applies to target and renders no bubble', (tester) async {

@@ -1655,7 +1655,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatLoadFailedBody.
   ///
   /// In en, this message translates to:
-  /// **'The relay did not answer. Nothing is lost: try again.'**
+  /// **'Try again in a moment.'**
   String get chatLoadFailedBody;
 
   /// No description provided for @chatComposeHint.
@@ -1685,7 +1685,7 @@ abstract class AppLocalizations {
   /// No description provided for @chatLoadingBody.
   ///
   /// In en, this message translates to:
-  /// **'Fetching what was sent to this device and opening it.'**
+  /// **'Fetching the messages sent to this device and decrypting them.'**
   String get chatLoadingBody;
 
   /// No description provided for @chatConversationNotFound.
@@ -1717,6 +1717,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Online now'**
   String get chatSubtitleOnline;
+
+  /// No description provided for @chatGroupUnknownSender.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown sender'**
+  String get chatGroupUnknownSender;
 
   /// No description provided for @chatGroupMemberCount.
   ///

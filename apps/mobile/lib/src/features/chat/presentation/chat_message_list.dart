@@ -36,6 +36,7 @@ class ChatMessageList extends ConsumerWidget {
     required this.onResolveAttachment,
     required this.onReact,
     this.loadFailed = false,
+    this.loadFailedReason,
     this.onRetryLoad,
     this.onVerifyPeer,
     this.senderNameOf,
@@ -63,8 +64,10 @@ class ChatMessageList extends ConsumerWidget {
   final void Function(ChatMessage message) onReact;
 
   /// Whether the history could not be fetched; with nothing loaded the area
-  /// then says so and offers [onRetryLoad].
+  /// then says so, with [loadFailedReason] when the messenger gave one, and
+  /// offers [onRetryLoad].
   final bool loadFailed;
+  final String? loadFailedReason;
   final VoidCallback? onRetryLoad;
 
   /// Opens the peer's safety number from the empty chat, before the first
@@ -96,7 +99,7 @@ class ChatMessageList extends ConsumerWidget {
       return _CenteredState(
         child: VeilEmptyState(
           title: l10n.chatLoadFailedTitle,
-          body: l10n.chatLoadFailedBody,
+          body: loadFailedReason ?? l10n.chatLoadFailedBody,
           icon: Icons.cloud_off_rounded,
           action: onRetryLoad == null
               ? null

@@ -235,7 +235,7 @@ void main() {
   // action off, which is the one thing the user must be able to reach.
   for (final (locale, titles, actions) in [
     ('en', ['Safety number changed', 'Delivery stalled'], ['Review', 'Retry failed sends']),
-    ('ko', ['안전 번호가 바뀌었습니다', '전송이 멈췄습니다'], ['확인하기', '다시 보내기']),
+    ('ko', ['안전 번호가 바뀌었습니다', '전송이 멈췄습니다'], ['확인하기', '모두 다시 보내기']),
   ]) {
     testWidgets('with the keyboard up, each warning keeps its title and its action on one row ($locale)',
         (tester) async {

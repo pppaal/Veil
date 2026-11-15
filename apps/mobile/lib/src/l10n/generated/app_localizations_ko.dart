@@ -866,7 +866,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatLoadFailedTitle => '메시지를 불러오지 못했습니다';
 
   @override
-  String get chatLoadFailedBody => '릴레이에서 응답이 없었습니다. 사라진 것은 없으니 다시 시도해 주세요.';
+  String get chatLoadFailedBody => '잠시 후 다시 시도해 주세요.';
 
   @override
   String get chatComposeHint => '메시지를 입력하세요';
@@ -897,6 +897,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get chatSubtitleOnline => '온라인';
+
+  @override
+  String get chatGroupUnknownSender => '알 수 없는 발신자';
 
   @override
   String chatGroupMemberCount(int count) {
@@ -959,7 +962,7 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get chatRetryFailedSendsAction => '다시 보내기';
+  String get chatRetryFailedSendsAction => '모두 다시 보내기';
 
   @override
   String get chatLoadOlder => '이전 메시지 불러오기';

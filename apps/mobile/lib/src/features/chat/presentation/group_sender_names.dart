@@ -15,10 +15,16 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
   Map<String, String> _nameByDevice = const {};
   String? _namesOf;
   bool _readingNames = false;
+  bool _namesRead = false;
 
   /// The member name to show on [message], or null: a 1:1, or a device this
   /// device has pinned for none of the members.
   String? groupSenderName(ChatMessage message) => _nameByDevice[message.senderDeviceId];
+
+  /// Whether the pins of the open group have been read at least once. From
+  /// then on a message with no name is one this device cannot attribute,
+  /// and the chat says so instead of leaving it under the name above it.
+  bool get groupSenderNamesRead => _namesRead;
 
   /// Call when the chat builds. Reads the pins again while [messages] holds
   /// a message from a device with no name yet: its pin appears once its
@@ -27,11 +33,13 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
     if (conversation == null || conversation.type != ConversationType.group) {
       _namesOf = null;
       _nameByDevice = const {};
+      _namesRead = false;
       return;
     }
     if (_namesOf != conversation.id) {
       _namesOf = conversation.id;
       _nameByDevice = const {};
+      _namesRead = false;
     }
     if (_readingNames) return;
     final unnamed = messages.any(
@@ -54,8 +62,12 @@ mixin GroupSenderNames<W extends ConsumerStatefulWidget> on ConsumerState<W> {
       final names = {
         for (final MapEntry(key: deviceId, value: userId) in owners.entries) deviceId: members[userId]!,
       };
-      if (!mounted || _namesOf != conversation.id || mapEquals(names, _nameByDevice)) return;
-      setState(() => _nameByDevice = names);
+      if (!mounted || _namesOf != conversation.id) return;
+      if (_namesRead && mapEquals(names, _nameByDevice)) return;
+      setState(() {
+        _nameByDevice = names;
+        _namesRead = true;
+      });
     } finally {
       _readingNames = false;
     }

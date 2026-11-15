@@ -28,11 +28,7 @@ void main() {
       expect(find.byType(VeilMetricStrip), findsNothing);
       // What the hero card said: the relay, the count, and that nothing is
       // backed up.
-      final status = ['Relay linked  ·  ', '8 conversations  ·  ', 'No backup'];
-      for (final part in status) {
-        expect(find.text(part), findsOneWidget);
-      }
-      expect({for (final part in status) tester.getTopLeft(find.text(part)).dy}, hasLength(1),
+      expect(find.text('Relay linked  ·  8 conversations  ·  No backup'), findsOneWidget,
           reason: 'one line at the default text size');
       expect(find.widgetWithText(TextField, 'Search chats and messages'), findsOneWidget);
 
@@ -49,16 +45,33 @@ void main() {
     });
   });
 
-  testWidgets('with larger text the status line wraps between its parts, never inside one', (tester) async {
-    await withPhoneApp(tester, identities, location: '/conversations', textScale: 1.3, body: (world) async {
-      final relay = tester.getRect(find.text('Relay linked  ·  '));
-      final noBackup = tester.getRect(find.text('No backup'));
-      expect(noBackup.top, greaterThan(relay.top), reason: 'the line is too long for 360 px at this size');
-      expect(noBackup.height, relay.height, reason: '"No backup" is on one line');
-      expect(noBackup.right, lessThanOrEqualTo(360));
-      expect(tester.takeException(), isNull);
+  // Where the line is too long (360 px at 1.3x) it breaks between two
+  // parts, and the dot that separates parts is drawn only between two that
+  // share a line: no line ends with one, and none starts with one.
+  for (final (locale, lines) in [
+    ('en', ['Relay linked  ·  8 conversations', 'No backup']),
+    ('ko', ['릴레이 연결됨  ·  대화 8개  ·  백업 없음']),
+  ]) {
+    testWidgets('with larger text the status line wraps between its parts, with no separator left hanging ($locale)',
+        (tester) async {
+      await withPhoneApp(tester, identities, location: '/conversations', locale: locale, textScale: 1.3,
+          body: (world) async {
+        final rects = [for (final line in lines) tester.getRect(find.text(line))];
+        for (final (index, rect) in rects.indexed) {
+          expect(rect.height, rects.first.height, reason: '"${lines[index]}" is one line');
+          expect(rect.right, lessThanOrEqualTo(360), reason: '"${lines[index]}" fits the screen');
+          if (index > 0) expect(rect.top, greaterThanOrEqualTo(rects[index - 1].bottom));
+        }
+        // Nothing drawn on the list starts or ends with the separator.
+        final hanging = tester
+            .widgetList<Text>(find.byType(Text))
+            .map((text) => text.data ?? '')
+            .where((data) => data.trim().startsWith('·') || data.trim().endsWith('·'));
+        expect(hanging, isEmpty);
+        expect(tester.takeException(), isNull);
+      });
     });
-  });
+  }
 
   testWidgets('starts a direct chat or a group from the bar', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
@@ -125,7 +138,7 @@ void main() {
       location: '/conversations',
       account: LayoutAccount.signedInEmpty,
       body: (world) async {
-        expect(find.text('No direct conversations yet'), findsOneWidget);
+        expect(find.text('No conversations yet'), findsOneWidget);
         await tester.tap(find.text('Start direct chat'));
         await pumpFrames(tester);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
@@ -135,9 +148,7 @@ void main() {
 
   testWidgets('is in Korean in a Korean app, tabs included', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', locale: 'ko', body: (world) async {
-      for (final part in ['릴레이 연결됨  ·  ', '대화 8개  ·  ', '백업 없음']) {
-        expect(find.text(part), findsOneWidget);
-      }
+      expect(find.text('릴레이 연결됨  ·  대화 8개  ·  백업 없음'), findsOneWidget);
       expect(find.widgetWithText(TextField, '대화와 메시지 검색'), findsOneWidget);
       for (final tab in ['채팅', '연락처', '설정']) {
         expect(find.text(tab), findsOneWidget);

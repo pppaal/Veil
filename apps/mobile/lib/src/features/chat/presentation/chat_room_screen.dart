@@ -10,6 +10,7 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/security/platform_security_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
@@ -196,6 +197,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
 
     final isDirect = conversation?.type == ConversationType.direct;
     syncGroupSenderNames(conversation, messages);
+    // With nothing loaded, the message area says why and offers to retry:
+    // one statement of the error, not a banner above it as well.
+    final loadFailedShown = _loadFailed && messages.isEmpty;
+    final error = controller.errorMessage;
 
     final banners = ChatStatusBanners(
       controller: controller,
@@ -208,6 +213,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       onReviewIdentity: _openSafetyNumbers,
       onAcknowledgeHold: _acknowledgePeerAccount,
       onRetryFailed: () => ref.read(messengerControllerProvider).retryPendingMessages(widget.conversationId),
+      errorShownBelow: loadFailedShown,
     );
     final messageList = ChatMessageList(
       conversationId: widget.conversationId,
@@ -222,9 +228,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       highlightedMessageId: highlightedMessageId,
       sentAtFormat: _sentAtFormat,
       loadFailed: _loadFailed,
+      loadFailedReason: error == null ? null : veilErrorText(l10n, error),
       onRetryLoad: () => unawaited(_loadConversationState()),
       onVerifyPeer: isDirect && !peerVerified ? _openSafetyNumbers : null,
-      senderNameOf: isDirect ? null : groupSenderName,
+      // A group message this device can attribute to none of the members
+      // says so, once the members' devices have been read.
+      senderNameOf: isDirect
+          ? null
+          : (message) => groupSenderName(message) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
       onResolveAttachment: _showAttachmentTicket,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),

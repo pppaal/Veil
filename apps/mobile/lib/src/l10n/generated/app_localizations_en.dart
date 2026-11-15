@@ -900,8 +900,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatLoadFailedTitle => 'Could not load messages';
 
   @override
-  String get chatLoadFailedBody =>
-      'The relay did not answer. Nothing is lost: try again.';
+  String get chatLoadFailedBody => 'Try again in a moment.';
 
   @override
   String get chatComposeHint => 'Type a message';
@@ -917,7 +916,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatLoadingBody =>
-      'Fetching what was sent to this device and opening it.';
+      'Fetching the messages sent to this device and decrypting them.';
 
   @override
   String get chatConversationNotFound => 'Conversation not found';
@@ -933,6 +932,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatSubtitleOnline => 'Online now';
+
+  @override
+  String get chatGroupUnknownSender => 'Unknown sender';
 
   @override
   String chatGroupMemberCount(int count) {

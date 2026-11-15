@@ -33,6 +33,7 @@ class ChatStatusBanners extends StatelessWidget {
     required this.onReviewIdentity,
     required this.onAcknowledgeHold,
     required this.onRetryFailed,
+    this.errorShownBelow = false,
   });
 
   final VeilMessengerController controller;
@@ -47,6 +48,10 @@ class ChatStatusBanners extends StatelessWidget {
   final VoidCallback onReviewIdentity;
   final void Function(PeerAccountHold hold, String handle) onAcknowledgeHold;
   final VoidCallback onRetryFailed;
+
+  /// Whether the message area already says what the messenger's error is
+  /// (a history that could not be loaded), so no banner repeats it.
+  final bool errorShownBelow;
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +154,7 @@ class ChatStatusBanners extends StatelessWidget {
     final error = controller.errorMessage;
     // The note about the dropped relay link is this chat's own "sends are
     // waiting" below when it has any, and another chat's business when not.
-    final showError = error != null && !controller.errorIsRelayInterruption;
+    final showError = error != null && !controller.errorIsRelayInterruption && !errorShownBelow;
 
     return [
       // Only a 1:1 conversation pauses; a group just leaves the device out.

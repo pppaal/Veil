@@ -18,7 +18,6 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late LayoutIdentities identities;
   final en = lookupAppLocalizations(const Locale('en'));
-  final ko = lookupAppLocalizations(const Locale('ko'));
 
   setUpAll(() async {
     await loadBundledFonts();
@@ -63,7 +62,7 @@ void main() {
         await openFromList(tester, en.conversationsNewChat);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
 
-        await tester.enterText(on(StartDirectChatScreen, TextField), '@mira');
+        await tester.enterText(on(StartDirectChatScreen, TextField), '@$emptyChatPeerHandle');
         await tester.pump();
         await tester.tap(on(StartDirectChatScreen, FilledButton));
         await pumpFrames(tester, frames: 10);
@@ -79,14 +78,14 @@ void main() {
       });
     });
 
-    testWidgets('says in the app\'s language when the handle opens nothing, and only then', (tester) async {
-      await withPhoneApp(tester, identities, location: '/start-chat', locale: 'ko', prepare: (world) async {
+    testWidgets('says when the handle opens nothing, and only then', (tester) async {
+      await withPhoneApp(tester, identities, location: '/start-chat', prepare: (world) async {
         // The messenger failed at something else before the screen opened.
         await world.messenger.startConversationByHandle('nobody');
         expect(world.messenger.errorMessage, isNotNull);
         return null;
       }, body: (world) async {
-        expect(findCopy(ko.startDirectErrorTitle), findsNothing, reason: 'another screen\'s failure is not shown here');
+        expect(findCopy(en.startDirectErrorTitle), findsNothing, reason: 'another screen\'s failure is not shown here');
 
         // An example handle nobody has: what is typed is the user's own.
         await tester.enterText(find.byType(TextField), 'icarus');
@@ -94,20 +93,19 @@ void main() {
         await tester.tap(find.byType(FilledButton));
         await pumpFrames(tester, frames: 6);
         expect(find.byType(StartDirectChatScreen), findsOneWidget);
-        expect(findCopy(ko.startDirectErrorTitle), findsOneWidget);
-        expect(findCopy(ko.startDirectErrorBody), findsOneWidget);
-        expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+        expect(findCopy(en.startDirectErrorTitle), findsOneWidget);
+        expect(findCopy(en.startDirectErrorBody), findsOneWidget);
 
         await tester.enterText(find.byType(TextField), 'icaru');
         await tester.pump();
-        expect(findCopy(ko.startDirectErrorTitle), findsNothing, reason: 'a new handle clears the failure');
+        expect(findCopy(en.startDirectErrorTitle), findsNothing, reason: 'a new handle clears the failure');
       });
     });
   });
 
   group('a group', () {
     testWidgets('opens on its fields and the button, all on the first screenful of a 360x640 phone', (tester) async {
-      await withPhoneApp(tester, identities, location: '/start-group', locale: 'ko', body: (world) async {
+      await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
         final fields = find.byType(TextField);
         expect(fields, findsNWidgets(3));
         final button = tester.getRect(find.byType(FilledButton));
@@ -119,9 +117,9 @@ void main() {
         // This build has no public groups and cannot add members later:
         // the screen offers neither, and says the second.
         expect(find.byType(Switch), findsNothing);
-        expect(findCopy(ko.startGroupMembersCaption), findsOneWidget);
+        expect(findCopy(en.startGroupMembersCaption), findsOneWidget);
         await scrollToEnd(tester);
-        expect(findCopy(ko.startGroupNote), findsOneWidget);
+        expect(findCopy(en.startGroupNote), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     });
@@ -130,10 +128,10 @@ void main() {
       await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
         final members = find.byType(TextField).at(1);
         expect(find.textContaining(RegExp(r'^\d+ handles?$')), findsNothing);
-        await tester.enterText(members, 'mira');
+        await tester.enterText(members, 'lena');
         await tester.pump();
         expect(find.text('1 handle'), findsOneWidget);
-        await tester.enterText(members, 'mira, @noor  rowan');
+        await tester.enterText(members, 'lena, @omar  jonas');
         await tester.pump();
         expect(find.text('3 handles'), findsOneWidget);
       });
@@ -153,12 +151,12 @@ void main() {
         expect(create().onPressed, isNull, reason: 'a name and no member');
 
         // The creator's own handle, however it is written, is nobody else.
-        await tester.enterText(fields.at(1), '@Atlas, atlas');
+        await tester.enterText(fields.at(1), '@Alex, alex');
         await tester.pump();
         expect(create().onPressed, isNull, reason: 'only the creator');
         expect(find.textContaining(RegExp(r'^\d+ handles?$')), findsNothing, reason: 'no member is counted');
 
-        await tester.enterText(fields.at(1), 'atlas, mira');
+        await tester.enterText(fields.at(1), 'alex, lena');
         await tester.pump();
         expect(find.text('1 handle'), findsOneWidget);
         expect(create().onPressed, isNotNull);
@@ -171,7 +169,7 @@ void main() {
         await tester.pump();
         await tester.tap(find.byType(FilledButton));
         await pumpFrames(tester, frames: 10);
-        expect(world.api.createdGroups.single['memberHandles'], ['mira'], reason: 'the creator is not sent as a member');
+        expect(world.api.createdGroups.single['memberHandles'], ['lena'], reason: 'the creator is not sent as a member');
         // Opened by itself, with no list under it to go back to.
         expect(find.byType(StartGroupScreen, skipOffstage: false), findsNothing);
         expect(find.byType(ConversationListScreen), findsOneWidget);
@@ -189,7 +187,7 @@ void main() {
         await tester.enterText(fields.at(0), 'Movers');
         await tester.pump();
         expect(tester.widget<FilledButton>(create).onPressed, isNull, reason: 'no member yet');
-        await tester.enterText(fields.at(1), 'mira, @noor');
+        await tester.enterText(fields.at(1), 'lena, @omar');
         await tester.enterText(fields.at(2), 'The 14th');
         await tester.pump();
         await tester.tap(create);
@@ -198,16 +196,16 @@ void main() {
         final created = world.api.createdGroups.single;
         expect(created['name'], 'Movers');
         expect(created['description'], 'The 14th');
-        expect(created['memberHandles'], ['mira', 'noor']);
+        expect(created['memberHandles'], ['lena', 'omar']);
         expect(created['isPublic'], isFalse);
         expect(find.byType(StartGroupScreen, skipOffstage: false), findsNothing);
         expect(find.byType(ConversationListScreen), findsOneWidget);
       });
     });
 
-    testWidgets('says in the app\'s language when the relay refuses, and keeps what was typed', (tester) async {
-      await withPhoneApp(tester, identities, location: '/start-group', locale: 'ko', body: (world) async {
-        await tester.enterText(find.byType(TextField).at(0), '이사 준비');
+    testWidgets('says when the relay refuses, and keeps what was typed', (tester) async {
+      await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
+        await tester.enterText(find.byType(TextField).at(0), 'Moving day');
         await tester.enterText(find.byType(TextField).at(1), 'icarus');
         await tester.pump();
         await tester.tap(find.byType(FilledButton));
@@ -215,10 +213,9 @@ void main() {
 
         expect(world.api.createdGroups, isEmpty);
         expect(find.byType(StartGroupScreen), findsOneWidget);
-        expect(findCopy(ko.startGroupErrorTitle), findsOneWidget);
-        expect(findCopy(ko.startGroupErrorBody), findsOneWidget);
-        expect(find.text('이사 준비'), findsOneWidget);
-        expect(otherLanguageTextsOnScreen(tester, 'ko'), isEmpty);
+        expect(findCopy(en.startGroupErrorTitle), findsOneWidget);
+        expect(findCopy(en.startGroupErrorBody), findsOneWidget);
+        expect(find.text('Moving day'), findsOneWidget);
       });
     });
   });

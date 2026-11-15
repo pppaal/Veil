@@ -29,7 +29,6 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late LayoutIdentities identities;
   final en = lookupAppLocalizations(const Locale('en'));
-  final ko = lookupAppLocalizations(const Locale('ko'));
 
   setUpAll(() async {
     await loadBundledFonts();
@@ -82,48 +81,28 @@ void main() {
     });
   });
 
-  // The label style is tracked for capitals. The same tracking pulled the
-  // syllables of a Korean label apart ("화 면", "보 안").
-  testWidgets('a Korean section label is set without the tracking of an English one', (tester) async {
-    double? tracking(String label) => tester.widget<Text>(find.text(label)).style!.letterSpacing;
-
-    await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-      for (final label in [ko.settingsSectionAppearance, ko.settingsSectionPrivacy]) {
-        expect(tracking(label), 0, reason: '"$label" is pulled apart');
-      }
-    });
+  testWidgets('at 360x640 the theme and the first privacy switch are on the first screenful', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-      final label = Theme.of(tester.element(find.byType(SettingsScreen))).textTheme.labelLarge!;
-      expect(label.letterSpacing, greaterThan(1));
-      expect(tracking(en.settingsSectionAppearance), label.letterSpacing);
+      final theme = tester.getRect(find.byType(SegmentedButton<ThemeMode>));
+      final firstSwitch = tester.getRect(find.byType(Switch).first);
+      final bar = tester.getRect(find.text(en.navSettings).last);
+      expect(theme.bottom, lessThan(firstSwitch.top));
+      expect(firstSwitch.bottom, lessThan(bar.top), reason: 'above the tab bar');
+
+      // Three words on one line each, inside the selector.
+      for (final label in [en.themeModeLight, en.themeModeDark, en.themeModeSystem]) {
+        final text = find.descendant(of: find.byType(SegmentedButton<ThemeMode>), matching: find.text(label));
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: text, matching: find.byType(RichText)),
+        );
+        expect(paragraph.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: label.length)).map((box) => box.top).toSet(),
+            hasLength(1), reason: '"$label" wraps');
+        expect(paragraph.didExceedMaxLines, isFalse, reason: '"$label" is cut');
+        expect(tester.getRect(text).right, lessThanOrEqualTo(theme.right));
+      }
+      expect(tester.takeException(), isNull);
     });
   });
-
-  for (final (locale, l10n) in [('en', en), ('ko', ko)]) {
-    testWidgets('at 360x640 the theme and the first privacy switch are on the first screenful ($locale)',
-        (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', locale: locale, body: (world) async {
-        final theme = tester.getRect(find.byType(SegmentedButton<ThemeMode>));
-        final firstSwitch = tester.getRect(find.byType(Switch).first);
-        final bar = tester.getRect(find.text(l10n.navSettings).last);
-        expect(theme.bottom, lessThan(firstSwitch.top));
-        expect(firstSwitch.bottom, lessThan(bar.top), reason: 'above the tab bar');
-
-        // Three words on one line each, inside the selector.
-        for (final label in [l10n.themeModeLight, l10n.themeModeDark, l10n.themeModeSystem]) {
-          final text = find.descendant(of: find.byType(SegmentedButton<ThemeMode>), matching: find.text(label));
-          final paragraph = tester.renderObject<RenderParagraph>(
-            find.descendant(of: text, matching: find.byType(RichText)),
-          );
-          expect(paragraph.getBoxesForSelection(TextSelection(baseOffset: 0, extentOffset: label.length)).map((box) => box.top).toSet(),
-              hasLength(1), reason: '"$label" wraps');
-          expect(paragraph.didExceedMaxLines, isFalse, reason: '"$label" is cut');
-          expect(tester.getRect(text).right, lessThanOrEqualTo(theme.right));
-        }
-        expect(tester.takeException(), isNull);
-      });
-    });
-  }
 
   testWidgets('the theme selector sets the theme, and a privacy row switches from anywhere on it', (tester) async {
     await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
@@ -263,7 +242,7 @@ void main() {
 
   group('what cannot be undone', () {
     testWidgets('is one group under the no-recovery notice, with what each action erases', (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
+      await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
         await scrollTo(tester, find.byKey(const ValueKey('settings-delete-account')));
         final notice = tester.getRect(find.byType(VeilDestructiveNotice));
         final rows = [
@@ -275,12 +254,12 @@ void main() {
           expect(tester.widget<VeilGroupRow>(row).destructive, isTrue);
         }
         expect(notice.top, lessThan(tester.getRect(rows.last).top));
-        expect(findCopy(ko.settingsDestructiveNoticeBody, skipOffstage: false), findsOneWidget);
+        expect(findCopy(en.settingsDestructiveNoticeBody, skipOffstage: false), findsOneWidget);
         for (final said in [
-          ko.settingsLogoutSubtitle,
-          ko.settingsWipeLocalSubtitle,
-          ko.settingsRevokeSubtitle,
-          ko.settingsDeleteAccountBody,
+          en.settingsLogoutSubtitle,
+          en.settingsWipeLocalSubtitle,
+          en.settingsRevokeSubtitle,
+          en.settingsDeleteAccountBody,
         ]) {
           expect(findCopy(said, skipOffstage: false), findsOneWidget);
         }
@@ -333,22 +312,20 @@ void main() {
       });
     });
 
-    testWidgets('each phrase is in the app\'s language, and the dialog fits above the keyboard at 360x640',
+    testWidgets('each action asks for its phrase, and the dialog fits above the keyboard at 360x640',
         (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', keyboardHeight: 300,
-          body: (world) async {
+      await withPhoneApp(tester, identities, location: '/settings', keyboardHeight: 300, body: (world) async {
         for (final (key, phrase, action) in [
-          ('settings-wipe', ko.settingsWipeConfirmPhrase, ko.settingsWipeConfirmAction),
-          ('settings-revoke', ko.settingsRevokeConfirmPhrase, ko.settingsRevokeConfirmAction),
-          ('settings-delete-account', ko.settingsDeleteAccountConfirmPhrase, ko.settingsDeleteAccountAction),
+          ('settings-wipe', en.settingsWipeConfirmPhrase, en.settingsWipeConfirmAction),
+          ('settings-revoke', en.settingsRevokeConfirmPhrase, en.settingsRevokeConfirmAction),
+          ('settings-delete-account', en.settingsDeleteAccountConfirmPhrase, en.settingsDeleteAccountAction),
         ]) {
           final row = find.byKey(ValueKey(key));
           await scrollTo(tester, row);
           await tester.tap(row);
           await pumpFrames(tester, frames: 3);
 
-          expect(isOtherLanguage(phrase, 'ko'), isFalse, reason: '"$phrase" is not Korean');
-          expect(findCopy(ko.settingsTypePhraseToContinue(phrase)), findsOneWidget);
+          expect(findCopy(en.settingsTypePhraseToContinue(phrase)), findsOneWidget);
           final confirm = find.widgetWithText(FilledButton, action);
           expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
           await tester.enterText(find.byType(TextField), phrase);
@@ -359,7 +336,7 @@ void main() {
           expect(tester.getRect(confirm).bottom, lessThanOrEqualTo(640 - 300));
           expect(tester.takeException(), isNull);
 
-          await tester.tap(find.text(ko.commonCancel));
+          await tester.tap(find.text(en.commonCancel));
           await pumpFrames(tester, frames: 3);
         }
         expect(world.container.read(appSessionProvider).isAuthenticated, isTrue);

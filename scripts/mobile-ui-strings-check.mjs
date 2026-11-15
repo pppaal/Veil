@@ -1,9 +1,9 @@
 // Every string the mobile app shows comes from AppLocalizations
-// (apps/mobile/lib/src/l10n/app_en.arb and app_ko.arb). This gate reads the
-// Dart files that build UI text and fails when one holds a user-facing
-// string literal instead of a lookup, so a screen cannot ship English to a
-// Korean user (or the reverse) in a state no render test opens: a toast, a
-// dialog, an error.
+// (apps/mobile/lib/src/l10n/app_en.arb). This gate reads the Dart files that
+// build UI text and fails when one holds a user-facing string literal
+// instead of a lookup, so every word a screen shows, in a state no render
+// test opens (a toast, a dialog, an error), is in the one place the copy is
+// kept and reviewed.
 //
 // What it reads (UI_SOURCES): every presentation folder of a feature (the
 // screens and the labels and logic files next to them), the shared
@@ -73,12 +73,9 @@ export const NOT_TRANSLATED = new Set([
 // to MOBILE_SRC), each literal as the gate prints it, with why nobody
 // translates it. Every occurrence of the literal in that file is left
 // alone. Add a line only for what is not copy, and say why; a sentence the
-// app wrote belongs in both ARB files. A line whose literal the file no
-// longer holds fails.
+// app wrote belongs in app_en.arb. A line whose literal the file no longer
+// holds fails.
 export const NOT_COPY = {
-  'features/attachments/presentation/attachment_preview_screen.dart': {
-    'dossier.enc': 'the file name the placeholder attachment goes out under; a file name is data',
-  },
   'features/contacts/presentation/contact_sheets.dart': {
     icarus: "an example handle in the field's hint; a handle is lower-case Latin by rule",
   },
@@ -93,9 +90,9 @@ export const NOT_COPY = {
 
 // Today's hard-coded copy, by file (relative to MOBILE_SRC) and grouped by
 // who owns the screen: each literal as the gate prints it (`--list`), once
-// per occurrence. To fix a file: move its strings to app_en.arb and
-// app_ko.arb and delete their lines here, and the file's entry with the
-// last of them. Never add a line.
+// per occurrence. To fix a file: move its strings to app_en.arb and delete
+// their lines here, and the file's entry with the last of them. Never add a
+// line.
 export const KNOWN_HARDCODED = {
   // --- Onboarding, account and device transfer.
 
@@ -577,7 +574,7 @@ export function checkUiStrings(rootDir, known = KNOWN_HARDCODED, notCopy = NOT_C
     const { rest: unlisted, missing: gone } = takeOut(copy, known[path] ?? []);
     if (unlisted.length > 0) {
       failures.push(
-        `${MOBILE_SRC}/${path} holds user-facing string literals; move them to app_en.arb and app_ko.arb and read them from AppLocalizations:\n` +
+        `${MOBILE_SRC}/${path} holds user-facing string literals; move them to app_en.arb and read them from AppLocalizations:\n` +
           unlisted
             .map((found) => `    line ${found.line}: ${JSON.stringify(found.text)}`)
             .join('\n'),

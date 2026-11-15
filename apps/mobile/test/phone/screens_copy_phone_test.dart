@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
@@ -8,18 +7,18 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
-import '../layout/support/screen_cases.dart' show layoutOnlyRoutes;
 import '../support/copy_finder.dart';
 import 'phone_app.dart';
 
-// What the screens around the chat say on a phone, and in which order: a
-// Korean app speaks Korean on the screens with the destructive actions, a
-// pending identity change comes first on the screen that reviews it, and a
-// Korean headline wraps between its words.
+// What the screens around the chat say on a phone, and in which order: the
+// settings say what each destructive action does, a pending identity change
+// comes first on the screen that reviews it, and the consent row is one tap
+// target.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late LayoutIdentities identities;
+  final l10n = lookupAppLocalizations(const Locale('en'));
 
   setUpAll(() async {
     await loadBundledFonts();
@@ -40,19 +39,14 @@ void main() {
   group('settings', () {
     Set<String> textsShown(WidgetTester tester) => {
           for (final element in find.byType(Text).evaluate())
-            if ((element.widget as Text).data case final text?) plainCopy(text),
+            if ((element.widget as Text).data case final text?) text,
         };
 
-    // Everything the screen says from top to bottom, and what of it is in
-    // the other language.
-    Future<(Set<String> said, Set<String> foreign)> read(WidgetTester tester, String locale) async {
+    // Everything the screen says from top to bottom.
+    Future<Set<String>> read(WidgetTester tester) async {
       final said = textsShown(tester);
-      final foreign = otherLanguageTextsOnScreen(tester, locale);
-      await scrollToEnd(tester, onPage: (_) async {
-        said.addAll(textsShown(tester));
-        foreign.addAll(otherLanguageTextsOnScreen(tester, locale));
-      });
-      return (said, foreign);
+      await scrollToEnd(tester, onPage: (_) async => said.addAll(textsShown(tester)));
+      return said;
     }
 
     // The devices of the account, from their row on the settings tab.
@@ -67,32 +61,14 @@ void main() {
       await pumpFrames(tester, frames: 6);
     }
 
-    // Names the user or the platform gave are no locale's to translate, and
-    // the language check leaves them out (notOwnCopy): nothing else on the
-    // screen, or on the list of devices it leads to, may be English.
-    testWidgets('in a Korean app only names are not Korean', (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final (said, foreign) = await read(tester, 'ko');
-        expect(foreign, isEmpty);
-        expect(said, containsAll(['Atlas Moreau', '@atlas']), reason: 'the account was on screen');
-
-        await openDevices(tester);
-        final (devices, foreignDevices) = await read(tester, 'ko');
-        expect(foreignDevices, isEmpty);
-        expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android']),
-            reason: 'the devices were on screen');
-      });
-    });
-
-    testWidgets('says what each destructive action does, in Korean', (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final l10n = lookupAppLocalizations(const Locale('ko'));
-        final (said, _) = await read(tester, 'ko');
+    testWidgets('names the account, and says what each destructive action does', (tester) async {
+      await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
+        final said = await read(tester);
+        expect(said, containsAll([selfDisplayName, '@$selfHandle']), reason: 'the account was on screen');
         for (final text in [
-          '보안',
-          '기기',
-          '되돌릴 수 없는 작업',
-          '장기 미사용 1대',
+          l10n.settingsSectionSecurity,
+          l10n.settingsSectionDevices,
+          l10n.settingsSectionIrreversible,
           l10n.settingsDestructiveNoticeBody,
           l10n.settingsWipeLocalSubtitle,
           l10n.settingsRevokeSubtitle,
@@ -102,66 +78,18 @@ void main() {
         }
 
         await openDevices(tester);
-        final (devices, _) = await read(tester, 'ko');
-        for (final text in [
-          '신뢰 기기 2대 (장기 미사용 1대)  ·  ',
-          '해지 1대',
-          '이 기기',
-          '해지됨',
-          '접속 4월 2일 (UTC)',
-          l10n.settingsGraphStaleBody,
-        ]) {
+        final devices = await read(tester);
+        expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android']),
+            reason: 'the devices were on screen');
+        for (final text in ['2 trusted devices (1 stale)  ·  ', '1 revoked', 'Seen Apr 2 (UTC)', l10n.settingsGraphStaleBody]) {
           expect(devices, contains(text));
         }
-      });
-    });
-
-    testWidgets('in an English app nothing is Korean, and the device list reads as before', (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-        final (said, foreign) = await read(tester, 'en');
-        expect(foreign, isEmpty);
-        expect(said, containsAll(['2 devices hold this account', '1 stale']));
-
-        await openDevices(tester);
-        final (devices, foreignDevices) = await read(tester, 'en');
-        expect(foreignDevices, isEmpty);
-        expect(devices, containsAll(['2 trusted devices (1 stale)  ·  ', '1 revoked', 'Seen Apr 2 (UTC)']));
-      });
-    });
-
-    testWidgets('asks for the phrase to type in the app\'s language', (tester) async {
-      await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final wipe = find.text('이 기기의 VEIL 데이터 삭제');
-        await tester.dragUntilVisible(wipe, find.byType(ListView), const Offset(0, -200));
-        await pumpFrames(tester, frames: 2);
-        await tester.tap(wipe);
-        await pumpFrames(tester, frames: 3);
-        expect(findCopy('계속하려면 다음을 입력하세요: 삭제'), findsOneWidget);
-        expect(find.widgetWithText(FilledButton, '데이터 삭제'), findsOneWidget);
-        await tester.tap(find.text('취소'));
-        await pumpFrames(tester, frames: 3);
       });
     });
   });
 
   group('device transfer', () {
-    testWidgets('the old device says in Korean that its code is ready', (tester) async {
-      await withPhoneApp(
-        tester,
-        identities,
-        location: '/device-transfer',
-        locale: 'ko',
-        transferStarted: true,
-        body: (world) async {
-          // The transfer code is data, which the check leaves out.
-          expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
-          // "Code", as every other line of the screen calls it; not "token".
-          expect(findCopy('이전 세션을 열었습니다. 코드가 준비되었습니다.', skipOffstage: false), findsOneWidget);
-        },
-      );
-    });
-
-    test('every outcome of the old device has words in both languages', () {
+    test('every outcome of the old device has words of its own', () {
       const outcomes = <TransferStatus>[
         TransferNeedsApi(),
         TransferTokenReady(),
@@ -170,48 +98,12 @@ void main() {
         TransferClaimNotWaiting('claim-7'),
         TransferClaimApproved('claim-7', 'AB12 CD34'),
       ];
-      for (final locale in ['en', 'ko']) {
-        final l10n = lookupAppLocalizations(Locale(locale));
-        final labels = [for (final outcome in outcomes) transferStatusLabel(l10n, outcome)!];
-        expect(labels.toSet(), hasLength(outcomes.length), reason: locale);
-        expect(labels[4], contains('claim-7'));
-        expect(labels[5], allOf(contains('claim-7'), contains('AB12 CD34')));
-        expect(transferStatusLabel(l10n, null), isNull);
-      }
-      final en = lookupAppLocalizations(const Locale('en'));
-      expect(transferStatusLabel(en, const TransferClaimApproved('c', 'f')), 'Approved claim c on old device. Key fingerprint: f');
-    });
-  });
-
-  // The attachment screen's feature is switched off, so the app has no
-  // route to it; the screen is still built and tested through the test-only
-  // routes.
-  group('attachment', () {
-    testWidgets('speaks Korean, and says what this build sends', (tester) async {
-      await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId', locale: 'ko',
-          extraRoutes: layoutOnlyRoutes, body: (world) async {
-        // The file's name and its type are data, which the check leaves out.
-        expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
-      });
-    });
-
-    testWidgets('no longer says the build runs on mock crypto', (tester) async {
-      await withPhoneApp(tester, identities, location: '/attachment/$chatConversationId',
-          extraRoutes: layoutOnlyRoutes, body: (world) async {
-        final seen = <String>{};
-        void collect() {
-          for (final element in find.byType(Text).evaluate()) {
-            if ((element.widget as Text).data case final text?) seen.add(text);
-          }
-        }
-
-        collect();
-        await scrollToEnd(tester, onPage: (_) async => collect());
-        expect(seen.where((text) => text.toLowerCase().contains('mock')), isEmpty);
-        expect(seen.where((text) => text.contains('placeholder file')), hasLength(1),
-            reason: 'that it sends a placeholder is said once');
-        expect(seen, contains('Encrypt and send'));
-      });
+      final labels = [for (final outcome in outcomes) transferStatusLabel(l10n, outcome)!];
+      expect(labels.toSet(), hasLength(outcomes.length));
+      expect(labels[4], contains('claim-7'));
+      expect(labels[5], allOf(contains('claim-7'), contains('AB12 CD34')));
+      expect(transferStatusLabel(l10n, null), isNull);
+      expect(transferStatusLabel(l10n, const TransferClaimApproved('c', 'f')), 'Approved claim c on old device. Key fingerprint: f');
     });
   });
 
@@ -272,83 +164,15 @@ void main() {
     });
   });
 
-  group('a Korean headline', () {
-    // Every word of the headline is on one line: no syllable is left alone.
-    void expectWordsWhole(WidgetTester tester) {
-      final title = find.descendant(
-        of: find.byType(VeilScreenIntro),
-        matching: find.byWidgetPredicate((widget) => widget is Text && widget.semanticsLabel != null),
-      );
-      final paragraph = tester.renderObject<RenderParagraph>(
-        find.descendant(of: title.first, matching: find.byType(RichText)),
-      );
-      final shown = paragraph.text.toPlainText();
-      final words = RegExp(r'\S+').allMatches(shown).toList();
-      expect(words.length, greaterThan(1));
-      for (final word in words) {
-        final boxes = paragraph.getBoxesForSelection(TextSelection(baseOffset: word.start, extentOffset: word.end));
-        expect({for (final box in boxes) box.top}, hasLength(1), reason: '"${word[0]}" is split over lines in "$shown"');
-      }
-      expect(paragraph.size.width, lessThanOrEqualTo(360));
-    }
-
-    for (final (name, location, account) in [
-      ('create account', '/create-account', LayoutAccount.signedOut),
-      ('security status', '/security-status', LayoutAccount.signedIn),
-      ('the app lock', '/lock', LayoutAccount.locked),
-    ]) {
-      testWidgets('wraps between words on $name', (tester) async {
-        await withPhoneApp(tester, identities, location: location, account: account, locale: 'ko', body: (world) async {
-          expectWordsWhole(tester);
-          expect(tester.takeException(), isNull);
-        });
-      });
-    }
-
-    testWidgets('wraps between words on the safety number', (tester) async {
-      await withPhoneApp(tester, identities, location: '/safety-numbers/$chatConversationId', locale: 'ko',
-          body: (world) async {
-        await awaitSafetyNumber(tester);
-        expectWordsWhole(tester);
-      });
-    });
-
-    test('is the same text to a screen reader and to a search, with joiners only for drawing', () {
-      expect(veilKeepWordsWhole('No backup. No recovery.'), 'No backup. No recovery.');
-      const title = '이 기기가 당신의 신원이 됩니다.';
-      final shown = veilKeepWordsWhole(title);
-      expect(shown.replaceAll('⁠', ''), title);
-      expect(shown.split(' '), hasLength(title.split(' ').length), reason: 'spaces stay where a line may break');
-      expect(shown, contains('됩⁠니⁠다⁠.'));
-      // A word with a Latin part is one word too; a Latin word is left alone.
-      expect(veilKeepWordsWhole('VEIL은 복구 없음'), 'V⁠E⁠I⁠L⁠은 복⁠구 없⁠음');
-      expect(veilKeepWordsWhole('Selene Park님과'), 'Selene P⁠a⁠r⁠k⁠님⁠과');
-    });
-
-    testWidgets('still breaks a word that is wider than the line', (tester) async {
-      tester.view.physicalSize = const Size(400, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final word = '가나다라마바사아자차카타파하' * 4;
-      await tester.pumpWidget(MaterialApp(
-        home: Scaffold(body: SizedBox(width: 200, child: Text(veilKeepWordsWhole(word), style: const TextStyle(fontSize: 20)))),
-      ));
-      final paragraph = tester.renderObject<RenderParagraph>(find.byType(RichText));
-      expect(paragraph.size.width, lessThanOrEqualTo(200));
-      expect(paragraph.size.height, greaterThan(40), reason: 'it took more than one line');
-      expect(tester.takeException(), isNull);
-    });
-  });
-
   group('privacy consent', () {
     // The framework's tap target check never measured this row: it starts
-    // at the left edge of its column. It was 24 px tall in Korean.
+    // at the left edge of its column. It was 24 px tall once.
     testWidgets('the consent sentence and its box are one target, 44 px tall, and either toggles it',
         (tester) async {
-      await withPhoneApp(tester, identities, location: '/privacy-consent', account: LayoutAccount.signedOut, locale: 'ko',
+      await withPhoneApp(tester, identities, location: '/privacy-consent', account: LayoutAccount.signedOut,
           body: (world) async {
         // Under the notice from the start: nothing is scrolled to reach it.
-        final sentence = findCopy('위 개인정보 수집·이용에 동의합니다. (필수)');
+        final sentence = findCopy(l10n.privacyConsentAgree);
         expect(sentence, findsOneWidget);
 
         final row = find.ancestor(of: sentence, matching: find.byType(MergeSemantics)).first;
@@ -356,7 +180,7 @@ void main() {
         expect(await smallTapTargetsOnScreen(tester, minimum: minimumTapTarget), isEmpty);
 
         bool checked() => tester.widget<Checkbox>(find.byType(Checkbox)).value!;
-        FilledButton proceed() => tester.widget(find.widgetWithText(FilledButton, '동의하고 계속하기'));
+        FilledButton proceed() => tester.widget(find.widgetWithText(FilledButton, l10n.privacyConsentAccept));
         expect(checked(), isFalse);
         expect(proceed().onPressed, isNull);
 

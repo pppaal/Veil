@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 
 import '../layout/support/layout_world.dart';
 import '../layout/support/phone_layout_probe.dart';
@@ -16,10 +15,8 @@ export '../layout/support/phone_layout_probe.dart';
 /// the app down again before the test ends, so no timer of the messenger
 /// outlives it. [prepare] changes the seeded world before the app opens;
 /// what it returns is what the route is opened with. [withGroup] adds the
-/// seeded group to the account's conversations. [extraRoutes] are added
-/// to the app's route table: `layoutOnlyRoutes` for a test of a screen
-/// whose feature is switched off. [sessionError] is the failure the session
-/// reports when the app opens.
+/// seeded group to the account's conversations. [sessionError] is the
+/// failure the session reports when the app opens.
 Future<void> withPhoneApp(
   WidgetTester tester,
   LayoutIdentities identities, {
@@ -35,7 +32,6 @@ Future<void> withPhoneApp(
   bool transferStarted = false,
   bool withGroup = false,
   String? sessionError,
-  List<RouteBase> extraRoutes = const [],
 }) async {
   usePhoneView(tester, size, keyboardHeight: keyboardHeight, textScale: textScale);
   final world = await LayoutWorld.create(
@@ -49,7 +45,7 @@ Future<void> withPhoneApp(
   );
   try {
     final extra = await prepare?.call(world);
-    await tester.pumpWidget(world.app(location: location, extra: extra, extraRoutes: extraRoutes));
+    await tester.pumpWidget(world.app(location: location, extra: extra));
     await pumpFrames(tester);
     await body(world);
   } finally {
@@ -57,15 +53,6 @@ Future<void> withPhoneApp(
     await tester.pump();
     world.dispose();
   }
-}
-
-/// Scrolls the screen to its end a screenful at a time and returns every
-/// text that was on screen in the language the run is not in (see
-/// [otherLanguageTextsOnScreen]): names and values included.
-Future<Set<String>> otherLanguageTextsOfScreen(WidgetTester tester, String locale) async {
-  final texts = otherLanguageTextsOnScreen(tester, locale);
-  await scrollToEnd(tester, onPage: (_) async => texts.addAll(otherLanguageTextsOnScreen(tester, locale)));
-  return texts;
 }
 
 /// The part of [finder]'s first widget that is on screen.

@@ -59,120 +59,118 @@ void main() {
     return (transfer, session);
   }
 
-  for (final locale in ['en', 'ko']) {
-    testWidgets('a claim past its window opens on the step that takes a new code, its words at full width ($locale)',
-        (tester) async {
-      final (transfer, session) = await openOnExpiredClaim(tester, locale);
-      final l10n = lookupAppLocalizations(Locale(locale));
-      final claimId = session.pendingTransfer!.claimId;
+  const locale = 'en';
+  testWidgets('a claim past its window opens on the step that takes a new code, its words at full width',
+      (tester) async {
+    final (transfer, session) = await openOnExpiredClaim(tester, locale);
+    final l10n = lookupAppLocalizations(Locale(locale));
+    final claimId = session.pendingTransfer!.claimId;
 
-      final steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
-      expect([for (final step in steps) step.number], [1, 2, 3]);
-      expect([for (final step in steps) step.state],
-          [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+    final steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+    expect([for (final step in steps) step.number], [1, 2, 3]);
+    expect([for (final step in steps) step.state],
+        [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
 
-      // Said once, where the new code goes: no banner above the steps.
-      final pill = find.widgetWithText(VeilStatusPill, l10n.deviceTransferStatusExpired);
-      final words = findCopy(l10n.deviceTransferNewCodeExpiredBody);
-      expect(pill, findsOneWidget);
-      expect(words, findsOneWidget);
-      expect(find.byType(VeilStatusPill, skipOffstage: false), findsOneWidget);
-      expect(find.byType(VeilInlineBanner, skipOffstage: false), findsNothing);
-      expect(tester.widget<TransferStep>(find.ancestor(of: pill, matching: find.byType(TransferStep))).number, 1);
+    // Said once, where the new code goes: no banner above the steps.
+    final pill = find.widgetWithText(VeilStatusPill, l10n.deviceTransferStatusExpired);
+    final words = findCopy(l10n.deviceTransferNewCodeExpiredBody);
+    expect(pill, findsOneWidget);
+    expect(words, findsOneWidget);
+    expect(find.byType(VeilStatusPill, skipOffstage: false), findsOneWidget);
+    expect(find.byType(VeilInlineBanner, skipOffstage: false), findsNothing);
+    expect(tester.widget<TransferStep>(find.ancestor(of: pill, matching: find.byType(TransferStep))).number, 1);
 
-      // The pill stands on the title's line or under the title, above the
-      // words; it takes no width from them. Every step's paragraph gets the
-      // step's width less its number.
-      final card = tester.getRect(find.byType(TransferStep).first);
-      final column = card.width - 2 * VeilSpace.md - 28 - VeilSpace.sm;
-      expect(tester.getRect(pill).bottom, lessThanOrEqualTo(tester.getRect(words).top));
-      expect(tester.getRect(pill).right, lessThanOrEqualTo(card.right - VeilSpace.md + 0.5));
-      for (final copy in [
-        l10n.deviceTransferNewCodeExpiredBody,
-        l10n.deviceTransferNewDeviceCaption,
-        l10n.deviceTransferNewCompleteBodyUpcoming,
-      ]) {
-        expect(widthGiven(tester, copy), closeTo(column, 2.5), reason: copy);
-      }
+    // The pill stands on the title's line or under the title, above the
+    // words; it takes no width from them. Every step's paragraph gets the
+    // step's width less its number.
+    final card = tester.getRect(find.byType(TransferStep).first);
+    final column = card.width - 2 * VeilSpace.md - 28 - VeilSpace.sm;
+    expect(tester.getRect(pill).bottom, lessThanOrEqualTo(tester.getRect(words).top));
+    expect(tester.getRect(pill).right, lessThanOrEqualTo(card.right - VeilSpace.md + 0.5));
+    for (final copy in [
+      l10n.deviceTransferNewCodeExpiredBody,
+      l10n.deviceTransferNewDeviceCaption,
+      l10n.deviceTransferNewCompleteBodyUpcoming,
+    ]) {
+      expect(widthGiven(tester, copy), closeTo(column, 2.5), reason: copy);
+    }
 
-      // The control to use next, on the first screenful of a 360x640 phone.
-      final field = find.byType(TextField);
-      final use = find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload);
-      expectInReach(tester, field);
-      expectInReach(tester, use);
-      expect(tester.widget<TextField>(field).controller!.text, isEmpty);
-      expect(tester.getRect(words).bottom, lessThanOrEqualTo(tester.getRect(field).top));
+    // The control to use next, on the first screenful of a 360x640 phone.
+    final field = find.byType(TextField);
+    final use = find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload);
+    expectInReach(tester, field);
+    expectInReach(tester, use);
+    expect(tester.widget<TextField>(field).controller!.text, isEmpty);
+    expect(tester.getRect(words).bottom, lessThanOrEqualTo(tester.getRect(field).top));
 
-      // Nothing tells the user to use the spent claim, and nothing offers to.
-      for (final spent in [
-        l10n.deviceTransferNewCompleteBody,
-        l10n.deviceTransferNewCompleteNote,
-        l10n.deviceTransferClaimCode(claimId),
-        l10n.deviceTransferRegisterNewDevice,
-        l10n.deviceTransferCompleteOnDevice,
-      ]) {
-        expect(findCopy(spent, skipOffstage: false), findsNothing, reason: spent);
-      }
-      // (The claim's code is selectable text, which the finder above skips.)
-      expect(find.byType(SelectableText, skipOffstage: false), findsNothing);
-      expect(find.byType(TransferCodeBox, skipOffstage: false), findsNothing);
-      expect(find.byType(FilledButton, skipOffstage: false), findsOneWidget);
+    // Nothing tells the user to use the spent claim, and nothing offers to.
+    for (final spent in [
+      l10n.deviceTransferNewCompleteBody,
+      l10n.deviceTransferNewCompleteNote,
+      l10n.deviceTransferClaimCode(claimId),
+      l10n.deviceTransferRegisterNewDevice,
+      l10n.deviceTransferCompleteOnDevice,
+    ]) {
+      expect(findCopy(spent, skipOffstage: false), findsNothing, reason: spent);
+    }
+    // (The claim's code is selectable text, which the finder above skips.)
+    expect(find.byType(SelectableText, skipOffstage: false), findsNothing);
+    expect(find.byType(TransferCodeBox, skipOffstage: false), findsNothing);
+    expect(find.byType(FilledButton, skipOffstage: false), findsOneWidget);
 
-      expect(otherLanguageTextsOnScreen(tester, locale), isEmpty);
-      expect(tester.takeException(), isNull);
-      expect(transfer.relay.callsTo('POST /device-transfer/claim'), 1);
+    expect(tester.takeException(), isNull);
+    expect(transfer.relay.callsTo('POST /device-transfer/claim'), 1);
 
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
-    testWidgets('a new code after an expired claim: "Register" is in reach, and registering claims again ($locale)',
-        (tester) async {
-      final (transfer, session) = await openOnExpiredClaim(tester, locale);
-      final l10n = lookupAppLocalizations(Locale(locale));
-      final spentClaim = session.pendingTransfer!.claimId;
-      final spentCode = transfer.code;
+  testWidgets('a new code after an expired claim: "Register" is in reach, and registering claims again',
+      (tester) async {
+    final (transfer, session) = await openOnExpiredClaim(tester, locale);
+    final l10n = lookupAppLocalizations(Locale(locale));
+    final spentClaim = session.pendingTransfer!.claimId;
+    final spentCode = transfer.code;
 
-      // The spent code is refused where it was typed, and changes nothing.
-      await tester.enterText(find.byType(TextField), spentCode);
-      await tester.tap(find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
-      await pumpFrames(tester, frames: 3);
-      final refusal = findCopy(l10n.deviceTransferCodeExpired);
-      expect(refusal, findsOneWidget);
-      expect(tester.widget<TransferStep>(find.ancestor(of: refusal, matching: find.byType(TransferStep))).number, 1);
-      expect(findCopy(l10n.deviceTransferRegisterNewDevice, skipOffstage: false), findsNothing);
+    // The spent code is refused where it was typed, and changes nothing.
+    await tester.enterText(find.byType(TextField), spentCode);
+    await tester.tap(find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
+    await pumpFrames(tester, frames: 3);
+    final refusal = findCopy(l10n.deviceTransferCodeExpired);
+    expect(refusal, findsOneWidget);
+    expect(tester.widget<TransferStep>(find.ancestor(of: refusal, matching: find.byType(TransferStep))).number, 1);
+    expect(findCopy(l10n.deviceTransferRegisterNewDevice, skipOffstage: false), findsNothing);
 
-      // The old device issues another code; this device reads it.
-      await tester.runAsync(transfer.oldDevice.initTransfer);
-      expect(transfer.code, isNot(spentCode));
-      await tester.enterText(find.byType(TextField), transfer.code);
-      await tester.tap(find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
-      await pumpFrames(tester, frames: 3);
+    // The old device issues another code; this device reads it.
+    await tester.runAsync(transfer.oldDevice.initTransfer);
+    expect(transfer.code, isNot(spentCode));
+    await tester.enterText(find.byType(TextField), transfer.code);
+    await tester.tap(find.widgetWithText(FilledButton, l10n.deviceTransferImportPayload));
+    await pumpFrames(tester, frames: 3);
 
-      var steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
-      expect([for (final step in steps) step.state],
-          [TransferStepState.done, TransferStepState.current, TransferStepState.upcoming]);
-      expect(find.byType(VeilStatusPill, skipOffstage: false), findsNothing, reason: 'nothing is expired any more');
-      expect(findCopy(l10n.deviceTransferCodeExpired, skipOffstage: false), findsNothing);
-      final register = find.widgetWithText(FilledButton, l10n.deviceTransferRegisterNewDevice);
-      expectInReach(tester, find.byType(TextField));
-      expectInReach(tester, register);
+    var steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+    expect([for (final step in steps) step.state],
+        [TransferStepState.done, TransferStepState.current, TransferStepState.upcoming]);
+    expect(find.byType(VeilStatusPill, skipOffstage: false), findsNothing, reason: 'nothing is expired any more');
+    expect(findCopy(l10n.deviceTransferCodeExpired, skipOffstage: false), findsNothing);
+    final register = find.widgetWithText(FilledButton, l10n.deviceTransferRegisterNewDevice);
+    expectInReach(tester, find.byType(TextField));
+    expectInReach(tester, register);
 
-      // Registering goes to the relay this time, and the new claim replaces
-      // the spent one.
-      await tester.tap(register);
-      await pumpUntil(tester, () => session.pendingTransfer?.claimId != spentClaim);
-      await pumpFrames(tester, frames: 3);
-      expect(transfer.relay.callsTo('POST /device-transfer/claim'), 2);
-      steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
-      expect([for (final step in steps) step.state],
-          [TransferStepState.done, TransferStepState.done, TransferStepState.current]);
-      expect(find.text(l10n.deviceTransferClaimCode(session.pendingTransfer!.claimId)), findsOneWidget);
-      expect(findCopy(l10n.deviceTransferNewCompleteBody), findsOneWidget);
-      expect(tester.takeException(), isNull);
+    // Registering goes to the relay this time, and the new claim replaces
+    // the spent one.
+    await tester.tap(register);
+    await pumpUntil(tester, () => session.pendingTransfer?.claimId != spentClaim);
+    await pumpFrames(tester, frames: 3);
+    expect(transfer.relay.callsTo('POST /device-transfer/claim'), 2);
+    steps = tester.widgetList<TransferStep>(find.byType(TransferStep, skipOffstage: false)).toList();
+    expect([for (final step in steps) step.state],
+        [TransferStepState.done, TransferStepState.done, TransferStepState.current]);
+    expect(find.text(l10n.deviceTransferClaimCode(session.pendingTransfer!.claimId)), findsOneWidget);
+    expect(findCopy(l10n.deviceTransferNewCompleteBody), findsOneWidget);
+    expect(tester.takeException(), isNull);
 
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
-  }
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 
   testWidgets('a claim that runs out while the screen is open gives the field back empty', (tester) async {
     usePhoneView(tester, phoneSmall);

@@ -7,13 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-export 'language_probe.dart';
-
 // What the phone layout gate measures on one rendered screen, and how it
 // renders it: the bundled fonts, a phone-sized view with its system insets,
 // every error the framework reports while the screen is built and scrolled,
-// and (only when asked) a PNG of what was on screen. What it reads of a
-// screen's language is in language_probe.dart.
+// and (only when asked) a PNG of what was on screen.
 
 /// Where the suite writes PNGs and its report. Empty unless the run passes
 /// `--dart-define=SHOTS_DIR=<dir>`; without it nothing is written anywhere.

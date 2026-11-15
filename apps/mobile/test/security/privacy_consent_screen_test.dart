@@ -5,8 +5,6 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/onboarding/presentation/privacy_consent_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
-import '../support/copy_finder.dart';
-
 // The consent the user must accept (PIPA Art. 15(2)) names what the server
 // keeps about them, as docs/server-data-inventory.md lists it.
 void main() {
@@ -40,28 +38,12 @@ void main() {
     expect(shown, contains("Your phone's address book, its call log"));
   });
 
-  testWidgets('says the same in Korean', (tester) async {
-    final shown = await consentText(tester, const Locale('ko'));
-
-    expect(shown, contains('앱 내 연락처 목록'));
-    expect(shown, contains('통화 기록: '));
-    expect(shown, contains('그룹·채널 이름과 설명'));
-    expect(shown, isNot(contains('연락처, 통화 기록 등 디바이스 개인정보')));
-    expect(shown, contains('휴대폰 주소록'));
-  });
-
-  testWidgets('states the agreement once, in the screen language', (tester) async {
+  testWidgets('states the agreement once', (tester) async {
     // The agreement sits under the notice, on screen from the start.
     final english = await consentText(tester, const Locale('en'));
     expect('I agree to the collection and use'.allMatches(english), hasLength(1));
-
-    final korean = await consentText(tester, const Locale('ko'));
-    expect('위 개인정보 수집·이용에 동의합니다.'.allMatches(korean), hasLength(1));
-    expect(korean, isNot(contains('I agree')));
   });
 }
 
-// What the screen says, as a person reads it: Korean copy is drawn with
-// word joiners inside its words.
-String _shown(WidgetTester tester) =>
-    tester.widgetList<Text>(find.byType(Text)).map((text) => plainCopy(text.data ?? '')).join('\n');
+// What the screen says, top to bottom.
+String _shown(WidgetTester tester) => tester.widgetList<Text>(find.byType(Text)).map((text) => text.data ?? '').join('\n');

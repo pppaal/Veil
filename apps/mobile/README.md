@@ -17,41 +17,20 @@ flutter run \
 
 ## Switched-off features
 
-A feature this build cannot do end to end is switched off by a constant next
-to it, `lib/src/features/<name>/<name>_feature.dart`:
-
-| Constant | What is missing, and what its screen shows instead | What it hides |
-| --- | --- | --- |
-| `kCallsEnabled` | no WebRTC. The call screen says no call can be made and leaves; the history lists the relay's call records, and a row opens that chat when this device has it | the Calls tab, `/calls`, `/call/:id` |
-| `kAttachmentsEnabled` | no file picker; a received file stops at its download ticket. The attachment screen says what it sends instead: a 2 KB placeholder under a typed name | the composer's attach button, `/attachment/:id`, the bubble's download button (a line says this version cannot open it), the "attachments encrypted" pill, the clipboard row of the security status |
-| `kMediaPickerEnabled` | no gallery or camera plugin. The screen says so and leaves | `/media/:id` |
-| `kVoiceMessagesEnabled` | no audio plugin. The screen says so and leaves | `/voice/:id` |
-| `kStickerPickerEnabled` | nothing in the chat opens it. The picker works: emoji by group, the picked one handed back to whoever opened it. No stickers, no GIFs | `/stickers/:id` |
-| `kAssistantEnabled` | no model. The screen offers four fixed questions and the answer prepared for each, and says so | `/ai-chat` |
-| `kStoriesEnabled` | nothing seals or opens a story envelope. The feed lists who has a story up and when; the viewer says it cannot open one; nothing is marked as viewed | the Stories tab, `/stories`, `/story-viewer/:id` |
-
-While a constant is false the route table (`lib/src/app/router/app_router.dart`)
-leaves the feature's routes out and nothing in the app leads to it. A
-location no route has (a link into such a feature, a mistyped one) opens the
-conversation list instead of the router's "Page Not Found". The
-screens still compile, their tests still run, and the layout gate still
-renders them, through the test-only routes in
-`test/layout/support/screen_cases.dart` (`layoutOnlyRoutes`). To switch a
-feature on: make it work, then flip the constant. Its strings are in the
-ARB files already and it has no line on the allow-lists below. The bottom
-bar is Chats, Contacts, Settings, with the tab of a switched-on feature
-between Contacts and Settings.
-
-A switched-off feature's screen shows only what the build can do. Where it
-can do nothing (a call, the media picker, the voice recorder, the story
-viewer) the screen is `VeilUnavailable`: what is missing, that nothing
-happened, and one button that leaves. It draws no state of the missing
-feature: no call timer, no placeholder grid, no recording, no reply that
-pretends to be thought up. Switching such a feature on means building it,
-not flipping its constant. The layout gate holds these screens like any
-other: the emoji grid and the rows of the call history and of the stories
-to 45% of the screen height, every emoji cell to 44x44, and the one button
-of an unavailable screen to the first screenful.
+This is a text-only build: it sends and receives text messages, reactions
+and the notices around them, and has no screen for anything it cannot do
+end to end (no calls, media picker, voice messages, sticker picker, stories
+or assistant, and no screen that sends an attachment). The one constant left
+is `kAttachmentsEnabled` (`lib/src/features/attachments/attachments_feature.dart`),
+false because the app has no file picker. While it is false the composer has
+no attach button, and an attachment a web client sent is shown as what it is
+(its kind and size) with a line saying this version cannot open it; the
+transfer code underneath (sealing, upload tickets, retry) is real and stays
+tested, since it is what a file picker will feed. The route table
+(`lib/src/app/router/app_router.dart`) has no route for anything the build
+cannot do, and a location no route has (an old link, a mistyped one) opens
+the conversation list instead of the router's "Page Not Found". The bottom
+bar is Chats, Contacts, Settings.
 
 ## Layout gate
 

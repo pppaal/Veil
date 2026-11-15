@@ -203,14 +203,13 @@ test('only the files that build UI text are read', () => {
   assert.equal(isUiSource('l10n/generated/app_localizations_en.dart'), false);
 
   const root = tree({
-    'features/calls/presentation/call_screen.dart': "Text('End');",
-    'features/calls/data/call_history_providers.dart':
-      "counterparty: json['c'] ?? 'Unknown caller',",
-    'l10n/generated/app_localizations_en.dart': "String get callsEnd => 'End the call';",
+    'features/chat/presentation/chat_room_screen.dart': "Text('Send');",
+    'features/chat/data/messenger/outbox_service.dart': "reason: json['r'] ?? 'Unknown failure',",
+    'l10n/generated/app_localizations_en.dart': "String get chatSendAction => 'Send';",
   });
   assert.deepEqual(
     [...scanUiSources(root).keys()],
-    ['features/calls/presentation/call_screen.dart'],
+    ['features/chat/presentation/chat_room_screen.dart'],
   );
 });
 
@@ -223,18 +222,19 @@ test('a literal in an unlisted file fails, and names the file, the line and the 
   assert.equal(failures.length, 1);
   assert.match(failures[0], /features\/chat\/presentation\/chat_room_screen\.dart/);
   assert.match(failures[0], /line 2: "Hard-coded English"/);
-  assert.match(failures[0], /app_en\.arb and app_ko\.arb/);
+  assert.match(failures[0], /move them to app_en\.arb/);
+  assert.doesNotMatch(failures[0], /app_ko/);
 });
 
 test('the allow-list is exact: each listed literal, once per occurrence, and no other', () => {
-  const file = 'features/voice/presentation/voice_recorder_screen.dart';
+  const file = 'features/chat/presentation/chat_composer_bar.dart';
   const two = "Text('Tap to record');\nText('Recording');\n";
   const listed = { [file]: ['Tap to record', 'Recording'] };
   assert.deepEqual(checkUiStrings(tree({ [file]: two }), listed, {}), []);
 
   const more = checkUiStrings(tree({ [file]: `${two}Text('Playing');\n` }), listed, {});
   assert.equal(more.length, 1);
-  assert.match(more[0], /voice_recorder_screen\.dart holds user-facing string literals/);
+  assert.match(more[0], /chat_composer_bar\.dart holds user-facing string literals/);
   assert.match(more[0], /line 3: "Playing"/);
   assert.doesNotMatch(more[0], /Tap to record/);
 

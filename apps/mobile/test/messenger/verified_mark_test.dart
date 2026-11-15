@@ -67,7 +67,7 @@ void main() {
     expect(await messenger.isUserVerified(peer.userId), isFalse);
 
     // A contact nobody raised a change about is not affected.
-    final other = world.relay.partiesByHandle['jiwoo']!;
+    final other = world.relay.partiesByHandle['priya']!;
     expect(world.trust.hasPendingChangeAbout(other.userId), isFalse);
   });
 

@@ -69,14 +69,14 @@ void main() {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
       VeilConversationCard row(String title) =>
           tester.widget<VeilConversationCard>(inList(find.widgetWithText(VeilConversationCard, title)));
-      expect(row('Selene Park').selected, isTrue);
-      expect(row('Rowan').selected, isFalse);
+      expect(row('Sam Rivera').selected, isTrue);
+      expect(row('Jonas Weber').selected, isFalse);
 
-      await tester.tap(inList(find.text('Rowan')));
+      await tester.tap(inList(find.text('Jonas Weber')));
       await pumpFrames(tester, frames: 4);
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
-      expect(row('Rowan').selected, isTrue);
-      expect(row('Selene Park').selected, isFalse);
+      expect(row('Jonas Weber').selected, isTrue);
+      expect(row('Sam Rivera').selected, isFalse);
       expect(inChat(find.text('See you at nine.')), findsOneWidget);
       // The list is still there: the pane's bar has no back button.
       expect(find.byType(ConversationListPhone), findsOneWidget);
@@ -86,7 +86,7 @@ void main() {
 
   testWidgets('the pane\'s bar carries the safety number, the search and the timer', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
-      expect(inChat(find.text('Selene Park')), findsOneWidget);
+      expect(inChat(find.text('Sam Rivera')), findsOneWidget);
       expect(inChat(find.byTooltip('Verified')), findsOneWidget);
 
       // Search: the field takes the title's place, and its back button
@@ -162,9 +162,9 @@ void main() {
     await withPhoneApp(tester, identities, size: wideSmall, withGroup: true, location: '/conversations',
         body: (world) async {
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, groupConversationId);
-      expect(inChat(find.text('Selene Park, 한지우, Noor Al-Hashimi')), findsOneWidget);
+      expect(inChat(find.text('Sam Rivera, Priya Nair, Omar Haddad')), findsOneWidget);
       expect(inChat(find.text('4 members')), findsOneWidget);
-      for (final name in ['Selene Park', '한지우', 'Noor Al-Hashimi']) {
+      for (final name in ['Sam Rivera', 'Priya Nair', 'Omar Haddad']) {
         expect(inChat(find.text(name)), findsOneWidget, reason: name);
       }
     });
@@ -190,7 +190,7 @@ void main() {
     const narrow = PhoneSize(1119, 800, topInset: 0, bottomInset: 0);
     await withPhoneApp(tester, identities, size: narrow, location: '/conversations', body: (world) async {
       expect(find.byType(ChatRoomScreen), findsNothing);
-      await tester.tap(find.text('Selene Park'));
+      await tester.tap(find.text('Sam Rivera'));
       await pumpFrames(tester);
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).embedded, isFalse);
       expect(find.byTooltip('Back'), findsOneWidget);

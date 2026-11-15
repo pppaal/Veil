@@ -6,21 +6,19 @@ import 'package:veil_mobile/src/features/conversations/data/messenger/local_noti
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 void main() {
-  test('group member changes render as their notice text, in both languages', () {
-    for (final locale in const [Locale('en'), Locale('ko')]) {
-      final l10n = lookupAppLocalizations(locale);
-      for (final (added, text) in [(true, l10n.chatNoticeGroupMemberAdded), (false, l10n.chatNoticeGroupMemberRemoved)]) {
-        final notice = memberChangeNotice(
-          'grp',
-          added: added,
-          userId: 'user-mallory',
-          change: '2',
-          conversationMessages: const [],
-          now: DateTime.utc(2026, 11, 12),
-        );
-        expect(notice.message.isLocalNotice, isTrue);
-        expect(systemNoticeText(l10n, notice.message, notice.code), text);
-      }
+  test('group member changes render as their notice text', () {
+    final l10n = lookupAppLocalizations(const Locale('en'));
+    for (final (added, text) in [(true, l10n.chatNoticeGroupMemberAdded), (false, l10n.chatNoticeGroupMemberRemoved)]) {
+      final notice = memberChangeNotice(
+        'grp',
+        added: added,
+        userId: 'user-mallory',
+        change: '2',
+        conversationMessages: const [],
+        now: DateTime.utc(2026, 11, 12),
+      );
+      expect(notice.message.isLocalNotice, isTrue);
+      expect(systemNoticeText(l10n, notice.message, notice.code), text);
     }
   });
 

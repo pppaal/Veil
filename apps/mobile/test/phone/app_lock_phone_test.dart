@@ -44,41 +44,38 @@ void main() {
     return visibleRect(tester, box).height == box.size.height;
   }
 
-  for (final locale in ['en', 'ko']) {
-    testWidgets('a locked app shows the PIN field and both buttons without scrolling ($locale)', (tester) async {
-      await withPhoneApp(
-        tester,
-        identities,
-        location: '/lock',
-        account: LayoutAccount.locked,
-        locale: locale,
-        body: (world) async {
-          final l10n = lookupAppLocalizations(Locale(locale));
-          expect(tester.takeException(), isNull, reason: 'nothing overflows a 360x640 screen');
-          expect(find.byType(VeilHeroPanel), findsNothing);
-          expect(find.byType(VeilMetricStrip), findsNothing);
-          expect(findCopy(l10n.appLockHeroTitle), findsOneWidget);
+  testWidgets('a locked app shows the PIN field and both buttons without scrolling', (tester) async {
+    await withPhoneApp(
+      tester,
+      identities,
+      location: '/lock',
+      account: LayoutAccount.locked,
+      body: (world) async {
+        final l10n = lookupAppLocalizations(const Locale('en'));
+        expect(tester.takeException(), isNull, reason: 'nothing overflows a 360x640 screen');
+        expect(find.byType(VeilHeroPanel), findsNothing);
+        expect(find.byType(VeilMetricStrip), findsNothing);
+        expect(findCopy(l10n.appLockHeroTitle), findsOneWidget);
 
-          expect(wholeOnScreen(tester, find.byType(TextField)), isTrue);
-          expect(wholeOnScreen(tester, find.text(l10n.appLockUnlock)), isTrue);
-          expect(wholeOnScreen(tester, find.text(l10n.appLockUseBiometrics)), isTrue);
+        expect(wholeOnScreen(tester, find.byType(TextField)), isTrue);
+        expect(wholeOnScreen(tester, find.text(l10n.appLockUnlock)), isTrue);
+        expect(wholeOnScreen(tester, find.text(l10n.appLockUseBiometrics)), isTrue);
 
-          // After the buttons: the notice and what the device offers. The
-          // rules the words above already state are not repeated as pills.
-          await tester.scrollUntilVisible(find.text(l10n.appLockPillBiometricsAvailable), 120, scrollable: screenList);
-          expect(find.byType(VeilDestructiveNotice), findsOneWidget);
-          expect(findCopy(l10n.appLockNoRecoveryBody), findsOneWidget);
-          expect(find.text(l10n.appLockPillPinConfigured), findsOneWidget);
-          expect(find.text(l10n.appLockPillBiometricsAvailable), findsOneWidget);
-          for (final rule in [l10n.appLockPillLocalOnly, l10n.appLockPillNoRemoteReset]) {
-            expect(find.text(rule, skipOffstage: false), findsNothing);
-          }
-          expect(find.byType(VeilStatusPill, skipOffstage: false), findsNWidgets(3));
-          expect(tester.takeException(), isNull);
-        },
-      );
-    });
-  }
+        // After the buttons: the notice and what the device offers. The
+        // rules the words above already state are not repeated as pills.
+        await tester.scrollUntilVisible(find.text(l10n.appLockPillBiometricsAvailable), 120, scrollable: screenList);
+        expect(find.byType(VeilDestructiveNotice), findsOneWidget);
+        expect(findCopy(l10n.appLockNoRecoveryBody), findsOneWidget);
+        expect(find.text(l10n.appLockPillPinConfigured), findsOneWidget);
+        expect(find.text(l10n.appLockPillBiometricsAvailable), findsOneWidget);
+        for (final rule in [l10n.appLockPillLocalOnly, l10n.appLockPillNoRemoteReset]) {
+          expect(find.text(rule, skipOffstage: false), findsNothing);
+        }
+        expect(find.byType(VeilStatusPill, skipOffstage: false), findsNWidgets(3));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
 
   testWidgets('choosing a PIN shows that nothing can be recovered before the fields', (tester) async {
     usePhoneView(tester, phoneSmall);

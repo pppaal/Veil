@@ -2171,7 +2171,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusTlsPinsUnpinnedDetail =>
-      'This build sets no TLS pins (VEIL_TLS_PINS), so the connection accepts any certificate the phone trusts. Release builds stop with a configuration error without them.';
+      'Any certificate the phone trusts is accepted.';
 
   @override
   String get securityStatusApiMode => 'Server';
@@ -2238,7 +2238,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String securityStatusCryptoVeilRatchetDetail(String adapterId) {
-    return 'X3DH and Double Ratchet over X25519, AES-256-GCM and Ed25519 ($adapterId). Not yet externally audited.';
+    return 'X3DH and Double Ratchet ($adapterId)';
   }
 
   @override
@@ -2246,7 +2246,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String securityStatusCryptoLibsignalDetail(String adapterId) {
-    return 'Sessions and messages are encrypted by Signal\'s libsignal through a native bridge ($adapterId). The bridge has not been audited.';
+    return 'Signal\'s libsignal through a native bridge ($adapterId)';
   }
 
   @override
@@ -2256,6 +2256,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String securityStatusCryptoDevelopmentDetail(String adapterId) {
     return 'This build runs a development adapter ($adapterId), not production cryptography. Don\'t use it for real chats.';
   }
+
+  @override
+  String get securityStatusPushDelivery => 'Push notifications';
+
+  @override
+  String get securityStatusPushDeliveryOn => 'Connected';
+
+  @override
+  String get securityStatusPushDeliveryOff => 'Not connected';
+
+  @override
+  String get securityStatusPushDeliveryOffDetail =>
+      'Notifications arrive only while the app is open.';
 
   @override
   String get securityStatusPushPayloads => 'Notification content';

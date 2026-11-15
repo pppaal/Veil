@@ -3613,7 +3613,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusTlsPinsUnpinnedDetail.
   ///
   /// In en, this message translates to:
-  /// **'This build sets no TLS pins (VEIL_TLS_PINS), so the connection accepts any certificate the phone trusts. Release builds stop with a configuration error without them.'**
+  /// **'Any certificate the phone trusts is accepted.'**
   String get securityStatusTlsPinsUnpinnedDetail;
 
   /// No description provided for @securityStatusApiMode.
@@ -3733,7 +3733,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoVeilRatchetDetail.
   ///
   /// In en, this message translates to:
-  /// **'X3DH and Double Ratchet over X25519, AES-256-GCM and Ed25519 ({adapterId}). Not yet externally audited.'**
+  /// **'X3DH and Double Ratchet ({adapterId})'**
   String securityStatusCryptoVeilRatchetDetail(String adapterId);
 
   /// No description provided for @securityStatusCryptoLibsignal.
@@ -3745,7 +3745,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoLibsignalDetail.
   ///
   /// In en, this message translates to:
-  /// **'Sessions and messages are encrypted by Signal\'s libsignal through a native bridge ({adapterId}). The bridge has not been audited.'**
+  /// **'Signal\'s libsignal through a native bridge ({adapterId})'**
   String securityStatusCryptoLibsignalDetail(String adapterId);
 
   /// No description provided for @securityStatusCryptoDevelopment.
@@ -3759,6 +3759,30 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'This build runs a development adapter ({adapterId}), not production cryptography. Don\'t use it for real chats.'**
   String securityStatusCryptoDevelopmentDetail(String adapterId);
+
+  /// No description provided for @securityStatusPushDelivery.
+  ///
+  /// In en, this message translates to:
+  /// **'Push notifications'**
+  String get securityStatusPushDelivery;
+
+  /// No description provided for @securityStatusPushDeliveryOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected'**
+  String get securityStatusPushDeliveryOn;
+
+  /// No description provided for @securityStatusPushDeliveryOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Not connected'**
+  String get securityStatusPushDeliveryOff;
+
+  /// No description provided for @securityStatusPushDeliveryOffDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications arrive only while the app is open.'**
+  String get securityStatusPushDeliveryOffDetail;
 
   /// No description provided for @securityStatusPushPayloads.
   ///

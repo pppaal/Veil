@@ -5,6 +5,7 @@ import '../../../app/app_state.dart';
 import '../../../core/config/veil_config.dart';
 import '../../../core/crypto/crypto_adapter_registry.dart';
 import '../../../core/network/pinned_http_client.dart' show parsePinList;
+import '../../../core/notifications/remote_push_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
@@ -24,6 +25,9 @@ class SecurityStatusScreen extends ConsumerWidget {
     final localSecurity = ref.watch(localSecuritySnapshotProvider);
     final crypto = _cryptoSignal(l10n, ref.watch(cryptoAdapterProvider).adapterId);
     final pinCount = parsePinList(tlsPins).length;
+    // The build's push service: the disabled one never gets a token, so
+    // nothing wakes the app while it is closed.
+    final pushConnected = ref.watch(remotePushServiceProvider) is! DisabledRemotePushService;
     final runtimeError = VeilConfig.runtimeConfigurationError;
     final cacheConfigured = VeilConfig.enableLocalCache;
     final cacheReady = ref.watch(conversationCacheProvider).maybeWhen(
@@ -137,6 +141,16 @@ class SecurityStatusScreen extends ConsumerWidget {
             : l10n.securityStatusTlsPinsUnpinnedDetail,
         tone: pinCount > 0 ? SecuritySignalTone.good : SecuritySignalTone.warn,
       ),
+      // Whether a notification can reach this phone while the app is
+      // closed. With no server at all, the row below already says there
+      // are no notifications.
+      if (VeilConfig.hasApi)
+        SecuritySignal(
+          label: l10n.securityStatusPushDelivery,
+          value: pushConnected ? l10n.securityStatusPushDeliveryOn : l10n.securityStatusPushDeliveryOff,
+          detail: pushConnected ? null : l10n.securityStatusPushDeliveryOffDetail,
+          tone: pushConnected ? SecuritySignalTone.good : SecuritySignalTone.warn,
+        ),
       SecuritySignal(
         label: l10n.securityStatusPushPayloads,
         value: VeilConfig.hasApi ? l10n.securityStatusPushPayloadsMetadata : l10n.securityStatusUnavailable,

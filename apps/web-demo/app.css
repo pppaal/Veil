@@ -26,6 +26,7 @@
   --bubble-mine-meta: #E3ECFB;
   --bubble-theirs: #26262B;
   --avatar-neutral: #48484A;
+  --switch-off: #48484A;
 
   /* What a pointer over a row or a plain button lays on it, the dimming
      behind a dialog, and the marks of a search in a chat. */
@@ -70,6 +71,7 @@ html.theme-light {
   --bubble-mine-meta: #DCE7FB;
   --bubble-theirs: #E9E9EB;
   --avatar-neutral: #6E6E73;
+  --switch-off: #C6C6C8;
 
   --hover: rgba(0, 0, 0, 0.04);
   --backdrop: rgba(0, 0, 0, 0.32);
@@ -1100,11 +1102,10 @@ html.theme-light .name-7 { color: #45602A; }
   flex-shrink: 0;
   margin: 0;
   border-radius: 999px;
-  background: var(--bg-alt);
+  background: var(--switch-off);
   cursor: pointer;
   transition: background 0.15s ease;
 }
-html.theme-light .settings-toggle { background: var(--line); }
 .settings-toggle::before {
   content: "";
   position: absolute;

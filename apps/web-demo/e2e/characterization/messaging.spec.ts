@@ -73,7 +73,11 @@ test.describe('a direct conversation', () => {
   test('text goes both ways, with previews, groups and statuses', async () => {
     await send(alice, 'hello bob');
     await expect.poll(() => bubbleTexts(bob), { timeout: 15_000 }).toEqual(['hello bob']);
-    await expect(bob.page.locator('.panel-msgs .group-meta')).toHaveText([`@${alice.handle}`]);
+    // A one-to-one chat names the other person once, in its header: their
+    // runs carry no handle and no avatar.
+    await expect(bob.page.locator('.panel .panel-title .name')).toHaveText(`@${alice.handle}`);
+    await expect(bob.page.locator('.panel-msgs .group-meta')).toHaveCount(0);
+    await expect(bob.page.locator('.panel-msgs .msg-group.them > .avatar')).toHaveCount(0);
     await expect(alice.page.locator('.msg-group.me .msg-status')).toHaveAttribute('title', 'Sent');
     await expect(alice.page.locator('.msg-group.me .msg-status use')).toHaveAttribute('href', '#i-check');
 

@@ -48,8 +48,11 @@ export function createRealtime({ store, stack, history, outbox, inbound, message
       outbox.drain();
       for (const convId of state.openTabs) history.refreshMessages(convId);
     });
-    s.on('disconnect', (reason) => onStatus('connecting', reason === 'io server disconnect' ? 'Disconnected' : 'Reconnecting…'));
-    s.on('connect_error', () => onStatus('offline', 'Could not connect'));
+    // The bar's two words for a missing live connection (spec 12.2).
+    s.on('disconnect', (reason) => (reason === 'io server disconnect'
+      ? onStatus('offline', 'Offline')
+      : onStatus('connecting', 'Connecting…')));
+    s.on('connect_error', () => onStatus('offline', 'Offline'));
 
     s.on('message.new', (message) => inbound.onMessageNew(message));
     s.on('message.delivered', ({ messageId, deliveredAt }) => inbound.patchMessage(messageId, { deliveredAt }));

@@ -237,16 +237,19 @@ export function createMessageList({ store, send, outbox, startReply }) {
 
   // The list node for a conversation's shown messages; reactions:
   // src/domain/reactions.js reactionsByTarget over the messages not gone.
-  // Each run of a peer's messages is headed by their handle, in their own
-  // tint in a group, and has their avatar beside it.
+  // In a group, each run of another member's messages is headed by their
+  // handle in their own tint and has their avatar beside it. A one-to-one
+  // chat names its one other person in the header, so its runs carry
+  // neither, as in the mobile app.
   function render(convId, { shown, reactions, peerHandle, group: isGroup = false }) {
     const list = el('div', { class: 'panel-msgs', dataset: { conv: convId } });
     for (const day of groupMessages(shown, { me: state.me, peerHandle, dayKey, dayLabel })) {
       list.appendChild(el('div', { class: 'day-divider' }, [day.dayLabel]));
       for (const group of day.groups) {
         const stack = el('div', { class: 'group-stack' });
-        if (!group.isMe) {
-          const tint = isGroup ? ` name-${avatarIndex(group.senderHandle)}` : '';
+        const named = isGroup && !group.isMe;
+        if (named) {
+          const tint = ` name-${avatarIndex(group.senderHandle)}`;
           stack.appendChild(el('div', { class: 'group-meta' + tint }, ['@' + shownHandle(group.senderHandle)]));
         }
         group.msgs.forEach((message, index) => {
@@ -263,7 +266,7 @@ export function createMessageList({ store, send, outbox, startReply }) {
         const failed = failedLine(convId, group);
         if (failed) stack.appendChild(failed);
         list.appendChild(el('div', { class: 'msg-group ' + (group.isMe ? 'me' : 'them') }, [
-          group.isMe ? null : avatarFor(group.senderHandle, 'sm'),
+          named ? avatarFor(group.senderHandle, 'sm') : null,
           stack,
         ]));
       }

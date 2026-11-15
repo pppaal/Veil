@@ -1054,6 +1054,7 @@ html.theme-light .name-7 { color: #45602A; }
   line-height: 1.4;
   resize: none;
 }
+.code-field::placeholder { font-family: var(--font); }
 .fingerprint-box { margin: 12px 0 4px; }
 .fingerprint-label { font-size: 13px; color: var(--fg-muted); }
 .fingerprint { margin: 4px 0; font-family: var(--mono); font-size: 15px; overflow-wrap: anywhere; }
@@ -1074,7 +1075,7 @@ html.theme-light .name-7 { color: #45602A; }
 .safety-status { margin: -4px 0 12px; font-size: 13px; font-weight: 500; color: var(--good); }
 .safety-dialog .notice { margin-bottom: 12px; }
 .safety-dialog .field-label { margin: 0 0 6px; }
-.safety-code { margin-bottom: 12px; font-size: 13px; field-sizing: content; max-height: 160px; }
+.safety-copy-code { margin-bottom: 16px; }
 
 .settings-row {
   display: flex;

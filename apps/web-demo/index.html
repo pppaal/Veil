@@ -79,7 +79,7 @@
 <section id="auth-screen" class="auth-screen">
   <div class="auth-column">
     <h1 class="auth-title">Veil</h1>
-    <p class="auth-lede" data-i18n="appTagline">End-to-end encrypted. No phone number. No backup.</p>
+    <p class="auth-lede" data-i18n="appTagline">End-to-end encrypted messenger with no phone number and no backup</p>
 
     <button type="button" id="auth-explainer-toggle" class="text-btn" aria-expanded="false" aria-controls="auth-explainer" data-i18n="auth.explainer.summary">How Veil works</button>
     <div id="auth-explainer" class="auth-explainer hidden">
@@ -205,17 +205,15 @@
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-old-title">
     <div class="dialog-title" id="transfer-old-title">Move this account to another device</div>
     <div class="dialog-sub">
-      Paste the code below on the new device. When the new device uses it, its
-      fingerprint shows here. Check that it matches, then approve. This device
-      is then signed out and can't sign in to this account again.
-      <strong>Finish within 5 minutes.</strong>
+      Paste this code on the new device within 5 minutes. Approving signs this
+      device out of the account for good.
     </div>
     <textarea id="transfer-old-token" class="code-field" readonly rows="3" aria-label="Transfer code"></textarea>
     <div class="dialog-status" id="transfer-old-status" role="status">Waiting…</div>
     <div id="transfer-old-claim" class="fingerprint-box hidden">
       <div class="fingerprint-label">The new device is ready</div>
       <div id="transfer-old-fingerprint" class="fingerprint"></div>
-      <div class="fingerprint-hint">Check that this fingerprint matches the one on the new device's screen, then approve.</div>
+      <div class="fingerprint-hint">Check that it matches the fingerprint on the new device, then approve.</div>
     </div>
     <div class="dialog-actions">
       <button class="btn btn-ghost" id="transfer-old-cancel">Cancel</button>
@@ -242,11 +240,7 @@
 <div class="dialog-backdrop hidden" id="transfer-new-dialog" role="presentation">
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="transfer-new-title">
     <div class="dialog-title" id="transfer-new-title">Move from another device</div>
-    <div class="dialog-sub">
-      Paste the code from your old device. When you use it, this device's
-      fingerprint shows here. Check that it matches the one on the old
-      device's screen, then approve there to finish the move.
-    </div>
+    <div class="dialog-sub">Paste the code from your old device.</div>
     <label class="field">
       <span class="field-label">Name for this device</span>
       <input id="transfer-new-name" type="text" placeholder="Veil Web" maxlength="40" />
@@ -255,7 +249,7 @@
     <div id="transfer-new-fingerprint" class="fingerprint-box hidden">
       <div class="fingerprint-label">This device's fingerprint</div>
       <div id="transfer-new-fingerprint-text" class="fingerprint"></div>
-      <div class="fingerprint-hint">Check that it matches the fingerprint on the old device's screen.</div>
+      <div class="fingerprint-hint">Check that it matches the fingerprint on the old device, then approve there.</div>
     </div>
     <div class="dialog-error" id="transfer-new-error" role="alert" aria-live="polite"></div>
     <div class="dialog-status" id="transfer-new-status" role="status"></div>

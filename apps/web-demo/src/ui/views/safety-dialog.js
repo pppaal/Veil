@@ -48,6 +48,15 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
         close();
         await identityTrust.reopenLockedMessages(peer.userId);
       };
+      // The code is long machine text: it is copied to send, not read.
+      const copyCode = async () => {
+        try {
+          await navigator.clipboard.writeText(safety.code);
+          toast(t('safety.codeCopied'), 'good');
+        } catch {
+          toast(t('safety.copyFailed'), 'error');
+        }
+      };
       const compare = async () => {
         if (safety.matches(codeInput.value.trim())) await markVerified();
         else result.textContent = t('safety.mismatch');
@@ -71,8 +80,12 @@ export function createSafetyDialog({ identityTrust, dialogs }) {
           el('div', { class: 'safety-number', id: 'safety-number' },
             safety.number.split(' ').flatMap((group, index) => [index > 0 ? ' ' : null, el('span', {}, [group])])),
           el('div', { class: 'dialog-sub' }, [t('safety.explain', { handle: shownHandle(peer.handle) })]),
-          el('div', { class: 'field-label' }, [t('safety.yourCode')]),
-          el('textarea', { readonly: 'readonly', rows: '5', class: 'code-field safety-code', 'aria-label': t('safety.yourCode') }, [safety.code]),
+          el('button', {
+            type: 'button',
+            class: 'btn btn-secondary safety-copy-code',
+            'data-code': safety.code,
+            onclick: copyCode,
+          }, [icon('copy'), t('safety.copyCode')]),
           el('div', { class: 'field-label' }, [t('safety.theirCode')]),
           codeInput,
           result,

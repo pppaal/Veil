@@ -141,6 +141,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
     String? errorText,
     ValueChanged<String>? onChanged,
     TextAlign textAlign = TextAlign.start,
+    bool dense = false,
   }) {
     return TextField(
       controller: controller,
@@ -151,7 +152,14 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
       enableInteractiveSelection: false,
       textAlign: textAlign,
       onChanged: onChanged,
-      decoration: InputDecoration(labelText: label, hintText: hint, errorText: errorText, errorMaxLines: 3),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        errorText: errorText,
+        errorMaxLines: 3,
+        // The lock screen's field is the design system's 44.
+        isDense: dense ? true : null,
+      ),
     );
   }
 
@@ -190,6 +198,7 @@ class _AppLockScreenState extends ConsumerState<AppLockScreen> {
                 controller: _pinController,
                 hint: l10n.appLockPinLabel,
                 textAlign: TextAlign.center,
+                dense: true,
                 errorText: formatError ?? _attemptError(l10n),
                 onChanged: _pinChanged,
               ),

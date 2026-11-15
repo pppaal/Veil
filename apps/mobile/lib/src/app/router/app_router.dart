@@ -31,6 +31,7 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/security/presentation/safety_numbers_screen.dart';
 import '../../features/security_status/presentation/security_status_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
+import '../../features/settings/presentation/trusted_devices_screen.dart';
 import '../../features/stickers/presentation/sticker_picker_screen.dart';
 import '../../features/stickers/stickers_feature.dart';
 import '../../features/stories/presentation/stories_screen.dart';
@@ -214,6 +215,10 @@ List<RouteBase> _buildRoutes() {
     GoRoute(
       path: '/profile',
       pageBuilder: (context, state) => _veilPushPage(state, const ProfileScreen()),
+    ),
+    GoRoute(
+      path: '/trusted-devices',
+      pageBuilder: (context, state) => _veilPushPage(state, const TrustedDevicesScreen()),
     ),
     GoRoute(
       path: '/lock',

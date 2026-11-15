@@ -89,6 +89,8 @@ class ChatAttention {
     this.peerTyping = false,
     this.legacyMessage = false,
     this.identityChangedInGroup = false,
+    this.loading = false,
+    this.relayError = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -113,17 +115,34 @@ class ChatAttention {
   /// world with the group.
   final bool identityChangedInGroup;
 
+  /// The messenger is still fetching: a chat with nothing loaded and a list
+  /// with no conversation yet show their loading state.
+  final bool loading;
+
+  /// The relay failed the last request, which the messenger reports as its
+  /// error line: a chat and the list each say so.
+  final bool relayError;
+
   /// How many of the chat's warnings come with an action: reviewing the
-  /// identity change, releasing the held account, retrying failed sends.
-  int get warningActionCount => (identityChanged ? 1 : 0) + (accountHeld ? 1 : 0) + (failedSends > 0 ? 1 : 0);
+  /// identity change (in this chat, or the one that waits in the group),
+  /// releasing the held account, retrying failed sends.
+  int get warningActionCount =>
+      (identityChanged ? 1 : 0) +
+      (identityChangedInGroup ? 1 : 0) +
+      (accountHeld ? 1 : 0) +
+      (failedSends > 0 ? 1 : 0);
 }
 
 class LayoutWorld {
-  LayoutWorld._(this.identities, this.account, this.locale);
+  LayoutWorld._(this.identities, this.account, this.locale, this.sessionError);
 
   final LayoutIdentities identities;
   final LayoutAccount account;
   final String locale;
+
+  /// What the session reports as its last failure (a text
+  /// formatUserFacingError returned), for a screen that shows it.
+  final String? sessionError;
 
   final FakeRelay relay = FakeRelay();
   final SecureStorageService storage = _PinSetStorage(MemorySecureStore());
@@ -137,7 +156,7 @@ class LayoutWorld {
   bool get _hasAccount => account != LayoutAccount.signedOut;
 
   AppSessionState get _session => switch (account) {
-        LayoutAccount.signedOut => const AppSessionState(locked: false, initializing: false),
+        LayoutAccount.signedOut => AppSessionState(locked: false, initializing: false, errorMessage: sessionError),
         _ => AppSessionState(
             accessToken: 'token-$selfHandle',
             userId: 'user-$selfHandle',
@@ -148,6 +167,7 @@ class LayoutWorld {
             privacyConsentAccepted: true,
             locked: account == LayoutAccount.locked,
             initializing: false,
+            errorMessage: sessionError,
           ),
       };
 
@@ -159,8 +179,9 @@ class LayoutWorld {
     bool bootstrapping = false,
     bool transferStarted = false,
     bool withGroup = false,
+    String? sessionError,
   }) async {
-    final world = LayoutWorld._(identities, account, locale);
+    final world = LayoutWorld._(identities, account, locale, sessionError);
     await world._build(
       attention: attention,
       bootstrapping: bootstrapping,
@@ -197,6 +218,14 @@ class LayoutWorld {
     final peer = relay.partiesByHandle[peerHandle]!;
     await trust.resolver.evaluate(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
     await trust.markVerified(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
+    // A group's frames open only for members whose devices this device has
+    // pinned, which is also how it knows who of the group wrote each one.
+    if (withGroup) {
+      for (final handle in groupMemberHandles) {
+        final member = relay.partiesByHandle[handle]!;
+        await trust.resolver.evaluate(member.userId, member.deviceId, member.identity.identityPublicKey);
+      }
+    }
 
     // The idempotent mock engine: layout does not depend on the ratchet,
     // and this device's own messages are read from stored content anyway.
@@ -209,6 +238,7 @@ class LayoutWorld {
       trust: trust,
       attention: attention,
       peer: peer,
+      changedKey: identities.self.identityPublicKey,
     );
     if (_hasAccount) await messenger.applySession(_session);
     // After the session is applied, which forgets what was pending before it.
@@ -321,7 +351,9 @@ class _LayoutSession extends AppSessionController {
     AppSessionState initial, {
     required this.bootstrapping,
   }) {
-    state = bootstrapping ? const AppSessionState() : initial;
+    // A session still starting has no account yet, but may already have
+    // failed (a build that cannot reach its relay).
+    state = bootstrapping ? AppSessionState(errorMessage: initial.errorMessage) : initial;
   }
 
   final bool bootstrapping;
@@ -341,6 +373,7 @@ class _LayoutMessenger extends VeilMessengerController {
     required IdentityTrust trust,
     required this.attention,
     required this.peer,
+    required this.changedKey,
   }) : super(
           apiClient: apiClient,
           cryptoEngine: adapter.messaging,
@@ -355,6 +388,19 @@ class _LayoutMessenger extends VeilMessengerController {
   final ChatAttention attention;
   final RelayParty peer;
 
+  /// The key the peer's device presents in a case whose identity changed:
+  /// another key than the pinned one, so the safety number page shows two
+  /// numbers that differ, as it does after a real change.
+  final String changedKey;
+
+  @override
+  bool get isBusy => attention.loading || super.isBusy;
+
+  // What a relay answering 503 leaves as the messenger's error line.
+  @override
+  String? get errorMessage =>
+      attention.relayError ? formatUserFacingError('Request failed: HTTP 503') : super.errorMessage;
+
   @override
   PendingIdentityChange? pendingIdentityChangeFor(String conversationId) =>
       attention.identityChanged && conversationId == chatConversationId
@@ -362,7 +408,7 @@ class _LayoutMessenger extends VeilMessengerController {
               conversationId: conversationId,
               userId: peer.userId,
               deviceId: peer.deviceId,
-              presentedKey: peer.identity.identityPublicKey,
+              presentedKey: changedKey,
               previousKey: peer.identity.identityPublicKey,
               requiresReverification: true,
             )

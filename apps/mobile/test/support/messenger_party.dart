@@ -165,9 +165,12 @@ class MessengerParty {
     return controller.applySession(session());
   }
 
-  Future<void> restart() async {
+  /// [whileClosed] runs after the old controller is gone and before the new
+  /// one starts: what happens on the relay while the app is not running.
+  Future<void> restart({Future<void> Function()? whileClosed}) async {
     await lib.flushPendingSnapshotWrites();
     controller.dispose();
+    await whileClosed?.call();
     _boot(LibCryptoAdapter());
     await signIn();
   }

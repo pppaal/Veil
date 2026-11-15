@@ -5,6 +5,7 @@ import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dar
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_labels.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../layout/support/screen_cases.dart' show layoutOnlyRoutes;
@@ -37,52 +38,61 @@ void main() {
   }
 
   group('settings', () {
+    Set<String> textsShown(WidgetTester tester) => {
+          for (final element in find.byType(Text).evaluate())
+            if ((element.widget as Text).data case final text?) plainCopy(text),
+        };
+
+    // Everything the screen says from top to bottom, and what of it is in
+    // the other language.
+    Future<(Set<String> said, Set<String> foreign)> read(WidgetTester tester, String locale) async {
+      final said = textsShown(tester);
+      final foreign = otherLanguageTextsOnScreen(tester, locale);
+      await scrollToEnd(tester, onPage: (_) async {
+        said.addAll(textsShown(tester));
+        foreign.addAll(otherLanguageTextsOnScreen(tester, locale));
+      });
+      return (said, foreign);
+    }
+
+    // The devices of the account, from their row on the settings tab.
+    Future<void> openDevices(WidgetTester tester) async {
+      // From the top: the screen was read to its end.
+      tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
+      await tester.pump();
+      final row = find.byKey(const ValueKey('settings-devices'), skipOffstage: false);
+      await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+      await pumpFrames(tester, frames: 2);
+      await tester.tap(row);
+      await pumpFrames(tester, frames: 6);
+    }
+
     // Names the user or the platform gave are no locale's to translate, and
     // the language check leaves them out (notOwnCopy): nothing else on the
-    // screen may be English.
+    // screen, or on the list of devices it leads to, may be English.
     testWidgets('in a Korean app only names are not Korean', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final shown = <String>{};
-        void collect() {
-          for (final element in find.byType(Text).evaluate()) {
-            if ((element.widget as Text).data case final text?) shown.add(text);
-          }
-        }
-
-        collect();
-        final foreign = otherLanguageTextsOnScreen(tester, 'ko');
-        await scrollToEnd(tester, onPage: (_) async {
-          collect();
-          foreign.addAll(otherLanguageTextsOnScreen(tester, 'ko'));
-        });
+        final (said, foreign) = await read(tester, 'ko');
         expect(foreign, isEmpty);
-        expect(shown, containsAll(['Atlas Moreau', 'Pixel 9 Pro Fold', 'MacBook Air', 'Android']),
-            reason: 'the device graph was on screen');
+        expect(said, containsAll(['Atlas Moreau', '@atlas']), reason: 'the account was on screen');
+
+        await openDevices(tester);
+        final (devices, foreignDevices) = await read(tester, 'ko');
+        expect(foreignDevices, isEmpty);
+        expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android']),
+            reason: 'the devices were on screen');
       });
     });
 
     testWidgets('says what each destructive action does, in Korean', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final seen = <String>{};
-        void collect() {
-          for (final element in find.byType(Text).evaluate()) {
-            if ((element.widget as Text).data case final text?) seen.add(text);
-          }
-        }
-
-        collect();
-        await scrollToEnd(tester, onPage: (_) async => collect());
-        // What a text says, without the joiners it is drawn with.
-        final said = seen.map(plainCopy).toSet();
         final l10n = lookupAppLocalizations(const Locale('ko'));
+        final (said, _) = await read(tester, 'ko');
         for (final text in [
           '보안',
-          '세션',
-          '그래프 요약',
-          '이 기기',
-          '해지됨',
+          '기기',
+          '되돌릴 수 없는 작업',
           '장기 미사용 1대',
-          '접속 4월 2일 (UTC)',
           l10n.settingsDestructiveNoticeBody,
           l10n.settingsWipeLocalSubtitle,
           l10n.settingsRevokeSubtitle,
@@ -90,27 +100,44 @@ void main() {
         ]) {
           expect(said, contains(text));
         }
+
+        await openDevices(tester);
+        final (devices, _) = await read(tester, 'ko');
+        for (final text in [
+          '신뢰 기기 2대 (장기 미사용 1대)  ·  ',
+          '해지 1대',
+          '이 기기',
+          '해지됨',
+          '접속 4월 2일 (UTC)',
+          l10n.settingsGraphStaleBody,
+        ]) {
+          expect(devices, contains(text));
+        }
       });
     });
 
-    testWidgets('in an English app nothing is Korean, and the device graph reads as before', (tester) async {
+    testWidgets('in an English app nothing is Korean, and the device list reads as before', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', body: (world) async {
-        expect(find.text('GRAPH SUMMARY'), findsOneWidget);
-        expect(find.text('1 stale'), findsOneWidget);
-        expect(find.text('Seen Apr 2 (UTC)'), findsWidgets);
-        expect(await otherLanguageTextsOfScreen(tester, 'en'), isEmpty);
+        final (said, foreign) = await read(tester, 'en');
+        expect(foreign, isEmpty);
+        expect(said, containsAll(['2 devices hold this account', '1 stale']));
+
+        await openDevices(tester);
+        final (devices, foreignDevices) = await read(tester, 'en');
+        expect(foreignDevices, isEmpty);
+        expect(devices, containsAll(['2 trusted devices (1 stale)  ·  ', '1 revoked', 'Seen Apr 2 (UTC)']));
       });
     });
 
     testWidgets('asks for the phrase to type in the app\'s language', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', locale: 'ko', body: (world) async {
-        final wipe = find.text('이 기기에서 로컬 상태 삭제');
+        final wipe = find.text('이 기기의 VEIL 데이터 삭제');
         await tester.dragUntilVisible(wipe, find.byType(ListView), const Offset(0, -200));
         await pumpFrames(tester, frames: 2);
         await tester.tap(wipe);
         await pumpFrames(tester, frames: 3);
-        expect(find.text('계속하려면 다음을 입력하세요: WIPE'), findsOneWidget);
-        expect(find.widgetWithText(FilledButton, '로컬 상태 삭제'), findsOneWidget);
+        expect(findCopy('계속하려면 다음을 입력하세요: 삭제'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, '데이터 삭제'), findsOneWidget);
         await tester.tap(find.text('취소'));
         await pumpFrames(tester, frames: 3);
       });
@@ -118,7 +145,7 @@ void main() {
   });
 
   group('device transfer', () {
-    testWidgets('the old device says in Korean that its token is ready', (tester) async {
+    testWidgets('the old device says in Korean that its code is ready', (tester) async {
       await withPhoneApp(
         tester,
         identities,
@@ -128,7 +155,8 @@ void main() {
         body: (world) async {
           // The transfer code is data, which the check leaves out.
           expect(await otherLanguageTextsOfScreen(tester, 'ko'), isEmpty);
-          expect(findCopy('이전 세션을 열었습니다. 토큰이 준비되었습니다.', skipOffstage: false), findsOneWidget);
+          // "Code", as every other line of the screen calls it; not "token".
+          expect(findCopy('이전 세션을 열었습니다. 코드가 준비되었습니다.', skipOffstage: false), findsOneWidget);
         },
       );
     });
@@ -191,38 +219,47 @@ void main() {
     const change = ChatAttention(identityChanged: true);
     const location = '/safety-numbers/$chatConversationId';
 
-    testWidgets('a phone opens on the warning, before the hero', (tester) async {
+    testWidgets('a phone opens on the warning, before anything else', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = tester.getRect(find.text('Peer identity key changed'));
-        final hero = tester.getRect(find.byType(VeilHeroPanel));
-        expect(warning.bottom, lessThan(hero.top));
+        final warning = tester.getRect(find.text("This contact's identity key changed"));
+        final intro = tester.getRect(find.byType(VeilScreenIntro));
+        expect(find.byType(VeilHeroPanel), findsNothing);
+        expect(warning.bottom, lessThan(intro.top));
         expect(warning.top, lessThan(screenHeight(tester) / 2), reason: 'on the first screenful');
-        expect(find.text('Peer identity key changed'), findsOneWidget, reason: 'said once');
+        expect(find.text("This contact's identity key changed"), findsOneWidget, reason: 'said once');
       });
     });
 
-    testWidgets('says which number is the current one and which the new', (tester) async {
+    // The number to compare is the new one, so it comes first with the
+    // decision under it; the pinned number follows for reference.
+    testWidgets('says which number is the new one and which the current, the new one first', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
         final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
         final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
-        await tester.dragUntilVisible(next, find.byType(ListView), const Offset(0, -200));
-        expect(current, findsOneWidget);
+        final decide = find.text('Re-verify with new key', skipOffstage: false);
         expect(next, findsOneWidget);
-        expect(tester.getTopLeft(current).dy, lessThan(tester.getTopLeft(next).dy));
+        final newTop = tester.getTopLeft(next).dy;
+        final decideTop = tester.getTopLeft(decide).dy;
+        await tester.dragUntilVisible(current, find.byType(ListView), const Offset(0, -200));
+        expect(current, findsOneWidget);
+        expect(newTop, lessThan(decideTop));
         expect(find.text('SAFETY NUMBER', skipOffstage: false), findsNothing);
+        // Scrolled by now: compared within one frame.
+        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
     });
 
-    testWidgets('a wide window keeps the warning beside the new number', (tester) async {
+    testWidgets('a wide window opens on the warning too, with the new number before the current one', (tester) async {
       const wide = PhoneSize(900, 1400, topInset: 0, bottomInset: 0);
       await withPhoneApp(tester, identities, size: wide, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = find.text('Peer identity key changed', skipOffstage: false);
+        final warning = find.text("This contact's identity key changed", skipOffstage: false);
         final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
-        await tester.dragUntilVisible(warning, find.byType(ListView), const Offset(0, -200));
-        expect(tester.getTopLeft(warning).dy, greaterThan(tester.getTopLeft(current).dy));
+        final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
+        expect(tester.getTopLeft(warning).dy, lessThan(tester.getTopLeft(next).dy));
+        expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
     });
 
@@ -230,7 +267,7 @@ void main() {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
         await awaitSafetyNumber(tester);
         expect(find.text('SAFETY NUMBER', skipOffstage: false), findsOneWidget);
-        expect(find.text('Peer identity key changed', skipOffstage: false), findsNothing);
+        expect(find.text("This contact's identity key changed", skipOffstage: false), findsNothing);
       });
     });
   });
@@ -239,7 +276,7 @@ void main() {
     // Every word of the headline is on one line: no syllable is left alone.
     void expectWordsWhole(WidgetTester tester) {
       final title = find.descendant(
-        of: find.byType(VeilHeroPanel),
+        of: find.byType(VeilScreenIntro),
         matching: find.byWidgetPredicate((widget) => widget is Text && widget.semanticsLabel != null),
       );
       final paragraph = tester.renderObject<RenderParagraph>(
@@ -258,6 +295,7 @@ void main() {
     for (final (name, location, account) in [
       ('create account', '/create-account', LayoutAccount.signedOut),
       ('security status', '/security-status', LayoutAccount.signedIn),
+      ('the app lock', '/lock', LayoutAccount.locked),
     ]) {
       testWidgets('wraps between words on $name', (tester) async {
         await withPhoneApp(tester, identities, location: location, account: account, locale: 'ko', body: (world) async {
@@ -304,15 +342,13 @@ void main() {
 
   group('privacy consent', () {
     // The framework's tap target check never measured this row: it starts
-    // at the left edge of the list. It was 24 px tall in Korean.
+    // at the left edge of its column. It was 24 px tall in Korean.
     testWidgets('the consent sentence and its box are one target, 44 px tall, and either toggles it',
         (tester) async {
       await withPhoneApp(tester, identities, location: '/privacy-consent', account: LayoutAccount.signedOut, locale: 'ko',
           body: (world) async {
-        final sentence = find.text('위 개인정보 수집·이용에 동의합니다. (필수)');
-        // The button under the sentence ends the screen.
-        await tester.dragUntilVisible(find.text('동의하고 계속하기'), find.byType(ListView), const Offset(0, -300));
-        await pumpFrames(tester, frames: 2);
+        // Under the notice from the start: nothing is scrolled to reach it.
+        final sentence = findCopy('위 개인정보 수집·이용에 동의합니다. (필수)');
         expect(sentence, findsOneWidget);
 
         final row = find.ancestor(of: sentence, matching: find.byType(MergeSemantics)).first;
@@ -349,24 +385,24 @@ void main() {
         final area = onScreen(tester, find.byType(ChatMessageList));
         for (final finder in [
           find.text('No messages yet'),
-          find.textContaining('Send the first message'),
-          find.widgetWithText(FilledButton, 'Send'),
+          find.textContaining('encrypted on this device'),
+          find.widgetWithText(OutlinedButton, 'Compare safety numbers'),
         ]) {
           final box = tester.renderObject<RenderBox>(finder);
           final rect = box.localToGlobal(Offset.zero) & box.size;
           expect(rect.top, greaterThanOrEqualTo(area.top), reason: '$finder');
           expect(rect.bottom, lessThanOrEqualTo(area.bottom), reason: '$finder');
         }
-        expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsNothing);
+        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget, reason: 'the composer\'s, not the state\'s');
         expect(tester.takeException(), isNull);
       });
     });
 
     testWidgets('with the whole screen shows its icon too', (tester) async {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
-        expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsOneWidget);
+        expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(2), reason: 'the state\'s and the composer\'s');
         expect(find.text('No messages yet'), findsOneWidget);
-        expect(find.widgetWithText(FilledButton, 'Send'), findsOneWidget);
+        expect(find.widgetWithText(OutlinedButton, 'Compare safety numbers'), findsOneWidget);
       });
     });
   });

@@ -329,19 +329,87 @@ class LayoutRelayClient extends FakeRelayClient {
     };
   }
 
+  // What the contacts tab, the start screens and the device list ask the
+  // relay to change, kept for the test that asked. A handle the relay has no
+  // party for is refused, as a real relay refuses it.
+  final List<String> addedContacts = [];
+  final Set<String> removedContacts = {};
+  final List<Map<String, dynamic>> createdGroups = [];
+  final List<String> revokedDevices = [];
+
+  void _requireParty(String handle) {
+    if (!relay.partiesByHandle.containsKey(handle)) throw Exception('Request failed: HTTP 404');
+  }
+
   @override
   Future<List<dynamic>> getContacts(String accessToken) async => [
-        for (final entry in peerNames.entries)
-          <String, dynamic>{
-            'handle': entry.key,
-            'displayName': entry.value,
-            'avatarPath': null,
-            'addedAt': DateTime.utc(2026, 3, 2).toIso8601String(),
-          },
+        for (final handle in [...peerNames.keys, ...addedContacts.where((added) => !peerNames.containsKey(added))])
+          if (!removedContacts.contains(handle))
+            <String, dynamic>{
+              'handle': handle,
+              'displayName': peerNames[handle],
+              'avatarPath': null,
+              'addedAt': DateTime.utc(2026, 3, 2).toIso8601String(),
+            },
       ];
+
+  /// What the relay has on record instead of the seeded calls, when a test
+  /// sets it.
+  List<Map<String, dynamic>>? callRecords;
+
+  @override
+  Future<Map<String, dynamic>> addContact(String accessToken, Map<String, dynamic> body) async {
+    final handle = body['handle'] as String;
+    _requireParty(handle);
+    addedContacts.add(handle);
+    removedContacts.remove(handle);
+    return {'handle': handle};
+  }
+
+  @override
+  Future<Map<String, dynamic>> removeContact(String accessToken, String handle) async {
+    removedContacts.add(handle);
+    return const {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> createDirectConversation(String accessToken, String peerHandle) async {
+    _requireParty(peerHandle);
+    final existing = relay.conversations.values
+        .where((conversation) =>
+            conversation.type == 'direct' &&
+            conversation.memberHandles.contains(me.handle) &&
+            conversation.memberHandles.contains(peerHandle))
+        .firstOrNull;
+    final conversation = existing ?? relay.addDirect('conv-$peerHandle', me.handle, peerHandle);
+    return {
+      'conversation': {'id': conversation.id},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> createGroup(String accessToken, Map<String, dynamic> body) async {
+    final handles = (body['memberHandles'] as List<dynamic>? ?? const <dynamic>[]).cast<String>();
+    handles.forEach(_requireParty);
+    createdGroups.add(Map<String, dynamic>.of(body));
+    final group = relay.addGroup('conv-new-group-${createdGroups.length}', [me.handle, ...handles], useSenderKeys: false);
+    return {
+      'conversation': {'id': group.id},
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> revokeDevice(String accessToken, String deviceId, {Map<String, String>? proof}) async {
+    revokedDevices.add(deviceId);
+    return const {};
+  }
+
+  @override
+  Future<Map<String, dynamic>> logoutAuth(String accessToken, {String? refreshToken}) async => const {};
 
   @override
   Future<List<dynamic>> getCallHistory(String accessToken) async {
+    if (callRecords case final records?) return records;
     // A day old, so every row reads "Yesterday, hh:mm" whenever it runs.
     final yesterday = DateTime.now().subtract(const Duration(days: 1)).toUtc();
     Map<String, dynamic> call(String handle, String type, String status, {required bool mine, int? seconds}) => {
@@ -365,8 +433,13 @@ class LayoutRelayClient extends FakeRelayClient {
     ];
   }
 
+  /// The stories the relay lists instead of the seeded ones, when a test
+  /// sets it.
+  List<Map<String, dynamic>>? storyRecords;
+
   @override
   Future<List<dynamic>> getStories(String accessToken) async {
+    if (storyRecords case final records?) return records;
     final now = DateTime.now().toUtc();
     Map<String, dynamic> story(String handle, int index, String caption, {required bool viewed}) => {
           'id': 'story-$handle-$index',
@@ -394,8 +467,14 @@ class LayoutRelayClient extends FakeRelayClient {
     ];
   }
 
+  /// The stories this device told the relay it viewed, in order.
+  final List<String> viewedStories = [];
+
   @override
-  Future<Map<String, dynamic>> viewStory(String accessToken, String storyId) async => {'storyId': storyId};
+  Future<Map<String, dynamic>> viewStory(String accessToken, String storyId) async {
+    viewedStories.add(storyId);
+    return {'storyId': storyId};
+  }
 
   @override
   Future<Map<String, dynamic>> listDevices(String accessToken) async {
@@ -424,12 +503,14 @@ class LayoutRelayClient extends FakeRelayClient {
           'lastSyncAt': DateTime.utc(2026, 3, 30).toIso8601String(),
           'lastTrustedActivityAt': DateTime.utc(2026, 4, 2).toIso8601String(),
         };
+    // The laptop has gone quiet, until a test revokes it.
+    final laptopRevoked = revokedDevices.contains('dev-laptop');
     return {
       'activeDeviceId': me.deviceId,
       'items': [
         device(me.deviceId, _deviceNames[0], 'android', 'current', trustedAt: DateTime.utc(2026, 4, 1, 8)),
-        device('dev-laptop', _deviceNames[1], 'macos', 'stale',
-            trustedAt: DateTime.utc(2026, 3, 20, 8), joinedFrom: _deviceNames[0]),
+        device('dev-laptop', _deviceNames[1], 'macos', laptopRevoked ? 'revoked' : 'stale',
+            trustedAt: DateTime.utc(2026, 3, 20, 8), joinedFrom: _deviceNames[0], revoked: laptopRevoked),
         device('dev-old', _deviceNames[2], 'ios', 'revoked', trustedAt: DateTime.utc(2026, 3, 10, 8), revoked: true),
       ],
     };

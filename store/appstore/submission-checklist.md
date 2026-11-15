@@ -214,7 +214,7 @@ In App Store Connect export-compliance flow (or at TestFlight upload):
       email and no real name, and has no recovery, so reviewers cannot "log in." The notes must explain:
       - No demo credentials are needed and none exist — there is **no password login**.
       - How an account is created on **first launch**: privacy notice, product rules, **Create
-        Account**, **Choose Handle**; the identity keys are created locally (no phone number,
+        account**, **Choose handle**; the identity keys are created locally (no phone number,
         no email, no real name).
       - How to test **1:1 and group messaging** using **two devices/simulators** (start a
         conversation with the other device's handle and compare safety numbers).

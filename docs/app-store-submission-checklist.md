@@ -54,7 +54,7 @@ cause a review rejection are already handled.
   App Review notes: state that it is an intentional privacy design, and make the
   in-app onboarding warning explicit and unmissable.
 - **No phone number / no email.** Explain the device-bound identity model
-  (Create Account, Choose Handle, keys created on the device) in review notes
+  (Create account, Choose handle, keys created on the device) in review notes
   so it isn't mistaken for a broken sign-up flow.
 - **Encryption.** With export compliance declared and filed, this should pass;
   keep the self-classification paperwork on hand.

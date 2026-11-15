@@ -50,6 +50,41 @@ void main() {
     expect(shouldUseWideConversationLayout(1440), isTrue);
   });
 
+  // The status line of the list: parts separated by a dot, which is drawn
+  // only between two parts of one line.
+  group('packPartsIntoLines', () {
+    test('keeps every part on one line while they fit, separators counted', () {
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 280), [
+        [0, 1, 2],
+      ]);
+    });
+
+    test('breaks between parts, so no line ends or starts with a separator', () {
+      // 80 + 20 + 100 fits 279; the third part with its separator does not.
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 279), [
+        [0, 1],
+        [2],
+      ]);
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 199), [
+        [0],
+        [1, 2],
+      ]);
+      expect(packPartsIntoLines([80, 100, 60], separatorWidth: 20, maxWidth: 100), [
+        [0],
+        [1],
+        [2],
+      ]);
+    });
+
+    test('a part wider than a line gets a line to itself, and nothing gives none', () {
+      expect(packPartsIntoLines([300, 40, 40], separatorWidth: 10, maxWidth: 120), [
+        [0],
+        [1, 2],
+      ]);
+      expect(packPartsIntoLines([], separatorWidth: 10, maxWidth: 120), isEmpty);
+    });
+  });
+
   test('issueMessageNavigationTarget emits a fresh replayable request id', () {
     final first = issueMessageNavigationTarget(
       messageId: 'msg-42',

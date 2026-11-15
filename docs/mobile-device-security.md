@@ -73,7 +73,7 @@ When VEIL leaves the foreground:
 - Android sets a secure window flag to block screenshots and recent-app thumbnails
 - iOS installs a native privacy shield over the scene before app-switcher snapshots
 - the Flutter UI is also obscured for app-switcher privacy
-- the local barrier is re-armed
+- the app lock is re-armed
 - the privacy shield remains long enough to reduce resume-time content flashes
 
 This protects preview surfaces without claiming universal screenshot blocking across all platforms. iOS public APIs still do not offer full screenshot blocking.

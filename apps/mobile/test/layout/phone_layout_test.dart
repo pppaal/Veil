@@ -19,8 +19,8 @@ import 'support/screen_cases.dart';
 //   unbounded constraints, a build that throws);
 // - when the messages of a chat or the rows of the conversation list get
 //   less than 45% of the screen height;
-// - when a control is smaller than 44x44 (on every screen but the one
-//   listed in tapTargetExemptScreens);
+// - when a control is smaller than 44x44 (on every screen: none is left in
+//   tapTargetExemptScreens);
 // - when the action of a chat's warning is not wholly on screen where a tap
 //   reaches it;
 // - when the control a screen is for (the first input or primary button its
@@ -36,7 +36,8 @@ import 'support/screen_cases.dart';
 //
 // Cases known to fail are listed in known_phone_layout_failures.dart, and
 // the texts screens are known to show in the other language in
-// known_other_language_text.dart. The gate only lets both lists shrink.
+// known_other_language_text.dart. The gate only lets both lists shrink, and
+// both are empty: a test below keeps them so.
 //
 //   flutter test test/layout
 //
@@ -123,18 +124,32 @@ void main() {
     }
   });
 
+  // Every case fits and every screen speaks the language of its run. A
+  // screen that stops doing so is fixed, not listed: the lists exist to say
+  // what was known to fail while it was being fixed, and nothing is.
+  test('nothing is listed as known to fail', () {
+    expect(knownPhoneLayoutFailures, isEmpty, reason: 'fix the screen instead of listing its case');
+    expect(knownOtherLanguageText, isEmpty, reason: 'move the text to app_en.arb and app_ko.arb instead of listing it');
+  });
+
   // The list names texts, not a number of them: a screen cannot trade a
   // listed text for a new one, and only a run of every case can tell that a
   // listed text is gone.
   test('the language ledger fails a text that is not listed, and a listed one that is gone', () {
-    const file = 'start_group_screen.dart';
+    // A list of the test's own, for whichever screen comes first: the real
+    // list is empty, and what the ledger does with a listed text must still
+    // hold on the day a text is listed again.
+    final file = allCases.first.file;
     final cases = [for (final screenCase in allCases) if (screenCase.file == file) screenCase];
     expect(cases, isNotEmpty);
-    final listed = knownOtherLanguageText[file]!['ko']!;
+    const listed = {'Listed English label', 'Another listed label'};
+    final list = {
+      file: {'ko': listed},
+    };
 
     LayoutFindings showing(Set<String> texts) => LayoutFindings()..otherLanguageTexts.addAll(texts);
     _LanguageLedger renderAll(Set<String> koTexts) {
-      final ledger = _LanguageLedger();
+      final ledger = _LanguageLedger(list);
       for (final screenCase in cases) {
         for (final size in screenCase.sizes) {
           for (final locale in _locales) {
@@ -151,14 +166,14 @@ void main() {
 
     // One more text than listed fails the case that shows it, at once.
     final more = showing({...listed, 'Hard-coded English'});
-    _LanguageLedger().record(cases.first, cases.first.sizes.first, 'ko', more);
+    _LanguageLedger(list).record(cases.first, cases.first.sizes.first, 'ko', more);
     expect(more.defects, {LayoutDefect.otherLanguage});
     expect(more.describe(), contains('not Korean: "Hard-coded English"'));
     expect(more.describe(), isNot(contains(listed.first)));
 
     // A listed text swapped for another: the new one fails its case, and
     // the full run says the old one is gone.
-    final swapped = showing({'Another English text'});
+    final swapped = showing({'Unlisted English text'});
     final ledger = renderAll(const {});
     ledger.record(cases.first, cases.first.sizes.first, 'ko', swapped);
     expect(swapped.defects, {LayoutDefect.otherLanguage});
@@ -169,14 +184,21 @@ void main() {
 
     // A run that left some of the screen's renders out has not seen all of
     // its texts, and says nothing about what is gone.
-    final partial = _LanguageLedger()..record(cases.first, cases.first.sizes.first, 'ko', showing(const {}));
+    final partial = _LanguageLedger(list)..record(cases.first, cases.first.sizes.first, 'ko', showing(const {}));
     expect(partial.problems().where((problem) => problem.contains(file)), isEmpty);
 
     // On a screen with no entry, any such text is a defect.
-    final unlisted = allCases.firstWhere((screenCase) => !knownOtherLanguageText.containsKey(screenCase.file));
+    final unlisted = allCases.firstWhere((screenCase) => screenCase.file != file);
     final findings = showing({'보내기'});
-    _LanguageLedger().record(unlisted, unlisted.sizes.first, 'en', findings);
+    _LanguageLedger(list).record(unlisted, unlisted.sizes.first, 'en', findings);
     expect(findings.describe(), contains('not English: "보내기"'));
+
+    // So it is on every screen under the gate's own list, which has none:
+    // the text a moment ago listed for this screen fails it.
+    final real = showing({listed.first});
+    _LanguageLedger().record(cases.first, cases.first.sizes.first, 'ko', real);
+    expect(real.defects, {LayoutDefect.otherLanguage});
+    expect(_LanguageLedger().problems(), isEmpty);
   });
 
   // The framework's own tap target check passes over a control that
@@ -401,17 +423,24 @@ void _expectAsListed(LayoutFindings findings, KnownPhoneLayoutFailure? known, St
 
 /// What every screen showed in the other language, over all of its cases.
 class _LanguageLedger {
+  /// Reads the gate's list, knownOtherLanguageText, unless a test of the
+  /// ledger itself brings its own.
+  _LanguageLedger([this._listed = knownOtherLanguageText]);
+
+  // screen file -> locale -> the texts the screen is known to show
+  final Map<String, Map<String, Set<String>>> _listed;
+
   // screen file -> locale -> the listed texts that were shown
   final Map<String, Map<String, Set<String>>> _shown = {};
   final Set<String> _rendered = {};
 
   /// Takes the case's texts in the other language. One that is not listed
-  /// for the case's screen in knownOtherLanguageText fails the case on the
-  /// spot; the listed ones are held until the end of the run, which says
-  /// which of them no case showed any more.
+  /// for the case's screen fails the case on the spot; the listed ones are
+  /// held until the end of the run, which says which of them no case showed
+  /// any more.
   void record(ScreenCase screenCase, PhoneSize size, String locale, LayoutFindings findings) {
     _rendered.add('${screenCase.id} $size $locale');
-    final listed = knownOtherLanguageText[screenCase.file]?[locale] ?? const <String>{};
+    final listed = _listed[screenCase.file]?[locale] ?? const <String>{};
     for (final text in findings.otherLanguageTexts) {
       if (listed.contains(text)) {
         _shown.putIfAbsent(screenCase.file, () => {}).putIfAbsent(locale, () => {}).add(text);
@@ -427,7 +456,7 @@ class _LanguageLedger {
 
   List<String> problems() {
     final problems = <String>[];
-    for (final MapEntry(key: file, value: byLocale) in knownOtherLanguageText.entries) {
+    for (final MapEntry(key: file, value: byLocale) in _listed.entries) {
       // A run that left out some of the screen's cases (--name) has not
       // seen all of its texts, and cannot say one is gone.
       final complete = allCases.where((screenCase) => screenCase.file == file).every((screenCase) =>

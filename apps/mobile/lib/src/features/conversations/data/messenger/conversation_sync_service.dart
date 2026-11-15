@@ -243,6 +243,9 @@ class ConversationSyncService {
     }
     await _announceMemberChanges(stillCurrent);
     await _disappearing.reconcile();
+    // What the list names that this device never loaded is fetched now, so
+    // each row can say what its last message is without its chat being opened.
+    unawaited(_latest.loadUnheld(syncConversation, now: _apiClient.serverClock.boundedNow(), stillWanted: stillCurrent));
   }
 
   // Finds which listed 1:1 conversations are held for their handle (see

@@ -10,6 +10,7 @@ import '../../../core/crypto/crypto_engine.dart';
 import '../../../core/security/platform_security_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
@@ -17,13 +18,14 @@ import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'active_conversation_binding.dart';
 import 'chat_composer_bar.dart';
-import 'chat_header.dart';
 import 'chat_message_list.dart';
 import 'chat_message_search.dart';
 import 'chat_phone_layout.dart';
 import 'chat_room_dialogs.dart';
+import 'chat_room_labels.dart';
 import 'chat_status_banners.dart';
 import 'disappearing_timer_sheet.dart';
+import 'group_sender_names.dart';
 import 'message_expiration.dart';
 import 'navigation_target_jump.dart';
 import 'presence_selector.dart';
@@ -31,15 +33,11 @@ import 'typing_indicator.dart';
 
 // These were declared here before the screen was split up.
 export 'chat_room_labels.dart'
-    show
-        HistoryWindowBannerSpec,
-        formatRetryCountdown,
-        historyWindowBannerSpec,
-        historyWindowLabel,
-        messageBubbleSemanticsLabel,
-        messageDeliveryLabel,
-        messageDeliveryTone;
+    show formatRetryCountdown, messageBubbleSemanticsLabel, messageDeliveryLabel, messageDeliveryTone;
 
+/// A chat. On a phone it is a screen of its own; [embedded], it is the
+/// second pane of the wide layout, beside the conversation list. Both show
+/// the same thing (see ChatPhoneScaffold).
 class ChatRoomScreen extends ConsumerStatefulWidget {
   const ChatRoomScreen({
     super.key,
@@ -61,7 +59,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         WidgetsBindingObserver,
         ActiveConversationBinding,
         ChatMessageSearch,
-        NavigationTargetJump {
+        NavigationTargetJump,
+        GroupSenderNames {
   final _composerFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _sentAtFormat = DateFormat('HH:mm');
@@ -73,6 +72,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   // whenever a question about who the peer is has been settled.
   bool _peerVerified = false;
   bool _peerInQuestion = false;
+  // Whether the last fetch of this chat's history failed.
+  bool _loadFailed = false;
 
   @override
   String get conversationId => widget.conversationId;
@@ -126,6 +127,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       releaseActiveConversation(oldWidget.conversationId);
       resetNavigationTarget();
       resetSearch();
+      _loadFailed = false;
       scheduleMicrotask(() => _loadConversationState());
     }
     if (oldWidget.navigationTarget?.requestId != widget.navigationTarget?.requestId ||
@@ -193,21 +195,26 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     _peerInQuestion = peerInQuestion;
     final peerVerified = _peerVerified && !peerInQuestion;
 
+    final isDirect = conversation?.type == ConversationType.direct;
+    syncGroupSenderNames(conversation, messages);
+    // With nothing loaded, the message area says why and offers to retry:
+    // one statement of the error, not a banner above it as well.
+    final loadFailedShown = _loadFailed && messages.isEmpty;
+    // The note about a dropped relay link is not why a load failed.
+    final error = controller.errorIsRelayInterruption ? null : controller.errorMessage;
+
     final banners = ChatStatusBanners(
-      compact: !widget.embedded,
       controller: controller,
       conversationId: widget.conversationId,
       conversation: conversation,
       messages: messages,
-      hasMoreHistory: hasMoreHistory,
-      isLoadingHistory: isLoadingHistory,
-      peerVerified: peerVerified,
       hasSearchQuery: hasSearchQuery,
       searching: isSearchingMessages,
       searchHitCount: filteredMessages.length,
       onReviewIdentity: _openSafetyNumbers,
       onAcknowledgeHold: _acknowledgePeerAccount,
       onRetryFailed: () => ref.read(messengerControllerProvider).retryPendingMessages(widget.conversationId),
+      errorShownBelow: loadFailedShown,
     );
     final messageList = ChatMessageList(
       conversationId: widget.conversationId,
@@ -221,70 +228,49 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       messageKeys: messageKeys,
       highlightedMessageId: highlightedMessageId,
       sentAtFormat: _sentAtFormat,
-      onStartMessage: () => _composerFocusNode.requestFocus(),
+      loadFailed: _loadFailed,
+      loadFailedReason: error == null ? null : veilErrorText(l10n, error),
+      onRetryLoad: () => unawaited(_loadConversationState()),
+      onVerifyPeer: isDirect && !peerVerified ? _openSafetyNumbers : null,
+      // A group message this device can attribute to none of the members
+      // says so, once the members' devices have been read.
+      senderNameOf: isDirect
+          ? null
+          : (message) => groupSenderName(message) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
       onResolveAttachment: _showAttachmentTicket,
       onReact: _showReactionPicker,
-      padding: widget.embedded
-          ? EdgeInsets.zero
-          : const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
+      padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
     );
     final typing = PresenceSelector<String?>(
       presence: controller.presenceTyping,
       select: (presence) => presence.typingHandleFor(widget.conversationId),
-      builder: (context, handle) => TypingIndicator(handle: handle),
+      builder: (context, handle) => TypingIndicator(handle: handle, named: !isDirect),
     );
-    final composer = ChatComposerBar(
-      conversationId: widget.conversationId,
-      focusNode: _composerFocusNode,
+
+    // The same chat on a phone and in the wide layout's second pane.
+    return ChatPhoneScaffold(
+      pane: widget.embedded,
+      conversation: conversation,
+      title: conversation == null
+          ? l10n.chatTitleFallback
+          : conversationTitle(l10n, conversation, localUserId: controller.localUserId),
+      presence: controller.presenceTyping,
+      peerVerified: peerVerified,
       messageTtl: _messageTtl,
-      busy: controller.isBusy,
-      onAttach: widget.embedded || !kAttachmentsEnabled
-          ? null
-          : () => context.push('/attachment/${widget.conversationId}'),
-    );
-
-    // A phone shows the conversation first: the bar carries what the header
-    // cards carry in the wide layout.
-    if (!widget.embedded) {
-      return ChatPhoneScaffold(
-        conversation: conversation,
-        presence: controller.presenceTyping,
-        peerVerified: peerVerified,
+      searchController: searchController,
+      searching: isSearchingMessages,
+      onPickTimer: _pickDisappearTtl,
+      onOpenSafetyNumbers: _openSafetyNumbers,
+      banners: banners,
+      messages: messageList,
+      typing: typing,
+      composer: ChatComposerBar(
+        conversationId: widget.conversationId,
+        focusNode: _composerFocusNode,
         messageTtl: _messageTtl,
-        searchController: searchController,
-        searching: isSearchingMessages,
-        onPickTimer: _pickDisappearTtl,
-        onOpenSafetyNumbers: _openSafetyNumbers,
-        banners: banners,
-        messages: messageList,
-        typing: typing,
-        composer: composer,
-      );
-    }
-
-    final peerUserId = conversation?.recipientBundle.userId;
-    return Column(
-      children: [
-        PresenceSelector<bool>(
-          presence: controller.presenceTyping,
-          select: (presence) => peerUserId != null && presence.isUserOnline(peerUserId),
-          builder: (context, peerOnline) => ChatHeader(
-            title: conversation?.peerDisplayName ?? '@${conversation?.peerHandle ?? 'unknown'}',
-            searchController: searchController,
-            searching: isSearchingMessages,
-            ttlLabel: disappearingTimerLabel(l10n, _messageTtl),
-            ttlActive: _messageTtl != null,
-            onTapTtl: _pickDisappearTtl,
-            peerOnline: peerOnline,
-          ),
-        ),
-        banners,
-        const SizedBox(height: VeilSpace.md),
-        Expanded(child: messageList),
-        typing,
-        const SizedBox(height: VeilSpace.md),
-        composer,
-      ],
+        busy: controller.isBusy,
+        onAttach: kAttachmentsEnabled ? () => context.push('/attachment/${widget.conversationId}') : null,
+      ),
     );
   }
 
@@ -300,7 +286,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final controller = ref.read(messengerControllerProvider);
     syncActiveConversation();
     unawaited(_loadPeerVerified());
-    await controller.loadConversationMessages(widget.conversationId);
+    final conversationId = widget.conversationId;
+    await controller.loadConversationMessages(conversationId);
+    // The load reports its failure as the messenger's error line; with
+    // nothing on screen yet, the message area says so and offers to retry.
+    final failed = controller.errorMessage != null && !controller.errorIsRelayInterruption;
+    if (mounted && conversationId == widget.conversationId && failed != _loadFailed) {
+      setState(() => _loadFailed = failed);
+    }
     await _markLatestRemoteMessageRead(controller);
     if (hasSearchQuery) {
       await runSearch();

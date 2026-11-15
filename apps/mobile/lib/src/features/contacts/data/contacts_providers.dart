@@ -59,11 +59,16 @@ class ContactsController extends ChangeNotifier {
   List<ContactEntry> _contacts = const [];
   bool _loading = false;
   bool _mutating = false;
+  bool _loadFailed = false;
   String? _errorMessage;
 
   List<ContactEntry> get contacts => _contacts;
   bool get isLoading => _loading;
   bool get isMutating => _mutating;
+
+  /// Whether the last load of the list from the relay failed. What is
+  /// shown then is the list as it was before.
+  bool get loadFailed => _loadFailed;
   String? get errorMessage => _errorMessage;
 
   String? get _accessToken => ref.read(appSessionProvider).accessToken;
@@ -85,7 +90,9 @@ class ContactsController extends ChangeNotifier {
         for (final json in raw.whereType<Map<String, dynamic>>())
           ContactEntry.fromJson(json, nickname: labels[json['handle']]),
       ];
+      _loadFailed = false;
     } catch (error) {
+      _loadFailed = true;
       _errorMessage = formatUserFacingError(error);
     } finally {
       _loading = false;
@@ -134,14 +141,25 @@ class ContactsController extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>?> fetchPublicProfile(String handle) async {
-    final token = _accessToken;
-    if (token == null) return null;
-    try {
-      return await apiClient.getPublicProfile(token, handle);
-    } catch (_) {
-      return null;
-    }
+  /// Changes the name this device calls a contact by; an empty one clears
+  /// it. The relay never learns it.
+  Future<void> renameContact(String handle, String nickname) async {
+    final label = nickname.trim();
+    await nicknames.write(handle, label);
+    _contacts = [
+      for (final contact in _contacts)
+        if (contact.handle == handle)
+          ContactEntry(
+            handle: contact.handle,
+            displayName: contact.displayName,
+            nickname: label.isEmpty ? null : label,
+            avatarPath: contact.avatarPath,
+            addedAt: contact.addedAt,
+          )
+        else
+          contact,
+    ];
+    notifyListeners();
   }
 
   void clearError() {

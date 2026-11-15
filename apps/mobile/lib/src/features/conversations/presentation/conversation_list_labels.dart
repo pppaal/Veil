@@ -3,12 +3,29 @@ import 'package:intl/intl.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../chat/presentation/chat_room_labels.dart';
 import '../../chat/presentation/message_expiration.dart';
 import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
 
-// The words the conversation list shows for a conversation's last message
-// and for a message found by the local search.
+// The words the conversation list shows for a conversation, for its last
+// message, and for a message found by the local search.
+
+/// The name on a conversation's row: a 1:1 by its peer's name or handle (the
+/// row draws the handle's first letter as the avatar, so without its @), a
+/// group as the chat titles it (see conversationTitle).
+String conversationRowTitle(AppLocalizations l10n, ConversationPreview item, {required String? localUserId}) =>
+    item.type == ConversationType.direct
+        ? item.peerDisplayName ?? item.peerHandle
+        : conversationTitle(l10n, item, localUserId: localUserId);
+
+/// What a screen reader calls the row.
+String conversationRowSemantics(AppLocalizations l10n, ConversationPreview item, {required String? localUserId}) {
+  final title = conversationRowTitle(l10n, item, localUserId: localUserId);
+  return item.type == ConversationType.direct
+      ? l10n.conversationsRowSemantics(title)
+      : l10n.conversationsGroupRowSemantics(title);
+}
 
 /// The line under a conversation's name: what waits to be sent, or the last
 /// message. Only a text this device decrypted is quoted; every other kind is
@@ -19,9 +36,7 @@ String conversationPreviewLine(
   VeilMessengerController controller,
 ) {
   final pendingCount = controller.pendingCountFor(item.id);
-  if (pendingCount > 0) {
-    return pendingCount == 1 ? l10n.conversationsQueuedOne : l10n.conversationsQueuedMany(pendingCount);
-  }
+  if (pendingCount > 0) return l10n.conversationsQueued(pendingCount);
 
   final envelope = item.lastEnvelope;
   if (envelope == null) {
@@ -85,10 +100,10 @@ IconData messageKindIcon(MessageKind kind) {
   };
 }
 
-/// "You | Text", the sender and kind of a message the search found.
+/// "You · Text", the sender and kind of a message the search found.
 String messageResultOrigin(AppLocalizations l10n, MessageSearchResult result) {
   final sender = result.isMine ? l10n.conversationsResultFromYou : l10n.conversationsResultFromPeer;
-  return '$sender | ${messageKindLabel(l10n, result.messageKind)}';
+  return '$sender · ${messageKindLabel(l10n, result.messageKind)}';
 }
 
 /// The time of a message sent today, the day of an older one.

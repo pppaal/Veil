@@ -31,7 +31,11 @@ class OneTimeLinkService {
   /// Encrypts [secret] on-device, stores only the ciphertext server-side, and
   /// returns the shareable link. The decryption key rides in the fragment and
   /// is never sent to the server.
-  Future<String> createLink(String secret, {String? passphrase}) async {
+  Future<String> createLink(String secret, {String? passphrase}) async =>
+      (await create(secret, passphrase: passphrase)).url;
+
+  /// [createLink], with the time the relay deletes the link unopened.
+  Future<CreatedOneTimeLink> create(String secret, {String? passphrase}) async {
     final sealed = await OneTimeLink.seal(secret, passphrase: passphrase);
     final http.Response response;
     try {
@@ -52,9 +56,27 @@ class OneTimeLinkService {
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Link creation failed (${response.statusCode}).');
     }
-    final id = (jsonDecode(response.body) as Map<String, dynamic>)['id'] as String;
+    final created = jsonDecode(response.body) as Map<String, dynamic>;
+    final id = created['id'] as String;
     // The web viewer is served at /demo/s.html on the API host (no /v1 prefix).
     final webBase = _apiBaseUrl.replaceFirst(RegExp(r'/v1/?$'), '');
-    return '$webBase/demo/s.html#$id.${sealed.fragment}';
+    return CreatedOneTimeLink(
+      url: '$webBase/demo/s.html#$id.${sealed.fragment}',
+      passphraseLocked: sealed.passphraseLocked,
+      expiresAt: DateTime.tryParse(created['expiresAt'] as String? ?? ''),
+    );
   }
+}
+
+/// A link the relay stored: whether it was sealed with a passphrase (the
+/// key is then not in [url]), and when the relay deletes it if nobody opens
+/// it (null when the relay did not say).
+class CreatedOneTimeLink {
+  const CreatedOneTimeLink({required this.url, required this.passphraseLocked, this.expiresAt});
+
+  final String url;
+
+  /// How this link was sealed, not how the form is set now.
+  final bool passphraseLocked;
+  final DateTime? expiresAt;
 }

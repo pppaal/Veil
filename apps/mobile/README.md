@@ -20,15 +20,15 @@ flutter run \
 A feature this build cannot do end to end is switched off by a constant next
 to it, `lib/src/features/<name>/<name>_feature.dart`:
 
-| Constant | What is missing | What it hides |
+| Constant | What is missing, and what its screen shows instead | What it hides |
 | --- | --- | --- |
-| `kCallsEnabled` | no WebRTC: the call screen only plays timers | the Calls tab, `/calls`, `/call/:id` |
-| `kAttachmentsEnabled` | no file picker; a received file stops at its download ticket | the composer's attach button, `/attachment/:id`, the bubble's download button (a line says this version cannot open it), the "attachments encrypted" pill, the clipboard row of the security status |
-| `kMediaPickerEnabled` | no gallery or camera plugin | `/media/:id` |
-| `kVoiceMessagesEnabled` | no audio plugin | `/voice/:id` |
-| `kStickerPickerEnabled` | picking does nothing | `/stickers/:id` |
-| `kAssistantEnabled` | a scripted preview | `/ai-chat` |
-| `kStoriesEnabled` | stories are not end-to-end encrypted | the Stories tab, `/stories`, `/story-viewer/:id` |
+| `kCallsEnabled` | no WebRTC. The call screen says no call can be made and leaves; the history lists the relay's call records, and a row opens that chat when this device has it | the Calls tab, `/calls`, `/call/:id` |
+| `kAttachmentsEnabled` | no file picker; a received file stops at its download ticket. The attachment screen says what it sends instead: a 2 KB placeholder under a typed name | the composer's attach button, `/attachment/:id`, the bubble's download button (a line says this version cannot open it), the "attachments encrypted" pill, the clipboard row of the security status |
+| `kMediaPickerEnabled` | no gallery or camera plugin. The screen says so and leaves | `/media/:id` |
+| `kVoiceMessagesEnabled` | no audio plugin. The screen says so and leaves | `/voice/:id` |
+| `kStickerPickerEnabled` | nothing in the chat opens it. The picker works: emoji by group, the picked one handed back to whoever opened it. No stickers, no GIFs | `/stickers/:id` |
+| `kAssistantEnabled` | no model. The screen offers four fixed questions and the answer prepared for each, and says so | `/ai-chat` |
+| `kStoriesEnabled` | nothing seals or opens a story envelope. The feed lists who has a story up and when; the viewer says it cannot open one; nothing is marked as viewed | the Stories tab, `/stories`, `/story-viewer/:id` |
 
 While a constant is false the route table (`lib/src/app/router/app_router.dart`)
 leaves the feature's routes out and nothing in the app leads to it. A
@@ -37,10 +37,21 @@ conversation list instead of the router's "Page Not Found". The
 screens still compile, their tests still run, and the layout gate still
 renders them, through the test-only routes in
 `test/layout/support/screen_cases.dart` (`layoutOnlyRoutes`). To switch a
-feature on: make it work, move its strings to the ARB files, flip the
-constant, and take its lines off the allow-lists below. The bottom bar is
-Chats, Contacts, Settings, with the tab of a switched-on feature between
-Contacts and Settings.
+feature on: make it work, then flip the constant. Its strings are in the
+ARB files already and it has no line on the allow-lists below. The bottom
+bar is Chats, Contacts, Settings, with the tab of a switched-on feature
+between Contacts and Settings.
+
+A switched-off feature's screen shows only what the build can do. Where it
+can do nothing (a call, the media picker, the voice recorder, the story
+viewer) the screen is `VeilUnavailable`: what is missing, that nothing
+happened, and one button that leaves. It draws no state of the missing
+feature: no call timer, no placeholder grid, no recording, no reply that
+pretends to be thought up. Switching such a feature on means building it,
+not flipping its constant. The layout gate holds these screens like any
+other: the emoji grid and the rows of the call history and of the stories
+to 45% of the screen height, every emoji cell to 44x44, and the one button
+of an unavailable screen to the first screenful.
 
 ## Layout gate
 
@@ -57,10 +68,10 @@ legacy frame, search results). A case fails
 - when the messages of a chat, the rows of the conversation list or the
   rows of the contacts get less than 45% of the screen height (96 px under
   the keyboard or warnings),
-- when a control is smaller than 44x44, on every screen but the sticker
-  picker (the one exception, named in `screen_cases.dart`). A control at an
-  edge of the screen is measured like any other; only a modal's scrim is
-  left out,
+- when a control is smaller than 44x44, on every screen (no screen is
+  exempt: `tapTargetExemptScreens` in `screen_cases.dart` is empty). A
+  control at an edge of the screen is measured like any other; only a
+  modal's scrim is left out,
 - when a chat does not show the action of each of its warnings whole, where
   a tap reaches it. A button cut off by the area it scrolls in is no layout
   error, so the gate looks for it,
@@ -98,12 +109,15 @@ flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=S
 screen. A new screen needs a case in `test/layout/support/screen_cases.dart`,
 and a new sheet or state of an existing screen deserves one.
 
-What fails today is listed, and the lists only shrink: the gate fails for a
-listed case that passes, or fails another way, as it does for an unlisted
-one that fails.
+Nothing is listed as failing today. The gate has two lists for what is known
+to fail, and both are empty; a test of the gate keeps them empty, so a
+screen that stops fitting or shows text in the other language is fixed, not
+listed.
 
 - `test/layout/known_phone_layout_failures.dart`: one line per case, with
-  the sizes and languages it fails at and the defects it shows.
+  the sizes and languages it fails at and the defects it shows. The gate
+  fails for a listed case that passes, or fails another way, as it does for
+  an unlisted one that fails.
 - `test/layout/known_other_language_text.dart`: per screen, the texts it
   shows in the other language. A text that is not listed fails the case
   that shows it; a listed text no case shows any more fails the full run.
@@ -124,7 +138,15 @@ script, by file and literal:
 
 - `KNOWN_HARDCODED`: the copy that is still hard-coded today. It only
   shrinks: an unlisted literal fails, and so does a listed one the file no
-  longer holds.
+  longer holds. What is left is the thirteen English sentences of
+  `core/errors/user_facing_error.dart`: controllers and logs have no locale,
+  so `formatUserFacingError` keeps them, and a screen shows such an error
+  through `veilErrorText` (`shared/presentation/veil_error_text.dart`), which
+  finds the sentence's code and reads its translation from the ARB files
+  (`test/phone/error_language_phone_test.dart`). A failure without a code is
+  shown as it came: a relay's own words, and the English of a failure the
+  data layer words itself and the formatter does not know. The script does
+  not read the data layer, so those sentences are on no list.
 - `NOT_COPY`: what the gate takes for text and nobody translates (an example
   handle in a hint, a file name), each with its reason. This is the way out
   for a false positive: add the literal with why it is not copy, rather than
@@ -136,12 +158,48 @@ script, by file and literal:
 
 Under 1120 px the conversation list is the whole screen and a chat opens on
 top of it (`conversation_list_phone.dart`, `chat_phone_layout.dart`): content
-first, with the bar carrying what the header cards carry in the wide,
-two-pane layout (`conversation_list_pane.dart`, `chat_header.dart`). Other
-screens tighten under 600 px (`context.veilPhoneWidth`): hero panels shrink,
-decorative stat tiles step aside, and the field a screen is for comes before
-its explanations. `test/phone` holds the behaviour that moved with the
-layouts (search, timer, safety number, back).
+first, with the bar carrying the safety number, the search and the
+disappearing timer. From 1120 px the same list and the same chat sit side by
+side, each under its own bar (`ChatPaneBar` in `chat_bar.dart`): the list in
+a 380 px pane with the open conversation's row marked, the chat in the rest,
+its messages and composer at most 760 px wide. Neither pane puts a hero
+card, stat tiles or pills above its rows or messages. Other screens tighten
+under 600 px (`context.veilPhoneWidth`): hero panels shrink, decorative stat
+tiles step aside, and the field a screen is for comes before its
+explanations. `test/phone` holds the behaviour of both layouts (search,
+timer, safety number, back, the panes).
+
+A row of the list quotes its conversation's last message when that is a
+text this device decrypted, read from the device's own content store; every
+other kind is named by what it is. After the list is fetched, the messenger
+loads the history of each conversation it names and never loaded
+(`DecryptedMessageCache.loadUnheld`), so a message that arrived while the
+app was closed is quoted without its chat being opened. Nothing is marked
+read for a preview, an expired message is not quoted, and the list is not
+built behind the app lock.
+
+The screens around the account (consent, onboarding warning, create account,
+choose handle, app lock, device transfer, safety numbers, security status)
+open on `VeilScreenIntro` on a phone: a label, one headline and at most a
+sentence, with no panel around them, and then the field or button the screen
+is for. A no-recovery notice stands once, beside the control that decides.
+The consent and the onboarding warning keep their button in a bar under the
+text that scrolls (`OnboardingActionScaffold`). Device transfer is three
+numbered steps per device (`TransferStep`), of which only the step in hand
+shows its controls; a code to carry to the other device sits in a
+`TransferCodeBox`, and what approving or finishing leads to is said above
+the button that does it. A step's state pill and its small action share the
+title's line and never take width from the words under it. What an action
+came to (`TransferStepResult`) is said in the step that was acted on and
+scrolls itself into view. A session or claim that ran out puts the first
+step back in hand on its side: the claim's window is the session's, so the
+new device can neither register again nor finish on the code it holds, and
+the step that says so is the one that takes the new code
+(`test/phone/device_transfer_expired_claim_phone_test.dart`). A safety number comes before how to compare it and
+the button that records the comparison; a change to review comes before
+everything else. The security status names what needs a look before its
+rows, which are grouped (`SecuritySignalGroup`).
+`test/phone/identity_screens_phone_test.dart` holds that behaviour.
 
 A chat's warnings are banners while they fit above the messages, which keep
 96 px. When they do not (a small phone with the keyboard up), each warning

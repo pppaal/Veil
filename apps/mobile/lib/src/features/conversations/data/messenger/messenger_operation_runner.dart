@@ -21,6 +21,10 @@ class MessengerOperationRunner {
 
   String? get errorMessage => _errorMessage;
 
+  /// Whether [errorMessage] is the note that the relay link dropped while
+  /// sends were queued, which a screen words in the user's language.
+  bool get showsRelayInterruption => _errorMessage == _relayInterruptedMessage;
+
   /// Runs a user action: busy while it runs, its failure shown afterwards.
   Future<void> run(Future<void> Function() action) async {
     _isBusy = true;

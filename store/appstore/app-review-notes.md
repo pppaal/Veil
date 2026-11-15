@@ -20,7 +20,7 @@ Key behaviors a reviewer should expect:
 - **No phone number, no email, no real name.** There is no password, email or
   SMS sign-up, and no OTP verification. On first launch the app shows a privacy
   notice and its product rules, then the user creates an account bound to the
-  device (**Create Account**) and picks a handle (**Choose Handle**). The app
+  device (**Create account**) and picks a handle (**Choose handle**). The app
   generates the cryptographic identity locally on the device and registers only
   its public keys and the handle.
 - **End-to-end encryption.** Every message is encrypted on-device using a Double

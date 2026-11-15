@@ -119,6 +119,28 @@ void main() {
     expect(find.text('Unverified'), findsOneWidget);
   });
 
+  // The mark says what the chat's says: the key this device encrypts to was
+  // compared. The directory serving another one is a warning under it, not
+  // a second, contradicting answer beside the "Verified on" card.
+  testWidgets('a verified contact stays verified while the directory serves another key, under the warning',
+      (tester) async {
+    final fixture = _Fixture();
+    await fixture.setUp(tester);
+    await tester.runAsync(() => fixture.trust.markVerified('user-selene', 'dev-selene', fixture.pinnedKey));
+
+    await fixture.pumpScreen(tester, until: find.text('SAFETY NUMBER'));
+
+    expect(find.text('The key server lists a different key'), findsOneWidget);
+    expect(await tester.runAsync(() => fixture.controller.isUserVerified('user-selene')), isTrue);
+    expect(find.text('Verified'), findsOneWidget);
+    expect(find.text('Unverified'), findsNothing);
+    expect(find.textContaining('Verified on'), findsOneWidget);
+    expect(find.text('Mark as verified'), findsNothing);
+    final mark = tester.getRect(find.text('Verified'));
+    final warning = tester.getRect(find.text('The key server lists a different key'));
+    expect(mark.bottom, lessThanOrEqualTo(warning.top));
+  });
+
   testWidgets('a direct conversation shows the device its session encrypts to', (tester) async {
     final fixture = _Fixture();
     await fixture.setUp(tester);

@@ -34,6 +34,7 @@ import 'package:veil_mobile/src/features/secret_link/presentation/one_time_link_
 import 'package:veil_mobile/src/features/security/presentation/safety_numbers_screen.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
 import 'package:veil_mobile/src/features/settings/presentation/settings_screen.dart';
+import 'package:veil_mobile/src/features/settings/presentation/trusted_devices_screen.dart';
 import 'package:veil_mobile/src/features/stickers/presentation/sticker_picker_screen.dart';
 import 'package:veil_mobile/src/features/stickers/stickers_feature.dart';
 import 'package:veil_mobile/src/features/stories/presentation/stories_screen.dart';
@@ -154,12 +155,9 @@ class ScreenCase {
 }
 
 /// The screens whose controls the gate does not hold to 44x44, each with
-/// what is smaller there. Every other screen is held to it. This set may
-/// only shrink: a new screen is held from the start.
-const tapTargetExemptScreens = {
-  // The emoji and sticker grid packs eight cells of about 33 px into a row.
-  'sticker_picker_screen.dart',
-};
+/// what is smaller there. None is left: every screen is held to it, and a
+/// new one is from the start.
+const tapTargetExemptScreens = <String>{};
 
 /// The text size of the larger-text cases: the step most people who enlarge
 /// their text choose.
@@ -217,7 +215,8 @@ const List<ScreenCase> screenCases = [
       screen: OnboardingWarningScreen,
       file: 'onboarding_warning_screen.dart',
       location: '/onboarding',
-      account: _signedOut),
+      account: _signedOut,
+      primaryAction: _primaryButton),
   ScreenCase('create-account',
       screen: CreateAccountScreen,
       file: 'create_account_screen.dart',
@@ -434,20 +433,31 @@ const List<ScreenCase> screenCases = [
   ScreenCase('attachment-preview',
       screen: AttachmentPreviewScreen,
       file: 'attachment_preview_screen.dart',
-      location: '/attachment/$chatConversationId'),
+      location: '/attachment/$chatConversationId',
+      primaryAction: _primaryButton),
   ScreenCase('media-picker',
-      screen: MediaPickerScreen, file: 'media_picker_screen.dart', location: '/media/$chatConversationId'),
+      screen: MediaPickerScreen,
+      file: 'media_picker_screen.dart',
+      location: '/media/$chatConversationId',
+      primaryAction: _closeButton),
   ScreenCase('voice-recorder',
-      screen: VoiceRecorderScreen, file: 'voice_recorder_screen.dart', location: '/voice/$chatConversationId'),
+      screen: VoiceRecorderScreen,
+      file: 'voice_recorder_screen.dart',
+      location: '/voice/$chatConversationId',
+      primaryAction: _closeButton),
   ScreenCase('sticker-picker',
-      screen: StickerPickerScreen, file: 'sticker_picker_screen.dart', location: '/stickers/$chatConversationId'),
+      screen: StickerPickerScreen,
+      file: 'sticker_picker_screen.dart',
+      location: '/stickers/$chatConversationId',
+      primaryExtent: emojiGridExtent,
+      minPrimaryShare: minPrimaryContentShare),
   ScreenCase(
     'call',
     screen: CallScreen,
     file: 'call_screen.dart',
     location: '/call/$chatConversationId',
     extra: {'name': 'Selene Park'},
-    settle: _untilCallConnects,
+    primaryAction: _closeButton,
   ),
 
   // Starting a conversation.
@@ -486,14 +496,33 @@ const List<ScreenCase> screenCases = [
       file: 'contacts_screen.dart',
       location: '/contacts',
       settle: _openContactActionsSheet),
-  ScreenCase('call-history', screen: CallHistoryScreen, file: 'call_history_screen.dart', location: '/calls'),
-  ScreenCase('stories', screen: StoriesScreen, file: 'stories_screen.dart', location: '/stories'),
+  ScreenCase('call-history',
+      screen: CallHistoryScreen,
+      file: 'call_history_screen.dart',
+      location: '/calls',
+      primaryExtent: cardRowsExtent,
+      minPrimaryShare: minPrimaryContentShare),
+  ScreenCase('stories',
+      screen: StoriesScreen,
+      file: 'stories_screen.dart',
+      location: '/stories',
+      primaryExtent: cardRowsExtent,
+      minPrimaryShare: minPrimaryContentShare),
   ScreenCase('story-viewer',
-      screen: StoryViewerScreen, file: 'story_viewer_screen.dart', location: '/story-viewer/user-$peerHandle'),
+      screen: StoryViewerScreen,
+      file: 'story_viewer_screen.dart',
+      location: '/story-viewer/user-$peerHandle',
+      primaryAction: _closeButton),
 
   // Account, device and security.
   ScreenCase('settings',
       screen: SettingsScreen, file: 'settings_screen.dart', location: '/settings', primaryAction: _firstSetting),
+  // The devices of the account, opened from the settings tab's row.
+  ScreenCase('settings-devices',
+      screen: TrustedDevicesScreen,
+      file: 'trusted_devices_screen.dart',
+      location: '/settings',
+      settle: _openTrustedDevices),
   ScreenCase('profile', screen: ProfileScreen, file: 'profile_screen.dart', location: '/profile'),
   ScreenCase('security-status',
       screen: SecurityStatusScreen, file: 'security_status_screen.dart', location: '/security-status'),
@@ -503,7 +532,14 @@ const List<ScreenCase> screenCases = [
       location: '/device-transfer',
       transferStarted: true,
       primaryAction: _firstInput),
-  ScreenCase('ai-chat', screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat'),
+  // The old device before it issued a code: its first step is the button.
+  ScreenCase('device-transfer-old-device-start',
+      screen: DeviceTransferScreen,
+      file: 'device_transfer_screen.dart',
+      location: '/device-transfer',
+      primaryAction: _primaryButton),
+  ScreenCase('ai-chat',
+      screen: AiChatScreen, file: 'ai_chat_screen.dart', location: '/ai-chat', primaryAction: _firstQuestion),
 
   // States the gate did not open before: a group (its chat, its row in the
   // list, the safety numbers of its members), a message from a legacy frame
@@ -543,6 +579,13 @@ const List<ScreenCase> screenCases = [
       withGroup: true,
       attention: ChatAttention(identityChangedInGroup: true),
       settle: _awaitChangeElsewhere),
+  // A contact this device has not exchanged a message with: no identity is
+  // pinned, so there is no number yet and the page says how to get one.
+  ScreenCase('safety-numbers-unpinned',
+      screen: SafetyNumbersScreen,
+      file: 'safety_numbers_screen.dart',
+      location: '/safety-numbers/conv-jiwoo',
+      settle: _awaitSafetyNumber),
   ScreenCase(
     'chat-room-legacy-badge',
     screen: ChatRoomScreen,
@@ -592,6 +635,60 @@ const List<ScreenCase> screenCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryExtent: minSqueezedMessagesExtent,
   ),
+
+  // What a chat and the list show while the messenger is still fetching,
+  // when the relay failed the request, and when the peer's key changed in a
+  // group they share with the user (the 1:1 then says where that waits).
+  ScreenCase(
+    'chat-room-loading',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$emptyChatConversationId',
+    attention: ChatAttention(loading: true),
+  ),
+  ScreenCase(
+    'chat-room-load-failed',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$emptyChatConversationId',
+    attention: ChatAttention(relayError: true),
+  ),
+  ScreenCase(
+    'chat-room-error',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(relayError: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'chat-room-change-elsewhere',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    withGroup: true,
+    attention: ChatAttention(identityChangedInGroup: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'conversation-list-loading',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    account: LayoutAccount.signedInEmpty,
+    attention: ChatAttention(loading: true),
+  ),
+  ScreenCase(
+    'conversation-list-error',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    attention: ChatAttention(relayError: true),
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
 ];
 
 const _wideSizes = [wideSmall, wideLarge];
@@ -627,6 +724,27 @@ const List<ScreenCase> wideCases = [
     minPrimaryShare: minPrimaryContentShare,
     settle: _openChatPane,
   ),
+  // The pane with a group in it (its title, its members' names on their
+  // messages), and the shell before there is any conversation to open.
+  ScreenCase(
+    'wide-chat-group',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    withGroup: true,
+    sizes: _wideSizes,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectGroupPane,
+  ),
+  ScreenCase(
+    'wide-no-conversation',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    account: LayoutAccount.signedInEmpty,
+    sizes: _wideSizes,
+  ),
   ScreenCase(
     'tablet-chat',
     screen: ChatRoomScreen,
@@ -660,6 +778,13 @@ Finder _firstInput() => find.byType(TextField);
 
 // What adds a contact, wherever the screen puts it.
 Finder _addContact() => find.byIcon(Icons.person_add_outlined);
+
+// The one button of a screen that only says what this build cannot do: the
+// way back.
+Finder _closeButton() => find.byType(OutlinedButton);
+
+// The questions the assistant offers; the first if it has more.
+Finder _firstQuestion() => find.byType(ActionChip);
 
 // The first control of the settings screen that changes a setting: the
 // theme selector or a switch, whichever the screen puts first. A row that
@@ -698,8 +823,9 @@ double chatMessagesExtent(WidgetTester tester) {
 double conversationRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
 
 /// The same for the contacts: from the top of the first contact's row to
-/// the bottom of the list it scrolls in.
-double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilListTileCard));
+/// the bottom of the list it scrolls in. A contact's row is drawn with the
+/// card of a conversation's.
+double contactRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilConversationCard));
 
 double _rowsExtent(WidgetTester tester, Finder rows) {
   if (rows.evaluate().isEmpty) return 0;
@@ -709,6 +835,16 @@ double _rowsExtent(WidgetTester tester, Finder rows) {
   final list = visibleRect(tester, viewport);
   final top = firstRow.localToGlobal(Offset.zero).dy.clamp(list.top, list.bottom);
   return list.bottom - top;
+}
+
+/// The same for the call history and the stories, whose rows are cards too.
+double cardRowsExtent(WidgetTester tester) => _rowsExtent(tester, find.byType(VeilListTileCard));
+
+/// The height the emoji have on screen: the grid of the picker's open tab.
+double emojiGridExtent(WidgetTester tester) {
+  final grid = find.byType(GridView);
+  if (grid.evaluate().isEmpty) return 0;
+  return visibleRect(tester, tester.renderObject<RenderBox>(grid.first)).height;
 }
 
 /// The actions of the warnings a chat shows above its messages.
@@ -785,6 +921,17 @@ Future<void> _openChatPane(WidgetTester tester) async {
   expect(open(), isTrue, reason: 'the second pane did not open the chat');
 }
 
+// The group is the newest conversation, so the wide shell opens it.
+Future<void> _expectGroupPane(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 4);
+  expect(
+    tester.widgetList<ChatRoomScreen>(find.byType(ChatRoomScreen)).map((chat) => chat.conversationId),
+    [groupConversationId],
+    reason: 'the second pane did not open the group',
+  );
+  await _expectGroupMessages(tester);
+}
+
 Future<void> _openTimerSheet(WidgetTester tester) async {
   // A disappearing message carries the same icon: the bar's is the button.
   await tester.tap(find.widgetWithIcon(IconButton, Icons.timer_outlined));
@@ -811,9 +958,19 @@ Future<void> _openAddContactSheet(WidgetTester tester) async {
 }
 
 Future<void> _openContactActionsSheet(WidgetTester tester) async {
-  await tester.tap(find.byType(VeilListTileCard).first);
+  await tester.tap(find.byType(VeilConversationCard).first);
   await pumpFrames(tester, frames: 4);
   expect(find.byType(BottomSheet), findsOneWidget, reason: 'the contact sheet did not open');
+}
+
+Future<void> _openTrustedDevices(WidgetTester tester) async {
+  // The row is under the day-to-day settings, below the first screenful.
+  final row = find.byKey(const ValueKey('settings-devices'), skipOffstage: false);
+  await tester.scrollUntilVisible(row, 200, scrollable: find.byType(Scrollable).first);
+  await pumpFrames(tester, frames: 2);
+  await tester.tap(row);
+  await pumpFrames(tester, frames: 6);
+  expect(find.byType(VeilSurfaceCard), findsWidgets, reason: 'the device list did not load');
 }
 
 // The safety number is derived on a background isolate, which only real
@@ -833,12 +990,4 @@ Future<void> _awaitChangeElsewhere(WidgetTester tester) async {
   await _awaitSafetyNumber(tester);
   // The page opens on the notice; a verified contact's page has none.
   expect(find.byType(VeilInlineBanner), findsOneWidget, reason: 'the page does not say a change waits elsewhere');
-}
-
-// The call screen plays dialing (2 s) and ringing (3 s) before the state a
-// call spends its time in.
-Future<void> _untilCallConnects(WidgetTester tester) async {
-  await tester.pump(const Duration(seconds: 2));
-  await tester.pump(const Duration(seconds: 3));
-  await tester.pump(const Duration(seconds: 1));
 }

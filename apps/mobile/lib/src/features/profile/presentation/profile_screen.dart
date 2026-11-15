@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_grouped.dart';
+import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -26,13 +28,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
-  Future<void> _onEditPressed(String? currentNickname) async {
+  void _edit(String? currentNickname) {
     VeilHaptics.selection();
-    if (!_isEditing) {
-      _nicknameController.text = currentNickname ?? '';
-      setState(() => _isEditing = true);
-      return;
-    }
+    _nicknameController.text = currentNickname ?? '';
+    setState(() => _isEditing = true);
+  }
+
+  Future<void> _save() async {
     await ref.read(appSessionProvider.notifier).updateLocalNickname(_nicknameController.text.trim());
     if (!mounted) return;
     setState(() => _isEditing = false);
@@ -41,80 +43,77 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.veilPalette;
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
     final handle = session.handle ?? '';
     final nickname = session.displayName;
-    final initial = (nickname?.isNotEmpty == true ? nickname! : handle).characters.firstOrNull?.toUpperCase() ?? '?';
+    final named = nickname != null && nickname.isNotEmpty;
 
     return VeilShell(
       title: l10n.profileTitle,
+      maxWidth: 560,
+      padding: EdgeInsets.zero,
       child: ListView(
+        padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
         children: [
-          Center(
-            child: Container(
-              width: 96,
-              height: 96,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: palette.primarySoft,
-                border: Border.all(color: palette.strokeStrong, width: 2),
-              ),
-              child: Text(
-                initial,
-                style: theme.textTheme.displayLarge?.copyWith(color: palette.primary, fontSize: 36),
-              ),
-            ),
-          ),
-          const SizedBox(height: VeilSpace.xl),
-          VeilFieldBlock(
-            label: l10n.profileHandleLabel,
-            caption: l10n.profileHandleCaption,
-            child: Text(
-              '@$handle',
-              style: theme.textTheme.bodyLarge?.copyWith(color: palette.textMuted),
-            ),
-          ),
-          const SizedBox(height: VeilSpace.sm),
-          VeilFieldBlock(
-            label: l10n.profileNicknameLabel,
-            caption: l10n.profileNicknameCaption,
-            child: _isEditing
-                ? TextField(
-                    controller: _nicknameController,
-                    decoration: InputDecoration(hintText: l10n.profileNicknameHint),
-                  )
-                : Text(
-                    nickname?.isNotEmpty == true ? nickname! : l10n.profileNicknameNotSet,
-                    style: theme.textTheme.bodyLarge,
-                  ),
-          ),
-          const SizedBox(height: VeilSpace.xl),
-          VeilHeroPanel(
-            eyebrow: l10n.profilePrivacyEyebrow,
-            title: l10n.profilePrivacyTitle,
-            body: l10n.profilePrivacyBody,
-          ),
-          const SizedBox(height: VeilSpace.xl),
-          VeilButton(
-            label: _isEditing ? l10n.profileSaveNickname : l10n.profileEditNickname,
-            icon: _isEditing ? Icons.check_rounded : Icons.edit_outlined,
-            tone: _isEditing ? VeilButtonTone.primary : VeilButtonTone.secondary,
-            onPressed: () => _onEditPressed(nickname),
-          ),
-          if (_isEditing) ...[
+          Center(child: VeilInitialBadge(name: named ? nickname : handle, size: 72)),
+          if (named) ...[
             const SizedBox(height: VeilSpace.sm),
-            VeilButton(
-              label: l10n.profileCancel,
-              icon: Icons.close_rounded,
-              tone: VeilButtonTone.secondary,
-              onPressed: () => setState(() => _isEditing = false),
-            ),
+            // The user's own words: drawn as typed.
+            Text(nickname, textAlign: TextAlign.center, style: theme.textTheme.titleLarge),
           ],
-          const SizedBox(height: VeilSpace.xxl),
+          const SizedBox(height: VeilSpace.xl),
+          VeilGroup(
+            label: l10n.profileHandleLabel,
+            footer: l10n.profileHandleCaption,
+            children: [VeilGroupRow(title: '@$handle')],
+          ),
+          const SizedBox(height: VeilSpace.lg),
+          VeilGroup(
+            label: l10n.profileNicknameLabel,
+            footer: l10n.profileNicknameCaption,
+            children: [
+              if (_isEditing)
+                Padding(
+                  padding: const EdgeInsets.all(VeilSpace.sm),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        controller: _nicknameController,
+                        autofocus: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _save(),
+                        decoration: InputDecoration(hintText: l10n.profileNicknameHint),
+                      ),
+                      const SizedBox(height: VeilSpace.sm),
+                      VeilActionRow(
+                        children: [
+                          VeilButton(
+                            label: l10n.profileCancel,
+                            tone: VeilButtonTone.secondary,
+                            onPressed: () => setState(() => _isEditing = false),
+                          ),
+                          VeilButton(label: l10n.profileSaveNickname, onPressed: _save),
+                        ],
+                      ),
+                    ],
+                  ),
+                )
+              else
+                VeilGroupRow(
+                  title: named ? nickname : l10n.profileNicknameNotSet,
+                  trailing: TextButton(onPressed: () => _edit(nickname), child: Text(l10n.profileEditNickname)),
+                ),
+            ],
+          ),
+          const SizedBox(height: VeilSpace.xl),
+          VeilInlineBanner(
+            icon: Icons.shield_outlined,
+            title: l10n.profilePrivacyTitle,
+            message: l10n.profilePrivacyBody,
+          ),
         ],
       ),
     );

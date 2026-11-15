@@ -9,6 +9,7 @@ import 'package:veil_mobile/src/core/storage/secure_storage_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../support/async_wait.dart';
@@ -177,6 +178,33 @@ void _tallView(WidgetTester tester) {
 
 bool _enabled(WidgetTester tester) => tester.widget<FilledButton>(_completeButton).onPressed != null;
 
+// Nothing on the screen says that the claim or its code ran out.
+void _expectNotExpired() {
+  expect(find.text(_en.deviceTransferNewCodeExpiredBody), findsNothing);
+  expect(find.text(_en.deviceTransferStatusExpired), findsNothing);
+  expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+}
+
+// A claim that ran out: the first step says so and takes a new code, and
+// nothing the expired code could still be used for is offered. Its session
+// ran out with it, so registering again on it would be refused, and this
+// device refuses to claim a session twice.
+void _expectExpired(WidgetTester tester, {required String claimId}) {
+  final steps = tester.widgetList<TransferStep>(find.byType(TransferStep)).toList();
+  expect([for (final step in steps) step.state],
+      [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+  expect(steps.first.status, _en.deviceTransferStatusExpired);
+  expect(steps.first.body, _en.deviceTransferNewCodeExpiredBody);
+  expect(find.text(_en.deviceTransferNewCodeExpiredBody), findsOneWidget);
+  expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsOneWidget);
+  expect(find.byType(TextField), findsOneWidget);
+  expect(_completeButton, findsNothing);
+  expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
+  expect(find.text(_en.deviceTransferClaimCode(claimId)), findsNothing);
+  expect(find.text(_en.deviceTransferNewCompleteBody), findsNothing);
+  expect(find.text(_en.deviceTransferNewCompleteNote), findsNothing);
+}
+
 // Lets both the test's fake clock and real time move until [condition].
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
   for (var i = 0; i < 200 && !condition(); i++) {
@@ -206,10 +234,7 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpired), findsNothing);
-    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+    _expectNotExpired();
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -242,17 +267,31 @@ void main() {
       await session.bootstrap();
     });
     expect(session.pendingTransfer?.isCompleted, isFalse);
+    final transfer = relay.transfers.values.single;
+    final claimId = session.pendingTransfer!.claimId;
 
     _tallView(tester);
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsOneWidget);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsOneWidget);
-    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsOneWidget);
-    await tester.ensureVisible(_completeButton);
-    expect(_enabled(tester), isFalse);
+    _expectExpired(tester, claimId: claimId);
     expect(relay.callsTo('POST /device-transfer/complete'), 0);
+
+    // The code the claim was made on does not bring it back.
+    await tester.enterText(
+      find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
+      'VEIL_TRANSFER::${transfer.id}::${transfer.transferToken}',
+    );
+    await tester.tap(find.text(_en.deviceTransferImportPayload));
+    await tester.pump();
+    final refusal = find.text(_en.deviceTransferCodeExpired);
+    expect(refusal, findsOneWidget);
+    expect(tester.widget<TransferStep>(find.ancestor(of: refusal, matching: find.byType(TransferStep))).number, 1);
+    _expectExpired(tester, claimId: claimId);
+    expect(relay.callsTo('POST /device-transfer/claim'), 1);
+    expect(relay.callsTo('POST /device-transfer/complete'), 0);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   // closing F1: the relay committed, the answer was lost and the retries
@@ -280,10 +319,7 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsNothing);
-    expect(find.text(_en.deviceTransferClaimExpired), findsNothing);
-    expect(find.text(_en.deviceTransferExpires(_en.deviceTransferExpiryNow)), findsNothing);
+    _expectNotExpired();
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -313,13 +349,14 @@ void main() {
     });
     expect(session.pendingTransfer?.completionOutcomeUnknown, isTrue);
     expect(session.pendingTransfer?.ended, isFalse);
+    final claimId = session.pendingTransfer!.claimId;
 
     _tallView(tester);
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
     // The relay has not answered yet: completing stays possible.
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsNothing);
+    _expectNotExpired();
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
 
@@ -331,11 +368,54 @@ void main() {
 
     expect(relay.callsTo('POST /device-transfer/complete'), 7);
     expect(session.state.isAuthenticated, isFalse);
-    expect(find.text(_en.deviceTransferWindowExpiredTitle), findsOneWidget);
-    expect(find.text(_en.deviceTransferClaimExpiredPill), findsOneWidget);
-    await tester.ensureVisible(_completeButton);
-    expect(_enabled(tester), isFalse);
+    _expectExpired(tester, claimId: claimId);
+    // Why the relay refused is said in the step that is in hand again.
+    final failure = find.text(_en.deviceTransferFailedTitle);
+    expect(failure, findsOneWidget);
+    expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 1);
     expect((await tester.runAsync(storage.readPendingTransfer))?.ended, isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  // The step in hand opens on what the user carries to the old device, and
+  // says what finishing leads to above the button that does it.
+  testWidgets('a claim waiting for approval shows its code first, then what finishing leads to, then the button',
+      (tester) async {
+    final relay = FakeAccountRelay();
+    late SecureStorageService storage;
+    late AppSessionController session;
+    await tester.runAsync(() async {
+      storage = await _newDeviceKeystore(relay, completion: _Completion.none, age: const Duration(minutes: -4));
+      session = _controller(storage, relay);
+      await session.bootstrap();
+    });
+    final claimId = session.pendingTransfer!.claimId;
+
+    _tallView(tester);
+    await tester.pumpWidget(_app(session, relay, storage));
+    await tester.pump();
+
+    final steps = tester.widgetList<TransferStep>(find.byType(TransferStep)).toList();
+    expect([for (final step in steps) step.state],
+        [TransferStepState.done, TransferStepState.done, TransferStepState.current]);
+    expect(find.byType(TextField), findsNothing, reason: 'nothing is left to type on this device');
+    expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
+
+    final code = find.text(_en.deviceTransferClaimCode(claimId));
+    final consequence = find.text(_en.deviceTransferNewCompleteNote);
+    expect(code, findsOneWidget);
+    expect(consequence, findsOneWidget, reason: 'said once');
+    expect(find.ancestor(of: code, matching: find.byType(TransferCodeBox)), findsOneWidget);
+    for (final part in [code, consequence, _completeButton]) {
+      expect(find.ancestor(of: part, matching: find.byType(TransferStep)), findsOneWidget);
+      expect(tester.widget<TransferStep>(find.ancestor(of: part, matching: find.byType(TransferStep))).number, 3);
+    }
+    expect(tester.getRect(code).bottom, lessThanOrEqualTo(tester.getRect(consequence).top));
+    expect(tester.getRect(consequence).bottom, lessThanOrEqualTo(tester.getRect(_completeButton).top));
+    expect(_enabled(tester), isTrue);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   // closing F2: importing again the payload of the session this device
@@ -357,6 +437,10 @@ void main() {
     await tester.pump();
     expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
 
+    // The step that takes the code is finished; it is reopened to paste one.
+    expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
+    await tester.tap(find.text(_en.deviceTransferNewCodeChange));
+    await tester.pump();
     await tester.enterText(
       find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
       'VEIL_TRANSFER::${transfer.id}::${transfer.transferToken}',
@@ -364,7 +448,10 @@ void main() {
     await tester.tap(find.text(_en.deviceTransferImportPayload));
     await tester.pump();
 
-    expect(find.text(_en.deviceTransferPayloadImported), findsOneWidget);
+    // The claim it holds is what comes next: the screen does not ask to
+    // register again, and the step closes over the code.
+    expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
+    expect(find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel), findsNothing);
     expect(find.text(_en.deviceTransferClaimCode(claimId)), findsOneWidget);
     await tester.ensureVisible(_completeButton);
     expect(_enabled(tester), isTrue);
@@ -393,6 +480,8 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
+    await tester.tap(find.text(_en.deviceTransferNewCodeChange));
+    await tester.pump();
     await tester.enterText(
       find.widgetWithText(TextField, _en.deviceTransferPayloadInputLabel),
       'VEIL_TRANSFER::another-session::another-token',

@@ -124,12 +124,12 @@ For a concise click-by-click Windows flow, see [Internal Alpha Desktop QA](inter
 ### F. Device transfer
 
 1. On the old device, open Settings -> Device transfer.
-2. Confirm the screen explicitly states that the old device is required.
-3. Run init transfer.
-4. Copy the transfer payload from the old device.
+2. Confirm the screen explicitly states that the old device is required (the `No fallback path` notice under the steps).
+3. Issue a transfer code (step 1).
+4. Copy the transfer code from the old device (step 2).
 5. On the new device, open `Transfer from old device` from the account creation screen.
-6. Paste the transfer payload and import it.
-7. Register the new-device claim and note the claim code.
+6. Paste the transfer code and tap `Use this code`.
+7. Register the new device and note the claim code.
 8. Return to the old device and approve that exact claim code.
 9. Complete the transfer on the new device.
 10. Confirm the new device lands in the authenticated session.

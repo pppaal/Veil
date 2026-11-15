@@ -10,18 +10,25 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../chat/presentation/chat_bar.dart';
 import '../../chat/presentation/chat_room_screen.dart';
 import '../data/conversation_models.dart';
 import 'conversation_list_logic.dart';
-import 'conversation_list_pane.dart';
 import 'conversation_list_parts.dart';
 import 'conversation_list_phone.dart';
 
 // These were declared here before the screen was split up.
 export 'conversation_list_logic.dart';
 
+/// The conversations. On a phone the list is the screen and a chat opens on
+/// top of it. From 1120 px (shouldUseWideConversationLayout) the same list
+/// keeps the open chat beside it: two panes, each under its own bar, with
+/// nothing above the rows or the messages that a phone does not show.
 class ConversationListScreen extends ConsumerStatefulWidget {
   const ConversationListScreen({super.key});
+
+  /// How wide the list's pane is in the wide layout.
+  static const double listPaneWidth = 380;
 
   @override
   ConsumerState<ConversationListScreen> createState() => _ConversationListScreenState();
@@ -173,9 +180,10 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
 
         final l10n = AppLocalizations.of(context);
-        // Settings is a tab of the bar below, so the bar above has no
-        // action for it.
-        final shellActions = [
+        // Starting a conversation and the security status are in the bar.
+        // Settings is a tab of the bar below, so it has no action here.
+        final barActions = [
+          const _NewConversationButton(),
           IconButton(
             tooltip: l10n.settingsSecurityStatusTitle,
             onPressed: () => context.push('/security-status'),
@@ -183,13 +191,11 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
           ),
         ];
 
-        // A phone shows the conversations first: starting one moves from the
-        // end of the list into the bar.
         if (!isWideLayout) {
           return VeilShell(
             title: 'VEIL',
             padding: EdgeInsets.zero,
-            actions: [const _NewConversationButton(), ...shellActions],
+            actions: barActions,
             child: ConversationListPhone(view: view),
           );
         }
@@ -208,54 +214,35 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         selectedConversation ??=
             filteredConversations.isEmpty ? null : filteredConversations.first;
 
+        final palette = context.veilPalette;
         return VeilShell(
-          title: 'VEIL',
-          actions: shellActions,
           maxWidth: null,
+          padding: EdgeInsets.zero,
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Flexible(
-                flex: 8,
-                child: ConversationListPane(view: view),
+              SizedBox(
+                width: ConversationListScreen.listPaneWidth,
+                child: Column(
+                  children: [
+                    ChatPaneBar(title: 'VEIL', actions: barActions),
+                    Expanded(child: ConversationListPhone(view: view)),
+                  ],
+                ),
               ),
-              const SizedBox(width: VeilSpace.lg),
+              Container(width: 0.5, color: palette.stroke.withValues(alpha: 0.6)),
               Expanded(
-                flex: 10,
                 child: selectedConversation == null
                     ? VeilEmptyState(
                         title: l10n.conversationsChoosePaneTitle,
                         body: l10n.conversationsChoosePaneBody,
                         icon: Icons.forum_outlined,
                       )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          VeilHeroPanel(
-                            eyebrow: l10n.conversationsActiveEyebrow,
-                            title: selectedConversation.peerDisplayName ??
-                                '@${selectedConversation.peerHandle}',
-                            body: l10n.conversationsActiveBody,
-                            bottom: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                VeilStatusPill(label: l10n.chatPillLocalSearchOnly),
-                                VeilStatusPill(label: l10n.conversationsPillOpaqueRelay),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: VeilSpace.md),
-                          Expanded(
-                            child: ChatRoomScreen(
-                              conversationId: selectedConversation.id,
-                              embedded: true,
-                              navigationTarget: selectedConversation.id == _selectedConversationId
-                                  ? _selectedNavigationTarget
-                                  : null,
-                            ),
-                          ),
-                        ],
+                    : ChatRoomScreen(
+                        conversationId: selectedConversation.id,
+                        embedded: true,
+                        navigationTarget:
+                            selectedConversation.id == _selectedConversationId ? _selectedNavigationTarget : null,
                       ),
               ),
             ],

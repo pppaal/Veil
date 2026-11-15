@@ -8,10 +8,10 @@ import 'package:veil_mobile/src/core/crypto/mock_crypto_engine.dart';
 import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
-import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 /// Two 1:1 conversations, neither with any history.
 class _TwoChatsApi extends VeilApiClient {
@@ -103,9 +103,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // Every build of the screen creates a new metric strip, so the same
-    // instance after an event means the screen did not build again.
-    VeilMetricStrip strip() => tester.widget<VeilMetricStrip>(find.byType(VeilMetricStrip));
+    // Every build of the screen creates a new message list widget, so the
+    // same instance after an event means the screen did not build again.
+    ChatMessageList strip() => tester.widget<ChatMessageList>(find.byType(ChatMessageList));
     final before = strip();
 
     realtime.typing('conv-lyra', 'lyra');
@@ -118,7 +118,7 @@ void main() {
     // Typing here shows, in the indicator alone.
     realtime.typing('conv-selene', 'selene');
     await tester.pump();
-    expect(find.text('@selene is typing'), findsOneWidget);
+    expect(find.text('typing…'), findsOneWidget, reason: 'a 1:1 does not need to say who');
     expect(identical(strip(), before), isTrue);
 
     // The probe does see a rebuild when the messenger itself changes.
@@ -128,7 +128,7 @@ void main() {
 
     // Both indicators clear by themselves.
     await tester.pump(const Duration(seconds: 6));
-    expect(find.text('@selene is typing'), findsNothing);
+    expect(find.text('typing…'), findsNothing);
     expect(controller.typingHandleFor('conv-lyra'), isNull);
   });
 }

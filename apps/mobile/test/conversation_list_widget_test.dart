@@ -10,14 +10,17 @@ import 'package:veil_mobile/src/core/network/veil_api_client.dart';
 import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/storage/conversation_cache_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
+import 'package:veil_mobile/src/features/chat/presentation/chat_bar.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_phone.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 void main() {
-  testWidgets('conversation list shows local search banner and archive results', (tester) async {
+  testWidgets('the wide layout shows the list and the open chat, and searches both from the list', (tester) async {
     tester.view.physicalSize = const Size(1400, 1600);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -76,19 +79,31 @@ void main() {
 
     await tester.pumpAndSettle();
 
+    // Two panes, each with the content a phone shows and nothing above it:
+    // no hero card, no stat tiles, no pills.
+    expect(find.byType(ConversationListPhone), findsOneWidget);
+    expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).embedded, isTrue);
+    expect(find.byType(VeilHeroPanel), findsNothing);
+    expect(find.byType(VeilMetricStrip), findsNothing);
+    expect(find.byType(VeilStatusPill), findsNothing);
     expect(find.text('Selene'), findsWidgets);
-    expect(find.text('ACTIVE CONVERSATION'), findsOneWidget);
+    expect(_inChatPane(find.text('Orbit relay window')), findsOneWidget);
+    // The list starts right under its bar, and so do the messages' pane.
+    expect(tester.getTopLeft(find.byType(ConversationListPhone)).dy, ChatPaneBar.height);
+    // What the removed cards were for is in the two bars.
+    expect(find.byTooltip('New conversation'), findsOneWidget);
+    expect(find.byTooltip('Security status'), findsOneWidget);
+    for (final tooltip in ['Safety number', 'Search messages', 'Disappearing messages: Off']) {
+      expect(_inChatPane(find.byTooltip(tooltip)), findsOneWidget, reason: tooltip);
+    }
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search conversations and cached messages'),
-      'orbit',
-    );
+    await tester.enterText(find.widgetWithText(TextField, 'Search chats and messages'), 'orbit');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('Local search active'), findsOneWidget);
     expect(find.text('MESSAGES'), findsOneWidget);
     expect(find.textContaining('Orbit relay window'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('conversation list shows empty state when no direct conversations exist', (tester) async {
@@ -130,7 +145,7 @@ void main() {
 
     // Under the wide layout's width the list is the phone's: the empty state
     // itself, with no hero card before it.
-    expect(find.text('No direct conversations yet'), findsOneWidget);
+    expect(find.text('No conversations yet'), findsOneWidget);
     expect(find.text('Start direct chat'), findsOneWidget);
     expect(find.textContaining('0 conversations'), findsOneWidget);
     expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
@@ -227,7 +242,7 @@ void main() {
     expect(find.text('Meet at the north gate'), findsOneWidget);
     // Only text is previewed; other kinds keep their generic label.
     expect(find.text('Screenshot taken'), findsNothing);
-    expect(find.text('System envelope'), findsOneWidget);
+    expect(find.text('Security notice'), findsOneWidget);
   });
 
   group('a disappearing last message on a device whose clock runs 15 minutes fast', () {
@@ -313,7 +328,7 @@ void main() {
       await pumpList(tester, DateTime.now().toUtc().subtract(const Duration(minutes: 5)));
 
       expect(find.text('Meet at the north gate'), findsOneWidget);
-      expect(find.text('Expired locally'), findsNothing);
+      expect(find.text('Message expired'), findsNothing);
       expect(find.textContaining(RegExp(r'^Expires in (9|10)m$')), findsOneWidget);
     });
 
@@ -386,7 +401,7 @@ void main() {
               conversationId: 'conv-1',
               envelope: firstEnvelope,
               conversationOrder: 1,
-              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+              sentAt: DateTime.utc(2026, 4, 7, 9, 50),
             ),
           ],
           'conv-2': [
@@ -503,7 +518,7 @@ void main() {
               conversationId: 'conv-1',
               envelope: firstEnvelope,
               conversationOrder: 1,
-              sentAt: DateTime.utc(2026, 4, 7, 9, 30),
+              sentAt: DateTime.utc(2026, 4, 7, 9, 50),
             ),
           ],
           'conv-2': [
@@ -566,10 +581,7 @@ void main() {
 
     expect(_inChatPane(find.text('Selene relay note')), findsOneWidget);
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search conversations and cached messages'),
-      'anchor',
-    );
+    await tester.enterText(find.widgetWithText(TextField, 'Search chats and messages'), 'anchor');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 

@@ -34,16 +34,20 @@ void main() {
     const disclosure = 'Demo: replies are scripted on this device. Nothing is sent anywhere.';
     expect(find.text(disclosure), findsOneWidget);
 
-    for (final question in ['how do group chats work?', 'are calls private?', 'tell me more']) {
-      await tester.enterText(find.byType(TextField), question);
-      await tester.tap(find.text('Ask'));
-      await tester.pump(const Duration(milliseconds: 1300));
+    // The screen takes no typed question any more: it offers its questions
+    // as buttons. Each is asked in turn, and what is on screen is read after
+    // every answer, before the next one scrolls it away.
+    var asked = 0;
+    while (find.byType(ActionChip).evaluate().isNotEmpty) {
+      await tester.tap(find.byType(ActionChip).first);
       await tester.pumpAndSettle();
-    }
+      asked++;
 
-    expect(find.text(disclosure), findsOneWidget);
-    expect(find.textContaining('relay fallback'), findsNothing);
-    expect(find.textContaining('encrypted relay'), findsNothing);
-    expect(find.textContaining('individually'), findsNothing);
+      expect(find.text(disclosure), findsOneWidget);
+      expect(find.textContaining('relay fallback'), findsNothing);
+      expect(find.textContaining('encrypted relay'), findsNothing);
+      expect(find.textContaining('individually'), findsNothing);
+    }
+    expect(asked, AiTopic.values.length);
   });
 }

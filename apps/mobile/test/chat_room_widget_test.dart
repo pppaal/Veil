@@ -21,6 +21,7 @@ import 'package:veil_mobile/src/features/conversations/data/conversation_models.
 import 'package:veil_mobile/src/features/conversations/data/messenger/conversation_peer_bindings.dart';
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import 'support/memory_secure_store.dart';
 
@@ -108,19 +109,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Orbit relay window'), findsOneWidget);
+    expect(find.text('Delivered'), findsOneWidget);
+    // The pane shows the messages, not cards about them.
+    expect(find.byType(VeilHeroPanel), findsNothing);
+    expect(find.byType(VeilMetricStrip), findsNothing);
+    expect(find.byType(VeilStatusPill), findsNothing);
 
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Search cached messages on this device'),
-      'orbit',
-    );
+    // The search is in the pane's bar, as on a phone.
+    await tester.tap(find.byTooltip('Search messages'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'orbit');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('Local message search'), findsOneWidget);
-    expect(
-      find.textContaining('Showing 1 cached match(es).'),
-      findsOneWidget,
-    );
+    expect(find.text('1 match on this device'), findsOneWidget);
+    expect(find.text('Orbit relay window'), findsOneWidget);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'nothing like it');
+    await tester.pump(const Duration(milliseconds: 220));
+    await tester.pumpAndSettle();
+    expect(find.text('No matches on this device'), findsOneWidget);
+    expect(find.text('Orbit relay window'), findsNothing);
   });
 
   testWidgets('chat room loads older history pages on demand', (tester) async {
@@ -209,18 +218,20 @@ void main() {
 
     expect(find.text('Load older'), findsOneWidget);
     expect(find.text('Newest relay note'), findsOneWidget);
-    expect(find.text('Paged'), findsOneWidget);
 
     await tester.tap(find.text('Load older'));
     await tester.pump();
-    expect(find.text('Syncing older history'), findsOneWidget);
+    // The button says so while the page is on its way, and cannot be
+    // pressed again.
+    expect(find.text('Loading older'), findsOneWidget);
+    expect(find.text('Load older'), findsNothing);
     await tester.pump(const Duration(milliseconds: 120));
     await tester.pumpAndSettle();
 
     expect(find.text('Older relay note'), findsOneWidget);
+    expect(find.text('Newest relay note'), findsOneWidget);
     expect(find.text('Load older'), findsNothing);
-    expect(find.text('Complete'), findsOneWidget);
-    expect(find.text('Conversation window complete'), findsOneWidget);
+    expect(find.text('Loading older'), findsNothing);
   });
 
   group('a disappearing message on a device whose clock runs 15 minutes fast', () {
@@ -263,7 +274,7 @@ void main() {
 
     expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
     expect(find.text('A different account'), findsOneWidget);
-    expect(find.text('Verified'), findsNothing);
+    expect(find.byTooltip('Verified'), findsNothing);
 
     await tester.tap(find.text('Talk to this account'));
     await tester.pumpAndSettle();
@@ -332,14 +343,14 @@ void main() {
         verifiedAt: DateTime.utc(2026, 4, 1));
     await _pumpExpiringChat(tester, identityTrust: IdentityTrust(resolver));
 
-    expect(find.text('Verified'), findsOneWidget);
+    expect(find.byTooltip('Verified'), findsOneWidget);
     expect(find.text('A different account'), findsNothing);
   });
 
   testWidgets('a contact never verified carries no mark', (tester) async {
     await _pumpExpiringChat(tester);
 
-    expect(find.text('Verified'), findsNothing);
+    expect(find.byTooltip('Verified'), findsNothing);
   });
 }
 

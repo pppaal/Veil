@@ -175,7 +175,7 @@ test.describe('protocol v2 in the browser', () => {
 
     for (const device of [alice, bob]) {
       await expect.poll(() => bubbleTexts(device), { timeout: 60_000 }).toEqual(texts);
-      await expect(device.page.locator('.panel-msgs')).not.toContainText('🔒');
+      await expect(device.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
       // The counter the next test relies on does see ratchet work.
       const work = await cryptoWork(device.page);
       expect(work.derivations).toEqual(expect.arrayContaining(['HKDF', 'X25519']));
@@ -196,7 +196,7 @@ test.describe('protocol v2 in the browser', () => {
       // Let a polling round re-fetch the (corrupted) history as well.
       await device.page.waitForTimeout(5_000);
       expect(await bubbleTexts(device)).toEqual(texts);
-      await expect(device.page.locator('.panel-msgs')).not.toContainText('🔒');
+      await expect(device.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
       expect(await cryptoWork(device.page)).toEqual({ derivations: [], sessionLocks: [] });
     }
   });
@@ -231,8 +231,8 @@ test.describe('protocol v2 in the browser', () => {
     await expect(page.locator('.panel-input textarea')).toBeEnabled();
     await expect(page.locator('.panel-msgs')).not.toContainText('relay pretending to be bob');
     // The relay's message is refused, not shown.
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
-    await expect(page.locator('.conv-item', { hasText: `@${bob.handle}` })).toContainText('⚠️');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
+    await expect(page.locator('.conv-item', { hasText: `@${bob.handle}` })).toContainText('Safety number changed');
     // The history from before the swap is untouched.
     expect((await bubbleTexts(alice)).slice(0, texts.length)).toEqual(texts);
     await send(alice, 'while the banner shows');
@@ -257,7 +257,7 @@ test.describe('protocol v2 in the browser', () => {
     // Let a polling round fetch the refused frame from the relay as well.
     await page.waitForTimeout(5_000);
     await expect(page.locator('.key-change-banner')).toHaveCount(0);
-    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('🔒');
+    await expect(page.locator('.panel-msgs .msg-row.them').last()).toContainText('Encrypted message');
     await send(alice, 'after reloading');
     await expect.poll(() => bubbleTexts(bob), { timeout: 30_000 }).toContain('after reloading');
   });
@@ -265,7 +265,7 @@ test.describe('protocol v2 in the browser', () => {
   // The relay checks the body as the API's FileAbuseReportDto does, and
   // keeps what it was sent.
   test('a report sends the reason and the ids of the message, and no text', async () => {
-    await chooseAction(alice, 'b1 hi alice', '🚨');
+    await chooseAction(alice, 'b1 hi alice', 'Report');
     await alice.page.locator('#report-dialog input[value="spam"]').check();
     await alice.page.locator('#report-submit').click();
     await expect(alice.page.locator('#report-dialog')).toHaveCount(0);
@@ -341,7 +341,7 @@ test.describe('a backlog longer than a page', () => {
     await openChatWith(frank, erin);
     const everything = [label(0), ...backlog];
     await expect.poll(() => bubbleTexts(frank), { timeout: 120_000 }).toEqual(everything);
-    await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
+    await expect(frank.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
     for (const text of reacted) {
       await expect(frank.page.locator('.panel-msgs .msg-row', { hasText: text }).locator('.msg-reaction-chip')).toHaveCount(1);
     }
@@ -355,7 +355,7 @@ test.describe('a backlog longer than a page', () => {
     await expect.poll(() => bubbleTexts(frank), { timeout: 30_000 }).toEqual(everything);
     await frank.page.waitForTimeout(5_000);
     expect(await bubbleTexts(frank)).toEqual(everything);
-    await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
+    await expect(frank.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
   });
 });
 
@@ -407,7 +407,7 @@ test.describe('a backlog under our own send', () => {
     await openChatWith(frank, erin);
     const everything = [label(0), ...backlog, 'frank on top'];
     await expect.poll(() => bubbleTexts(frank), { timeout: 120_000 }).toEqual(everything);
-    await expect(frank.page.locator('.panel-msgs')).not.toContainText('🔒');
+    await expect(frank.page.locator('.panel-msgs')).not.toContainText('Encrypted message');
   });
 });
 

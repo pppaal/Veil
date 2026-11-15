@@ -1,10 +1,9 @@
 # Security policy
 
-VEIL is in **private beta** and **has not been externally audited**.
-Crypto correctness is held to the standard described in
-[`docs/threat-model.md`](docs/threat-model.md), but until an
-independent cryptographic review completes the codebase should not be
-considered production-grade. Setting `VEIL_AUDITED_CRYPTO_ATTESTED=true`
+Veil **has not been externally audited**. Crypto correctness is held to
+the standard described in [`docs/threat-model.md`](docs/threat-model.md),
+but until an independent cryptographic review completes the codebase
+should not be considered production-grade. Setting `VEIL_AUDITED_CRYPTO_ATTESTED=true`
 is reserved for that post-audit milestone.
 
 ## Reporting a vulnerability
@@ -14,14 +13,14 @@ issues, public Discord, or social media.
 
 Channels, in priority order:
 
-1. **GitHub Security Advisory** —
+1. **GitHub Security Advisory**:
    <https://github.com/pppaal/veil/security/advisories/new>.
    Preferred for everything that benefits from a coordinated CVE.
-2. **Encrypted email** — `security@veil.example` *(replace with your
-   real address before public release)*. PGP key fingerprint will be
+2. **Encrypted email**: `security@veil.example` *(replace with your
+   real address before public release)*. The PGP key fingerprint will be
    pinned in this file once published.
-3. **Signal** — operator handle published at the same time as the PGP
-   key.
+3. **Signal**: the operator handle is published at the same time as the
+   PGP key.
 
 If those channels are unavailable, file a GitHub issue that says
 nothing more than "I have a security report; please reply with a
@@ -88,7 +87,7 @@ time.
 
 ## Bug bounty
 
-There is **no monetary bounty** during private beta. We will publicly
+There is **no monetary bounty** yet. We will publicly
 credit reporters in the advisory and the project changelog unless the
 reporter prefers anonymity. Once a bounty program exists it will be
 listed here.
@@ -97,7 +96,7 @@ listed here.
 
 We will add reporter credits here as advisories are published.
 
-*(empty — first advisory pending)*
+*(No advisories yet.)*
 
 ---
 

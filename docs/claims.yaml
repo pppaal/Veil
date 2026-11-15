@@ -61,13 +61,13 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app has no block or report screen yet, so claim none)."
       - file: docs/launch/app-store-listing.md
-        quote: "End-to-end encrypted."
+        quote: "End-to-end encrypted messages with no phone number, no email and no ads."
       - file: docs/launch/app-store-listing.md
-        quote: "Veil is an end-to-end encrypted messenger built around a single idea: what you say on Veil never leaves your device in a form the server can read."
+        quote: "Veil is an end-to-end encrypted messenger."
       - file: docs/launch/app-store-listing.md
         quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content)."
       - file: docs/launch/play-store-listing.md
-        quote: "End-to-end encrypted messenger."
+        quote: "End-to-end encrypted messenger with no phone number, no email and no real name."
       - file: docs/launch/play-store-listing.md
         quote: "Veil is an end-to-end encrypted messenger."
       - file: docs/launch/play-store-listing.md
@@ -75,7 +75,7 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "Collected and not linked: Other User Content for the encrypted message payloads, photos and other attachments, which the server holds only as ciphertext it cannot decrypt."
       - file: docs/launch/app-store-listing.md
-        quote: "Ciphertext-only relay."
+        quote: "What you send never leaves your phone in a form the server can read."
       - file: docs/사용설명서.md
         quote: "서버는 메시지 내용을 암호문으로만 저장합니다."
       - file: store/appstore/app-review-notes.md
@@ -96,6 +96,8 @@ claims:
         quote: "The rows for messages, photos, videos, voice recordings and files declare content the server holds only as ciphertext."
       - file: store/appstore/metadata-en.txt
         quote: "An end-to-end encrypted messenger with no phone number, no email and no real name."
+      - file: docs/launch/app-store-listing.md
+        quote: "It passes on encrypted messages and never sees what they say or what you attach."
     evidence:
       - gate: scripts/crypto-test-vectors.mjs
       - gate: scripts/schema-privacy-check.mjs
@@ -147,7 +149,7 @@ claims:
       - file: store/appstore/app-privacy-answers.md
         quote: "The names, descriptions and labels are stored in readable form, and all of it is tied to the account."
       - file: docs/app-store-listing-metadata.md
-        quote: "Privacy Policy URL: https://… (required — must state no-plaintext-on-server, metadata retention windows, no third-party sharing)"
+        quote: "Privacy Policy URL: https://… (required; it must state no-plaintext-on-server, metadata retention windows, no third-party sharing)"
       - file: docs/사용설명서.md
         quote: "그룹·채널의 이름과 설명, 기기 이름은 아직 읽을 수 있는 형태로 저장되고, 핸들·연락처 목록·대화 멤버·통화 기록 같은 메타데이터도 서버가 봅니다 (서버 데이터 목록)."
       - file: docs/사용설명서.md
@@ -242,11 +244,9 @@ claims:
       - file: store/play/full-en.txt
         quote: "There is no account recovery."
       - file: docs/app-store-listing-metadata.md
-        quote: "No backup."
-      - file: docs/app-store-listing-metadata.md
         quote: "Suggested shots: onboarding \"no recovery\" warning, a conversation, the safety number screen, settings/theme."
       - file: docs/launch/app-store-listing.md
-        quote: "No backup."
+        quote: "Veil has no ads and no analytics, and there is no account recovery: if you lose your phone, you lose the account."
       - file: docs/launch/play-store-listing.md
         quote: "No backups, local or cloud."
       - file: docs/launch/play-store-listing.md
@@ -340,7 +340,7 @@ claims:
       - file: store/appstore/app-review-notes.md
         quote: "Veil implements its own end-to-end encryption (a Double Ratchet over X25519, AES-256-GCM, Ed25519, and HKDF-SHA256)."
       - file: docs/launch/app-store-listing.md
-        quote: "Veil uses end-to-end encryption with only standard, published algorithms (X25519, AES-256-GCM, Ed25519, HKDF-SHA256 — see docs/crypto-envelope-spec.md)."
+        quote: "Veil uses end-to-end encryption with only standard, published algorithms (X25519, AES-256-GCM, Ed25519, HKDF-SHA256; see docs/crypto-envelope-spec.md)."
     evidence:
       - gate: scripts/crypto-test-vectors.mjs
   - id: message-padding

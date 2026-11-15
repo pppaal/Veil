@@ -15,11 +15,11 @@ import 'decrypt_status_view.dart';
 import 'message_attachment_views.dart';
 import 'message_expiry_label.dart';
 
-/// One message as a bubble on its sender's side: the decrypted text, or
-/// the chip for a message that did not open, any attachment and its
-/// transfer, and the time, delivery state and expiry. A bubble takes at most
-/// 340 px and, on a narrow screen, 82% of the width, so the side it sits on
-/// still tells who wrote it.
+/// One message as a bubble on its sender's side: who of a group wrote it,
+/// the decrypted text, or the chip for a message that did not open, any
+/// attachment and its transfer, and the time, delivery state and expiry. A
+/// bubble takes at most 340 px and, on a narrow screen, 82% of the width, so
+/// the side it sits on still tells who wrote it.
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
@@ -34,6 +34,7 @@ class MessageBubble extends StatelessWidget {
     required this.transferSnapshot,
     required this.expiryNow,
     this.onRetryMessage,
+    this.senderName,
   });
 
   final ChatMessage message;
@@ -47,6 +48,10 @@ class MessageBubble extends StatelessWidget {
   final AttachmentTransferSnapshot? transferSnapshot;
   final DateTime Function() expiryNow;
   final VoidCallback? onRetryMessage;
+
+  /// Who of a group wrote the message, shown above it; null in a 1:1, on
+  /// the user's own messages, and under another message of the same sender.
+  final String? senderName;
 
   @override
   Widget build(BuildContext context) {
@@ -93,8 +98,21 @@ class MessageBubble extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (senderName != null) ...[
+                    Text(
+                      senderName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: palette.primaryStrong,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                  ],
                   switch (status) {
-                    null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle),
+                    null => Text(l10n.chatDecryptingEnvelope, style: bodyStyle?.copyWith(color: metaColor)),
                     DecryptStatus.ok => Text(decrypted!.body, style: bodyStyle),
                     DecryptStatus.legacyUnauthenticated => Column(
                         crossAxisAlignment: CrossAxisAlignment.start,

@@ -136,12 +136,25 @@ script, by file and literal:
 
 Under 1120 px the conversation list is the whole screen and a chat opens on
 top of it (`conversation_list_phone.dart`, `chat_phone_layout.dart`): content
-first, with the bar carrying what the header cards carry in the wide,
-two-pane layout (`conversation_list_pane.dart`, `chat_header.dart`). Other
-screens tighten under 600 px (`context.veilPhoneWidth`): hero panels shrink,
-decorative stat tiles step aside, and the field a screen is for comes before
-its explanations. `test/phone` holds the behaviour that moved with the
-layouts (search, timer, safety number, back).
+first, with the bar carrying the safety number, the search and the
+disappearing timer. From 1120 px the same list and the same chat sit side by
+side, each under its own bar (`ChatPaneBar` in `chat_bar.dart`): the list in
+a 380 px pane with the open conversation's row marked, the chat in the rest,
+its messages and composer at most 760 px wide. Neither pane puts a hero
+card, stat tiles or pills above its rows or messages. Other screens tighten
+under 600 px (`context.veilPhoneWidth`): hero panels shrink, decorative stat
+tiles step aside, and the field a screen is for comes before its
+explanations. `test/phone` holds the behaviour of both layouts (search,
+timer, safety number, back, the panes).
+
+A row of the list quotes its conversation's last message when that is a
+text this device decrypted, read from the device's own content store; every
+other kind is named by what it is. After the list is fetched, the messenger
+loads the history of each conversation it names and never loaded
+(`DecryptedMessageCache.loadUnheld`), so a message that arrived while the
+app was closed is quoted without its chat being opened. Nothing is marked
+read for a preview, an expired message is not quoted, and the list is not
+built behind the app lock.
 
 A chat's warnings are banners while they fit above the messages, which keep
 96 px. When they do not (a small phone with the keyboard up), each warning

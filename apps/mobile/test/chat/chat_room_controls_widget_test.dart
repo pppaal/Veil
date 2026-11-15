@@ -144,6 +144,9 @@ Widget _app(Widget child, {VeilMessengerController? messenger}) {
 }
 
 void main() {
+  // What sits between a chat's bar and its messages, on a phone and in the
+  // wide layout's pane alike: the warnings, each with its action inside its
+  // banner, and nothing else.
   group('ChatStatusBanners', () {
     late _ScriptedMessenger messenger;
     var reviewed = 0;
@@ -161,22 +164,15 @@ void main() {
     Widget banners({
       ConversationType type = ConversationType.direct,
       List<ChatMessage> messages = const [],
-      bool hasMoreHistory = true,
-      bool peerVerified = false,
       bool hasSearchQuery = false,
       bool searching = false,
       int searchHitCount = 0,
-      bool compact = false,
     }) =>
         _app(ChatStatusBanners(
-          compact: compact,
           controller: messenger,
           conversationId: 'conv-1',
           conversation: _conversation(type),
           messages: messages,
-          hasMoreHistory: hasMoreHistory,
-          isLoadingHistory: false,
-          peerVerified: peerVerified,
           hasSearchQuery: hasSearchQuery,
           searching: searching,
           searchHitCount: searchHitCount,
@@ -193,154 +189,52 @@ void main() {
       ]));
 
       expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
-      expect(find.text(l10n.chatBannerFailedSends(1)), findsOneWidget);
+      expect(find.text('1 message was not sent. Retry once the relay is reachable.'), findsOneWidget);
       await tester.tap(find.text(l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
+
+      // Counted, in words that agree with the count.
+      await tester.pumpWidget(banners(messages: [
+        _message('m1', MessageDeliveryState.failed),
+        _message('m2', MessageDeliveryState.failed),
+      ]));
+      expect(find.text('2 messages were not sent. Retry once the relay is reachable.'), findsOneWidget);
+      expect(find.textContaining('(s)'), findsNothing);
     });
 
-    testWidgets('queued sends wait locally, and say so differently while the relay reconnects', (tester) async {
+    testWidgets('queued sends wait on this device, and say so differently while the relay reconnects',
+        (tester) async {
       messenger.pending = 1;
       final messages = [_message('m1', MessageDeliveryState.pending)];
       await tester.pumpWidget(banners(messages: messages));
       expect(find.text(l10n.chatBannerQueuedLocally), findsOneWidget);
-      expect(find.text(l10n.chatBannerQueuedMessages(1)), findsOneWidget);
+      expect(
+        find.text('1 message is waiting on this device and will be sent after reconnecting.'),
+        findsOneWidget,
+      );
       expect(find.text(l10n.chatRetryFailedSendsAction), findsNothing);
-      expect(find.text(l10n.chatMetricRelayLinked), findsOneWidget);
 
       messenger.connected = false;
       await tester.pumpWidget(banners(messages: [...messages]));
       expect(find.text(l10n.chatBannerRelayReconnecting), findsOneWidget);
       expect(find.text(l10n.chatNetworkRecoveryQueued(1, l10n.chatRetryResumes)), findsOneWidget);
-      expect(find.text(l10n.chatMetricRelayRecovering), findsOneWidget);
 
       messenger.pending = 0;
       await tester.pumpWidget(banners(messages: [...messages]));
       expect(find.text(l10n.chatBannerRelayReconnecting), findsNothing);
     });
 
-    testWidgets('a 1:1 shows its verified mark, an identity change and a held account, each with its action',
-        (tester) async {
-      messenger
-        ..error = 'keystore unavailable'
-        ..hold = const PeerAccountHold(
-          PeerAccountHoldReason.otherAccount,
-          known: ConversationPeer(userId: 'user-earlier', handle: 'selene'),
-        )
-        ..identityChange = const PendingIdentityChange(
-          conversationId: 'conv-1',
-          userId: 'user-peer',
-          deviceId: 'device-peer',
-          presentedKey: 'key-new',
-          previousKey: 'key-old',
-          requiresReverification: true,
-        );
-      await tester.pumpWidget(banners(peerVerified: true));
-
-      expect(find.text(l10n.chatPeerVerified), findsOneWidget);
-      expect(find.text(l10n.chatBannerConversationIssue), findsOneWidget);
-      expect(find.text('keystore unavailable'), findsOneWidget);
-      expect(find.text(l10n.chatIdentityChangedTitle), findsOneWidget);
-      expect(find.text(l10n.chatAccountHoldOtherTitle), findsOneWidget);
-      expect(find.text(l10n.chatAccountHoldOtherBody('selene')), findsOneWidget);
-
-      await tester.tap(find.text(l10n.chatIdentityChangedReview));
-      expect(reviewed, 1);
-      await tester.tap(find.text(l10n.chatAccountHoldAcknowledge));
-      expect(acknowledged.single.$1, same(messenger.hold));
-      expect(acknowledged.single.$2, 'selene');
-    });
-
-    testWidgets('a group never pauses for a peer: no verified mark, identity change or account hold',
-        (tester) async {
-      messenger
-        ..hold = const PeerAccountHold(PeerAccountHoldReason.unissuedHandle)
-        ..identityChange = const PendingIdentityChange(
-          conversationId: 'conv-1',
-          userId: 'user-peer',
-          deviceId: 'device-peer',
-          presentedKey: 'key-new',
-          previousKey: 'key-old',
-          requiresReverification: true,
-        );
-      await tester.pumpWidget(banners(type: ConversationType.group, peerVerified: true));
-
-      expect(find.text(l10n.chatPeerVerified), findsNothing);
-      expect(find.text(l10n.chatIdentityChangedTitle), findsNothing);
-      expect(find.text(l10n.chatAccountHoldUnissuedTitle), findsNothing);
-      expect(find.byType(VeilMetricStrip), findsOneWidget);
-    });
-
-    testWidgets('a search reports its hits in place of the history window', (tester) async {
-      final loaded = [_message('m1', MessageDeliveryState.read)];
-      await tester.pumpWidget(banners(messages: loaded, hasMoreHistory: false));
-      expect(find.text(l10n.chatBannerHistoryCompleteTitle), findsOneWidget);
-      expect(find.text(l10n.chatMetricSearchIdle), findsOneWidget);
-      expect(find.text(l10n.chatMetricHistoryComplete), findsOneWidget);
-
-      await tester.pumpWidget(banners(messages: loaded, hasMoreHistory: false, hasSearchQuery: true, searching: true));
-      expect(find.text(l10n.chatBannerHistoryCompleteTitle), findsNothing);
-      expect(find.text(l10n.chatSearchBannerSearchingTitle), findsOneWidget);
-
-      await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true));
-      expect(find.text(l10n.chatSearchBannerEmptyBody), findsOneWidget);
-
-      await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true, searchHitCount: 3));
-      expect(find.text(l10n.chatSearchBannerResultBody(3)), findsOneWidget);
-      expect(find.text(l10n.chatMetricSearchHits(3)), findsOneWidget);
-    });
-  });
-
-  // The phone layout: the same warnings, nothing else, each action inside
-  // its banner.
-  group('ChatStatusBanners, compact', () {
-    late _ScriptedMessenger messenger;
-    var reviewed = 0;
-    var retried = 0;
-    final acknowledged = <(PeerAccountHold, String)>[];
-
-    setUp(() {
-      messenger = _ScriptedMessenger();
-      reviewed = 0;
-      retried = 0;
-      acknowledged.clear();
-    });
-    tearDown(() => messenger.dispose());
-
-    Widget banners({
-      ConversationType type = ConversationType.direct,
-      List<ChatMessage> messages = const [],
-      bool hasSearchQuery = false,
-      bool searching = false,
-      int searchHitCount = 0,
-    }) =>
-        _app(ChatStatusBanners(
-          compact: true,
-          controller: messenger,
-          conversationId: 'conv-1',
-          conversation: _conversation(type),
-          messages: messages,
-          hasMoreHistory: false,
-          isLoadingHistory: false,
-          peerVerified: true,
-          hasSearchQuery: hasSearchQuery,
-          searching: searching,
-          searchHitCount: searchHitCount,
-          onReviewIdentity: () => reviewed++,
-          onAcknowledgeHold: (hold, handle) => acknowledged.add((hold, handle)),
-          onRetryFailed: () => retried++,
-        ));
-
     testWidgets('a quiet chat shows nothing: no metrics, no history window, no verified pill', (tester) async {
       await tester.pumpWidget(banners(messages: [_message('m1', MessageDeliveryState.read)]));
 
       expect(find.byType(VeilInlineBanner), findsNothing);
       expect(find.byType(VeilMetricStrip), findsNothing);
-      expect(find.text(l10n.chatBannerHistoryCompleteTitle), findsNothing);
+      expect(find.byType(VeilStatusPill), findsNothing);
       expect(find.text(l10n.chatPeerVerified), findsNothing, reason: 'the bar carries the verified mark');
       expect(tester.getSize(find.byType(ChatStatusBanners)).height, 0);
     });
 
-    testWidgets('every warning of the wide layout is there, with its action inside its banner', (tester) async {
+    testWidgets('every warning is there, with its action inside its banner', (tester) async {
       messenger
         ..error = 'keystore unavailable'
         ..pending = 1
@@ -388,7 +282,7 @@ void main() {
       }
     });
 
-    testWidgets('a group never pauses for a peer here either', (tester) async {
+    testWidgets('a group never pauses for a peer: no identity change or account hold', (tester) async {
       messenger
         ..hold = const PeerAccountHold(PeerAccountHoldReason.unissuedHandle)
         ..identityChange = const PendingIdentityChange(
@@ -407,7 +301,7 @@ void main() {
     testWidgets('a search says how many messages on this device match', (tester) async {
       final loaded = [_message('m1', MessageDeliveryState.read)];
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true, searching: true));
-      expect(find.text(l10n.chatSearchBannerSearchingTitle), findsOneWidget);
+      expect(find.text(l10n.chatSearchSearching), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true));
       expect(find.text('No matches on this device'), findsOneWidget);
@@ -459,12 +353,8 @@ void main() {
       expect(attached, 1);
       expect(tester.getSize(find.byTooltip(l10n.chatAttachAction)).shortestSide, greaterThanOrEqualTo(44));
     });
-    String? helper(WidgetTester tester) => tester.widget<VeilComposer>(find.byType(VeilComposer)).helper;
-
     testWidgets('typing tells the peer; a send carries the timer and clears the draft', (tester) async {
       await tester.pumpWidget(composer(messageTtl: const Duration(minutes: 5)));
-      expect(helper(tester), l10n.chatComposerExpiryOn(l10n.chatDurationMinutes(5)));
-
       await tester.enterText(find.byType(TextField), 'hello');
       expect(messenger.typing, isNotEmpty);
       expect(messenger.typing.toSet(), {'conv-1'});
@@ -491,7 +381,6 @@ void main() {
 
     testWidgets('a blank draft sends nothing, and a busy messenger disables the composer', (tester) async {
       await tester.pumpWidget(composer());
-      expect(helper(tester), l10n.chatComposerExpiryOff);
       await tester.enterText(find.byType(TextField), '   ');
       await tester.tap(find.byType(GradientSendButton));
       await tester.pump();

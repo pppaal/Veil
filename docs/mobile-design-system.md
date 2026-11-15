@@ -184,7 +184,7 @@ The composer should feel stable, deliberate, and operational.
 
 - Conversation list uses a wide breakpoint at 1120px logical width.
 - Below the breakpoint, navigation pushes a separate chat room route.
-- Above the breakpoint, the list and chat room render side-by-side in an 8:10 flex ratio.
+- Above the breakpoint, the list (a 380px pane) and the chat room render side-by-side, each under its own bar, with the same content-first views a phone shows: no hero card, stat tiles or pills above the rows or the messages.
 - Wide layout should auto-select the first conversation if none is selected.
 - Search results in wide layout switch the active conversation pane inline.
 - Page storage preserves selected conversation, search query, and filter state across rebuilds.

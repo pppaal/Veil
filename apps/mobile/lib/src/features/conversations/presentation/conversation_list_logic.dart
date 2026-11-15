@@ -4,12 +4,35 @@ import '../data/conversation_models.dart';
 
 // What the conversation list decides without a widget: which layout a width
 // gets, what of its state survives a rebuild, which conversations a query
-// matches and in what order, and how a hit is highlighted.
+// matches and in what order, how a hit is highlighted, and where a line of
+// separated parts breaks.
 
 /// From this width the list keeps the open chat beside it; under it (a
 /// phone, a narrow window) it is the whole screen and a chat opens on top.
 bool shouldUseWideConversationLayout(double width) {
   return width >= 1120;
+}
+
+/// Packs parts of the given [widths] into lines no wider than [maxWidth],
+/// with [separatorWidth] between two parts of one line, and returns the
+/// indices of the parts of each line. A line breaks between parts, so a
+/// separator is only ever drawn between two parts that share a line: none
+/// is left hanging at the end of one or the start of the next. A part wider
+/// than a line gets a line to itself.
+List<List<int>> packPartsIntoLines(List<double> widths, {required double separatorWidth, required double maxWidth}) {
+  final lines = <List<int>>[];
+  var used = 0.0;
+  for (final (index, width) in widths.indexed) {
+    final fits = lines.isNotEmpty && used + separatorWidth + width <= maxWidth;
+    if (fits) {
+      lines.last.add(index);
+      used += separatorWidth + width;
+    } else {
+      lines.add([index]);
+      used = width;
+    }
+  }
+  return lines;
 }
 
 class ConversationListViewState {

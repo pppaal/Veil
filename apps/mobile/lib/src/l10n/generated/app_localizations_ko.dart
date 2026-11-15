@@ -854,10 +854,19 @@ class AppLocalizationsKo extends AppLocalizations {
       '일부 신뢰 기기에 최근 활동이 없습니다. 장기 미사용이 해지를 뜻하지는 않지만, 하나씩 확인해 보세요.';
 
   @override
-  String get chatEmptyTitle => '메시지가 아직 없습니다';
+  String get chatEmptyTitle => '아직 메시지가 없습니다';
 
   @override
-  String get chatEmptyBody => '첫 메시지를 보내보세요. 종단간 암호화로 보호됩니다.';
+  String get chatEmptyBody => '여기서 보내는 메시지는 이 기기에서 암호화되어 이 대화의 참여자만 읽을 수 있습니다.';
+
+  @override
+  String get chatEmptyVerifyAction => '안전 번호 비교하기';
+
+  @override
+  String get chatLoadFailedTitle => '메시지를 불러오지 못했습니다';
+
+  @override
+  String get chatLoadFailedBody => '잠시 후 다시 시도해 주세요.';
 
   @override
   String get chatComposeHint => '메시지를 입력하세요';
@@ -869,10 +878,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatAttachAction => '첨부';
 
   @override
-  String get chatLoadingTitle => '세션 여는 중';
+  String get chatLoadingTitle => '메시지를 불러오는 중';
 
   @override
-  String get chatLoadingBody => '암호화 채널을 준비하고 있습니다…';
+  String get chatLoadingBody => '이 기기로 온 메시지를 가져와 복호화하는 중입니다.';
 
   @override
   String get chatConversationNotFound => '대화를 찾을 수 없습니다';
@@ -890,11 +899,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatSubtitleOnline => '온라인';
 
   @override
-  String get chatSubtitleEmbedded =>
-      '로컬 검색은 이 기기에만 남습니다. 메시지 본문은 릴레이에서 읽을 수 없습니다.';
+  String get chatGroupUnknownSender => '알 수 없는 발신자';
 
   @override
-  String get chatSearchHint => '이 기기의 캐시된 메시지 검색';
+  String chatGroupMemberCount(int count) {
+    return '멤버 $count명';
+  }
+
+  @override
+  String chatTimerTooltip(String value) {
+    return '사라지는 메시지: $value';
+  }
+
+  @override
+  String get chatSearchHint => '이 대화에서 검색';
 
   @override
   String get chatSearchClearTooltip => '검색 지우기';
@@ -914,71 +932,19 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get chatPillAttachmentsEncrypted => '첨부파일 암호화됨';
+  String get chatSearchSearching => '이 기기에서 찾는 중…';
 
   @override
-  String get chatPillLocalSearchOnly => '로컬 검색 전용';
-
-  @override
-  String get chatMetricRelay => '릴레이';
-
-  @override
-  String get chatMetricRelayLinked => '연결됨';
-
-  @override
-  String get chatMetricRelayRecovering => '복구 중';
-
-  @override
-  String get chatMetricLoaded => '로드됨';
-
-  @override
-  String get chatMetricHistory => '기록';
-
-  @override
-  String get chatMetricHistoryLoading => '이전 메시지 로딩';
-
-  @override
-  String get chatMetricHistoryPaged => '페이지됨';
-
-  @override
-  String get chatMetricHistoryComplete => '완료';
-
-  @override
-  String get chatMetricSearch => '검색';
-
-  @override
-  String get chatMetricSearchIdle => '대기';
-
-  @override
-  String chatMetricSearchHits(int count) {
-    return '$count건 일치';
-  }
-
-  @override
-  String get chatBannerHistoryLoadingTitle => '이전 기록 동기화 중';
-
-  @override
-  String get chatBannerHistoryLoadingBody =>
-      '이 신뢰 기기를 위해 릴레이에서 오래된 암호화 기록을 불러옵니다.';
-
-  @override
-  String get chatBannerHistoryCompleteTitle => '대화 창 완전 로드됨';
-
-  @override
-  String get chatBannerHistoryCompleteBody =>
-      '현재 이 기기의 로컬 창이 완전히 로드되었습니다. 더 이상 대기 중인 이전 기록은 없습니다.';
-
-  @override
-  String get chatBannerConversationIssue => '대화 문제';
+  String get chatBannerConversationIssue => '대화에 문제가 생겼습니다';
 
   @override
   String get chatBannerRelayReconnecting => '릴레이 재연결 중';
 
   @override
-  String get chatBannerDeliveryStalled => '전송 정지됨';
+  String get chatBannerDeliveryStalled => '전송이 멈췄습니다';
 
   @override
-  String get chatBannerQueuedLocally => '로컬에 대기 중';
+  String get chatBannerQueuedLocally => '보내기 대기 중';
 
   @override
   String chatBannerFailedSends(int count) {
@@ -987,7 +953,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String chatBannerUploadingAttachments(int count) {
-    return '첨부 메시지 $count개가 보내기 전에 암호화된 블롭을 올리는 중입니다.';
+    return '첨부 파일 $count개를 암호화된 상태로 올리는 중입니다. 다 올리면 보냅니다.';
   }
 
   @override
@@ -996,45 +962,20 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get chatRetryFailedSendsAction => '실패한 전송 재시도';
-
-  @override
-  String get chatSearchBannerSearchingTitle => '로컬 검색 중';
-
-  @override
-  String get chatSearchBannerIdleTitle => '로컬 메시지 검색';
-
-  @override
-  String get chatSearchBannerSearchingBody =>
-      '이 기기의 캐시된 메시지 텍스트를 스캔합니다. 릴레이 상태는 변경되지 않습니다.';
-
-  @override
-  String get chatSearchBannerEmptyBody => '현재 대화에서 이 쿼리와 일치하는 캐시된 메시지가 없습니다.';
-
-  @override
-  String chatSearchBannerResultBody(int count) {
-    return '캐시된 일치 항목 $count건을 표시 중입니다. 검색을 지우면 전체 대화로 돌아갑니다.';
-  }
-
-  @override
-  String get chatComposerExpiryOff => '규칙을 변경하지 않으면 이 메시지는 만료되지 않습니다.';
-
-  @override
-  String chatComposerExpiryOn(String duration) {
-    return '이 메시지는 수신한 모든 기기에서 $duration 후 만료됩니다.';
-  }
+  String get chatRetryFailedSendsAction => '모두 다시 보내기';
 
   @override
   String get chatLoadOlder => '이전 메시지 불러오기';
 
   @override
-  String get chatLoadingOlder => '이전 메시지 로딩 중';
+  String get chatLoadingOlder => '이전 메시지를 불러오는 중';
 
   @override
-  String get chatSearchEmptyTitle => '로컬에서 찾을 수 없음';
+  String get chatSearchEmptyTitle => '일치하는 메시지가 없습니다';
 
   @override
-  String get chatSearchEmptyBody => '현재 대화에서 일치하는 캐시된 메시지를 찾지 못했습니다.';
+  String get chatSearchEmptyBody =>
+      '이 대화에서 이 기기에 있는 메시지 중 일치하는 것이 없습니다. 이 기기에 불러온 메시지만 검색합니다.';
 
   @override
   String get chatTtlSheetTitle => '사라지는 메시지';
@@ -1043,7 +984,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatTtlOff => '끔';
 
   @override
-  String get chatTtlOffCaption => '수동으로 삭제할 때까지 메시지가 유지됩니다.';
+  String get chatTtlOffCaption => '메시지가 사라지지 않습니다.';
 
   @override
   String get chatTtl10s => '10초';
@@ -1064,20 +1005,20 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatTtl1d => '1일';
 
   @override
-  String get chatTtl1dCaption => '일상적인 비공개 대화의 기본값.';
+  String get chatTtl1dCaption => '일상 대화에 무난한 설정입니다.';
 
   @override
-  String get chatTtlCustom => '사용자 TTL';
+  String get chatTtlCustom => '사용자 지정';
 
   @override
   String get chatTtlDisabledLabel => '사라짐 꺼짐';
 
   @override
-  String get chatAttachmentTicketTitle => '다운로드 티켓 발급됨';
+  String get chatAttachmentTicketTitle => '다운로드 허가를 받았습니다';
 
   @override
   String chatAttachmentTicketBody(String summary) {
-    return '릴레이가 이 기기에 단기 다운로드 티켓을 발급했습니다.\n\n요약: $summary\n\n이 빌드는 여기까지입니다. 아직 파일을 내려받거나 열지는 않습니다. 티켓 자체는 표시하지 않으므로 복사하거나 공유할 수 없습니다.';
+    return '릴레이가 이 기기에 잠시 동안만 쓸 수 있는 다운로드 허가를 내주었습니다.\n\n요약: $summary\n\n이 버전은 여기까지입니다. 아직 파일을 내려받거나 열지는 않습니다. 허가 정보 자체는 표시하지 않으므로 복사하거나 공유할 수 없습니다.';
   }
 
   @override
@@ -1214,7 +1155,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatScreenshotSystemNotice => '상대방이 자신의 기기에서 이 대화를 스크린샷으로 캡처했습니다.';
 
   @override
-  String get chatDecryptingEnvelope => '엔벨로프 복호화 중...';
+  String get chatDecryptingEnvelope => '복호화하는 중…';
 
   @override
   String get chatDecryptFailed => '이 메시지를 복호화할 수 없습니다';
@@ -1232,7 +1173,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatDecryptIdentityRejected => '보류됨: 보낸 사람의 신원이 바뀌었습니다';
 
   @override
-  String get chatLegacyUnverifiedBadge => '확인되지 않은 발신자(레거시)';
+  String get chatLegacyUnverifiedBadge => '발신자 미확인(이전 방식)';
 
   @override
   String get chatNoticeIdentityChanged =>
@@ -1262,11 +1203,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatIdentityChangedReview => '확인하기';
 
   @override
+  String get chatIdentityChangedElsewhereTitle => '다른 대화에서 안전 번호가 바뀌었습니다';
+
+  @override
+  String get chatIdentityChangedElsewhereBody =>
+      '함께 있는 그룹에서 상대가 새 키를 제시했습니다. 그 대화에서 확인하기 전까지 확인됨으로 표시되지 않습니다.';
+
+  @override
   String get chatAccountHoldOtherTitle => '다른 계정입니다';
 
   @override
   String chatAccountHoldOtherBody(String handle) {
-    return '이 대화는 @$handle(으)로 표시되지만, 전에 @$handle(으)로 대화한 계정이 아닙니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
+    return '이 대화는 전에 대화하던 이름(@$handle)으로 표시되지만, 그때의 계정이 아닙니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
   }
 
   @override
@@ -1281,7 +1229,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String chatAccountHoldOwnBody(String handle) {
-    return '이 대화는 내 이름 @$handle(으)로 표시되지만 다른 계정입니다. 다른 사람은 내 이름을 가질 수 없습니다: 이 기기가 받은 목록이 바뀐 것이고, 누군가를 나처럼 보이게 하려는 것일 수 있습니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
+    return '이 대화는 내 이름(@$handle)으로 표시되지만 다른 계정입니다. 다른 사람은 내 이름을 가질 수 없습니다. 이 기기가 받은 목록이 바뀐 것이며, 누군가를 나처럼 보이게 하려는 것일 수 있습니다. 이 계정과 대화하겠다고 확인하기 전에는 여기서 아무것도 보내거나 열지 않습니다.';
   }
 
   @override
@@ -1291,7 +1239,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get chatAccountHoldOwnConfirmBody =>
-      '다른 VEIL 계정은 내 이름을 가질 수 없습니다: 서버가 이 계정을 그 이름으로 보여준 것입니다. 다른 경로(직접 만나기, 전화)로 누구의 계정인지 확인한 경우에만 계속하세요.';
+      '다른 VEIL 계정은 내 이름을 가질 수 없습니다. 서버가 이 계정을 그 이름으로 보여 준 것입니다. 다른 방법(직접 만나기, 전화)으로 누구의 계정인지 확인한 경우에만 계속하세요.';
 
   @override
   String get chatAccountHoldAcknowledge => '이 계정과 대화하기';
@@ -1300,7 +1248,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatPeerVerified => '확인됨';
 
   @override
-  String get chatRetrySend => '전송 재시도';
+  String get chatRetrySend => '다시 보내기';
 
   @override
   String get chatRetryUpload => '업로드 재시도';
@@ -1346,25 +1294,25 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String chatPhaseDescStaged(String sizeLabel) {
-    return '암호화된 블롭이 로컬에 준비되었습니다.$sizeLabel 릴레이에 연결되면 업로드가 시작됩니다.';
+    return '이 기기에서 암호화해 두었습니다.$sizeLabel 릴레이에 연결되면 올리기 시작합니다.';
   }
 
   @override
-  String get chatPhaseDescPreparing => '업로드 권한을 갱신하고 암호화된 메타데이터를 검증합니다.';
+  String get chatPhaseDescPreparing => '업로드 허가를 받고 암호화된 파일을 확인하는 중입니다.';
 
   @override
-  String get chatPhaseDescUploading =>
-      '객체 저장소로 암호문 바이트를 전송합니다. 릴레이는 평문을 보지 못합니다.';
+  String get chatPhaseDescUploading => '암호화된 파일을 올리는 중입니다. 릴레이는 내용을 볼 수 없습니다.';
 
   @override
-  String get chatPhaseDescFinalizing => '업로드된 블롭을 암호화된 메시지 엔벨로프에 결합합니다.';
+  String get chatPhaseDescFinalizing => '올린 파일을 암호화된 메시지에 연결하는 중입니다.';
 
   @override
-  String get chatPhaseDescFailed => '업로드 실패. 재시도 시 로컬의 암호화된 임시 블롭을 재사용합니다.';
+  String get chatPhaseDescFailed =>
+      '올리지 못했습니다. 다시 시도하면 이 기기에 둔 암호화된 사본을 사용합니다.';
 
   @override
   String get chatPhaseDescCanceled =>
-      '이 기기에서 업로드가 중지되었습니다. 재시도 시 새 티켓을 요청하고 로컬 블롭을 재사용합니다.';
+      '이 기기에서 업로드를 멈췄습니다. 다시 시도하면 이 기기에 둔 암호화된 사본으로 처음부터 올립니다.';
 
   @override
   String chatAttachmentSizeBytes(int count) {
@@ -1373,7 +1321,15 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String chatTypingSuffix(String handle) {
-    return '@$handle님이 입력 중';
+    return '@$handle님이 입력 중…';
+  }
+
+  @override
+  String get chatTypingUnnamed => '입력 중…';
+
+  @override
+  String chatReactionSemantics(String emoji, int count) {
+    return '$emoji, 반응 $count개';
   }
 
   @override
@@ -1394,12 +1350,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String chatNetworkRecoveryFailed(int count, String retryLabel) {
-    return '메시지 $count개가 릴레이 복구를 기다리고 있습니다. $retryLabel';
+    return '메시지 $count개가 릴레이 연결을 기다리고 있습니다. $retryLabel';
   }
 
   @override
   String chatNetworkRecoveryUploading(int count, String retryLabel) {
-    return '릴레이에 다시 연결하는 동안 첨부 메시지 $count개가 일시 중지되었습니다. $retryLabel';
+    return '릴레이에 다시 연결하는 동안 첨부 파일 $count개의 전송이 멈춰 있습니다. $retryLabel';
   }
 
   @override
@@ -1408,11 +1364,26 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get chatRetryResumes => '릴레이에 재연결되면 재시도가 재개됩니다.';
+  String get chatRetryResumes => '릴레이에 다시 연결되면 이어서 보냅니다.';
 
   @override
   String chatRetryNextIn(String countdown) {
-    return '다음 재시도: $countdown 후.';
+    return '$countdown 뒤에 다시 시도합니다.';
+  }
+
+  @override
+  String chatCountdownSeconds(int seconds) {
+    return '$seconds초';
+  }
+
+  @override
+  String chatCountdownMinutes(int minutes) {
+    return '$minutes분';
+  }
+
+  @override
+  String chatCountdownMinutesSeconds(int minutes, int seconds) {
+    return '$minutes분 $seconds초';
   }
 
   @override
@@ -1459,7 +1430,45 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get conversationsTitle => '대화';
+  String get errorSessionRequired => '이 기기에 더 이상 신뢰된 VEIL 세션이 없습니다.';
+
+  @override
+  String get errorTransferNeedsApi => '기기 이전은 VEIL 서버에 연결되어 있을 때만 할 수 있습니다.';
+
+  @override
+  String get errorClaimBeforeCompletion =>
+      '먼저 이 새 기기를 등록한 다음, 기존 기기의 승인을 기다리세요.';
+
+  @override
+  String get errorUnexpectedResponse => '릴레이가 예상하지 못한 응답을 보냈습니다. 다시 시도하세요.';
+
+  @override
+  String get errorUploadFailed => '암호화된 파일을 올리지 못했습니다. 연결을 확인하고 다시 시도하세요.';
+
+  @override
+  String get errorSessionInvalid => '이 기기에서 이 세션은 더 이상 유효하지 않습니다.';
+
+  @override
+  String get errorNotAllowed => '현재 기기에서는 이 작업을 할 수 없습니다.';
+
+  @override
+  String get errorNotFound => '릴레이에서 요청한 항목을 찾지 못했습니다.';
+
+  @override
+  String get errorConflict => '요청이 현재 상태와 맞지 않습니다. 새로 고친 뒤 다시 시도하세요.';
+
+  @override
+  String get errorRejected => '입력한 값이 거부되었습니다. 확인한 뒤 다시 시도하세요.';
+
+  @override
+  String get errorRelayFailed => 'VEIL 릴레이가 요청을 처리하지 못했습니다. 잠시 후 다시 시도하세요.';
+
+  @override
+  String get errorApiNeedsTls => '로컬 개발 환경이 아니면 VEIL API 주소는 TLS를 사용해야 합니다.';
+
+  @override
+  String get errorRealtimeNeedsTls =>
+      '로컬 개발 환경이 아니면 VEIL 실시간 연결 주소는 TLS를 사용해야 합니다.';
 
   @override
   String get conversationsEmptyTitle => '대화가 아직 없습니다';
@@ -1483,18 +1492,15 @@ class AppLocalizationsKo extends AppLocalizations {
   String get conversationsLoadingArchive => '아카이브 검색 중…';
 
   @override
-  String get conversationsQueuedOne => '로컬에 메시지 1개 대기 중';
-
-  @override
-  String conversationsQueuedMany(int count) {
-    return '로컬에 메시지 $count개 대기 중';
-  }
-
-  @override
   String get conversationsPreviewEmpty => '아직 메시지가 없습니다';
 
   @override
-  String get conversationsPreviewExpired => '이 기기에서 만료됨';
+  String conversationsQueued(int count) {
+    return '보내기 대기 중인 메시지 $count개';
+  }
+
+  @override
+  String get conversationsPreviewExpired => '만료된 메시지';
 
   @override
   String get conversationsPreviewMessage => '암호화된 메시지';
@@ -1506,7 +1512,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get conversationsPreviewAttachment => '암호화된 첨부 파일';
 
   @override
-  String get conversationsPreviewSystem => '시스템 알림';
+  String get conversationsPreviewSystem => '보안 알림';
 
   @override
   String get conversationsPreviewVoice => '암호화된 음성 메모';
@@ -1521,20 +1527,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get conversationsPreviewCall => '암호화된 통화 기록';
 
   @override
-  String get conversationsHeroEyebrow => '1:1 대화';
-
-  @override
-  String get conversationsRelayConnectedBody =>
-      '릴레이에 연결되었습니다. 서버가 읽을 수 없는 봉투만 오갑니다.';
-
-  @override
-  String get conversationsRelayIdleBody => '릴레이 대기 중입니다. 최신 암호화 상태를 가져오고 있습니다.';
-
-  @override
   String get conversationsRelayLinked => '릴레이 연결됨';
 
   @override
-  String get conversationsRelayIdle => '릴레이 대기 중';
+  String get conversationsRelayIdle => '릴레이 연결 안 됨';
 
   @override
   String conversationsCount(int count) {
@@ -1545,35 +1541,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get conversationsNoBackup => '백업 없음';
 
   @override
-  String get conversationsMetricIdle => '대기 중';
-
-  @override
-  String get conversationsMetricLocalSearch => '로컬 검색';
-
-  @override
-  String get conversationsMetricSearchActive => '사용 중';
-
-  @override
-  String get conversationsMetricSearchReady => '준비됨';
-
-  @override
-  String get conversationsRefreshingTitle => '새로 고치는 중';
-
-  @override
-  String get conversationsRefreshingBody => '로컬 검색 상태는 그대로 두고 최신 대화 상태를 가져옵니다.';
-
-  @override
   String get conversationsSyncIssueTitle => '동기화 문제';
 
   @override
-  String get conversationsSearchIndexLabel => '로컬 검색 색인';
-
-  @override
-  String get conversationsSearchIndexCaption =>
-      '검색은 이 기기 안에서만 이루어집니다. 핸들, 캐시된 미리보기, 복호화된 로컬 색인만 대상으로 합니다.';
-
-  @override
-  String get conversationsSearchFieldHint => '대화와 캐시된 메시지 검색';
+  String get conversationsRelayInterruptedBody =>
+      '릴레이와의 연결이 끊겼습니다. 보내기 대기 중인 메시지는 다시 연결되면 전송됩니다.';
 
   @override
   String get conversationsSearchHintCompact => '대화와 메시지 검색';
@@ -1609,18 +1581,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get conversationsFilterLast30Days => '최근 30일';
 
   @override
-  String get conversationsSearchActiveTitle => '로컬 검색 결과';
-
-  @override
-  String get conversationsSearchScanningBody =>
-      '캐시된 대화 이름과 이 기기에 저장된 메시지 텍스트를 살펴봅니다.';
-
-  @override
-  String conversationsSearchFoundBody(int conversations, int messages) {
-    return '이 기기에서 대화 $conversations건, 메시지 $messages건을 찾았습니다. 검색은 기기 밖으로 나가지 않습니다.';
-  }
-
-  @override
   String get conversationsSectionLabel => '대화';
 
   @override
@@ -1632,28 +1592,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get conversationsNoMatchTitle => '일치하는 대화가 없습니다';
 
   @override
-  String get conversationsNoneYetTitle => '아직 1:1 대화가 없습니다';
+  String get conversationsNoneYetTitle => '아직 대화가 없습니다';
 
   @override
-  String get conversationsNoMatchBody => '이 기기에서 일치하는 핸들이나 표시 이름을 찾지 못했습니다.';
+  String get conversationsNoMatchBody => '이 기기에 일치하는 이름이나 핸들이 없습니다.';
 
   @override
   String get conversationsNoneYetBody =>
-      '핸들로 시작하세요. VEIL에서는 상대의 핸들을 직접 입력해 찾으며, 그 과정은 비공개입니다.';
+      '상대의 핸들로 대화를 시작하세요. VEIL은 연락처를 뒤져 사람을 찾지 않습니다. 상대가 알려 준 핸들을 직접 입력합니다.';
 
   @override
   String get conversationsStartDirect => '1:1 대화 시작';
-
-  @override
-  String get conversationsStartGroup => '그룹 대화 시작';
-
-  @override
-  String get conversationsPillDirect => '1:1';
-
-  @override
-  String conversationsPillQueued(int count) {
-    return '$count개 대기 중';
-  }
 
   @override
   String get conversationsMessagesSection => '메시지';
@@ -1664,11 +1613,8 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get conversationsNoMessageMatchTitle => '일치하는 메시지가 없습니다';
-
-  @override
   String get conversationsNoMessageMatchBody =>
-      '현재 필터로는 이 기기에 캐시된 메시지에서 일치하는 내용을 찾지 못했습니다.';
+      '이 기기에 있는 메시지 중 현재 필터에 맞는 것이 없습니다.';
 
   @override
   String get conversationsResultFromYou => '나';
@@ -1708,16 +1654,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get conversationsChoosePaneBody =>
-      '넓은 화면에서는 대화 목록을 옆에 둔 채로 메시지를 읽고 보낼 수 있습니다.';
-
-  @override
-  String get conversationsActiveEyebrow => '현재 대화';
-
-  @override
-  String get conversationsActiveBody => '넓은 화면에서는 대화 목록과 메시지를 함께 볼 수 있습니다.';
-
-  @override
-  String get conversationsPillOpaqueRelay => '내용을 읽지 못하는 릴레이';
+      '목록에서 대화를 고르거나, 목록 위의 버튼으로 새 대화를 시작하세요.';
 
   @override
   String get conversationsNewTooltip => '새 대화';
@@ -1725,6 +1662,11 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String conversationsRowSemantics(String name) {
     return '$name님과의 대화';
+  }
+
+  @override
+  String conversationsGroupRowSemantics(String names) {
+    return '$names 그룹 대화';
   }
 
   @override

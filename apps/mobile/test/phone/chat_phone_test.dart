@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/attachments/attachments_feature.dart';
 import 'package:veil_mobile/src/features/attachments/presentation/attachment_preview_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_composer_bar.dart';
-import 'package:veil_mobile/src/features/chat/presentation/chat_header.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
@@ -45,7 +44,6 @@ void main() {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       expect(find.byType(VeilHeroPanel), findsNothing);
       expect(find.byType(VeilMetricStrip), findsNothing);
-      expect(find.byType(ChatHeader), findsNothing);
 
       final messages = onScreen(tester, find.byType(ChatMessageList));
       expect(messages.height / screenHeight(tester), greaterThan(0.6));
@@ -106,7 +104,7 @@ void main() {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
       await tester.tap(find.byTooltip('Search messages'));
       await pumpFrames(tester, frames: 2);
-      expect(find.widgetWithText(TextField, 'Search cached messages on this device'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Search this chat'), findsOneWidget);
       expect(find.text('Selene Park'), findsNothing);
       expect(find.byTooltip('Safety Number'), findsNothing);
 
@@ -237,7 +235,7 @@ void main() {
   // action off, which is the one thing the user must be able to reach.
   for (final (locale, titles, actions) in [
     ('en', ['Safety number changed', 'Delivery stalled'], ['Review', 'Retry failed sends']),
-    ('ko', ['안전 번호가 바뀌었습니다', '전송 정지됨'], ['확인하기', '실패한 전송 재시도']),
+    ('ko', ['안전 번호가 바뀌었습니다', '전송이 멈췄습니다'], ['확인하기', '모두 다시 보내기']),
   ]) {
     testWidgets('with the keyboard up, each warning keeps its title and its action on one row ($locale)',
         (tester) async {

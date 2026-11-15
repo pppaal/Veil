@@ -592,6 +592,60 @@ const List<ScreenCase> screenCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryExtent: minSqueezedMessagesExtent,
   ),
+
+  // What a chat and the list show while the messenger is still fetching,
+  // when the relay failed the request, and when the peer's key changed in a
+  // group they share with the user (the 1:1 then says where that waits).
+  ScreenCase(
+    'chat-room-loading',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$emptyChatConversationId',
+    attention: ChatAttention(loading: true),
+  ),
+  ScreenCase(
+    'chat-room-load-failed',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$emptyChatConversationId',
+    attention: ChatAttention(relayError: true),
+  ),
+  ScreenCase(
+    'chat-room-error',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    attention: ChatAttention(relayError: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'chat-room-change-elsewhere',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    withGroup: true,
+    attention: ChatAttention(identityChangedInGroup: true),
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
+  ScreenCase(
+    'conversation-list-loading',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    account: LayoutAccount.signedInEmpty,
+    attention: ChatAttention(loading: true),
+  ),
+  ScreenCase(
+    'conversation-list-error',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    attention: ChatAttention(relayError: true),
+    primaryExtent: conversationRowsExtent,
+    minPrimaryShare: minPrimaryContentShare,
+  ),
 ];
 
 const _wideSizes = [wideSmall, wideLarge];
@@ -626,6 +680,27 @@ const List<ScreenCase> wideCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
     settle: _openChatPane,
+  ),
+  // The pane with a group in it (its title, its members' names on their
+  // messages), and the shell before there is any conversation to open.
+  ScreenCase(
+    'wide-chat-group',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    withGroup: true,
+    sizes: _wideSizes,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectGroupPane,
+  ),
+  ScreenCase(
+    'wide-no-conversation',
+    screen: ConversationListScreen,
+    file: 'conversation_list_screen.dart',
+    location: '/conversations',
+    account: LayoutAccount.signedInEmpty,
+    sizes: _wideSizes,
   ),
   ScreenCase(
     'tablet-chat',
@@ -783,6 +858,17 @@ Future<void> _openChatPane(WidgetTester tester) async {
     await pumpFrames(tester, frames: 6);
   }
   expect(open(), isTrue, reason: 'the second pane did not open the chat');
+}
+
+// The group is the newest conversation, so the wide shell opens it.
+Future<void> _expectGroupPane(WidgetTester tester) async {
+  await pumpFrames(tester, frames: 4);
+  expect(
+    tester.widgetList<ChatRoomScreen>(find.byType(ChatRoomScreen)).map((chat) => chat.conversationId),
+    [groupConversationId],
+    reason: 'the second pane did not open the group',
+  );
+  await _expectGroupMessages(tester);
 }
 
 Future<void> _openTimerSheet(WidgetTester tester) async {

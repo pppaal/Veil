@@ -97,8 +97,15 @@ class VeilMessengerController extends ChangeNotifier {
   bool get isBusy => _services.ops.isBusy;
   bool get realtimeConnected => _services.realtime.connected;
   String? get errorMessage => _services.ops.errorMessage;
+
+  /// Whether [errorMessage] only says that the relay link dropped while
+  /// sends were queued (see MessengerOperationRunner.noteRelayInterrupted).
+  bool get errorIsRelayInterruption => _services.ops.showsRelayInterruption;
   bool get hasPendingWork => _services.outbox.hasPendingWork;
   String? get activeConversationId => _services.store.activeConversationId;
+
+  /// The signed-in user, who is one of the members a group lists.
+  String? get localUserId => _services.session.userId;
 
   bool isResolvingAttachment(String attachmentId) => _services.attachments.isResolving(attachmentId);
   String? attachmentDownloadError(String attachmentId) => _services.attachments.downloadError(attachmentId);
@@ -277,6 +284,14 @@ class VeilMessengerController extends ChangeNotifier {
     if (_services.trust.hasPendingChangeAbout(userId)) return false;
     return pins.isNotEmpty && pins.every((pin) => pin.isVerified);
   }
+
+  /// Whose device each pinned device of [userIds] is, by device id. A group
+  /// frame names only the device that sealed it; this says which member
+  /// that is, as far as this device has pinned an identity for it.
+  Future<Map<String, String>> pinnedDeviceOwners(Iterable<String> userIds) async => {
+        for (final userId in userIds)
+          for (final pin in await _services.trust.resolver.pinsForUser(userId)) pin.deviceId: userId,
+      };
 
   /// Whether the user may keep the current identity instead of the change
   /// pending in [conversationId] (see [declineIdentityChange]).

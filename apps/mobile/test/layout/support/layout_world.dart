@@ -89,6 +89,8 @@ class ChatAttention {
     this.peerTyping = false,
     this.legacyMessage = false,
     this.identityChangedInGroup = false,
+    this.loading = false,
+    this.relayError = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -113,9 +115,22 @@ class ChatAttention {
   /// world with the group.
   final bool identityChangedInGroup;
 
+  /// The messenger is still fetching: a chat with nothing loaded and a list
+  /// with no conversation yet show their loading state.
+  final bool loading;
+
+  /// The relay failed the last request, which the messenger reports as its
+  /// error line: a chat and the list each say so.
+  final bool relayError;
+
   /// How many of the chat's warnings come with an action: reviewing the
-  /// identity change, releasing the held account, retrying failed sends.
-  int get warningActionCount => (identityChanged ? 1 : 0) + (accountHeld ? 1 : 0) + (failedSends > 0 ? 1 : 0);
+  /// identity change (in this chat, or the one that waits in the group),
+  /// releasing the held account, retrying failed sends.
+  int get warningActionCount =>
+      (identityChanged ? 1 : 0) +
+      (identityChangedInGroup ? 1 : 0) +
+      (accountHeld ? 1 : 0) +
+      (failedSends > 0 ? 1 : 0);
 }
 
 class LayoutWorld {
@@ -197,6 +212,14 @@ class LayoutWorld {
     final peer = relay.partiesByHandle[peerHandle]!;
     await trust.resolver.evaluate(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
     await trust.markVerified(peer.userId, peer.deviceId, peer.identity.identityPublicKey);
+    // A group's frames open only for members whose devices this device has
+    // pinned, which is also how it knows who of the group wrote each one.
+    if (withGroup) {
+      for (final handle in groupMemberHandles) {
+        final member = relay.partiesByHandle[handle]!;
+        await trust.resolver.evaluate(member.userId, member.deviceId, member.identity.identityPublicKey);
+      }
+    }
 
     // The idempotent mock engine: layout does not depend on the ratchet,
     // and this device's own messages are read from stored content anyway.
@@ -354,6 +377,14 @@ class _LayoutMessenger extends VeilMessengerController {
 
   final ChatAttention attention;
   final RelayParty peer;
+
+  @override
+  bool get isBusy => attention.loading || super.isBusy;
+
+  // What a relay answering 503 leaves as the messenger's error line.
+  @override
+  String? get errorMessage =>
+      attention.relayError ? formatUserFacingError('Request failed: HTTP 503') : super.errorMessage;
 
   @override
   PendingIdentityChange? pendingIdentityChangeFor(String conversationId) =>

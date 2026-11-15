@@ -349,24 +349,24 @@ void main() {
         final area = onScreen(tester, find.byType(ChatMessageList));
         for (final finder in [
           find.text('No messages yet'),
-          find.textContaining('Send the first message'),
-          find.widgetWithText(FilledButton, 'Send'),
+          find.textContaining('encrypted on this device'),
+          find.widgetWithText(OutlinedButton, 'Compare safety numbers'),
         ]) {
           final box = tester.renderObject<RenderBox>(finder);
           final rect = box.localToGlobal(Offset.zero) & box.size;
           expect(rect.top, greaterThanOrEqualTo(area.top), reason: '$finder');
           expect(rect.bottom, lessThanOrEqualTo(area.bottom), reason: '$finder');
         }
-        expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsNothing);
+        expect(find.byIcon(Icons.lock_outline_rounded), findsOneWidget, reason: 'the composer\'s, not the state\'s');
         expect(tester.takeException(), isNull);
       });
     });
 
     testWidgets('with the whole screen shows its icon too', (tester) async {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
-        expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsOneWidget);
+        expect(find.byIcon(Icons.lock_outline_rounded), findsNWidgets(2), reason: 'the state\'s and the composer\'s');
         expect(find.text('No messages yet'), findsOneWidget);
-        expect(find.widgetWithText(FilledButton, 'Send'), findsOneWidget);
+        expect(find.widgetWithText(OutlinedButton, 'Compare safety numbers'), findsOneWidget);
       });
     });
   });

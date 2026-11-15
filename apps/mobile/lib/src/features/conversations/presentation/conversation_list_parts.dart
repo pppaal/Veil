@@ -142,44 +142,55 @@ class _SearchChip<T> extends StatelessWidget {
   }
 }
 
-/// The placeholder rows shown while the first list is on its way.
+/// The placeholder rows shown while the first list is on its way: the
+/// shape of the rows that will take their place, so nothing jumps when they
+/// do. A screen reader hears that the list is loading.
 class ConversationListSkeleton extends StatelessWidget {
   const ConversationListSkeleton({super.key});
 
+  // How wide the name of each placeholder row is.
+  static const _nameWidths = [132.0, 88.0, 164.0, 112.0, 148.0];
+
   @override
   Widget build(BuildContext context) {
-    return const Column(
-      children: [
-        VeilSurfaceCard(
-          toned: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              VeilSkeletonLine(width: 96),
-              SizedBox(height: VeilSpace.md),
-              VeilSkeletonLine(width: 220, height: 18),
-              SizedBox(height: VeilSpace.sm),
-              VeilSkeletonLine(width: double.infinity),
-              SizedBox(height: VeilSpace.sm),
-              VeilSkeletonLine(width: 180),
-            ],
-          ),
+    final palette = context.veilPalette;
+    return Semantics(
+      label: AppLocalizations.of(context).commonLoading,
+      child: ExcludeSemantics(
+        child: Column(
+          children: [
+            for (final nameWidth in _nameWidths)
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 2),
+                padding: const EdgeInsets.all(VeilSpace.sm),
+                decoration: BoxDecoration(
+                  color: palette.surface,
+                  borderRadius: BorderRadius.circular(VeilRadius.md),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: BoxDecoration(color: palette.surfaceAlt, shape: BoxShape.circle),
+                    ),
+                    const SizedBox(width: VeilSpace.sm + 2),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          VeilSkeletonLine(width: nameWidth, height: 14),
+                          const SizedBox(height: VeilSpace.xs),
+                          const FractionallySizedBox(widthFactor: 0.72, child: VeilSkeletonLine()),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
-        SizedBox(height: VeilSpace.sm),
-        VeilSurfaceCard(
-          toned: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              VeilSkeletonLine(width: 84),
-              SizedBox(height: VeilSpace.md),
-              VeilSkeletonLine(width: 200, height: 18),
-              SizedBox(height: VeilSpace.sm),
-              VeilSkeletonLine(width: double.infinity),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -204,39 +215,31 @@ class MessageSearchResultTile extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final palette = context.veilPalette;
-    final origin = messageResultOrigin(l10n, result);
     return VeilListTileCard(
-      eyebrow: origin,
+      // Who sent it, what it is and when: "You · Text · 09:45".
+      eyebrow: '${messageResultOrigin(l10n, result)} · '
+          '${messageDateLabel(result.sentAt, timeFormat, l10n.localeName)}',
       leading: Icon(messageKindIcon(result.messageKind)),
       title: result.title,
       subtitle: result.bodySnippet,
-      subtitleWidget: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '$origin | ${messageDateLabel(result.sentAt, timeFormat, l10n.localeName)}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: palette.textSubtle,
+      // The snippet is a person's words: drawn as they wrote them, with
+      // the query marked.
+      subtitleWidget: RichText(
+        text: TextSpan(
+          style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+          children: buildSearchHighlightTextSpans(
+            text: result.bodySnippet,
+            query: query,
+            highlightStyle: theme.textTheme.bodyMedium?.copyWith(
+              color: palette.text,
+              fontWeight: FontWeight.w700,
             ),
+            baseStyle: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
           ),
-          const SizedBox(height: VeilSpace.xxs),
-          RichText(
-            text: TextSpan(
-              style: theme.textTheme.bodyMedium,
-              children: buildSearchHighlightTextSpans(
-                text: result.bodySnippet,
-                query: query,
-                highlightStyle: theme.textTheme.bodyMedium?.copyWith(
-                  color: palette.text,
-                  fontWeight: FontWeight.w700,
-                ),
-                baseStyle: theme.textTheme.bodyMedium,
-              ),
-            ),
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+        ),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
       ),
       trailing: const Icon(Icons.north_east_rounded, size: 18),
       onTap: onTap,
@@ -245,8 +248,8 @@ class MessageSearchResultTile extends StatelessWidget {
 }
 
 /// The messages the local search found under the conversations it matched:
-/// their heading with a count, the results or an empty state, and the
-/// button that loads more.
+/// their heading with a count, the results or a line saying there are
+/// none, and the button that loads more.
 List<Widget> messageSearchResultSection(BuildContext context, ConversationListView view) {
   final l10n = AppLocalizations.of(context);
   final results = view.archiveResults;
@@ -267,10 +270,12 @@ List<Widget> messageSearchResultSection(BuildContext context, ConversationListVi
     ),
     const SizedBox(height: VeilSpace.sm),
     if (!view.searchingArchive && results.isEmpty)
-      VeilEmptyState(
-        title: l10n.conversationsNoMessageMatchTitle,
-        body: l10n.conversationsNoMessageMatchBody,
-        icon: Icons.manage_search_rounded,
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
+        child: VeilCopy(
+          l10n.conversationsNoMessageMatchBody,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
+        ),
       )
     else ...[
       for (final result in results)

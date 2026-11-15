@@ -117,6 +117,17 @@ class MessengerStateStore {
 
   bool hasMessagesLoaded(String conversationId) => _messages.containsKey(conversationId);
 
+  /// The listed conversations whose last message this device has never
+  /// loaded, newest first: the list cannot say what that message is until
+  /// their history has been fetched. One whose last message expired by
+  /// [now] has nothing left to show.
+  List<String> unloadedWithLastMessage(DateTime now) => [
+        for (final conversation in _conversations)
+          if (conversation.lastEnvelope case final last?
+              when !_messages.containsKey(conversation.id) && !_isExpired(last.expiresAt, now))
+            conversation.id,
+      ];
+
   int pendingCountFor(String conversationId) =>
       messagesOf(conversationId).where((message) => message.isPending || message.hasFailed).length;
 

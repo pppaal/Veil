@@ -28,13 +28,17 @@ class VeilScreenIntro extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
+    // The ARB empties the words of a slogan before wave 1 removes the
+    // screen's use of it: an empty title or body draws nothing.
+    final hasTitle = title.isNotEmpty;
+    final hasBody = body != null && body!.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: titleStyle ?? theme.textTheme.headlineMedium),
-        if (body != null) ...[
-          const SizedBox(height: VeilSpace.xs),
+        if (hasTitle) Text(title, style: titleStyle ?? theme.textTheme.headlineMedium),
+        if (hasBody) ...[
+          if (hasTitle) const SizedBox(height: VeilSpace.xs),
           Text(body!, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
         ],
       ],

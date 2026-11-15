@@ -30,7 +30,7 @@ class VeilApp extends ConsumerWidget {
 
     return _PrivacyLifecycleBoundary(
       child: MaterialApp.router(
-        title: 'VEIL',
+        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
         theme: VeilTheme.light(),
         darkTheme: VeilTheme.dark(),
         // Honor the user's persisted choice. Defaults to ThemeMode.system,

@@ -291,12 +291,13 @@ class VeilHeroPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
+    // An emptied ARB value (a slogan wave 1 removes) draws nothing.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: theme.textTheme.headlineMedium),
-        const SizedBox(height: VeilSpace.xs),
-        Text(body, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+        if (title.isNotEmpty) Text(title, style: theme.textTheme.headlineMedium),
+        if (title.isNotEmpty && body.isNotEmpty) const SizedBox(height: VeilSpace.xs),
+        if (body.isNotEmpty) Text(body, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
       ],
     );
   }

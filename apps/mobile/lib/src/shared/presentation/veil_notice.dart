@@ -58,6 +58,9 @@ class VeilNotice extends StatelessWidget {
     final actionColor = tone == VeilTone.danger ? palette.danger : palette.primaryStrong;
     final hasAction = actionLabel != null;
     final glyph = Icon(icon ?? iconFor(tone), size: 20, color: toneColor);
+    // An empty title (an ARB value emptied before its screen stops passing
+    // it) is no title: the body takes the first line.
+    final title = (this.title?.isEmpty ?? true) ? null : this.title;
 
     final Widget content;
     if (dense) {
@@ -101,7 +104,7 @@ class VeilNotice extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (title != null) ...[
-                  Text(title!, style: theme.textTheme.titleSmall),
+                  Text(title, style: theme.textTheme.titleSmall),
                   const SizedBox(height: 2),
                 ],
                 Text(message, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),

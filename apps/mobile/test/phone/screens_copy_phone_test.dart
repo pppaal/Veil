@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_labels.dart';
+import 'package:veil_mobile/src/features/security/presentation/safety_number_cards.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_screen_intro.dart';
 import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
@@ -81,7 +82,7 @@ void main() {
         final devices = await read(tester);
         expect(devices, containsAll(['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone', 'Android']),
             reason: 'the devices were on screen');
-        for (final text in ['2 trusted devices (1 stale)  ·  ', '1 revoked', 'Seen Apr 2 (UTC)', l10n.settingsGraphStaleBody]) {
+        for (final text in ['2 devices (1 stale)  ·  ', '1 revoked', 'Last seen Apr 2 (UTC)', l10n.settingsGraphStaleBody]) {
           expect(devices, contains(text));
         }
       });
@@ -103,23 +104,29 @@ void main() {
       expect(labels[4], contains('claim-7'));
       expect(labels[5], allOf(contains('claim-7'), contains('AB12 CD34')));
       expect(transferStatusLabel(l10n, null), isNull);
-      expect(transferStatusLabel(l10n, const TransferClaimApproved('c', 'f')), 'Approved claim c on old device. Key fingerprint: f');
+      expect(transferStatusLabel(l10n, const TransferClaimApproved('c', 'f')), 'Approved c. Key fingerprint: f');
     });
   });
 
   group('safety number with a pending identity change', () {
     const change = ChatAttention(identityChanged: true);
     const location = '/safety-numbers/$chatConversationId';
+    // The screen's bar says "Safety number" too, so the label over the one
+    // number is found inside its card.
+    final plainLabel = find.descendant(
+      of: find.byType(SafetyNumberCard, skipOffstage: false),
+      matching: find.text('Safety number', skipOffstage: false),
+    );
 
     testWidgets('a phone opens on the warning, before anything else', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = tester.getRect(find.text("This contact's identity key changed"));
+        final warning = tester.getRect(find.text('Safety number changed'));
         final intro = tester.getRect(find.byType(VeilScreenIntro));
         expect(find.byType(VeilHeroPanel), findsNothing);
         expect(warning.bottom, lessThan(intro.top));
         expect(warning.top, lessThan(screenHeight(tester) / 2), reason: 'on the first screenful');
-        expect(find.text("This contact's identity key changed"), findsOneWidget, reason: 'said once');
+        expect(find.text('Safety number changed'), findsOneWidget, reason: 'said once');
       });
     });
 
@@ -128,16 +135,16 @@ void main() {
     testWidgets('says which number is the new one and which the current, the new one first', (tester) async {
       await withPhoneApp(tester, identities, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
-        final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
-        final decide = find.text('Re-verify with new key', skipOffstage: false);
+        final current = find.text('Current safety number', skipOffstage: false);
+        final next = find.text('New safety number', skipOffstage: false);
+        final decide = find.text('Verify the new number', skipOffstage: false);
         expect(next, findsOneWidget);
         final newTop = tester.getTopLeft(next).dy;
         final decideTop = tester.getTopLeft(decide).dy;
         await tester.dragUntilVisible(current, find.byType(ListView), const Offset(0, -200));
         expect(current, findsOneWidget);
         expect(newTop, lessThan(decideTop));
-        expect(find.text('SAFETY NUMBER', skipOffstage: false), findsNothing);
+        expect(plainLabel, findsNothing);
         // Scrolled by now: compared within one frame.
         expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
@@ -147,9 +154,9 @@ void main() {
       const wide = PhoneSize(900, 1400, topInset: 0, bottomInset: 0);
       await withPhoneApp(tester, identities, size: wide, location: location, attention: change, body: (world) async {
         await awaitSafetyNumber(tester);
-        final warning = find.text("This contact's identity key changed", skipOffstage: false);
-        final current = find.text('CURRENT SAFETY NUMBER', skipOffstage: false);
-        final next = find.text('NEW SAFETY NUMBER', skipOffstage: false);
+        final warning = find.text('Safety number changed', skipOffstage: false);
+        final current = find.text('Current safety number', skipOffstage: false);
+        final next = find.text('New safety number', skipOffstage: false);
         expect(tester.getTopLeft(warning).dy, lessThan(tester.getTopLeft(next).dy));
         expect(tester.getTopLeft(next).dy, lessThan(tester.getTopLeft(current).dy));
       });
@@ -158,8 +165,8 @@ void main() {
     testWidgets('with no change there is one number, under its plain label', (tester) async {
       await withPhoneApp(tester, identities, location: location, body: (world) async {
         await awaitSafetyNumber(tester);
-        expect(find.text('SAFETY NUMBER', skipOffstage: false), findsOneWidget);
-        expect(find.text("This contact's identity key changed", skipOffstage: false), findsNothing);
+        expect(plainLabel, findsOneWidget);
+        expect(find.text('Safety number changed', skipOffstage: false), findsNothing);
       });
     });
   });
@@ -209,7 +216,7 @@ void main() {
         final area = onScreen(tester, find.byType(ChatMessageList));
         for (final finder in [
           find.text('No messages yet'),
-          find.textContaining('encrypted on this device'),
+          find.textContaining('end-to-end encrypted'),
           find.widgetWithText(OutlinedButton, 'Compare safety numbers'),
         ]) {
           final box = tester.renderObject<RenderBox>(finder);

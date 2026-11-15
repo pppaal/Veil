@@ -69,8 +69,7 @@ void main() {
         await pumpFrames(tester);
         expectNoDashboard();
         expect(find.byType(VeilStatusPill), findsNothing);
-        expect(find.text('VEIL'), findsOneWidget);
-        expect(findCopy(l10n.splashBody), findsOneWidget);
+        expect(find.text('Veil'), findsOneWidget);
         expect(findCopy(l10n.splashPreparingTitle), findsOneWidget);
         expect(tester.takeException(), isNull);
       } finally {

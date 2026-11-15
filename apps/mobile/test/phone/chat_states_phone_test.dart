@@ -46,7 +46,7 @@ void main() {
       await withPhoneApp(tester, identities, location: _emptyChat, body: (world) async {
         expect(find.text('No messages yet'), findsOneWidget);
         expect(
-          find.text('What you send here is encrypted on this device, for the people in this chat only.'),
+          find.text('Messages are end-to-end encrypted.'),
           findsOneWidget,
         );
         expect(find.text('Send'), findsNothing);
@@ -168,8 +168,8 @@ void main() {
         location: _emptyChat,
         attention: const ChatAttention(relayError: true),
         body: (world) async {
-          expect(find.text('Could not load messages'), findsOneWidget);
-          expect(find.text('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget,
+          expect(find.text("Couldn't load messages"), findsOneWidget);
+          expect(find.text('The server could not complete the request. Try again shortly.'), findsOneWidget,
               reason: 'the reason, said once');
           expect(find.byType(VeilInlineBanner), findsNothing, reason: 'no banner repeats it');
           expect(find.text('No messages yet'), findsNothing, reason: 'nobody knows that yet');
@@ -190,8 +190,8 @@ void main() {
         attention: const ChatAttention(relayError: true),
         body: (world) async {
           expect(find.byType(VeilInlineBanner), findsOneWidget);
-          expect(findCopy('Conversation issue'), findsOneWidget);
-          expect(findCopy('The VEIL relay could not complete the request. Try again shortly.'), findsOneWidget);
+          expect(findCopy('Something went wrong'), findsOneWidget);
+          expect(findCopy('The server could not complete the request. Try again shortly.'), findsOneWidget);
           expect(find.textContaining('The VEIL relay failed'), findsNothing, reason: 'the formatter\'s words');
           expect(onScreen(tester, find.byType(ChatMessageList)).height / screenHeight(tester), greaterThan(0.4));
         },

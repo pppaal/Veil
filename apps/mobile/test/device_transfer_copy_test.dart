@@ -16,7 +16,7 @@ void main() {
       expect(text, anyOf(contains('history is not transferred'), contains('history does not move')));
       expect(text, isNot(contains('remains trusted')));
     }
-    expect(en.deviceTransferComplete, contains('old device has been signed out'));
+    expect(en.deviceTransferComplete, contains('old phone is signed out'));
     expect(en.deviceTransferComplete, isNot(contains('joined the trusted graph')));
   });
 }

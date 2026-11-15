@@ -76,7 +76,8 @@ void main() {
       ];
       expect(labels, hasLength(6));
       for (final label in labels) {
-        expect(label, label.toUpperCase(), reason: '"$label" is not in capitals like the others');
+        expect(label, isNot(label.toUpperCase()), reason: '"$label" is in capitals, unlike the others');
+        expect(label[0], label[0].toUpperCase(), reason: '"$label" does not start with a capital like the others');
       }
     });
   });
@@ -139,7 +140,7 @@ void main() {
       expect(findCopy(en.settingsGraphStaleTitle), findsOneWidget, reason: 'the warning is whole on the list');
       // Three devices: the quiet one is one of the two trusted, not a third
       // beside them and the revoked one.
-      expect(find.text('2 trusted devices (1 stale)  ·  '), findsOneWidget);
+      expect(find.text('2 devices (1 stale)  ·  '), findsOneWidget);
       expect(find.text('1 revoked'), findsOneWidget);
       expect(find.textContaining('·'), findsOneWidget, reason: 'two parts, which add up to the list');
 
@@ -235,7 +236,7 @@ void main() {
       // Nothing quiet is left to count among the trusted.
       tester.state<ScrollableState>(find.byType(Scrollable).first).position.jumpTo(0);
       await pumpFrames(tester, frames: 2);
-      expect(find.text('1 trusted device  ·  '), findsOneWidget);
+      expect(find.text('1 device  ·  '), findsOneWidget);
       expect(find.text('2 revoked'), findsOneWidget);
     });
   });
@@ -297,11 +298,11 @@ void main() {
         await pumpFrames(tester, frames: 3);
 
         FilledButton confirm() => tester.widget(find.widgetWithText(FilledButton, en.settingsLogout));
-        await tester.enterText(find.byType(TextField), 'log');
+        await tester.enterText(find.byType(TextField), 'sign');
         await tester.pump();
         expect(confirm().onPressed, isNull, reason: 'half the phrase is not the phrase');
         // Letter case is not the point.
-        await tester.enterText(find.byType(TextField), 'log out');
+        await tester.enterText(find.byType(TextField), 'sign out');
         await tester.pump();
         expect(confirm().onPressed, isNotNull);
 

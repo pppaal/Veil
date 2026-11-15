@@ -189,7 +189,7 @@ void main() {
       ]));
 
       expect(find.text(l10n.chatBannerDeliveryStalled), findsOneWidget);
-      expect(find.text('1 message was not sent. Retry once the relay is reachable.'), findsOneWidget);
+      expect(find.text("1 message couldn't be sent."), findsOneWidget);
       await tester.tap(find.text(l10n.chatRetryFailedSendsAction));
       expect(retried, 1);
 
@@ -198,7 +198,7 @@ void main() {
         _message('m1', MessageDeliveryState.failed),
         _message('m2', MessageDeliveryState.failed),
       ]));
-      expect(find.text('2 messages were not sent. Retry once the relay is reachable.'), findsOneWidget);
+      expect(find.text("2 messages couldn't be sent."), findsOneWidget);
       expect(find.textContaining('(s)'), findsNothing);
     });
 
@@ -209,7 +209,7 @@ void main() {
       await tester.pumpWidget(banners(messages: messages));
       expect(find.text(l10n.chatBannerQueuedLocally), findsOneWidget);
       expect(
-        find.text('1 message is waiting on this device and will be sent after reconnecting.'),
+        find.text('1 message is waiting to be sent.'),
         findsOneWidget,
       );
       expect(find.text(l10n.chatRetryFailedSendsAction), findsNothing);
@@ -304,13 +304,13 @@ void main() {
       expect(find.text(l10n.chatSearchSearching), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true));
-      expect(find.text('No matches on this device'), findsOneWidget);
+      expect(find.text('No matches'), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true, searchHitCount: 1));
-      expect(find.text('1 match on this device'), findsOneWidget);
+      expect(find.text('1 match'), findsOneWidget);
 
       await tester.pumpWidget(banners(messages: loaded, hasSearchQuery: true, searchHitCount: 3));
-      expect(find.text('3 matches on this device'), findsOneWidget);
+      expect(find.text('3 matches'), findsOneWidget);
       expect(find.byType(VeilInlineBanner), findsNothing, reason: 'a line, not a banner');
     });
   });

@@ -91,11 +91,11 @@ void main() {
 
       // Search: the field takes the title's place, and its back button
       // closes the search, not the chat.
-      await tester.tap(inChat(find.byTooltip('Search messages')));
+      await tester.tap(inChat(find.byTooltip('Search')));
       await pumpFrames(tester, frames: 2);
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
-      expect(inChat(find.text('2 matches on this device')), findsOneWidget);
+      expect(inChat(find.text('2 matches')), findsOneWidget);
       expect(inChat(find.text(_latest)), findsNothing);
       await tester.tap(inChat(find.byTooltip('Back')));
       await pumpFrames(tester, frames: 4);
@@ -103,12 +103,12 @@ void main() {
       expect(find.byTooltip('Back'), findsNothing);
 
       // The disappearing timer.
-      await tester.tap(inChat(find.byTooltip('Disappearing messages: Off')));
+      await tester.tap(inChat(find.byTooltip('Disappearing: Off')));
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.text('1 day'));
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
-      expect(inChat(find.byTooltip('Disappearing messages: 1 day')), findsOneWidget);
+      expect(inChat(find.byTooltip('Disappearing: 1 day')), findsOneWidget);
 
       // The safety number.
       await tester.tap(inChat(find.byTooltip('Safety number')));
@@ -125,10 +125,10 @@ void main() {
 
   testWidgets('a new conversation starts from the list\'s bar', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
-      await tester.tap(find.byTooltip('New conversation'));
+      await tester.tap(find.byTooltip('New chat'));
       await pumpFrames(tester, frames: 3);
       expect(find.text('New group'), findsOneWidget);
-      await tester.tap(find.text('New direct chat'));
+      await tester.tap(find.text('New chat'));
       await pumpFrames(tester);
       expect(find.byType(StartDirectChatScreen), findsOneWidget);
     });
@@ -145,7 +145,7 @@ void main() {
         attention: const ChatAttention(identityChanged: true, failedSends: 2),
         body: (world) async {
           expect(inChat(find.byType(VeilInlineBanner)), findsNWidgets(2));
-          for (final action in ['Review', 'Retry failed sends']) {
+          for (final action in ['Review', 'Retry now']) {
             final button = tester.renderObject<RenderBox>(inChat(find.widgetWithText(TextButton, action)));
             expect(whyNotWhollyTappable(tester, button), isNull, reason: '"$action"');
             expect(button.size.height, greaterThanOrEqualTo(44), reason: '"$action"');
@@ -179,8 +179,8 @@ void main() {
       account: LayoutAccount.signedInEmpty,
       body: (world) async {
         expect(find.byType(ChatRoomScreen), findsNothing);
-        expect(find.text('Select a conversation'), findsOneWidget);
-        expect(find.text('No conversations yet'), findsOneWidget);
+        expect(find.text('Select a chat'), findsOneWidget);
+        expect(find.text('No chats yet'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

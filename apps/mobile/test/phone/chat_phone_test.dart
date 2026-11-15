@@ -101,7 +101,7 @@ void main() {
 
   testWidgets('searches from the bar: the field replaces the title, and back closes it', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      await tester.tap(find.byTooltip('Search messages'));
+      await tester.tap(find.byTooltip('Search'));
       await pumpFrames(tester, frames: 2);
       expect(find.widgetWithText(TextField, 'Search this chat'), findsOneWidget);
       expect(find.text('Sam Rivera'), findsNothing);
@@ -110,7 +110,7 @@ void main() {
       // Typed where the focus is: opening the search moved it to the bar.
       tester.testTextInput.enterText('lease');
       await pumpFrames(tester, frames: 4);
-      expect(find.text('2 matches on this device'), findsOneWidget);
+      expect(find.text('2 matches'), findsOneWidget);
       expect(find.text(_first), findsOneWidget);
       expect(find.text(_latest), findsNothing);
 
@@ -125,7 +125,7 @@ void main() {
 
   testWidgets('sets the disappearing timer from the bar and shows it there', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      await tester.tap(find.byTooltip('Disappearing messages: Off'));
+      await tester.tap(find.byTooltip('Disappearing: Off'));
       await pumpFrames(tester, frames: 4);
       expect(find.text('Disappearing messages'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: 'the sheet fits a 360x640 screen');
@@ -133,14 +133,14 @@ void main() {
       await tester.tap(find.text('1 day'));
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
-      expect(find.byTooltip('Disappearing messages: 1 day'), findsOneWidget);
+      expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget, reason: 'under the name, while a timer is set');
     });
   });
 
   testWidgets('shows a timer the conversation already has', (tester) async {
     await withPhoneApp(tester, identities, location: '/chat/$timerChatConversationId', body: (world) async {
-      expect(find.byTooltip('Disappearing messages: 1 day'), findsOneWidget);
+      expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget);
     });
   });
@@ -270,13 +270,13 @@ void main() {
       body: (world) async {
         expect(find.byType(VeilInlineBanner), findsNWidgets(2));
         expect(find.byType(VeilNoticeRow), findsNothing);
-        expect(find.text('Nothing is sent to the new key until you review it.'), findsOneWidget);
+        expect(find.text('Nothing is sent until you review it.'), findsOneWidget);
 
         // The keyboard comes up, and goes again.
         tester.view.viewInsets = const FakeViewPadding(bottom: 600);
         await pumpFrames(tester, frames: 3);
         expect(find.byType(VeilNoticeRow), findsNWidgets(2));
-        expect(find.text('Nothing is sent to the new key until you review it.'), findsNothing);
+        expect(find.text('Nothing is sent until you review it.'), findsNothing);
         tester.view.viewInsets = FakeViewPadding.zero;
         await pumpFrames(tester, frames: 3);
         expect(find.byType(VeilInlineBanner), findsNWidgets(2));

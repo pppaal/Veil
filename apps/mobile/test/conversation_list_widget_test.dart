@@ -91,17 +91,17 @@ void main() {
     // The list starts right under its bar, and so do the messages' pane.
     expect(tester.getTopLeft(find.byType(ConversationListPhone)).dy, ChatPaneBar.height);
     // What the removed cards were for is in the two bars.
-    expect(find.byTooltip('New conversation'), findsOneWidget);
-    expect(find.byTooltip('Security status'), findsOneWidget);
-    for (final tooltip in ['Safety number', 'Search messages', 'Disappearing messages: Off']) {
+    expect(find.byTooltip('New chat'), findsOneWidget);
+    expect(find.byTooltip('Security'), findsOneWidget);
+    for (final tooltip in ['Safety number', 'Search', 'Disappearing: Off']) {
       expect(_inChatPane(find.byTooltip(tooltip)), findsOneWidget, reason: tooltip);
     }
 
-    await tester.enterText(find.widgetWithText(TextField, 'Search chats and messages'), 'orbit');
+    await tester.enterText(find.widgetWithText(TextField, 'Search'), 'orbit');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('MESSAGES'), findsOneWidget);
+    expect(find.text('Messages'), findsOneWidget);
     expect(find.textContaining('Orbit relay window'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -145,9 +145,9 @@ void main() {
 
     // Under the wide layout's width the list is the phone's: the empty state
     // itself, with no hero card before it.
-    expect(find.text('No conversations yet'), findsOneWidget);
-    expect(find.text('Start direct chat'), findsOneWidget);
-    expect(find.textContaining('0 conversations'), findsOneWidget);
+    expect(find.text('No chats yet'), findsOneWidget);
+    expect(find.text('New chat'), findsOneWidget);
+    expect(find.textContaining('0 chats'), findsOneWidget);
     expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
   });
 
@@ -581,11 +581,11 @@ void main() {
 
     expect(_inChatPane(find.text('Selene relay note')), findsOneWidget);
 
-    await tester.enterText(find.widgetWithText(TextField, 'Search chats and messages'), 'anchor');
+    await tester.enterText(find.widgetWithText(TextField, 'Search'), 'anchor');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('MESSAGES'), findsOneWidget);
+    expect(find.text('Messages'), findsOneWidget);
     expect(find.text('Rowan'), findsOneWidget);
 
     await tester.tap(find.text('Rowan'));

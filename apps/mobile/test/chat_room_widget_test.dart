@@ -116,19 +116,19 @@ void main() {
     expect(find.byType(VeilStatusPill), findsNothing);
 
     // The search is in the pane's bar, as on a phone.
-    await tester.tap(find.byTooltip('Search messages'));
+    await tester.tap(find.byTooltip('Search'));
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'orbit');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
 
-    expect(find.text('1 match on this device'), findsOneWidget);
+    expect(find.text('1 match'), findsOneWidget);
     expect(find.text('Orbit relay window'), findsOneWidget);
 
     await tester.enterText(find.widgetWithText(TextField, 'Search this chat'), 'nothing like it');
     await tester.pump(const Duration(milliseconds: 220));
     await tester.pumpAndSettle();
-    expect(find.text('No matches on this device'), findsOneWidget);
+    expect(find.text('No matches'), findsWidgets);
     expect(find.text('Orbit relay window'), findsNothing);
   });
 
@@ -297,7 +297,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.errorMessage, contains('keystore unavailable'));
-    expect(find.text('Conversation issue'), findsOneWidget);
+    expect(find.text('Something went wrong'), findsOneWidget);
     expect(controller.peerAccountHoldFor('conv-1')?.reason, PeerAccountHoldReason.otherAccount);
     expect(find.text('A different account'), findsOneWidget);
     final listed = controller.conversationById('conv-1')!;

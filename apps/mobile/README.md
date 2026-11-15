@@ -22,7 +22,7 @@ to it, `lib/src/features/<name>/<name>_feature.dart`:
 
 | Constant | What is missing, and what its screen shows instead | What it hides |
 | --- | --- | --- |
-| `kCallsEnabled` | no WebRTC. The call screen says no call can be made and leaves; the history lists the relay's call records, and a row opens that chat | the Calls tab, `/calls`, `/call/:id` |
+| `kCallsEnabled` | no WebRTC. The call screen says no call can be made and leaves; the history lists the relay's call records, and a row opens that chat when this device has it | the Calls tab, `/calls`, `/call/:id` |
 | `kAttachmentsEnabled` | no file picker; a received file stops at its download ticket. The attachment screen says what it sends instead: a 2 KB placeholder under a typed name | the composer's attach button, `/attachment/:id`, the bubble's download button (a line says this version cannot open it), the "attachments encrypted" pill, the clipboard row of the security status |
 | `kMediaPickerEnabled` | no gallery or camera plugin. The screen says so and leaves | `/media/:id` |
 | `kVoiceMessagesEnabled` | no audio plugin. The screen says so and leaves | `/voice/:id` |

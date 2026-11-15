@@ -99,7 +99,8 @@ class _CallRow extends ConsumerWidget {
     // The chat this call belongs to, if this device has it. A record can
     // name one it does not have (left, or not loaded yet).
     final conversation = ref.watch(messengerControllerProvider).conversationById(call.conversationId);
-    final title = _title(l10n, conversation);
+    final name = _name(conversation);
+    final title = name ?? l10n.callsUnknownCounterparty;
     final isMissed = call.outcome == CallOutcome.missed;
     final duration = _formatDuration(call.duration);
     // Two phrases that each stay whole: on a narrow screen the time moves
@@ -119,7 +120,9 @@ class _CallRow extends ConsumerWidget {
         ],
       ),
       destructive: isMissed,
-      leading: VeilInitialBadge(name: title, danger: isMissed),
+      // With nobody to name there is no letter either: the badge draws "#",
+      // not the initial of the word for unknown.
+      leading: VeilInitialBadge(name: name ?? '', danger: isMissed),
       // What kind of call it was. Nothing here places one.
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -140,10 +143,10 @@ class _CallRow extends ConsumerWidget {
   }
 
   // A person goes by the name their chat shows; a group or channel by the
-  // name the relay keeps for it.
-  String _title(AppLocalizations l10n, ConversationPreview? conversation) {
+  // name the relay keeps for it. Null when the relay has no name at all.
+  String? _name(ConversationPreview? conversation) {
     final handle = call.counterpartyHandle;
-    if (handle == null) return call.counterparty ?? l10n.callsUnknownCounterparty;
+    if (handle == null) return call.counterparty;
     final name = conversation?.peerDisplayName?.trim() ?? '';
     return name.isEmpty ? '@$handle' : name;
   }

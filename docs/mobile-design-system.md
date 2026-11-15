@@ -137,6 +137,13 @@ that was not sent.
 A screen that can do part of its job shows that part, and says the rest in
 one `VeilInlineBanner` above it.
 
+### `VeilInitialBadge`
+
+A person or a group where there is no picture: the first letter of the name
+in a circle (44 in a row, larger in a header). `veilInitialOf` picks the
+letter: it skips the `@` of a handle and gives `#` for a name with nothing
+to show, so a row never fails on an empty name.
+
 ## Screen Guidance
 
 ### Onboarding

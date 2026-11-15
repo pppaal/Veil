@@ -91,21 +91,23 @@ class _StoryAuthorRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
-    final name = _name(l10n, ref);
+    final name = _name(ref);
 
     return VeilListTileCard(
-      title: name,
+      title: name ?? l10n.storiesUnknownAuthor,
       subtitle: '${l10n.storiesRowCount(author.count)}  ·  ${storyAgeLabel(l10n, author.latest)}',
-      leading: VeilInitialBadge(name: name),
+      // With nobody to name there is no letter either: the badge draws "#",
+      // not the initial of the word for unknown.
+      leading: VeilInitialBadge(name: name ?? ''),
       // Sealed, and it stays so here: the row has nothing to open.
       trailing: Icon(Icons.lock_outline_rounded, size: VeilIconSize.sm, color: palette.textSubtle),
     );
   }
 
   // The relay names an author by handle only. Someone this account chats
-  // with goes by the name their chat shows; a story that came with no
-  // handle at all is from someone the row cannot name.
-  String _name(AppLocalizations l10n, WidgetRef ref) {
+  // with goes by the name their chat shows. Null for a story that came
+  // with no handle at all: the row cannot name its author.
+  String? _name(WidgetRef ref) {
     final conversations = ref.watch(messengerControllerProvider).conversations;
     for (final conversation in conversations) {
       if (conversation.type != ConversationType.direct || conversation.recipientBundle.userId != author.userId) continue;
@@ -113,7 +115,7 @@ class _StoryAuthorRow extends ConsumerWidget {
       if (name.isNotEmpty) return name;
     }
     final handle = author.handle.trim();
-    return handle.isEmpty ? l10n.storiesUnknownAuthor : '@$handle';
+    return handle.isEmpty ? null : '@$handle';
   }
 }
 

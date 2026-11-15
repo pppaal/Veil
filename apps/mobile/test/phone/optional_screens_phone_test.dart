@@ -230,10 +230,18 @@ void main() {
           body: (world) async {
         expect(tester.takeException(), isNull);
         expect(find.byType(VeilListTileCard), findsNWidgets(2));
-        // Nobody to name: said in words, not as a bare "@".
+        // Nobody to name: said in words, not as a bare "@", and with "#"
+        // where a name's first letter would stand.
         expect(find.text(ko.callsUnknownCounterparty), findsOneWidget);
         expect(find.text('Hiking club'), findsOneWidget, reason: 'an empty handle is no handle');
         expect(find.text('@'), findsNothing);
+        String initialOf(String title) => tester
+            .widget<Text>(find.descendant(
+                of: find.ancestor(of: find.text(title), matching: find.byType(VeilListTileCard)),
+                matching: find.descendant(of: find.byType(VeilInitialBadge), matching: find.byType(Text))))
+            .data!;
+        expect(initialOf(ko.callsUnknownCounterparty), '#');
+        expect(initialOf('Hiking club'), 'H');
       });
     });
 
@@ -541,9 +549,11 @@ void main() {
           body: (world) async {
         expect(tester.takeException(), isNull);
         expect(find.byType(VeilListTileCard), findsNWidgets(2));
-        // Nobody to name: said in words, not as a bare "@".
+        // Nobody to name: said in words, not as a bare "@", and with "#"
+        // where a name's first letter would stand.
         expect(find.text(ko.storiesUnknownAuthor), findsNWidgets(2));
         expect(find.text('@'), findsNothing);
+        expect(find.descendant(of: find.byType(VeilInitialBadge), matching: find.text('#')), findsNWidgets(2));
       });
     });
 
@@ -618,6 +628,37 @@ void main() {
       expect(findCopy(en.aiAnswerCalls), findsNothing);
       expect(find.byType(ActionChip), findsNWidgets(AiTopic.values.length));
       expect(find.text(en.aiDemoBannerBody), findsOneWidget, reason: 'the disclosure never leaves');
+    });
+
+    testWidgets('on the narrowest phone the conversation has the height, the questions inside it', (tester) async {
+      usePhoneView(tester, phoneSmall);
+      await tester.pumpWidget(alone(const AiChatScreen()));
+      await tester.pump();
+      Rect list() => tester.getRect(find.byType(ListView));
+      Finder inList(Finder what) => find.descendant(of: find.byType(ListView), matching: what);
+
+      // Everything under the notice is the conversation; the notice itself
+      // stays outside it, where no scrolling takes it away.
+      expect(list().height / phoneSmall.height, greaterThan(0.65));
+      expect(inList(find.byType(ActionChip)), findsNWidgets(AiTopic.values.length));
+      expect(inList(find.text(en.aiDemoBannerBody)), findsNothing);
+      expect(tester.getRect(find.text(en.aiDemoBannerBody)).bottom, lessThan(list().top));
+
+      // An answer comes into view with what can still be asked under it.
+      for (final question in [en.aiQuestionBackup, en.aiQuestionNewDevice]) {
+        await tester.tap(find.widgetWithText(ActionChip, question));
+        await tester.pumpAndSettle();
+      }
+      expect(list().height / phoneSmall.height, greaterThan(0.65), reason: 'asking takes no height from it');
+      final answer = tester.getRect(findCopy(en.aiAnswerNewDevice));
+      expect(answer.top, greaterThanOrEqualTo(list().top));
+      expect(inList(find.byType(ActionChip)), findsNWidgets(AiTopic.values.length - 2));
+      for (final chip in find.byType(ActionChip).evaluate()) {
+        final rect = tester.getRect(find.byWidget(chip.widget));
+        expect(rect.top, greaterThan(answer.bottom));
+        expect(rect.bottom, lessThanOrEqualTo(list().bottom));
+      }
+      expect(tester.getRect(find.text(en.aiDemoBannerBody)).bottom, lessThan(list().top));
     });
 
     testWidgets('speaks Korean in a Korean app, question and answer', (tester) async {

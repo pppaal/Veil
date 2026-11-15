@@ -231,11 +231,15 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
               ),
               Container(width: 0.5, color: palette.stroke),
               Expanded(
+                // With no chat at all the list says so and offers "New chat";
+                // the pane beside it stays empty rather than say it again.
                 child: selectedConversation == null
-                    ? VeilEmptyState(
-                        title: l10n.conversationsChoosePaneTitle,
-                        body: l10n.conversationsChoosePaneBody,
-                      )
+                    ? conversations.isEmpty
+                        ? const SizedBox.shrink()
+                        : VeilEmptyState(
+                            title: l10n.conversationsChoosePaneTitle,
+                            body: l10n.conversationsChoosePaneBody,
+                          )
                     : ChatRoomScreen(
                         conversationId: selectedConversation.id,
                         embedded: true,

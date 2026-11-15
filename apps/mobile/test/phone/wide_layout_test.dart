@@ -168,7 +168,7 @@ void main() {
     });
   });
 
-  testWidgets('with no conversation yet, the second pane says what to do', (tester) async {
+  testWidgets('with no conversation yet, the list says so once and the second pane stays empty', (tester) async {
     await withPhoneApp(
       tester,
       identities,
@@ -177,8 +177,11 @@ void main() {
       account: LayoutAccount.signedInEmpty,
       body: (world) async {
         expect(find.byType(ChatRoomScreen), findsNothing);
-        expect(find.text('Select a chat'), findsOneWidget);
         expect(find.text('No chats yet'), findsOneWidget);
+        expect(find.text('New chat'), findsOneWidget);
+        // "Pick one from the list" would point at a list with nothing in it.
+        expect(find.text('Select a chat'), findsNothing);
+        expect(find.byType(VeilEmptyState), findsOneWidget, reason: 'only the list\'s');
         expect(tester.takeException(), isNull);
       },
     );

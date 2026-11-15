@@ -73,6 +73,10 @@ class ChatPhoneScaffold extends StatefulWidget {
   /// line of bubbles would leave the middle of the pane empty.
   static const double paneContentWidth = 760;
 
+  /// The widest they get on a screen of their own (a tablet held upright):
+  /// the shell's usual width.
+  static const double screenContentWidth = 840;
+
   @override
   State<ChatPhoneScaffold> createState() => _ChatPhoneScaffoldState();
 }
@@ -185,18 +189,42 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
       ),
     );
 
+    final palette = context.veilPalette;
+    // The messages and the field keep to [content]; the composer strip and
+    // its hairline run the whole width, as the bar's do.
+    List<Widget> body(BoxConstraints content) => [
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: content,
+                child: Column(children: [warningsAndMessages, widget.typing]),
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.canvas,
+              border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
+            ),
+            child: Center(
+              child: ConstrainedBox(constraints: content, child: widget.composer),
+            ),
+          ),
+        ];
+
     if (!widget.pane) {
       return VeilShell(
         padding: EdgeInsets.zero,
+        // A tablet held upright is wider than the shell's usual 840: the
+        // shell spans it, so the composer's hairline does not stop short of
+        // the edges, and the messages and the field keep to 840 themselves.
+        maxWidth: null,
         leading: leading,
         titleWidget: title,
         actions: actions,
-        // The composer strip runs the full width, over its own hairline.
-        child: Column(children: [warningsAndMessages, widget.typing, widget.composer]),
+        child: Column(children: body(const BoxConstraints(maxWidth: ChatPhoneScaffold.screenContentWidth))),
       );
     }
-    const paneContent = BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth);
-    final palette = context.veilPalette;
     // A pane brings its own material for its fields and ink: it does not
     // count on what it is placed in.
     return Material(
@@ -204,25 +232,7 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
       child: Column(
         children: [
           ChatPaneBar(leading: leading, titleWidget: title, actions: actions),
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: paneContent,
-                child: Column(children: [warningsAndMessages, widget.typing]),
-              ),
-            ),
-          ),
-          // The strip and its hairline run across the whole pane, as the
-          // bar's do; the field keeps to the messages' width.
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: palette.canvas,
-              border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
-            ),
-            child: Center(
-              child: ConstrainedBox(constraints: paneContent, child: widget.composer),
-            ),
-          ),
+          ...body(const BoxConstraints(maxWidth: ChatPhoneScaffold.paneContentWidth)),
         ],
       ),
     );

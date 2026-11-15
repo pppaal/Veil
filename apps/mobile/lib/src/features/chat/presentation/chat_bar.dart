@@ -8,9 +8,9 @@ import '../../../shared/presentation/veil_ui.dart';
 // field. A phone shows them in the screen's bar; the wide layout shows the
 // same ones at the top of the chat's pane (see ChatPaneBar).
 
-/// Who a chat is with: the name with the verified mark, and under it one
-/// line about them (online, their handle, how many are in a group) and the
-/// disappearing timer when one is set.
+/// Who a chat is with: their avatar, the name with the verified mark, and
+/// under it one muted line about them (online, their handle, how many are
+/// in a group) and the disappearing timer when one is set.
 class ChatBarTitle extends StatelessWidget {
   const ChatBarTitle({
     super.key,
@@ -19,6 +19,8 @@ class ChatBarTitle extends StatelessWidget {
     required this.verified,
     required this.online,
     required this.timerLabel,
+    this.avatarSeed,
+    this.group = false,
   });
 
   final String title;
@@ -32,14 +34,22 @@ class ChatBarTitle extends StatelessWidget {
   /// The disappearing timer in force, or null when messages stay.
   final String? timerLabel;
 
+  /// What the avatar's colour is drawn from (the peer's handle); no avatar
+  /// when null.
+  final String? avatarSeed;
+
+  /// A group chat: the neutral group avatar.
+  final bool group;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
     final palette = context.veilPalette;
-    final subtitleStyle = Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted, height: 1.2);
+    final subtitleStyle = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted, height: 1.2);
     final presence = online ? l10n.chatSubtitleOnline : detail;
 
-    return Column(
+    final text = Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -50,19 +60,14 @@ class ChatBarTitle extends StatelessWidget {
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: VeilTypography.headline.copyWith(color: palette.text, height: 1.2),
+                style: theme.textTheme.titleLarge?.copyWith(height: 1.2),
               ),
             ),
             if (verified) ...[
               const SizedBox(width: VeilSpace.xxs),
               Tooltip(
                 message: l10n.chatPeerVerified,
-                child: Icon(
-                  Icons.verified_rounded,
-                  size: 16,
-                  color: palette.success,
-                  semanticLabel: l10n.chatPeerVerified,
-                ),
+                child: Icon(Icons.verified, size: 16, color: palette.success, semanticLabel: l10n.chatPeerVerified),
               ),
             ],
           ],
@@ -71,40 +76,42 @@ class ChatBarTitle extends StatelessWidget {
           const SizedBox(height: 2),
           Row(
             children: [
-              if (online) ...[
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(color: palette.success, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: VeilSpace.xxs),
-              ],
               if (presence != null)
-                Flexible(
-                  child: Text(
-                    presence,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: online ? subtitleStyle?.copyWith(color: palette.success) : subtitleStyle,
-                  ),
-                ),
+                Flexible(child: Text(presence, maxLines: 1, overflow: TextOverflow.ellipsis, style: subtitleStyle)),
               if (timerLabel != null) ...[
                 if (presence != null) const SizedBox(width: VeilSpace.xs),
-                Icon(Icons.timer_outlined, size: 12, color: palette.warning),
+                Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.warning),
                 const SizedBox(width: 2),
-                Text(timerLabel!, maxLines: 1, style: subtitleStyle?.copyWith(color: palette.warning)),
+                Flexible(
+                  child: Text(
+                    l10n.chatTimerTooltip(timerLabel!),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: subtitleStyle,
+                  ),
+                ),
               ],
             ],
           ),
         ],
       ],
     );
+
+    final seed = avatarSeed;
+    if (seed == null) return text;
+    return Row(
+      children: [
+        VeilAvatar(name: title, seed: seed, size: 32, group: group),
+        const SizedBox(width: VeilSpace.xs),
+        Expanded(child: text),
+      ],
+    );
   }
 }
 
-/// The actions of a chat's bar: the safety number (a 1:1 opens the peer's,
-/// a group the list of its members with each one's), the search, and the
-/// disappearing timer, lit while one is set.
+/// The actions of a chat's bar, plain icon buttons: the safety number (a
+/// 1:1 opens the peer's, a group the list of its members with each one's),
+/// the search, and the disappearing timer.
 class ChatBarActions extends StatelessWidget {
   const ChatBarActions({
     super.key,
@@ -123,8 +130,6 @@ class ChatBarActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final palette = context.veilPalette;
-    final timerOn = timerLabel != null;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -136,26 +141,20 @@ class ChatBarActions extends StatelessWidget {
         IconButton(
           tooltip: l10n.chatSearchTooltip,
           onPressed: onOpenSearch,
-          icon: const Icon(Icons.search_rounded),
+          icon: const Icon(Icons.search),
         ),
         IconButton(
           tooltip: l10n.chatTimerTooltip(timerLabel ?? l10n.chatTtlOff),
           onPressed: onPickTimer,
-          style: timerOn
-              ? IconButton.styleFrom(
-                  foregroundColor: palette.warning,
-                  backgroundColor: palette.warning.withValues(alpha: 0.14),
-                )
-              : null,
-          icon: Icon(timerOn ? Icons.timer_rounded : Icons.timer_outlined),
+          icon: const Icon(Icons.timer_outlined),
         ),
       ],
     );
   }
 }
 
-/// The search of a chat, in its bar: the query, a spinner while the lookup
-/// runs, and a button that empties the field.
+/// The search of a chat, in its bar: the query in a grey field, a spinner
+/// while the lookup runs, and a button that empties the field.
 class ChatBarSearchField extends StatelessWidget {
   const ChatBarSearchField({super.key, required this.controller, required this.focusNode, required this.searching});
 
@@ -168,7 +167,6 @@ class ChatBarSearchField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final palette = context.veilPalette;
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) => TextField(
@@ -179,10 +177,6 @@ class ChatBarSearchField extends StatelessWidget {
         style: Theme.of(context).textTheme.bodyLarge,
         decoration: InputDecoration(
           isDense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.sm),
-          border: _border(palette.stroke),
-          enabledBorder: _border(palette.stroke),
-          focusedBorder: _border(palette.strokeStrong),
           hintText: l10n.chatSearchHint,
           suffixIconConstraints: const BoxConstraints(minWidth: 44, minHeight: 44),
           suffixIcon: searching
@@ -194,46 +188,44 @@ class ChatBarSearchField extends StatelessWidget {
                   ? null
                   : IconButton(
                       tooltip: l10n.chatSearchClearTooltip,
-                      style: IconButton.styleFrom(backgroundColor: Colors.transparent),
                       onPressed: controller.clear,
-                      icon: const Icon(Icons.close_rounded, size: 20),
+                      icon: const Icon(Icons.close, size: 20),
                     ),
         ),
       ),
     );
   }
-
-  static OutlineInputBorder _border(Color color) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(VeilRadius.pill),
-        borderSide: BorderSide(color: color),
-      );
 }
 
 /// The bar at the top of a pane of the wide layout, as tall as the screen
-/// bar of a phone and laid out like it: [leading], then the title (a text,
-/// or [titleWidget] in its place), then the actions. Two panes side by side
-/// read as one bar under which each has its own content.
+/// bar of a phone and laid out like it: [leading], then the title (a text
+/// with an optional [subtitle] under it, or [titleWidget] in its place),
+/// then the actions, over a hairline. Two panes side by side read as one
+/// bar under which each has its own content.
 class ChatPaneBar extends StatelessWidget {
-  const ChatPaneBar({super.key, this.title, this.titleWidget, this.leading, this.actions});
+  const ChatPaneBar({super.key, this.title, this.subtitle, this.titleWidget, this.leading, this.actions});
 
   static const double height = 52;
 
   final String? title;
+  final String? subtitle;
   final Widget? titleWidget;
   final Widget? leading;
   final List<Widget>? actions;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final palette = context.veilPalette;
+    final titleText = Text(title ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleLarge);
     return Container(
       height: height,
       padding: EdgeInsets.only(
-        left: leading == null ? VeilSpace.lg : VeilSpace.xxs,
-        right: actions == null ? VeilSpace.lg : VeilSpace.sm,
+        left: leading == null ? VeilSpace.md : VeilSpace.xxs,
+        right: actions == null ? VeilSpace.md : VeilSpace.xxs,
       ),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: palette.stroke.withValues(alpha: 0.45), width: 0.5)),
+      foregroundDecoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: palette.stroke, width: 0.5)),
       ),
       // One fixed height, as the screen bar: past this size its text would
       // not fit it.
@@ -241,15 +233,24 @@ class ChatPaneBar extends StatelessWidget {
         maxScaleFactor: 1.3,
         child: Row(
           children: [
-            if (leading != null) ...[leading!, const SizedBox(width: VeilSpace.xxs)],
+            if (leading != null) ...[leading!, const SizedBox(width: VeilSpace.xs)],
             Expanded(
               child: titleWidget ??
-                  Text(
-                    title ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: VeilTypography.headline.copyWith(color: palette.text),
-                  ),
+                  (subtitle == null
+                      ? titleText
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            titleText,
+                            Text(
+                              subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                            ),
+                          ],
+                        )),
             ),
             if (actions != null) ...[const SizedBox(width: VeilSpace.xs), ...actions!],
           ],

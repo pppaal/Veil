@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_ui.dart';
 
 class _TtlOption {
   const _TtlOption({required this.label, required this.duration, this.caption});
@@ -63,39 +64,45 @@ Future<({Duration? ttl})?> showDisappearingTimerSheet(
   final sentinel = const Duration(microseconds: -1);
   final selected = await showModalBottomSheet<Duration?>(
     context: context,
+    showDragHandle: true,
     // Six options with their captions are taller than the half screen a
     // sheet gets by default: this one takes the height it needs, up to most
     // of the screen, and scrolls beyond that.
     isScrollControlled: true,
     builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      final palette = VeilPalette.forBrightness(theme.brightness);
       return SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.all(VeilSpace.lg),
-                  child: Text(
-                    l10n.chatTtlSheetTitle,
-                    style: Theme.of(sheetContext).textTheme.titleLarge,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(VeilSpace.md, 0, VeilSpace.md, VeilSpace.xs),
+                  child: Text(l10n.chatTtlSheetTitle, style: theme.textTheme.titleLarge),
                 ),
-                for (final option in options)
-                  ListTile(
-                    leading: Icon(
-                      current() == option.duration
-                          ? Icons.check_circle_rounded
-                          : Icons.circle_outlined,
-                    ),
-                    title: Text(option.label),
-                    subtitle: option.caption == null ? null : Text(option.caption!),
-                    onTap: () =>
-                        Navigator.of(sheetContext).pop<Duration?>(option.duration ?? sentinel),
-                  ),
-                const SizedBox(height: VeilSpace.sm),
+                VeilGroup(
+                  children: [
+                    for (final option in options)
+                      Semantics(
+                        selected: current() == option.duration,
+                        child: VeilRow(
+                          title: option.label,
+                          subtitle: option.caption,
+                          // The chosen timer is ticked; the others keep its
+                          // room, and no row has a chevron: a tap chooses.
+                          trailing: current() == option.duration
+                              ? Icon(Icons.check, size: 20, color: palette.text)
+                              : const SizedBox(width: 20),
+                          onTap: () => Navigator.of(sheetContext).pop<Duration?>(option.duration ?? sentinel),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: VeilSpace.xs),
               ],
             ),
           ),

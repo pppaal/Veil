@@ -4,9 +4,10 @@ import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// Three pulsing dots and who is typing, on the side the peer's messages
-/// are on, or nothing when no one is. A 1:1 only says that they are typing;
-/// a group ([named]) says who.
+/// Someone is typing: a small incoming bubble with three muted dots, on the
+/// side the peer's messages are on, and who it is beside it; nothing when
+/// no one is. A 1:1 only says that they are typing; a group ([named]) says
+/// who.
 class TypingIndicator extends StatelessWidget {
   const TypingIndicator({super.key, required this.handle, this.named = true});
 
@@ -24,11 +25,25 @@ class TypingIndicator extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
     return Padding(
-      // In line with the text of the peer's bubbles above it.
-      padding: const EdgeInsets.fromLTRB(VeilSpace.sm + VeilSpace.md, VeilSpace.xxs, VeilSpace.md, 0),
+      // In line with the peer's bubbles above it.
+      padding: const EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.xxs, VeilSpace.md, VeilSpace.xxs),
       child: Row(
         children: [
-          SizedBox(width: 24, height: 12, child: _TypingDots(color: palette.textMuted)),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: palette.surfaceAlt,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(VeilRadius.xl),
+                topRight: const Radius.circular(VeilRadius.xl),
+                bottomRight: const Radius.circular(VeilRadius.xl),
+                bottomLeft: Radius.circular(VeilBubble.tailRadius(VeilBubblePosition.single)),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),
+              child: _TypingDots(color: palette.textMuted),
+            ),
+          ),
           const SizedBox(width: VeilSpace.xs),
           Flexible(
             child: Text(
@@ -44,6 +59,7 @@ class TypingIndicator extends StatelessWidget {
   }
 }
 
+/// Three 6dp dots whose opacity runs along them, one after the other.
 class _TypingDots extends StatefulWidget {
   const _TypingDots({required this.color});
 
@@ -53,8 +69,7 @@ class _TypingDots extends StatefulWidget {
   State<_TypingDots> createState() => _TypingDotsState();
 }
 
-class _TypingDotsState extends State<_TypingDots>
-    with SingleTickerProviderStateMixin {
+class _TypingDotsState extends State<_TypingDots> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -81,20 +96,16 @@ class _TypingDotsState extends State<_TypingDots>
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: List.generate(3, (i) {
-            final delay = i * 0.2;
-            final t = (_controller.value - delay) % 1.0;
-            final scale = (t < 0.5 ? t : 1.0 - t) * 0.6 + 0.7;
+            final t = (_controller.value - i * 0.2) % 1.0;
+            final opacity = (t < 0.5 ? t : 1.0 - t) * 1.2 + 0.4;
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 1),
-              child: Transform.scale(
-                scale: scale,
-                child: Container(
-                  width: 5,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: opacity.clamp(0.0, 1.0)),
+                  shape: BoxShape.circle,
                 ),
               ),
             );

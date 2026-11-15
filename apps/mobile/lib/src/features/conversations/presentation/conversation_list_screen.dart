@@ -180,21 +180,20 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
         );
 
         final l10n = AppLocalizations.of(context);
-        // Starting a conversation and the security status are in the bar.
-        // Settings is a tab of the bar below, so it has no action here.
-        final barActions = [
-          const _NewConversationButton(),
-          IconButton(
-            tooltip: l10n.settingsSecurityStatusTitle,
-            onPressed: () => context.push('/security-status'),
-            icon: const Icon(Icons.verified_user_outlined),
-          ),
-        ];
+        // Starting a chat is the bar's one action. The security status is
+        // under Settings, a tab of the bar below.
+        const barActions = [_NewConversationButton()];
+        // The connection is named only while there is none.
+        final connection = controller.realtimeConnected
+            ? null
+            : controller.errorIsRelayInterruption
+                ? l10n.conversationsBarOffline
+                : l10n.conversationsBarConnecting;
 
         if (!isWideLayout) {
           return VeilShell(
-            title: 'VEIL',
-            padding: EdgeInsets.zero,
+            title: l10n.navChats,
+            subtitle: connection,
             actions: barActions,
             child: ConversationListPhone(view: view),
           );
@@ -225,18 +224,17 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
                 width: ConversationListScreen.listPaneWidth,
                 child: Column(
                   children: [
-                    ChatPaneBar(title: 'VEIL', actions: barActions),
+                    ChatPaneBar(title: l10n.navChats, subtitle: connection, actions: barActions),
                     Expanded(child: ConversationListPhone(view: view)),
                   ],
                 ),
               ),
-              Container(width: 0.5, color: palette.stroke.withValues(alpha: 0.6)),
+              Container(width: 0.5, color: palette.stroke),
               Expanded(
                 child: selectedConversation == null
                     ? VeilEmptyState(
                         title: l10n.conversationsChoosePaneTitle,
                         body: l10n.conversationsChoosePaneBody,
-                        icon: Icons.forum_outlined,
                       )
                     : ChatRoomScreen(
                         conversationId: selectedConversation.id,
@@ -379,8 +377,8 @@ class _ConversationListScreenState extends ConsumerState<ConversationListScreen>
 
 const String _conversationListViewStateStorageKey = 'conversation-list-view-state';
 
-/// Starts a conversation from the phone list's bar: a 1:1 by handle, or a
-/// group.
+/// Starts a chat from the Chats bar: a 1:1 by handle, or a group, from a
+/// menu of the two.
 class _NewConversationButton extends StatelessWidget {
   const _NewConversationButton();
 
@@ -396,14 +394,16 @@ class _NewConversationButton extends StatelessWidget {
       itemBuilder: (context) => [
         PopupMenuItem(
           value: '/start-chat',
-          child: _NewConversationItem(icon: Icons.add_comment_outlined, label: l10n.conversationsNewChat),
+          height: 44,
+          child: _NewConversationItem(icon: Icons.chat_bubble_outline, label: l10n.conversationsNewChat),
         ),
         PopupMenuItem(
           value: '/start-group',
+          height: 44,
           child: _NewConversationItem(icon: Icons.group_add_outlined, label: l10n.conversationsNewGroup),
         ),
       ],
-      icon: const Icon(Icons.edit_square),
+      icon: const Icon(Icons.edit_outlined),
     );
   }
 }
@@ -418,9 +418,9 @@ class _NewConversationItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: VeilIconSize.md),
+        Icon(icon, size: VeilIconSize.md, color: context.veilPalette.textMuted),
         const SizedBox(width: VeilSpace.sm),
-        Text(label, style: Theme.of(context).textTheme.titleSmall),
+        Text(label, style: Theme.of(context).textTheme.bodyLarge),
       ],
     );
   }

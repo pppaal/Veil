@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../chat/presentation/chat_room_labels.dart';
+import '../../chat/presentation/disappearing_timer_sheet.dart';
 import '../../chat/presentation/message_expiration.dart';
 import '../data/conversation_models.dart';
 import '../data/veil_messenger_controller.dart';
@@ -64,6 +65,16 @@ String conversationPreviewLine(
   };
 }
 
+/// What a screen reader hears about a chat whose messages disappear, which
+/// its row marks with the timer glyph: the chat's timer ("Disappearing: 1
+/// day"), or when its last message disappears ("Expires in 5m"). Null when
+/// nothing in it disappears.
+String? conversationTimerLabel(AppLocalizations l10n, ConversationPreview item, VeilMessengerController controller) {
+  final seconds = item.disappearingTimerSeconds;
+  if (seconds != null) return l10n.chatTimerTooltip(disappearingTimerLabel(l10n, Duration(seconds: seconds)));
+  return conversationExpiryLabel(l10n, item, controller);
+}
+
 /// "Expires in 5m" for a conversation whose last message disappears.
 String? conversationExpiryLabel(
   AppLocalizations l10n,
@@ -89,13 +100,13 @@ String messageKindLabel(AppLocalizations l10n, MessageKind kind) {
 
 IconData messageKindIcon(MessageKind kind) {
   return switch (kind) {
-    MessageKind.text => Icons.chat_bubble_outline_rounded,
+    MessageKind.text => Icons.chat_bubble_outline,
     MessageKind.image => Icons.image_outlined,
-    MessageKind.file => Icons.attach_file_rounded,
-    MessageKind.system => Icons.info_outline_rounded,
-    MessageKind.voice => Icons.mic_none_rounded,
+    MessageKind.file => Icons.attach_file,
+    MessageKind.system => Icons.info_outlined,
+    MessageKind.voice => Icons.mic_none_outlined,
     MessageKind.sticker => Icons.emoji_emotions_outlined,
-    MessageKind.reaction => Icons.favorite_border_rounded,
+    MessageKind.reaction => Icons.favorite_border,
     MessageKind.call => Icons.call_outlined,
   };
 }

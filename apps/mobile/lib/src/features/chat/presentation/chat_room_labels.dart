@@ -71,18 +71,18 @@ String messageDeliveryLabel(AppLocalizations l10n, ChatMessage message) {
   }
 }
 
-VeilBannerTone messageDeliveryTone(ChatMessage message) {
+VeilTone messageDeliveryTone(ChatMessage message) {
   switch (message.deliveryState) {
     case MessageDeliveryState.pending:
     case MessageDeliveryState.uploading:
-      return VeilBannerTone.warn;
+      return VeilTone.warn;
     case MessageDeliveryState.failed:
-      return VeilBannerTone.danger;
+      return VeilTone.danger;
     case MessageDeliveryState.sent:
-      return VeilBannerTone.info;
+      return VeilTone.info;
     case MessageDeliveryState.delivered:
     case MessageDeliveryState.read:
-      return VeilBannerTone.good;
+      return VeilTone.good;
   }
 }
 
@@ -103,19 +103,20 @@ String formatDurationLabel(AppLocalizations l10n, Duration duration) {
 }
 
 IconData attachmentIcon(String contentType) {
-  if (contentType.startsWith('image/')) return Icons.image_rounded;
-  if (contentType.startsWith('video/')) return Icons.videocam_rounded;
-  if (contentType.startsWith('audio/')) return Icons.audiotrack_rounded;
-  if (contentType.contains('pdf')) return Icons.picture_as_pdf_rounded;
-  return Icons.insert_drive_file_rounded;
+  if (contentType.startsWith('image/')) return Icons.image_outlined;
+  if (contentType.startsWith('video/')) return Icons.videocam_outlined;
+  if (contentType.startsWith('audio/')) return Icons.audiotrack_outlined;
+  if (contentType.contains('pdf')) return Icons.picture_as_pdf_outlined;
+  return Icons.insert_drive_file_outlined;
 }
 
+/// What kind of file an attachment is, by its type: "Photo", "File".
 String attachmentLabel(AppLocalizations l10n, String contentType) {
-  if (contentType.startsWith('image/')) return l10n.chatAttachmentEncryptedImage;
-  if (contentType.startsWith('video/')) return l10n.chatAttachmentEncryptedVideo;
-  if (contentType.startsWith('audio/')) return l10n.chatAttachmentEncryptedAudio;
-  if (contentType.contains('pdf')) return l10n.chatAttachmentEncryptedDocument;
-  return l10n.chatAttachmentEncryptedFile;
+  if (contentType.startsWith('image/')) return l10n.chatAttachmentKindPhoto;
+  if (contentType.startsWith('video/')) return l10n.chatAttachmentKindVideo;
+  if (contentType.startsWith('audio/')) return l10n.chatAttachmentKindAudio;
+  if (contentType.contains('pdf')) return l10n.chatAttachmentKindDocument;
+  return l10n.chatAttachmentKindFile;
 }
 
 String formatFileSize(int bytes) {

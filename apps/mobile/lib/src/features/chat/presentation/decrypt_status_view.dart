@@ -7,49 +7,47 @@ import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/local_notice.dart';
 
-/// What a message that did not open shows instead of a bubble: an icon and
-/// this app's own words for the outcome. It is chosen by status alone, so no
-/// text a peer sends can look like it, and nothing the peer sent is shown.
-class DecryptFailureChip extends StatelessWidget {
-  const DecryptFailureChip({super.key, required this.status});
+/// What a message that did not open shows in its bubble instead of the
+/// text: a small padlock and this app's own words for the outcome, in muted
+/// italics. It is chosen by status alone, so no text a peer sends can look
+/// like it, and nothing the peer sent is shown.
+class DecryptFailureLine extends StatelessWidget {
+  const DecryptFailureLine({super.key, required this.status, this.color});
 
   final DecryptStatus status;
+
+  /// The colour of the line; the muted text colour when null.
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final palette = context.veilPalette;
-    final (icon, label) = switch (status) {
-      DecryptStatus.replayed => (Icons.history_toggle_off_rounded, l10n.chatDecryptReplayed),
-      DecryptStatus.awaitingKey => (Icons.key_off_outlined, l10n.chatDecryptAwaitingKey),
-      DecryptStatus.sessionMissing => (Icons.sync_problem_outlined, l10n.chatDecryptSessionMissing),
-      DecryptStatus.identityRejected => (Icons.gpp_bad_outlined, l10n.chatDecryptIdentityRejected),
-      DecryptStatus.ok || DecryptStatus.legacyUnauthenticated || DecryptStatus.failed =>
-        (Icons.lock_outline_rounded, l10n.chatDecryptFailed),
+    final color = this.color ?? context.veilPalette.textMuted;
+    final label = switch (status) {
+      DecryptStatus.replayed => l10n.chatDecryptReplayed,
+      DecryptStatus.awaitingKey => l10n.chatDecryptAwaitingKey,
+      DecryptStatus.sessionMissing => l10n.chatDecryptSessionMissing,
+      DecryptStatus.identityRejected => l10n.chatDecryptIdentityRejected,
+      DecryptStatus.ok || DecryptStatus.legacyUnauthenticated || DecryptStatus.failed => l10n.chatDecryptFailed,
     };
+    final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: color, fontStyle: FontStyle.italic);
     return Semantics(
       label: label,
       excludeSemantics: true,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.xs),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(VeilRadius.pill),
-          color: palette.surfaceOverlay,
-          border: Border.all(color: palette.strokeStrong),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+      child: Text.rich(
+        TextSpan(
           children: [
-            Icon(icon, size: VeilIconSize.sm, color: palette.warning),
-            const SizedBox(width: VeilSpace.xs),
-            Flexible(
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted),
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(end: VeilSpace.xxs),
+                child: Icon(Icons.lock_outline, size: VeilIconSize.xs, color: color),
               ),
             ),
+            TextSpan(text: label),
           ],
         ),
+        style: style,
       ),
     );
   }

@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../conversations/data/conversation_models.dart';
@@ -125,8 +124,6 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
     final isDirect = conversation?.type == ConversationType.direct;
     final peerUserId = conversation?.recipientBundle.userId;
     final timerLabel = widget.messageTtl == null ? null : disappearingTimerLabel(l10n, widget.messageTtl);
-    // Asked above the shell, whose body no longer knows about the keyboard.
-    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
     // A 1:1 names the peer's handle under their name; a group says how many
     // are in it.
     final detail = conversation == null
@@ -155,6 +152,9 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
               verified: isDirect && widget.peerVerified,
               online: online,
               timerLabel: timerLabel,
+              // A group has no handle of its own: its id stands in.
+              avatarSeed: conversation == null ? null : (isDirect ? conversation.peerHandle : conversation.id),
+              group: conversation != null && !isDirect,
             ),
           );
     final actions = _searchOpen
@@ -186,17 +186,8 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
           ),
         ),
         widget.typing,
-        Padding(
-          // Right above the keyboard the composer needs less room around
-          // it, and the messages and warnings need every pixel.
-          padding: EdgeInsets.fromLTRB(
-            VeilSpace.xs,
-            keyboardUp ? VeilSpace.xxs : VeilSpace.xs,
-            VeilSpace.xs,
-            keyboardUp ? VeilSpace.xxs : VeilSpace.xs,
-          ),
-          child: widget.composer,
-        ),
+        // The composer strip runs the full width, over its own hairline.
+        widget.composer,
       ],
     );
 

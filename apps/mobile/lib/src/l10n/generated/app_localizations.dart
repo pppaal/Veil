@@ -1966,6 +1966,36 @@ abstract class AppLocalizations {
   /// **'This version can\'t open attachments.'**
   String get chatAttachmentCannotOpen;
 
+  /// No description provided for @chatAttachmentKindPhoto.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo'**
+  String get chatAttachmentKindPhoto;
+
+  /// No description provided for @chatAttachmentKindVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Video'**
+  String get chatAttachmentKindVideo;
+
+  /// No description provided for @chatAttachmentKindAudio.
+  ///
+  /// In en, this message translates to:
+  /// **'Audio'**
+  String get chatAttachmentKindAudio;
+
+  /// No description provided for @chatAttachmentKindDocument.
+  ///
+  /// In en, this message translates to:
+  /// **'Document'**
+  String get chatAttachmentKindDocument;
+
+  /// No description provided for @chatAttachmentKindFile.
+  ///
+  /// In en, this message translates to:
+  /// **'File'**
+  String get chatAttachmentKindFile;
+
   /// No description provided for @reactionsMoreTooltip.
   ///
   /// In en, this message translates to:
@@ -2037,6 +2067,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Not sent. Tap to retry.'**
   String get chatNotSentTapToRetry;
+
+  /// No description provided for @chatDayToday.
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get chatDayToday;
+
+  /// No description provided for @chatDayYesterday.
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get chatDayYesterday;
 
   /// No description provided for @chatNoticeIdentityChanged.
   ///
@@ -2655,6 +2697,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Offline'**
   String get conversationsBarOffline;
+
+  /// No description provided for @conversationsUnreadSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 unread message} other{{count} unread messages}}'**
+  String conversationsUnreadSemantics(int count);
 
   /// No description provided for @conversationsSyncIssueTitle.
   ///
@@ -3280,6 +3328,18 @@ abstract class AppLocalizations {
   /// **'Enter their handle exactly as they gave it to you.'**
   String get startDirectFieldCaption;
 
+  /// An example handle in the field's hint: lower-case Latin, as every handle.
+  ///
+  /// In en, this message translates to:
+  /// **'alex'**
+  String get startDirectHandleHint;
+
+  /// No description provided for @startDirectHandleError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t start the chat. Check the handle and your connection.'**
+  String get startDirectHandleError;
+
   /// No description provided for @startGroupTitle.
   ///
   /// In en, this message translates to:
@@ -3357,6 +3417,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The server can read the group name, description and member list.'**
   String get startGroupNote;
+
+  /// No description provided for @startGroupNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Required'**
+  String get startGroupNameRequired;
+
+  /// Example handles in the field's hint, separated as the field expects.
+  ///
+  /// In en, this message translates to:
+  /// **'alex, sam, priya'**
+  String get startGroupMembersHint;
+
+  /// No description provided for @startGroupMembersError.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t create the group. Check the handles and your connection.'**
+  String get startGroupMembersError;
 
   /// No description provided for @safetyNumbersTitle.
   ///

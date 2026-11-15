@@ -99,7 +99,7 @@
   "safety.unblockFailed": "Could not unblock: {error}",
   "session.incompatible": "The account saved in this browser uses an older format that can't be used any more. Create a new account.",
   "session.wipePartial": "Some data could not be deleted: {error}",
-  "keyChange.banner": "@{handle}'s safety number changed. Nothing is sent or shown until you review it.",
+  "keyChange.banner": "@{handle}'s safety number changed. Messages from the new key stay locked until you review it.",
   "keyChange.review": "Review",
   "keyChange.confirmTitle": "Accept @{handle}'s new key?",
   "keyChange.confirmBody": "They may have switched devices, or someone may be trying to intercept this conversation. Only accept after confirming with them another way (in person, a call).",

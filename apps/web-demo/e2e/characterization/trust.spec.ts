@@ -131,7 +131,7 @@ test.describe('a contact never verified', () => {
     const banner = page.locator('.key-change-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner.locator('.key-change-text')).toHaveText(
-      `@${dave.handle}'s safety number changed. Nothing is sent or shown until you review it.`,
+      `@${dave.handle}'s safety number changed. Messages from the new key stay locked until you review it.`,
     );
     await expect(page.locator('.conv-item', { hasText: `@${dave.handle}` }).locator('.conv-preview')).toHaveText('Safety number changed');
     await expect(page.locator('.panel-input textarea')).toBeEnabled();

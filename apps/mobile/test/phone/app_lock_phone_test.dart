@@ -60,7 +60,7 @@ void main() {
         // A white page with no bar title: no notice, no state words, and
         // the PIN rule is not said here (it is the set-up page's footer).
         expect(find.byType(VeilNotice, skipOffstage: false), findsNothing);
-        for (final gone in [l10n.appLockSetupFooter, l10n.appLockCaptionUnlock, l10n.appLockTitle]) {
+        for (final gone in [l10n.appLockSetupFooter, l10n.appLockTitle]) {
           expect(findCopy(gone, skipOffstage: false), findsNothing, reason: gone);
         }
         expect(tester.takeException(), isNull);

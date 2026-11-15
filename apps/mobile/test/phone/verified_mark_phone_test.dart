@@ -85,10 +85,9 @@ void main() {
     // The pinned number is still shown, as the current one; what would
     // confirm the old key (marking it verified, its QR code, a scan against
     // it) is not offered here: the change is reviewed where it is held.
-    expect(texts, contains(l10n.safetyNumbersCardLabelCurrent));
+    expect(texts, contains(l10n.safetyNumbersCurrentNumberHeader));
     expect(texts, contains(l10n.safetyNumbersReviewChange));
     expect(texts, isNot(contains(l10n.safetyNumbersMarkVerified)));
-    expect(texts, isNot(contains(l10n.safetyNumbersScanLabel)));
     expect(texts, isNot(contains(l10n.safetyNumbersScanAction)));
   }
 
@@ -128,7 +127,7 @@ void main() {
         expect((review.conversationId, review.memberUserId), (groupConversationId, peerId));
         final reviewTexts = await textsOfScreen(tester);
         expect(reviewTexts, contains(l10n.safetyNumbersKeyChangedTitle));
-        expect(reviewTexts, contains(l10n.safetyNumbersCardLabelNew));
+        expect(reviewTexts, contains(l10n.safetyNumbersNewNumberHeader));
         expect(reviewTexts, isNot(contains(l10n.safetyNumbersVerified)));
 
         // The user keeps the key they compared. Back on the 1:1's page she

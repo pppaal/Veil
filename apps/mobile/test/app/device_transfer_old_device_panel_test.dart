@@ -168,7 +168,6 @@ void main() {
     // One line in the danger colour, not a box: there is nothing to decide.
     expect(find.byType(VeilNotice), findsNothing);
     expect(tester.widget<Text>(failure).style?.color, tester.element(failure).veilPalette.danger);
-    expect(find.text(_en.deviceTransferFailedTitle), findsNothing);
     final approve = find.widgetWithText(FilledButton, _en.deviceTransferApproveClaim);
     expect(tester.getRect(approve).bottom, lessThanOrEqualTo(tester.getRect(failure).top));
     expect(find.text(_en.deviceTransferStatusClaimNotWaiting('claim-7')), findsNothing,

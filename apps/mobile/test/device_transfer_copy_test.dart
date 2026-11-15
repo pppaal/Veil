@@ -11,7 +11,7 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 void main() {
   test('the transfer screen says the old device is signed out and history stays behind', () {
     final en = lookupAppLocalizations(const Locale('en'));
-    for (final text in [en.deviceTransferNewCompleteNote, en.deviceTransferCompleteOnNewNote]) {
+    for (final text in [en.deviceTransferNewCompleteNote, en.deviceTransferApproveFooter]) {
       expect(text, contains('signed out'));
       expect(text, anyOf(contains('history is not transferred'), contains('history does not move')));
       expect(text, isNot(contains('remains trusted')));

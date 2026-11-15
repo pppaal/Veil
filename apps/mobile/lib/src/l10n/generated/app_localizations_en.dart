@@ -2211,6 +2211,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get safetyNumbersNewNumberHeader => 'New safety number';
 
   @override
+  String get safetyNumbersCurrentNumberHeader => 'Current safety number';
+
+  @override
   String get safetyNumbersScanLabel => 'Scan to compare';
 
   @override
@@ -2500,6 +2503,10 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get deviceTransferCompleteOnNewNote =>
       'After you approve, finish on the new phone. This phone is then signed out and its history is erased. Your message history does not move to the new phone.';
+
+  @override
+  String get deviceTransferApproveFooter =>
+      'Approve only the code your new phone shows. When the move finishes, this phone is signed out and your message history does not move to the new phone.';
 
   @override
   String get deviceTransferCopyPayload => 'Copy';
@@ -2932,7 +2939,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Erases the messages, keys and app lock on this phone.';
 
   @override
+  String get securityStatusLocalWipeValue => 'This phone only';
+
+  @override
   String get securityStatusCryptoAdapter => 'Encryption';
+
+  @override
+  String get securityStatusCryptoImplementation => 'Implementation';
 
   @override
   String get securityStatusCryptoVeilRatchet => 'Production (unaudited)';

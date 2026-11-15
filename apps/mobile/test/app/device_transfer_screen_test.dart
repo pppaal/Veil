@@ -10,7 +10,9 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_screen.dart';
 import 'package:veil_mobile/src/features/device_transfer/presentation/device_transfer_step.dart';
+import 'package:veil_mobile/src/features/device_transfer/presentation/step_row.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
+import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 
 import '../support/async_wait.dart';
 import '../support/fake_account_relay.dart';
@@ -190,9 +192,9 @@ void _expectNotExpired() {
 // ran out with it, so registering again on it would be refused, and this
 // device refuses to claim a session twice.
 void _expectExpired(WidgetTester tester, {required String claimId}) {
-  final steps = tester.widgetList<TransferStep>(find.byType(TransferStep)).toList();
+  final steps = tester.widgetList<StepRow>(find.byType(StepRow)).toList();
   expect([for (final step in steps) step.state],
-      [TransferStepState.current, TransferStepState.upcoming, TransferStepState.upcoming]);
+      [StepRowState.current, StepRowState.upcoming, StepRowState.upcoming]);
   expect(steps.first.status, _en.deviceTransferStatusExpired);
   expect(steps.first.body, _en.deviceTransferNewCodeExpiredBody);
   expect(find.text(_en.deviceTransferNewCodeExpiredBody), findsOneWidget);
@@ -286,7 +288,9 @@ void main() {
     await tester.pump();
     final refusal = find.text(_en.deviceTransferCodeExpired);
     expect(refusal, findsOneWidget);
-    expect(tester.widget<TransferStep>(find.ancestor(of: refusal, matching: find.byType(TransferStep))).number, 1);
+    // Said under the first step's button, the field above them unmoved.
+    final use = find.widgetWithText(FilledButton, _en.deviceTransferImportPayload);
+    expect(tester.getRect(refusal).top, greaterThanOrEqualTo(tester.getRect(use).bottom));
     _expectExpired(tester, claimId: claimId);
     expect(relay.callsTo('POST /device-transfer/claim'), 1);
     expect(relay.callsTo('POST /device-transfer/complete'), 0);
@@ -369,10 +373,13 @@ void main() {
     expect(relay.callsTo('POST /device-transfer/complete'), 7);
     expect(session.state.isAuthenticated, isFalse);
     _expectExpired(tester, claimId: claimId);
-    // Why the relay refused is said in the step that is in hand again.
-    final failure = find.text(_en.deviceTransferFailedTitle);
+    // Why the relay refused is said with the step that is in hand again,
+    // under its button, as one line in the danger colour.
+    final failure = find.byType(TransferStepResult);
     expect(failure, findsOneWidget);
-    expect(tester.widget<TransferStep>(find.ancestor(of: failure, matching: find.byType(TransferStep))).number, 1);
+    expect(tester.widget<TransferStepResult>(failure).tone, VeilTone.danger);
+    final use = find.widgetWithText(FilledButton, _en.deviceTransferImportPayload);
+    expect(tester.getRect(failure).top, greaterThanOrEqualTo(tester.getRect(use).bottom));
     expect((await tester.runAsync(storage.readPendingTransfer))?.ended, isTrue);
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -396,9 +403,9 @@ void main() {
     await tester.pumpWidget(_app(session, relay, storage));
     await tester.pump();
 
-    final steps = tester.widgetList<TransferStep>(find.byType(TransferStep)).toList();
+    final steps = tester.widgetList<StepRow>(find.byType(StepRow)).toList();
     expect([for (final step in steps) step.state],
-        [TransferStepState.done, TransferStepState.done, TransferStepState.current]);
+        [StepRowState.done, StepRowState.done, StepRowState.current]);
     expect(find.byType(TextField), findsNothing, reason: 'nothing is left to type on this device');
     expect(find.text(_en.deviceTransferRegisterNewDevice), findsNothing);
 
@@ -406,10 +413,11 @@ void main() {
     final consequence = find.text(_en.deviceTransferNewCompleteNote);
     expect(code, findsOneWidget);
     expect(consequence, findsOneWidget, reason: 'said once');
-    expect(find.ancestor(of: code, matching: find.byType(TransferCodeBox)), findsOneWidget);
+    // The controls of the third step, under the steps.
+    final lastStep = find.byType(StepRow).last;
+    expect(tester.widget<StepRow>(lastStep).number, 3);
     for (final part in [code, consequence, _completeButton]) {
-      expect(find.ancestor(of: part, matching: find.byType(TransferStep)), findsOneWidget);
-      expect(tester.widget<TransferStep>(find.ancestor(of: part, matching: find.byType(TransferStep))).number, 3);
+      expect(tester.getRect(part).top, greaterThanOrEqualTo(tester.getRect(lastStep).bottom));
     }
     expect(tester.getRect(code).bottom, lessThanOrEqualTo(tester.getRect(consequence).top));
     expect(tester.getRect(consequence).bottom, lessThanOrEqualTo(tester.getRect(_completeButton).top));

@@ -3670,6 +3670,12 @@ abstract class AppLocalizations {
   /// **'New safety number'**
   String get safetyNumbersNewNumberHeader;
 
+  /// No description provided for @safetyNumbersCurrentNumberHeader.
+  ///
+  /// In en, this message translates to:
+  /// **'Current safety number'**
+  String get safetyNumbersCurrentNumberHeader;
+
   /// deprecated: deleted in W0-ARB phase 2
   ///
   /// In en, this message translates to:
@@ -4173,6 +4179,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'After you approve, finish on the new phone. This phone is then signed out and its history is erased. Your message history does not move to the new phone.'**
   String get deviceTransferCompleteOnNewNote;
+
+  /// No description provided for @deviceTransferApproveFooter.
+  ///
+  /// In en, this message translates to:
+  /// **'Approve only the code your new phone shows. When the move finishes, this phone is signed out and your message history does not move to the new phone.'**
+  String get deviceTransferApproveFooter;
 
   /// No description provided for @deviceTransferCopyPayload.
   ///
@@ -4906,11 +4918,23 @@ abstract class AppLocalizations {
   /// **'Erases the messages, keys and app lock on this phone.'**
   String get securityStatusLocalWipeDetail;
 
+  /// No description provided for @securityStatusLocalWipeValue.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone only'**
+  String get securityStatusLocalWipeValue;
+
   /// No description provided for @securityStatusCryptoAdapter.
   ///
   /// In en, this message translates to:
   /// **'Encryption'**
   String get securityStatusCryptoAdapter;
+
+  /// No description provided for @securityStatusCryptoImplementation.
+  ///
+  /// In en, this message translates to:
+  /// **'Implementation'**
+  String get securityStatusCryptoImplementation;
 
   /// No description provided for @securityStatusCryptoVeilRatchet.
   ///

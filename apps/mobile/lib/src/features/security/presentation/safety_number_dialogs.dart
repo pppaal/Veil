@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_ui.dart';
 import '../domain/safety_numbers.dart';
 import 'safety_number_cards.dart';
 
@@ -31,7 +30,7 @@ class _SafetyReverifyDialogState extends State<SafetyReverifyDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            VeilCopy(l10n.safetyNumbersReverifyDialogBody(widget.peer)),
+            Text(l10n.safetyNumbersReverifyDialogBody(widget.peer)),
             const SizedBox(height: VeilSpace.md),
             SafetyNumberCard(groups: formatSafetyNumber(widget.number)),
             CheckboxListTile(
@@ -39,7 +38,7 @@ class _SafetyReverifyDialogState extends State<SafetyReverifyDialog> {
               onChanged: (value) => setState(() => _compared = value ?? false),
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
-              title: VeilCopy(l10n.safetyNumbersReverifyAffirm(widget.peer)),
+              title: Text(l10n.safetyNumbersReverifyAffirm(widget.peer)),
             ),
           ],
         ),
@@ -109,7 +108,7 @@ class SafetyRenewSessionDialog extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     return AlertDialog(
       title: Text(l10n.safetyNumbersRotateDialogTitle),
-      content: SingleChildScrollView(child: VeilCopy(l10n.safetyNumbersRotateDialogBody)),
+      content: SingleChildScrollView(child: Text(l10n.safetyNumbersRotateDialogBody)),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),

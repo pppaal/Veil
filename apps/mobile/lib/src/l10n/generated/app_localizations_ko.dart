@@ -48,28 +48,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get commonIUnderstand => '이해했습니다';
 
   @override
-  String get pillDeviceBound => '기기 귀속';
-
-  @override
   String get pillNoRecovery => '복구 불가';
-
-  @override
-  String get pillNoPasswordReset => '비밀번호 재설정 없음';
-
-  @override
-  String get pillOldDeviceRequired => '기존 기기 필요';
-
-  @override
-  String get pillPrivateBeta => '비공개 베타';
-
-  @override
-  String get pillDeviceBoundMessenger => '기기 귀속 메신저';
-
-  @override
-  String get pillNoContactSync => '연락처 동기화 없음';
-
-  @override
-  String get pillHandleDiscovery => '핸들 검색';
 
   @override
   String get pillSessionLocked => '세션 잠김';
@@ -85,7 +64,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get privacyShieldBody =>
-      '최근 앱 미리보기가 가려지고, 앱이 포그라운드를 떠나면 로컬 잠금이 다시 걸립니다.';
+      '최근 앱 미리보기가 가려지고, 앱이 백그라운드로 가면 앱 잠금이 다시 걸립니다.';
 
   @override
   String get appLockTitle => '앱 잠금';
@@ -438,10 +417,10 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get authCreateFieldCaption =>
-      '사람들은 핸들로 나를 찾습니다. 이 이름은 표시용일 뿐 검색에는 쓰이지 않습니다.';
+      '이 기기만 아는 이름입니다. 다른 사람은 핸들로 나를 찾고, 핸들만 봅니다.';
 
   @override
-  String get authCreateDisplayName => '표시 이름';
+  String get authCreateDisplayName => '별명';
 
   @override
   String get authCreateDisplayHint => '선택 사항';
@@ -2814,7 +2793,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get securityStatusLocalWipeDetail =>
-      '이 기기는 복구 경로를 만들지 않고 로컬 세션 상태, 로컬 비밀 키, 암호화된 캐시, 로컬 잠금을 지울 수 있습니다.';
+      '이 기기는 복구 경로를 만들지 않고 로컬 세션 상태, 로컬 비밀 키, 암호화된 캐시, 앱 잠금을 지울 수 있습니다.';
 
   @override
   String get securityStatusCryptoAdapter => '암호 어댑터';

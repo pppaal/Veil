@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../../shared/presentation/veil_unavailable.dart';
@@ -88,7 +89,7 @@ class _AttachmentPreviewScreenState extends ConsumerState<AttachmentPreviewScree
             const SizedBox(height: VeilSpace.md),
             VeilInlineBanner(
               title: l10n.attachmentSendFailedTitle,
-              message: error,
+              message: veilErrorText(l10n, error),
               tone: VeilBannerTone.danger,
             ),
           ],

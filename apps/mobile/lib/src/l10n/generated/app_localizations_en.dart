@@ -48,28 +48,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonIUnderstand => 'I understand';
 
   @override
-  String get pillDeviceBound => 'Device-bound';
-
-  @override
   String get pillNoRecovery => 'No recovery';
-
-  @override
-  String get pillNoPasswordReset => 'No password reset';
-
-  @override
-  String get pillOldDeviceRequired => 'Old device required';
-
-  @override
-  String get pillPrivateBeta => 'Private beta';
-
-  @override
-  String get pillDeviceBoundMessenger => 'Device-bound messenger';
-
-  @override
-  String get pillNoContactSync => 'No contact sync';
-
-  @override
-  String get pillHandleDiscovery => 'Handle discovery';
 
   @override
   String get pillSessionLocked => 'Session locked';
@@ -85,20 +64,20 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get privacyShieldBody =>
-      'Recent-app previews are obscured and the local barrier is re-armed when the app leaves the foreground.';
+      'Recent-app previews are obscured and the app lock is re-armed when the app leaves the foreground.';
 
   @override
-  String get appLockTitle => 'App Lock';
+  String get appLockTitle => 'App lock';
 
   @override
-  String get appLockLoadingTitle => 'Checking local barrier';
+  String get appLockLoadingTitle => 'Checking the app lock';
 
   @override
   String get appLockLoadingBody =>
       'Looking for a stored PIN and biometric availability.';
 
   @override
-  String get appLockHeroEyebrow => 'LOCAL BARRIER';
+  String get appLockHeroEyebrow => 'THIS DEVICE ONLY';
 
   @override
   String get appLockHeroTitle => 'VEIL never unlocks itself remotely.';
@@ -115,7 +94,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockNoRecoveryBody =>
-      'If you forget the local barrier and lose the active device, VEIL cannot restore access.';
+      'If you forget the PIN and lose the active device, VEIL cannot restore access.';
 
   @override
   String get appLockCompromisedTitle => 'Compromised device blocked';
@@ -197,7 +176,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get appLockCaptionSet =>
-      'Set a local numeric barrier before continuing. VEIL cannot reset it for you.';
+      'Set a numeric PIN for this device before continuing. VEIL cannot reset it for you.';
 
   @override
   String get appLockCaptionUnlock =>
@@ -331,7 +310,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get onboardingWarnTransferLine3 => 'No old device means no transfer.';
 
   @override
-  String get privacyConsentTitle => 'Privacy Notice';
+  String get privacyConsentTitle => 'Privacy notice';
 
   @override
   String get privacyConsentSubtitle => 'Read before using VEIL';
@@ -445,7 +424,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'VEIL does not share collected personal information with third parties, except as required by applicable law.';
 
   @override
-  String get authCreateTitle => 'Create Account';
+  String get authCreateTitle => 'Create account';
 
   @override
   String get authCreateEyebrow => 'DEVICE BINDING';
@@ -465,10 +444,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get authCreateFieldCaption =>
-      'People find you by your handle. This name is only shown, never searched.';
+      'Only this device knows it. Others find you and see you by your handle.';
 
   @override
-  String get authCreateDisplayName => 'Display name';
+  String get authCreateDisplayName => 'Nickname';
 
   @override
   String get authCreateDisplayHint => 'Optional';
@@ -477,7 +456,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authCreateTransferLabel => 'Transfer from old device';
 
   @override
-  String get authHandleTitle => 'Choose Handle';
+  String get authHandleTitle => 'Choose handle';
 
   @override
   String get authHandleEyebrow => 'HANDLE REGISTRATION';
@@ -584,7 +563,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsAppLockSubtitle =>
-      'Biometric and PIN barrier on this device only';
+      'Biometric and PIN lock on this device only';
 
   @override
   String get settingsDeviceTransferTitle => 'Device transfer';
@@ -713,7 +692,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsLockNowSubtitle =>
-      'Hide the current session behind the local barrier immediately';
+      'Hide the current session behind the app lock immediately';
 
   @override
   String get settingsWipeLocalSubtitle =>
@@ -2178,7 +2157,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Messages in a group are end-to-end encrypted. Its name, description and member list are not: the relay stores them as you type them here.';
 
   @override
-  String get safetyNumbersTitle => 'Safety Number';
+  String get safetyNumbersTitle => 'Safety number';
 
   @override
   String get safetyNumbersLoadingTitle => 'Deriving safety number';
@@ -2449,7 +2428,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get profileCancel => 'Cancel';
 
   @override
-  String get deviceTransferTitle => 'Device Transfer';
+  String get deviceTransferTitle => 'Device transfer';
 
   @override
   String get deviceTransferChipOldDevice => 'Old device';
@@ -2752,7 +2731,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Not in this version. Voice and video calls are not built yet.';
 
   @override
-  String get securityStatusTitle => 'Security Status';
+  String get securityStatusTitle => 'Security status';
 
   @override
   String get securityStatusHeroTitle => 'No backup. No recovery. No leaks.';
@@ -2797,7 +2776,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusSectionRuntime => 'Runtime';
 
   @override
-  String get securityStatusSectionProductRules => 'Product Rules';
+  String get securityStatusSectionProductRules => 'Product rules';
 
   @override
   String get securityStatusChecking => 'Checking';
@@ -2864,7 +2843,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusPinDetail =>
-      'Local barrier only. VEIL cannot unlock the app for you.';
+      'A lock on this device only. VEIL cannot unlock the app for you.';
 
   @override
   String get securityStatusBiometrics => 'Biometrics';
@@ -2878,7 +2857,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusPrivacyShieldDetail =>
-      'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.';
+      'When VEIL leaves the foreground, the app obscures previews and re-arms the app lock.';
 
   @override
   String get securityStatusAppPreview => 'Recent-app preview';
@@ -3046,7 +3025,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get securityStatusLocalWipeDetail =>
-      'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.';
+      'This device can erase local session state, local secrets, encrypted cache, and the app lock without creating a recovery path.';
 
   @override
   String get securityStatusCryptoAdapter => 'Crypto adapter';

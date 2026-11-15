@@ -7,6 +7,7 @@ import '../../../app/theme_mode_provider.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_grouped.dart';
+import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/trusted_devices.dart';
@@ -126,21 +127,10 @@ class _ProfileRow extends ConsumerWidget {
     final handle = '@${session.handle ?? ''}';
     final name = session.displayName;
     final named = name != null && name.isNotEmpty;
-    final initial = (named ? name : session.handle ?? '').characters.firstOrNull?.toUpperCase() ?? '?';
 
     return VeilGroupRow(
       key: const ValueKey('settings-profile'),
-      leading: Container(
-        width: 44,
-        height: 44,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: palette.primarySoft,
-          border: Border.all(color: palette.stroke),
-        ),
-        child: Text(initial, style: theme.textTheme.titleMedium?.copyWith(color: palette.primary)),
-      ),
+      leading: VeilInitialBadge(name: named ? name : session.handle ?? ''),
       title: named ? name : handle,
       // A name and a handle are the user's own words: drawn as typed.
       subtitleWidget: named

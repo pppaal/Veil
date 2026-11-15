@@ -18,14 +18,6 @@
 /// A run of only some cases (`--plain-name`) still fails on a text that is
 /// not listed; only a full run can say a listed text is gone.
 ///
-/// One entry per screen, grouped by who owns the screen.
-const knownOtherLanguageText = <String, Map<String, Set<String>>>{
-  // --- Onboarding, account and device transfer.
-
-  // --- Chat and conversation list, starting a chat or a group.
-
-  // --- Settings, security status, safety numbers, contacts, one-time link.
-
-  // --- Switched-off surfaces (calls, media, voice, emoji, assistant,
-  // stories, attachments).
-};
+/// Every screen speaks the language of its run today, so the list is empty,
+/// and the gate's test 'nothing is listed as known to fail' keeps it so.
+const knownOtherLanguageText = <String, Map<String, Set<String>>>{};

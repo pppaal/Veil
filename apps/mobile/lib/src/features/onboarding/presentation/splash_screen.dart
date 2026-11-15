@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -96,7 +97,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   const SizedBox(height: VeilSpace.xxl),
                   VeilInlineBanner(
                     title: l10n.splashErrorTitle,
-                    message: session.errorMessage!,
+                    message: veilErrorText(l10n, session.errorMessage!),
                     tone: VeilBannerTone.danger,
                   ),
                 ] else

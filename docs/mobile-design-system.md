@@ -27,6 +27,18 @@ This is not a bright consumer chat app. The interface should communicate:
 - Supporting copy should stay precise and short.
 - Body copy should avoid chatty phrasing.
 
+### Copy
+
+- English titles of screens, rows, sheets and buttons are in sentence case
+  ("Safety number", "Trusted devices", "Create account"). Only a section
+  label is in capitals, and only a name (VEIL, VEIL Assistant) keeps its own.
+- One thing has one name on every screen. The name a user gives themselves is
+  a nickname (별명) wherever it appears, and only this device knows it; the
+  lock is the app lock (앱 잠금).
+- A controller's error reaches a screen as English text. A screen shows it
+  through `veilErrorText`, which reads the translation of the failures the
+  app has words of its own for.
+
 ### Spacing
 
 - Dense where scanning matters.
@@ -169,7 +181,11 @@ one `VeilInlineBanner` above it.
 A person or a group where there is no picture: the first letter of the name
 in a circle (44 in a row, larger in a header). `veilInitialOf` picks the
 letter: it skips the `@` of a handle and gives `#` for a name with nothing
-to show, so a row never fails on an empty name.
+to show, so a row never fails on an empty name. The account row of Settings,
+the profile, the header of a contact's sheet, the call history and the
+stories all draw this one widget; no screen draws a circle of its own. The
+rows of the conversation list and of the contacts are `VeilConversationCard`,
+whose coloured avatar tells the rows of a long list apart.
 
 ## Screen Guidance
 

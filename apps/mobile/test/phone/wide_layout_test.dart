@@ -111,7 +111,7 @@ void main() {
       expect(inChat(find.byTooltip('Disappearing messages: 1 day')), findsOneWidget);
 
       // The safety number.
-      await tester.tap(inChat(find.byTooltip('Safety Number')));
+      await tester.tap(inChat(find.byTooltip('Safety number')));
       await pumpFrames(tester);
       expect(find.byType(SafetyNumbersScreen), findsOneWidget);
       final loading = find.byType(VeilLoadingBlock);

@@ -71,7 +71,7 @@ void main() {
 
   testWidgets('opens the safety number from the bar, and comes back', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      await tester.tap(find.byTooltip('Safety Number'));
+      await tester.tap(find.byTooltip('Safety number'));
       await pumpFrames(tester);
       expect(find.byType(SafetyNumbersScreen), findsOneWidget);
       await awaitSafetyNumber(tester);
@@ -90,7 +90,7 @@ void main() {
     await withPhoneApp(tester, identities, withGroup: true, location: '/chat/$groupConversationId',
         body: (world) async {
       expect(find.byTooltip('Verified'), findsNothing, reason: 'a group is never verified as a whole');
-      await tester.tap(find.byTooltip('Safety Number'));
+      await tester.tap(find.byTooltip('Safety number'));
       await pumpFrames(tester);
       await awaitSafetyNumber(tester);
       final opened = tester.widget<SafetyNumbersScreen>(find.byType(SafetyNumbersScreen));
@@ -106,7 +106,7 @@ void main() {
       await pumpFrames(tester, frames: 2);
       expect(find.widgetWithText(TextField, 'Search this chat'), findsOneWidget);
       expect(find.text('Selene Park'), findsNothing);
-      expect(find.byTooltip('Safety Number'), findsNothing);
+      expect(find.byTooltip('Safety number'), findsNothing);
 
       // Typed where the focus is: opening the search moved it to the bar.
       tester.testTextInput.enterText('lease');

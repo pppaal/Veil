@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/device_transfer_controller.dart';
 import 'device_transfer_code.dart';
@@ -71,7 +72,7 @@ class TransferOldDevicePanel extends StatelessWidget {
         ? null
         : TransferStepResult(
             title: l10n.deviceTransferFailedTitle,
-            message: errorMessage!,
+            message: veilErrorText(l10n, errorMessage!),
             tone: VeilBannerTone.danger,
           );
 

@@ -2,10 +2,6 @@ import 'support/phone_layout_probe.dart';
 
 // The allow-list of the layout gate (phone_layout_test.dart).
 
-const _small = [phoneSmall];
-const _phones = phoneSizes;
-const _both = ['en', 'ko'];
-
 /// A case that is known not to fit, and how it fails.
 class KnownPhoneLayoutFailure {
   const KnownPhoneLayoutFailure(
@@ -41,18 +37,9 @@ class KnownPhoneLayoutFailure {
 /// and delete the line (or the sizes and languages that now pass) when the
 /// gate says the case fits. Never add a line for a new defect: fix it.
 ///
-/// The lines are grouped by who owns the screen, so that two people fixing
-/// different screens edit different lines.
-const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[
-  // --- Onboarding, account and device transfer.
-
-  // --- Chat and conversation list (phone and wide), starting a chat or a group.
-
-  // --- Settings, security status, safety numbers, contacts, one-time link.
-
-  // --- Switched-off surfaces (calls, media, voice, stickers, assistant,
-  // stories, attachments): fixed by whoever switches one on.
-];
+/// Every case fits today, so the list is empty, and the gate's test
+/// 'nothing is listed as known to fail' keeps it so.
+const knownPhoneLayoutFailures = <KnownPhoneLayoutFailure>[];
 
 KnownPhoneLayoutFailure? knownPhoneLayoutFailure(String caseId, PhoneSize size, String locale, {bool light = false}) {
   for (final known in knownPhoneLayoutFailures) {

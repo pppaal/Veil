@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../data/contacts_providers.dart';
 
@@ -291,20 +292,7 @@ class _ContactHeader extends StatelessWidget {
     final palette = context.veilPalette;
     return Row(
       children: [
-        Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: palette.primarySoft,
-            border: Border.all(color: palette.stroke),
-          ),
-          child: Text(
-            contact.label.characters.firstOrNull?.toUpperCase() ?? '#',
-            style: theme.textTheme.titleMedium?.copyWith(color: palette.primary),
-          ),
-        ),
+        VeilInitialBadge(name: contact.label),
         const SizedBox(width: VeilSpace.md),
         Expanded(
           child: Column(

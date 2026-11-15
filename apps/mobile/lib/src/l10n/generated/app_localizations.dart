@@ -176,53 +176,11 @@ abstract class AppLocalizations {
   /// **'I understand'**
   String get commonIUnderstand;
 
-  /// No description provided for @pillDeviceBound.
-  ///
-  /// In en, this message translates to:
-  /// **'Device-bound'**
-  String get pillDeviceBound;
-
   /// No description provided for @pillNoRecovery.
   ///
   /// In en, this message translates to:
   /// **'No recovery'**
   String get pillNoRecovery;
-
-  /// No description provided for @pillNoPasswordReset.
-  ///
-  /// In en, this message translates to:
-  /// **'No password reset'**
-  String get pillNoPasswordReset;
-
-  /// No description provided for @pillOldDeviceRequired.
-  ///
-  /// In en, this message translates to:
-  /// **'Old device required'**
-  String get pillOldDeviceRequired;
-
-  /// No description provided for @pillPrivateBeta.
-  ///
-  /// In en, this message translates to:
-  /// **'Private beta'**
-  String get pillPrivateBeta;
-
-  /// No description provided for @pillDeviceBoundMessenger.
-  ///
-  /// In en, this message translates to:
-  /// **'Device-bound messenger'**
-  String get pillDeviceBoundMessenger;
-
-  /// No description provided for @pillNoContactSync.
-  ///
-  /// In en, this message translates to:
-  /// **'No contact sync'**
-  String get pillNoContactSync;
-
-  /// No description provided for @pillHandleDiscovery.
-  ///
-  /// In en, this message translates to:
-  /// **'Handle discovery'**
-  String get pillHandleDiscovery;
 
   /// No description provided for @pillSessionLocked.
   ///
@@ -251,19 +209,19 @@ abstract class AppLocalizations {
   /// No description provided for @privacyShieldBody.
   ///
   /// In en, this message translates to:
-  /// **'Recent-app previews are obscured and the local barrier is re-armed when the app leaves the foreground.'**
+  /// **'Recent-app previews are obscured and the app lock is re-armed when the app leaves the foreground.'**
   String get privacyShieldBody;
 
   /// No description provided for @appLockTitle.
   ///
   /// In en, this message translates to:
-  /// **'App Lock'**
+  /// **'App lock'**
   String get appLockTitle;
 
   /// No description provided for @appLockLoadingTitle.
   ///
   /// In en, this message translates to:
-  /// **'Checking local barrier'**
+  /// **'Checking the app lock'**
   String get appLockLoadingTitle;
 
   /// No description provided for @appLockLoadingBody.
@@ -275,7 +233,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockHeroEyebrow.
   ///
   /// In en, this message translates to:
-  /// **'LOCAL BARRIER'**
+  /// **'THIS DEVICE ONLY'**
   String get appLockHeroEyebrow;
 
   /// No description provided for @appLockHeroTitle.
@@ -305,7 +263,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockNoRecoveryBody.
   ///
   /// In en, this message translates to:
-  /// **'If you forget the local barrier and lose the active device, VEIL cannot restore access.'**
+  /// **'If you forget the PIN and lose the active device, VEIL cannot restore access.'**
   String get appLockNoRecoveryBody;
 
   /// No description provided for @appLockCompromisedTitle.
@@ -449,7 +407,7 @@ abstract class AppLocalizations {
   /// No description provided for @appLockCaptionSet.
   ///
   /// In en, this message translates to:
-  /// **'Set a local numeric barrier before continuing. VEIL cannot reset it for you.'**
+  /// **'Set a numeric PIN for this device before continuing. VEIL cannot reset it for you.'**
   String get appLockCaptionSet;
 
   /// No description provided for @appLockCaptionUnlock.
@@ -683,7 +641,7 @@ abstract class AppLocalizations {
   /// No description provided for @privacyConsentTitle.
   ///
   /// In en, this message translates to:
-  /// **'Privacy Notice'**
+  /// **'Privacy notice'**
   String get privacyConsentTitle;
 
   /// No description provided for @privacyConsentSubtitle.
@@ -869,7 +827,7 @@ abstract class AppLocalizations {
   /// No description provided for @authCreateTitle.
   ///
   /// In en, this message translates to:
-  /// **'Create Account'**
+  /// **'Create account'**
   String get authCreateTitle;
 
   /// No description provided for @authCreateEyebrow.
@@ -905,13 +863,13 @@ abstract class AppLocalizations {
   /// No description provided for @authCreateFieldCaption.
   ///
   /// In en, this message translates to:
-  /// **'People find you by your handle. This name is only shown, never searched.'**
+  /// **'Only this device knows it. Others find you and see you by your handle.'**
   String get authCreateFieldCaption;
 
   /// No description provided for @authCreateDisplayName.
   ///
   /// In en, this message translates to:
-  /// **'Display name'**
+  /// **'Nickname'**
   String get authCreateDisplayName;
 
   /// No description provided for @authCreateDisplayHint.
@@ -929,7 +887,7 @@ abstract class AppLocalizations {
   /// No description provided for @authHandleTitle.
   ///
   /// In en, this message translates to:
-  /// **'Choose Handle'**
+  /// **'Choose handle'**
   String get authHandleTitle;
 
   /// No description provided for @authHandleEyebrow.
@@ -1127,7 +1085,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAppLockSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Biometric and PIN barrier on this device only'**
+  /// **'Biometric and PIN lock on this device only'**
   String get settingsAppLockSubtitle;
 
   /// No description provided for @settingsDeviceTransferTitle.
@@ -1319,7 +1277,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLockNowSubtitle.
   ///
   /// In en, this message translates to:
-  /// **'Hide the current session behind the local barrier immediately'**
+  /// **'Hide the current session behind the app lock immediately'**
   String get settingsLockNowSubtitle;
 
   /// No description provided for @settingsWipeLocalSubtitle.
@@ -3569,7 +3527,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersTitle.
   ///
   /// In en, this message translates to:
-  /// **'Safety Number'**
+  /// **'Safety number'**
   String get safetyNumbersTitle;
 
   /// No description provided for @safetyNumbersLoadingTitle.
@@ -4031,7 +3989,7 @@ abstract class AppLocalizations {
   /// No description provided for @deviceTransferTitle.
   ///
   /// In en, this message translates to:
-  /// **'Device Transfer'**
+  /// **'Device transfer'**
   String get deviceTransferTitle;
 
   /// No description provided for @deviceTransferChipOldDevice.
@@ -4541,7 +4499,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusTitle.
   ///
   /// In en, this message translates to:
-  /// **'Security Status'**
+  /// **'Security status'**
   String get securityStatusTitle;
 
   /// No description provided for @securityStatusHeroTitle.
@@ -4613,7 +4571,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusSectionProductRules.
   ///
   /// In en, this message translates to:
-  /// **'Product Rules'**
+  /// **'Product rules'**
   String get securityStatusSectionProductRules;
 
   /// No description provided for @securityStatusChecking.
@@ -4739,7 +4697,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusPinDetail.
   ///
   /// In en, this message translates to:
-  /// **'Local barrier only. VEIL cannot unlock the app for you.'**
+  /// **'A lock on this device only. VEIL cannot unlock the app for you.'**
   String get securityStatusPinDetail;
 
   /// No description provided for @securityStatusBiometrics.
@@ -4763,7 +4721,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusPrivacyShieldDetail.
   ///
   /// In en, this message translates to:
-  /// **'When VEIL leaves the foreground, the app obscures previews and re-arms the local barrier.'**
+  /// **'When VEIL leaves the foreground, the app obscures previews and re-arms the app lock.'**
   String get securityStatusPrivacyShieldDetail;
 
   /// No description provided for @securityStatusAppPreview.
@@ -5051,7 +5009,7 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusLocalWipeDetail.
   ///
   /// In en, this message translates to:
-  /// **'This device can erase local session state, local secrets, encrypted cache, and the local barrier without creating a recovery path.'**
+  /// **'This device can erase local session state, local secrets, encrypted cache, and the app lock without creating a recovery path.'**
   String get securityStatusLocalWipeDetail;
 
   /// No description provided for @securityStatusCryptoAdapter.

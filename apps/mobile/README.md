@@ -109,12 +109,15 @@ flutter test test/layout --dart-define=SHOTS_DIR=/tmp/veil-shots --dart-define=S
 screen. A new screen needs a case in `test/layout/support/screen_cases.dart`,
 and a new sheet or state of an existing screen deserves one.
 
-What fails today is listed, and the lists only shrink: the gate fails for a
-listed case that passes, or fails another way, as it does for an unlisted
-one that fails.
+Nothing is listed as failing today. The gate has two lists for what is known
+to fail, and both are empty; a test of the gate keeps them empty, so a
+screen that stops fitting or shows text in the other language is fixed, not
+listed.
 
 - `test/layout/known_phone_layout_failures.dart`: one line per case, with
-  the sizes and languages it fails at and the defects it shows.
+  the sizes and languages it fails at and the defects it shows. The gate
+  fails for a listed case that passes, or fails another way, as it does for
+  an unlisted one that fails.
 - `test/layout/known_other_language_text.dart`: per screen, the texts it
   shows in the other language. A text that is not listed fails the case
   that shows it; a listed text no case shows any more fails the full run.
@@ -135,7 +138,15 @@ script, by file and literal:
 
 - `KNOWN_HARDCODED`: the copy that is still hard-coded today. It only
   shrinks: an unlisted literal fails, and so does a listed one the file no
-  longer holds.
+  longer holds. What is left is the thirteen English sentences of
+  `core/errors/user_facing_error.dart`: controllers and logs have no locale,
+  so `formatUserFacingError` keeps them, and a screen shows such an error
+  through `veilErrorText` (`shared/presentation/veil_error_text.dart`), which
+  finds the sentence's code and reads its translation from the ARB files
+  (`test/phone/error_language_phone_test.dart`). A failure without a code is
+  shown as it came: a relay's own words, and the English of a failure the
+  data layer words itself and the formatter does not know. The script does
+  not read the data layer, so those sentences are on no list.
 - `NOT_COPY`: what the gate takes for text and nobody translates (an example
   handle in a hint, a file name), each with its reason. This is the way out
   for a false positive: add the literal with why it is not copy, rather than

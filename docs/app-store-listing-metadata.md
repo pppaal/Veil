@@ -107,7 +107,7 @@ bugs are intentional privacy design — please read before testing:
 
 1. NO PHONE NUMBER / NO EMAIL. There is no password, email or SMS sign-up.
    After a privacy notice, the app creates an account bound to the device
-   (Create Account) and asks for a handle (Choose Handle). This is not a broken
+   (Create account) and asks for a handle (Choose handle). This is not a broken
    onboarding flow.
 
 2. NO RECOVERY. There is deliberately no password reset, no cloud backup, and no
@@ -121,8 +121,8 @@ self-classification report will be filed before distribution.
 
 Source is public under AGPL-3.0 for independent verification.
 
-Test walkthrough: launch → agree to the privacy notice → Create Account →
-Choose Handle (any free handle) → start a conversation with a second device's
+Test walkthrough: launch → agree to the privacy notice → Create account →
+Choose handle (any free handle) → start a conversation with a second device's
 handle → send a text message → long-press it to react. No credentials are
 required to reach full functionality. Calls, attachments and voice messages are
 not part of this build.

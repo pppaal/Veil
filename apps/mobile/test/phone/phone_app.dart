@@ -18,7 +18,8 @@ export '../layout/support/phone_layout_probe.dart';
 /// what it returns is what the route is opened with. [withGroup] adds the
 /// seeded group to the account's conversations. [extraRoutes] are added
 /// to the app's route table: `layoutOnlyRoutes` for a test of a screen
-/// whose feature is switched off.
+/// whose feature is switched off. [sessionError] is the failure the session
+/// reports when the app opens.
 Future<void> withPhoneApp(
   WidgetTester tester,
   LayoutIdentities identities, {
@@ -33,6 +34,7 @@ Future<void> withPhoneApp(
   ChatAttention attention = const ChatAttention(),
   bool transferStarted = false,
   bool withGroup = false,
+  String? sessionError,
   List<RouteBase> extraRoutes = const [],
 }) async {
   usePhoneView(tester, size, keyboardHeight: keyboardHeight, textScale: textScale);
@@ -43,6 +45,7 @@ Future<void> withPhoneApp(
     attention: attention,
     transferStarted: transferStarted,
     withGroup: withGroup,
+    sessionError: sessionError,
   );
   try {
     final extra = await prepare?.call(world);

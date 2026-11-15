@@ -5,6 +5,7 @@ import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_grouped.dart';
+import '../../../shared/presentation/veil_initial_badge.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
@@ -42,14 +43,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.veilPalette;
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final session = ref.watch(appSessionProvider);
     final handle = session.handle ?? '';
     final nickname = session.displayName;
     final named = nickname != null && nickname.isNotEmpty;
-    final initial = (named ? nickname : handle).characters.firstOrNull?.toUpperCase() ?? '?';
 
     return VeilShell(
       title: l10n.profileTitle,
@@ -58,19 +57,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(VeilSpace.lg, VeilSpace.lg, VeilSpace.lg, VeilSpace.xl),
         children: [
-          Center(
-            child: Container(
-              width: 72,
-              height: 72,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: palette.primarySoft,
-                border: Border.all(color: palette.strokeStrong),
-              ),
-              child: Text(initial, style: theme.textTheme.headlineMedium?.copyWith(color: palette.primary)),
-            ),
-          ),
+          Center(child: VeilInitialBadge(name: named ? nickname : handle, size: 72)),
           if (named) ...[
             const SizedBox(height: VeilSpace.sm),
             // The user's own words: drawn as typed.

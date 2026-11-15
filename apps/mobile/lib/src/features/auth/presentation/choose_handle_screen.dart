@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_screen_intro.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
@@ -103,7 +104,7 @@ class _ChooseHandleScreenState extends ConsumerState<ChooseHandleScreen> {
         const SizedBox(height: VeilSpace.md),
         VeilInlineBanner(
           title: l10n.authHandleFailedTitle,
-          message: session.errorMessage!,
+          message: veilErrorText(l10n, session.errorMessage!),
           tone: VeilBannerTone.danger,
         ),
       ],

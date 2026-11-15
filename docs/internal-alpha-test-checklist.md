@@ -37,7 +37,7 @@
 - Set a PIN, confirm the second-entry check, and confirm the app unlocks locally.
 - Re-open the lock screen and confirm PIN unlock works.
 - If biometrics are available, verify biometric unlock works and failure states are readable.
-- Background the app and confirm the preview is obscured and the session returns behind the local barrier.
+- Background the app and confirm the preview is obscured and the session returns behind the app lock.
 - Use `Wipe local device state` and confirm session, PIN, and onboarding state are removed locally.
 
 ## Transfer And Settings

@@ -134,11 +134,15 @@ class ChatAttention {
 }
 
 class LayoutWorld {
-  LayoutWorld._(this.identities, this.account, this.locale);
+  LayoutWorld._(this.identities, this.account, this.locale, this.sessionError);
 
   final LayoutIdentities identities;
   final LayoutAccount account;
   final String locale;
+
+  /// What the session reports as its last failure (a text
+  /// formatUserFacingError returned), for a screen that shows it.
+  final String? sessionError;
 
   final FakeRelay relay = FakeRelay();
   final SecureStorageService storage = _PinSetStorage(MemorySecureStore());
@@ -152,7 +156,7 @@ class LayoutWorld {
   bool get _hasAccount => account != LayoutAccount.signedOut;
 
   AppSessionState get _session => switch (account) {
-        LayoutAccount.signedOut => const AppSessionState(locked: false, initializing: false),
+        LayoutAccount.signedOut => AppSessionState(locked: false, initializing: false, errorMessage: sessionError),
         _ => AppSessionState(
             accessToken: 'token-$selfHandle',
             userId: 'user-$selfHandle',
@@ -163,6 +167,7 @@ class LayoutWorld {
             privacyConsentAccepted: true,
             locked: account == LayoutAccount.locked,
             initializing: false,
+            errorMessage: sessionError,
           ),
       };
 
@@ -174,8 +179,9 @@ class LayoutWorld {
     bool bootstrapping = false,
     bool transferStarted = false,
     bool withGroup = false,
+    String? sessionError,
   }) async {
-    final world = LayoutWorld._(identities, account, locale);
+    final world = LayoutWorld._(identities, account, locale, sessionError);
     await world._build(
       attention: attention,
       bootstrapping: bootstrapping,
@@ -345,7 +351,9 @@ class _LayoutSession extends AppSessionController {
     AppSessionState initial, {
     required this.bootstrapping,
   }) {
-    state = bootstrapping ? const AppSessionState() : initial;
+    // A session still starting has no account yet, but may already have
+    // failed (a build that cannot reach its relay).
+    state = bootstrapping ? AppSessionState(errorMessage: initial.errorMessage) : initial;
   }
 
   final bool bootstrapping;

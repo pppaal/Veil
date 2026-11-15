@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/crypto/crypto_engine.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
 import 'chat_room_labels.dart';
@@ -79,7 +80,7 @@ class MessageAttachmentCard extends StatelessWidget {
             const SizedBox(height: 10),
             VeilInlineBanner(
               title: l10n.chatAttachmentTicketFailed,
-              message: downloadError!,
+              message: veilErrorText(l10n, downloadError!),
               tone: VeilBannerTone.warn,
             ),
           ],
@@ -207,11 +208,13 @@ class AttachmentTransferPanel extends StatelessWidget {
               ),
             ],
           ),
-          if (snapshot.errorMessage != null) ...[
+          // A cancel is said by the description above. The outbox's own
+          // sentence for it has no translation and would only repeat it.
+          if (snapshot.errorMessage != null && snapshot.phase != AttachmentTransferPhase.canceled) ...[
             const SizedBox(height: 10),
             VeilInlineBanner(
               title: l10n.chatAttachmentStateBanner,
-              message: snapshot.errorMessage!,
+              message: veilErrorText(l10n, snapshot.errorMessage!),
               tone: VeilBannerTone.warn,
             ),
           ],
@@ -266,7 +269,7 @@ class AttachmentTransferPanel extends StatelessWidget {
       AttachmentTransferPhase.uploading => l10n.chatPhaseDescUploading,
       AttachmentTransferPhase.finalizing => l10n.chatPhaseDescFinalizing,
       AttachmentTransferPhase.failed =>
-        snapshot.errorMessage ?? l10n.chatPhaseDescFailed,
+        snapshot.errorMessage == null ? l10n.chatPhaseDescFailed : veilErrorText(l10n, snapshot.errorMessage!),
       AttachmentTransferPhase.canceled => l10n.chatPhaseDescCanceled,
     };
   }

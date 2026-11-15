@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
+import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import 'device_transfer_code.dart';
 import 'device_transfer_step.dart';
@@ -91,7 +92,7 @@ class TransferNewDevicePanel extends StatelessWidget {
           if (notice != null && noticeStep == step) ...[
             TransferStepResult(
               title: notice!.isError ? l10n.deviceTransferFailedTitle : l10n.deviceTransferStatusTitle,
-              message: notice!.message,
+              message: veilErrorText(l10n, notice!.message),
               tone: notice!.isError ? VeilBannerTone.danger : VeilBannerTone.good,
             ),
             const SizedBox(height: VeilSpace.sm),

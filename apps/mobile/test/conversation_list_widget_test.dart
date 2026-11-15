@@ -93,7 +93,7 @@ void main() {
     // What the removed cards were for is in the two bars.
     expect(find.byTooltip('New conversation'), findsOneWidget);
     expect(find.byTooltip('Security status'), findsOneWidget);
-    for (final tooltip in ['Safety Number', 'Search messages', 'Disappearing messages: Off']) {
+    for (final tooltip in ['Safety number', 'Search messages', 'Disappearing messages: Off']) {
       expect(_inChatPane(find.byTooltip(tooltip)), findsOneWidget, reason: tooltip);
     }
 

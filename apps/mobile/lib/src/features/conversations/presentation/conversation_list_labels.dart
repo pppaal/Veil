@@ -61,7 +61,9 @@ String conversationPreviewLine(
     MessageKind.voice => l10n.conversationsPreviewVoice,
     MessageKind.sticker => l10n.conversationsPreviewSticker,
     MessageKind.reaction => l10n.conversationsPreviewReaction,
-    MessageKind.call => l10n.conversationsPreviewCall,
+    // Calls are not part of this app: such a message is named as any
+    // other whose text this list does not quote.
+    MessageKind.call => l10n.conversationsPreviewMessage,
   };
 }
 
@@ -94,7 +96,7 @@ String messageKindLabel(AppLocalizations l10n, MessageKind kind) {
     MessageKind.voice => l10n.conversationsKindVoice,
     MessageKind.sticker => l10n.conversationsKindSticker,
     MessageKind.reaction => l10n.conversationsKindReaction,
-    MessageKind.call => l10n.conversationsKindCall,
+    MessageKind.call => l10n.conversationsKindSystem,
   };
 }
 

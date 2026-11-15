@@ -10,6 +10,7 @@ import '../../../shared/presentation/veil_first_fit.dart';
 import '../../../shared/presentation/veil_ui.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
+import 'chat_message_runs.dart';
 import 'message_bubble.dart';
 import 'reaction_chips_row.dart';
 import 'system_notice_bubble.dart';
@@ -94,8 +95,6 @@ class ChatMessageList extends ConsumerWidget {
   static const double runGap = 2;
   static const double groupGap = VeilSpace.xs;
 
-  /// How far apart one sender's messages may be and still share a group.
-  static const Duration runWindow = Duration(minutes: 5);
 
   /// Whether the keyboard is open, which an empty chat answers with its
   /// compact form: the title and the button. The screen asks, from above
@@ -195,13 +194,13 @@ class ChatMessageList extends ConsumerWidget {
     // A reaction shows on its target, not as a row: the bubbles around it
     // are neighbours. The envelope's kind is the relay's word, so it only
     // decides the spacing; what is drawn is decided by the decrypted kind.
-    final hidden = _reactionHint(message);
+    final hidden = chatReactionHint(message);
     final previous = hidden ? null : _neighbour(index, -1);
     final next = hidden ? null : _neighbour(index, 1);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
-    final startsDay = !hidden && (previous == null || !_sameDay(previous.sentAt, message.sentAt));
-    final runsOn = previous != null && _sameRun(previous, message);
-    final runsInto = next != null && _sameRun(message, next);
+    final startsDay = !hidden && (previous == null || !sameChatDay(previous.sentAt, message.sentAt));
+    final runsOn = previous != null && sameChatRun(previous, message);
+    final runsInto = next != null && sameChatRun(message, next);
     final position = switch ((runsOn, runsInto)) {
       (false, false) => VeilBubblePosition.single,
       (false, true) => VeilBubblePosition.first,
@@ -211,7 +210,7 @@ class ChatMessageList extends ConsumerWidget {
     // The next day's date brings its own space above it.
     final gapBelow = hidden
         ? groupGap
-        : next == null || !_sameDay(message.sentAt, next.sentAt)
+        : next == null || !sameChatDay(message.sentAt, next.sentAt)
             ? 0.0
             : runsInto
                 ? runGap
@@ -308,29 +307,9 @@ class ChatMessageList extends ConsumerWidget {
   // that is not a reaction, or null.
   ChatMessage? _neighbour(int index, int step) {
     for (var i = index + step; i >= 0 && i < filteredMessages.length; i += step) {
-      if (!_reactionHint(filteredMessages[i])) return filteredMessages[i];
+      if (!chatReactionHint(filteredMessages[i])) return filteredMessages[i];
     }
     return null;
-  }
-
-  static bool _reactionHint(ChatMessage message) => message.envelope.messageKind == MessageKind.reaction;
-
-  // One sender's messages share a group while they follow each other on the
-  // same day within [runWindow], with nothing between them: a notice of
-  // this device, or reactions under the earlier one, end it.
-  static bool _sameRun(ChatMessage earlier, ChatMessage later) =>
-      earlier.isMine == later.isMine &&
-      earlier.senderDeviceId == later.senderDeviceId &&
-      !earlier.isLocalNotice &&
-      !later.isLocalNotice &&
-      earlier.reactions.isEmpty &&
-      _sameDay(earlier.sentAt, later.sentAt) &&
-      later.sentAt.difference(earlier.sentAt).abs() <= runWindow;
-
-  static bool _sameDay(DateTime a, DateTime b) {
-    final x = a.toLocal();
-    final y = b.toLocal();
-    return x.year == y.year && x.month == y.month && x.day == y.day;
   }
 
   Widget _buildBubbleWithReactions(
@@ -411,79 +390,4 @@ class _CenteredState extends StatelessWidget {
       ),
     );
   }
-}
-
-/// What the message area shows while the history is on its way: a small
-/// spinner and one line.
-class ChatLoadingState extends StatelessWidget {
-  const ChatLoadingState({super.key, required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(VeilSpace.xxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-            const SizedBox(height: VeilSpace.sm),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The date above the first message of a day, centred in small muted type
-/// with no line: "Today", "Yesterday", a weekday within the week, then the
-/// date.
-class ChatDayDivider extends StatelessWidget {
-  const ChatDayDivider({super.key, required this.day, this.first = false});
-
-  final DateTime day;
-
-  /// The first thing in the list, which needs less space above it.
-  final bool first;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return Padding(
-      padding: EdgeInsets.only(top: first ? VeilSpace.xs : VeilSpace.md, bottom: VeilSpace.md),
-      child: Semantics(
-        header: true,
-        child: Text(
-          chatDayLabel(l10n, day, now: DateTime.now()),
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: context.veilPalette.textMuted,
-                fontWeight: FontWeight.w500,
-              ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The words for the day of [day] as seen on [now]: "Today", "Yesterday",
-/// the weekday for the six days before, the month and day this year, and
-/// the full date before that.
-String chatDayLabel(AppLocalizations l10n, DateTime day, {required DateTime now}) {
-  final local = day.toLocal();
-  final date = DateTime(local.year, local.month, local.day);
-  final today = DateTime(now.year, now.month, now.day);
-  final daysAgo = (today.difference(date).inHours / 24).round();
-  if (daysAgo == 0) return l10n.chatDayToday;
-  if (daysAgo == 1) return l10n.chatDayYesterday;
-  if (daysAgo > 1 && daysAgo < 7) return DateFormat.EEEE(l10n.localeName).format(local);
-  if (local.year == now.year) return DateFormat.MMMMd(l10n.localeName).format(local);
-  return DateFormat.yMMMMd(l10n.localeName).format(local);
 }

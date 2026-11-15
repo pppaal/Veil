@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:veil_mobile/src/core/crypto/crypto_engine.dart';
-import 'package:veil_mobile/src/features/chat/presentation/chat_message_list.dart' show chatDayLabel;
+import 'package:veil_mobile/src/features/chat/presentation/chat_message_runs.dart' show chatDayLabel;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_labels.dart' show conversationTitle;
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/conversation_models.dart';

@@ -306,7 +306,10 @@ class _FakeSettingsApiClient extends VeilApiClient {
           'platform': 'ios',
           'isActive': false,
           'trustState': 'revoked',
-          'revokedAt': DateTime.utc(2026, 4, 1, 9, 0, 0).toIso8601String(),
+          // Noon UTC: the revoked day is shown in the phone's local time,
+          // and noon is Apr 1 from UTC-12 to UTC+11, so the expectation
+          // below holds wherever the suite runs.
+          'revokedAt': DateTime.utc(2026, 4, 1, 12, 0, 0).toIso8601String(),
           'trustedAt': DateTime.utc(2026, 3, 10, 8, 0, 0).toIso8601String(),
           'joinedFromDeviceId': null,
           'joinedFromDeviceName': null,

@@ -233,6 +233,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
           ? null
           : (message) => groupSenderName(message) ?? (groupSenderNamesRead ? l10n.chatGroupUnknownSender : null),
       senderHandleOf: isDirect ? null : groupSenderHandle,
+      // Asked here, above the shell, whose body no longer sees the keyboard.
+      keyboardUp: MediaQuery.viewInsetsOf(context).bottom > 0,
       onResolveAttachment: _showAttachmentTicket,
       onReact: _showReactionPicker,
       padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: VeilSpace.sm),

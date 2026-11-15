@@ -89,22 +89,23 @@ class MessageAttachmentCard extends StatelessWidget {
 }
 
 /// How far an attachment this device is sending has got: its name, one line
-/// on what is happening, a thin progress bar, and retry and cancel where the
-/// transfer allows them. Drawn in [color] and [mutedColor], the bubble's
-/// own text colours.
+/// on what is happening, a thin progress bar with the phase and the share
+/// done in words under it, the error when there is one, and retry and
+/// cancel where the transfer allows them. Drawn in [color] and [mutedColor],
+/// the bubble's own text colours (the text colours of the page when null).
 class AttachmentTransferPanel extends StatelessWidget {
   const AttachmentTransferPanel({
     super.key,
     required this.snapshot,
-    required this.color,
-    required this.mutedColor,
+    this.color,
+    this.mutedColor,
     this.onRetry,
     this.onCancel,
   });
 
   final AttachmentTransferSnapshot snapshot;
-  final Color color;
-  final Color mutedColor;
+  final Color? color;
+  final Color? mutedColor;
   final VoidCallback? onRetry;
   final VoidCallback? onCancel;
 
@@ -112,8 +113,12 @@ class AttachmentTransferPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
+    final palette = context.veilPalette;
+    final color = this.color ?? palette.text;
+    final mutedColor = this.mutedColor ?? palette.textMuted;
     final contentType = snapshot.contentType ?? 'application/octet-stream';
     final muted = theme.textTheme.bodySmall?.copyWith(color: mutedColor);
+    final status = theme.textTheme.labelMedium?.copyWith(color: mutedColor);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -148,6 +153,26 @@ class AttachmentTransferPanel extends StatelessWidget {
             AttachmentTransferPhase.canceled => snapshot.progress.clamp(0, 1),
           },
         ),
+        const SizedBox(height: VeilSpace.xxs),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_phaseLabel(l10n, snapshot.phase), style: status),
+            const SizedBox(width: VeilSpace.xs),
+            Text('${(snapshot.progress * 100).round()}%', style: status),
+          ],
+        ),
+        // A cancel is said by the description above. The outbox's own
+        // sentence for it has no translation and would only repeat it.
+        if (snapshot.errorMessage != null && snapshot.phase != AttachmentTransferPhase.canceled) ...[
+          const SizedBox(height: VeilSpace.xs),
+          VeilNotice(
+            title: l10n.chatAttachmentStateBanner,
+            message: veilErrorText(l10n, snapshot.errorMessage!),
+            tone: VeilTone.warn,
+            margin: EdgeInsets.zero,
+          ),
+        ],
         if (onRetry != null || onCancel != null)
           Wrap(
             spacing: VeilSpace.xs,
@@ -170,6 +195,17 @@ class AttachmentTransferPanel extends StatelessWidget {
     );
   }
 
+  String _phaseLabel(AppLocalizations l10n, AttachmentTransferPhase phase) {
+    return switch (phase) {
+      AttachmentTransferPhase.staged => l10n.chatPhaseStaged,
+      AttachmentTransferPhase.preparing => l10n.chatPhasePreparing,
+      AttachmentTransferPhase.uploading => l10n.chatPhaseUploading,
+      AttachmentTransferPhase.finalizing => l10n.chatPhaseFinalizing,
+      AttachmentTransferPhase.failed => l10n.chatPhaseFailed,
+      AttachmentTransferPhase.canceled => l10n.chatPhaseCanceled,
+    };
+  }
+
   String _phaseDescription(AppLocalizations l10n, AttachmentTransferSnapshot snapshot) {
     final sizeLabel = snapshot.sizeBytes == null ? '' : l10n.chatAttachmentSizeBytes(snapshot.sizeBytes!);
     return switch (snapshot.phase) {
@@ -177,8 +213,6 @@ class AttachmentTransferPanel extends StatelessWidget {
       AttachmentTransferPhase.preparing => l10n.chatPhaseDescPreparing,
       AttachmentTransferPhase.uploading => l10n.chatPhaseDescUploading,
       AttachmentTransferPhase.finalizing => l10n.chatPhaseDescFinalizing,
-      // A cancel is said by the description; the outbox's own sentence for
-      // it has no translation and would only repeat it.
       AttachmentTransferPhase.failed =>
         snapshot.errorMessage == null ? l10n.chatPhaseDescFailed : veilErrorText(l10n, snapshot.errorMessage!),
       AttachmentTransferPhase.canceled => l10n.chatPhaseDescCanceled,

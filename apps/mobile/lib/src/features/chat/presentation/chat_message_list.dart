@@ -46,6 +46,7 @@ class ChatMessageList extends ConsumerWidget {
     this.onVerifyPeer,
     this.senderNameOf,
     this.senderHandleOf,
+    this.keyboardUp = false,
     this.padding = EdgeInsets.zero,
   });
 
@@ -95,6 +96,11 @@ class ChatMessageList extends ConsumerWidget {
 
   /// How far apart one sender's messages may be and still share a group.
   static const Duration runWindow = Duration(minutes: 5);
+
+  /// Whether the keyboard is open, which an empty chat answers with its
+  /// compact form: the title and the button. The screen asks, from above
+  /// the shell whose body no longer knows about the keyboard.
+  final bool keyboardUp;
 
   /// Space around the messages, inside the area they scroll in.
   final EdgeInsets padding;
@@ -146,7 +152,7 @@ class ChatMessageList extends ConsumerWidget {
       return Center(
         child: VeilFirstThatFits(
           children: [
-            emptyState(compact: false),
+            if (!keyboardUp) emptyState(compact: false),
             SingleChildScrollView(
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               child: emptyState(compact: true),
@@ -186,10 +192,14 @@ class ChatMessageList extends ConsumerWidget {
   Widget _buildMessageEntry(BuildContext context, WidgetRef ref, int index) {
     final l10n = AppLocalizations.of(context);
     final message = filteredMessages[index];
-    final previous = index == 0 ? null : filteredMessages[index - 1];
-    final next = index == filteredMessages.length - 1 ? null : filteredMessages[index + 1];
+    // A reaction shows on its target, not as a row: the bubbles around it
+    // are neighbours. The envelope's kind is the relay's word, so it only
+    // decides the spacing; what is drawn is decided by the decrypted kind.
+    final hidden = _reactionHint(message);
+    final previous = hidden ? null : _neighbour(index, -1);
+    final next = hidden ? null : _neighbour(index, 1);
     final showLoadOlder = index == 0 && hasMoreHistory && !hasSearchQuery;
-    final startsDay = previous == null || !_sameDay(previous.sentAt, message.sentAt);
+    final startsDay = !hidden && (previous == null || !_sameDay(previous.sentAt, message.sentAt));
     final runsOn = previous != null && _sameRun(previous, message);
     final runsInto = next != null && _sameRun(message, next);
     final position = switch ((runsOn, runsInto)) {
@@ -199,11 +209,13 @@ class ChatMessageList extends ConsumerWidget {
       (true, false) => VeilBubblePosition.last,
     };
     // The next day's date brings its own space above it.
-    final gapBelow = next == null || !_sameDay(message.sentAt, next.sentAt)
-        ? 0.0
-        : runsInto
-            ? runGap
-            : groupGap;
+    final gapBelow = hidden
+        ? groupGap
+        : next == null || !_sameDay(message.sentAt, next.sentAt)
+            ? 0.0
+            : runsInto
+                ? runGap
+                : groupGap;
     final decryptFuture = controller.decryptMessage(message);
     final entry = RepaintBoundary(
       child: KeyedSubtree(
@@ -291,6 +303,17 @@ class ChatMessageList extends ConsumerWidget {
       ],
     );
   }
+
+  // The nearest message before ([step] -1) or after (1) the one at [index]
+  // that is not a reaction, or null.
+  ChatMessage? _neighbour(int index, int step) {
+    for (var i = index + step; i >= 0 && i < filteredMessages.length; i += step) {
+      if (!_reactionHint(filteredMessages[i])) return filteredMessages[i];
+    }
+    return null;
+  }
+
+  static bool _reactionHint(ChatMessage message) => message.envelope.messageKind == MessageKind.reaction;
 
   // One sender's messages share a group while they follow each other on the
   // same day within [runWindow], with nothing between them: a notice of

@@ -95,7 +95,6 @@ class _ReactionChip extends StatelessWidget {
                 height: 28,
                 margin: const EdgeInsets.symmetric(horizontal: 2),
                 padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xs),
-                alignment: Alignment.center,
                 decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(14)),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,

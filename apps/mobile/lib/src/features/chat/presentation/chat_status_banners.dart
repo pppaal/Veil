@@ -94,6 +94,9 @@ class ChatStatusBanners extends StatelessWidget {
             children: [
               if (notices.isNotEmpty)
                 VeilGroup(
+                  // Grey rows edge to edge: a line that started at the text
+                  // would leave a notch of page colour at the start.
+                  inset: 0,
                   children: [
                     for (final notice in notices)
                       VeilNotice(

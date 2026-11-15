@@ -90,9 +90,11 @@ void main() {
     expect(_inChatPane(find.text('Orbit relay window')), findsOneWidget);
     // The list starts right under its bar, and so do the messages' pane.
     expect(tester.getTopLeft(find.byType(ConversationListPhone)).dy, ChatPaneBar.height);
-    // What the removed cards were for is in the two bars.
+    // The list's bar is titled Chats and has one action, a new chat; the
+    // security status is under Settings. The chat's bar has its own.
+    expect(find.text('Chats'), findsOneWidget);
     expect(find.byTooltip('New chat'), findsOneWidget);
-    expect(find.byTooltip('Security'), findsOneWidget);
+    expect(find.byTooltip('Security'), findsNothing);
     for (final tooltip in ['Safety number', 'Search', 'Disappearing: Off']) {
       expect(_inChatPane(find.byTooltip(tooltip)), findsOneWidget, reason: tooltip);
     }
@@ -147,7 +149,10 @@ void main() {
     // itself, with no hero card before it.
     expect(find.text('No chats yet'), findsOneWidget);
     expect(find.text('New chat'), findsOneWidget);
-    expect(find.textContaining('0 chats'), findsOneWidget);
+    // No status line counting the chats or restating that nothing is
+    // backed up: the bar names the connection only while there is none.
+    expect(find.textContaining('0 chats'), findsNothing);
+    expect(find.textContaining('No backup'), findsNothing);
     expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
   });
 
@@ -329,7 +334,14 @@ void main() {
 
       expect(find.text('Meet at the north gate'), findsOneWidget);
       expect(find.text('Message expired'), findsNothing);
-      expect(find.textContaining(RegExp(r'^Expires in (9|10)m$')), findsOneWidget);
+      // The row marks it with the timer glyph; a screen reader hears when.
+      expect(find.byIcon(Icons.timer_outlined), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is Semantics && RegExp(r'Expires in (9|10)m$').hasMatch(widget.properties.label ?? ''),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('is not previewed once the relay counts it expired too', (tester) async {

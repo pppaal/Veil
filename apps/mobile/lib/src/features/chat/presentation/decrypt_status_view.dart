@@ -34,20 +34,13 @@ class DecryptFailureLine extends StatelessWidget {
     return Semantics(
       label: label,
       excludeSemantics: true,
-      child: Text.rich(
-        TextSpan(
-          children: [
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Padding(
-                padding: const EdgeInsetsDirectional.only(end: VeilSpace.xxs),
-                child: Icon(Icons.lock_outline, size: VeilIconSize.xs, color: color),
-              ),
-            ),
-            TextSpan(text: label),
-          ],
-        ),
-        style: style,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.lock_outline, size: VeilIconSize.xs, color: color),
+          const SizedBox(width: VeilSpace.xxs),
+          Flexible(child: Text(label, style: style)),
+        ],
       ),
     );
   }

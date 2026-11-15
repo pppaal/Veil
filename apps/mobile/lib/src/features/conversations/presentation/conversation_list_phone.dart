@@ -35,90 +35,100 @@ class ConversationListPhone extends StatelessWidget {
     // A narrow phone gets the 64 px row.
     final dense = MediaQuery.sizeOf(context).width < 380;
 
-    return RefreshIndicator(
-      color: context.veilPalette.primaryStrong,
-      onRefresh: controller.refreshConversations,
-      child: ListView(
-        key: const PageStorageKey<String>('conversation-list-scroll'),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.only(bottom: VeilSpace.md),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.xs, VeilSpace.md, VeilSpace.xs),
-            child: _SearchField(controller: view.searchController, hasQuery: hasSearchQuery),
-          ),
-          if (hasSearchQuery)
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
-              child: Row(
-                children: [
-                  for (final (index, chip) in conversationSearchFilterChips(l10n, view).indexed) ...[
-                    if (index > 0) const SizedBox(width: VeilSpace.xs),
-                    chip,
+    return LayoutBuilder(
+      builder: (context, constraints) => RefreshIndicator(
+        color: context.veilPalette.primaryStrong,
+        onRefresh: controller.refreshConversations,
+        child: ListView(
+          key: const PageStorageKey<String>('conversation-list-scroll'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.only(bottom: VeilSpace.md),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.xs, VeilSpace.md, VeilSpace.xs),
+              child: _SearchField(controller: view.searchController, hasQuery: hasSearchQuery),
+            ),
+            if (hasSearchQuery)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md),
+                child: Row(
+                  children: [
+                    for (final (index, chip) in conversationSearchFilterChips(l10n, view).indexed) ...[
+                      if (index > 0) const SizedBox(width: VeilSpace.xs),
+                      chip,
+                    ],
                   ],
+                ),
+              ),
+            // A dropped link to the server is the bar's "Connecting…", not a
+            // failure: what is queued goes out by itself once it is back.
+            if (error != null && !controller.errorIsRelayInterruption)
+              Padding(
+                padding: const EdgeInsets.only(top: VeilSpace.xxs, bottom: VeilSpace.xs),
+                child: VeilNotice(
+                  title: l10n.conversationsSyncIssueTitle,
+                  message: veilErrorText(l10n, error),
+                  tone: VeilTone.warn,
+                  actionLabel: l10n.commonRetry,
+                  onAction: controller.refreshConversations,
+                ),
+              ),
+            if (hasSearchQuery) ConversationListHeader(label: l10n.conversationsSectionLabel),
+            if (loadingFirstList)
+              const SizedBox.shrink()
+            else if (conversations.isEmpty && hasSearchQuery)
+              VeilEmptyState(title: l10n.conversationsNoMatchTitle, body: l10n.conversationsNoMatchBody)
+            else if (conversations.isEmpty)
+              // In the middle of the space under the field, a little above
+              // its centre.
+              SizedBox(
+                height: ((constraints.maxHeight - _searchRowExtent) * 0.8).clamp(0, double.infinity),
+                child: VeilEmptyState(
+                  title: l10n.conversationsNoneYetTitle,
+                  body: l10n.conversationsNoneYetBody,
+                  action: VeilButton(
+                    expanded: false,
+                    onPressed: () => context.push('/start-chat'),
+                    label: l10n.conversationsStartDirect,
+                    tone: VeilButtonTone.secondary,
+                  ),
+                ),
+              )
+            else
+              VeilGroup(
+                inset: ConversationRow.textInset,
+                children: [
+                  for (final item in conversations)
+                    RepaintBoundary(
+                      child: ConversationRow(
+                        dense: dense,
+                        selected: item.id == view.selectedConversationId,
+                        title: conversationRowTitle(l10n, item, localUserId: localUserId),
+                        // What the avatar's colour is drawn from: a group has
+                        // no handle of its own.
+                        seed: item.type == ConversationType.group ? item.id : item.peerHandle,
+                        group: item.type == ConversationType.group,
+                        snippet: conversationPreviewLine(l10n, item, controller),
+                        timestamp: view.timeFormat.format(item.updatedAt),
+                        semanticLabel: conversationRowSemantics(l10n, item, localUserId: localUserId),
+                        unreadCount: item.unreadCount,
+                        unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,
+                        timerLabel: conversationTimerLabel(l10n, item, controller),
+                        onTap: () => view.onSelectConversation(item.id),
+                      ),
+                    ),
                 ],
               ),
-            ),
-          // A dropped link to the server is the bar's "Connecting…", not a
-          // failure: what is queued goes out by itself once it is back.
-          if (error != null && !controller.errorIsRelayInterruption)
-            Padding(
-              padding: const EdgeInsets.only(top: VeilSpace.xxs, bottom: VeilSpace.xs),
-              child: VeilNotice(
-                title: l10n.conversationsSyncIssueTitle,
-                message: veilErrorText(l10n, error),
-                tone: VeilTone.warn,
-                actionLabel: l10n.commonRetry,
-                onAction: controller.refreshConversations,
-              ),
-            ),
-          if (hasSearchQuery) ConversationListHeader(label: l10n.conversationsSectionLabel),
-          if (loadingFirstList)
-            const SizedBox.shrink()
-          else if (conversations.isEmpty)
-            VeilEmptyState(
-              title: hasSearchQuery ? l10n.conversationsNoMatchTitle : l10n.conversationsNoneYetTitle,
-              body: hasSearchQuery ? l10n.conversationsNoMatchBody : l10n.conversationsNoneYetBody,
-              action: hasSearchQuery
-                  ? null
-                  : VeilButton(
-                      expanded: false,
-                      onPressed: () => context.push('/start-chat'),
-                      label: l10n.conversationsStartDirect,
-                      tone: VeilButtonTone.secondary,
-                    ),
-            )
-          else
-            VeilGroup(
-              inset: ConversationRow.textInset,
-              children: [
-                for (final item in conversations)
-                  RepaintBoundary(
-                    child: ConversationRow(
-                      dense: dense,
-                      selected: item.id == view.selectedConversationId,
-                      title: conversationRowTitle(l10n, item, localUserId: localUserId),
-                      // What the avatar's colour is drawn from: a group has
-                      // no handle of its own.
-                      seed: item.type == ConversationType.group ? item.id : item.peerHandle,
-                      group: item.type == ConversationType.group,
-                      snippet: conversationPreviewLine(l10n, item, controller),
-                      timestamp: view.timeFormat.format(item.updatedAt),
-                      semanticLabel: conversationRowSemantics(l10n, item, localUserId: localUserId),
-                      unreadCount: item.unreadCount,
-                      unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,
-                      timerLabel: conversationTimerLabel(l10n, item, controller),
-                      onTap: () => view.onSelectConversation(item.id),
-                    ),
-                  ),
-              ],
-            ),
-          if (hasSearchQuery) ...messageSearchResultSection(context, view),
-        ],
+            if (hasSearchQuery) ...messageSearchResultSection(context, view),
+          ],
+        ),
       ),
     );
   }
+
+  /// The height of the search field's row above the chats.
+  static const double _searchRowExtent = 60;
 }
 
 class _SearchField extends StatelessWidget {

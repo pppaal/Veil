@@ -5,8 +5,9 @@ import '../../../shared/presentation/veil_ui.dart';
 
 /// The composer's send button: a 32dp brand circle with an up arrow, inside
 /// a 44x44 tap target. The composer shows it only while there is a draft to
-/// send; without [onPressed] it draws nothing, in the same 44x44, so the
-/// field does not move when it appears.
+/// send: without [onPressed] it takes no room, and the empty field runs to
+/// the end of the strip instead of stopping at a hole where the button
+/// would be.
 class SendButton extends StatelessWidget {
   const SendButton({super.key, required this.onPressed, required this.semanticLabel});
 
@@ -16,7 +17,7 @@ class SendButton extends StatelessWidget {
   /// What a screen reader calls the button.
   final String semanticLabel;
 
-  /// The side of the tap target, which is also the slot it keeps.
+  /// The side of the tap target.
   static const double extent = 44;
 
   /// The diameter of the circle drawn in it.
@@ -25,7 +26,7 @@ class SendButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final onPressed = this.onPressed;
-    if (onPressed == null) return const SizedBox(width: extent, height: extent);
+    if (onPressed == null) return const SizedBox(width: 0, height: extent);
     final palette = context.veilPalette;
     return Semantics(
       button: true,

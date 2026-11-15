@@ -1,71 +1,51 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/veil_theme.dart';
+import 'veil_avatar.dart';
+import 'veil_group.dart';
+import 'veil_notice.dart';
 
-enum VeilBannerTone { info, good, warn, danger }
+export 'veil_avatar.dart';
+export 'veil_bubble.dart';
+export 'veil_composer.dart';
+export 'veil_group.dart';
+export 'veil_notice.dart';
+
+// The shared widgets (docs/mobile-design-system.md, section 7): VeilShell
+// (veil_shell.dart), VeilGroup and VeilRow, VeilButton, VeilAvatar,
+// VeilNotice, VeilBubble, VeilComposer and VeilEmptyState, with the helpers
+// VeilHaptics, VeilFirstThatFits and showVeilToast. Everything marked
+// @Deprecated below is the previous pass's widget flattened to the new
+// look, kept so the screens compile until wave 1 moves them; W0-TOKENS
+// phase 2 deletes them.
+
+/// The tone of a notice, a status word or a toast.
+enum VeilTone { info, good, warn, danger }
+
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilTone.')
+typedef VeilBannerTone = VeilTone;
 
 enum VeilButtonTone { primary, secondary, destructive, ghost }
 
 extension VeilThemeContext on BuildContext {
-  VeilPalette get veilPalette =>
-      VeilPalette.forBrightness(Theme.of(this).brightness);
+  VeilPalette get veilPalette => VeilPalette.forBrightness(Theme.of(this).brightness);
 
-  /// Whether the screen is as narrow as a phone held upright. Panels tighten
-  /// and decorative tiles step aside there, so that what the screen is for
-  /// stays on the first screenful.
+  /// Whether the screen is as narrow as a phone held upright.
   bool get veilPhoneWidth => MediaQuery.sizeOf(this).width < 600;
 }
 
-final _hangul = RegExp(r'[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]');
-final _word = RegExp(r'\S+');
+/// The colour a [tone] is drawn in: an icon, a status word. Information
+/// ([VeilTone.info]) is muted, not coloured.
+Color veilToneColor(VeilPalette palette, VeilTone tone) => switch (tone) {
+      VeilTone.info => palette.textMuted,
+      VeilTone.good => palette.success,
+      VeilTone.warn => palette.warning,
+      VeilTone.danger => palette.danger,
+    };
 
-/// [text] for a headline, with its Korean words kept whole where it wraps.
-/// A line of Korean may break between any two syllables, which leaves the
-/// last syllable of a headline alone on a line ("...됩니" / "다."). A word
-/// joiner goes between the characters of each word that has Hangul in it,
-/// so the line breaks at spaces; a word wider than the line still breaks.
-/// Text without Hangul comes back as it is.
-///
-/// The result is for drawing only: give the widget the plain text as its
-/// semantics label.
-String veilKeepWordsWhole(String text) {
-  if (!_hangul.hasMatch(text)) return text;
-  return text.replaceAllMapped(_word, (match) {
-    final word = match[0]!;
-    return _hangul.hasMatch(word) ? word.characters.join('\u2060') : word;
-  });
-}
-
-/// A piece of the app's own copy (a sentence from the ARB files), drawn
-/// with its Korean words kept whole where it wraps and read out as the
-/// plain text. The shared cards, banners, hero and empty states draw their
-/// titles and bodies with it; a screen does the same for a paragraph of its
-/// own.
-///
-/// Never for what a person wrote (a message, a name, a note): that text is
-/// theirs to copy and search as they typed it, and goes into a plain [Text].
-class VeilCopy extends StatelessWidget {
-  const VeilCopy(this.text, {super.key, this.style, this.textAlign, this.maxLines, this.overflow});
-
-  final String text;
-  final TextStyle? style;
-  final TextAlign? textAlign;
-  final int? maxLines;
-  final TextOverflow? overflow;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      veilKeepWordsWhole(text),
-      semanticsLabel: text,
-      style: style,
-      textAlign: textAlign,
-      maxLines: maxLines,
-      overflow: overflow,
-    );
-  }
-}
-
+/// A button in one of four tones. The theme does the look: a filled brand
+/// button, an outlined one, a text button, and a text button in the danger
+/// colour for what cannot be undone. No red fill exists.
 class VeilButton extends StatelessWidget {
   const VeilButton({
     super.key,
@@ -97,26 +77,14 @@ class VeilButton extends StatelessWidget {
           );
 
     final button = switch (tone) {
-      VeilButtonTone.primary => FilledButton(
-          onPressed: _wrapHaptic(onPressed),
-          child: child,
-        ),
-      VeilButtonTone.secondary => OutlinedButton(
-          onPressed: _wrapHaptic(onPressed),
-          child: child,
-        ),
-      VeilButtonTone.destructive => FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: context.veilPalette.danger,
-            foregroundColor: context.veilPalette.canvas,
-          ),
+      VeilButtonTone.primary => FilledButton(onPressed: _wrapHaptic(onPressed), child: child),
+      VeilButtonTone.secondary => OutlinedButton(onPressed: _wrapHaptic(onPressed), child: child),
+      VeilButtonTone.destructive => TextButton(
+          style: TextButton.styleFrom(foregroundColor: context.veilPalette.danger),
           onPressed: _wrapHaptic(onPressed, destructive: true),
           child: child,
         ),
-      VeilButtonTone.ghost => TextButton(
-          onPressed: _wrapHaptic(onPressed),
-          child: child,
-        ),
+      VeilButtonTone.ghost => TextButton(onPressed: _wrapHaptic(onPressed), child: child),
     };
 
     if (!expanded) {
@@ -140,10 +108,134 @@ class VeilButton extends StatelessWidget {
   }
 }
 
-/// Spring-scale press wrapper. On tap-down the child scales to [scale] with a
-/// short responsive curve, then relaxes back to 1.0 on release. This mirrors
-/// the subtle "press" feedback you feel on iOS rows, tab items, and chips.
-class VeilPressable extends StatefulWidget {
+/// What a screen shows where its content would be and there is none: a
+/// title, one line under it and at most one button, centred in the space
+/// left. [icon], if any, is a plain 40dp glyph. [compact] (above an open
+/// keyboard) is the title and the button only.
+class VeilEmptyState extends StatelessWidget {
+  const VeilEmptyState({
+    super.key,
+    required this.title,
+    required this.body,
+    this.icon,
+    this.action,
+    this.compact = false,
+  });
+
+  /// An empty state for something that failed to load.
+  const VeilEmptyState.error({
+    super.key,
+    required this.title,
+    required this.body,
+    this.action,
+    this.compact = false,
+  }) : icon = Icons.error_outline;
+
+  final String title;
+  final String body;
+  final IconData? icon;
+  final Widget? action;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.veilPalette;
+    final theme = Theme.of(context);
+    final titleStyle = context.veilPhoneWidth ? theme.textTheme.titleLarge : theme.textTheme.headlineMedium;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: VeilSpace.xxl, vertical: compact ? VeilSpace.sm : VeilSpace.xxl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!compact && icon != null) ...[
+                Icon(icon, size: VeilIconSize.xl, color: palette.textSubtle),
+                const SizedBox(height: VeilSpace.md),
+              ],
+              Text(title, style: titleStyle, textAlign: TextAlign.center),
+              if (!compact) ...[
+                const SizedBox(height: VeilSpace.xs),
+                Text(
+                  body,
+                  style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+              if (action != null) ...[
+                SizedBox(height: compact ? VeilSpace.sm : VeilSpace.lg),
+                action!,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilEmptyState.error.')
+class VeilErrorState extends StatelessWidget {
+  const VeilErrorState({super.key, required this.title, required this.body, this.action});
+
+  final String title;
+  final String body;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) => VeilEmptyState.error(title: title, body: body, action: action);
+}
+
+/// A short message at the bottom of the screen for something that just
+/// happened. The tone shows only as a leading icon; information has none.
+void showVeilToast(BuildContext context, String message, {VeilTone tone = VeilTone.info}) {
+  final palette = context.veilPalette;
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.clearSnackBars();
+  messenger.showSnackBar(
+    SnackBar(
+      content: Row(
+        children: [
+          if (tone != VeilTone.info) ...[
+            Icon(VeilNotice.iconFor(tone), size: 20, color: veilToneColor(palette, tone)),
+            const SizedBox(width: VeilSpace.sm),
+          ],
+          Expanded(child: Text(message)),
+        ],
+      ),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Deprecated: the previous pass's widgets, flattened. Deleted in phase 2.
+// ---------------------------------------------------------------------------
+
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Text wraps on its own.')
+String veilKeepWordsWhole(String text) => text;
+
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use Text.')
+class VeilCopy extends StatelessWidget {
+  const VeilCopy(this.text, {super.key, this.style, this.textAlign, this.maxLines, this.overflow});
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final int? maxLines;
+  final TextOverflow? overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: style, textAlign: textAlign, maxLines: maxLines, overflow: overflow);
+  }
+}
+
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use NavigationBar, InkWell or GestureDetector.')
+class VeilPressable extends StatelessWidget {
   const VeilPressable({
     super.key,
     required this.child,
@@ -158,71 +250,32 @@ class VeilPressable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Ignored: nothing scales on press.
   final double scale;
   final bool haptic;
   final bool destructive;
   final HitTestBehavior behavior;
 
   @override
-  State<VeilPressable> createState() => _VeilPressableState();
-}
-
-class _VeilPressableState extends State<VeilPressable>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 120),
-    reverseDuration: const Duration(milliseconds: 180),
-    value: 0,
-    lowerBound: 0,
-    upperBound: 1,
-  );
-
-  late final Animation<double> _scale = Tween<double>(
-    begin: 1,
-    end: widget.scale,
-  ).animate(
-    CurvedAnimation(
-      parent: _controller,
-      curve: VeilMotion.springResponsive,
-      reverseCurve: VeilMotion.springGentle,
-    ),
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _press() => _controller.forward();
-  void _release() => _controller.reverse();
-
-  @override
   Widget build(BuildContext context) {
-    final enabled = widget.onTap != null || widget.onLongPress != null;
-    final reduceMotion = MediaQuery.of(context).disableAnimations;
     return GestureDetector(
-      behavior: widget.behavior,
-      onTapDown: enabled && !reduceMotion ? (_) => _press() : null,
-      onTapUp: enabled && !reduceMotion ? (_) => _release() : null,
-      onTapCancel: enabled && !reduceMotion ? _release : null,
-      onTap: widget.onTap == null
+      behavior: behavior,
+      onTap: onTap == null
           ? null
           : () {
-              if (widget.haptic) {
-                widget.destructive ? VeilHaptics.medium() : VeilHaptics.light();
+              if (haptic) {
+                destructive ? VeilHaptics.medium() : VeilHaptics.light();
               }
-              widget.onTap!();
+              onTap!();
             },
-      onLongPress: widget.onLongPress,
-      child: reduceMotion
-          ? widget.child
-          : ScaleTransition(scale: _scale, child: widget.child),
+      onLongPress: onLongPress,
+      child: child,
     );
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use a TextField with labelText and helperText.')
 class VeilFieldBlock extends StatelessWidget {
   const VeilFieldBlock({
     super.key,
@@ -239,30 +292,25 @@ class VeilFieldBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return VeilSurfaceCard(
-      toned: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          VeilSectionLabel(label, trailing: trailing),
-          const SizedBox(height: VeilSpace.sm),
-          child,
-          if (caption != null) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilCopy(
-              caption!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: context.veilPalette.textMuted,
-                  ),
-            ),
-          ],
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ignore: deprecated_member_use_from_same_package
+        VeilSectionLabel(label, trailing: trailing),
+        const SizedBox(height: VeilSpace.xs),
+        child,
+        if (caption != null) ...[
+          const SizedBox(height: VeilSpace.xs),
+          Text(caption!, style: theme.textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted)),
         ],
-      ),
+      ],
     );
   }
 }
 
-class VeilHeroPanel extends StatefulWidget {
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Screens open with their control.')
+class VeilHeroPanel extends StatelessWidget {
   const VeilHeroPanel({
     super.key,
     required this.title,
@@ -272,143 +320,38 @@ class VeilHeroPanel extends StatefulWidget {
     this.bottom,
   });
 
+  /// Ignored: there are no eyebrows.
   final String? eyebrow;
   final String title;
   final String body;
+
+  /// Ignored.
   final Widget? trailing;
+
+  /// Ignored: it held pills.
   final Widget? bottom;
-
-  @override
-  State<VeilHeroPanel> createState() => _VeilHeroPanelState();
-}
-
-class _VeilHeroPanelState extends State<VeilHeroPanel>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _entrance;
-
-  @override
-  void initState() {
-    super.initState();
-    _entrance = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 520),
-    )..forward();
-  }
-
-  @override
-  void dispose() {
-    _entrance.dispose();
-    super.dispose();
-  }
-
-  Widget _staggered(int index, Widget child) {
-    final start = (index * 0.12).clamp(0.0, 0.8);
-    final end = (start + 0.6).clamp(0.0, 1.0);
-    final curve = CurvedAnimation(
-      parent: _entrance,
-      curve: Interval(start, end, curve: VeilMotion.emphasize),
-    );
-    return AnimatedBuilder(
-      animation: curve,
-      builder: (context, _) {
-        return Opacity(
-          opacity: curve.value,
-          child: Transform.translate(
-            offset: Offset(0, (1 - curve.value) * 12),
-            child: child,
-          ),
-        );
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = context.veilPalette;
-    // On a phone the panel introduces the screen without taking it over.
-    final compact = context.veilPhoneWidth;
-
-    return Container(
-      padding: EdgeInsets.all(compact ? VeilSpace.lg : VeilSpace.xl),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(compact ? VeilRadius.lg : VeilRadius.xl),
-        border: Border.all(color: palette.stroke),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.surfaceRaised,
-            palette.surfaceAlt,
-            palette.canvasAlt,
-          ],
-        ),
-        boxShadow: VeilElevation.raised,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.eyebrow != null) ...[
-            _staggered(
-              0,
-              Text(
-                widget.eyebrow!,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: palette.primaryStrong,
-                ),
-              ),
-            ),
-            SizedBox(height: compact ? VeilSpace.sm : VeilSpace.md),
-          ],
-          _staggered(
-            1,
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      VeilCopy(
-                        widget.title,
-                        style: compact
-                            ? theme.textTheme.headlineMedium
-                            : theme.textTheme.headlineLarge?.copyWith(height: 1.04),
-                      ),
-                      SizedBox(height: compact ? VeilSpace.xs : VeilSpace.sm),
-                      VeilCopy(
-                        widget.body,
-                        style: (compact ? theme.textTheme.bodyMedium : theme.textTheme.bodyLarge)?.copyWith(
-                          color: palette.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                // Sized by itself: as a flexible child it took half the row
-                // from the title whatever its own width.
-                if (widget.trailing != null) ...[
-                  const SizedBox(width: VeilSpace.md),
-                  widget.trailing!,
-                ],
-              ],
-            ),
-          ),
-          if (widget.bottom != null) ...[
-            SizedBox(height: compact ? VeilSpace.md : VeilSpace.lg),
-            _staggered(2, widget.bottom!),
-          ],
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: theme.textTheme.headlineMedium),
+        const SizedBox(height: VeilSpace.xs),
+        Text(body, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+      ],
     );
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilGroup.')
 class VeilSurfaceCard extends StatelessWidget {
   const VeilSurfaceCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(VeilSpace.lg),
+    this.padding = const EdgeInsets.all(VeilSpace.md),
     this.toned = false,
     this.selected = false,
   });
@@ -421,20 +364,16 @@ class VeilSurfaceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
-    return Card(
-      color: selected
-          ? palette.surfaceRaised
-          : toned
-              ? palette.surfaceAlt
-              : null,
-      child: Padding(
-        padding: padding,
-        child: child,
-      ),
+    return Material(
+      color: toned || selected ? palette.surfaceAlt : palette.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(VeilRadius.md)),
+      child: Padding(padding: padding, child: child),
     );
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilGroup.header.')
 class VeilSectionLabel extends StatelessWidget {
   const VeilSectionLabel(this.label, {super.key, this.trailing});
 
@@ -443,12 +382,13 @@ class VeilSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       children: [
         Expanded(
-          child: Text(
-            label,
-            style: Theme.of(context).textTheme.labelLarge,
+          child: Semantics(
+            header: true,
+            child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted)),
           ),
         ),
         if (trailing != null) trailing!,
@@ -457,12 +397,13 @@ class VeilSectionLabel extends StatelessWidget {
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilNotice.')
 class VeilInlineBanner extends StatelessWidget {
   const VeilInlineBanner({
     super.key,
     required this.message,
     this.title,
-    this.tone = VeilBannerTone.info,
+    this.tone = VeilTone.info,
     this.icon,
     this.dense = false,
     this.actionLabel,
@@ -471,255 +412,84 @@ class VeilInlineBanner extends StatelessWidget {
 
   final String? title;
   final String message;
-  final VeilBannerTone tone;
+  final VeilTone tone;
   final IconData? icon;
-
-  /// Tighter padding and smaller body text, for a phone screen whose
-  /// content must keep most of the height.
   final bool dense;
-
-  /// A button inside the banner, under its message, that acts on it.
   final String? actionLabel;
   final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final palette = _paletteFor(tone, theme.brightness);
-    final hasAction = actionLabel != null;
-    final messageStyle = dense
-        ? theme.textTheme.bodyMedium?.copyWith(fontSize: 13, height: 1.4)
-        : theme.textTheme.bodyMedium;
-
-    return AnimatedContainer(
-      duration: VeilMotion.normal,
-      curve: VeilMotion.emphasize,
-      padding: dense
-          ? EdgeInsets.fromLTRB(VeilSpace.sm, VeilSpace.sm - 2, VeilSpace.sm, hasAction ? 0 : VeilSpace.sm - 2)
-          : const EdgeInsets.all(VeilSpace.md),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(dense ? VeilRadius.sm : VeilRadius.md),
-        border: Border.all(color: palette.border),
-        color: palette.fill,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(
-              icon ?? _defaultIconFor(tone),
-              size: VeilIconSize.sm,
-              color: palette.foreground,
-            ),
-          ),
-          SizedBox(width: dense ? VeilSpace.xs : VeilSpace.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (title != null) ...[
-                  VeilCopy(
-                    title!,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: palette.foreground,
-                    ),
-                  ),
-                  SizedBox(height: dense ? 2 : VeilSpace.xxs),
-                ],
-                VeilCopy(message, style: messageStyle?.copyWith(color: palette.text)),
-                if (hasAction)
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: palette.foreground,
-                        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm),
-                      ),
-                      onPressed: onAction,
-                      child: Text(actionLabel!),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+    return VeilNotice(
+      title: title,
+      message: message,
+      tone: tone,
+      icon: icon,
+      actionLabel: actionLabel,
+      onAction: onAction,
+      margin: EdgeInsets.zero,
     );
   }
-
 }
 
-// A tone's colours on the theme's surfaces. The fill is a tint of the
-// surface, so what is written on it is light on the dark theme and dark on
-// the light one: the bright tone colours do not read on a pale tint.
-_BannerPalette _paletteFor(VeilBannerTone tone, Brightness brightness) {
-  final light = brightness == Brightness.light;
-  final text = light ? const Color(0xE6000000) : const Color(0xE6FFFFFF);
-  return switch (tone) {
-    VeilBannerTone.info => _BannerPalette(
-        border: const Color(0x660A84FF),
-        fill: const Color(0x1F0A84FF),
-        foreground: light ? const Color(0xFF0058B8) : const Color(0xFF4FA6FF),
-        text: text,
-      ),
-    VeilBannerTone.good => _BannerPalette(
-        border: const Color(0x6630D158),
-        fill: const Color(0x1F30D158),
-        foreground: light ? const Color(0xFF1A7A37) : const Color(0xFF30D158),
-        text: text,
-      ),
-    VeilBannerTone.warn => _BannerPalette(
-        border: const Color(0x66FF9F0A),
-        fill: const Color(0x1FFF9F0A),
-        foreground: light ? const Color(0xFF8F5200) : const Color(0xFFFF9F0A),
-        text: text,
-      ),
-    VeilBannerTone.danger => _BannerPalette(
-        border: const Color(0x66FF453A),
-        fill: const Color(0x1FFF453A),
-        foreground: light ? const Color(0xFFC0261B) : const Color(0xFFFF453A),
-        text: text,
-      ),
-  };
-}
-
-IconData _defaultIconFor(VeilBannerTone tone) {
-  return switch (tone) {
-    VeilBannerTone.info => Icons.radar_outlined,
-    VeilBannerTone.good => Icons.verified_outlined,
-    VeilBannerTone.warn => Icons.warning_amber_rounded,
-    VeilBannerTone.danger => Icons.priority_high_rounded,
-  };
-}
-
-/// A [VeilInlineBanner] cut down to one row, for where there is no height
-/// for the banner: the icon, the title and, at the end of the same row, the
-/// action. Beside an action a long title takes a second line rather than
-/// be cut short; a row with no action shows as much of its message after
-/// the title as fits the line.
-///
-/// The row is a strip across the full width with no gap around it, 44 px
-/// tall at the default text size, so that two of them fit where one banner
-/// would not.
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilNotice(dense: true).')
 class VeilNoticeRow extends StatelessWidget {
   const VeilNoticeRow({
     super.key,
     required this.title,
     this.message,
-    this.tone = VeilBannerTone.info,
+    this.tone = VeilTone.info,
     this.icon,
     this.actionLabel,
     this.onAction,
   });
 
   /// The height of a row whose text fits one line at the default size.
-  static const double minHeight = 44;
+  static const double minHeight = VeilNotice.denseHeight;
 
   final String title;
   final String? message;
-  final VeilBannerTone tone;
+  final VeilTone tone;
   final IconData? icon;
   final String? actionLabel;
   final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final palette = _paletteFor(tone, theme.brightness);
-    final titleStyle = theme.textTheme.titleSmall?.copyWith(color: palette.foreground);
-    final hasAction = actionLabel != null;
-
-    return Container(
-      constraints: const BoxConstraints(minHeight: minHeight),
-      padding: EdgeInsets.only(left: VeilSpace.md, right: hasAction ? VeilSpace.xxs : VeilSpace.md),
-      decoration: BoxDecoration(color: palette.fill),
-      // Drawn over the fill, so that the line between two rows costs no
-      // height.
-      foregroundDecoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: palette.border)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon ?? _defaultIconFor(tone), size: VeilIconSize.sm, color: palette.foreground),
-          const SizedBox(width: VeilSpace.xs),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                text: veilKeepWordsWhole(title),
-                style: titleStyle,
-                children: [
-                  if (!hasAction && message != null)
-                    TextSpan(
-                      text: '  ${veilKeepWordsWhole(message!)}',
-                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13, color: palette.text),
-                    ),
-                ],
-              ),
-              semanticsLabel: !hasAction && message != null ? '$title  $message' : title,
-              maxLines: hasAction ? 2 : 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (hasAction)
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: palette.foreground,
-                minimumSize: const Size(minHeight, minHeight),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                padding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm),
-              ),
-              onPressed: onAction,
-              child: Text(actionLabel!),
-            ),
-        ],
-      ),
+    return VeilNotice(
+      title: title,
+      message: message ?? title,
+      tone: tone,
+      icon: icon,
+      dense: true,
+      actionLabel: actionLabel,
+      onAction: onAction,
+      margin: EdgeInsets.zero,
     );
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. State is a word in a tone colour: VeilRow.status.')
 class VeilStatusPill extends StatelessWidget {
-  const VeilStatusPill({
-    super.key,
-    required this.label,
-    this.tone = VeilBannerTone.info,
-  });
+  const VeilStatusPill({super.key, required this.label, this.tone = VeilTone.info});
 
   final String label;
-  final VeilBannerTone tone;
+  final VeilTone tone;
 
   @override
   Widget build(BuildContext context) {
-    final palette = _paletteFor(tone, Theme.of(context).brightness);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: VeilSpace.sm,
-        vertical: VeilSpace.xs - 1,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(VeilRadius.pill),
-        border: Border.all(color: palette.border),
-        color: palette.fill,
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: palette.foreground,
-            ),
-      ),
+    return Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(context).textTheme.labelMedium?.copyWith(color: veilToneColor(context.veilPalette, tone)),
     );
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use a Column with SizedBox(height: 8).')
 class VeilActionCluster extends StatelessWidget {
-  const VeilActionCluster({
-    super.key,
-    required this.children,
-    this.spacing = VeilSpace.sm,
-  });
+  const VeilActionCluster({super.key, required this.children, this.spacing = VeilSpace.xs});
 
   final List<Widget> children;
   final double spacing;
@@ -737,12 +507,9 @@ class VeilActionCluster extends StatelessWidget {
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use a Row with SizedBox(width: 8).')
 class VeilActionRow extends StatelessWidget {
-  const VeilActionRow({
-    super.key,
-    required this.children,
-    this.spacing = VeilSpace.sm,
-  });
+  const VeilActionRow({super.key, required this.children, this.spacing = VeilSpace.xs});
 
   final List<Widget> children;
   final double spacing;
@@ -760,192 +527,45 @@ class VeilActionRow extends StatelessWidget {
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use showVeilToast.')
 class VeilToast {
-  static void show(
-    BuildContext context, {
-    required String message,
-    VeilBannerTone tone = VeilBannerTone.info,
-  }) {
-    final messenger = ScaffoldMessenger.of(context);
-    // The toast's text takes the theme's text colour, so its ground is a
-    // dark tint on the dark theme and a pale one on the light theme.
-    final light = Theme.of(context).brightness == Brightness.light;
-    messenger.clearSnackBars();
-    messenger.showSnackBar(
-      SnackBar(
-        content: VeilCopy(message),
-        backgroundColor: switch (tone) {
-          VeilBannerTone.good => light ? const Color(0xFFE2F5E8) : const Color(0xFF173229),
-          VeilBannerTone.warn => light ? const Color(0xFFFFF0DA) : const Color(0xFF352815),
-          VeilBannerTone.danger => light ? const Color(0xFFFDE4E2) : const Color(0xFF3C1B25),
-          VeilBannerTone.info => null,
-        },
-      ),
-    );
-  }
+  static void show(BuildContext context, {required String message, VeilTone tone = VeilTone.info}) =>
+      showVeilToast(context, message, tone: tone);
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. A value that matters is one row.')
 class VeilMetricStrip extends StatelessWidget {
-  const VeilMetricStrip({
-    super.key,
-    required this.items,
-  });
+  const VeilMetricStrip({super.key, required this.items});
 
+  /// Ignored: nothing is drawn.
   final List<VeilMetricItem> items;
 
-  /// How many tiles go on each row of a phone-width strip of [count] tiles:
-  /// at most three to a row, and as even as the count allows, so no tile is
-  /// left alone on a row of its own (four tiles are two and two, seven are
-  /// three, two and two).
-  static List<int> phoneRows(int count) {
-    if (count <= 0) return const [];
-    final rows = (count / 3).ceil();
-    return [for (var row = 0; row < rows; row++) count ~/ rows + (row < count % rows ? 1 : 0)];
-  }
-
   @override
-  Widget build(BuildContext context) {
-    if (!context.veilPhoneWidth) {
-      return Wrap(
-        spacing: VeilSpace.sm,
-        runSpacing: VeilSpace.sm,
-        children: [for (final item in items) _tile(context, item, minWidth: 112)],
-      );
-    }
-
-    // A phone has no room for tiles at their own width side by side: they
-    // would wrap two and one. Each row shares the width instead.
-    var next = 0;
-    return Column(
-      children: [
-        for (final (index, size) in phoneRows(items.length).indexed) ...[
-          if (index > 0) const SizedBox(height: VeilSpace.xs),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final (column, item) in items.sublist(next, next += size).indexed) ...[
-                  if (column > 0) const SizedBox(width: VeilSpace.xs),
-                  Expanded(child: _tile(context, item, compact: true)),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _tile(BuildContext context, VeilMetricItem item, {double minWidth = 0, bool compact = false}) {
-    final theme = Theme.of(context);
-    return VeilSurfaceCard(
-      toned: true,
-      padding: EdgeInsets.symmetric(horizontal: compact ? VeilSpace.sm : VeilSpace.md, vertical: VeilSpace.sm),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(minWidth: minWidth),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              item.label.toUpperCase(),
-              maxLines: compact ? 1 : null,
-              overflow: compact ? TextOverflow.ellipsis : null,
-              style: theme.textTheme.labelMedium?.copyWith(color: context.veilPalette.textSubtle),
-            ),
-            const SizedBox(height: VeilSpace.xxs),
-            VeilCopy(
-              item.value,
-              maxLines: compact ? 2 : null,
-              overflow: compact ? TextOverflow.ellipsis : null,
-              style: compact ? theme.textTheme.titleSmall : theme.textTheme.titleMedium,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2.')
 class VeilMetricItem {
-  const VeilMetricItem({
-    required this.label,
-    required this.value,
-  });
+  const VeilMetricItem({required this.label, required this.value});
 
   final String label;
   final String value;
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use plain footer text, or VeilNotice where an action exists.')
 class VeilDestructiveNotice extends StatelessWidget {
-  const VeilDestructiveNotice({
-    super.key,
-    required this.title,
-    required this.body,
-  });
+  const VeilDestructiveNotice({super.key, required this.title, required this.body});
 
   final String title;
   final String body;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    return Container(
-      padding: const EdgeInsets.all(VeilSpace.lg),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(VeilRadius.lg),
-        border: Border.all(color: palette.danger.withValues(alpha: 0.45)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            palette.danger.withValues(alpha: 0.12),
-            palette.surface,
-          ],
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(VeilRadius.sm),
-              color: palette.danger.withValues(alpha: 0.14),
-              border: Border.all(color: palette.danger.withValues(alpha: 0.45)),
-            ),
-            child: Icon(
-              Icons.priority_high_rounded,
-              size: VeilIconSize.md,
-              color: palette.danger,
-            ),
-          ),
-          const SizedBox(width: VeilSpace.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                VeilCopy(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: VeilSpace.xs),
-                VeilCopy(
-                  body,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: palette.textMuted,
-                      ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+    return VeilNotice(title: title, message: body, tone: VeilTone.danger, margin: EdgeInsets.zero);
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilRow.')
 class VeilListTileCard extends StatelessWidget {
   const VeilListTileCard({
     super.key,
@@ -961,12 +581,10 @@ class VeilListTileCard extends StatelessWidget {
   });
 
   final String title;
-
-  /// The line under the title: the app's own copy, or a handle. Its Korean
-  /// words stay whole where it wraps; text a person wrote goes into
-  /// [subtitleWidget] instead.
   final String subtitle;
   final Widget? subtitleWidget;
+
+  /// Ignored: there are no eyebrows.
   final String? eyebrow;
   final Widget? leading;
   final Widget? trailing;
@@ -977,66 +595,22 @@ class VeilListTileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
-    final titleColor = destructive ? palette.danger : null;
-
-    return AnimatedContainer(
-      duration: VeilMotion.normal,
-      curve: VeilMotion.emphasize,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(VeilRadius.lg),
-        boxShadow: selected ? VeilElevation.raised : null,
-      ),
-      child: Card(
-        color: selected ? palette.surfaceRaised : null,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(VeilRadius.lg),
-          side: BorderSide(
-            color: selected ? palette.strokeStrong : palette.stroke,
-          ),
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(VeilRadius.lg),
-          onTap: onTap,
-          child: ListTile(
-            minTileHeight: 72,
-            leading: leading,
-            trailing: trailing,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (eyebrow != null) ...[
-                  Text(
-                    eyebrow!,
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: palette.textSubtle,
-                        ),
-                  ),
-                  const SizedBox(height: VeilSpace.xxs),
-                ],
-                Text(
-                  title,
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleMedium
-                      ?.copyWith(color: titleColor),
-                ),
-              ],
-            ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: VeilSpace.xxs),
-              child: subtitleWidget ??
-                  VeilCopy(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-            ),
-          ),
-        ),
+    return Material(
+      color: selected ? palette.surfaceAlt : Colors.transparent,
+      child: VeilRow(
+        title: title,
+        subtitle: subtitleWidget == null ? subtitle : null,
+        subtitleWidget: subtitleWidget,
+        leading: leading,
+        trailing: trailing,
+        destructive: destructive,
+        onTap: onTap,
       ),
     );
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use ConversationRow (conversations/presentation).')
 class VeilConversationCard extends StatelessWidget {
   const VeilConversationCard({
     super.key,
@@ -1062,159 +636,89 @@ class VeilConversationCard extends StatelessWidget {
   final bool selected;
   final Widget? meta;
   final VoidCallback? onTap;
-
-  /// What a screen reader says for the row, in the user's language: that
-  /// it is a conversation, and with whom. The title alone does not say it.
   final String semanticLabel;
-
-  /// A lower row with a smaller avatar, for a phone's list.
   final bool dense;
 
-  /// A small mark before the title (a group), with what it stands for.
+  /// A group's mark: the row then shows the neutral group avatar.
   final IconData? titleIcon;
   final String? titleIconLabel;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final palette = context.veilPalette;
-    final avatarGlyph = title.isNotEmpty ? title.characters.first.toUpperCase() : '#';
-    final avatarHash = handle.hashCode;
-    final avatarColors = [
-      [const Color(0xFF6C8CFF), const Color(0xFF8B5CF6)],
-      [const Color(0xFF5CE0B0), const Color(0xFF3B82F6)],
-      [const Color(0xFFFF7B93), const Color(0xFFFF6B6B)],
-      [const Color(0xFFFFBE6D), const Color(0xFFFF8C42)],
-      [const Color(0xFF8B5CF6), const Color(0xFFEC4899)],
-      [const Color(0xFF06B6D4), const Color(0xFF6C8CFF)],
-    ][avatarHash.abs() % 6];
-
-    final radius = dense ? VeilRadius.md : VeilRadius.lg;
-    final avatarSize = dense ? 46.0 : 52.0;
+    final muted = theme.textTheme.bodySmall?.copyWith(color: palette.textMuted);
 
     return Semantics(
       button: true,
       label: semanticLabel,
-      child: AnimatedContainer(
-        duration: VeilMotion.normal,
-        curve: VeilMotion.emphasize,
-        margin: EdgeInsets.symmetric(vertical: dense ? 2 : 3),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          boxShadow: selected ? VeilElevation.raised : null,
-        ),
-        child: Material(
-          color: selected ? palette.surfaceRaised : palette.surface,
-          borderRadius: BorderRadius.circular(radius),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(radius),
-            onTap: onTap,
-            splashColor: palette.primarySoft,
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: dense ? VeilSpace.sm : VeilSpace.md,
-                vertical: dense ? VeilSpace.sm : VeilSpace.sm + 2,
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: avatarSize,
-                    height: avatarSize,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: avatarColors,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: avatarColors[0].withValues(alpha: 0.3),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      avatarGlyph,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: VeilSpace.sm + 2),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
+      child: Material(
+        color: selected ? palette.surfaceAlt : Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ConstrainedBox(
+                constraints: BoxConstraints(minHeight: dense ? 64 : 72),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: VeilSpace.md, vertical: VeilSpace.xs),
+                  child: Row(
+                    children: [
+                      VeilAvatar(name: title, seed: handle, size: 48, group: titleIcon != null),
+                      const SizedBox(width: VeilSpace.sm),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            if (titleIcon != null) ...[
-                              Icon(
-                                titleIcon,
-                                size: VeilIconSize.xs + 2,
-                                color: palette.textMuted,
-                                semanticLabel: titleIconLabel,
-                              ),
-                              const SizedBox(width: VeilSpace.xxs),
-                            ],
-                            Expanded(
-                              child: Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                            ),
-                            const SizedBox(width: VeilSpace.xs),
-                            Text(
-                              timestamp,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: selected
-                                        ? palette.primaryStrong
-                                        : palette.textSubtle,
-                                    fontSize: 11,
+                            Row(
+                              children: [
+                                if (titleIcon != null) ...[
+                                  Icon(titleIcon, size: 16, color: palette.textMuted, semanticLabel: titleIconLabel),
+                                  const SizedBox(width: VeilSpace.xxs),
+                                ],
+                                Expanded(
+                                  child: Text(
+                                    title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: theme.textTheme.titleMedium,
                                   ),
+                                ),
+                                if (timestamp.isNotEmpty) ...[
+                                  const SizedBox(width: VeilSpace.xs),
+                                  Text(timestamp, style: muted),
+                                ],
+                              ],
                             ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: muted),
+                                ),
+                                if (expiryLabel != null) ...[
+                                  const SizedBox(width: VeilSpace.xs),
+                                  Icon(Icons.timer_outlined, size: VeilIconSize.xs, color: palette.textMuted),
+                                  const SizedBox(width: VeilSpace.xxs),
+                                  Text(expiryLabel!, style: theme.textTheme.labelSmall?.copyWith(color: palette.textMuted)),
+                                ],
+                              ],
+                            ),
+                            if (meta != null) ...[const SizedBox(height: VeilSpace.xxs), meta!],
                           ],
                         ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                subtitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                      color: palette.textMuted,
-                                      fontSize: 13,
-                                    ),
-                              ),
-                            ),
-                            if (expiryLabel != null) ...[
-                              const SizedBox(width: VeilSpace.xs),
-                              VeilStatusPill(
-                                label: expiryLabel!,
-                                tone: VeilBannerTone.warn,
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (meta != null) ...[
-                          const SizedBox(height: 6),
-                          meta!,
-                        ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsetsDirectional.only(start: 76),
+                child: Divider(height: 0.5, thickness: 0.5, color: palette.stroke),
+              ),
+            ],
           ),
         ),
       ),
@@ -1222,161 +726,31 @@ class VeilConversationCard extends StatelessWidget {
   }
 }
 
-class VeilMessageBubbleCard extends StatelessWidget {
-  const VeilMessageBubbleCard({
-    super.key,
-    required this.child,
-    required this.isMine,
-    this.highlighted = false,
-  });
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use a 20dp CircularProgressIndicator and one line.')
+class VeilLoadingBlock extends StatelessWidget {
+  const VeilLoadingBlock({super.key, required this.title, required this.body});
 
-  final Widget child;
-  final bool isMine;
-  final bool highlighted;
+  final String title;
+
+  /// Ignored: one line is enough while loading.
+  final String body;
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-
-    return AnimatedContainer(
-      duration: VeilMotion.normal,
-      curve: VeilMotion.springGentle,
-      constraints: const BoxConstraints(maxWidth: 340),
-      padding: const EdgeInsets.symmetric(
-        horizontal: VeilSpace.md,
-        vertical: VeilSpace.sm,
-      ),
-      decoration: BoxDecoration(
-        gradient: highlighted
-            ? null
-            : isMine
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      palette.primary,
-                      Color.lerp(palette.primary, palette.accent, 0.5) ??
-                          palette.primary,
-                    ],
-                  )
-                : null,
-        color: highlighted
-            ? palette.surfaceRaised
-            : isMine
-                ? null
-                : palette.surfaceAlt,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(22),
-          topRight: const Radius.circular(22),
-          bottomLeft: Radius.circular(isMine ? 22 : 6),
-          bottomRight: Radius.circular(isMine ? 6 : 22),
-        ),
-        border: Border.all(
-          color: highlighted
-              ? palette.primaryStrong
-              : isMine
-                  ? palette.primary.withValues(alpha: 0.4)
-                  : palette.stroke,
-          width: 0.5,
-        ),
-        boxShadow: isMine
-            ? [
-                BoxShadow(
-                  color: palette.primary.withValues(alpha: 0.18),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ]
-            : null,
-      ),
-      child: child,
-    );
-  }
-}
-
-class VeilComposer extends StatelessWidget {
-  const VeilComposer({
-    super.key,
-    required this.controller,
-    required this.focusNode,
-    required this.enabled,
-    required this.onSubmit,
-    required this.trailing,
-    required this.label,
-    this.leading,
-    this.helper,
-  });
-
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool enabled;
-  final VoidCallback onSubmit;
-  final Widget trailing;
-
-  /// A control before the draft (attach), in place of the lock mark.
-  final Widget? leading;
-  final String? helper;
-
-  /// The hint in the empty draft, in the user's language.
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    return Material(
-      color: palette.surfaceAlt,
-      borderRadius: BorderRadius.circular(VeilRadius.xl),
-      clipBehavior: Clip.antiAlias,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(
-          leading == null ? VeilSpace.sm : VeilSpace.xxs,
-          VeilSpace.xs,
-          VeilSpace.xs,
-          VeilSpace.xs,
-        ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(VeilRadius.xl),
-          border: Border.all(color: palette.stroke, width: 0.5),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: VeilSpace.xxl, horizontal: VeilSpace.xxl),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            leading ??
-                Padding(
-                  padding: const EdgeInsets.only(bottom: VeilSpace.sm),
-                  child: Icon(
-                    Icons.lock_outline_rounded,
-                    size: VeilIconSize.sm,
-                    color: palette.textSubtle,
-                  ),
-                ),
-            SizedBox(width: leading == null ? VeilSpace.xs : VeilSpace.xxs),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                focusNode: focusNode,
-                minLines: 1,
-                maxLines: 5,
-                enabled: enabled,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSubmit(),
-                style: Theme.of(context).textTheme.bodyLarge,
-                decoration: InputDecoration(
-                  hintText: label,
-                  hintStyle: TextStyle(color: palette.textSubtle),
-                  filled: false,
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    vertical: VeilSpace.sm,
-                  ),
-                  isDense: true,
-                ),
-              ),
+            const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+            const SizedBox(height: VeilSpace.sm),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(color: context.veilPalette.textMuted),
             ),
-            const SizedBox(width: VeilSpace.xs),
-            trailing,
           ],
         ),
       ),
@@ -1384,240 +758,18 @@ class VeilComposer extends StatelessWidget {
   }
 }
 
-class VeilEmptyState extends StatelessWidget {
-  const VeilEmptyState({
-    super.key,
-    required this.title,
-    required this.body,
-    this.icon = Icons.inbox_outlined,
-    this.action,
-    this.compact = false,
-  });
-
-  final String title;
-  final String body;
-  final IconData icon;
-  final Widget? action;
-
-  /// Without the icon and most of the space around it, for where there is
-  /// little height: above an open keyboard, say.
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    final theme = Theme.of(context);
-
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: VeilSpace.lg,
-            vertical: compact ? VeilSpace.sm : VeilSpace.xxl,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!compact) ...[
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(VeilRadius.lg),
-                    border: Border.all(color: palette.stroke),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [palette.surfaceRaised, palette.canvasAlt],
-                    ),
-                  ),
-                  child: Icon(icon, size: VeilIconSize.xl, color: palette.primary),
-                ),
-                const SizedBox(height: VeilSpace.lg),
-              ],
-              VeilCopy(
-                title,
-                style: compact ? theme.textTheme.titleLarge : theme.textTheme.headlineMedium,
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: compact ? VeilSpace.xxs : VeilSpace.xs),
-              VeilCopy(
-                body,
-                style: (compact ? theme.textTheme.bodySmall : theme.textTheme.bodyMedium)?.copyWith(
-                  color: palette.textMuted,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              if (action != null) ...[
-                SizedBox(height: compact ? VeilSpace.sm : VeilSpace.lg),
-                action!,
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class VeilErrorState extends StatelessWidget {
-  const VeilErrorState({
-    super.key,
-    required this.title,
-    required this.body,
-    this.action,
-  });
-
-  final String title;
-  final String body;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    return VeilEmptyState(
-      title: title,
-      body: body,
-      icon: Icons.error_outline_rounded,
-      action: action,
-    );
-  }
-}
-
-class VeilLoadingBlock extends StatelessWidget {
-  const VeilLoadingBlock({
-    super.key,
-    required this.title,
-    required this.body,
-  });
-
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 340),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: VeilSpace.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 56,
-                height: 56,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: palette.primary.withValues(alpha: 0.35),
-                          width: 1.2,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 16,
-                      height: 16,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: palette.primary,
-                        boxShadow: [
-                          BoxShadow(
-                            color: palette.primary.withValues(alpha: 0.55),
-                            blurRadius: 20,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: VeilSpace.lg),
-              VeilCopy(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
-              const SizedBox(height: VeilSpace.xs),
-              VeilCopy(
-                body,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.textMuted,
-                    ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class VeilSkeletonLine extends StatefulWidget {
-  const VeilSkeletonLine({
-    super.key,
-    this.width,
-    this.height = 12,
-  });
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Nothing is shown while loading.')
+class VeilSkeletonLine extends StatelessWidget {
+  const VeilSkeletonLine({super.key, this.width, this.height = 12});
 
   final double? width;
   final double height;
 
   @override
-  State<VeilSkeletonLine> createState() => _VeilSkeletonLineState();
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
-class _VeilSkeletonLineState extends State<VeilSkeletonLine>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _shimmer;
-
-  @override
-  void initState() {
-    super.initState();
-    _shimmer = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _shimmer.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = context.veilPalette;
-    return AnimatedBuilder(
-      animation: _shimmer,
-      builder: (context, _) {
-        return Container(
-          width: widget.width,
-          height: widget.height,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(VeilRadius.pill),
-            gradient: LinearGradient(
-              begin: Alignment(-1.0 + 2.0 * _shimmer.value, 0),
-              end: Alignment(1.0 + 2.0 * _shimmer.value, 0),
-              colors: [
-                palette.surfaceAlt,
-                palette.surfaceOverlay,
-                palette.surfaceAlt,
-              ],
-              stops: const [0.0, 0.5, 1.0],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use StepRow (device_transfer/presentation).')
 class VeilStepRow extends StatelessWidget {
   const VeilStepRow({
     super.key,
@@ -1636,36 +788,26 @@ class VeilStepRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final palette = context.veilPalette;
-    final indicatorColor = complete
-        ? palette.success
-        : active
-            ? palette.primary
-            : palette.strokeStrong;
+    final current = active && !complete;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          width: 30,
-          height: 30,
+          width: 24,
+          height: 24,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: indicatorColor.withValues(alpha: 0.12),
-            border: Border.all(color: indicatorColor),
+            color: current ? palette.primary : palette.surfaceAlt,
           ),
           child: complete
-              ? Icon(
-                  Icons.check_rounded,
-                  size: VeilIconSize.sm,
-                  color: indicatorColor,
-                )
+              ? Icon(Icons.check, size: VeilIconSize.xs, color: palette.textMuted)
               : Text(
                   '$step',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: indicatorColor,
-                      ),
+                  style: theme.textTheme.labelMedium?.copyWith(color: current ? Colors.white : palette.textMuted),
                 ),
         ),
         const SizedBox(width: VeilSpace.sm),
@@ -1673,14 +815,9 @@ class VeilStepRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              VeilCopy(title, style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: VeilSpace.xxs),
-              VeilCopy(
-                body,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: palette.textMuted,
-                    ),
-              ),
+              Text(title, style: theme.textTheme.titleSmall),
+              const SizedBox(height: 2),
+              Text(body, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
             ],
           ),
         ),
@@ -1689,66 +826,23 @@ class VeilStepRow extends StatelessWidget {
   }
 }
 
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Use VeilRow with status.')
 class VeilValueRow extends StatelessWidget {
   const VeilValueRow({
     super.key,
     required this.label,
     required this.value,
-    this.valueTone = VeilBannerTone.info,
+    this.valueTone = VeilTone.info,
     this.detail,
   });
 
   final String label;
   final String value;
-  final VeilBannerTone valueTone;
+  final VeilTone valueTone;
   final String? detail;
 
   @override
   Widget build(BuildContext context) {
-    return VeilSurfaceCard(
-      toned: true,
-      padding: const EdgeInsets.all(VeilSpace.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: VeilCopy(label, style: Theme.of(context).textTheme.titleSmall),
-              ),
-              const SizedBox(width: VeilSpace.xs),
-              VeilStatusPill(label: value, tone: valueTone),
-            ],
-          ),
-          if (detail != null) ...[
-            const SizedBox(height: VeilSpace.sm),
-            VeilCopy(
-              detail!,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: context.veilPalette.textMuted,
-                  ),
-            ),
-          ],
-        ],
-      ),
-    );
+    return VeilRow(title: label, subtitle: detail, status: (value, valueTone));
   }
-}
-
-class _BannerPalette {
-  const _BannerPalette({
-    required this.border,
-    required this.fill,
-    required this.foreground,
-    required this.text,
-  });
-
-  final Color border;
-  final Color fill;
-
-  /// The icon, the title and an action.
-  final Color foreground;
-
-  /// The message under the title.
-  final Color text;
 }

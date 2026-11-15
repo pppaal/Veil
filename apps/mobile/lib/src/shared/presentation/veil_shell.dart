@@ -3,27 +3,32 @@ import 'package:flutter/material.dart';
 import '../../core/theme/veil_theme.dart';
 import 'veil_ui.dart';
 
-/// The frame of a screen: the translucent top bar, the canvas behind the
-/// content and the system insets.
+/// The frame of a screen: an opaque 52dp bar with a hairline under it, the
+/// page behind the content and the system insets.
 ///
 /// The bar shows [title], or [titleWidget] in its place (a chat's name with
-/// its marks, a search field). A screen that was pushed on top of another
-/// gets a back button, unless [leading] takes its place.
+/// its marks, a search field), centred on iOS and at the start on Android.
+/// [subtitle] goes under the title in small muted type; the Chats bar uses
+/// it while the app is not connected. A screen that was pushed on top of
+/// another gets a back button, unless [leading] takes its place.
+///
+/// A white page ([grouped] false: Chats, Contacts, the chat room, auth,
+/// onboarding, the lock screen) draws on `canvas`; a grouped page
+/// (Settings, Profile, Security, ...) draws on `canvasAlt`, and the groups
+/// on it draw their containers. Lists are full-bleed, so [padding] is zero
+/// unless a form screen asks for its 16.
 class VeilShell extends StatelessWidget {
   const VeilShell({
     super.key,
     required this.child,
     this.title,
     this.titleWidget,
+    this.subtitle,
     this.leading,
     this.actions,
+    this.grouped = false,
     this.maxWidth = 840,
-    this.padding = const EdgeInsets.fromLTRB(
-      VeilSpace.lg,
-      VeilSpace.lg,
-      VeilSpace.lg,
-      VeilSpace.xl,
-    ),
+    this.padding = EdgeInsets.zero,
   });
 
   final Widget child;
@@ -32,177 +37,138 @@ class VeilShell extends StatelessWidget {
   /// Shown in the bar instead of [title].
   final Widget? titleWidget;
 
+  /// One short line under [title]: "Connecting…", "Offline".
+  final String? subtitle;
+
   /// Shown before the title instead of the back button.
   final Widget? leading;
   final List<Widget>? actions;
+
+  /// Whether the page is a grouped page (see the class comment).
+  final bool grouped;
   final double? maxWidth;
   final EdgeInsetsGeometry padding;
+
+  /// The height of the bar below the status bar.
+  static const double barHeight = 52;
+
+  /// Whether the nearest shell above [context] is a grouped page. True
+  /// where there is none (a sheet, a test), so a group draws its container.
+  static bool groupedOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_VeilPageScope>()?.grouped ?? true;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.veilPalette;
+    final theme = Theme.of(context);
+    final page = grouped ? palette.canvasAlt : palette.canvas;
     final hasBar = title != null || titleWidget != null;
-    final leading = this.leading ??
-        ((ModalRoute.of(context)?.canPop ?? false) ? const VeilBackButton() : null);
+    final leading = this.leading ?? ((ModalRoute.of(context)?.canPop ?? false) ? const VeilBackButton() : null);
+    final platform = theme.platform;
+    final centred = platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
 
-    return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: !hasBar
-          ? null
-          : PreferredSize(
-              preferredSize: const Size.fromHeight(52),
-              child: VeilBlur(
-                intensity: 22,
-                tintAlpha: 0.62,
-                child: SafeArea(
-                  bottom: false,
+    Widget? middle = titleWidget;
+    if (middle == null && title != null) {
+      final titleText = Text(
+        title!,
+        style: theme.textTheme.titleLarge,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: centred ? TextAlign.center : TextAlign.start,
+      );
+      middle = subtitle == null
+          ? titleText
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: centred ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+              children: [
+                titleText,
+                Text(
+                  subtitle!,
+                  style: theme.textTheme.bodySmall?.copyWith(color: palette.textMuted),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            );
+    }
+
+    final body = ColoredBox(
+      color: page,
+      child: SafeArea(
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: maxWidth == null
+              ? Padding(padding: padding, child: child)
+              : ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: maxWidth!),
+                  child: Padding(padding: padding, child: child),
+                ),
+        ),
+      ),
+    );
+
+    return _VeilPageScope(
+      grouped: grouped,
+      child: Scaffold(
+        backgroundColor: page,
+        appBar: !hasBar
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(barHeight),
+                child: Semantics(
+                  container: true,
                   child: Container(
-                    height: 52,
-                    padding: EdgeInsets.only(
-                      left: leading == null ? VeilSpace.lg : VeilSpace.xxs,
-                      right: actions == null ? VeilSpace.lg : VeilSpace.sm,
-                    ),
                     decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(
-                          color: palette.stroke.withValues(alpha: 0.45),
-                          width: 0.5,
-                        ),
-                      ),
+                      color: page,
+                      border: Border(bottom: BorderSide(color: palette.stroke, width: 0.5)),
                     ),
-                    // The bar has one fixed height: past this size its text
-                    // would not fit it, so it stops growing there.
-                    child: MediaQuery.withClampedTextScaling(
-                      maxScaleFactor: 1.3,
-                      child: Row(
-                        children: [
-                          if (leading != null) ...[
-                            leading,
-                            const SizedBox(width: VeilSpace.xxs),
-                          ],
-                          Expanded(
-                            child: titleWidget ??
-                                Text(
-                                  title!,
-                                  style: VeilTypography.headline.copyWith(
-                                    color: palette.text,
+                    child: SafeArea(
+                      bottom: false,
+                      child: SizedBox(
+                        height: barHeight,
+                        // The bar has one fixed height: past this size its
+                        // text would not fit it, so it stops growing there.
+                        child: MediaQuery.withClampedTextScaling(
+                          maxScaleFactor: 1.3,
+                          child: NavigationToolbar(
+                            centerMiddle: centred,
+                            middleSpacing: leading == null ? VeilSpace.md : VeilSpace.xs,
+                            leading: leading == null
+                                ? null
+                                : Padding(padding: const EdgeInsets.only(left: VeilSpace.xxs), child: leading),
+                            middle: middle,
+                            trailing: actions == null
+                                ? null
+                                : Padding(
+                                    padding: const EdgeInsets.only(right: VeilSpace.xxs),
+                                    child: Row(mainAxisSize: MainAxisSize.min, children: actions!),
                                   ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
                           ),
-                          if (actions != null) ...[
-                            const SizedBox(width: VeilSpace.xs),
-                            ...actions!,
-                          ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              palette.canvas,
-              palette.canvasAlt,
-              palette.surface,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Positioned(
-                top: -140,
-                right: -90,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: palette.primary.withValues(alpha: 0.06),
-                          blurRadius: 90,
-                          spreadRadius: 18,
-                        ),
-                      ],
-                    ),
-                    child: const SizedBox(width: 300, height: 300),
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 120,
-                left: -140,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: palette.primary.withValues(alpha: 0.03),
-                          blurRadius: 120,
-                          spreadRadius: 30,
-                        ),
-                      ],
-                    ),
-                    child: const SizedBox(width: 360, height: 360),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: -160,
-                left: -120,
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: palette.surfaceRaised.withValues(alpha: 0.38),
-                          blurRadius: 100,
-                          spreadRadius: 24,
-                        ),
-                      ],
-                    ),
-                    child: const SizedBox(width: 320, height: 320),
-                  ),
-                ),
-              ),
-              Align(
-                alignment: Alignment.topCenter,
-                // The bar is translucent and the body runs behind it; the
-                // SafeArea above already keeps the content clear of it, at
-                // any width.
-                child: maxWidth == null
-                    ? Padding(
-                        padding: padding,
-                        child: child,
-                      )
-                    : ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: maxWidth!),
-                        child: Padding(
-                          padding: padding,
-                          child: child,
-                        ),
-                  ),
-              ),
-            ],
-          ),
-        ),
+        body: body,
       ),
     );
   }
 }
 
+class _VeilPageScope extends InheritedWidget {
+  const _VeilPageScope({required this.grouped, required super.child});
+
+  final bool grouped;
+
+  @override
+  bool updateShouldNotify(_VeilPageScope oldWidget) => oldWidget.grouped != grouped;
+}
+
 /// The back button of a [VeilShell] bar. It pops the screen, or runs
 /// [onPressed] in its place (closing a search, leaving for a fixed screen).
+/// The glyph is the platform's: the iOS chevron, the Android arrow.
 class VeilBackButton extends StatelessWidget {
   const VeilBackButton({super.key, this.onPressed});
 
@@ -210,11 +176,12 @@ class VeilBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    final cupertino = platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
     return IconButton(
       tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-      style: IconButton.styleFrom(backgroundColor: Colors.transparent),
       onPressed: onPressed ?? () => Navigator.maybePop(context),
-      icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+      icon: cupertino ? const Icon(Icons.arrow_back_ios_new, size: 20) : const Icon(Icons.arrow_back, size: 24),
     );
   }
 }

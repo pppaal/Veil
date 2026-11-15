@@ -3,13 +3,10 @@ import 'package:flutter/material.dart';
 import '../../core/theme/veil_theme.dart';
 import 'veil_ui.dart';
 
-/// The opening words of a screen: a small label over the one line the
-/// screen is about, and a sentence under it. It says what a hero panel
-/// says without the panel around it, so that the field or button the
-/// screen is for stays on the first screenful of a phone.
-///
-/// [title] and [body] are the app's own copy: their Korean words stay whole
-/// where a line wraps.
+/// The opening words of a screen in the previous pass. Screens now open
+/// with their control under the bar; wave 1 removes each use. Until then it
+/// draws the title and the body as plain text, with no eyebrow.
+@Deprecated('W1 migrates; deleted in W0-TOKENS phase 2. Screens open with their control.')
 class VeilScreenIntro extends StatelessWidget {
   const VeilScreenIntro({
     super.key,
@@ -19,11 +16,12 @@ class VeilScreenIntro extends StatelessWidget {
     this.titleStyle,
   });
 
+  /// Ignored: there are no eyebrows.
   final String? eyebrow;
   final String title;
   final String? body;
 
-  /// The headline's style; the theme's small headline when null.
+  /// The headline's style; the theme's medium headline when null.
   final TextStyle? titleStyle;
 
   @override
@@ -34,14 +32,10 @@ class VeilScreenIntro extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (eyebrow != null) ...[
-          Text(eyebrow!, style: theme.textTheme.labelLarge?.copyWith(color: palette.primaryStrong)),
-          const SizedBox(height: VeilSpace.xs),
-        ],
-        VeilCopy(title, style: titleStyle ?? theme.textTheme.headlineSmall),
+        Text(title, style: titleStyle ?? theme.textTheme.headlineMedium),
         if (body != null) ...[
           const SizedBox(height: VeilSpace.xs),
-          VeilCopy(body!, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
+          Text(body!, style: theme.textTheme.bodyMedium?.copyWith(color: palette.textMuted)),
         ],
       ],
     );

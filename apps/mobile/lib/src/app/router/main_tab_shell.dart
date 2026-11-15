@@ -6,16 +6,28 @@ import '../../l10n/generated/app_localizations.dart';
 import '../../shared/presentation/veil_ui.dart';
 
 /// The shell of the three tab screens: the screen above the bottom bar with
-/// Chats, Contacts and Settings.
+/// Chats, Contacts and Settings. The bar is a plain [NavigationBar] on the
+/// page colour with a hairline above it: no indicator, no ripple, the
+/// active tab in the brand colour and the others muted.
 class MainTabShell extends StatelessWidget {
   const MainTabShell({super.key, required this.child});
 
   final Widget child;
 
   static const _tabs = <_VeilNavTab>[
-    _VeilNavTab(path: '/conversations', icon: Icons.chat_bubble_outline_rounded, activeIcon: Icons.chat_bubble_rounded, label: _chatsLabel),
-    _VeilNavTab(path: '/contacts', icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: _contactsLabel),
-    _VeilNavTab(path: '/settings', icon: Icons.settings_outlined, activeIcon: Icons.settings_rounded, label: _settingsLabel),
+    _VeilNavTab(
+      path: '/conversations',
+      icon: Icons.chat_bubble_outline,
+      activeIcon: Icons.chat_bubble,
+      label: _chatsLabel,
+    ),
+    _VeilNavTab(path: '/contacts', icon: Icons.people_outline, activeIcon: Icons.people, label: _contactsLabel),
+    _VeilNavTab(
+      path: '/settings',
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings,
+      label: _settingsLabel,
+    ),
   ];
 
   static String _chatsLabel(AppLocalizations l10n) => l10n.navChats;
@@ -24,6 +36,7 @@ class MainTabShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
     final currentPath = GoRouterState.of(context).fullPath ?? '/conversations';
@@ -33,82 +46,28 @@ class MainTabShell extends StatelessWidget {
     }
 
     return Scaffold(
-      extendBody: true,
       body: child,
       bottomNavigationBar: DecoratedBox(
         decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: palette.stroke.withValues(alpha: 0.5),
-              width: 0.5,
-            ),
-          ),
+          color: palette.canvas,
+          border: Border(top: BorderSide(color: palette.stroke, width: 0.5)),
         ),
-        child: VeilBlur(
-          intensity: 28,
-          tintAlpha: 0.72,
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: VeilSpace.md,
-                vertical: VeilSpace.xs,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(_tabs.length, (index) {
-                  final tab = _tabs[index];
-                  final selected = index == currentIndex;
-                  return Expanded(
-                    child: VeilPressable(
-                      haptic: false,
-                      onTap: () {
-                        if (!selected) {
-                          VeilHaptics.selection();
-                        }
-                        context.go(tab.path);
-                      },
-                      scale: 0.92,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: VeilSpace.sm),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedContainer(
-                              duration: VeilMotion.fast,
-                              curve: VeilMotion.springGentle,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(VeilRadius.pill),
-                                color: selected ? palette.primarySoft : Colors.transparent,
-                              ),
-                              child: Icon(
-                                selected ? tab.activeIcon : tab.icon,
-                                size: 22,
-                                color: selected ? palette.primary : palette.textSubtle,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              tab.label(l10n),
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                                color: selected ? palette.primary : palette.textSubtle,
-                                letterSpacing: 0.1,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ),
-            ),
+        child: Theme(
+          data: theme.copyWith(splashFactory: NoSplash.splashFactory),
+          child: NavigationBar(
+            selectedIndex: currentIndex,
+            onDestinationSelected: (index) {
+              if (index != currentIndex) VeilHaptics.selection();
+              context.go(_tabs[index].path);
+            },
+            destinations: [
+              for (final tab in _tabs)
+                NavigationDestination(
+                  icon: Icon(tab.icon),
+                  selectedIcon: Icon(tab.activeIcon),
+                  label: tab.label(l10n),
+                ),
+            ],
           ),
         ),
       ),

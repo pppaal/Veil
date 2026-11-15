@@ -24,6 +24,7 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 import '../../support/fake_relay.dart';
 import '../../support/memory_secure_store.dart';
 import 'layout_seed.dart';
+import 'phone_layout_probe.dart';
 
 // The app as one layout case sees it: the real route table, theme and
 // localizations over the test fakes (FakeRelay, a mock-keyed messenger,
@@ -281,8 +282,9 @@ class LayoutWorld {
   }
 
   /// The app at [location]: the real route table (so tab screens get their
-  /// bottom bar), [locale], and the dark theme the product is designed in
-  /// unless [themeMode] asks for the light one.
+  /// bottom bar), [locale], and the dark theme unless [themeMode] asks for
+  /// the light one. The theme names the test font the probe loaded, so the
+  /// renders measure real glyphs whatever the platform.
   Widget app({
     required String location,
     Object? extra,
@@ -297,8 +299,8 @@ class LayoutWorld {
       container: container,
       child: MaterialApp.router(
         title: 'Veil',
-        theme: VeilTheme.light(),
-        darkTheme: VeilTheme.dark(),
+        theme: VeilTheme.light(fontFamily: layoutFontFamily),
+        darkTheme: VeilTheme.dark(fontFamily: layoutFontFamily),
         themeMode: themeMode,
         debugShowCheckedModeBanner: false,
         locale: Locale(locale),

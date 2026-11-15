@@ -44,7 +44,7 @@ class ConversationListPhone extends StatelessWidget {
           _StatusLine(
             connected: controller.realtimeConnected,
             refreshing: controller.isBusy && controller.errorMessage == null,
-            conversationCount: controller.conversations.length,
+            conversationCount: loadingFirstList ? null : controller.conversations.length,
           ),
           const SizedBox(height: VeilSpace.xs),
           _SearchField(controller: view.searchController, hasQuery: hasSearchQuery),
@@ -151,14 +151,21 @@ class _StatusLine extends StatelessWidget {
 
   final bool connected;
   final bool refreshing;
-  final int conversationCount;
+
+  /// How many conversations there are; null while the first list is still
+  /// on its way and nobody knows.
+  final int? conversationCount;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final palette = context.veilPalette;
     final relay = connected ? l10n.conversationsRelayLinked : l10n.conversationsRelayIdle;
-    final parts = [relay, l10n.conversationsCount(conversationCount), l10n.conversationsNoBackup];
+    final parts = [
+      relay,
+      if (conversationCount case final count?) l10n.conversationsCount(count),
+      l10n.conversationsNoBackup,
+    ];
     final style = Theme.of(context).textTheme.bodySmall?.copyWith(color: palette.textMuted);
     final textScaler = MediaQuery.textScalerOf(context);
     final direction = Directionality.of(context);

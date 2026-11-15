@@ -1613,9 +1613,6 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get conversationsNoMessageMatchTitle => '일치하는 메시지가 없습니다';
-
-  @override
   String get conversationsNoMessageMatchBody =>
       '이 기기에 있는 메시지 중 현재 필터에 맞는 것이 없습니다.';
 

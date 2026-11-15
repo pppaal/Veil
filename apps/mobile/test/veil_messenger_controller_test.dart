@@ -1100,7 +1100,11 @@ void main() {
 
     expect(controller.conversations.first.id, 'conv-1');
     // The first list fetches the history of what it names and this device
-    // never loaded (for the previews); that is over before the event.
+    // never loaded (for the previews), newest first; that is over before
+    // the event.
+    for (var i = 0; i < 200 && api.messageFetches.length < 2; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
     await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(api.messageFetches.map((query) => query.conversationId), ['conv-1', 'conv-2']);
     api.messageFetches.clear();

@@ -178,6 +178,9 @@ void main() {
       body: (world) async {
         expect(find.byType(ConversationListSkeleton), findsOneWidget);
         expect(find.text('No conversations yet'), findsNothing);
+        // Nobody knows the count yet, so the status line does not give one.
+        expect(find.text('Relay linked  ·  No backup'), findsOneWidget);
+        expect(find.textContaining('0 conversations'), findsNothing);
         expect(find.byType(VeilSurfaceCard), findsNothing, reason: 'placeholders have the shape of rows, not of cards');
         expect(
           find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == 'Loading…'),
@@ -252,6 +255,11 @@ void main() {
       expect(find.text('2 matches'), findsOneWidget);
       expect(find.text('MESSAGES'), findsOneWidget);
       expect(find.byType(VeilConversationCard), findsNWidgets(2));
+      // No message matches: the heading counts none and one line says so,
+      // without a second empty state under the rows that did match.
+      expect(find.text('0 results'), findsOneWidget);
+      expect(find.text('No message on this device matches with these filters.'), findsOneWidget);
+      expect(find.byType(VeilEmptyState), findsNothing);
       // The status line still counts every conversation, not the matches.
       expect(find.textContaining('8 conversations'), findsOneWidget);
 

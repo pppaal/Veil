@@ -1769,9 +1769,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get conversationsNoMessageMatchTitle => 'No matching messages';
-
-  @override
   String get conversationsNoMessageMatchBody =>
       'No message on this device matches with these filters.';
 

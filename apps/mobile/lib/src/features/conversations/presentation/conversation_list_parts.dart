@@ -248,8 +248,8 @@ class MessageSearchResultTile extends StatelessWidget {
 }
 
 /// The messages the local search found under the conversations it matched:
-/// their heading with a count, the results or an empty state, and the
-/// button that loads more.
+/// their heading with a count, the results or a line saying there are
+/// none, and the button that loads more.
 List<Widget> messageSearchResultSection(BuildContext context, ConversationListView view) {
   final l10n = AppLocalizations.of(context);
   final results = view.archiveResults;
@@ -270,10 +270,12 @@ List<Widget> messageSearchResultSection(BuildContext context, ConversationListVi
     ),
     const SizedBox(height: VeilSpace.sm),
     if (!view.searchingArchive && results.isEmpty)
-      VeilEmptyState(
-        title: l10n.conversationsNoMessageMatchTitle,
-        body: l10n.conversationsNoMessageMatchBody,
-        icon: Icons.manage_search_rounded,
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: VeilSpace.xxs),
+        child: VeilCopy(
+          l10n.conversationsNoMessageMatchBody,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: context.veilPalette.textMuted),
+        ),
       )
     else ...[
       for (final result in results)

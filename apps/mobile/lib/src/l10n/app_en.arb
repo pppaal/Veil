@@ -546,7 +546,6 @@
   "conversationsMessagesSection": "MESSAGES",
   "conversationsResultCount": "{count, plural, =1{1 result} other{{count} results}}",
   "@conversationsResultCount": {"placeholders": {"count": {"type": "int"}}},
-  "conversationsNoMessageMatchTitle": "No matching messages",
   "conversationsNoMessageMatchBody": "No message on this device matches with these filters.",
   "conversationsResultFromYou": "You",
   "conversationsResultFromPeer": "Them",

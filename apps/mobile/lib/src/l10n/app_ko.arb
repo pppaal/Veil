@@ -546,7 +546,6 @@
   "conversationsMessagesSection": "메시지",
   "conversationsResultCount": "결과 {count}건",
   "@conversationsResultCount": {"placeholders": {"count": {"type": "int"}}},
-  "conversationsNoMessageMatchTitle": "일치하는 메시지가 없습니다",
   "conversationsNoMessageMatchBody": "이 기기에 있는 메시지 중 현재 필터에 맞는 것이 없습니다.",
   "conversationsResultFromYou": "나",
   "conversationsResultFromPeer": "상대",

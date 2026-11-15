@@ -2954,12 +2954,6 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 result} other{{count} results}}'**
   String conversationsResultCount(int count);
 
-  /// No description provided for @conversationsNoMessageMatchTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'No matching messages'**
-  String get conversationsNoMessageMatchTitle;
-
   /// No description provided for @conversationsNoMessageMatchBody.
   ///
   /// In en, this message translates to:

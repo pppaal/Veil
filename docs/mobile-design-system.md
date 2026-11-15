@@ -125,6 +125,18 @@ The composer should feel stable, deliberate, and operational.
 - helper text short and policy-aware
 - no playful send affordances
 
+### `VeilUnavailable`
+
+The body of a screen for something the build cannot do (a call without a
+call engine, a recorder without a microphone): what is missing, that nothing
+happened, and one button that leaves. Use it instead of drawing the missing
+feature's states. A screen never plays a state the build cannot reach: no
+timer that counts by itself, no placeholder grid, no "sent" for something
+that was not sent.
+
+A screen that can do part of its job shows that part, and says the rest in
+one `VeilInlineBanner` above it.
+
 ## Screen Guidance
 
 ### Onboarding

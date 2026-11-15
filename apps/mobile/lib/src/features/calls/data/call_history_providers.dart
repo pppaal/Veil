@@ -8,6 +8,10 @@ enum CallDirection { incoming, outgoing }
 
 enum CallOutcome { completed, missed, declined, ringing }
 
+/// What the relay sends as `counterparty` when it has no name for the other
+/// side (calls.service.ts). The screen says so in the user's language.
+const _relayUnnamed = 'Unknown';
+
 class CallHistoryEntry {
   const CallHistoryEntry({
     required this.id,
@@ -23,7 +27,13 @@ class CallHistoryEntry {
 
   final String id;
   final String conversationId;
-  final String counterparty;
+
+  /// What the relay calls the other side: the peer's handle for a direct
+  /// conversation, the name of a group or channel, or null when it has
+  /// neither.
+  final String? counterparty;
+
+  /// The peer's handle; null for a group or channel.
   final String? counterpartyHandle;
   final CallMediaKind media;
   final CallDirection direction;
@@ -39,7 +49,10 @@ class CallHistoryEntry {
     return CallHistoryEntry(
       id: json['id'] as String,
       conversationId: json['conversationId'] as String,
-      counterparty: (json['counterparty'] as String?) ?? 'Unknown',
+      counterparty: switch (json['counterparty']) {
+        final String name when name.isNotEmpty && name != _relayUnnamed => name,
+        _ => null,
+      },
       counterpartyHandle: json['counterpartyHandle'] as String?,
       media: rawType == 'video' ? CallMediaKind.video : CallMediaKind.voice,
       direction:

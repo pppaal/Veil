@@ -1157,89 +1157,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachmentTitle => 'Attachment';
 
   @override
-  String get attachmentHeroEyebrow => 'ATTACHMENT';
+  String get attachmentPlaceholderNotice =>
+      'This version has no file picker. It sends a placeholder file instead: 2 KB of random bytes, encrypted and uploaded the way a chosen file will be.';
 
   @override
-  String get attachmentHeroTitle => 'Encrypted before it leaves.';
-
-  @override
-  String get attachmentHeroBody =>
-      'This device encrypts locally, uploads an opaque blob, and then sends an encrypted message that points at it.';
-
-  @override
-  String get attachmentPillOpaqueBlob => 'Opaque blob';
-
-  @override
-  String get attachmentPillMetadataOnlyRelay => 'Metadata-only relay';
-
-  @override
-  String get attachmentPillNoPlaintextPush => 'No plaintext push';
-
-  @override
-  String get attachmentNameLabel => 'FILE NAME';
-
-  @override
-  String get attachmentNameCaption =>
-      'This build has no file picker yet: it sends a small placeholder file under this name, along the path a real attachment will take.';
+  String attachmentNameCaption(String contentType) {
+    return 'The name stays on this device. Its extension sets the type the recipient is shown: $contentType';
+  }
 
   @override
   String get attachmentNameInputLabel => 'File name';
 
   @override
-  String get attachmentRelayPolicyTitle => 'Relay policy';
-
-  @override
-  String get attachmentRelayPolicyBody =>
-      'Private beta currently allows JPEG, PNG, WEBP, PDF, and opaque binary payloads. The relay never receives plaintext filenames or attachment keys.';
-
-  @override
-  String get attachmentMetricType => 'Type';
-
-  @override
-  String get attachmentMetricUpload => 'Upload';
-
-  @override
-  String get attachmentMetricUploadValue => 'Ticketed';
-
-  @override
-  String get attachmentMetricBlob => 'Blob';
-
-  @override
-  String get attachmentMetricBlobValue => 'Opaque';
-
-  @override
-  String get attachmentStepsSection => 'SEND LIFECYCLE';
-
-  @override
-  String get attachmentStep1Title => 'Ticket';
-
-  @override
-  String get attachmentStep1Body =>
-      'Request a scoped upload URL for the opaque blob.';
-
-  @override
-  String get attachmentStep2Title => 'Blob upload';
-
-  @override
-  String get attachmentStep2Body =>
-      'Upload the opaque bytes. A retry reuses the local temporary blob and renews the upload ticket if it has expired.';
-
-  @override
-  String get attachmentStep3Title => 'Message';
-
-  @override
-  String get attachmentStep3Body =>
-      'Queue the encrypted message that points at the upload, and clear the local temporary blob once it is finalized.';
-
-  @override
   String get attachmentSendFailedTitle => 'Attachment send failed';
-
-  @override
-  String get attachmentQueuedTitle => 'Queued locally';
-
-  @override
-  String get attachmentQueuedBody =>
-      'The attachment now continues inside the conversation. Progress, retry and cancel follow its message.';
 
   @override
   String get attachmentSendAction => 'Encrypt and send';
@@ -1965,13 +1895,126 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callsUnavailableTitle => 'Call history unavailable';
 
   @override
+  String get callsUnavailableBody => 'Pull down to try again.';
+
+  @override
   String get callsEmptyTitle => 'No call history';
 
   @override
-  String get callsEmptyBody => 'Calls you make or receive will appear here.';
+  String get callsEmptyBody =>
+      'This version cannot place or receive calls, so there is nothing to list yet.';
 
   @override
-  String get callsNotAvailable => 'Calls are not available in this build yet.';
+  String get callsNotice =>
+      'This version cannot place or receive calls. Tap a call to open its chat.';
+
+  @override
+  String get callsUnknownCounterparty => 'Unknown';
+
+  @override
+  String get callScreenTitle => 'Call';
+
+  @override
+  String get callScreenUnavailableTitle =>
+      'Calls are not available in this version';
+
+  @override
+  String get callScreenUnavailableBody =>
+      'Voice and video calls are not built yet. No call was placed, and the other person was not notified.';
+
+  @override
+  String get mediaPickerTitle => 'Photos and videos';
+
+  @override
+  String get mediaPickerUnavailableTitle =>
+      'Photos and videos cannot be sent in this version';
+
+  @override
+  String get mediaPickerUnavailableBody =>
+      'This version does not read the photo library or use the camera. Nothing was chosen or sent.';
+
+  @override
+  String get voiceRecorderTitle => 'Voice message';
+
+  @override
+  String get voiceRecorderUnavailableTitle =>
+      'Voice messages cannot be recorded in this version';
+
+  @override
+  String get voiceRecorderUnavailableBody =>
+      'This version does not use the microphone. Nothing was recorded or sent.';
+
+  @override
+  String get stickerPickerTitle => 'Emoji';
+
+  @override
+  String get stickerPickerTabSmileys => 'Smileys';
+
+  @override
+  String get stickerPickerTabGestures => 'Gestures';
+
+  @override
+  String get stickerPickerTabSymbols => 'Symbols';
+
+  @override
+  String get storiesNotice =>
+      'This version cannot open or post stories: nothing in it opens an encrypted story yet. Nothing is marked as viewed.';
+
+  @override
+  String get storiesUnavailableTitle => 'Stories could not be loaded';
+
+  @override
+  String get storiesUnavailableBody => 'Pull down to try again.';
+
+  @override
+  String get storiesEmptyTitle => 'No stories';
+
+  @override
+  String get storiesEmptyBody =>
+      'Nobody has shared a story with you in the last 24 hours.';
+
+  @override
+  String storiesRowCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count stories',
+      one: '1 story',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get storiesAgeJustNow => 'Just now';
+
+  @override
+  String storiesAgeMinutes(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes ago',
+      one: '1 minute ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String storiesAgeHours(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours ago',
+      one: '1 hour ago',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get storyViewerUnavailableTitle => 'This story cannot be opened';
+
+  @override
+  String get storyViewerUnavailableBody =>
+      'This version has nothing that opens an encrypted story yet. The story was not marked as viewed.';
 
   @override
   String get notificationNewMessageTitle => 'VEIL';
@@ -2758,6 +2801,44 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get aiDemoBannerBody =>
       'Demo: replies are scripted on this device. Nothing is sent anywhere.';
+
+  @override
+  String get aiTitle => 'VEIL Assistant';
+
+  @override
+  String get aiClearTooltip => 'Clear conversation';
+
+  @override
+  String get aiIntro =>
+      'There is no AI model behind this preview. Pick a question below to see the answer prepared for it.';
+
+  @override
+  String get aiQuestionBackup => 'Is there a backup?';
+
+  @override
+  String get aiAnswerBackup =>
+      'No. VEIL has no backup and no account recovery. Messages are encrypted on this device before they reach the relay.';
+
+  @override
+  String get aiQuestionNewDevice => 'How do I move to a new device?';
+
+  @override
+  String get aiAnswerNewDevice =>
+      'Your old device has to approve the new one. There is no cloud recovery path, by design.';
+
+  @override
+  String get aiQuestionGroups => 'Are group messages encrypted?';
+
+  @override
+  String get aiAnswerGroups =>
+      'Yes. Group messages are encrypted on the sending device before they reach the relay.';
+
+  @override
+  String get aiQuestionCalls => 'Can I make calls?';
+
+  @override
+  String get aiAnswerCalls =>
+      'Not in this version. Voice and video calls are not built yet.';
 
   @override
   String get securityStatusTitle => 'Security Status';

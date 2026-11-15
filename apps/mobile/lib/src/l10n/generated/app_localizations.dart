@@ -2102,53 +2102,17 @@ abstract class AppLocalizations {
   /// **'Attachment'**
   String get attachmentTitle;
 
-  /// No description provided for @attachmentHeroEyebrow.
+  /// No description provided for @attachmentPlaceholderNotice.
   ///
   /// In en, this message translates to:
-  /// **'ATTACHMENT'**
-  String get attachmentHeroEyebrow;
-
-  /// No description provided for @attachmentHeroTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Encrypted before it leaves.'**
-  String get attachmentHeroTitle;
-
-  /// No description provided for @attachmentHeroBody.
-  ///
-  /// In en, this message translates to:
-  /// **'This device encrypts locally, uploads an opaque blob, and then sends an encrypted message that points at it.'**
-  String get attachmentHeroBody;
-
-  /// No description provided for @attachmentPillOpaqueBlob.
-  ///
-  /// In en, this message translates to:
-  /// **'Opaque blob'**
-  String get attachmentPillOpaqueBlob;
-
-  /// No description provided for @attachmentPillMetadataOnlyRelay.
-  ///
-  /// In en, this message translates to:
-  /// **'Metadata-only relay'**
-  String get attachmentPillMetadataOnlyRelay;
-
-  /// No description provided for @attachmentPillNoPlaintextPush.
-  ///
-  /// In en, this message translates to:
-  /// **'No plaintext push'**
-  String get attachmentPillNoPlaintextPush;
-
-  /// No description provided for @attachmentNameLabel.
-  ///
-  /// In en, this message translates to:
-  /// **'FILE NAME'**
-  String get attachmentNameLabel;
+  /// **'This version has no file picker. It sends a placeholder file instead: 2 KB of random bytes, encrypted and uploaded the way a chosen file will be.'**
+  String get attachmentPlaceholderNotice;
 
   /// No description provided for @attachmentNameCaption.
   ///
   /// In en, this message translates to:
-  /// **'This build has no file picker yet: it sends a small placeholder file under this name, along the path a real attachment will take.'**
-  String get attachmentNameCaption;
+  /// **'The name stays on this device. Its extension sets the type the recipient is shown: {contentType}'**
+  String attachmentNameCaption(String contentType);
 
   /// No description provided for @attachmentNameInputLabel.
   ///
@@ -2156,107 +2120,11 @@ abstract class AppLocalizations {
   /// **'File name'**
   String get attachmentNameInputLabel;
 
-  /// No description provided for @attachmentRelayPolicyTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Relay policy'**
-  String get attachmentRelayPolicyTitle;
-
-  /// No description provided for @attachmentRelayPolicyBody.
-  ///
-  /// In en, this message translates to:
-  /// **'Private beta currently allows JPEG, PNG, WEBP, PDF, and opaque binary payloads. The relay never receives plaintext filenames or attachment keys.'**
-  String get attachmentRelayPolicyBody;
-
-  /// No description provided for @attachmentMetricType.
-  ///
-  /// In en, this message translates to:
-  /// **'Type'**
-  String get attachmentMetricType;
-
-  /// No description provided for @attachmentMetricUpload.
-  ///
-  /// In en, this message translates to:
-  /// **'Upload'**
-  String get attachmentMetricUpload;
-
-  /// No description provided for @attachmentMetricUploadValue.
-  ///
-  /// In en, this message translates to:
-  /// **'Ticketed'**
-  String get attachmentMetricUploadValue;
-
-  /// No description provided for @attachmentMetricBlob.
-  ///
-  /// In en, this message translates to:
-  /// **'Blob'**
-  String get attachmentMetricBlob;
-
-  /// No description provided for @attachmentMetricBlobValue.
-  ///
-  /// In en, this message translates to:
-  /// **'Opaque'**
-  String get attachmentMetricBlobValue;
-
-  /// No description provided for @attachmentStepsSection.
-  ///
-  /// In en, this message translates to:
-  /// **'SEND LIFECYCLE'**
-  String get attachmentStepsSection;
-
-  /// No description provided for @attachmentStep1Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Ticket'**
-  String get attachmentStep1Title;
-
-  /// No description provided for @attachmentStep1Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Request a scoped upload URL for the opaque blob.'**
-  String get attachmentStep1Body;
-
-  /// No description provided for @attachmentStep2Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Blob upload'**
-  String get attachmentStep2Title;
-
-  /// No description provided for @attachmentStep2Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Upload the opaque bytes. A retry reuses the local temporary blob and renews the upload ticket if it has expired.'**
-  String get attachmentStep2Body;
-
-  /// No description provided for @attachmentStep3Title.
-  ///
-  /// In en, this message translates to:
-  /// **'Message'**
-  String get attachmentStep3Title;
-
-  /// No description provided for @attachmentStep3Body.
-  ///
-  /// In en, this message translates to:
-  /// **'Queue the encrypted message that points at the upload, and clear the local temporary blob once it is finalized.'**
-  String get attachmentStep3Body;
-
   /// No description provided for @attachmentSendFailedTitle.
   ///
   /// In en, this message translates to:
   /// **'Attachment send failed'**
   String get attachmentSendFailedTitle;
-
-  /// No description provided for @attachmentQueuedTitle.
-  ///
-  /// In en, this message translates to:
-  /// **'Queued locally'**
-  String get attachmentQueuedTitle;
-
-  /// No description provided for @attachmentQueuedBody.
-  ///
-  /// In en, this message translates to:
-  /// **'The attachment now continues inside the conversation. Progress, retry and cancel follow its message.'**
-  String get attachmentQueuedBody;
 
   /// No description provided for @attachmentSendAction.
   ///
@@ -3470,6 +3338,12 @@ abstract class AppLocalizations {
   /// **'Call history unavailable'**
   String get callsUnavailableTitle;
 
+  /// No description provided for @callsUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull down to try again.'**
+  String get callsUnavailableBody;
+
   /// No description provided for @callsEmptyTitle.
   ///
   /// In en, this message translates to:
@@ -3479,14 +3353,164 @@ abstract class AppLocalizations {
   /// No description provided for @callsEmptyBody.
   ///
   /// In en, this message translates to:
-  /// **'Calls you make or receive will appear here.'**
+  /// **'This version cannot place or receive calls, so there is nothing to list yet.'**
   String get callsEmptyBody;
 
-  /// No description provided for @callsNotAvailable.
+  /// No description provided for @callsNotice.
   ///
   /// In en, this message translates to:
-  /// **'Calls are not available in this build yet.'**
-  String get callsNotAvailable;
+  /// **'This version cannot place or receive calls. Tap a call to open its chat.'**
+  String get callsNotice;
+
+  /// No description provided for @callsUnknownCounterparty.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown'**
+  String get callsUnknownCounterparty;
+
+  /// No description provided for @callScreenTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Call'**
+  String get callScreenTitle;
+
+  /// No description provided for @callScreenUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Calls are not available in this version'**
+  String get callScreenUnavailableTitle;
+
+  /// No description provided for @callScreenUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice and video calls are not built yet. No call was placed, and the other person was not notified.'**
+  String get callScreenUnavailableBody;
+
+  /// No description provided for @mediaPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos and videos'**
+  String get mediaPickerTitle;
+
+  /// No description provided for @mediaPickerUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos and videos cannot be sent in this version'**
+  String get mediaPickerUnavailableTitle;
+
+  /// No description provided for @mediaPickerUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This version does not read the photo library or use the camera. Nothing was chosen or sent.'**
+  String get mediaPickerUnavailableBody;
+
+  /// No description provided for @voiceRecorderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice message'**
+  String get voiceRecorderTitle;
+
+  /// No description provided for @voiceRecorderUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice messages cannot be recorded in this version'**
+  String get voiceRecorderUnavailableTitle;
+
+  /// No description provided for @voiceRecorderUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This version does not use the microphone. Nothing was recorded or sent.'**
+  String get voiceRecorderUnavailableBody;
+
+  /// No description provided for @stickerPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Emoji'**
+  String get stickerPickerTitle;
+
+  /// No description provided for @stickerPickerTabSmileys.
+  ///
+  /// In en, this message translates to:
+  /// **'Smileys'**
+  String get stickerPickerTabSmileys;
+
+  /// No description provided for @stickerPickerTabGestures.
+  ///
+  /// In en, this message translates to:
+  /// **'Gestures'**
+  String get stickerPickerTabGestures;
+
+  /// No description provided for @stickerPickerTabSymbols.
+  ///
+  /// In en, this message translates to:
+  /// **'Symbols'**
+  String get stickerPickerTabSymbols;
+
+  /// No description provided for @storiesNotice.
+  ///
+  /// In en, this message translates to:
+  /// **'This version cannot open or post stories: nothing in it opens an encrypted story yet. Nothing is marked as viewed.'**
+  String get storiesNotice;
+
+  /// No description provided for @storiesUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Stories could not be loaded'**
+  String get storiesUnavailableTitle;
+
+  /// No description provided for @storiesUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Pull down to try again.'**
+  String get storiesUnavailableBody;
+
+  /// No description provided for @storiesEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No stories'**
+  String get storiesEmptyTitle;
+
+  /// No description provided for @storiesEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody has shared a story with you in the last 24 hours.'**
+  String get storiesEmptyBody;
+
+  /// No description provided for @storiesRowCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 story} other{{count} stories}}'**
+  String storiesRowCount(int count);
+
+  /// No description provided for @storiesAgeJustNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Just now'**
+  String get storiesAgeJustNow;
+
+  /// No description provided for @storiesAgeMinutes.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 minute ago} other{{count} minutes ago}}'**
+  String storiesAgeMinutes(int count);
+
+  /// No description provided for @storiesAgeHours.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{1 hour ago} other{{count} hours ago}}'**
+  String storiesAgeHours(int count);
+
+  /// No description provided for @storyViewerUnavailableTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This story cannot be opened'**
+  String get storyViewerUnavailableTitle;
+
+  /// No description provided for @storyViewerUnavailableBody.
+  ///
+  /// In en, this message translates to:
+  /// **'This version has nothing that opens an encrypted story yet. The story was not marked as viewed.'**
+  String get storyViewerUnavailableBody;
 
   /// No description provided for @notificationNewMessageTitle.
   ///
@@ -4873,6 +4897,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Demo: replies are scripted on this device. Nothing is sent anywhere.'**
   String get aiDemoBannerBody;
+
+  /// No description provided for @aiTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'VEIL Assistant'**
+  String get aiTitle;
+
+  /// No description provided for @aiClearTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear conversation'**
+  String get aiClearTooltip;
+
+  /// No description provided for @aiIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'There is no AI model behind this preview. Pick a question below to see the answer prepared for it.'**
+  String get aiIntro;
+
+  /// No description provided for @aiQuestionBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'Is there a backup?'**
+  String get aiQuestionBackup;
+
+  /// No description provided for @aiAnswerBackup.
+  ///
+  /// In en, this message translates to:
+  /// **'No. VEIL has no backup and no account recovery. Messages are encrypted on this device before they reach the relay.'**
+  String get aiAnswerBackup;
+
+  /// No description provided for @aiQuestionNewDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'How do I move to a new device?'**
+  String get aiQuestionNewDevice;
+
+  /// No description provided for @aiAnswerNewDevice.
+  ///
+  /// In en, this message translates to:
+  /// **'Your old device has to approve the new one. There is no cloud recovery path, by design.'**
+  String get aiAnswerNewDevice;
+
+  /// No description provided for @aiQuestionGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Are group messages encrypted?'**
+  String get aiQuestionGroups;
+
+  /// No description provided for @aiAnswerGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'Yes. Group messages are encrypted on the sending device before they reach the relay.'**
+  String get aiAnswerGroups;
+
+  /// No description provided for @aiQuestionCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Can I make calls?'**
+  String get aiQuestionCalls;
+
+  /// No description provided for @aiAnswerCalls.
+  ///
+  /// In en, this message translates to:
+  /// **'Not in this version. Voice and video calls are not built yet.'**
+  String get aiAnswerCalls;
 
   /// No description provided for @securityStatusTitle.
   ///

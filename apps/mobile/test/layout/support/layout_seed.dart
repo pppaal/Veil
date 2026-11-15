@@ -340,8 +340,13 @@ class LayoutRelayClient extends FakeRelayClient {
           },
       ];
 
+  /// What the relay has on record instead of the seeded calls, when a test
+  /// sets it.
+  List<Map<String, dynamic>>? callRecords;
+
   @override
   Future<List<dynamic>> getCallHistory(String accessToken) async {
+    if (callRecords case final records?) return records;
     // A day old, so every row reads "Yesterday, hh:mm" whenever it runs.
     final yesterday = DateTime.now().subtract(const Duration(days: 1)).toUtc();
     Map<String, dynamic> call(String handle, String type, String status, {required bool mine, int? seconds}) => {
@@ -365,8 +370,13 @@ class LayoutRelayClient extends FakeRelayClient {
     ];
   }
 
+  /// The stories the relay lists instead of the seeded ones, when a test
+  /// sets it.
+  List<Map<String, dynamic>>? storyRecords;
+
   @override
   Future<List<dynamic>> getStories(String accessToken) async {
+    if (storyRecords case final records?) return records;
     final now = DateTime.now().toUtc();
     Map<String, dynamic> story(String handle, int index, String caption, {required bool viewed}) => {
           'id': 'story-$handle-$index',
@@ -394,8 +404,14 @@ class LayoutRelayClient extends FakeRelayClient {
     ];
   }
 
+  /// The stories this device told the relay it viewed, in order.
+  final List<String> viewedStories = [];
+
   @override
-  Future<Map<String, dynamic>> viewStory(String accessToken, String storyId) async => {'storyId': storyId};
+  Future<Map<String, dynamic>> viewStory(String accessToken, String storyId) async {
+    viewedStories.add(storyId);
+    return {'storyId': storyId};
+  }
 
   @override
   Future<Map<String, dynamic>> listDevices(String accessToken) async {

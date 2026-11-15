@@ -360,6 +360,12 @@
   "@settingsGraphPreferredDiffersBody": {"placeholders": {"preferred": {"type": "String"}, "current": {"type": "String"}}},
   "settingsGraphStaleTitle": "A device hasn't been seen for 30 days",
   "settingsGraphStaleBody": "Stale devices can still use this account. Revoke the ones you no longer use.",
+  "settingsSecurityDetailsTitle": "Security details",
+  "settingsReadReceiptsCaption": "When off, neither of you sees when messages are read.",
+  "settingsTypingIndicatorsCaption": "Lets people see when you're typing.",
+  "settingsDevicesStaleNotice": "{count, plural, =1{A device hasn't been seen for 30 days.} other{{count} devices haven't been seen for 30 days.}}",
+  "@settingsDevicesStaleNotice": {"placeholders": {"count": {"type": "int"}}},
+  "settingsDevicesReview": "Review",
 
   "chatEmptyTitle": "No messages yet",
   "chatEmptyBody": "Messages are end-to-end encrypted.",
@@ -651,6 +657,7 @@
   "oneTimeLinkSecretHint": "A password, an account number, a note",
   "oneTimeLinkUsePassphrase": "Protect with a passphrase",
   "oneTimeLinkUsePassphraseBody": "The key stays out of the link. Send the passphrase another way.",
+  "oneTimeLinkUsePassphraseCaption": "The secret can't be read without it.",
   "oneTimeLinkPassphraseLabel": "Passphrase",
   "oneTimeLinkCreate": "Create link",
   "oneTimeLinkCreating": "Creating…",
@@ -700,6 +707,8 @@
   "contactsRowSemantics": "Contact {name}",
   "@contactsRowSemantics": {"placeholders": {"name": {"type": "String"}}},
   "contactsVerifiedStatus": "Verified",
+  "contactsHandleHint": "alex",
+  "@contactsHandleHint": {"description": "An example handle in the field's hint: lower-case Latin, as every handle."},
 
   "notificationNewMessageTitle": "Veil",
   "notificationNewMessageBody": "New message",
@@ -838,6 +847,7 @@
   "profileEditNickname": "Edit nickname",
   "profileCancel": "Cancel",
   "profileNicknameFooter": "Only you see nicknames. Your handle can't be changed.",
+  "profileNicknameHeader": "Nickname",
 
   "deviceTransferTitle": "Move to a new phone",
   "deviceTransferChipOldDevice": "Old phone",

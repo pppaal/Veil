@@ -5,12 +5,11 @@ import 'package:go_router/go_router.dart';
 import '../../../app/app_state.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_grouped.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
-/// The end of the settings screen: the four actions that take this device,
-/// or the account, away for good, under the notice that nothing brings
-/// them back. Each says what it erases and asks for a typed phrase first.
+/// The last group of Settings: the four actions that take this device, or
+/// the account, away for good. Each row opens a dialog that says what it
+/// erases and asks for a typed phrase first.
 class SettingsDangerZone extends ConsumerWidget {
   const SettingsDangerZone({super.key});
 
@@ -20,7 +19,7 @@ class SettingsDangerZone extends ConsumerWidget {
     final session = ref.read(appSessionProvider.notifier);
 
     // Runs [action] once the user typed [phrase]. An action that asks the
-    // relay first can fail: the device then keeps its state, and says so.
+    // server first can fail: the device then keeps its state, and says so.
     Future<void> run({
       required String title,
       required String body,
@@ -36,80 +35,65 @@ class SettingsDangerZone extends ConsumerWidget {
         if (context.mounted) context.go(thenGo);
       } catch (_) {
         if (!context.mounted) return;
-        VeilToast.show(context, message: l10n.commonError, tone: VeilBannerTone.warn);
+        showVeilToast(context, l10n.commonError, tone: VeilTone.warn);
       }
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return VeilGroup(
+      header: l10n.settingsSectionAccount,
       children: [
-        VeilDestructiveNotice(title: l10n.settingsNoRecoveryPath, body: l10n.settingsDestructiveNoticeBody),
-        const SizedBox(height: VeilSpace.md),
-        VeilGroup(
-          label: l10n.settingsSectionIrreversible,
-          children: [
-            VeilGroupRow(
-              key: const ValueKey('settings-logout'),
-              destructive: true,
-              icon: Icons.logout,
-              title: l10n.settingsLogout,
-              subtitle: l10n.settingsLogoutSubtitle,
-              onTap: () => run(
-                title: l10n.settingsLogoutConfirmTitle,
-                body: l10n.settingsLogoutConfirmBody,
-                confirm: l10n.settingsLogout,
-                phrase: l10n.settingsLogoutConfirmPhrase,
-                action: session.logout,
-                thenGo: '/create-account',
-              ),
-            ),
-            VeilGroupRow(
-              key: const ValueKey('settings-wipe'),
-              destructive: true,
-              icon: Icons.layers_clear_outlined,
-              title: l10n.settingsWipeLocal,
-              subtitle: l10n.settingsWipeLocalSubtitle,
-              onTap: () => run(
-                title: l10n.settingsWipeConfirmTitle,
-                body: l10n.settingsWipeConfirmBody,
-                confirm: l10n.settingsWipeConfirmAction,
-                phrase: l10n.settingsWipeConfirmPhrase,
-                action: session.wipeLocalDeviceState,
-                thenGo: '/splash',
-              ),
-            ),
-            VeilGroupRow(
-              key: const ValueKey('settings-revoke'),
-              destructive: true,
-              icon: Icons.phonelink_erase_outlined,
-              title: l10n.settingsRevokeTitle,
-              subtitle: l10n.settingsRevokeSubtitle,
-              onTap: () => run(
-                title: l10n.settingsRevokeConfirmTitle,
-                body: l10n.settingsRevokeConfirmBody,
-                confirm: l10n.settingsRevokeConfirmAction,
-                phrase: l10n.settingsRevokeConfirmPhrase,
-                // The relay did not revoke it: this device keeps its state.
-                action: session.revokeCurrentDevice,
-                thenGo: '/create-account',
-              ),
-            ),
-            VeilGroupRow(
-              key: const ValueKey('settings-delete-account'),
-              destructive: true,
-              icon: Icons.delete_forever_outlined,
-              title: l10n.settingsDeleteAccountAction,
-              subtitle: l10n.settingsDeleteAccountBody,
-              onTap: () => run(
-                title: l10n.settingsDeleteAccountConfirmHeadline,
-                body: l10n.settingsDeleteAccountBody,
-                confirm: l10n.settingsDeleteAccountAction,
-                phrase: l10n.settingsDeleteAccountConfirmPhrase,
-                action: session.deleteAccount,
-                thenGo: '/splash',
-              ),
-            ),
-          ],
+        VeilRow(
+          key: const ValueKey('settings-logout'),
+          destructive: true,
+          title: l10n.settingsLogout,
+          onTap: () => run(
+            title: l10n.settingsLogoutConfirmTitle,
+            body: l10n.settingsLogoutConfirmBody,
+            confirm: l10n.settingsLogout,
+            phrase: l10n.settingsLogoutConfirmPhrase,
+            action: session.logout,
+            thenGo: '/create-account',
+          ),
+        ),
+        VeilRow(
+          key: const ValueKey('settings-wipe'),
+          destructive: true,
+          title: l10n.settingsWipeLocal,
+          onTap: () => run(
+            title: l10n.settingsWipeConfirmTitle,
+            body: l10n.settingsWipeConfirmBody,
+            confirm: l10n.settingsWipeConfirmAction,
+            phrase: l10n.settingsWipeConfirmPhrase,
+            action: session.wipeLocalDeviceState,
+            thenGo: '/splash',
+          ),
+        ),
+        VeilRow(
+          key: const ValueKey('settings-revoke'),
+          destructive: true,
+          title: l10n.settingsRevokeTitle,
+          onTap: () => run(
+            title: l10n.settingsRevokeConfirmTitle,
+            body: l10n.settingsRevokeConfirmBody,
+            confirm: l10n.settingsRevokeConfirmAction,
+            phrase: l10n.settingsRevokeConfirmPhrase,
+            // The server did not revoke it: this device keeps its state.
+            action: session.revokeCurrentDevice,
+            thenGo: '/create-account',
+          ),
+        ),
+        VeilRow(
+          key: const ValueKey('settings-delete-account'),
+          destructive: true,
+          title: l10n.settingsDeleteAccountAction,
+          onTap: () => run(
+            title: l10n.settingsDeleteAccountConfirmHeadline,
+            body: l10n.settingsDeleteAccountBody,
+            confirm: l10n.settingsDeleteAccountAction,
+            phrase: l10n.settingsDeleteAccountConfirmPhrase,
+            action: session.deleteAccount,
+            thenGo: '/splash',
+          ),
         ),
       ],
     );
@@ -153,7 +137,7 @@ class _TypedPhraseDialogState extends State<_TypedPhraseDialog> {
   }
 
   // Letter case is not the point of the phrase; typing it is.
-  bool get _matches => _typed.text.trim().toUpperCase() == widget.phrase.toUpperCase();
+  bool get _matches => _typed.text.trim().toLowerCase() == widget.phrase.toLowerCase();
 
   @override
   Widget build(BuildContext context) {
@@ -162,14 +146,14 @@ class _TypedPhraseDialogState extends State<_TypedPhraseDialog> {
     return AlertDialog(
       // On a small phone with the keyboard up the dialog scrolls.
       scrollable: true,
-      title: VeilCopy(widget.title),
+      title: Text(widget.title),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          VeilCopy(widget.body),
+          Text(widget.body),
           const SizedBox(height: VeilSpace.md),
-          VeilCopy(l10n.settingsTypePhraseToContinue(widget.phrase)),
+          Text(l10n.settingsTypePhraseToContinue(widget.phrase)),
           const SizedBox(height: VeilSpace.sm),
           // Not focused on opening: the keyboard would cover half of what
           // there is to read before typing.
@@ -177,16 +161,16 @@ class _TypedPhraseDialogState extends State<_TypedPhraseDialog> {
             controller: _typed,
             autocorrect: false,
             enableSuggestions: false,
-            textCapitalization: TextCapitalization.characters,
+            textCapitalization: TextCapitalization.sentences,
             onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(hintText: widget.phrase),
+            decoration: InputDecoration(isDense: true, hintText: widget.phrase),
           ),
         ],
       ),
       actions: [
         TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(l10n.commonCancel)),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: palette.danger, foregroundColor: palette.canvas),
+        TextButton(
+          style: TextButton.styleFrom(foregroundColor: palette.danger),
           onPressed: _matches ? () => Navigator.of(context).pop(true) : null,
           child: Text(widget.confirm),
         ),

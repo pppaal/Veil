@@ -18,8 +18,9 @@ import 'package:veil_mobile/src/shared/presentation/veil_ui.dart';
 import '../layout/support/phone_layout_probe.dart';
 import '../support/copy_finder.dart';
 
-// The one-time link screen on a phone: the form first, then the link that
-// was made, then what such a link protects and what it does not.
+// The one-time link screen on a phone: the form first with what the link
+// does under it, then the link that was made, then what such a link does
+// not protect.
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -76,9 +77,10 @@ void main() {
     await pumpFrames(tester, frames: 4);
   }
 
-  testWidgets('opens on the secret, the passphrase switch and the button; the explanation follows', (tester) async {
+  testWidgets('opens on the secret, the passphrase switch and the button; the limits follow', (tester) async {
     await open(tester);
     expect(find.byType(VeilShell), findsOneWidget);
+    expect(tester.widget<VeilShell>(find.byType(VeilShell)).grouped, isTrue, reason: 'a grouped page');
     final field = tester.getRect(find.byType(TextField));
     final passphrase = tester.getRect(find.byType(Switch));
     final button = tester.getRect(find.byType(FilledButton));
@@ -86,9 +88,19 @@ void main() {
     expect(field.bottom, lessThan(passphrase.top));
     expect(passphrase.bottom, lessThan(button.top));
     expect(button.bottom, lessThanOrEqualTo(640), reason: 'on the first screenful of a 360x640 phone');
-    expect(find.byType(VeilStatusPill), findsNothing);
+    // What the link does is the form's footer, between the form and the
+    // button; nothing else on the screen says it again.
+    final footer = tester.getRect(find.text(en.oneTimeLinkFooter));
+    expect(footer.top, greaterThan(passphrase.bottom));
+    expect(footer.bottom, lessThan(button.top));
+    // The header names the field on screen; a screen reader hears the name
+    // on the field itself.
+    final semantics = tester.ensureSemantics();
+    await tester.pump();
+    expect(tester.getSemantics(find.byType(TextField)).label, contains(en.oneTimeLinkSecretLabel));
+    semantics.dispose();
 
-    // What it protects, then what it does not, each with its sentences.
+    // Then what it does not protect, sentence by sentence.
     final said = <String>[];
     void collect() {
       for (final element in find.byType(Text).evaluate()) {
@@ -100,16 +112,16 @@ void main() {
     collect();
     await scrollToEnd(tester, onPage: (_) async => collect());
     final order = [
+      en.oneTimeLinkFooter,
       en.oneTimeLinkCreate,
-      en.oneTimeLinkProtectsLabel,
-      en.oneTimeLinkProtectsEncrypted,
-      en.oneTimeLinkProtectsBurn,
       en.oneTimeLinkLimitsLabel,
       en.oneTimeLinkLimitHolder,
       en.oneTimeLinkLimitReader,
       en.oneTimeLinkLimitRelay,
     ];
     expect([for (final text in said) if (order.contains(text)) text], order);
+    // The footer is the one place the screen says the link opens once.
+    expect([for (final text in said) if (text.contains('once')) text], [en.oneTimeLinkFooter, en.oneTimeLinkLimitReader]);
     expect(tester.takeException(), isNull);
   });
 
@@ -168,7 +180,11 @@ void main() {
     expect(result.top, greaterThanOrEqualTo(24 + 52));
     expect(result.bottom, lessThanOrEqualTo(640 - 300));
 
-    final copy = find.text(en.oneTimeLinkCopy, skipOffstage: false);
+    // The link is drawn in monospace, with its copy button beside it.
+    expect(tester.widget<SelectableText>(find.byType(SelectableText, skipOffstage: false)).style?.fontFamily,
+        'monospace');
+    final copy = find.byTooltip(en.oneTimeLinkCopy, skipOffstage: false);
+    expect(tester.getSize(copy).shortestSide, greaterThanOrEqualTo(44));
     await Scrollable.ensureVisible(tester.element(copy), alignment: 0.5);
     await tester.pump();
     await tester.tap(copy);
@@ -310,16 +326,40 @@ void main() {
     });
   });
 
-  testWidgets('says that the relay refused, and keeps the form', (tester) async {
-    await open(tester, status: 503);
+  testWidgets('says that the relay refused in one line under the button, keeps the form, and the button tries again',
+      (tester) async {
+    var status = 503;
+    final service = OneTimeLinkService(
+      apiBaseUrl: 'https://relay.example.org/v1',
+      client: MockClient((request) async {
+        posted.add(jsonDecode(request.body) as Map<String, dynamic>);
+        return http.Response(
+          jsonEncode({'id': 'link-7', 'expiresAt': DateTime.utc(2026, 4, 8, 9, 30).toIso8601String()}),
+          status,
+        );
+      }),
+    );
+    await open(tester, service: service);
     await tester.enterText(find.byType(TextField), secret);
     await tester.pump();
     await tapCreate(tester);
-    expect(findCopy(en.oneTimeLinkFailed), findsOneWidget);
+    final failure = findCopy(en.oneTimeLinkFailed);
+    expect(failure, findsOneWidget);
+    // Plain text, not a notice: the button above it is the retry.
+    expect(find.byType(VeilNotice), findsNothing);
+    expect(tester.getTopLeft(failure).dy, greaterThanOrEqualTo(tester.getBottomLeft(find.byType(FilledButton)).dy));
     expect(find.byType(QrImageView), findsNothing);
     expect(create(tester).onPressed, isNotNull, reason: 'ready for another try');
     // The field may have scrolled out above the button: it is still there.
     expect(tester.widget<TextField>(find.byType(TextField, skipOffstage: false)).controller!.text, secret);
+
+    // The relay answers the next try: the line goes, the link comes.
+    status = 201;
+    posted.clear();
+    await tapCreate(tester);
+    expect(posted, hasLength(1));
+    expect(findCopy(en.oneTimeLinkFailed), findsNothing);
+    expect(find.byType(QrImageView, skipOffstage: false), findsOneWidget);
   });
 }
 

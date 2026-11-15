@@ -36,6 +36,36 @@ String veilKeepWordsWhole(String text) {
   });
 }
 
+/// A piece of the app's own copy (a sentence from the ARB files), drawn
+/// with its Korean words kept whole where it wraps and read out as the
+/// plain text. The shared cards, banners, hero and empty states draw their
+/// titles and bodies with it; a screen does the same for a paragraph of its
+/// own.
+///
+/// Never for what a person wrote (a message, a name, a note): that text is
+/// theirs to copy and search as they typed it, and goes into a plain [Text].
+class VeilCopy extends StatelessWidget {
+  const VeilCopy(this.text, {super.key, this.style, this.textAlign, this.maxLines, this.overflow});
+
+  final String text;
+  final TextStyle? style;
+  final TextAlign? textAlign;
+  final int? maxLines;
+  final TextOverflow? overflow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      veilKeepWordsWhole(text),
+      semanticsLabel: text,
+      style: style,
+      textAlign: textAlign,
+      maxLines: maxLines,
+      overflow: overflow,
+    );
+  }
+}
+
 class VeilButton extends StatelessWidget {
   const VeilButton({
     super.key,
@@ -219,7 +249,7 @@ class VeilFieldBlock extends StatelessWidget {
           child,
           if (caption != null) ...[
             const SizedBox(height: VeilSpace.sm),
-            Text(
+            VeilCopy(
               caption!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: context.veilPalette.textMuted,
@@ -339,15 +369,14 @@ class _VeilHeroPanelState extends State<VeilHeroPanel>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        veilKeepWordsWhole(widget.title),
-                        semanticsLabel: widget.title,
+                      VeilCopy(
+                        widget.title,
                         style: compact
                             ? theme.textTheme.headlineMedium
                             : theme.textTheme.headlineLarge?.copyWith(height: 1.04),
                       ),
                       SizedBox(height: compact ? VeilSpace.xs : VeilSpace.sm),
-                      Text(
+                      VeilCopy(
                         widget.body,
                         style: (compact ? theme.textTheme.bodyMedium : theme.textTheme.bodyLarge)?.copyWith(
                           color: palette.textMuted,
@@ -455,8 +484,8 @@ class VeilInlineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _paletteFor(tone);
     final theme = Theme.of(context);
+    final palette = _paletteFor(tone, theme.brightness);
     final hasAction = actionLabel != null;
     final messageStyle = dense
         ? theme.textTheme.bodyMedium?.copyWith(fontSize: 13, height: 1.4)
@@ -490,7 +519,7 @@ class VeilInlineBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (title != null) ...[
-                  Text(
+                  VeilCopy(
                     title!,
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: palette.foreground,
@@ -498,12 +527,7 @@ class VeilInlineBanner extends StatelessWidget {
                   ),
                   SizedBox(height: dense ? 2 : VeilSpace.xxs),
                 ],
-                Text(
-                  message,
-                  style: messageStyle?.copyWith(
-                    color: Colors.white.withValues(alpha: 0.9),
-                  ),
-                ),
+                VeilCopy(message, style: messageStyle?.copyWith(color: palette.text)),
                 if (hasAction)
                   Align(
                     alignment: AlignmentDirectional.centerEnd,
@@ -526,27 +550,36 @@ class VeilInlineBanner extends StatelessWidget {
 
 }
 
-_BannerPalette _paletteFor(VeilBannerTone tone) {
+// A tone's colours on the theme's surfaces. The fill is a tint of the
+// surface, so what is written on it is light on the dark theme and dark on
+// the light one: the bright tone colours do not read on a pale tint.
+_BannerPalette _paletteFor(VeilBannerTone tone, Brightness brightness) {
+  final light = brightness == Brightness.light;
+  final text = light ? const Color(0xE6000000) : const Color(0xE6FFFFFF);
   return switch (tone) {
-    VeilBannerTone.info => const _BannerPalette(
-        border: Color(0x660A84FF),
-        fill: Color(0x1F0A84FF),
-        foreground: Color(0xFF4FA6FF),
+    VeilBannerTone.info => _BannerPalette(
+        border: const Color(0x660A84FF),
+        fill: const Color(0x1F0A84FF),
+        foreground: light ? const Color(0xFF0058B8) : const Color(0xFF4FA6FF),
+        text: text,
       ),
-    VeilBannerTone.good => const _BannerPalette(
-        border: Color(0x6630D158),
-        fill: Color(0x1F30D158),
-        foreground: Color(0xFF30D158),
+    VeilBannerTone.good => _BannerPalette(
+        border: const Color(0x6630D158),
+        fill: const Color(0x1F30D158),
+        foreground: light ? const Color(0xFF1A7A37) : const Color(0xFF30D158),
+        text: text,
       ),
-    VeilBannerTone.warn => const _BannerPalette(
-        border: Color(0x66FF9F0A),
-        fill: Color(0x1FFF9F0A),
-        foreground: Color(0xFFFF9F0A),
+    VeilBannerTone.warn => _BannerPalette(
+        border: const Color(0x66FF9F0A),
+        fill: const Color(0x1FFF9F0A),
+        foreground: light ? const Color(0xFF8F5200) : const Color(0xFFFF9F0A),
+        text: text,
       ),
-    VeilBannerTone.danger => const _BannerPalette(
-        border: Color(0x66FF453A),
-        fill: Color(0x1FFF453A),
-        foreground: Color(0xFFFF453A),
+    VeilBannerTone.danger => _BannerPalette(
+        border: const Color(0x66FF453A),
+        fill: const Color(0x1FFF453A),
+        foreground: light ? const Color(0xFFC0261B) : const Color(0xFFFF453A),
+        text: text,
       ),
   };
 }
@@ -592,8 +625,8 @@ class VeilNoticeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _paletteFor(tone);
     final theme = Theme.of(context);
+    final palette = _paletteFor(tone, theme.brightness);
     final titleStyle = theme.textTheme.titleSmall?.copyWith(color: palette.foreground);
     final hasAction = actionLabel != null;
 
@@ -613,19 +646,17 @@ class VeilNoticeRow extends StatelessWidget {
           Expanded(
             child: Text.rich(
               TextSpan(
-                text: title,
+                text: veilKeepWordsWhole(title),
                 style: titleStyle,
                 children: [
                   if (!hasAction && message != null)
                     TextSpan(
-                      text: '  $message',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontSize: 13,
-                        color: Colors.white.withValues(alpha: 0.9),
-                      ),
+                      text: '  ${veilKeepWordsWhole(message!)}',
+                      style: theme.textTheme.bodyMedium?.copyWith(fontSize: 13, color: palette.text),
                     ),
                 ],
               ),
+              semanticsLabel: !hasAction && message != null ? '$title  $message' : title,
               maxLines: hasAction ? 2 : 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -659,28 +690,7 @@ class VeilStatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = switch (tone) {
-      VeilBannerTone.info => const _BannerPalette(
-          border: Color(0x660A84FF),
-          fill: Color(0x1F0A84FF),
-          foreground: Color(0xFF4FA6FF),
-        ),
-      VeilBannerTone.good => const _BannerPalette(
-          border: Color(0x6630D158),
-          fill: Color(0x1F30D158),
-          foreground: Color(0xFF30D158),
-        ),
-      VeilBannerTone.warn => const _BannerPalette(
-          border: Color(0x66FF9F0A),
-          fill: Color(0x1FFF9F0A),
-          foreground: Color(0xFFFF9F0A),
-        ),
-      VeilBannerTone.danger => const _BannerPalette(
-          border: Color(0x66FF453A),
-          fill: Color(0x1FFF453A),
-          foreground: Color(0xFFFF453A),
-        ),
-    };
+    final palette = _paletteFor(tone, Theme.of(context).brightness);
 
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -757,14 +767,17 @@ class VeilToast {
     VeilBannerTone tone = VeilBannerTone.info,
   }) {
     final messenger = ScaffoldMessenger.of(context);
+    // The toast's text takes the theme's text colour, so its ground is a
+    // dark tint on the dark theme and a pale one on the light theme.
+    final light = Theme.of(context).brightness == Brightness.light;
     messenger.clearSnackBars();
     messenger.showSnackBar(
       SnackBar(
-        content: Text(message),
+        content: VeilCopy(message),
         backgroundColor: switch (tone) {
-          VeilBannerTone.good => const Color(0xFF173229),
-          VeilBannerTone.warn => const Color(0xFF352815),
-          VeilBannerTone.danger => const Color(0xFF3C1B25),
+          VeilBannerTone.good => light ? const Color(0xFFE2F5E8) : const Color(0xFF173229),
+          VeilBannerTone.warn => light ? const Color(0xFFFFF0DA) : const Color(0xFF352815),
+          VeilBannerTone.danger => light ? const Color(0xFFFDE4E2) : const Color(0xFF3C1B25),
           VeilBannerTone.info => null,
         },
       ),
@@ -780,41 +793,75 @@ class VeilMetricStrip extends StatelessWidget {
 
   final List<VeilMetricItem> items;
 
+  /// How many tiles go on each row of a phone-width strip of [count] tiles:
+  /// at most three to a row, and as even as the count allows, so no tile is
+  /// left alone on a row of its own (four tiles are two and two, seven are
+  /// three, two and two).
+  static List<int> phoneRows(int count) {
+    if (count <= 0) return const [];
+    final rows = (count / 3).ceil();
+    return [for (var row = 0; row < rows; row++) count ~/ rows + (row < count % rows ? 1 : 0)];
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: VeilSpace.sm,
-      runSpacing: VeilSpace.sm,
-      children: items
-          .map(
-            (item) => VeilSurfaceCard(
-              toned: true,
-              padding: const EdgeInsets.symmetric(
-                horizontal: VeilSpace.md,
-                vertical: VeilSpace.sm,
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 112),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.label.toUpperCase(),
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: context.veilPalette.textSubtle,
-                          ),
-                    ),
-                    const SizedBox(height: VeilSpace.xxs),
-                    Text(
-                      item.value,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                  ],
-                ),
-              ),
+    if (!context.veilPhoneWidth) {
+      return Wrap(
+        spacing: VeilSpace.sm,
+        runSpacing: VeilSpace.sm,
+        children: [for (final item in items) _tile(context, item, minWidth: 112)],
+      );
+    }
+
+    // A phone has no room for tiles at their own width side by side: they
+    // would wrap two and one. Each row shares the width instead.
+    var next = 0;
+    return Column(
+      children: [
+        for (final (index, size) in phoneRows(items.length).indexed) ...[
+          if (index > 0) const SizedBox(height: VeilSpace.xs),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final (column, item) in items.sublist(next, next += size).indexed) ...[
+                  if (column > 0) const SizedBox(width: VeilSpace.xs),
+                  Expanded(child: _tile(context, item, compact: true)),
+                ],
+              ],
             ),
-          )
-          .toList(growable: false),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _tile(BuildContext context, VeilMetricItem item, {double minWidth = 0, bool compact = false}) {
+    final theme = Theme.of(context);
+    return VeilSurfaceCard(
+      toned: true,
+      padding: EdgeInsets.symmetric(horizontal: compact ? VeilSpace.sm : VeilSpace.md, vertical: VeilSpace.sm),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: minWidth),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              item.label.toUpperCase(),
+              maxLines: compact ? 1 : null,
+              overflow: compact ? TextOverflow.ellipsis : null,
+              style: theme.textTheme.labelMedium?.copyWith(color: context.veilPalette.textSubtle),
+            ),
+            const SizedBox(height: VeilSpace.xxs),
+            VeilCopy(
+              item.value,
+              maxLines: compact ? 2 : null,
+              overflow: compact ? TextOverflow.ellipsis : null,
+              style: compact ? theme.textTheme.titleSmall : theme.textTheme.titleMedium,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -879,12 +926,12 @@ class VeilDestructiveNotice extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                VeilCopy(
                   title,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: VeilSpace.xs),
-                Text(
+                VeilCopy(
                   body,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: palette.textMuted,
@@ -914,6 +961,10 @@ class VeilListTileCard extends StatelessWidget {
   });
 
   final String title;
+
+  /// The line under the title: the app's own copy, or a handle. Its Korean
+  /// words stay whole where it wraps; text a person wrote goes into
+  /// [subtitleWidget] instead.
   final String subtitle;
   final Widget? subtitleWidget;
   final String? eyebrow;
@@ -974,7 +1025,7 @@ class VeilListTileCard extends StatelessWidget {
             subtitle: Padding(
               padding: const EdgeInsets.only(top: VeilSpace.xxs),
               child: subtitleWidget ??
-                  Text(
+                  VeilCopy(
                     subtitle,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
@@ -997,7 +1048,7 @@ class VeilConversationCard extends StatelessWidget {
     this.selected = false,
     this.meta,
     this.onTap,
-    this.semanticLabel,
+    required this.semanticLabel,
     this.dense = false,
     this.titleIcon,
     this.titleIconLabel,
@@ -1012,8 +1063,9 @@ class VeilConversationCard extends StatelessWidget {
   final Widget? meta;
   final VoidCallback? onTap;
 
-  /// What a screen reader says for the row, in the user's language.
-  final String? semanticLabel;
+  /// What a screen reader says for the row, in the user's language: that
+  /// it is a conversation, and with whom. The title alone does not say it.
+  final String semanticLabel;
 
   /// A lower row with a smaller avatar, for a phone's list.
   final bool dense;
@@ -1041,7 +1093,7 @@ class VeilConversationCard extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: semanticLabel ?? 'Conversation with $title',
+      label: semanticLabel,
       child: AnimatedContainer(
         duration: VeilMotion.normal,
         curve: VeilMotion.emphasize,
@@ -1250,9 +1302,9 @@ class VeilComposer extends StatelessWidget {
     required this.enabled,
     required this.onSubmit,
     required this.trailing,
+    required this.label,
     this.leading,
     this.helper,
-    this.label = 'Send opaque text',
   });
 
   final TextEditingController controller;
@@ -1264,6 +1316,8 @@ class VeilComposer extends StatelessWidget {
   /// A control before the draft (attach), in place of the lock mark.
   final Widget? leading;
   final String? helper;
+
+  /// The hint in the empty draft, in the user's language.
   final String label;
 
   @override
@@ -1382,14 +1436,13 @@ class VeilEmptyState extends StatelessWidget {
                 ),
                 const SizedBox(height: VeilSpace.lg),
               ],
-              Text(
-                veilKeepWordsWhole(title),
-                semanticsLabel: title,
+              VeilCopy(
+                title,
                 style: compact ? theme.textTheme.titleLarge : theme.textTheme.headlineMedium,
                 textAlign: TextAlign.center,
               ),
               SizedBox(height: compact ? VeilSpace.xxs : VeilSpace.xs),
-              Text(
+              VeilCopy(
                 body,
                 style: (compact ? theme.textTheme.bodySmall : theme.textTheme.bodyMedium)?.copyWith(
                   color: palette.textMuted,
@@ -1487,9 +1540,9 @@ class VeilLoadingBlock extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: VeilSpace.lg),
-              Text(title, style: Theme.of(context).textTheme.titleLarge),
+              VeilCopy(title, style: Theme.of(context).textTheme.titleLarge, textAlign: TextAlign.center),
               const SizedBox(height: VeilSpace.xs),
-              Text(
+              VeilCopy(
                 body,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: palette.textMuted,
@@ -1620,9 +1673,9 @@ class VeilStepRow extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: Theme.of(context).textTheme.titleSmall),
+              VeilCopy(title, style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: VeilSpace.xxs),
-              Text(
+              VeilCopy(
                 body,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: palette.textMuted,
@@ -1661,14 +1714,15 @@ class VeilValueRow extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(label, style: Theme.of(context).textTheme.titleSmall),
+                child: VeilCopy(label, style: Theme.of(context).textTheme.titleSmall),
               ),
+              const SizedBox(width: VeilSpace.xs),
               VeilStatusPill(label: value, tone: valueTone),
             ],
           ),
           if (detail != null) ...[
             const SizedBox(height: VeilSpace.sm),
-            Text(
+            VeilCopy(
               detail!,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: context.veilPalette.textMuted,
@@ -1686,9 +1740,15 @@ class _BannerPalette {
     required this.border,
     required this.fill,
     required this.foreground,
+    required this.text,
   });
 
   final Color border;
   final Color fill;
+
+  /// The icon, the title and an action.
   final Color foreground;
+
+  /// The message under the title.
+  final Color text;
 }

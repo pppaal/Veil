@@ -107,7 +107,7 @@ most users see without scrolling.
 |---|---|---|---|---|
 | 1 | **Onboarding / sign-up** | No phone number, no email, no real name. Device-bound identity. | "No phone number. No email. No recovery." | "전화번호도, 이메일도, 복구도 없이." |
 | 2 | **Conversation list** | 1:1 and group conversations, presence, unread state. | "Only you and the people you talk to can read your chats." | "대화는 나와 대화 상대만 읽을 수 있습니다." |
-| 3 | **Encrypted chat with attachments** | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | "End-to-end encrypted. Servers never see your messages in plaintext." | "종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다." |
+| 3 | **Encrypted chat** | E2EE message thread with reactions, a disappearing-message timer, typing indicator, optional read receipts. | "End-to-end encrypted. Servers never see your messages in plaintext." | "종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다." |
 | 4 | **Encrypted device transfer** | Device transfer — the old device must be present and approve; the handle moves to keys generated on the new phone, the old phone is signed out, and message history does not move. | "Move your handle to a new phone. The old one signs out." | "핸들을 새 기기로 옮기고, 이전 기기는 로그아웃됩니다." |
 | 5 | **App lock** | Local app lock with PIN and biometrics (Face ID / Touch ID). | "Lock the app with a PIN or biometrics." | "PIN 또는 생체 인증으로 앱을 잠그세요." |
 | 6 | **Settings / privacy posture** | No ads, no tracking, no third-party analytics; theme + language; the "no recovery" safety model. | "No ads. No tracking. By design." | "광고 없음. 추적 없음. 설계 원칙입니다." |
@@ -117,7 +117,8 @@ most users see without scrolling.
 - Shots 1–3 must reflect the iOS Flutter app (`apps/mobile`), not the web
   demo. Crypto on mobile is the full Double Ratchet (X25519 + HKDF-SHA256 +
   AES-256-GCM, Ed25519 device signatures).
-- Shot 3: attachments include image, voice, and generic file messages.
+- Shot 3: text messages only. The mobile app has attachments, voice
+  messages and calls switched off, so the shot shows none of them.
   Keep any visible message text generic and safe.
 - Shot 4 (device transfer): show the transfer flow as a deliberate,
   old-device-present action. **Do not** imply backup or recovery — VEIL has

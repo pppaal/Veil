@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/attachments_feature.dart';
 
 /// The top of a chat in the wide layout's pane: who it is with and whether
 /// they are online, the disappearing-message timer, and the local message
@@ -128,7 +129,7 @@ class ChatHeader extends StatelessWidget {
                         ? VeilBannerTone.warn
                         : VeilBannerTone.info,
                   ),
-                  VeilStatusPill(label: l10n.chatPillAttachmentsEncrypted),
+                  if (kAttachmentsEnabled) VeilStatusPill(label: l10n.chatPillAttachmentsEncrypted),
                   VeilStatusPill(label: l10n.chatPillLocalSearchOnly),
                 ],
               ),

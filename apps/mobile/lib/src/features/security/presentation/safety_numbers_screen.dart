@@ -18,6 +18,7 @@ import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/identity_trust.dart';
 import '../domain/safety_numbers.dart';
 import 'safety_number_cards.dart';
+import 'safety_number_dialogs.dart';
 
 /// Safety numbers v2 over the identities this device pinned: what it
 /// actually encrypts to, never what the directory says right now. The
@@ -47,17 +48,20 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   // A scanned code that did not match; the screen stays failed until left.
   bool _scanMismatch = false;
   late final StreamSubscription<PendingIdentityChange> _changes;
+  // Whose identity the loaded screen is about: the peer, or a group's members.
+  Set<String> _shownUserIds = const {};
 
   @override
   void initState() {
     super.initState();
     _loader = _load();
     // A newer change replaces the one on screen, so its number is no longer
-    // the one to compare.
+    // the one to compare; a change about someone shown, raised in any other
+    // conversation, takes their verified mark away.
     _changes = ref
         .read(messengerControllerProvider)
         .identityChanges
-        .where((change) => change.conversationId == widget.conversationId)
+        .where((change) => change.conversationId == widget.conversationId || _shownUserIds.contains(change.userId))
         .listen((_) {
       if (mounted) unawaited(_reload());
     });
@@ -83,17 +87,19 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   Future<_GroupListData> _loadGroupList(ConversationPreview conversation) async {
-    final resolver = ref.read(identityTrustProvider).resolver;
+    final messenger = ref.read(messengerControllerProvider);
     final session = ref.read(appSessionProvider);
     // You can't verify your own identity number against yourself.
     final members = conversation.members.where((m) => m.userId != session.userId).toList(growable: false);
-    // Verified only when every device of theirs is: any pinned device of a
-    // member may hold this group's chain keys, not just the one compared.
+    _shownUserIds = {for (final member in members) member.userId};
+    // Verified only when every device of theirs is, and no identity change
+    // of theirs waits for review, here or in any other conversation: any
+    // pinned device of a member may hold this group's chain keys, not just
+    // the one compared.
+    final pendingUserId = messenger.pendingIdentityChangeFor(conversation.id)?.userId;
     final verified = <String>{
       for (final member in members)
-        if (await resolver.pinsForUser(member.userId) case final pins
-            when pins.isNotEmpty && pins.every((pin) => pin.isVerified))
-          member.userId,
+        if (member.userId != pendingUserId && await messenger.isUserVerified(member.userId)) member.userId,
     };
     return _GroupListData(groupName: conversation.groupMeta?.name, members: members, verifiedUserIds: verified);
   }
@@ -113,6 +119,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
             (m) => m.userId == widget.memberUserId,
             orElse: () => throw StateError('Member not in this group'),
           );
+    _shownUserIds = {peer.userId};
 
     final identityRef = await ref.read(secureStorageProvider).readIdentityPrivateRef();
     if (identityRef == null || identityRef.isEmpty || localUserId == null) {
@@ -132,6 +139,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
     );
     final pending = messenger.pendingIdentityChangeFor(conversation.id);
     final change = pending != null && pending.userId == peer.userId ? pending : null;
+    // A change of theirs that another conversation holds: reviewed there,
+    // and until then nothing here may call them verified.
+    final elsewhere = change == null ? messenger.pendingIdentityChangeAbout(peer.userId) : null;
 
     Future<String?> numberFor(String? key) async =>
         key == null ? null : _safetyNumberOffThread(localUserId, localKey, peer.userId, base64UrlNoPadDecode(key));
@@ -144,6 +154,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       number: await numberFor(pin?.identityKey),
       pendingChange: change,
       pendingNumber: await numberFor(change?.presentedKey),
+      changeElsewhere: elsewhere,
       mayDecline: change != null && messenger.mayDeclineIdentityChange(conversation.id),
       directory: served == null || pin == null
           ? null
@@ -184,6 +195,25 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       _loader = _load();
     });
     await _loader;
+  }
+
+  // Opens another safety-number screen on top of this one; what was decided
+  // there (a member verified, a change settled) shows here on the way back.
+  Future<void> _openAndReload(String location) async {
+    await context.push(location);
+    if (mounted) await _reload();
+  }
+
+  static String _memberLocation(String conversationId, String userId) =>
+      '/safety-numbers/$conversationId?member=${Uri.encodeQueryComponent(userId)}';
+
+  // Where [change] is reviewed: the 1:1 that holds it, or its member's page
+  // in the group that does.
+  String _changeLocation(PendingIdentityChange change) {
+    final holder = ref.read(messengerControllerProvider).conversationById(change.conversationId);
+    return holder?.type == ConversationType.group
+        ? _memberLocation(change.conversationId, change.userId)
+        : '/safety-numbers/${change.conversationId}';
   }
 
   Future<void> _markVerified(_DetailData data) async {
@@ -240,7 +270,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Future<void> _confirmReverification(_DetailData data) async {
     final compared = await showDialog<bool>(
       context: context,
-      builder: (context) => _ReverifyDialog(peer: data.peer.title, number: data.pendingNumber!),
+      builder: (context) => SafetyReverifyDialog(peer: data.peer.title, number: data.pendingNumber!),
     );
     if (compared != true || !mounted) return;
     await _acceptChange(data.pendingChange!, reverified: true);
@@ -248,7 +278,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   Future<void> _compareScannedCode(_DetailData data) async {
     final l10n = AppLocalizations.of(context);
-    final scanned = await showDialog<String>(context: context, builder: (context) => const _ScannedCodeDialog());
+    final scanned = await showDialog<String>(context: context, builder: (context) => const SafetyScannedCodeDialog());
     if (scanned == null || scanned.trim().isEmpty || !mounted) return;
     final change = data.pendingChange;
     final remoteKey = change?.presentedKey ?? data.pin!.identityKey;
@@ -337,12 +367,9 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         future: _loader,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return Padding(
-              padding: const EdgeInsets.all(VeilSpace.lg),
-              child: VeilLoadingBlock(
-                title: l10n.safetyNumbersLoadingTitle,
-                body: l10n.safetyNumbersLoadingBody,
-              ),
+            return VeilLoadingBlock(
+              title: l10n.safetyNumbersLoadingTitle,
+              body: l10n.safetyNumbersLoadingBody,
             );
           }
           if (snapshot.hasError) {
@@ -360,16 +387,13 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
 
   Widget _buildErrorBody(BuildContext context, Object error) {
     final l10n = AppLocalizations.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(VeilSpace.lg),
-      child: VeilErrorState(
-        title: l10n.safetyNumbersErrorTitle,
-        body: error.toString(),
-        action: VeilButton(
-          label: l10n.safetyNumbersRetry,
-          tone: VeilButtonTone.secondary,
-          onPressed: _reload,
-        ),
+    return VeilErrorState(
+      title: l10n.safetyNumbersErrorTitle,
+      body: error.toString(),
+      action: VeilButton(
+        label: l10n.safetyNumbersRetry,
+        tone: VeilButtonTone.secondary,
+        onPressed: _reload,
       ),
     );
   }
@@ -377,21 +401,12 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   Widget _buildGroupList(BuildContext context, _GroupListData data) {
     final l10n = AppLocalizations.of(context);
     if (data.members.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(VeilSpace.lg),
-        child: VeilErrorState(
-          title: l10n.safetyNumbersNoMembersTitle,
-          body: l10n.safetyNumbersNoMembersBody,
-        ),
+      return VeilErrorState(
+        title: l10n.safetyNumbersNoMembersTitle,
+        body: l10n.safetyNumbersNoMembersBody,
       );
     }
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        VeilSpace.md,
-        VeilSpace.sm,
-        VeilSpace.md,
-        VeilSpace.xl,
-      ),
       children: [
         VeilHeroPanel(
           eyebrow: l10n.safetyNumbersGroupEyebrow,
@@ -410,12 +425,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
               trailing: data.verifiedUserIds.contains(member.userId)
                   ? VeilStatusPill(label: l10n.safetyNumbersVerified, tone: VeilBannerTone.good)
                   : VeilStatusPill(label: l10n.safetyNumbersUnverified, tone: VeilBannerTone.info),
-              onTap: () {
-                context.push(
-                  '/safety-numbers/${widget.conversationId}'
-                  '?member=${Uri.encodeQueryComponent(member.userId)}',
-                );
-              },
+              onTap: () => _openAndReload(_memberLocation(widget.conversationId, member.userId)),
             ),
           ),
       ],
@@ -423,21 +433,33 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
   }
 
   Widget _buildDetail(BuildContext context, _DetailData data) {
-    final palette = VeilPalette.dark;
+    final palette = context.veilPalette;
     final l10n = AppLocalizations.of(context);
     final pin = data.pin;
-    final verified = pin?.isVerified ?? false;
     final change = data.pendingChange;
+    // Reviewed in the conversation that holds it; here it only says so.
+    final elsewhere = data.changeElsewhere;
+    final settled = change == null && elsewhere == null;
+    // The pin stays verified while a change of theirs is pending: it is the
+    // one the change puts in question.
+    final verified = settled && (pin?.isVerified ?? false);
     final directoryDiffers = data.directory != null && data.directory != _DirectoryAnswer.matches;
-    final warn = directoryDiffers || change != null || _scanMismatch;
+    final warn = directoryDiffers || !settled || _scanMismatch;
 
     // On a phone the hero fills the first screenful, so a pending change
     // is announced before it; the new number it is about follows below.
-    final changeBanner = change == null ? null : _keyChangedBanner(l10n, data);
-    final bannerFirst = changeBanner != null && context.veilPhoneWidth;
+    final changeBanner = change != null
+        ? _keyChangedBanner(l10n, data)
+        : elsewhere != null
+            ? VeilInlineBanner(
+                tone: VeilBannerTone.warn,
+                title: l10n.safetyNumbersChangedElsewhereTitle,
+                message: l10n.safetyNumbersChangedElsewhereBody(data.peer.title),
+              )
+            : null;
+    final bannerFirst = changeBanner != null && (context.veilPhoneWidth || elsewhere != null);
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(VeilSpace.md, VeilSpace.sm, VeilSpace.md, VeilSpace.xl),
       children: [
         if (bannerFirst) ...[changeBanner, const SizedBox(height: VeilSpace.md)],
         VeilHeroPanel(
@@ -494,16 +516,16 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
           const SizedBox(height: VeilSpace.md),
           SafetyNumberCard(
             groups: formatSafetyNumber(data.number!),
-            label: change == null ? null : l10n.safetyNumbersCardLabelCurrent,
+            label: settled ? null : l10n.safetyNumbersCardLabelCurrent,
           ),
           const SizedBox(height: VeilSpace.md),
           // During a change the peer compares against the new key, so the
           // code to show is the one beside the new number.
-          if (change == null) ...[
+          if (settled) ...[
             SafetyQrCard(content: _qrPayload(data, pin.identityKey), palette: palette),
             const SizedBox(height: VeilSpace.md),
           ],
-          if (verified && change == null)
+          if (verified)
             VeilSurfaceCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,15 +542,22 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
                 ],
               ),
             )
-          else if (change == null)
+          else if (settled)
             VeilButton(
               label: l10n.safetyNumbersMarkVerified,
               onPressed: _scanMismatch ? null : () => _markVerified(data),
             ),
         ],
+        // In place of what would confirm the pinned key (its code, "mark as
+        // verified", a scan): the way to where the new one is reviewed.
+        if (elsewhere != null)
+          VeilButton(
+            label: l10n.safetyNumbersReviewChange,
+            onPressed: () => _openAndReload(_changeLocation(elsewhere)),
+          ),
         if (change != null)
           ..._pendingChangeSection(context, data, change, banner: bannerFirst ? null : changeBanner),
-        if (pin != null || change != null) ...[
+        if (elsewhere == null && (pin != null || change != null)) ...[
           const SizedBox(height: VeilSpace.sm),
           VeilButton(
             label: l10n.safetyNumbersScanAction,
@@ -592,7 +621,7 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
         label: l10n.safetyNumbersCardLabelNew,
       ),
       const SizedBox(height: VeilSpace.md),
-      SafetyQrCard(content: _qrPayload(data, change.presentedKey), palette: VeilPalette.dark),
+      SafetyQrCard(content: _qrPayload(data, change.presentedKey), palette: context.veilPalette),
       const SizedBox(height: VeilSpace.md),
       if (change.requiresReverification)
         VeilButton(
@@ -640,96 +669,6 @@ class _SafetyNumbersScreenState extends ConsumerState<SafetyNumbersScreen> {
       );
 }
 
-class _ReverifyDialog extends StatefulWidget {
-  const _ReverifyDialog({required this.peer, required this.number});
-
-  final String peer;
-  final String number;
-
-  @override
-  State<_ReverifyDialog> createState() => _ReverifyDialogState();
-}
-
-class _ReverifyDialogState extends State<_ReverifyDialog> {
-  bool _compared = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return AlertDialog(
-      title: Text(l10n.safetyNumbersReverifyDialogTitle),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l10n.safetyNumbersReverifyDialogBody(widget.peer)),
-            const SizedBox(height: VeilSpace.md),
-            SafetyNumberCard(groups: formatSafetyNumber(widget.number)),
-            CheckboxListTile(
-              value: _compared,
-              onChanged: (value) => setState(() => _compared = value ?? false),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: Text(l10n.safetyNumbersReverifyAffirm(widget.peer)),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
-          child: Text(l10n.safetyNumbersCancel),
-        ),
-        TextButton(
-          onPressed: _compared ? () => Navigator.of(context).pop(true) : null,
-          child: Text(l10n.safetyNumbersReverifyAccept),
-        ),
-      ],
-    );
-  }
-}
-
-class _ScannedCodeDialog extends StatefulWidget {
-  const _ScannedCodeDialog();
-
-  @override
-  State<_ScannedCodeDialog> createState() => _ScannedCodeDialogState();
-}
-
-class _ScannedCodeDialogState extends State<_ScannedCodeDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    return AlertDialog(
-      title: Text(l10n.safetyNumbersScanAction),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        decoration: InputDecoration(labelText: l10n.safetyNumbersScanFieldLabel),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(l10n.safetyNumbersCancel),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text),
-          child: Text(l10n.safetyNumbersScanVerify),
-        ),
-      ],
-    );
-  }
-}
-
 sealed class _SafetyNumbersViewData {
   const _SafetyNumbersViewData();
 }
@@ -743,6 +682,7 @@ class _DetailData extends _SafetyNumbersViewData {
     required this.number,
     required this.pendingChange,
     required this.pendingNumber,
+    required this.changeElsewhere,
     required this.mayDecline,
     required this.directory,
     required this.isDirect,
@@ -759,6 +699,10 @@ class _DetailData extends _SafetyNumbersViewData {
   /// The identity this conversation is held back on, and its number.
   final PendingIdentityChange? pendingChange;
   final String? pendingNumber;
+
+  /// A change of the peer's identity that another conversation holds for
+  /// review, when this one holds none.
+  final PendingIdentityChange? changeElsewhere;
 
   /// Whether the user may keep the pinned identity instead of [pendingChange].
   final bool mayDecline;

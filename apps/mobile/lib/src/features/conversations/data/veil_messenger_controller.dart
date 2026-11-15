@@ -237,13 +237,44 @@ class VeilMessengerController extends ChangeNotifier {
       _services.ops.run(() => _services.identity.acknowledgeAccount(conversationId));
 
   /// Whether every pinned device of the 1:1 [conversationId]'s peer was
-  /// verified out of band (safety number or QR); false for a group.
+  /// verified out of band (safety number or QR); false for a group, and
+  /// false while who the peer is waits for the user's review: an identity
+  /// change of theirs (the pin that was verified is the one it puts in
+  /// question) or a held account (see [peerAccountHoldFor]).
   Future<bool> isPeerVerified(String conversationId) async {
     final conversation = conversationById(conversationId);
     if (conversation == null || conversation.type != ConversationType.direct) return false;
-    final userId = conversation.recipientBundle.userId;
+    if (peerIdentityInQuestion(conversationId)) return false;
+    return isUserVerified(conversation.recipientBundle.userId);
+  }
+
+  /// Whether who the peer of [conversationId] is waits for the user's review:
+  /// an identity change or a held account in this conversation, or, for a
+  /// 1:1, an identity change of the peer's pending in any other (a group
+  /// they share). A screen that keeps the answer of [isPeerVerified] asks
+  /// this when it builds, so the mark goes the moment the question is raised.
+  bool peerIdentityInQuestion(String conversationId) {
+    if (pendingIdentityChangeFor(conversationId) != null || peerAccountHoldFor(conversationId) != null) return true;
+    final conversation = conversationById(conversationId);
+    return conversation != null &&
+        conversation.type == ConversationType.direct &&
+        pendingIdentityChangeAbout(conversation.recipientBundle.userId) != null;
+  }
+
+  /// The identity change of [userId] that a conversation holds for review,
+  /// if any does. A screen about that contact shows them as unverified while
+  /// it is there, and leads to the conversation that holds it.
+  PendingIdentityChange? pendingIdentityChangeAbout(String userId) => _services.trust.pendingChangeAbout(userId);
+
+  /// Whether every pinned device of [userId] was verified out of band and
+  /// no conversation holds an identity change of theirs for review. What
+  /// shows a contact as verified asks this (or [isPeerVerified]), never the
+  /// pins alone.
+  Future<bool> isUserVerified(String userId) async {
     if (userId.isEmpty) return false;
     final pins = await _services.trust.resolver.pinsForUser(userId);
+    // Asked after the pins are read, so a change that arrived meanwhile counts.
+    if (_services.trust.hasPendingChangeAbout(userId)) return false;
     return pins.isNotEmpty && pins.every((pin) => pin.isVerified);
   }
 

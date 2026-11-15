@@ -540,7 +540,31 @@ class AppLocalizationsKo extends AppLocalizations {
   String get authHandleBindCta => '이 기기에 연결';
 
   @override
+  String get authStageGeneratingKeys => '로컬 신원 생성 중';
+
+  @override
+  String get authStageRegistering => '핸들 등록 중';
+
+  @override
+  String get authStageRequestingChallenge => '챌린지 요청 중';
+
+  @override
+  String get authStageVerifying => '기기 확인 중';
+
+  @override
+  String get authStageComplete => '연결됨';
+
+  @override
+  String get authDefaultDeviceName => 'VEIL 모바일';
+
+  @override
   String get settingsTitle => '설정';
+
+  @override
+  String get settingsProfileTitle => '프로필';
+
+  @override
+  String get settingsProfileSubtitle => '내 핸들과 이 기기에서 부르는 닉네임';
 
   @override
   String get settingsEyebrow => '로컬 기기';
@@ -1084,6 +1108,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get chatAttachmentStateBanner => '첨부 상태';
 
   @override
+  String get chatAttachmentCannotOpen => '이 버전에서는 첨부 파일을 열 수 없습니다.';
+
+  @override
+  String get reactionsMoreTooltip => '반응 더 보기';
+
+  @override
   String get attachmentTitle => '첨부';
 
   @override
@@ -1175,12 +1205,6 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get attachmentSendingAction => '암호화하여 보내는 중';
-
-  @override
-  String get chatReplyLocally => '로컬 답장';
-
-  @override
-  String get chatReplyPrimed => '이 대화에서 빠른 응답을 위한 입력창이 활성화되었습니다.';
 
   @override
   String get chatScreenshotToast =>
@@ -1719,6 +1743,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get navCalls => '통화';
 
   @override
+  String get navSettings => '설정';
+
+  @override
   String get oneTimeLinkTitle => '일회성 비밀 링크';
 
   @override
@@ -2227,6 +2254,17 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get safetyNumbersChangeReplaced =>
       '검토하는 동안 안전 번호가 다시 바뀌었습니다. 수락하기 전에 새 번호를 비교하세요.';
+
+  @override
+  String get safetyNumbersChangedElsewhereTitle => '안전 번호가 바뀌었습니다';
+
+  @override
+  String safetyNumbersChangedElsewhereBody(String peer) {
+    return '$peer님이 다른 대화에서 새 신원 키를 제시했습니다. 그 대화에서 확인하기 전까지 $peer님은 확인됨으로 표시되지 않습니다. 아래는 변경 전에 이 기기에 고정된 번호입니다.';
+  }
+
+  @override
+  String get safetyNumbersReviewChange => '새 키 확인하기';
 
   @override
   String get profileTitle => '프로필';

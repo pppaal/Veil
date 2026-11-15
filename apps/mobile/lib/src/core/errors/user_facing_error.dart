@@ -1,15 +1,10 @@
 import '../security/sensitive_text_redactor.dart';
 
+// What Dart puts before the message of the errors the app throws.
+final _errorTypePrefix = RegExp(r'^(?:Bad state|Exception|StateError): ');
+
 String formatUserFacingError(Object error) {
-  final raw = error.toString().trim();
-  const prefixes = ['Bad state: ', 'Exception: ', 'StateError: '];
-  var normalized = raw;
-  for (final prefix in prefixes) {
-    if (raw.startsWith(prefix)) {
-      normalized = raw.substring(prefix.length).trim();
-      break;
-    }
-  }
+  final normalized = error.toString().trim().replaceFirst(_errorTypePrefix, '').trim();
 
   switch (normalized) {
     case 'Authenticated API session required.':

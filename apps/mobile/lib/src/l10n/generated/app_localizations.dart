@@ -1100,11 +1100,59 @@ abstract class AppLocalizations {
   /// **'Bind this device'**
   String get authHandleBindCta;
 
+  /// No description provided for @authStageGeneratingKeys.
+  ///
+  /// In en, this message translates to:
+  /// **'Generating local identity'**
+  String get authStageGeneratingKeys;
+
+  /// No description provided for @authStageRegistering.
+  ///
+  /// In en, this message translates to:
+  /// **'Registering handle'**
+  String get authStageRegistering;
+
+  /// No description provided for @authStageRequestingChallenge.
+  ///
+  /// In en, this message translates to:
+  /// **'Requesting challenge'**
+  String get authStageRequestingChallenge;
+
+  /// No description provided for @authStageVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Verifying device'**
+  String get authStageVerifying;
+
+  /// No description provided for @authStageComplete.
+  ///
+  /// In en, this message translates to:
+  /// **'Bound'**
+  String get authStageComplete;
+
+  /// No description provided for @authDefaultDeviceName.
+  ///
+  /// In en, this message translates to:
+  /// **'VEIL Mobile'**
+  String get authDefaultDeviceName;
+
   /// No description provided for @settingsTitle.
   ///
   /// In en, this message translates to:
   /// **'Settings'**
   String get settingsTitle;
+
+  /// No description provided for @settingsProfileTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Profile'**
+  String get settingsProfileTitle;
+
+  /// No description provided for @settingsProfileSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Your handle, and the nickname this device calls you by'**
+  String get settingsProfileSubtitle;
 
   /// No description provided for @settingsEyebrow.
   ///
@@ -2036,6 +2084,18 @@ abstract class AppLocalizations {
   /// **'Attachment state'**
   String get chatAttachmentStateBanner;
 
+  /// No description provided for @chatAttachmentCannotOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'This version cannot open attachments.'**
+  String get chatAttachmentCannotOpen;
+
+  /// No description provided for @reactionsMoreTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'More reactions'**
+  String get reactionsMoreTooltip;
+
   /// No description provided for @attachmentTitle.
   ///
   /// In en, this message translates to:
@@ -2209,18 +2269,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Encrypting and sending'**
   String get attachmentSendingAction;
-
-  /// No description provided for @chatReplyLocally.
-  ///
-  /// In en, this message translates to:
-  /// **'Reply locally'**
-  String get chatReplyLocally;
-
-  /// No description provided for @chatReplyPrimed.
-  ///
-  /// In en, this message translates to:
-  /// **'Composer primed for a quick response in this conversation.'**
-  String get chatReplyPrimed;
 
   /// No description provided for @chatScreenshotToast.
   ///
@@ -3158,6 +3206,12 @@ abstract class AppLocalizations {
   /// **'Calls'**
   String get navCalls;
 
+  /// No description provided for @navSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Settings'**
+  String get navSettings;
+
   /// No description provided for @oneTimeLinkTitle.
   ///
   /// In en, this message translates to:
@@ -4087,6 +4141,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The safety number changed again while you were reviewing it. Compare the new number before accepting it.'**
   String get safetyNumbersChangeReplaced;
+
+  /// No description provided for @safetyNumbersChangedElsewhereTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Safety number changed'**
+  String get safetyNumbersChangedElsewhereTitle;
+
+  /// No description provided for @safetyNumbersChangedElsewhereBody.
+  ///
+  /// In en, this message translates to:
+  /// **'{peer} presented a new identity key in another conversation. Until you review it there, {peer} is not shown as verified. The number below is the one this device pinned before the change.'**
+  String safetyNumbersChangedElsewhereBody(String peer);
+
+  /// No description provided for @safetyNumbersReviewChange.
+  ///
+  /// In en, this message translates to:
+  /// **'Review the new key'**
+  String get safetyNumbersReviewChange;
 
   /// No description provided for @profileTitle.
   ///

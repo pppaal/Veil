@@ -30,6 +30,7 @@ import 'layout_seed.dart';
 // memory stores), signed in as atlas or signed out, with seeded content.
 
 const selfHandle = 'atlas';
+const selfDisplayName = 'Atlas Moreau';
 const peerHandle = 'selene';
 
 /// The conversation the chat, safety-number and attachment cases open.
@@ -81,7 +82,14 @@ enum LayoutAccount {
 
 /// Things a chat can be asked to show on top of its messages.
 class ChatAttention {
-  const ChatAttention({this.identityChanged = false, this.failedSends = 0, this.accountHeld = false});
+  const ChatAttention({
+    this.identityChanged = false,
+    this.failedSends = 0,
+    this.accountHeld = false,
+    this.peerTyping = false,
+    this.legacyMessage = false,
+    this.identityChangedInGroup = false,
+  });
 
   /// The peer's identity key changed and the user has not reviewed it.
   final bool identityChanged;
@@ -92,6 +100,18 @@ class ChatAttention {
   /// The chat is listed under the peer's handle with another account than
   /// the one this device talked to, and waits for the user to say so.
   final bool accountHeld;
+
+  /// The peer is typing while the chat is open.
+  final bool peerTyping;
+
+  /// The peer's first message came on a legacy frame whose handshake never
+  /// authenticated its sender, so its bubble carries the badge saying so.
+  final bool legacyMessage;
+
+  /// The peer's identity key changed in the group they share with the
+  /// user, which holds the change for review; their 1:1 holds none. Needs a
+  /// world with the group.
+  final bool identityChangedInGroup;
 
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change, releasing the held account, retrying failed sends.
@@ -123,7 +143,7 @@ class LayoutWorld {
             userId: 'user-$selfHandle',
             deviceId: 'dev-$selfHandle',
             handle: selfHandle,
-            displayName: 'Atlas Moreau',
+            displayName: selfDisplayName,
             onboardingAccepted: true,
             privacyConsentAccepted: true,
             locked: account == LayoutAccount.locked,
@@ -138,20 +158,30 @@ class LayoutWorld {
     ChatAttention attention = const ChatAttention(),
     bool bootstrapping = false,
     bool transferStarted = false,
+    bool withGroup = false,
   }) async {
     final world = LayoutWorld._(identities, account, locale);
-    await world._build(attention: attention, bootstrapping: bootstrapping, transferStarted: transferStarted);
+    await world._build(
+      attention: attention,
+      bootstrapping: bootstrapping,
+      transferStarted: transferStarted,
+      withGroup: withGroup,
+    );
     return world;
   }
+
+  late final ChatAttention _attention;
 
   Future<void> _build({
     required ChatAttention attention,
     required bool bootstrapping,
     required bool transferStarted,
+    required bool withGroup,
   }) async {
+    _attention = attention;
     seedParties(relay, identities);
     if (account == LayoutAccount.signedIn || account == LayoutAccount.locked) {
-      await seedConversations(relay, cache, locale: locale);
+      await seedConversations(relay, cache, locale: locale, withGroup: withGroup);
     }
     api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!, locale: locale);
 
@@ -181,6 +211,12 @@ class LayoutWorld {
       peer: peer,
     );
     if (_hasAccount) await messenger.applySession(_session);
+    // After the session is applied, which forgets what was pending before it.
+    if (attention.identityChangedInGroup) {
+      assert(withGroup, 'a change in the group needs the group');
+      // Their device presents another key there: refused, and held.
+      await trust.admit(groupConversationId, peer.userId, peer.deviceId, identities.self.identityPublicKey);
+    }
 
     final session = _LayoutSession(storage, api, identities.adapter, _session, bootstrapping: bootstrapping);
     container = ProviderContainer(overrides: [
@@ -208,10 +244,22 @@ class LayoutWorld {
     if (transferStarted) await container.read(deviceTransferControllerProvider).initTransfer();
   }
 
+  /// What only happens while a chat is open: the peer starts typing. Call
+  /// once the screen is up; the indicator clears by itself after 5 s.
+  void startLiveAttention() {
+    if (_attention.peerTyping) messenger.presenceTyping.typingStarted(chatConversationId, peerHandle);
+  }
+
   /// The app at [location]: the real route table (so tab screens get their
-  /// bottom bar), the dark theme the product is designed in, [locale].
-  /// [extraRoutes] reach screens no route leads to yet.
-  Widget app({required String location, Object? extra, List<RouteBase> extraRoutes = const []}) {
+  /// bottom bar), [locale], and the dark theme the product is designed in
+  /// unless [themeMode] asks for the light one. [extraRoutes] reach screens
+  /// the route table leaves out.
+  Widget app({
+    required String location,
+    Object? extra,
+    List<RouteBase> extraRoutes = const [],
+    ThemeMode themeMode = ThemeMode.dark,
+  }) {
     final router = _router = GoRouter(
       initialLocation: location,
       initialExtra: extra,
@@ -223,7 +271,7 @@ class LayoutWorld {
         title: 'VEIL',
         theme: VeilTheme.light(),
         darkTheme: VeilTheme.dark(),
-        themeMode: ThemeMode.dark,
+        themeMode: themeMode,
         debugShowCheckedModeBanner: false,
         locale: Locale(locale),
         routerConfig: router,
@@ -334,6 +382,21 @@ class _LayoutMessenger extends VeilMessengerController {
       conversationId == chatConversationId && attention.failedSends > 0
           ? attention.failedSends
           : super.pendingCountFor(conversationId);
+
+  @override
+  Future<DecryptedMessage> decryptMessage(ChatMessage message) async {
+    final opened = await super.decryptMessage(message);
+    if (!attention.legacyMessage || !opened.isOk || message.isMine) return opened;
+    final first = super.messagesFor(chatConversationId).where((each) => !each.isMine).firstOrNull;
+    if (first?.id != message.id) return opened;
+    return DecryptedMessage(
+      body: opened.body,
+      messageKind: opened.messageKind,
+      expiresAt: opened.expiresAt,
+      attachment: opened.attachment,
+      status: DecryptStatus.legacyUnauthenticated,
+    );
+  }
 
   @override
   List<ChatMessage> messagesFor(String conversationId) {

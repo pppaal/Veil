@@ -21,14 +21,11 @@ Veil is an end-to-end encrypted messenger. The server relays ciphertext
 envelopes; it never sees the content of your messages.
 
 **What Veil is**
-- End-to-end encrypted messages and attachments. Server sees ciphertext.
+- End-to-end encrypted messages. Server sees ciphertext.
 - No phone number, no email, no address book upload. You pick a handle.
 - Device-bound identity. No cloud account. No silent sync across devices
   you didn't explicitly add.
-- Disappearing messages (per-conversation timer) and view-once messages
-  (hard-deleted on first read, on every device).
-- Block, mute, and report without leaking "I blocked you" as visible
-  state to the other side.
+- Disappearing messages (per-conversation timer).
 
 **What Veil is not**
 - Not ad-supported. Not analytics-monetized.
@@ -42,6 +39,10 @@ People who want their private conversations to actually be private. If
 "private" to you means "the company running the server can't read my
 messages even if they try," Veil is for you.
 
+Not in the mobile build, so not in this listing: view-once messages,
+block, mute and report. The relay has the endpoints; the app has no screen
+for any of them yet. Put a bullet back when its screen ships.
+
 ## Category
 
 - Primary: **Communication**
@@ -52,7 +53,11 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: YES (abuse reports to a privileged queue)
+- In-app reporting: NO in the current build. The relay takes abuse reports
+  (`POST /safety/reports`), but the mobile app has no screen that files
+  one. Google Play expects in-app reporting and blocking in an app with
+  user-generated content: a launch blocker. Answer YES once the screen
+  exists.
 - Interactive features: chat only; no live video to strangers, no
   unmoderated public rooms
 
@@ -95,13 +100,20 @@ Declared in `AndroidManifest.xml` and surfaced in Play Console:
 | INTERNET                     | network             | no              |
 | ACCESS_NETWORK_STATE         | reconnect logic     | no              |
 | POST_NOTIFICATIONS (33+)     | message wake only   | yes (Android 13+)|
-| CAMERA (feature-gated)       | attachments         | yes             |
-| RECORD_AUDIO (feature-gated) | voice messages/calls| yes             |
-| READ_MEDIA_IMAGES (33+)      | attachments         | yes             |
+| CAMERA                       | attachments (switched off) | never asked |
+| RECORD_AUDIO                 | voice messages, calls (switched off) | never asked |
+| READ_MEDIA_IMAGES/VIDEO/AUDIO (33+) | attachments (switched off) | never asked |
 | USE_BIOMETRIC                | app lock            | no (per-use)    |
-| FOREGROUND_SERVICE (calls)   | active call only    | declared        |
 
 No `READ_CONTACTS`, no `ACCESS_FINE_LOCATION`, no `QUERY_ALL_PACKAGES`.
+
+Attachments, voice messages and calls are switched off in the mobile app
+(`apps/mobile/lib/src/features/*/*_feature.dart`), so nothing in the build
+asks for the camera, the microphone or the media library at runtime. The
+manifest still declares those permissions. Remove them (and the matching
+usage strings in `ios/Runner/Info.plist`) before submitting a build that
+ships without those features: a store reviewer reads a declared permission
+as a feature.
 
 ## Support & policy URLs
 

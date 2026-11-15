@@ -11,6 +11,7 @@ import '../../../core/security/platform_security_service.dart';
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../attachments/attachments_feature.dart';
 import '../../conversations/data/conversation_models.dart';
 import '../../conversations/data/messenger/conversation_peer_bindings.dart';
 import '../../conversations/data/veil_messenger_controller.dart';
@@ -68,8 +69,10 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Duration? _messageTtl;
   int? _observedConversationTimer;
   // Whether every pinned device of the 1:1 peer was verified out of band,
-  // for the mark under the header; read again after the safety numbers.
+  // for the mark under the header; read again after the safety numbers and
+  // whenever a question about who the peer is has been settled.
   bool _peerVerified = false;
+  bool _peerInQuestion = false;
 
   @override
   String get conversationId => widget.conversationId;
@@ -182,6 +185,14 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
     final isLoadingHistory =
         controller.isLoadingHistoryFor(widget.conversationId);
 
+    // Read when the chat opened; a change that arrives later, in this chat
+    // or in any other with the peer, takes the mark away at once, before
+    // anything is read again. Once it is settled the pins are read again.
+    final peerInQuestion = controller.peerIdentityInQuestion(widget.conversationId);
+    if (_peerInQuestion && !peerInQuestion) scheduleMicrotask(_loadPeerVerified);
+    _peerInQuestion = peerInQuestion;
+    final peerVerified = _peerVerified && !peerInQuestion;
+
     final banners = ChatStatusBanners(
       compact: !widget.embedded,
       controller: controller,
@@ -190,7 +201,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       messages: messages,
       hasMoreHistory: hasMoreHistory,
       isLoadingHistory: isLoadingHistory,
-      peerVerified: _peerVerified,
+      peerVerified: peerVerified,
       hasSearchQuery: hasSearchQuery,
       searching: isSearchingMessages,
       searchHitCount: filteredMessages.length,
@@ -212,7 +223,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       sentAtFormat: _sentAtFormat,
       onStartMessage: () => _composerFocusNode.requestFocus(),
       onResolveAttachment: _showAttachmentTicket,
-      onReply: _handleReplyGesture,
       onReact: _showReactionPicker,
       padding: widget.embedded
           ? EdgeInsets.zero
@@ -228,7 +238,9 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       focusNode: _composerFocusNode,
       messageTtl: _messageTtl,
       busy: controller.isBusy,
-      onAttach: widget.embedded ? null : () => context.push('/attachment/${widget.conversationId}'),
+      onAttach: widget.embedded || !kAttachmentsEnabled
+          ? null
+          : () => context.push('/attachment/${widget.conversationId}'),
     );
 
     // A phone shows the conversation first: the bar carries what the header
@@ -237,7 +249,7 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       return ChatPhoneScaffold(
         conversation: conversation,
         presence: controller.presenceTyping,
-        peerVerified: _peerVerified,
+        peerVerified: peerVerified,
         messageTtl: _messageTtl,
         searchController: searchController,
         searching: isSearchingMessages,
@@ -342,17 +354,6 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       return;
     }
     await showAttachmentTicketDialog(context, url);
-  }
-
-  void _handleReplyGesture(ChatMessage message) {
-    VeilHaptics.light();
-    _composerFocusNode.requestFocus();
-    final l10n = AppLocalizations.of(context);
-    VeilToast.show(
-      context,
-      message: l10n.chatReplyPrimed,
-      tone: VeilBannerTone.info,
-    );
   }
 
   Future<void> _showReactionPicker(ChatMessage message) async {

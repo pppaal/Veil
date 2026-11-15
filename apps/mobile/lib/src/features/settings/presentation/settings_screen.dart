@@ -67,6 +67,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SizedBox(height: VeilSpace.md),
+          VeilListTileCard(
+            key: const ValueKey('settings-profile'),
+            title: l10n.settingsProfileTitle,
+            subtitle: l10n.settingsProfileSubtitle,
+            leading: const Icon(Icons.person_outline_rounded),
+            onTap: () => context.push('/profile'),
+          ),
+          const SizedBox(height: VeilSpace.md),
           VeilSectionLabel(l10n.settingsSectionDeviceGraph),
           const SizedBox(height: VeilSpace.sm),
           FutureBuilder<_DeviceGraphSnapshot>(
@@ -181,9 +189,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     showSelectedIcon: false,
                     onSelectionChanged: (selection) {
                       VeilHaptics.selection();
-                      ref
-                          .read(themeModeProvider.notifier)
-                          .setThemeMode(selection.first);
+                      ref.read(themeModeProvider.notifier).setThemeMode(selection.first);
                     },
                   ),
                 ),
@@ -287,9 +293,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     return;
                   }
 
-                  await ref
-                      .read(appSessionProvider.notifier)
-                      .wipeLocalDeviceState();
+                  await ref.read(appSessionProvider.notifier).wipeLocalDeviceState();
                   if (context.mounted) {
                     context.go('/splash');
                   }
@@ -318,9 +322,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   }
 
                   try {
-                    await ref
-                        .read(appSessionProvider.notifier)
-                        .revokeCurrentDevice();
+                    await ref.read(appSessionProvider.notifier).revokeCurrentDevice();
                     if (context.mounted) {
                       context.go('/create-account');
                     }
@@ -380,9 +382,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   if (confirmed != true) return;
 
                   try {
-                    await ref
-                        .read(appSessionProvider.notifier)
-                        .deleteAccount();
+                    await ref.read(appSessionProvider.notifier).deleteAccount();
                     if (context.mounted) {
                       context.go('/splash');
                     }

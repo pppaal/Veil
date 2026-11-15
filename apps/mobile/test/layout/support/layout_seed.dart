@@ -10,9 +10,9 @@ import 'layout_world.dart';
 // What the layout cases show: eight conversations with names of every
 // length and script, one chat with a real exchange in it (a long message,
 // a reply, an attachment, a long link, a disappearing message, a system
-// notice), one conversation with no message yet, contacts, calls, devices
-// and stories. Message bodies follow the locale of the run, because Korean
-// and English wrap differently.
+// notice), one conversation with no message yet, a group for the cases that
+// ask for one, contacts, calls, devices and stories. Message bodies follow
+// the locale of the run, because Korean and English wrap differently.
 
 /// Peers by handle, with the name the relay lists them under. Names are
 /// user data, so both locales see the same mix of scripts and lengths.
@@ -47,7 +47,15 @@ void seedParties(FakeRelay relay, LayoutIdentities identities) {
 }
 
 class _Line {
-  const _Line(this.mine, this.en, this.ko, {this.kind = MessageKind.text, this.attachment = false, this.expires = false});
+  const _Line(
+    this.mine,
+    this.en,
+    this.ko, {
+    this.kind = MessageKind.text,
+    this.attachment = false,
+    this.expires = false,
+    this.from,
+  });
 
   final bool mine;
   final String en;
@@ -55,6 +63,9 @@ class _Line {
   final MessageKind kind;
   final bool attachment;
   final bool expires;
+
+  /// Who of a group wrote it, when it is not this device's user.
+  final String? from;
 }
 
 const _chat = <_Line>[
@@ -97,9 +108,31 @@ const _others = <String, _Line?>{
   'jiwoo': _Line(false, '내일 회의 자료는 여기로 보낼게', '내일 회의 자료는 여기로 보낼게'),
 };
 
+/// The group of the group cases: this user and three of the peers, in a
+/// legacy group (frames through the pairwise engine, like every 1:1 here).
+const groupConversationId = 'conv-group';
+const groupMemberHandles = [peerHandle, 'jiwoo', 'noor'];
+
+const _group = <_Line>[
+  _Line(false, 'The movers can do the 14th or the 16th.', '이삿짐 센터는 14일이나 16일에 된대.', from: peerHandle),
+  _Line(false, 'The 14th works for me.', '저는 14일 괜찮아요.', from: 'jiwoo'),
+  _Line(true, '14th then. I will book the lift for the morning.', '그럼 14일로 하자. 오전에 엘리베이터 예약해 둘게.'),
+  _Line(false, 'I can bring the van after six, if someone helps me carry the shelves down.',
+      '여섯 시 이후에 밴 가져갈 수 있어요. 책장 내리는 것만 누가 도와주면 돼요.', from: 'noor'),
+];
+
+/// How many messages the group's conversation holds.
+int get groupLineCount => _group.length;
+
 /// Fills the relay with the conversations above and stores the content of
-/// this device's own messages, which no device can decrypt back.
-Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {required String locale}) async {
+/// this device's own messages, which no device can decrypt back. With
+/// [withGroup] the newest conversation is the group.
+Future<void> seedConversations(
+  FakeRelay relay,
+  LayoutMemoryCache cache, {
+  required String locale,
+  bool withGroup = false,
+}) async {
   final sealer = createDefaultCryptoAdapter();
   final korean = locale == 'ko';
   final day = DateTime.utc(2026, 4, 7, 8);
@@ -174,7 +207,53 @@ Future<void> seedConversations(FakeRelay relay, LayoutMemoryCache cache, {requir
   for (final message in history.take(history.length - 1)) {
     if (message['deliveredAt'] != null) message['readAt'] = message['deliveredAt'];
   }
+  if (!withGroup) return;
+  relay.addGroup(groupConversationId, [selfHandle, ...groupMemberHandles], useSenderKeys: false);
+  for (final line in _group) {
+    await send(groupConversationId, line.from ?? peerHandle, line);
+  }
 }
+
+// What the story cases show; a caption follows the run's language, except
+// one that is Korean in both.
+const _storyCaptions = <(String handle, String en, String ko)>[
+  (peerHandle, 'Sunset over the river tonight', '오늘 한강에서 본 노을'),
+  (peerHandle, 'Packing is done!', '이사 준비 끝!'),
+  ('maximilian', 'First day at the new office', '새 사무실 첫날'),
+  ('jiwoo', '주말 등산', '주말 등산'),
+  ('noor', 'Site visit', '현장 답사'),
+];
+
+/// The devices the settings screen lists.
+const _deviceNames = ['Pixel 9 Pro Fold', 'MacBook Air', 'Old iPhone'];
+
+const _transferSessionId = '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d';
+const _transferToken = 'vt_3QmZ8xT1uKcR7pLwN5sYhB2dJ9aFgE4o';
+
+/// What a case types into a search field.
+const conversationSearchQuery = 'se';
+const chatSearchQuery = 'lease';
+
+/// The names of the fixtures: people, handles and devices. A screen may show
+/// one whole, one word of it, or its first letter (an avatar).
+List<String> get fixtureNames => [
+      selfHandle,
+      selfDisplayName,
+      ...peerNames.keys,
+      ...peerNames.values.nonNulls,
+      ..._deviceNames,
+    ];
+
+/// Everything else of the fixtures a screen shows as it is: message
+/// bodies, story captions, ids and codes.
+List<String> get fixtureTexts => [
+      for (final line in [..._chat, ..._others.values.nonNulls, ..._group]) ...[line.en, line.ko],
+      for (final (_, en, ko) in _storyCaptions) ...[en, ko],
+      for (final handle in [selfHandle, ...peerNames.keys]) ...['user-$handle', 'dev-$handle', 'conv-$handle'],
+      groupConversationId,
+      _transferSessionId,
+      _transferToken,
+    ];
 
 /// The body of message [number] of a history made by [seedHistory].
 String historyLine(int number) => 'History line $number';
@@ -303,12 +382,15 @@ class LayoutRelayClient extends FakeRelayClient {
           'expiresAt': now.add(Duration(hours: 22 - index)).toIso8601String(),
         };
     final korean = locale == 'ko';
+    final seen = <String, int>{};
     return [
-      story(peerHandle, 0, korean ? '오늘 한강에서 본 노을' : 'Sunset over the river tonight', viewed: false),
-      story(peerHandle, 1, korean ? '이사 준비 끝!' : 'Packing is done!', viewed: false),
-      story('maximilian', 0, korean ? '새 사무실 첫날' : 'First day at the new office', viewed: true),
-      story('jiwoo', 0, '주말 등산', viewed: false),
-      story('noor', 0, korean ? '현장 답사' : 'Site visit', viewed: true),
+      for (final (handle, en, ko) in _storyCaptions)
+        story(
+          handle,
+          seen.update(handle, (count) => count + 1, ifAbsent: () => 0),
+          korean ? ko : en,
+          viewed: handle == 'maximilian' || handle == 'noor',
+        ),
     ];
   }
 
@@ -345,18 +427,18 @@ class LayoutRelayClient extends FakeRelayClient {
     return {
       'activeDeviceId': me.deviceId,
       'items': [
-        device(me.deviceId, 'Pixel 9 Pro Fold', 'android', 'current', trustedAt: DateTime.utc(2026, 4, 1, 8)),
-        device('dev-laptop', 'MacBook Air', 'macos', 'stale',
-            trustedAt: DateTime.utc(2026, 3, 20, 8), joinedFrom: 'Pixel 9 Pro Fold'),
-        device('dev-old', 'Old iPhone', 'ios', 'revoked', trustedAt: DateTime.utc(2026, 3, 10, 8), revoked: true),
+        device(me.deviceId, _deviceNames[0], 'android', 'current', trustedAt: DateTime.utc(2026, 4, 1, 8)),
+        device('dev-laptop', _deviceNames[1], 'macos', 'stale',
+            trustedAt: DateTime.utc(2026, 3, 20, 8), joinedFrom: _deviceNames[0]),
+        device('dev-old', _deviceNames[2], 'ios', 'revoked', trustedAt: DateTime.utc(2026, 3, 10, 8), revoked: true),
       ],
     };
   }
 
   @override
   Future<Map<String, dynamic>> initTransfer(String accessToken, String deviceId) async => {
-        'sessionId': '8b6f0c1e-2d3a-4f5b-9c7d-1e2f3a4b5c6d',
-        'transferToken': 'vt_3QmZ8xT1uKcR7pLwN5sYhB2dJ9aFgE4o',
+        'sessionId': _transferSessionId,
+        'transferToken': _transferToken,
         'expiresAt': DateTime.now().toUtc().add(const Duration(minutes: 4, seconds: 30)).toIso8601String(),
       };
 }

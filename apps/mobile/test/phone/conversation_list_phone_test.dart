@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:veil_mobile/src/features/calls/calls_feature.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_direct_chat_screen.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/start_group_screen.dart';
 import 'package:veil_mobile/src/features/security_status/presentation/security_status_screen.dart';
@@ -77,7 +78,9 @@ void main() {
     });
   });
 
-  testWidgets('keeps security status and settings in the bar', (tester) async {
+  // Settings is a tab of the bottom bar, so the bar above keeps only what
+  // has no tab: security status.
+  testWidgets('keeps security status in the bar, and has settings as a tab', (tester) async {
     await withPhoneApp(tester, identities, location: '/conversations', body: (world) async {
       await tester.tap(find.byTooltip('Security status'));
       await pumpFrames(tester);
@@ -85,7 +88,8 @@ void main() {
       await tester.tap(find.byTooltip('Back'));
       await pumpFrames(tester);
 
-      await tester.tap(find.byTooltip('Settings'));
+      expect(find.byTooltip('Settings'), findsNothing, reason: 'no second way to settings in the bar');
+      await tester.tap(find.text('Settings'));
       await pumpFrames(tester);
       expect(find.byType(SettingsScreen), findsOneWidget);
     });
@@ -135,9 +139,11 @@ void main() {
         expect(find.text(part), findsOneWidget);
       }
       expect(find.widgetWithText(TextField, '대화와 메시지 검색'), findsOneWidget);
-      for (final tab in ['채팅', '연락처', '통화']) {
+      for (final tab in ['채팅', '연락처', '설정']) {
         expect(find.text(tab), findsOneWidget);
       }
+      expect(find.text('통화'), kCallsEnabled ? findsOneWidget : findsNothing,
+          reason: 'the Calls tab is there only while calls are switched on (kCallsEnabled)');
       expect(find.text('Chats'), findsNothing);
       expect(find.byTooltip('새 대화'), findsOneWidget);
     });

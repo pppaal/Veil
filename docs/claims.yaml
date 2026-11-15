@@ -55,7 +55,7 @@ claims:
       - file: store/appstore/metadata-ko.txt
         quote: "메신저,암호화,프라이버시,E2EE,보안,채팅,익명,PIN,개인정보"
       - file: store/appstore/screenshot-spec.md
-        quote: "3 | Encrypted chat with attachments | E2EE message thread with image/voice/file attachments, typing indicator, optional read receipts. | \"End-to-end encrypted. Servers never see your messages in plaintext.\" | \"종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다.\""
+        quote: "3 | Encrypted chat | E2EE message thread with reactions, a disappearing-message timer, typing indicator, optional read receipts. | \"End-to-end encrypted. Servers never see your messages in plaintext.\" | \"종단간 암호화. 서버는 메시지 평문을 볼 수 없습니다.\""
       - file: store/appstore/submission-checklist.md
         quote: "VEIL ships its own E2E crypto (not OS-only / not HTTPS-only), so the truthful value is YES/true."
       - file: store/play/full-en.txt
@@ -83,19 +83,19 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "Promotional text (iOS, ≤170 chars, updatable without review): End-to-end encrypted messages with no phone number, no email and no real name."
       - file: docs/app-store-listing-metadata.md
-        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; mention client-side block/report)."
+        quote: "Answer the ITunes/Play content questionnaire truthfully (user communication, no moderation of E2E content is possible by design; the mobile app has no block or report screen yet, so claim none)."
       - file: docs/launch/app-store-listing.md
         quote: "End-to-end encrypted."
       - file: docs/launch/app-store-listing.md
         quote: "Veil is an end-to-end encrypted messenger built around a single idea: what you say on Veil never leaves your device in a form the server can read."
       - file: docs/launch/app-store-listing.md
-        quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content — this is the honest rating even though we ship a reporting path)."
+        quote: "17+ (unrestricted web access not enabled, but user-generated content is end-to-end encrypted so we cannot moderate private content)."
       - file: docs/launch/play-store-listing.md
         quote: "End-to-end encrypted messenger."
       - file: docs/launch/play-store-listing.md
         quote: "Veil is an end-to-end encrypted messenger."
       - file: docs/launch/play-store-listing.md
-        quote: "End-to-end encrypted messages and attachments."
+        quote: "End-to-end encrypted messages."
       - file: docs/app-store-listing-metadata.md
         quote: "Collected and not linked: Other User Content for the encrypted message payloads, photos and other attachments, which the server holds only as ciphertext it cannot decrypt."
       - file: docs/launch/app-store-listing.md
@@ -304,7 +304,7 @@ claims:
       - file: docs/app-store-listing-metadata.md
         quote: "No backup."
       - file: docs/app-store-listing-metadata.md
-        quote: "Suggested shots: onboarding \"no recovery\" warning, a conversation, voice message, attachment preview, settings/theme."
+        quote: "Suggested shots: onboarding \"no recovery\" warning, a conversation, the safety number screen, settings/theme."
       - file: docs/launch/app-store-listing.md
         quote: "No backup."
       - file: docs/launch/play-store-listing.md

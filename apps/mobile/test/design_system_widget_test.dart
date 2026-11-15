@@ -79,6 +79,7 @@ void main() {
                   handle: 'atlas',
                   subtitle: 'Encrypted message',
                   timestamp: '08:45',
+                  semanticLabel: 'Conversation with Atlas',
                   selected: true,
                   meta: Wrap(
                     spacing: 8,
@@ -124,6 +125,7 @@ void main() {
                   focusNode: focusNode,
                   enabled: true,
                   onSubmit: () {},
+                  label: 'Type a message',
                   trailing: VeilButton(
                     expanded: false,
                     label: 'Send',

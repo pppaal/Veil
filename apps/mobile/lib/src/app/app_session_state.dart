@@ -1,15 +1,6 @@
-enum AuthFlowStage {
-  idle('Idle'),
-  generatingKeys('Generating local identity'),
-  registering('Registering handle'),
-  requestingChallenge('Requesting challenge'),
-  verifying('Verifying device'),
-  complete('Bound');
-
-  const AuthFlowStage(this.label);
-
-  final String label;
-}
+/// How far registering this device has got. The screen that shows it names
+/// each stage in the user's language.
+enum AuthFlowStage { idle, generatingKeys, registering, requestingChallenge, verifying, complete }
 
 class AppSessionState {
   static const Object _unset = Object();

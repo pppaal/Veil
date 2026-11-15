@@ -79,6 +79,16 @@ class IdentityTrust {
 
   PendingIdentityChange? pendingFor(String conversationId) => _pending[conversationId];
 
+  /// The change about one of [userId]'s devices that a conversation holds
+  /// for review, if any does: the oldest still pending. Until the user
+  /// settles it, what the pins say about that contact is in question, a
+  /// verified mark above all.
+  PendingIdentityChange? pendingChangeAbout(String userId) =>
+      _pending.values.where((change) => change.userId == userId).firstOrNull;
+
+  /// Whether any conversation holds a change about one of [userId]'s devices.
+  bool hasPendingChangeAbout(String userId) => pendingChangeAbout(userId) != null;
+
   /// Whether [conversationId] may use [identityKey] for the device. Refusals
   /// are recorded as the conversation's pending change.
   Future<bool> admit(String conversationId, String userId, String deviceId, String identityKey) async {

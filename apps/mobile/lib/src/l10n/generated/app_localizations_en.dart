@@ -565,7 +565,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get authHandleBindCta => 'Bind this device';
 
   @override
+  String get authStageGeneratingKeys => 'Generating local identity';
+
+  @override
+  String get authStageRegistering => 'Registering handle';
+
+  @override
+  String get authStageRequestingChallenge => 'Requesting challenge';
+
+  @override
+  String get authStageVerifying => 'Verifying device';
+
+  @override
+  String get authStageComplete => 'Bound';
+
+  @override
+  String get authDefaultDeviceName => 'VEIL Mobile';
+
+  @override
   String get settingsTitle => 'Settings';
+
+  @override
+  String get settingsProfileTitle => 'Profile';
+
+  @override
+  String get settingsProfileSubtitle =>
+      'Your handle, and the nickname this device calls you by';
 
   @override
   String get settingsEyebrow => 'LOCAL DEVICE';
@@ -1122,6 +1147,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAttachmentStateBanner => 'Attachment state';
 
   @override
+  String get chatAttachmentCannotOpen =>
+      'This version cannot open attachments.';
+
+  @override
+  String get reactionsMoreTooltip => 'More reactions';
+
+  @override
   String get attachmentTitle => 'Attachment';
 
   @override
@@ -1214,13 +1246,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get attachmentSendingAction => 'Encrypting and sending';
-
-  @override
-  String get chatReplyLocally => 'Reply locally';
-
-  @override
-  String get chatReplyPrimed =>
-      'Composer primed for a quick response in this conversation.';
 
   @override
   String get chatScreenshotToast =>
@@ -1791,6 +1816,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navCalls => 'Calls';
 
   @override
+  String get navSettings => 'Settings';
+
+  @override
   String get oneTimeLinkTitle => 'One-time secret link';
 
   @override
@@ -2315,6 +2343,17 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get safetyNumbersChangeReplaced =>
       'The safety number changed again while you were reviewing it. Compare the new number before accepting it.';
+
+  @override
+  String get safetyNumbersChangedElsewhereTitle => 'Safety number changed';
+
+  @override
+  String safetyNumbersChangedElsewhereBody(String peer) {
+    return '$peer presented a new identity key in another conversation. Until you review it there, $peer is not shown as verified. The number below is the one this device pinned before the change.';
+  }
+
+  @override
+  String get safetyNumbersReviewChange => 'Review the new key';
 
   @override
   String get profileTitle => 'Profile';

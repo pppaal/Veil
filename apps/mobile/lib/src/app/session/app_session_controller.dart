@@ -111,9 +111,12 @@ class AppSessionController extends StateNotifier<AppSessionState> {
     state = state.copyWith(privacyConsentAccepted: true);
   }
 
+  /// [deviceName] is the label the relay lists this device under, in the
+  /// user's language; without one the device is listed by its platform.
   Future<void> registerAndAuthenticate({
     required String handle,
     String? displayName,
+    String? deviceName,
   }) async {
     state = state.copyWith(
         errorMessage: null, authFlowStage: AuthFlowStage.generatingKeys);
@@ -137,7 +140,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       // relay learns the handle and keys only.
       final registered = await _apiClient.register({
         'handle': handle,
-        'deviceName': 'VEIL Mobile',
+        'deviceName': _deviceLabel(deviceName),
         'platform': _platformName(),
         'publicIdentityKey': identity.identityPublicKey,
         'signedPrekeyBundle': identity.signedPrekeyBundle,
@@ -432,9 +435,7 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       final claimed = await _apiClient.claimTransfer({
         'sessionId': sessionId,
         'transferToken': transferToken,
-        'newDeviceName': deviceName?.trim().isNotEmpty == true
-            ? deviceName!.trim()
-            : 'VEIL ${Platform.isIOS ? 'iPhone' : 'Mobile'}',
+        'newDeviceName': _deviceLabel(deviceName),
         'platform': _platformName(),
         'publicIdentityKey': identity.identityPublicKey,
         'signedPrekeyBundle': identity.signedPrekeyBundle,
@@ -690,6 +691,13 @@ class AppSessionController extends StateNotifier<AppSessionState> {
       errorMessage: null,
     );
   }
+}
+
+// The label a device is listed under: the one its screen chose, in the
+// user's language, or else the product and the platform's wire name.
+String _deviceLabel(String? chosen) {
+  final label = chosen?.trim() ?? '';
+  return label.isEmpty ? 'VEIL ${_platformName()}' : label;
 }
 
 String _platformName() {

@@ -8,7 +8,9 @@ import 'chat_room_labels.dart';
 
 /// The attachment a message carries, from its authenticated payload: what
 /// kind of file and how large, the button that asks for a download
-/// ticket, and a retry when the message did not send.
+/// ticket, and a retry when the message did not send. Without [onResolve]
+/// (a build that cannot open attachments) a line says so in the button's
+/// place.
 class MessageAttachmentCard extends StatelessWidget {
   const MessageAttachmentCard({
     super.key,
@@ -22,7 +24,9 @@ class MessageAttachmentCard extends StatelessWidget {
   final AttachmentReference attachment;
   final bool resolving;
   final String? downloadError;
-  final VoidCallback onResolve;
+
+  /// Asks for the download; null when this build cannot open attachments.
+  final VoidCallback? onResolve;
   final VoidCallback? onRetry;
 
   @override
@@ -79,28 +83,40 @@ class MessageAttachmentCard extends StatelessWidget {
               tone: VeilBannerTone.warn,
             ),
           ],
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              VeilButton(
-                expanded: false,
-                tone: VeilButtonTone.secondary,
-                onPressed: resolving ? null : onResolve,
-                label: resolving
-                    ? l10n.chatAttachmentResolvingAction
-                    : l10n.chatAttachmentResolveAction,
-              ),
-              if (onRetry != null)
-                VeilButton(
-                  expanded: false,
-                  tone: VeilButtonTone.secondary,
-                  onPressed: onRetry,
-                  label: l10n.chatRetrySend,
-                ),
-            ],
-          ),
+          if (onResolve == null) ...[
+            const SizedBox(height: 8),
+            Text(
+              l10n.chatAttachmentCannotOpen,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.72),
+                  ),
+            ),
+          ],
+          if (onResolve != null || onRetry != null) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (onResolve != null)
+                  VeilButton(
+                    expanded: false,
+                    tone: VeilButtonTone.secondary,
+                    onPressed: resolving ? null : onResolve,
+                    label: resolving
+                        ? l10n.chatAttachmentResolvingAction
+                        : l10n.chatAttachmentResolveAction,
+                  ),
+                if (onRetry != null)
+                  VeilButton(
+                    expanded: false,
+                    tone: VeilButtonTone.secondary,
+                    onPressed: onRetry,
+                    label: l10n.chatRetrySend,
+                  ),
+              ],
+            ),
+          ],
         ],
       ),
     );

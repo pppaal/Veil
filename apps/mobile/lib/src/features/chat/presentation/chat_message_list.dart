@@ -35,7 +35,6 @@ class ChatMessageList extends ConsumerWidget {
     required this.sentAtFormat,
     required this.onStartMessage,
     required this.onResolveAttachment,
-    required this.onReply,
     required this.onReact,
     this.padding = EdgeInsets.zero,
   });
@@ -59,7 +58,6 @@ class ChatMessageList extends ConsumerWidget {
   final DateFormat sentAtFormat;
   final VoidCallback onStartMessage;
   final Future<void> Function(String attachmentId) onResolveAttachment;
-  final void Function(ChatMessage message) onReply;
   final void Function(ChatMessage message) onReact;
 
   /// Space around the messages, inside the area they scroll in.
@@ -198,7 +196,6 @@ class ChatMessageList extends ConsumerWidget {
       sentAtFormat: sentAtFormat,
       decryptFuture: decryptFuture,
       onResolveAttachment: onResolveAttachment,
-      onReplyGesture: () => onReply(message),
       onCancelAttachment: message.clientMessageId == null
           ? null
           : () => ref

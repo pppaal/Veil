@@ -77,6 +77,22 @@ Use banners for:
 
 Do not use banners for decorative emphasis.
 
+A banner's fill is a tint of the surface behind it, so its text is light on
+the dark theme and dark on the light one; the tone colours (`info`, `good`,
+`warn`, `danger`) have a darker variant for the light theme. The same holds
+for `VeilStatusPill`, `VeilNoticeRow` and `VeilToast`.
+
+### `VeilCopy`
+
+Draws a sentence of the app's own copy with its Korean words kept whole
+where it wraps (a line of Korean may otherwise break between any two
+syllables), and reads it out as the plain text. The shared cards, banners,
+hero and empty states draw their titles and bodies with it; a screen uses it
+for a paragraph of its own.
+
+Never for what a person wrote (a message, a name, a note): that goes into a
+plain `Text`, as typed.
+
 ### `VeilMetricStrip`
 
 Use for:
@@ -86,6 +102,10 @@ Use for:
 - chat and conversation overview state
 
 Metric strips should stay short, factual, and scannable.
+
+On a phone the tiles of a row share its width, three to a row at most and
+never one alone on a row (four tiles are two and two). A tile's value takes
+up to two lines there. Wider screens keep each tile at its own width.
 
 ### `VeilDestructiveNotice`
 

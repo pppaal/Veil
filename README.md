@@ -186,7 +186,13 @@ those checks fails the build:
 ### Mobile (`apps/mobile`)
 - Riverpod state, GoRouter navigation, Drift cache
 - Full ratchet with session persistence
-- Voice messages, reactions, reply scaffolding
+- Text messages in 1:1 and group conversations, reactions, disappearing
+  timers, on-device message search, safety numbers, device transfer
+- Calls, attachments, voice messages, the media and sticker pickers, stories
+  and the assistant are switched off: each has a `k…Enabled` constant next to
+  its feature (`lib/src/features/*/*_feature.dart`), and while it is false
+  no tab, route or button leads to the feature
+  ([apps/mobile/README.md](apps/mobile/README.md))
 - 401 → refresh interceptor on the API client
 - Release builds fail loud when `keystore.properties` is missing
 - iOS deployment target 14.0, R8 proguard rules, removed cydia probe

@@ -7,9 +7,10 @@ import 'veil_ui.dart';
 /// Rows that belong together. On a grouped page (a [VeilShell] with
 /// `grouped: true`) they sit in a `surface` container with 16dp side
 /// margins, rounded by 10; on a white page, and in a sheet or dialog, there
-/// is no container and the rows run full-bleed. Either way a 0.5dp hairline separates the rows,
-/// inset to the text edge ([inset]: 16, or 56/72 where rows have a leading
-/// avatar). [header] and [footer] are small muted lines above and below.
+/// is no container and the rows run full-bleed. Either way a 0.5dp hairline
+/// separates the rows, inset to the text edge ([inset]: 16, or 56/72 where
+/// rows have a leading avatar). [header] and [footer] are small muted lines
+/// above and below.
 class VeilGroup extends StatelessWidget {
   const VeilGroup({
     super.key,

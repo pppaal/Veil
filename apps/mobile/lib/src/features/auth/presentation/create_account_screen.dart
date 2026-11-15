@@ -3,14 +3,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
-import '../../../shared/presentation/veil_screen_intro.dart';
 import '../../../shared/presentation/veil_shell.dart';
 import '../../../shared/presentation/veil_ui.dart';
 
 /// The first step of a new account: the name it shows, then on to the
-/// handle. The field comes first; the notice that nothing restores a lost
-/// device stands once, between the field and the two ways on (a new
-/// account here, or a transfer from the device that has one).
+/// handle, or across to moving an account from another phone. Before you
+/// start has already said what losing the phone means; nothing here says
+/// it again.
 class CreateAccountScreen extends StatefulWidget {
   const CreateAccountScreen({super.key});
 
@@ -38,45 +37,24 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       padding: VeilShell.formPadding,
       child: ListView(
         children: [
-          // What losing the device means is said by the notice below, once.
-          VeilScreenIntro(
-            eyebrow: l10n.authCreateEyebrow,
-            title: l10n.authCreateHeroTitle,
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilFieldBlock(
-            label: l10n.authCreateFieldLabel,
-            caption: l10n.authCreateFieldCaption,
-            child: TextField(
-              controller: _displayNameController,
-              textInputAction: TextInputAction.next,
-              onSubmitted: (_) => _continue(),
-              decoration: InputDecoration(
-                labelText: l10n.authCreateDisplayName,
-                hintText: l10n.authCreateDisplayHint,
-              ),
+          TextField(
+            controller: _displayNameController,
+            textInputAction: TextInputAction.next,
+            onSubmitted: (_) => _continue(),
+            decoration: InputDecoration(
+              labelText: l10n.authCreateDisplayName,
+              hintText: l10n.authCreateDisplayHint,
+              helperText: l10n.authCreateFieldCaption,
+              helperMaxLines: 2,
             ),
           ),
-          const SizedBox(height: VeilSpace.md),
-          VeilDestructiveNotice(
-            title: l10n.authCreateRestoreTitle,
-            body: l10n.authCreateRestoreBody,
-          ),
-          const SizedBox(height: VeilSpace.md),
-          VeilActionCluster(
-            children: [
-              VeilButton(
-                onPressed: _continue,
-                label: l10n.commonContinue,
-                icon: Icons.arrow_forward_rounded,
-              ),
-              VeilButton(
-                onPressed: () => context.push('/device-transfer'),
-                tone: VeilButtonTone.secondary,
-                label: l10n.authCreateTransferLabel,
-                icon: Icons.phonelink_lock_outlined,
-              ),
-            ],
+          const SizedBox(height: VeilSpace.xl),
+          VeilButton(onPressed: _continue, label: l10n.commonContinue),
+          const SizedBox(height: VeilSpace.xs),
+          VeilButton(
+            onPressed: () => context.push('/device-transfer'),
+            tone: VeilButtonTone.ghost,
+            label: l10n.authCreateTransferLabel,
           ),
         ],
       ),

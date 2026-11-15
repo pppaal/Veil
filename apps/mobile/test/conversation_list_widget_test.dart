@@ -205,6 +205,56 @@ void main() {
     expect(find.text('DIRECT CONVERSATIONS'), findsNothing);
   });
 
+  testWidgets('the Chats bar names the connection only while there is none', (tester) async {
+    final realtime = _HeldRealtimeService();
+    final controller = _buildController(
+      adapter: createDefaultCryptoAdapter(),
+      apiClient: _FakeConversationApiClient(null),
+      realtimeService: realtime,
+    );
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    });
+
+    await controller.applySession(
+      const AppSessionState(
+        accessToken: 'token',
+        userId: 'user-local',
+        deviceId: 'device-local',
+        handle: 'atlas',
+        displayName: 'Atlas',
+        onboardingAccepted: true,
+        locked: false,
+        initializing: false,
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [messengerControllerProvider.overrideWith((ref) => controller)],
+        child: const _TestApp(child: ConversationListScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final l10n = AppLocalizations.of(tester.element(find.byType(ConversationListScreen)));
+    // The bar is the shell's PreferredSize; nothing else on this page says
+    // either word.
+    Finder inBar(String text) => find.descendant(of: find.byType(PreferredSize), matching: find.text(text));
+    expect(inBar(l10n.navChats), findsOneWidget);
+    expect(inBar(l10n.conversationsBarConnecting), findsOneWidget, reason: 'no live link yet');
+
+    realtime.setConnected(true);
+    await tester.pumpAndSettle();
+    expect(inBar(l10n.conversationsBarConnecting), findsNothing, reason: 'a live link says nothing');
+    expect(inBar(l10n.conversationsBarOffline), findsNothing);
+
+    realtime.setConnected(false);
+    await tester.pumpAndSettle();
+    expect(inBar(l10n.conversationsBarConnecting), findsOneWidget, reason: 'with nothing queued, a lost link reconnects');
+  });
+
   testWidgets('conversation list previews the latest decrypted text body', (tester) async {
     // Phone width, tall enough that both cards are laid out.
     tester.view.physicalSize = const Size(600, 2400);
@@ -700,10 +750,40 @@ class _FakeRealtimeService extends RealtimeService {
   }
 }
 
+/// A realtime link that connects only when the test says so.
+class _HeldRealtimeService extends RealtimeService {
+  void Function(bool connected)? _onConnectionChanged;
+  bool _connected = false;
+
+  @override
+  bool get isConnected => _connected;
+
+  @override
+  void connect({
+    required String baseUrl,
+    required String accessToken,
+    required void Function(String event, dynamic payload) onEvent,
+    void Function(bool connected)? onConnectionChanged,
+  }) {
+    _onConnectionChanged = onConnectionChanged;
+  }
+
+  void setConnected(bool connected) {
+    _connected = connected;
+    _onConnectionChanged?.call(connected);
+  }
+
+  @override
+  void disconnect() {
+    _connected = false;
+  }
+}
+
 VeilMessengerController _buildController({
   required CryptoAdapter adapter,
   required VeilApiClient apiClient,
   ConversationCacheService? cacheService,
+  RealtimeService? realtimeService,
 }) {
   return VeilMessengerController(
     apiClient: apiClient,
@@ -711,7 +791,7 @@ VeilMessengerController _buildController({
     keyBundleCodec: adapter.keyBundles,
     envelopeCodec: adapter.envelopeCodec,
     sessionBootstrapper: adapter.sessions,
-    realtimeService: _FakeRealtimeService(),
+    realtimeService: realtimeService ?? _FakeRealtimeService(),
     cacheService: cacheService ?? _ConversationListCache(),
   );
 }

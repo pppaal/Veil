@@ -283,6 +283,7 @@ class VeilTheme {
           borderRadius: BorderRadius.circular(VeilRadius.md),
           borderSide: BorderSide(color: color, width: width),
         );
+    final restingFieldLine = light ? palette.stroke : palette.strokeStrong;
 
     return base.copyWith(
       textTheme: textTheme,
@@ -337,10 +338,14 @@ class VeilTheme {
         // target (10 made one 42 and failed the layout gate); a field that
         // is not dense is 48 in Flutter whatever this padding is.
         contentPadding: const EdgeInsets.symmetric(horizontal: VeilSpace.sm, vertical: 11),
-        border: fieldBorder(palette.stroke, 0.5),
-        enabledBorder: fieldBorder(palette.stroke, 0.5),
+        // At rest a field has a hairline round its fill. Dark `stroke` is
+        // within a shade of the `surfaceAlt` fill and draws nothing, which
+        // left a field looking like the disabled button under it (the same
+        // grey slab): dark fields take `strokeStrong` at rest instead.
+        border: fieldBorder(restingFieldLine, 0.5),
+        enabledBorder: fieldBorder(restingFieldLine, 0.5),
         focusedBorder: fieldBorder(palette.strokeStrong, 1),
-        disabledBorder: fieldBorder(palette.stroke, 0.5),
+        disabledBorder: fieldBorder(restingFieldLine, 0.5),
         errorBorder: fieldBorder(palette.danger, 1),
         focusedErrorBorder: fieldBorder(palette.danger, 1),
       ),

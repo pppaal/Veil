@@ -1667,7 +1667,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String safetyNumbersKeyChangedMessage(String date) {
-    return 'It\'s different from the one you verified on $date. This happens after a reinstall or a new phone, or if someone is pretending to be them. Compare the new number before trusting it.';
+    return 'It changed since you verified it on $date, after a reinstall, a new phone, or someone pretending to be them. Compare the new number before you trust it.';
   }
 
   @override
@@ -2227,17 +2227,14 @@ class AppLocalizationsEn extends AppLocalizations {
   String get securityStatusCryptoVeilRatchet => 'Production (unaudited)';
 
   @override
-  String securityStatusCryptoVeilRatchetDetail(String adapterId) {
-    return 'X3DH and Double Ratchet ($adapterId)';
-  }
+  String get securityStatusCryptoVeilRatchetDetail => 'X3DH and Double Ratchet';
 
   @override
   String get securityStatusCryptoLibsignal => 'libsignal bridge (unaudited)';
 
   @override
-  String securityStatusCryptoLibsignalDetail(String adapterId) {
-    return 'Signal\'s libsignal through a native bridge ($adapterId)';
-  }
+  String get securityStatusCryptoLibsignalDetail =>
+      'Signal\'s libsignal through a native bridge';
 
   @override
   String get securityStatusCryptoDevelopment => 'Development only';

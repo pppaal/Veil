@@ -478,7 +478,7 @@ void main() {
                 SecuritySignal(
                   label: l10n.securityStatusCryptoImplementation,
                   value: l10n.securityStatusCryptoLibsignal,
-                  detail: l10n.securityStatusCryptoLibsignalDetail('libsignal'),
+                  detail: l10n.securityStatusCryptoLibsignalDetail,
                   tone: SecuritySignalTone.neutral,
                 ),
                 SecuritySignal(

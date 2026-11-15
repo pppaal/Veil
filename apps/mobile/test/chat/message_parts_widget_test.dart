@@ -218,7 +218,7 @@ void main() {
           ),
         );
 
-    Future<void> pumpBubble(WidgetTester tester, String body, ChatMessage message) async {
+    Future<void> pumpBubble(WidgetTester tester, String body, ChatMessage message, {VoidCallback? onRetry}) async {
       await tester.pumpWidget(MaterialApp(
         theme: VeilTheme.dark(),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -238,7 +238,7 @@ void main() {
                 attachmentDownloadError: (_) => null,
                 transferSnapshot: null,
                 expiryNow: () => DateTime(2026, 4, 7, 9, 18),
-                onRetryMessage: () {},
+                onRetryMessage: onRetry ?? () {},
               ),
             ),
           ),
@@ -258,6 +258,24 @@ void main() {
         expect(read.left, greaterThan(time.right));
       });
     }
+
+    // The bubble itself is the retry: there is no button in it.
+    testWidgets('a failed send says so under it, and a tap on the bubble retries it once', (tester) async {
+      var retried = 0;
+      await pumpBubble(tester, 'see you at 6', message(state: MessageDeliveryState.failed), onRetry: () => retried++);
+      expect(find.text(l10n.chatNotSentTapToRetry), findsOneWidget);
+      expect(find.byType(TextButton), findsNothing);
+      await tester.tap(find.text('see you at 6'));
+      await tester.pump();
+      expect(retried, 1);
+
+      // A message that went out is not sent again by a tap.
+      await pumpBubble(tester, 'see you at 6', message(state: MessageDeliveryState.sent), onRetry: () => retried++);
+      expect(find.text(l10n.chatNotSentTapToRetry), findsNothing);
+      await tester.tap(find.text('see you at 6'));
+      await tester.pump();
+      expect(retried, 1);
+    });
 
     for (final mine in [true, false]) {
       testWidgets('a disappearing "ok" (${mine ? 'own' : 'theirs'}): the time left sits on the line of the time',

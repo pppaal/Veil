@@ -2749,7 +2749,7 @@ abstract class AppLocalizations {
   /// No description provided for @safetyNumbersKeyChangedMessage.
   ///
   /// In en, this message translates to:
-  /// **'It\'s different from the one you verified on {date}. This happens after a reinstall or a new phone, or if someone is pretending to be them. Compare the new number before trusting it.'**
+  /// **'It changed since you verified it on {date}, after a reinstall, a new phone, or someone pretending to be them. Compare the new number before you trust it.'**
   String safetyNumbersKeyChangedMessage(String date);
 
   /// No description provided for @safetyNumbersVerifiedOn.
@@ -3709,8 +3709,8 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoVeilRatchetDetail.
   ///
   /// In en, this message translates to:
-  /// **'X3DH and Double Ratchet ({adapterId})'**
-  String securityStatusCryptoVeilRatchetDetail(String adapterId);
+  /// **'X3DH and Double Ratchet'**
+  String get securityStatusCryptoVeilRatchetDetail;
 
   /// No description provided for @securityStatusCryptoLibsignal.
   ///
@@ -3721,8 +3721,8 @@ abstract class AppLocalizations {
   /// No description provided for @securityStatusCryptoLibsignalDetail.
   ///
   /// In en, this message translates to:
-  /// **'Signal\'s libsignal through a native bridge ({adapterId})'**
-  String securityStatusCryptoLibsignalDetail(String adapterId);
+  /// **'Signal\'s libsignal through a native bridge'**
+  String get securityStatusCryptoLibsignalDetail;
 
   /// No description provided for @securityStatusCryptoDevelopment.
   ///

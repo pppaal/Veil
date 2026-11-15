@@ -375,10 +375,11 @@ void main() {
         expect(digits, hasLength(12));
         expect({for (final group in digits) group.style?.color}, {palette.text}, reason: '$themeMode');
 
-        // The page keeps the 16 px side gutter of the design system (it was
-        // the old shell default of 20).
+        // The number sits evenly across the page. (Its 20 px margin was the
+        // shell's old default; the shell's default is none now, and this
+        // screen's own padding comes with its wave 1 restyle.)
         final card = tester.getRect(find.byType(SafetyNumberCard));
-        expect((card.left, phoneMedium.width - card.right), (16.0, 16.0), reason: '$themeMode');
+        expect(card.left, phoneMedium.width - card.right, reason: '$themeMode');
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump();

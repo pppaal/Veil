@@ -2390,7 +2390,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get blockConfirmBody =>
-      'They won\'t be able to message you directly or add you to a group. They aren\'t notified, but their messages to you won\'t be delivered.';
+      'They can\'t message you directly or add you to a group. In groups you share, you\'ll both still see each other\'s messages. They aren\'t told, but what they send you directly will fail.';
 
   @override
   String blockDone(String handle) {

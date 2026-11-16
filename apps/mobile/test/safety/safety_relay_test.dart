@@ -64,10 +64,10 @@ void main() {
     await bob.dispose();
   });
 
-  Future<void> deliver(MessengerParty from, MessengerParty to, String body) async {
-    await from.controller.sendText(conversationId: conv, body: body);
-    await waitFor(() => from.controller.pendingCountFor(conv) == 0, reason: '"$body" was not acked');
-    await waitFor(() async => (await to.bodies(conv)).contains(body), reason: '"$body" did not arrive');
+  Future<void> deliver(MessengerParty from, MessengerParty to, String body, {String conversationId = conv}) async {
+    await from.controller.sendText(conversationId: conversationId, body: body);
+    await waitFor(() => from.controller.pendingCountFor(conversationId) == 0, reason: '"$body" was not acked');
+    await waitFor(() async => (await to.bodies(conversationId)).contains(body), reason: '"$body" did not arrive');
   }
 
   ChatMessage ownMessage(MessengerParty party, String clientMessageId) =>
@@ -108,6 +108,29 @@ void main() {
     await waitFor(() => alice.controller.pendingCountFor(conv) == 0, reason: 'the blocker\'s retry was not acked');
     await waitFor(() async => (await bob.bodies(conv)).contains('from the blocker'));
     await deliver(alice, bob, 'sorry, I am here');
+  });
+
+  // What the block dialog says (blockConfirmBody): the server cuts a 1:1
+  // only (ConversationAccessService.isPeerReachable), so in a group the two
+  // share each still reads the other, and the app keeps what the blocked
+  // member sends there. The relay refuses their key lookups across the
+  // block, as KeysService does, so the group cannot be riding on those.
+  test('a block leaves a group the two share as it was', () async {
+    relay.addGroup('grp', ['alice', 'bob']);
+    await alice.controller.refreshConversations();
+    await bob.controller.refreshConversations();
+    expect(await blocked.block('user-bob', handle: 'bob'), isTrue);
+
+    await deliver(bob, alice, 'group hello from bob', conversationId: 'grp');
+    await deliver(alice, bob, 'group hello from alice', conversationId: 'grp');
+    expect(await alice.bodies('grp'), containsAll(['group hello from bob', 'group hello from alice']));
+
+    // The 1:1 stays cut: with no session yet, Bob cannot even fetch Alice's
+    // keys, and nothing he sends there reaches the relay.
+    await bob.controller.sendText(conversationId: conv, body: 'direct');
+    await settle();
+    expect(relay.conversations[conv]!.messages, isEmpty);
+    expect(await alice.bodies(conv), isEmpty);
   });
 
   test('the blocked list is read from the server, newest first', () async {

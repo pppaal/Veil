@@ -3985,7 +3985,7 @@ abstract class AppLocalizations {
   /// No description provided for @blockConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'They won\'t be able to message you directly or add you to a group. They aren\'t notified, but their messages to you won\'t be delivered.'**
+  /// **'They can\'t message you directly or add you to a group. In groups you share, you\'ll both still see each other\'s messages. They aren\'t told, but what they send you directly will fail.'**
   String get blockConfirmBody;
 
   /// No description provided for @blockDone.

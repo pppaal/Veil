@@ -491,6 +491,12 @@ class FakeRelayClient extends VeilApiClient {
     if (path.startsWith('/keys/')) {
       final handle = Uri.decodeComponent(path.substring('/keys/'.length));
       directoryLookups[handle] = (directoryLookups[handle] ?? 0) + 1;
+      // KeysService.getKeys: a block in either direction answers as an
+      // unknown handle does, and claims nothing. The group route does not.
+      final party = relay.partiesByHandle[handle];
+      if (party != null && relay.blockedEitherWay(me.userId, party.userId)) {
+        throw VeilApiException('User not found', statusCode: 404, code: 'handle_not_found');
+      }
       return relay._lookup(me, handle, query?['claim'] ?? 'active');
     }
     if (path == '/prekeys/count') {

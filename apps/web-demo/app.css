@@ -1109,10 +1109,14 @@ html.theme-light .name-7 { color: #45602A; }
   border-top: 0.5px solid var(--line-strong);
 }
 .dialog-title + .settings-row { border-top: 0; }
+/* The label wraps and the control keeps the width its longest option
+   needs, so at phone width an option is never cut off. */
+.settings-row .settings-label { flex: 1 1 0; min-width: 0; }
 .settings-label { font-size: 15px; }
 .settings-select {
+  flex: none;
   height: 36px;
-  max-width: 60%;
+  max-width: 70%;
   padding: 0 8px;
   border: 0.5px solid var(--line-strong);
   border-radius: var(--r-sm);

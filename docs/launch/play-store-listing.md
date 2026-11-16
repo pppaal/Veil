@@ -25,6 +25,7 @@ messages and never sees what they say.
 - No phone number, no email and no address book upload. You pick a handle.
 - Your account lives on your phone. There is no cloud account.
 - Disappearing messages, with a timer on each chat.
+- Block or report someone from a chat or your contacts, and mute a chat.
 
 **What you don't get**
 - No ads and no analytics.
@@ -36,9 +37,9 @@ messages and never sees what they say.
 People who want to message without giving out a phone number, and who
 accept that a lost phone means a lost account.
 
-Not in the mobile build, so not in this listing: view-once messages,
-block, mute and report. The server has the endpoints; the app has no screen
-for any of them yet. Put a bullet back when its screen ships.
+Not in the mobile build, so not in this listing: view-once messages. The
+server has the endpoint; the app has no screen for it yet. Put a bullet back
+when its screen ships.
 
 ## Category
 
@@ -50,11 +51,12 @@ IARC rating questionnaire should be answered honestly:
 
 - User-generated content: YES (we ship a messenger)
 - Encrypted UGC not visible to the developer: YES
-- In-app reporting: NO in the current build. The server takes abuse reports
-  (`POST /safety/reports`), but the mobile app has no screen that files
-  one. Google Play expects in-app reporting and blocking in an app with
-  user-generated content: a launch blocker. Answer YES once the screen
-  exists.
+- In-app reporting: YES. A chat's menu, a message's long-press sheet and a
+  contact's sheet file a report (`POST /safety/reports`): the account, the
+  reason and which chat or message, never its text. The same chat menu and
+  contact sheet block an account, and Settings > Privacy > Blocked accounts
+  lists them. Google Play expects both in an app with user-generated
+  content.
 - Interactive features: chat only; no live video to strangers, no
   unmoderated public rooms
 

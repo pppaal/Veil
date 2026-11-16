@@ -82,7 +82,7 @@ void main() {
     });
   });
 
-  testWidgets('the pane\'s bar carries the safety number, the search and the timer', (tester) async {
+  testWidgets('the pane\'s bar carries the safety number, the search and the menu with the timer', (tester) async {
     await withPhoneApp(tester, identities, size: wideSmall, location: '/conversations', body: (world) async {
       expect(inChat(find.text('Sam Rivera')), findsOneWidget);
       expect(inChat(find.byTooltip('Verified')), findsOneWidget);
@@ -100,13 +100,15 @@ void main() {
       expect(inChat(find.text(_latest)), findsOneWidget);
       expect(find.byTooltip('Back'), findsNothing);
 
-      // The disappearing timer.
-      await tester.tap(inChat(find.byTooltip('Disappearing: Off')));
+      // The disappearing timer, from the bar's menu.
+      await tester.tap(inChat(find.byTooltip('More options')));
+      await pumpFrames(tester, frames: 3);
+      await tester.tap(find.text('Disappearing messages'));
       await pumpFrames(tester, frames: 4);
       await tester.tap(find.text('1 day'));
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
-      expect(inChat(find.byTooltip('Disappearing: 1 day')), findsOneWidget);
+      expect(inChat(find.byWidgetPredicate((widget) => widget is Text && widget.semanticsLabel == 'Disappearing: 1 day')), findsOneWidget);
 
       // The safety number.
       await tester.tap(inChat(find.byTooltip('Safety number')));

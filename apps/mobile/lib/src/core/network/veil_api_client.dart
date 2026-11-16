@@ -201,6 +201,10 @@ class VeilApiClient {
     return _delete('/safety/blocks/$userId', accessToken: accessToken);
   }
 
+  /// Turns the pushes of [conversationId] off for [mutedForSeconds], or
+  /// until they are turned back on when it is null; [unmute] turns them on.
+  /// The API reads a missing field as "until turned back on" and null as
+  /// "on again", so a mute with no end leaves the field out.
   Future<Map<String, dynamic>> setConversationMute(
     String accessToken,
     String conversationId, {
@@ -210,7 +214,10 @@ class VeilApiClient {
     return _post(
       '/safety/mutes/$conversationId',
       {
-        'mutedForSeconds': unmute ? null : mutedForSeconds,
+        if (unmute)
+          'mutedForSeconds': null
+        else if (mutedForSeconds != null)
+          'mutedForSeconds': mutedForSeconds,
       },
       accessToken: accessToken,
     );

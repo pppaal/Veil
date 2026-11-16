@@ -13,7 +13,7 @@ import 'disappearing_timer_sheet.dart';
 import 'presence_selector.dart';
 
 /// A chat, content first: the bar (who it is with, the verified mark, the
-/// safety number, search and the disappearing timer), the warnings that ask
+/// safety number, search and a menu with the rest), the warnings that ask
 /// for a decision, the messages in all the height that is left, and the
 /// composer.
 ///
@@ -34,7 +34,7 @@ class ChatPhoneScaffold extends StatefulWidget {
     required this.messageTtl,
     required this.searchController,
     required this.searching,
-    required this.onPickTimer,
+    required this.menu,
     required this.onOpenSafetyNumbers,
     required this.banners,
     required this.messages,
@@ -58,7 +58,9 @@ class ChatPhoneScaffold extends StatefulWidget {
 
   /// Whether the lookup for the current query is still running.
   final bool searching;
-  final VoidCallback onPickTimer;
+
+  /// The entries of the bar's menu (see ChatBarActions).
+  final List<ChatMenuEntry> menu;
   final VoidCallback onOpenSafetyNumbers;
   final Widget banners;
   final Widget messages;
@@ -166,10 +168,9 @@ class _ChatPhoneScaffoldState extends State<ChatPhoneScaffold> {
         ? null
         : [
             ChatBarActions(
-              timerLabel: timerLabel,
               onOpenSafetyNumbers: widget.onOpenSafetyNumbers,
               onOpenSearch: _openSearch,
-              onPickTimer: widget.onPickTimer,
+              menu: widget.menu,
             ),
           ];
 

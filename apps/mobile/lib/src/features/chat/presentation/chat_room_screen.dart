@@ -22,6 +22,7 @@ import 'chat_message_search.dart';
 import 'chat_phone_layout.dart';
 import 'chat_room_dialogs.dart';
 import 'chat_room_labels.dart';
+import 'chat_safety_menu.dart';
 import 'chat_status_banners.dart';
 import 'disappearing_timer_sheet.dart';
 import 'group_sender_names.dart';
@@ -59,7 +60,8 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
         ActiveConversationBinding,
         ChatMessageSearch,
         NavigationTargetJump,
-        GroupSenderNames {
+        GroupSenderNames,
+        ChatSafetyMenu {
   final _composerFocusNode = FocusNode();
   final _scrollController = ScrollController();
   final _sentAtFormat = DateFormat('HH:mm');
@@ -257,17 +259,18 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
       messageTtl: _messageTtl,
       searchController: searchController,
       searching: isSearchingMessages,
-      onPickTimer: _pickDisappearTtl,
+      menu: chatMenuEntries(conversation, onPickTimer: _pickDisappearTtl),
       onOpenSafetyNumbers: _openSafetyNumbers,
       banners: banners,
       messages: messageList,
       typing: typing,
-      composer: ChatComposerBar(
-        conversationId: widget.conversationId,
-        focusNode: _composerFocusNode,
-        messageTtl: _messageTtl,
-        busy: controller.isBusy,
-      ),
+      composer: blockedComposer(conversation) ??
+          ChatComposerBar(
+            conversationId: widget.conversationId,
+            focusNode: _composerFocusNode,
+            messageTtl: _messageTtl,
+            busy: controller.isBusy,
+          ),
     );
   }
 
@@ -349,13 +352,21 @@ class _ChatRoomScreenState extends ConsumerState<ChatRoomScreen>
   Future<void> _showReactionPicker(ChatMessage message) async {
     final controller = ref.read(messengerControllerProvider);
     final decrypted = await controller.decryptMessage(message);
-    if (!mounted || !decrypted.isOk || decrypted.messageKind == MessageKind.system) {
+    if (!mounted || (decrypted.isOk && decrypted.messageKind == MessageKind.system)) {
       return;
     }
+    final conversation = controller.conversationById(widget.conversationId);
+    // A message that did not open can still be reported, by who sent it;
+    // only one that opened takes a reaction, and not from someone blocked.
+    final canReact = decrypted.isOk && !peerBlocked(conversation);
+    final report = messageReport(message, conversation,
+        groupSenderUserId: groupSenderUserId, groupSenderHandle: groupSenderHandle);
+    if (!canReact && report == null) return;
     VeilHaptics.selection();
     await showReactionPickerSheet(
       context,
-      onSelected: (emoji) => controller.toggleReaction(message, emoji),
+      onSelected: canReact ? (emoji) => controller.toggleReaction(message, emoji) : null,
+      onReport: report,
     );
   }
 }

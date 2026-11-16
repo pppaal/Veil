@@ -178,6 +178,9 @@ those checks fails the build:
 - Full ratchet with session persistence
 - Text messages in 1:1 and group conversations, reactions, disappearing
   timers, on-device message search, safety numbers, device transfer
+- Block, report and mute: from a chat's menu, a message's long-press sheet
+  and a contact's sheet, with Settings > Privacy > Blocked accounts; a muted
+  chat raises no notification on the phone
 - Sending attachments is switched off: `kAttachmentsEnabled`
   (`lib/src/features/attachments/attachments_feature.dart`) is false because
   the app has no file picker, and while it is false no button leads to it

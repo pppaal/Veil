@@ -127,9 +127,12 @@ void main() {
     });
   });
 
-  testWidgets('sets the disappearing timer from the bar and shows it there', (tester) async {
+  // The timer is in the bar's menu; the bar shows it once it is set.
+  testWidgets('sets the disappearing timer from the bar\'s menu and shows it in the bar', (tester) async {
     await withPhoneApp(tester, identities, location: _chat, body: (world) async {
-      await tester.tap(find.byTooltip('Disappearing: Off'));
+      await tester.tap(find.byTooltip('More options'));
+      await pumpFrames(tester, frames: 3);
+      await tester.tap(find.text('Disappearing messages'));
       await pumpFrames(tester, frames: 4);
       expect(find.text('Disappearing messages'), findsOneWidget);
       expect(tester.takeException(), isNull, reason: 'the sheet fits a 360x640 screen');
@@ -137,14 +140,14 @@ void main() {
       await tester.tap(find.text('1 day'));
       await pumpFrames(tester, frames: 4);
       expect(world.api.timers[chatConversationId], 86400);
-      expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
+      expect(find.byWidgetPredicate((widget) => widget is Text && widget.semanticsLabel == 'Disappearing: 1 day'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget, reason: 'under the name, while a timer is set');
     });
   });
 
   testWidgets('shows a timer the conversation already has', (tester) async {
     await withPhoneApp(tester, identities, location: '/chat/$timerChatConversationId', body: (world) async {
-      expect(find.byTooltip('Disappearing: 1 day'), findsOneWidget);
+      expect(find.byWidgetPredicate((widget) => widget is Text && widget.semanticsLabel == 'Disappearing: 1 day'), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget);
     });
   });

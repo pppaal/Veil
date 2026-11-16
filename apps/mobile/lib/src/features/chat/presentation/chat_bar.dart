@@ -112,27 +112,46 @@ class ChatBarTitle extends StatelessWidget {
   }
 }
 
+/// One entry of a chat's menu: what it says, its glyph, and what it does.
+/// A [destructive] one is drawn in the danger colour.
+class ChatMenuEntry {
+  const ChatMenuEntry({
+    required this.key,
+    required this.label,
+    required this.icon,
+    required this.onSelected,
+    this.destructive = false,
+  });
+
+  /// Names the entry for tests: 'timer', 'mute', 'report', 'block'.
+  final String key;
+  final String label;
+  final IconData icon;
+  final VoidCallback onSelected;
+  final bool destructive;
+}
+
 /// The actions of a chat's bar, plain icon buttons: the safety number (a
 /// 1:1 opens the peer's, a group the list of its members with each one's),
-/// the search, and the disappearing timer.
+/// the search, and a menu with the rest ([menu]: the disappearing timer,
+/// notifications, reporting and blocking).
 class ChatBarActions extends StatelessWidget {
   const ChatBarActions({
     super.key,
-    required this.timerLabel,
     required this.onOpenSafetyNumbers,
     required this.onOpenSearch,
-    required this.onPickTimer,
+    required this.menu,
   });
 
-  /// The disappearing timer in force, or null when messages stay.
-  final String? timerLabel;
   final VoidCallback onOpenSafetyNumbers;
   final VoidCallback onOpenSearch;
-  final VoidCallback onPickTimer;
+  final List<ChatMenuEntry> menu;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final palette = context.veilPalette;
+    final textStyle = Theme.of(context).textTheme.bodyLarge;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -146,10 +165,28 @@ class ChatBarActions extends StatelessWidget {
           onPressed: onOpenSearch,
           icon: const Icon(Icons.search),
         ),
-        IconButton(
-          tooltip: l10n.chatTimerTooltip(timerLabel ?? l10n.chatTtlOff),
-          onPressed: onPickTimer,
-          icon: const Icon(Icons.timer_outlined),
+        PopupMenuButton<int>(
+          key: const ValueKey('chat-menu'),
+          tooltip: l10n.chatMenuTooltip,
+          position: PopupMenuPosition.under,
+          color: palette.surfaceRaised,
+          icon: const Icon(Icons.more_vert_outlined),
+          onSelected: (index) => menu[index].onSelected(),
+          itemBuilder: (context) => [
+            for (final (index, entry) in menu.indexed)
+              PopupMenuItem<int>(
+                key: ValueKey('chat-menu-${entry.key}'),
+                value: index,
+                height: 44,
+                child: Row(
+                  children: [
+                    Icon(entry.icon, size: VeilIconSize.md, color: entry.destructive ? palette.danger : palette.textMuted),
+                    const SizedBox(width: VeilSpace.sm),
+                    Text(entry.label, style: textStyle?.copyWith(color: entry.destructive ? palette.danger : null)),
+                  ],
+                ),
+              ),
+          ],
         ),
       ],
     );

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/veil_theme.dart';
 import '../../../l10n/generated/app_localizations.dart';
 import '../../../shared/presentation/veil_error_text.dart';
 import '../../../shared/presentation/veil_ui.dart';
+import '../../safety/data/safety_providers.dart';
 import '../data/conversation_models.dart';
 import 'conversation_list_labels.dart';
 import 'conversation_list_parts.dart';
@@ -18,14 +20,15 @@ import 'conversation_row.dart';
 ///
 /// A phone shows it as the screen. The wide layout shows the same list as
 /// its first pane, with the open conversation's row marked.
-class ConversationListPhone extends StatelessWidget {
+class ConversationListPhone extends ConsumerWidget {
   const ConversationListPhone({super.key, required this.view});
 
   final ConversationListView view;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final l10n = AppLocalizations.of(context);
+    final mutes = ref.watch(conversationMutesProvider);
     final controller = view.controller;
     final conversations = view.conversations;
     final hasSearchQuery = view.hasSearchQuery;
@@ -119,6 +122,8 @@ class ConversationListPhone extends StatelessWidget {
                         unreadCount: item.unreadCount,
                         unreadLabel: item.unreadCount > 0 ? l10n.conversationsUnreadSemantics(item.unreadCount) : null,
                         timerLabel: conversationTimerLabel(l10n, item, controller),
+                        muted: mutes.isMuted(item.id),
+                        mutedLabel: l10n.conversationsMutedSemantics,
                         onTap: () => view.onSelectConversation(item.id),
                       ),
                     ),

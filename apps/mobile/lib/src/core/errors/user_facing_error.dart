@@ -43,7 +43,9 @@ enum UserFacingErrorCode {
   transferApprovalRequired('transfer_approval_required', wire: true),
   transferCompletionInvalid('transfer_completion_invalid', wire: true),
   attachmentCanceled('attachment_upload_canceled', wire: true),
-  attachmentRejected('attachment_upload_invalid', wire: true);
+  attachmentRejected('attachment_upload_invalid', wire: true),
+  // A 1:1 send across a block, in either direction.
+  peerUnreachable('peer_unreachable', wire: true);
 
   const UserFacingErrorCode(this.sentence, {this.wire = false});
 

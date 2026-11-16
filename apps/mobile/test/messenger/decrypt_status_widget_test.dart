@@ -11,6 +11,7 @@ import 'package:veil_mobile/src/core/realtime/realtime_service.dart';
 import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
+import 'package:veil_mobile/src/features/reactions/presentation/reaction_picker_widget.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 const _conv = 'conv-1';
@@ -212,6 +213,21 @@ void main() {
     expect(find.text("Couldn't decrypt this message"), findsOneWidget);
     expect(find.text("Waiting for the sender's key"), findsOneWidget);
     expect(find.text('whatever an adapter put here'), findsNothing);
+  });
+
+  testWidgets('a message that did not open can still be reported, and takes no reaction', (tester) async {
+    await _pumpChat(tester, [
+      (
+        'frame-1',
+        'text',
+        const DecryptedMessage(body: '', messageKind: MessageKind.text, status: DecryptStatus.failed),
+      ),
+    ]);
+
+    await tester.longPress(find.text("Couldn't decrypt this message"));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('message-report')), findsOneWidget);
+    expect(find.byType(ReactionPickerWidget), findsNothing);
   });
 
   testWidgets('a legacy frame renders its text with a line saying the sender is not verified', (tester) async {

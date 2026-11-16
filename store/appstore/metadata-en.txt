@@ -24,6 +24,7 @@ Features
 • One-to-one and group chats
 • Typing indicators, online status and optional read receipts
 • App lock with a PIN or biometrics
+• Block or report someone, and mute a chat
 • Move your account to a new phone
 • English
 

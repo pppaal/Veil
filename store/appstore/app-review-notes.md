@@ -64,6 +64,12 @@ No demo credentials are needed because **there are no credentials.** The flow:
    - Optionally create a group (**New group**) and send a message in it to
      confirm the group path. This build sends text only: it has no attachments,
      voice messages or calls.
+   - To report or block (guideline 1.2): on Device A, open the menu at the top
+     right of the chat with B (**Report**, **Block**), or long-press one of B's
+     messages (**Report**), or tap B in **Contacts**. A report sends B's
+     account, the reason and which chat or message, not what it says. Blocked
+     accounts are listed under **Settings > Privacy > Blocked accounts**. The
+     same chat menu mutes the chat's notifications.
 4. **Verify the "no recovery" behavior (optional).** Delete and reinstall the app
    on one device. The previous identity and message history will be gone, and the
    onboarding starts again for a brand-new account. This demonstrates the

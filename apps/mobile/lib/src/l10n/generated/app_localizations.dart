@@ -1906,6 +1906,12 @@ abstract class AppLocalizations {
   /// **'This file couldn\'t be sent. Attach it again.'**
   String get errorAttachmentRejected;
 
+  /// No description provided for @errorPeerUnreachable.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages can\'t be sent to this account.'**
+  String get errorPeerUnreachable;
+
   /// No description provided for @conversationsNewChat.
   ///
   /// In en, this message translates to:
@@ -3783,6 +3789,270 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No server address is configured, so there are no push notifications.'**
   String get securityStatusPushPayloadsUnavailableDetail;
+
+  /// No description provided for @chatMenuTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'More options'**
+  String get chatMenuTooltip;
+
+  /// No description provided for @muteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute notifications'**
+  String get muteTitle;
+
+  /// No description provided for @muteUnmute.
+  ///
+  /// In en, this message translates to:
+  /// **'Unmute'**
+  String get muteUnmute;
+
+  /// No description provided for @muteOneHour.
+  ///
+  /// In en, this message translates to:
+  /// **'1 hour'**
+  String get muteOneHour;
+
+  /// No description provided for @muteEightHours.
+  ///
+  /// In en, this message translates to:
+  /// **'8 hours'**
+  String get muteEightHours;
+
+  /// No description provided for @muteOneWeek.
+  ///
+  /// In en, this message translates to:
+  /// **'1 week'**
+  String get muteOneWeek;
+
+  /// No description provided for @muteAlways.
+  ///
+  /// In en, this message translates to:
+  /// **'Always'**
+  String get muteAlways;
+
+  /// No description provided for @muteDoneFor.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications off for {duration}'**
+  String muteDoneFor(String duration);
+
+  /// No description provided for @muteDoneAlways.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications off'**
+  String get muteDoneAlways;
+
+  /// No description provided for @muteUndone.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications on'**
+  String get muteUndone;
+
+  /// No description provided for @muteFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t change notifications'**
+  String get muteFailed;
+
+  /// No description provided for @conversationsMutedSemantics.
+  ///
+  /// In en, this message translates to:
+  /// **'Muted'**
+  String get conversationsMutedSemantics;
+
+  /// No description provided for @reportAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get reportAction;
+
+  /// No description provided for @reportTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Report @{handle}'**
+  String reportTitle(String handle);
+
+  /// No description provided for @reportReasonSpam.
+  ///
+  /// In en, this message translates to:
+  /// **'Spam'**
+  String get reportReasonSpam;
+
+  /// No description provided for @reportReasonHarassment.
+  ///
+  /// In en, this message translates to:
+  /// **'Harassment'**
+  String get reportReasonHarassment;
+
+  /// No description provided for @reportReasonImpersonation.
+  ///
+  /// In en, this message translates to:
+  /// **'Pretending to be someone'**
+  String get reportReasonImpersonation;
+
+  /// No description provided for @reportReasonCsam.
+  ///
+  /// In en, this message translates to:
+  /// **'Child sexual abuse'**
+  String get reportReasonCsam;
+
+  /// No description provided for @reportReasonViolence.
+  ///
+  /// In en, this message translates to:
+  /// **'Violence or threats'**
+  String get reportReasonViolence;
+
+  /// No description provided for @reportReasonScam.
+  ///
+  /// In en, this message translates to:
+  /// **'Scam or fraud'**
+  String get reportReasonScam;
+
+  /// No description provided for @reportReasonOther.
+  ///
+  /// In en, this message translates to:
+  /// **'Something else'**
+  String get reportReasonOther;
+
+  /// No description provided for @reportAlsoBlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Also block @{handle}'**
+  String reportAlsoBlock(String handle);
+
+  /// No description provided for @reportFooterMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'The report includes their account, the reason and which chat and message, but not what it says.'**
+  String get reportFooterMessage;
+
+  /// No description provided for @reportFooterChat.
+  ///
+  /// In en, this message translates to:
+  /// **'The report includes their account, the reason and which chat, but no messages.'**
+  String get reportFooterChat;
+
+  /// No description provided for @reportFooterAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'The report includes their account and the reason, but no messages.'**
+  String get reportFooterAccount;
+
+  /// No description provided for @reportSent.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent'**
+  String get reportSent;
+
+  /// No description provided for @reportSentAndBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent and @{handle} blocked'**
+  String reportSentAndBlocked(String handle);
+
+  /// No description provided for @reportSentBlockFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Report sent. Couldn\'t block @{handle}.'**
+  String reportSentBlockFailed(String handle);
+
+  /// No description provided for @reportFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t send the report'**
+  String get reportFailed;
+
+  /// No description provided for @blockAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Block'**
+  String get blockAction;
+
+  /// No description provided for @unblockAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Unblock'**
+  String get unblockAction;
+
+  /// No description provided for @blockConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Block @{handle}?'**
+  String blockConfirmTitle(String handle);
+
+  /// No description provided for @blockConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'They won\'t be able to message you directly or add you to a group. They aren\'t notified, but their messages to you won\'t be delivered.'**
+  String get blockConfirmBody;
+
+  /// No description provided for @blockDone.
+  ///
+  /// In en, this message translates to:
+  /// **'@{handle} blocked'**
+  String blockDone(String handle);
+
+  /// No description provided for @blockFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t block @{handle}'**
+  String blockFailed(String handle);
+
+  /// No description provided for @unblockDone.
+  ///
+  /// In en, this message translates to:
+  /// **'@{handle} unblocked'**
+  String unblockDone(String handle);
+
+  /// No description provided for @unblockFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t unblock @{handle}'**
+  String unblockFailed(String handle);
+
+  /// No description provided for @blockedComposerLine.
+  ///
+  /// In en, this message translates to:
+  /// **'You blocked this account.'**
+  String get blockedComposerLine;
+
+  /// No description provided for @blockedAccountsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked accounts'**
+  String get blockedAccountsTitle;
+
+  /// No description provided for @blockedAccountsEmptyTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'No blocked accounts'**
+  String get blockedAccountsEmptyTitle;
+
+  /// No description provided for @blockedAccountsEmptyBody.
+  ///
+  /// In en, this message translates to:
+  /// **'You can block someone from a chat or from Contacts.'**
+  String get blockedAccountsEmptyBody;
+
+  /// No description provided for @blockedAccountsLoadFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t load blocked accounts'**
+  String get blockedAccountsLoadFailedTitle;
+
+  /// No description provided for @blockedAccountsLoadFailedBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your connection and try again.'**
+  String get blockedAccountsLoadFailedBody;
+
+  /// No description provided for @safetyAccountNotFound.
+  ///
+  /// In en, this message translates to:
+  /// **'Couldn\'t find @{handle}'**
+  String safetyAccountNotFound(String handle);
 }
 
 class _AppLocalizationsDelegate

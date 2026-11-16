@@ -19,6 +19,7 @@ import 'package:veil_mobile/src/features/conversations/data/messenger/conversati
 import 'package:veil_mobile/src/features/conversations/data/messenger/identity_trust.dart';
 import 'package:veil_mobile/src/features/conversations/data/veil_messenger_controller.dart';
 import 'package:veil_mobile/src/features/device_transfer/data/device_transfer_providers.dart';
+import 'package:veil_mobile/src/features/safety/data/conversation_mutes.dart';
 import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 import '../../support/fake_relay.dart';
@@ -92,6 +93,9 @@ class ChatAttention {
     this.identityChangedInGroup = false,
     this.loading = false,
     this.relayError = false,
+    this.peerBlocked = false,
+    this.muted = false,
+    this.reportRefused = false,
   });
 
   /// The peer's identity key changed and the user has not reviewed it.
@@ -123,6 +127,19 @@ class ChatAttention {
   /// The relay failed the last request, which the messenger reports as its
   /// error line: a chat and the list each say so.
   final bool relayError;
+
+  /// The user blocked the chat's peer, and before them one more account
+  /// (tom_walsh, who set no name): the chat shows the line that takes the
+  /// composer's place, and the blocked accounts list has two rows.
+  final bool peerBlocked;
+
+  /// The user muted the chat on this phone, with no end, and the chat with
+  /// the disappearing timer for a week: their rows in the list show it.
+  final bool muted;
+
+  /// The relay refuses the next report, as its throttle does: the chat says
+  /// so in a toast with Retry.
+  final bool reportRefused;
 
   /// How many of the chat's warnings come with an action: reviewing the
   /// identity change (in this chat, or the one that waits in the group),
@@ -206,6 +223,19 @@ class LayoutWorld {
       await seedConversations(relay, cache, withGroup: withGroup);
     }
     api = LayoutRelayClient(relay, relay.partiesByHandle[selfHandle]!);
+    if (attention.peerBlocked) {
+      relay.blocks['user-$selfHandle'] = {
+        'user-tom_walsh': DateTime.utc(2026, 3, 30, 18),
+        'user-$peerHandle': DateTime.utc(2026, 4, 7, 9),
+      };
+    }
+    if (attention.reportRefused) relay.refuseReports = 1;
+    if (attention.muted) {
+      await MuteStore(storage.scoped(SecureScope.notifications)).write({
+        chatConversationId: null,
+        timerChatConversationId: DateTime.now().add(const Duration(days: 7)),
+      });
+    }
 
     if (_hasAccount) {
       await storage.persistDeviceSecretRefs(

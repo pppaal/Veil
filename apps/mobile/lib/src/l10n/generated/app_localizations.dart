@@ -673,7 +673,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsLogoutConfirmBody.
   ///
   /// In en, this message translates to:
-  /// **'This signs this phone out and erases Veil from it. You lose the account for good.'**
+  /// **'This signs this phone out and deletes your chats from it. Your account is gone for good.'**
   String get settingsLogoutConfirmBody;
 
   /// No description provided for @settingsLogoutFailed.

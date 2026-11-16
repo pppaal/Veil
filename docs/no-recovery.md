@@ -43,8 +43,9 @@ words:
   this phone." / "If you lose the phone, your account and messages are gone
   for good." / "To move to a new phone later, you'll need this one.", with
   the checkbox "I understand a lost account can't be recovered".
-- The confirm dialog of Sign out: "This signs this phone out and erases Veil
-  from it. You lose the account for good."
+- The confirm dialog of Sign out: "This signs this phone out and deletes your
+  chats from it. Your account is gone for good." (An account runs on one
+  phone at a time, so signing it out leaves no device that can open it.)
 - The confirm dialog of Delete account: "This deletes your account, messages
   and contacts from this phone and the server, and the groups you created,
   for everyone in them. It can't be undone." (The server deletes every group

@@ -110,7 +110,7 @@
   "settingsSectionSecurity": "Security",
   "settingsSectionAccount": "Account",
   "settingsLogoutConfirmTitle": "Sign out of this phone?",
-  "settingsLogoutConfirmBody": "This signs this phone out and erases Veil from it. You lose the account for good.",
+  "settingsLogoutConfirmBody": "This signs this phone out and deletes your chats from it. Your account is gone for good.",
   "settingsLogoutFailed": "Couldn't sign out. Check your connection and try again.",
   "settingsTypePhraseToContinue": "Type {phrase} to confirm.",
   "@settingsTypePhraseToContinue": {"placeholders": {"phrase": {"type": "String"}}},

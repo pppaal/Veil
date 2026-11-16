@@ -84,6 +84,20 @@ void main() {
       });
     });
 
+    // "Erases Veil from it" read as uninstalling the app. Sign out deletes
+    // what Veil keeps on this phone, the chats among it, and leaves no
+    // device that can open the account (one phone at a time); the app
+    // itself stays.
+    test('Sign out says what it deletes and what is lost, not that the app goes', () {
+      final body = l10n.settingsLogoutConfirmBody;
+      expect(body, isNot(contains('Veil')), reason: 'the app is not what goes');
+      expect(body, isNot(contains('uninstall')));
+      expect(body, contains('signs this phone out'));
+      expect(body, contains('chats'));
+      expect(body, contains('gone for good'));
+      expect(body.split(RegExp(r'(?<=[.!?])\s+')), hasLength(lessThanOrEqualTo(2)), reason: 'two short sentences');
+    });
+
     testWidgets('each account action says in its dialog what it erases, before the typed handle', (tester) async {
       await withPhoneApp(tester, identities, location: '/settings', size: phoneLarge, body: (world) async {
         for (final (key, title, body) in [

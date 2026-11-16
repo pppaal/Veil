@@ -214,8 +214,8 @@ const _others = <String, List<_Line>>{
   emptyChatPeerHandle: [],
   'tom_walsh': [_Line(_At(18, 40, day: 4), true, "what's the address again?")],
   'mia': [_Line(_At(20, 15, day: 6), false, 'can you send the photos from saturday?')],
-  _omar: [_Line(_At(8, 14), false, '', kind: MessageKind.image)],
-  'alexandra': [_Line(_At(8, 28), false, '', kind: MessageKind.voice)],
+  _omar: [_Line(_At(8, 14), false, '', kind: MessageKind.image, attachment: true)],
+  'alexandra': [_Line(_At(8, 28), false, '', kind: MessageKind.voice, attachment: true)],
   timerChatPeerHandle: [
     _Line(_At(8, 30), true, 'You set disappearing messages to 1 day', kind: MessageKind.system),
     _Line(_At(8, 35), true, latestTimerChatLine, expires: true),
@@ -268,17 +268,7 @@ Future<void> seedConversations(
     final sender = line.mine ? selfHandle : peer;
     final recipient = line.mine ? peer : selfHandle;
     final body = line.kind == MessageKind.system && line.body.isEmpty ? keyChangeNotice : line.body;
-    final attachment = line.attachment
-        ? const AttachmentReference(
-            attachmentId: '6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f',
-            storageKey: 'attachments/6f1c2d3e/blob',
-            contentType: 'application/pdf',
-            sizeBytes: 2411724,
-            sha256: 'sha',
-            encryptedKey: 'key',
-            nonce: 'nonce',
-          )
-        : null;
+    final attachment = line.attachment ? _attachmentOf(line.kind) : null;
     final expiry = line.expires ? expiresAt : null;
     final envelope = await sealer.messaging.encryptMessage(
       conversationId: conversationId,
@@ -367,6 +357,39 @@ Future<void> seedConversations(
     await send(groupConversationId, line.from ?? peerHandle, line);
   }
 }
+
+// What each message with an attachment carries, by its kind: the signed
+// lease (a PDF), Omar's photo and Alexandra's voice message. This build
+// opens none of them, so each draws the "Can't open in this version" card.
+AttachmentReference _attachmentOf(MessageKind kind) => switch (kind) {
+      MessageKind.image => const AttachmentReference(
+          attachmentId: '2b7e4c1a-9d3f-4e6b-8a5c-1f0e2d3c4b5a',
+          storageKey: 'attachments/2b7e4c1a/blob',
+          contentType: 'image/jpeg',
+          sizeBytes: 1887437,
+          sha256: 'sha',
+          encryptedKey: 'key',
+          nonce: 'nonce',
+        ),
+      MessageKind.voice => const AttachmentReference(
+          attachmentId: '9c4d2e1f-7a6b-4c5d-9e8f-3a2b1c0d4e5f',
+          storageKey: 'attachments/9c4d2e1f/blob',
+          contentType: 'audio/mp4',
+          sizeBytes: 57344,
+          sha256: 'sha',
+          encryptedKey: 'key',
+          nonce: 'nonce',
+        ),
+      _ => const AttachmentReference(
+          attachmentId: '6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f',
+          storageKey: 'attachments/6f1c2d3e/blob',
+          contentType: 'application/pdf',
+          sizeBytes: 2411724,
+          sha256: 'sha',
+          encryptedKey: 'key',
+          nonce: 'nonce',
+        ),
+    };
 
 const _transferSessionId = layoutTransferSessionId;
 

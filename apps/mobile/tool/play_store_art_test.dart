@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -16,7 +15,6 @@ import 'package:veil_mobile/src/core/theme/veil_theme.dart';
 import 'package:veil_mobile/src/features/app_lock/presentation/app_lock_screen.dart';
 import 'package:veil_mobile/src/features/auth/presentation/choose_handle_screen.dart';
 import 'package:veil_mobile/src/features/chat/presentation/chat_room_screen.dart';
-import 'package:veil_mobile/src/features/chat/presentation/message_bubble.dart';
 import 'package:veil_mobile/src/features/chat/presentation/reaction_chips_row.dart';
 import 'package:veil_mobile/src/features/chat/presentation/typing_indicator.dart';
 import 'package:veil_mobile/src/features/conversations/presentation/conversation_list_screen.dart';
@@ -96,7 +94,6 @@ class _Shot {
     required this.location,
     this.from,
     this.account = LayoutAccount.signedIn,
-    this.extra,
     this.attention = const ChatAttention(),
     this.withGroup = false,
     this.prepare,
@@ -108,11 +105,10 @@ class _Shot {
   final String location;
 
   /// Where the app pushes [location] from, so its bar shows the back arrow
-  /// it has on a phone. Null for a screen the app goes to (Choose a handle
-  /// replaces Create account) or a tab.
+  /// it has on a phone. Null for a screen the app goes to (Choose a handle)
+  /// or a tab.
   final String? from;
   final LayoutAccount account;
-  final Object? extra;
   final ChatAttention attention;
   final bool withGroup;
   final void Function(FakeRelay relay)? prepare;
@@ -126,7 +122,6 @@ const _shots = <_Shot>[
       screen: ChooseHandleScreen,
       location: '/choose-handle',
       account: LayoutAccount.signedOut,
-      extra: selfDisplayName,
       settle: _typeHandle),
   _Shot('02-chats',
       screen: ConversationListScreen,
@@ -140,14 +135,14 @@ const _shots = <_Shot>[
       attention: ChatAttention(peerTyping: true),
       prepare: _leaveOutChatLines,
       settle: _reactWhileTyping),
-  // The old phone before it asks for a code: the steps and the one line
-  // that the old phone is needed. Once asked, the screen shows the code
-  // itself, a long string in `monospace` that starts with VEIL_TRANSFER::
-  // (its wire format), which is no picture for a listing.
+  // The old phone before it asks for a code: how a move goes, and the
+  // button that starts it. Once asked, the screen shows the code itself, a
+  // long string in `monospace` that starts with VEIL_TRANSFER:: (its wire
+  // format), which is no picture for a listing.
   _Shot('04-move-to-a-new-phone', screen: DeviceTransferScreen, location: '/device-transfer', from: '/settings'),
   _Shot('05-app-lock',
       screen: AppLockScreen, location: '/lock', account: LayoutAccount.locked, settle: _typePin),
-  _Shot('06-settings', screen: SettingsScreen, location: '/settings', settle: _showSecurityFooter),
+  _Shot('06-settings', screen: SettingsScreen, location: '/settings', settle: _settingsAsOpened),
 ];
 
 void main() {
@@ -197,7 +192,6 @@ void main() {
       final from = shot.from;
       final router = GoRouter(
         initialLocation: from ?? shot.location,
-        initialExtra: from == null ? shot.extra : null,
         routes: world.container.read(appRoutesProvider),
       );
       _usePhone(tester);
@@ -209,7 +203,7 @@ void main() {
           await tester.pumpWidget(_app(world.container, router));
           await pumpFrames(tester);
           if (from != null) {
-            unawaited(router.push(shot.location, extra: shot.extra));
+            unawaited(router.push(shot.location));
             await pumpFrames(tester);
           }
           world.startLiveAttention();
@@ -406,10 +400,8 @@ Future<void> _typeHandle(WidgetTester tester) async {
 }
 
 // Three chats of the seed are there for the gate's sake and stay out of the
-// listing: the last messages of two are a voice note and a photo, which the
-// app cannot send, and the third has no message yet, listed last under a
-// time of another day (the list gives times, not days), which reads as a
-// mistake in a still.
+// listing: the last messages of two are a voice message and a photo, which
+// the app cannot send, and the third has no message yet.
 const _chatsLeftOut = {'alexandra', 'omar', emptyChatPeerHandle};
 
 void _leaveOutChats(FakeRelay relay) {
@@ -426,40 +418,36 @@ Future<void> _expectChatsLeftOut(WidgetTester tester) async {
   }
 }
 
-// The seed's chat holds lines the gate needs that the listing should not
-// show, and more than one screen holds. The listing keeps Sam's long
-// message about the lease and the user's two answers from the disappearing
-// one on, and leaves out:
-// - the signed lease the user sent as a PDF, which the app cannot send, and
-//   the two messages before it, which are about that file;
-// - the long link and the short reply between Sam's message and the
-//   answers, which push his message off the top of the screen;
-// - the system notice "Screenshot taken", a placeholder no Veil client
-//   writes (the phone's notice reads "Someone in this chat took a
-//   screenshot.", and an Android phone blocks screenshots of the app).
-// What is left fits on the screen whole, which _expectNothingCut holds it
-// to.
+// The seed's chat holds more than one screen does. The listing keeps the
+// morning from Sam's message after the file on: his two short messages, the
+// user's two answers (the second disappearing) and Sam's last word. It
+// leaves out the evening before (the long message and the long link of the
+// gate's history case), his first message of the morning and the user's
+// answer to it, and the PDF the user sent, which the app cannot send. What
+// is left fits on the screen whole, which _expectNothingCut holds it to.
 void _leaveOutChatLines(FakeRelay relay) {
   final history = relay.conversations[chatConversationId]!.messages;
   final file = history.indexWhere((message) => message['attachment'] != null);
-  final timed = history.indexWhere((message) => message['expiresAt'] != null);
   expect(file, isNot(-1), reason: 'the seed chat no longer holds the attachment the listing starts after');
-  expect(timed, greaterThan(file + 1), reason: 'the seed chat no longer holds a disappearing message after it');
-  final sams = history[file + 1];
-  expect(sams['senderDeviceId'], 'dev-$peerHandle', reason: "the message after the attachment is no longer Sam's");
-  final notices = history.sublist(file + 2, timed).where((message) => message['messageType'] == MessageKind.system.name);
-  expect(notices, hasLength(1), reason: 'the seed chat no longer holds the one system notice the listing leaves out');
-  final kept = [sams, ...history.sublist(timed)];
+  final kept = history.sublist(file + 1);
+  expect(kept.first['senderDeviceId'], 'dev-$peerHandle', reason: "the message after the attachment is no longer Sam's");
+  expect(kept.where((message) => message['expiresAt'] != null), hasLength(1),
+      reason: 'the kept lines no longer hold the disappearing message');
+  expect(kept.where((message) => message['messageType'] == MessageKind.system.name), isEmpty,
+      reason: 'the kept lines hold a notice');
   history
     ..clear()
     ..addAll(kept);
 }
 
-// A reaction on Sam's message, given the way a user gives one, while Sam
-// types the next.
+// The message of Sam's the user reacts to: the news of the morning.
+const _reactedTo = 'they moved move-in to the 14th';
+
+// A thumbs-up on Sam's news, given the way a user gives one, while Sam types
+// the next message.
 Future<void> _reactWhileTyping(WidgetTester tester) async {
-  final theirs = find.byWidgetPredicate((widget) => widget is MessageBubble && !widget.message.isMine);
-  await tester.longPress(find.descendant(of: theirs.first, matching: find.byType(VeilBubble)));
+  final news = find.ancestor(of: find.text(_reactedTo), matching: find.byType(VeilBubble));
+  await tester.longPress(news);
   await pumpFrames(tester, frames: 4);
   await tester.tap(find.descendant(of: find.byType(ReactionPickerWidget), matching: find.text('\u{1F44D}')));
   await pumpFrames(tester, frames: 6);
@@ -475,35 +463,22 @@ Future<void> _typePin(WidgetTester tester) async {
   await pumpFrames(tester, frames: 4);
 }
 
-// Scrolled to the Appearance group, so that the screenful runs from the
-// settings a user changes to the Security group's footer, which says what
-// the account rests on. If a line then sits across the bottom edge (the
-// header of the group after it, before Privacy had Blocked accounts), the
-// list scrolls on until that line is whole, as long as the Appearance
-// header still fits at the top.
-Future<void> _showSecurityFooter(WidgetTester tester) async {
-  final l10n = lookupAppLocalizations(const Locale('en'));
-  final appearanceHeader = find.text(l10n.settingsSectionAppearance);
-  final appearance = find.ancestor(of: appearanceHeader, matching: find.byType(VeilGroup));
-  await Scrollable.ensureVisible(tester.element(appearance));
-  await pumpFrames(tester, frames: 2);
-
+// The top of Settings as it opens: the profile row and the groups under
+// it. If a line sits across the bottom edge, the list moves up just far
+// enough for that line to be whole, so the still cuts through nothing.
+Future<void> _settingsAsOpened(WidgetTester tester) async {
   final scrollable = find.byType(Scrollable).first;
   final list = tester.getRect(scrollable);
   var overhang = 0.0;
   for (final text in find.descendant(of: scrollable, matching: find.byType(RichText)).evaluate()) {
     final rect = _globalRect(text.renderObject! as RenderBox);
-    if (rect.top < list.bottom && rect.bottom > list.bottom) overhang = math.max(overhang, rect.bottom - list.bottom);
+    if (rect.top < list.bottom && rect.bottom > list.bottom && rect.bottom - list.bottom > overhang) {
+      overhang = rect.bottom - list.bottom;
+    }
   }
-  if (overhang > 0) {
-    final position = tester.state<ScrollableState>(scrollable).position;
-    position.jumpTo(position.pixels + overhang);
-    await pumpFrames(tester, frames: 2);
-  }
-
-  final footer = find.textContaining(l10n.securityFooterNoRecovery);
-  expect(tester.getRect(footer).bottom, lessThanOrEqualTo(list.bottom), reason: 'the Security footer is cut off');
-  expect(tester.getRect(appearanceHeader).top, greaterThanOrEqualTo(list.top), reason: 'the Appearance header is cut off');
+  if (overhang == 0) return;
+  tester.state<ScrollableState>(scrollable).position.jumpTo(overhang);
+  await pumpFrames(tester, frames: 2);
 }
 
 /// The app icon and the name, on white.

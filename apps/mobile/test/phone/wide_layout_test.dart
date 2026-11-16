@@ -21,7 +21,8 @@ import 'phone_app.dart';
 // the hero cards, stat tiles and header cards of the old panes were for is
 // in the two bars. From 1024 px the tabs are a rail at the start edge.
 
-const _latest = "Section 7 is fine. Let's sign tomorrow.";
+const _latest = latestChatLine;
+const _jonasLatest = latestTimerChatLine;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -77,7 +78,7 @@ void main() {
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
       expect(row('Jonas Weber').selected, isTrue);
       expect(row('Sam Rivera').selected, isFalse);
-      expect(inChat(find.text('See you at nine.')), findsOneWidget);
+      expect(inChat(find.text(_jonasLatest)), findsOneWidget);
       // The list is still there: the pane's bar has no back button.
       expect(find.byType(ConversationListPhone), findsOneWidget);
       expect(find.byTooltip('Back'), findsNothing);
@@ -287,7 +288,7 @@ void main() {
       await pumpFrames(tester, frames: 4);
       expect(identical(tester.state(find.byType(ConversationListScreen)), list), isTrue);
       expect(tester.widget<ChatRoomScreen>(find.byType(ChatRoomScreen)).conversationId, timerChatConversationId);
-      expect(inChat(find.text('See you at nine.')), findsOneWidget);
+      expect(inChat(find.text(_jonasLatest)), findsOneWidget);
       expect(tester.widget<ConversationRow>(inList(find.widgetWithText(ConversationRow, 'Jonas Weber'))).selected, isTrue);
       expect(tester.takeException(), isNull);
     });

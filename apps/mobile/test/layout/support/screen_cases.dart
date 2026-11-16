@@ -510,12 +510,13 @@ const List<ScreenCase> screenCases = [
       withGroup: true,
       attention: ChatAttention(identityChangedInGroup: true),
       settle: _awaitChangeElsewhere),
-  // A contact this device has not exchanged a message with: no identity is
-  // pinned, so there is no number yet and the page says how to get one.
+  // A contact this device has not exchanged a message with (Lena): no
+  // identity is pinned, so there is no number yet and the page says how to
+  // get one.
   ScreenCase('safety-numbers-unpinned',
       screen: SafetyNumbersScreen,
       file: 'safety_numbers_screen.dart',
-      location: '/safety-numbers/conv-priya',
+      location: '/safety-numbers/$emptyChatConversationId',
       settle: _awaitSafetyNumber),
   ScreenCase(
     'chat-room-legacy-badge',
@@ -554,6 +555,28 @@ const List<ScreenCase> screenCases = [
     primaryExtent: chatMessagesExtent,
     minPrimaryShare: minPrimaryContentShare,
     settle: _searchChatForHits,
+  ),
+  // What the everyday cases keep off their first screen: the top of the
+  // chat's history, a day back, with the long message and the long link a
+  // person sends now and then. And a chat with a notice from the other
+  // side in it: Priya took a screenshot.
+  ScreenCase(
+    'chat-room-history',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: _chat,
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _scrollToHistoryTop,
+  ),
+  ScreenCase(
+    'chat-room-notices',
+    screen: ChatRoomScreen,
+    file: 'chat_room_screen.dart',
+    location: '/chat/$noticeChatConversationId',
+    primaryExtent: chatMessagesExtent,
+    minPrimaryShare: minPrimaryContentShare,
+    settle: _expectScreenshotNotice,
   ),
   ScreenCase(
     'chat-room-warnings-keyboard-larger-text',
@@ -879,12 +902,40 @@ Future<void> _searchChatForHits(WidgetTester tester) async {
       reason: 'the search did not narrow the messages');
 }
 
+// The chat scrolled up to its oldest message. The list starts at its end
+// and learns how long it is as it builds what scrolls in, so it jumps to
+// its top until the top stays put.
+Future<void> _scrollToHistoryTop(WidgetTester tester) async {
+  final list = find.descendant(of: find.byType(ChatMessageList), matching: find.byType(Scrollable)).first;
+  final position = tester.state<ScrollableState>(list).position;
+  for (var jump = 0; jump < 10 && position.pixels < position.maxScrollExtent - 0.5; jump++) {
+    position.jumpTo(position.maxScrollExtent);
+    await pumpFrames(tester, frames: 2);
+  }
+  expect(position.pixels, greaterThanOrEqualTo(position.maxScrollExtent - 0.5), reason: 'the chat did not reach its top');
+  expect(find.textContaining('the landlord wants'), findsOneWidget, reason: 'the long message is not built');
+  expect(find.textContaining(longLinkHost), findsOneWidget, reason: 'the long link is not built');
+}
+
+Future<void> _expectScreenshotNotice(WidgetTester tester) async {
+  expect(find.text(screenshotNotice), findsOneWidget, reason: 'the chat does not show its notice');
+}
+
+// A message from the other side: the newest of theirs, which is on the
+// first screenful. The list is built from its end, so the first one found
+// is the newest.
+Finder _theirNewestMessage() => find.descendant(
+      of: find.byWidgetPredicate((widget) => widget is MessageBubble && !widget.message.isMine).first,
+      matching: find.byType(VeilBubble),
+    );
+
 Future<void> _expectGroupMessages(WidgetTester tester) async {
   expect(find.byType(MessageBubble), findsNWidgets(groupLineCount), reason: 'the group chat did not open its messages');
 }
 
 Future<void> _expectLegacyBadge(WidgetTester tester) async {
-  // The line sits under the peer's first message, at the top of the history.
+  // The line sits under Sam's first message of the morning, above the
+  // first screenful.
   await tester.dragUntilVisible(
     find.descendant(
       of: find.byType(MessageBubble),
@@ -986,14 +1037,13 @@ Future<void> _reportMessage(WidgetTester tester, Finder message) async {
   expect(find.byKey(const ValueKey('report-reason-spam')), findsOneWidget, reason: 'the report sheet did not open');
 }
 
-Future<void> _openMessageReportSheet(WidgetTester tester) =>
-    _reportMessage(tester, find.textContaining('registry.example.org'));
+Future<void> _openMessageReportSheet(WidgetTester tester) => _reportMessage(tester, _theirNewestMessage());
 
 // A group member's message: the report names its writer, and offers no
 // block, which would not keep them out of the group.
 Future<void> _openGroupMessageReportSheet(WidgetTester tester) async {
   await _expectGroupMessages(tester);
-  await _reportMessage(tester, find.text('The 14th works for me.'));
+  await _reportMessage(tester, _theirNewestMessage());
   expect(find.byKey(const ValueKey('report-also-block')), findsNothing, reason: 'a group report offered a block');
 }
 
@@ -1024,7 +1074,7 @@ Future<void> _openBlockedReportSheet(WidgetTester tester) async {
 }
 
 Future<void> _openBlockedMessageSheet(WidgetTester tester) async {
-  await tester.longPress(find.textContaining('registry.example.org'));
+  await tester.longPress(_theirNewestMessage());
   await pumpFrames(tester, frames: 4);
   expect(find.byKey(const ValueKey('message-report')), findsOneWidget, reason: 'the message sheet did not open');
   expect(find.byType(ReactionPickerWidget), findsNothing, reason: 'a blocked peer\'s message offered reactions');

@@ -680,6 +680,12 @@ const List<ScreenCase> screenCases = [
       location: _chat,
       attention: ChatAttention(peerBlocked: true),
       settle: _openBlockedReportSheet),
+  ScreenCase('chat-room-blocked-menu',
+      screen: ChatRoomScreen,
+      file: 'chat_room_screen.dart',
+      location: _chat,
+      attention: ChatAttention(peerBlocked: true),
+      settle: _openBlockedChatMenu),
   ScreenCase('chat-room-blocked-message-sheet',
       screen: ChatRoomScreen,
       file: 'chat_room_screen.dart',
@@ -942,11 +948,19 @@ Future<void> _expectCancellableSetup(WidgetTester tester) async {
 
 Future<void> _openTimerSheet(WidgetTester tester) => _openFromChatMenu(tester, 'timer', BottomSheet);
 
-// The chat's menu, open: the timer, muting, reporting and blocking.
+// The chat's menu, open: the timer, muting, reporting and blocking. With
+// the peer blocked there is no timer, since nothing can be sent there.
 Future<void> _openChatMenu(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('chat-menu')));
   await pumpFrames(tester, frames: 3);
-  expect(find.byType(PopupMenuItem<String>), findsNWidgets(4), reason: 'the chat menu did not open');
+  final blocked = find.byKey(const ValueKey('chat-menu-unblock')).evaluate().isNotEmpty;
+  expect(find.byType(PopupMenuItem<String>), findsNWidgets(blocked ? 3 : 4), reason: 'the chat menu did not open');
+}
+
+Future<void> _openBlockedChatMenu(WidgetTester tester) async {
+  await _openChatMenu(tester);
+  expect(find.byKey(const ValueKey('chat-menu-unblock')), findsOneWidget, reason: 'the peer is not blocked');
+  expect(find.byKey(const ValueKey('chat-menu-timer')), findsNothing, reason: 'a blocked chat offered a timer');
 }
 
 Future<void> _openFromChatMenu(WidgetTester tester, String entry, Type opens) async {

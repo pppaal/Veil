@@ -6,7 +6,9 @@ import 'package:veil_mobile/src/l10n/generated/app_localizations.dart';
 
 // When a message was sent, as Signal, WhatsApp and the web app say it: the
 // time for today, "Yesterday", the short weekday for the six days before,
-// then the short date. The time of day follows the phone's 24-hour setting.
+// then the short date (the web's listDate in apps/web-demo/lib/format.js,
+// with these cases in its __tests__/format.test.js). The time of day
+// follows the phone's 24-hour setting.
 
 final _en = lookupAppLocalizations(const Locale('en'));
 late final MessageTimeFormat _twelveHour;

@@ -17,7 +17,7 @@ import 'phone_app.dart';
 // header cards carried in the wide layout is still one tap away in the bar.
 
 const _latest = latestChatLine;
-// The oldest message, from the evening before, and the first of the
+// The oldest message, from Thursday evening, and the first of the
 // morning, which a search for "lease" finds.
 const _oldest = 'the landlord wants two months up front';
 const _morning = legacyMessageBody;

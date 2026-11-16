@@ -250,7 +250,7 @@ void main() {
       expect(inSheet(find.byType(FilledButton)), findsNothing);
       await tester.tap(find.text(en.contactsRemove));
       await pumpFrames(tester, frames: 6);
-      expect(world.api.removedContacts, {'lena'});
+      expect(world.api.removedContacts, {emptyChatPeerHandle});
       expect(find.text('Lena Fischer'), findsNothing);
       expect(findCopy(en.contactsRemoved('Lena Fischer')), findsOneWidget);
 

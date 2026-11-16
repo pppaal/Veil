@@ -402,7 +402,7 @@ Future<void> _typeHandle(WidgetTester tester) async {
 // Three chats of the seed are there for the gate's sake and stay out of the
 // listing: the last messages of two are a voice message and a photo, which
 // the app cannot send, and the third has no message yet.
-const _chatsLeftOut = {'alexandra', 'omar', emptyChatPeerHandle};
+const _chatsLeftOut = {'alexandra', 'omar_h', emptyChatPeerHandle};
 
 void _leaveOutChats(FakeRelay relay) {
   for (final handle in _chatsLeftOut) {
@@ -421,9 +421,9 @@ Future<void> _expectChatsLeftOut(WidgetTester tester) async {
 // The seed's chat holds more than one screen does. The listing keeps the
 // morning: Sam asking about the lease and the user's answer, his two short
 // messages, the user's two answers (the second disappearing) and Sam's last
-// word. It leaves out the evening before (the long message and the long
-// link of the gate's history case) and the PDF the user sent, which the app
-// cannot send. What is left fits on the screen whole, which
+// word. It leaves out the days before (Thursday's long message and long
+// link, which the gate's history case shows, and last night's lines)
+// and the PDF the user sent, which the app cannot send. What is left fits on the screen whole, which
 // _expectNothingCut holds it to.
 void _leaveOutChatLines(FakeRelay relay) {
   final history = relay.conversations[chatConversationId]!.messages;
@@ -437,8 +437,8 @@ void _leaveOutChatLines(FakeRelay relay) {
     for (final message in history)
       if (dayOf(message) == morning && message['attachment'] == null) message,
   ];
-  expect(kept, hasLength(history.length - 4),
-      reason: 'the seed chat no longer holds three lines the evening before and one file');
+  expect(kept, hasLength(history.length - 16),
+      reason: 'the seed chat no longer holds three lines on Thursday, twelve last night and one file');
   expect(kept.first['senderDeviceId'], 'dev-$peerHandle', reason: "the morning no longer opens with Sam's question");
   expect(kept.where((message) => message['expiresAt'] != null), hasLength(1),
       reason: 'the kept lines no longer hold the disappearing message');

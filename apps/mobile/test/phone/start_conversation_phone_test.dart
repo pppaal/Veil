@@ -142,15 +142,15 @@ void main() {
       await withPhoneApp(tester, identities, location: '/start-group', body: (world) async {
         final members = find.byType(TextField).at(2);
         expect(find.textContaining(RegExp(r'^\d+ members?$')), findsNothing);
-        await tester.enterText(members, 'lena');
+        await tester.enterText(members, 'lena_berlin');
         await tester.pump();
         expect(find.text('1 member'), findsOneWidget);
         expect(find.byType(InputChip), findsNothing, reason: 'a handle still being typed');
-        await tester.enterText(find.byType(TextField).at(2), 'lena, @omar  jonas');
+        await tester.enterText(find.byType(TextField).at(2), 'lena_berlin, @omar_h  jonask');
         await tester.pump();
         expect(find.text('3 members'), findsOneWidget);
-        expect(find.widgetWithText(InputChip, '@lena'), findsOneWidget);
-        expect(find.widgetWithText(InputChip, '@omar'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, '@lena_berlin'), findsOneWidget);
+        expect(find.widgetWithText(InputChip, '@omar_h'), findsOneWidget);
       });
     });
 
@@ -173,7 +173,7 @@ void main() {
         expect(create().onPressed, isNull, reason: 'only the creator');
         expect(find.textContaining(RegExp(r'^\d+ members?$')), findsNothing, reason: 'no member is counted');
 
-        await tester.enterText(fields.at(2), 'alex, lena');
+        await tester.enterText(fields.at(2), 'alex, lena_berlin');
         await tester.pump();
         expect(find.text('1 member'), findsOneWidget);
         expect(create().onPressed, isNotNull);
@@ -186,7 +186,7 @@ void main() {
         await tester.pump();
         await tester.tap(find.byType(FilledButton));
         await pumpFrames(tester, frames: 10);
-        expect(world.api.createdGroups.single['memberHandles'], ['lena'], reason: 'the creator is not sent as a member');
+        expect(world.api.createdGroups.single['memberHandles'], ['lena_berlin'], reason: 'the creator is not sent as a member');
         // Opened by itself, with no list under it to go back to.
         expect(find.byType(StartGroupScreen, skipOffstage: false), findsNothing);
         expect(find.byType(ConversationListScreen), findsOneWidget);
@@ -207,7 +207,7 @@ void main() {
         await tester.pump();
         expect(tester.widget<FilledButton>(create).onPressed, isNull, reason: 'no member yet');
         await tester.enterText(fields.at(1), 'The 14th');
-        await tester.enterText(fields.at(2), 'lena, @omar');
+        await tester.enterText(fields.at(2), 'lena_berlin, @omar_h');
         await tester.pump();
         await tester.tap(create);
         await pumpFrames(tester, frames: 10);
@@ -215,7 +215,7 @@ void main() {
         final created = world.api.createdGroups.single;
         expect(created['name'], 'Movers');
         expect(created['description'], 'The 14th');
-        expect(created['memberHandles'], ['lena', 'omar']);
+        expect(created['memberHandles'], ['lena_berlin', 'omar_h']);
         expect(created['isPublic'], isFalse);
         expect(find.byType(StartGroupScreen, skipOffstage: false), findsNothing);
         expect(find.byType(ConversationListScreen), findsOneWidget);

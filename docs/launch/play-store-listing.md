@@ -120,8 +120,11 @@ work, together with the matching usage string in `ios/Runner/Info.plist`
 
 ## Screenshot set
 
-Five screenshots, 16:9 landscape or 9:16 portrait. Same storyline as the
-App Store screenshots: reuse the assets.
+Six phone screenshots (1080 x 1920) and the 1024 x 500 feature graphic are
+in `store/play`. `store/play/screenshots/README.md` lists them and says how
+a Flutter test draws them from the app's screens. They follow the App Store
+shot list, but they are not the App Store images: those are captured on the
+iOS Simulator, since iOS draws a font the test cannot render.
 
 ## Google Play review notes
 

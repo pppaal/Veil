@@ -330,7 +330,18 @@ class VeilTheme {
         helperMaxLines: 3,
         errorStyle: bodySmall.copyWith(color: palette.danger),
         errorMaxLines: 3,
-        floatingLabelStyle: TextStyle(color: palette.primaryStrong),
+        // The label floats while the field is focused and while it holds
+        // text; only the focused one is brand text (rule 1), and a field
+        // with an error labels it in the error's colour.
+        floatingLabelStyle: WidgetStateTextStyle.resolveWith(
+          (states) => TextStyle(
+            color: states.contains(WidgetState.error)
+                ? palette.danger
+                : states.contains(WidgetState.focused)
+                    ? palette.primaryStrong
+                    : palette.textMuted,
+          ),
+        ),
         prefixStyle: TextStyle(color: palette.textMuted),
         prefixIconColor: palette.textMuted,
         suffixIconColor: palette.textMuted,

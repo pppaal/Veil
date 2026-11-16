@@ -41,7 +41,7 @@ cause a review rejection are already handled.
 | Privacy manifest | ✅ | `ios/Runner/PrivacyInfo.xcprivacy` present |
 | Android release signing | ✅ | Gated on `keystore.properties`; no debug-key fallback (build fails loud) |
 | iOS distribution signing / provisioning | ☐ | Apple Developer account, distribution cert, App Store provisioning profile — operator step, not in repo |
-| App Store Connect record | ☐ | App name, subtitle, category, age rating, screenshots (6.7" + 5.5" iPhone) |
+| App Store Connect record | ☐ | App name, subtitle, category, age rating, screenshots (6.9" + 6.5" iPhone per `store/appstore/screenshot-spec.md`; 13" iPad too while the build runs on iPad) |
 | Encryption export **filing** | ☐ | Flag=true means Apple expects docs. File the annual US self-classification (and FR encryption declaration if distributing in France). The flag being declared avoids the review block; the *filing* is still an operator task |
 | Privacy "Nutrition Label" | ☐ | Complete in App Store Connect by transcribing `store/appstore/app-privacy-answers.md` (Play: `store/play/data-safety-answers.md`). Declared collected: User ID, Device ID, Contacts (the in-app contact list) and Other User Content (readable group and channel names and descriptions, device labels and delivery metadata, linked; encrypted message payloads, not linked). Crash Data is declared not collected |
 | Real-device release QA | ☐ | `docs/production-deployment.md` §5: onboarding, chat, attachments, app lock (biometric/PIN), revoke, device transfer on physical iPhone |
